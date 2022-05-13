@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 dirs = "*"
 crossterm = "*"
-encode_unicode = "*"
+unicode-segmentation = "*"
+unicode-width = "*"
