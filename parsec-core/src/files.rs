@@ -1,3 +1,6 @@
+#[cfg(feature = "parsec-term")]
+pub use parsec_term::{ TermArea, TermPos };
+
 use crossterm::{
     self,
     cursor::MoveTo,
@@ -24,36 +27,22 @@ use unicode_width::UnicodeWidthStr;
 
 // Any use of the terms col and line refers specifically to a position in the file,
 // x and y are reserved for positions on the screen.
-
-#[derive(Copy, Clone)]
-pub struct TerminalArea {
-    origin: TermPos,
-    end: TermPos,
-}
-
-impl TerminalArea {
-    fn dims(&self) -> (u16, u16) {
-        (self.end.x - self.origin.x, self.end.y - self.origin.y)
-    }
-}
-
 // TODO: move this to a more general file.
 // TODO: In the future, this shouldn't be public, probably.
-#[derive(Copy, Clone)]
-pub struct TermPos {
-    pub x: u16,
-    pub y: u16,
-}
-
 #[derive(Copy, Clone)]
 pub struct FilePos {
     pub col: usize,
     pub line: usize,
 }
 
+#[derive(Copy, Clone)]
+pub struct CursorPos {
+    pub x: i32,
+    pub y: i32,
+}
+
 struct Cursor {
-    x: u16,
-    y: u16,
+    pos: CursorPos,
     current: FilePos,
     target: FilePos,
     desired_col: usize,
@@ -65,10 +54,14 @@ struct Cursor {
 struct StyledGrapheme {
     col: StyledContent<String>,
     width: usize,
+
+    // This information is in two places to reduce the number of operations done
+    // when moving the cursor.
+    is_wrapping: bool,
 }
 
 struct FileLine {
-    wrap_places: Vec<u16>,
+    wrap_cols: Vec<u16>,
     text: Vec<StyledGrapheme>,
     indentation: u8,
 
@@ -77,35 +70,47 @@ struct FileLine {
 }
 
 impl FileLine {
-    fn set_wrap_places(&mut self, width: u16) {
-        self.wrap_places.clear();
+    fn parse_wrapping(&mut self, width: u16) {
+        self.wrap_cols.clear();
         let mut index = width - 1;
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         for _ in 0..(self.width / width as usize) {
-            self.wrap_places.push(index);
+            self.wrap_cols.push(index);
+            self.text.get_mut(index as usize).expect("no char").is_wrapping = true;
             index += width;
         }
     }
+}
+
+enum WrapType {
+    Width,
+    Capped(u16),
+    Word,
+    NoWrap,
 }
 
 pub struct FileBuffer {
     content: Vec<FileLine>,
 
     // Position is origin inclusive, and end exclusive.
-    area: Option<TerminalArea>,
+    area: Option<TermArea>,
 
     // Info about which line is on the top of the area.
     top_line: usize,
-    top_line_wraps: u32,
+    top_wraps: usize,
 
     // It is a vector because modules might make use of multiple cursors.
     cursors: Vec<Cursor>,
 
+    ////////////////////////////////////////////////////////////////////////////
+    // Options
+    ////////////////////////////////////////////////////////////////////////////
     // TODO: Move options to a centralized option place.
-    // TODO: Turn this into a more versatile enum.
-    do_wrap_lines: bool,
+    wrap_type: WrapType,
+    cursor_height_buffer: u16,
+    cursor_width_buffer: u16,
 }
 
 impl FileBuffer {
@@ -117,24 +122,30 @@ impl FileBuffer {
             content: Vec::new(),
             area: None,
             top_line: 0,
-            top_line_wraps: 0,
+            top_wraps: 0,
 
             // TODO: Move this to a function that creates new cursors.
             cursors: vec![ Cursor {
-                x: 0,
-                y: 0,
+                pos: CursorPos { x: 0, y: 0 },
                 current: FilePos { col: 0, line: 0 },
                 target: FilePos { col: 0, line: 0 },
                 desired_col: 0,
                 wraps: 0,
             } ],
 
-            do_wrap_lines: true,
+            // NOTE: Temporary
+            wrap_type: if cfg!(feature = "width") {
+                WrapType::Width
+            } else {
+                WrapType::NoWrap
+            },
+            cursor_height_buffer: 0,
+            cursor_width_buffer: 0,
         };
 
         for line_text in file_contents.lines() {
             let mut line = FileLine {
-                wrap_places: Vec::new(),
+                wrap_cols: Vec::new(),
                 text: Vec::new(),
                 indentation: 0,
                 // So characters can be appended to the end of lines.
@@ -154,8 +165,8 @@ impl FileBuffer {
                 line.text.push(StyledGrapheme {
                     col: StyledContent::new(
                         ContentStyle::new(), String::from(grapheme)),
-                    style_is_final: false,
                     width: UnicodeWidthStr::width(grapheme),
+                    is_wrapping: false
                 });
             }
 
@@ -168,16 +179,16 @@ impl FileBuffer {
     }
 
     fn term_update_cursor(&mut self, cursor_num: usize) {
-        let (width, _height) = self.area.expect("area not assigned").dims();
+        let (width, height) = self.area.expect("area not assigned").dims();
 
         let mut cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
         let (col, line) = (cursor.target.col as i32, cursor.target.line as i32);
 
         let text_line = self.content.get(line as usize).expect("invalid line");
-        let line_wraps = text_line.wrap_places.len() as i32;
+        let line_wraps = text_line.wrap_cols.len() as i32;
 
         // Sum of "wrapping leftovers" from wrapped lines before col.
-        let offset_sum = text_line.wrap_places.iter().filter(|&c| *c < col as u16)
+        let offset = text_line.wrap_cols.iter().filter(|&c| *c < col as u16)
                                   .map(|&c| (width as i32 - (c % width + 1) as i32))
                                   .sum::<i32>();
 
@@ -185,14 +196,14 @@ impl FileBuffer {
         // TODO: Calculate in relation to (width - indentation) with the possibility
         // of that being only on the first line, for wrapped lines that start at 0
         let mut d_y = if cursor.target.line > cursor.current.line {
-            (offset_sum + col) / width as i32
+            (offset + col) / width as i32
         } else if cursor.target.line < cursor.current.line {
-            -(offset_sum + col) / width as i32
+            -(offset + col) / width as i32
         } else {
             // The cursor.wraps is only subtracted when the line doesn't change,
             // since the current wrapping position could be greater than 0, which
             // would mean a reduced or reversed cursor movement on the y axis.
-            (offset_sum + col) / width as i32 - cursor.wraps as i32 
+            (offset + col) / width as i32 - cursor.wraps as i32 
         };
 
         // The range shouldn't include the wrapped lines of the last line.
@@ -205,32 +216,77 @@ impl FileBuffer {
         } else { 0..0 };
 
         for line in self.content.get(line_range).expect("reading line failed") {
-            d_y += 1 + line.wrap_places.len() as i32;
+            d_y += 1 + line.wrap_cols.len() as i32;
         }
 
-        // If the line updated before cursor.y, the first check would always be true.
-        cursor.y = if line as usize >= cursor.current.line {
-            (cursor.y as i32 + d_y) as u16
-        } else {
-            (cursor.y as i32 - d_y) as u16
-        };
+        // If the line updated before cursor.y, this would always default to false.
+        // d_y needs to be negative if the cursor is moving up the file.
+        if cursor.current.line > line as usize { d_y *= -1; };
+        // This variable is used so that actual cursor positions are never negative.
+        cursor.pos.y = cursor.pos.y as i32 + d_y;
+
         cursor.current.line = line as usize;
 
         // cursor.x needs the updated values of the number of wraps and column.
         cursor.current.col = col as usize;
-        cursor.wraps = ((offset_sum + col) / width as i32) as u16;
-        cursor.x = (col as i32 + offset_sum - (width * cursor.wraps) as i32) as u16;
+        cursor.wraps = ((offset + col) / width as i32) as u16;
+        cursor.pos.x = col as i32 + offset - (width * cursor.wraps) as i32;
+
+        // Scroll if the cursor surpasses the soft cap of the cursor_zone.
+        if cursor.pos.y  < self.cursor_height_buffer as i32 {
+            for _ in cursor.pos.y ..self.cursor_height_buffer as i32 {
+                if !self.scroll_up() { break; }
+            }
+        } else if cursor.pos.y > (height - self.cursor_height_buffer) as i32 {
+            for _ in (height - self.cursor_height_buffer) as i32..cursor.pos.y {
+                self.scroll_down();
+            }
+        }
+    }
+
+    /// Scrolls the file down by one line
+    ///
+    fn scroll_down(&mut self) {
+        let top_line = self.content.get(self.top_line).expect("line not found");
+
+        if top_line.wrap_cols.len() > self.top_wraps {
+            self.top_wraps += 1;
+        } else {
+            self.top_line += 1;
+            self.top_wraps = 0;
+        }
+
+        self.cursors.iter_mut().for_each(|cursor| cursor.pos.y -= 1);
+    }
+
+    /// Scrolls the file up by one line
+    ///
+    /// - If it returns false, it means it is not possible to scroll up.
+    /// 
+    fn scroll_up(&mut self) -> bool {
+        if self.top_line == 0 && self.top_wraps == 0 {
+            false
+        } else {
+            if self.top_wraps > 0 {
+                self.top_wraps -= 1;
+            } else {
+                self.top_line -= 1;
+                let top_line = self.content.get(self.top_line)
+                                           .expect("line not found");
+                self.top_wraps = top_line.wrap_cols.len();
+            }
+            self.cursors.iter_mut().for_each(|cursor| cursor.pos.y += 1);
+            true
+        }
     }
 
     /// Moves the cursor right on the file
     ///
-    /// - If `update == true`, the function calls `self.term_update_cursor()`. This
-    /// is useful for "chaining" multiple movements at once, so you can update only
-    /// the last movement.
+    /// - If `update == true`, the current cursor position will update
     /// 
     pub fn move_cursor_right(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("cursor failed");
-        let line = self.content.get(cursor.current.line).expect("cursor failed");
+        let line = self.content.get(cursor.target.line).expect("cursor failed");
 
         // TODO: Maybe add an option to change this 0 into the indentation.
         // TODO: Add an option to finish movement at the end of a line.
@@ -249,14 +305,12 @@ impl FileBuffer {
 
     /// Moves the cursor left on the file
     ///
-    /// - If `update == true`, the function calls `self.term_update_cursor()`. This
-    /// is useful for "chaining" multiple movements at once, so you can update only
-    /// the last movement.
+    /// - If `update == true`, the current cursor position will update
     /// 
     pub fn move_cursor_left(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
 
-        if cursor.target.col == 0 {
+        if cursor.target.col == 0 && cursor.target.line != 0{
             if cursor.current.line != 0 {
                 if let Some(line) = self.content.get(cursor.current.line - 1) {
                     cursor.target.col = line.width;
@@ -274,9 +328,7 @@ impl FileBuffer {
 
     /// Moves the cursor down on the file
     ///
-    /// - If `update == true`, the function calls `self.term_update_cursor()`. This
-    /// is useful for "chaining" multiple movements at once, so you can update only
-    /// the last movement.
+    /// - If `update == true`, the current cursor position will update
     /// 
     pub fn move_cursor_down(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
@@ -291,9 +343,7 @@ impl FileBuffer {
 
     /// Moves the cursor up on the file
     ///
-    /// - If `update == true`, the function calls `self.term_update_cursor()`. This
-    /// is useful for "chaining" multiple movements at once, so you can update only
-    /// the last movement.
+    /// - If `update == true`, the current cursor position will update
     /// 
     pub fn move_cursor_up(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("cursor failed");
@@ -308,17 +358,21 @@ impl FileBuffer {
         if update { self.term_update_cursor(cursor_num); }
     }
 
-    pub fn parse_wrapping(&mut self) {
-        if !self.do_wrap_lines {
-            for line in self.content.iter_mut() {
-                line.wrap_places.clear();
-            }
-        } else {
-            let (width, _) = self.area.expect("area not assigned").dims();
+    fn parse_wrapping(&mut self) {
+        match self.wrap_type {
+            WrapType::Width => {
+                let (width, _) = self.area.expect("area not assigned").dims();
 
-            for line in self.content.iter_mut() {
-                line.set_wrap_places(width);
-            }
+                for line in self.content.iter_mut() {
+                    line.parse_wrapping(width);
+                }
+            },
+            WrapType::NoWrap => {
+                for line in self.content.iter_mut() {
+                    line.wrap_cols.clear();
+                }
+            },
+            _ => {},
         }
     }
 }
@@ -327,11 +381,11 @@ impl FileBuffer {
 pub trait PrintableArea<'a> {
     fn print_contents(&self, stdout: &mut io::Stdout) -> crossterm::Result<()>;
 
-    fn allocate_area(&self, origin: TermPos, end: TermPos) -> TerminalArea {
-        let (width, height) = terminal::size().expect("terminal size failed");
+    fn allocate_area(&self, origin: TermPos, end: TermPos) -> TermArea {
+        let (width, height) = terminal::size().expect("crossterm failed");
         let origin = TermPos { x: max(origin.x, 0), y: max(origin.y, 0) };
         let end = TermPos { x: min(end.x, width), y: min(end.y, height) };
-        TerminalArea { origin, end }
+        TermArea { origin, end }
     }
 
     fn request_area(&mut self, origin: TermPos, end: TermPos); }
@@ -344,35 +398,56 @@ impl PrintableArea<'_> for FileBuffer {
         let width = width as usize;
 
         let mut h_offset: u16 = 0;
+        let mut was_first_line_placed = false;
 
         for line in self.content.iter().skip(self.top_line) {
-            if h_offset == height { break; };
+            if h_offset > height { break; };
 
             stdout.queue(MoveTo(area.origin.x, area.origin.y + h_offset))?;
 
-            for (col, styled_char) in line.text.iter().enumerate() {
-                if !self.do_wrap_lines && col + styled_char.width > width { break; }
+            let skip = if !was_first_line_placed && self.top_wraps > 0 {
+                was_first_line_placed = true;
+                *line.wrap_cols.get(self.top_wraps - 1).expect("no col") as usize + 1
+            } else { 0 };
 
-                stdout.queue(PrintStyledContent(styled_char.col.clone()))?;
+            let mut count = 0;
 
-                if line.wrap_places.contains(&(col as u16)) {
+            for col in line.text.iter().skip(skip) {
+                if let WrapType::NoWrap = self.wrap_type {
+                    if count + col.width > width { break; }
+                }
+
+                stdout.queue(PrintStyledContent(col.col.clone()))?;
+
+                count = count + 1;
+
+                if col.is_wrapping {
                     h_offset += 1;
-                    stdout.queue(MoveTo(
-                        area.origin.x,
-                        area.origin.y + h_offset))?;
+                    if h_offset > height { break; }
+                    stdout.queue(MoveTo(area.origin.x, area.origin.y + h_offset))?;
                 } 
             }
+
+            // Erasing anything that is leftover
+            let mut blank_space = String::new();
+            for _ in 0..(width - count % width) {
+                blank_space += " ";
+            }
+            stdout.queue(Print(blank_space))?;
+
             h_offset += 1;
         }
         let cursor = self.cursors.get(0).expect("cursor doesn't exist");
         let status = format!(
             "Term: {}x{}, File: {}x{}, width: {}, wraps: {}                      ",
-            cursor.x, cursor.y, cursor.current.col, cursor.current.line, width,
-            cursor.wraps);
+            cursor.pos.x, cursor.pos.y, cursor.current.col, cursor.current.line,
+            width, cursor.wraps);
                 
         stdout.queue(MoveTo(0, 50))?
-              .queue(Print(status))?;
-        stdout.queue(MoveTo(area.origin.x + cursor.x, area.origin.y + cursor.y))?;
+              .queue(Print(status))?
+              .queue(MoveTo(
+                  area.origin.x + cursor.pos.x as u16,
+                  area.origin.y + cursor.pos.y as u16))?;
 
         Ok(())
     }
@@ -380,14 +455,19 @@ impl PrintableArea<'_> for FileBuffer {
     fn request_area(&mut self, origin: TermPos, end: TermPos) {
         let prev_area = self.area;
         self.area = Some(self.allocate_area(origin, end));
+        let mut area_changed = false;
 
         match prev_area {
             Some(area) => {
                 if area.dims() != self.area.expect("area not set").dims() {
-                    self.parse_wrapping();
+                    area_changed = true
                 }
             },
-            None => self.parse_wrapping(),
+            None => area_changed = true,
         };
+
+        if area_changed {
+            self.parse_wrapping();
+        }
     }
 }

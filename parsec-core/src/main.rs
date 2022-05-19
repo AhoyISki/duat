@@ -1,6 +1,5 @@
 use std::env;
 
-use crossterm::terminal::ClearType;
 use dirs;
 
 use std::io::{stdout, Write, Stdout};
@@ -11,7 +10,6 @@ use crossterm::{
     QueueableCommand,
     ExecutableCommand,
     terminal::{self, enable_raw_mode, disable_raw_mode},
-    style::Print,
     event::{read, Event, KeyCode},
 };
 
@@ -58,7 +56,7 @@ fn main() -> crossterm::Result<()> {
          .expect("whoops")
          .request_area(
              files::TermPos { x: 4, y: 0 },
-             files::TermPos { x: 100, y: 40 });
+             files::TermPos { x: 50, y: 40 });
 
     files.get(0)
          .expect("whoops")
