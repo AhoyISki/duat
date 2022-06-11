@@ -1,29 +1,21 @@
-#[cfg(feature = "parsec-term")]
-pub use parsec_term::{ TermArea, TermPos };
-
-use crossterm::{
-    self,
-    cursor::MoveTo,
-    style::{
-        Print,
-        ContentStyle,
-        //Attribute,
-        //Color,
-        PrintStyledContent,
-        StyledContent
-    },
-    terminal,
-    QueueableCommand,
-};
-
 use std::path::PathBuf;
 use std::fs;
-use std::io;
-use std::cmp::{min, max};
+use std::cmp::min;
+
+pub mod output;
+
+use output::OutputArea;
+use output::{
+    InputHandler,
+    ModeList,
+    CursorPos,
+    OutputPos,
+    StyledChar,
+};
 
 use unicode_segmentation::{UnicodeSegmentation, /*GraphemeCursor*/};
-
 use unicode_width::UnicodeWidthStr;
+use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
 
 // Any use of the terms col and line refers specifically to a position in the file,
 // x and y are reserved for positions on the screen.
@@ -35,34 +27,43 @@ pub struct FilePos {
     pub line: usize,
 }
 
-#[derive(Copy, Clone)]
-pub struct CursorPos {
-    pub x: i32,
-    pub y: i32,
-}
-
-struct Cursor {
+pub struct Cursor {
+    /// Position of the cursor on screen
     pos: CursorPos,
+
+    /// Current position of the cursor in the file
     current: FilePos,
+    /// Target position of the cursor in the file
     target: FilePos,
+
+    /// Column that the cursor wants to be in
+    ///
+    /// If the cursor moves to a line that is at least as wide as the desired_col,
+    /// it will be placed in the desired_col. If the line is shorter, it will be
+    /// placed in the last column of the line.
     desired_col: usize,
+
+    /// How many times the cursor position wraps in the line.
     wraps: u16
     // TODO: Eventually add a selection to the cursor.
 }
 
-// TODO: move this to a more general file.
-struct StyledGrapheme {
-    col: StyledContent<String>,
-    width: usize,
+impl Cursor {
+    /// Returns the cursor's position on the screen
+    pub fn pos(&self) -> &CursorPos {
+        &self.pos
+    }
 
-    // This information is in two places to reduce the number of operations done
-    // when moving the cursor.
-    is_wrapping: bool,
+    /// Returns the cursor's position on the file
+    pub fn current(&self) -> &FilePos {
+        &self.current
+    }
 }
 
-struct FileLine {
+// TODO: move this to a more general file.
+pub struct FileLine {
     wrap_cols: Vec<u16>,
-    text: Vec<StyledGrapheme>,
+    text: Vec<StyledChar>,
     indentation: u8,
 
     // Since the width function doesn't take into account the width of cols.
@@ -70,6 +71,16 @@ struct FileLine {
 }
 
 impl FileLine {
+    /// Returns the columns in the line that wrap
+    pub fn wrap_cols(&self) -> &Vec<u16> {
+        &self.wrap_cols
+    }
+
+    /// Returns the contents of the line
+    pub fn text(&self) -> &Vec<StyledChar> {
+        &self.text
+    }
+
     fn parse_wrapping(&mut self, width: u16) {
         self.wrap_cols.clear();
         let mut index = width - 1;
@@ -84,47 +95,70 @@ impl FileLine {
     }
 }
 
-enum WrapType {
+#[derive(Copy, Clone, Debug)]
+pub enum WrapType {
     Width,
     Capped(u16),
     Word,
     NoWrap,
 }
 
-pub struct FileBuffer {
-    content: Vec<FileLine>,
-
-    // Position is origin inclusive, and end exclusive.
-    area: Option<TermArea>,
-
-    // Info about which line is on the top of the area.
-    top_line: usize,
-    top_wraps: usize,
-
-    // It is a vector because modules might make use of multiple cursors.
-    cursors: Vec<Cursor>,
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Options
-    ////////////////////////////////////////////////////////////////////////////
-    // TODO: Move options to a centralized option place.
-    wrap_type: WrapType,
-    cursor_height_buffer: u16,
-    cursor_width_buffer: u16,
+// TODO: Move options to a centralized option place.
+// TODO: Make these private.
+#[derive(Copy, Clone, Debug)]
+pub struct FileOptions {
+    pub wrap_type: WrapType,
+    pub cursor_y_spacing: u16,
+    pub cursor_x_spacing: u16,
 }
 
-impl FileBuffer {
-    pub fn from(file_path: PathBuf) -> io::Result<FileBuffer> {
-        // TODO: In the future, this will not panic!
-        let file_contents = fs::read_to_string(file_path).expect("file not found");
+#[derive(Copy, Clone, Debug)]
+pub struct Options {
+    pub file_options: FileOptions,
+}
 
-        let mut file_buffer = FileBuffer {
-            content: Vec::new(),
-            area: None,
+// NOTE: This struct should strive to be completely UI agnostic, i.e., it should
+// work wether the app is used in a terminal or in a GUI.
+pub struct FileHandler<T: OutputArea> {
+    /// The contents of the file
+    pub file: Vec<FileLine>,
+
+    // TODO: Move these into a "FileState" struct.
+    // Info about which line is on the top of the area.
+    /// The line at the top of the screen
+    pub top_line: usize,
+    /// How many times the line at the top of the screen wraps around
+    pub top_wraps: usize,
+
+    /// Options related to files
+    pub options: FileOptions,
+
+    // Where exactly on the screen the origin and end of the area are placed is not
+    // important here.
+    /// The area allocated to the file
+    pub area: T,
+
+    /// List of active cursors in the file
+    cursors: Vec<Cursor>,
+
+    /// List of mapped modes for file editing
+    mappings: ModeList<FileHandler<T>>,
+}
+
+impl<T: OutputArea> FileHandler<T> {
+    /// Returns a new instance of ContentArea
+    pub fn new(area: T, file_path: PathBuf, options: FileOptions) -> FileHandler<T> {
+        // TODO: In the future, this will not panic!
+        // TODO: Move this to a more general file.
+        let raw_file = fs::read_to_string(file_path).expect("file not found");
+
+        let mut file_handler = FileHandler {
+            file: Vec::new(),
             top_line: 0,
             top_wraps: 0,
-
-            // TODO: Move this to a function that creates new cursors.
+            options,
+            area,
+            
             cursors: vec![ Cursor {
                 pos: CursorPos { x: 0, y: 0 },
                 current: FilePos { col: 0, line: 0 },
@@ -133,17 +167,10 @@ impl FileBuffer {
                 wraps: 0,
             } ],
 
-            // NOTE: Temporary
-            wrap_type: if cfg!(feature = "width") {
-                WrapType::Width
-            } else {
-                WrapType::NoWrap
-            },
-            cursor_height_buffer: 0,
-            cursor_width_buffer: 0,
+            mappings: ModeList::new("default"),
         };
 
-        for line_text in file_contents.lines() {
+        for line_text in raw_file.lines() {
             let mut line = FileLine {
                 wrap_cols: Vec::new(),
                 text: Vec::new(),
@@ -155,37 +182,76 @@ impl FileBuffer {
             let mut parsing_indentation = true;
 
             for grapheme in line_text.graphemes(true) {
-                // TODO: Add an algorithm for indentation computation.
                 // TODO: Add variable tab size.
                 // NOTE: This probably has some obscure bugs embeded in it.
                 if parsing_indentation && grapheme == " " || grapheme == "\t" {
                        line.indentation += UnicodeWidthStr::width(grapheme) as u8;
                 } else { parsing_indentation = false; }
 
-                line.text.push(StyledGrapheme {
-                    col: StyledContent::new(
-                        ContentStyle::new(), String::from(grapheme)),
-                    width: UnicodeWidthStr::width(grapheme),
-                    is_wrapping: false
-                });
+                let width = UnicodeWidthStr::width(grapheme);
+
+                line.text.push(StyledChar::new(grapheme, width));
             }
 
             line.width += line.text.len();
 
-            file_buffer.content.push(line);
+            file_handler.file.push(line);
+        };
+
+        map_actions! {
+            file_handler: FileHandler<T>, mappings;
+            "default" => [
+                // Move all cursors down
+                (KeyCode::Down, KeyModifiers::NONE) => {
+                    |handler: &mut FileHandler<T>| {
+                        for i in 0..handler.cursors.len() {
+                            handler.move_cursor_down(i, true);
+                        }
+                    }
+                },
+                // Move all cursors up
+                (KeyCode::Up, KeyModifiers::NONE) => {
+                    |handler: &mut FileHandler<T>| {
+                        for i in 0..handler.cursors.len() {
+                            handler.move_cursor_up(i, true);
+                        }
+                    }
+                },
+                // Move all cursors up
+                (KeyCode::Left, KeyModifiers::NONE) => {
+                    |handler: &mut FileHandler<T>| {
+                        for i in 0..handler.cursors.len() {
+                            handler.move_cursor_left(i, true);
+                        }
+                    }
+                },
+                // Move all cursors up
+                (KeyCode::Right, KeyModifiers::NONE) => {
+                    |handler: &mut FileHandler<T>| {
+                        for i in 0..handler.cursors.len() {
+                            handler.move_cursor_right(i, true);
+                        }
+                    }
+                },
+            ]
         }
 
-        Ok(file_buffer)
+        file_handler
     }
 
-    fn term_update_cursor(&mut self, cursor_num: usize) {
-        let (width, height) = self.area.expect("area not assigned").dims();
+    /// Updates the position of a cursor on the screen
+    ///
+    /// - It will update self.pos, and self.current will be equal to self.target.
+    fn update_pos(&mut self, cursor_num: usize) {
+        let (width, height) = (self.area.width(), self.area.height());
+
+        let x_spacing = self.options.cursor_x_spacing;
+        let y_spacing = self.options.cursor_y_spacing;
 
         let mut cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
         let (col, line) = (cursor.target.col as i32, cursor.target.line as i32);
 
-        let text_line = self.content.get(line as usize).expect("invalid line");
-        let line_wraps = text_line.wrap_cols.len() as i32;
+        let text_line = self.file.get(line as usize).expect("invalid line");
 
         // Sum of "wrapping leftovers" from wrapped lines before col.
         let offset = text_line.wrap_cols.iter().filter(|&c| *c < col as u16)
@@ -215,7 +281,7 @@ impl FileBuffer {
             (line as usize)..cursor.current.line
         } else { 0..0 };
 
-        for line in self.content.get(line_range).expect("reading line failed") {
+        for line in self.file.get(line_range).expect("reading line failed") {
             d_y += 1 + line.wrap_cols.len() as i32;
         }
 
@@ -233,21 +299,22 @@ impl FileBuffer {
         cursor.pos.x = col as i32 + offset - (width * cursor.wraps) as i32;
 
         // Scroll if the cursor surpasses the soft cap of the cursor_zone.
-        if cursor.pos.y  < self.cursor_height_buffer as i32 {
-            for _ in cursor.pos.y ..self.cursor_height_buffer as i32 {
+        if cursor.pos.y  < y_spacing as i32 {
+            for _ in cursor.pos.y ..y_spacing as i32 {
                 if !self.scroll_up() { break; }
             }
-        } else if cursor.pos.y > (height - self.cursor_height_buffer) as i32 {
-            for _ in (height - self.cursor_height_buffer) as i32..cursor.pos.y {
+        } else if cursor.pos.y > (height - y_spacing) as i32 {
+            for _ in (height - y_spacing) as i32..cursor.pos.y {
                 self.scroll_down();
             }
         }
+
+        self.print_contents();
     }
 
     /// Scrolls the file down by one line
-    ///
     fn scroll_down(&mut self) {
-        let top_line = self.content.get(self.top_line).expect("line not found");
+        let top_line = self.file.get(self.top_line).expect("line not found");
 
         if top_line.wrap_cols.len() > self.top_wraps {
             self.top_wraps += 1;
@@ -256,13 +323,13 @@ impl FileBuffer {
             self.top_wraps = 0;
         }
 
+        // Moves the cursors up by one, to keep them in the same place in the file.
         self.cursors.iter_mut().for_each(|cursor| cursor.pos.y -= 1);
     }
 
     /// Scrolls the file up by one line
     ///
     /// - If it returns false, it means it is not possible to scroll up.
-    /// 
     fn scroll_up(&mut self) -> bool {
         if self.top_line == 0 && self.top_wraps == 0 {
             false
@@ -271,10 +338,11 @@ impl FileBuffer {
                 self.top_wraps -= 1;
             } else {
                 self.top_line -= 1;
-                let top_line = self.content.get(self.top_line)
-                                           .expect("line not found");
+                let top_line = self.file.get(self.top_line).expect("line not found");
                 self.top_wraps = top_line.wrap_cols.len();
             }
+            // Moves the cursors down by one, to keep them in the same place in the
+            // file.
             self.cursors.iter_mut().for_each(|cursor| cursor.pos.y += 1);
             true
         }
@@ -282,16 +350,15 @@ impl FileBuffer {
 
     /// Moves the cursor right on the file
     ///
-    /// - If `update == true`, the current cursor position will update
-    /// 
+    /// - If `update == true`, self.pos and self.current will update
     pub fn move_cursor_right(&mut self, cursor_num: usize, update: bool) {
-        let cursor = self.cursors.get_mut(cursor_num).expect("cursor failed");
-        let line = self.content.get(cursor.target.line).expect("cursor failed");
+        let cursor = self.cursors.get_mut(cursor_num).expect("cursor not found");
+        let line = self.file.get(cursor.target.line).expect("line not found");
 
         // TODO: Maybe add an option to change this 0 into the indentation.
         // TODO: Add an option to finish movement at the end of a line.
         if cursor.target.col == line.width {
-            if let Some(_) = self.content.get(cursor.current.line + 1) {
+            if let Some(_) = self.file.get(cursor.current.line + 1) {
                 cursor.target.col = 0;
                 cursor.target.line += 1;
             }
@@ -300,19 +367,18 @@ impl FileBuffer {
             cursor.desired_col = cursor.target.col;
         }
 
-        if update { self.term_update_cursor(cursor_num); }
+        if update { self.update_pos(cursor_num); }
     }
 
     /// Moves the cursor left on the file
     ///
     /// - If `update == true`, the current cursor position will update
-    /// 
     pub fn move_cursor_left(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
 
         if cursor.target.col == 0 && cursor.target.line != 0{
             if cursor.current.line != 0 {
-                if let Some(line) = self.content.get(cursor.current.line - 1) {
+                if let Some(line) = self.file.get(cursor.current.line - 1) {
                     cursor.target.col = line.width;
                     cursor.desired_col = cursor.target.col;
                     cursor.target.line -= 1;
@@ -323,108 +389,91 @@ impl FileBuffer {
             cursor.desired_col = cursor.target.col;
         }
 
-        if update { self.term_update_cursor(cursor_num); }
+        if update { self.update_pos(cursor_num); }
     }
 
     /// Moves the cursor down on the file
     ///
     /// - If `update == true`, the current cursor position will update
-    /// 
-    pub fn move_cursor_down(&mut self, cursor_num: usize, update: bool) {
+    pub fn move_cursor_down(&mut self, cursor_num: usize, update: bool){
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
 
-        if let Some(line) = self.content.get(cursor.target.line + 1) {
+        if let Some(line) = self.file.get(cursor.target.line + 1) {
             cursor.target.col = min(cursor.desired_col, line.width);
             cursor.target.line += 1;
         }
 
-        if update { self.term_update_cursor(cursor_num); }
+        if update { self.update_pos(cursor_num); }
     }
 
     /// Moves the cursor up on the file
     ///
     /// - If `update == true`, the current cursor position will update
-    /// 
     pub fn move_cursor_up(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("cursor failed");
 
         if cursor.target.line != 0 {
-            if let Some(line) = self.content.get(cursor.target.line - 1) {
+            if let Some(line) = self.file.get(cursor.target.line - 1) {
                 cursor.target.col = min(cursor.desired_col, line.width);
                 cursor.target.line -= 1;
             }
         }
 
-        if update { self.term_update_cursor(cursor_num); }
+        if update { self.update_pos(cursor_num); }
     }
 
-    fn parse_wrapping(&mut self) {
-        match self.wrap_type {
+    /// Parses the wrapping for all the lines in the file
+    ///
+    /// - This should only be called when the wrap_type or width change.
+    pub fn parse_wrapping(&mut self) {
+        match self.options.wrap_type {
             WrapType::Width => {
-                let (width, _) = self.area.expect("area not assigned").dims();
-
-                for line in self.content.iter_mut() {
-                    line.parse_wrapping(width);
+                for line in self.file.iter_mut() {
+                    line.parse_wrapping(self.area.width());
                 }
             },
             WrapType::NoWrap => {
-                for line in self.content.iter_mut() {
+                for line in self.file.iter_mut() {
                     line.wrap_cols.clear();
                 }
             },
             _ => {},
         }
     }
-}
 
-// TODO: move this to a more general file
-pub trait PrintableArea<'a> {
-    fn print_contents(&self, stdout: &mut io::Stdout) -> crossterm::Result<()>;
-
-    fn allocate_area(&self, origin: TermPos, end: TermPos) -> TermArea {
-        let (width, height) = terminal::size().expect("crossterm failed");
-        let origin = TermPos { x: max(origin.x, 0), y: max(origin.y, 0) };
-        let end = TermPos { x: min(end.x, width), y: min(end.y, height) };
-        TermArea { origin, end }
-    }
-
-    fn request_area(&mut self, origin: TermPos, end: TermPos); }
-
-impl PrintableArea<'_> for FileBuffer {
     /* TODO: Finish this function */
-    fn print_contents(&self, stdout: &mut io::Stdout) -> crossterm::Result<()> {
-        let area = self.area.expect("area not assigned");
-        let (width, height) = area.dims();
-        let width = width as usize;
+    #[inline]
+    pub fn print_contents(&mut self) {
+        let (width, height) = (self.area.width() as usize, self.area.height());
+        let top_wraps = self.top_wraps;
 
-        let mut h_offset: u16 = 0;
+        let mut line_origin = OutputPos { x: 0, y: 0 };
         let mut was_first_line_placed = false;
 
-        for line in self.content.iter().skip(self.top_line) {
-            if h_offset > height { break; };
+        for line in self.file.iter_mut().skip(self.top_line) {
+            if line_origin.y > height { break; };
 
-            stdout.queue(MoveTo(area.origin.x, area.origin.y + h_offset))?;
+            self.area.move_cursor(line_origin);
 
-            let skip = if !was_first_line_placed && self.top_wraps > 0 {
+            let skip = if !was_first_line_placed && top_wraps > 0 {
                 was_first_line_placed = true;
-                *line.wrap_cols.get(self.top_wraps - 1).expect("no col") as usize + 1
+                *line.wrap_cols().get(top_wraps - 1).expect("not a col") as usize + 1
             } else { 0 };
 
             let mut count = 0;
 
-            for col in line.text.iter().skip(skip) {
-                if let WrapType::NoWrap = self.wrap_type {
+            for col in line.text().iter().skip(skip) {
+                if let WrapType::NoWrap = self.options.wrap_type {
                     if count + col.width > width { break; }
                 }
 
-                stdout.queue(PrintStyledContent(col.col.clone()))?;
-
+                self.area.print_styled(col.clone());
                 count = count + 1;
 
                 if col.is_wrapping {
-                    h_offset += 1;
-                    if h_offset > height { break; }
-                    stdout.queue(MoveTo(area.origin.x, area.origin.y + h_offset))?;
+                    line_origin.y += 1;
+                    if line_origin.y > height { break; }
+                    self.area.move_cursor(line_origin);
                 } 
             }
 
@@ -433,41 +482,23 @@ impl PrintableArea<'_> for FileBuffer {
             for _ in 0..(width - count % width) {
                 blank_space += " ";
             }
-            stdout.queue(Print(blank_space))?;
+            self.area.print_string(blank_space);
 
-            h_offset += 1;
+            line_origin.y += 1;
         }
         let cursor = self.cursors.get(0).expect("cursor doesn't exist");
         let status = format!(
-            "Term: {}x{}, File: {}x{}, width: {}, wraps: {}                      ",
-            cursor.pos.x, cursor.pos.y, cursor.current.col, cursor.current.line,
-            width, cursor.wraps);
-                
-        stdout.queue(MoveTo(0, 50))?
-              .queue(Print(status))?
-              .queue(MoveTo(
-                  area.origin.x + cursor.pos.x as u16,
-                  area.origin.y + cursor.pos.y as u16))?;
+            "Term: {}×{}, File: {}×{}, width: {}",
+            cursor.pos().x, cursor.pos().y,
+            cursor.current().col, cursor.current().line, width);
 
-        Ok(())
-    }
+        let temp_status = OutputPos { x: 0, y: 50 };
+        self.area.move_cursor(temp_status);
+        self.area.print_string(status);
+        self.area.move_cursor((*cursor.pos()).into());
 
-    fn request_area(&mut self, origin: TermPos, end: TermPos) {
-        let prev_area = self.area;
-        self.area = Some(self.allocate_area(origin, end));
-        let mut area_changed = false;
-
-        match prev_area {
-            Some(area) => {
-                if area.dims() != self.area.expect("area not set").dims() {
-                    area_changed = true
-                }
-            },
-            None => area_changed = true,
-        };
-
-        if area_changed {
-            self.parse_wrapping();
-        }
+        self.area.flush();
     }
 }
+
+impl_input_handler!(FileHandler<T>, mappings);

@@ -6,14 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossterm = "0.22"
-dirs = "*"
 unicode-segmentation = "*"
 unicode-width = "*"
-
-parsec-term = { version = "*", path = "../parsec-term/", optional = true }
-
-[features]
-default = [ "terminal-app" ]
-terminal-app = [ "parsec-term" ]
-width = []
+crossterm = { version = "*", path = "../crossterm/" }
