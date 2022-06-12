@@ -73,10 +73,6 @@ impl OutputArea for TermArea {
                    .unwrap();
     }
 
-    fn move_cursor_to_origin(&mut self) {
-        self.stdout.queue(MoveTo(self.origin.x, self.origin.y)).unwrap();
-    }
-
     fn width(&self) -> u16 {
         self.end.x - self.origin.x
     }
@@ -192,17 +188,12 @@ impl FileBuffer {
         // TODO: Move this to a place where it is required.
         assert!(end > origin);
 
-        let mut file_buffer = FileBuffer {
+        Ok(FileBuffer {
             file_handler: {
                 let area = TermArea::new(origin, end);
 
                 FileHandler::new(area, file_path, options.file_options)
             },
-        };
-
-        file_buffer.file_handler.parse_wrapping();
-        file_buffer.file_handler.print_screen();
-
-        Ok(file_buffer)
+        })
     }
 }

@@ -6,11 +6,7 @@ use crossterm::style::{
 use std::{
     ops,
     fmt::Display,
-    cmp::{
-        self,
-        max,
-        min
-    }
+    cmp,
 };
 
 use crate::file::CursorPos;
@@ -131,11 +127,6 @@ pub trait OutputArea {
     /// 
     /// Will change where the next characters will be printed, without wrapping.
     fn move_cursor(&mut self, pos: OutputPos);
-
-    /// Moves the relative printing cursor to the origin.
-    /// 
-    /// Will change where the next characters will be printed, without wrapping.
-    fn move_cursor_to_origin(&mut self);
 
     /// Returns the width of the area.
     fn width(&self) -> u16;

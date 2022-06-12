@@ -184,14 +184,14 @@ macro_rules! map_actions {
     ) => {
 
         // This is so the compiler stops warning me about unused code.
-        let mut index = -1;
+        let mut index = 0;
 
         $(
             $handler.$mode_list.add_mode($mode);
-
+            
             index += 1;
 
-            let mode = $handler.$mode_list.modes.get_mut(index as usize).unwrap();
+            let mode = $handler.$mode_list.modes.get_mut(index - 1).unwrap();
 
             $(
                 $(
