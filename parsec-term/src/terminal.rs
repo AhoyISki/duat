@@ -8,14 +8,15 @@ use crossterm::{
     event::{read, Event, KeyEvent, KeyCode, KeyModifiers},
 };
 
-use parsec_core::output::{
-    OutputArea, OutputPos,
-    StyledChar,
-    InputHandler,
-};
-
 use parsec_core::{
-    FileHandler, Options,
+    input::InputHandler,
+    file::FileHandler,
+    config::Options,
+    output::{
+        OutputArea,
+        StyledChar,
+        OutputPos,
+    }
 };
 
 /// An area in the terminal used for printing text.

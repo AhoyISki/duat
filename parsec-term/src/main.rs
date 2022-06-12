@@ -1,18 +1,24 @@
-use std::env;
-use std::path::PathBuf;
+use std::{
+    env,
+    path::PathBuf,
+};
 
 use dirs;
 
-mod terminal;
-
 use parsec_core::{
-    Options,
-    FileOptions,
-    WrapType,
+    config::{
+        Options,
+        FileOptions,
+        WrapType,
+    },
     output::OutputPos
 };
 
-use terminal::{ TerminalApp, FileBuffer };
+mod terminal;
+use terminal::{
+    TerminalApp,
+    FileBuffer
+};
 
 fn main() {
     let mut buffers = TerminalApp::new();
