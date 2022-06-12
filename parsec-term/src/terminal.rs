@@ -10,7 +10,7 @@ use crossterm::{
 
 use parsec_core::{
     input::InputHandler,
-    file::FileHandler,
+    file_handler::FileHandler,
     config::Options,
     output::{
         OutputArea,

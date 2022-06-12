@@ -38,8 +38,8 @@ fn main() {
                 WrapType::NoWrap
             },
 
-            cursor_x_spacing: 0,
-            cursor_y_spacing: 5,
+            x_spacing: 0,
+            scrolloff: 5,
         }
     };
 

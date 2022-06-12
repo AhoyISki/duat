@@ -13,8 +13,8 @@ pub enum WrapType {
 #[derive(Copy, Clone, Debug)]
 pub struct FileOptions {
     pub wrap_type: WrapType,
-    pub cursor_y_spacing: u16,
-    pub cursor_x_spacing: u16,
+    pub scrolloff: u16,
+    pub x_spacing: u16,
 }
 
 /// The options of the text editor.

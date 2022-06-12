@@ -9,7 +9,7 @@ use std::{
     cmp,
 };
 
-use crate::file::CursorPos;
+use crate::file_handler::cursor::CursorPos;
 
 /// A relative position where text is printed.
 ///
@@ -103,6 +103,14 @@ impl StyledChar {
     pub fn new(grapheme: &str, width: usize) -> StyledChar {
         StyledChar {
             text: StyledContent::new(ContentStyle::new(), grapheme.to_string()),
+            width,
+            is_wrapping: false
+        }
+    }
+
+    pub fn new_styled(text: StyledContent<String>, width: usize) -> StyledChar {
+        StyledChar {
+            text,
             width,
             is_wrapping: false
         }
