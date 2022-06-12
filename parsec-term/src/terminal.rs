@@ -32,6 +32,12 @@ pub struct TermArea {
     stdout: Stdout,
 }
 
+impl TermArea {
+    fn new(origin: OutputPos, end: OutputPos) -> Self {
+        TermArea { origin, end, stdout: stdout() }
+    }
+}
+
 /// The application itself, it contains all of the input handlers.
 pub struct TerminalApp {
     // Dimensions of the whole terminal
@@ -54,15 +60,11 @@ pub struct TerminalApp {
 }
 
 impl OutputArea for TermArea {
-    fn new(origin: OutputPos, end: OutputPos) -> Self {
-        TermArea { origin, end, stdout: stdout() }
-    }
-
-    fn print_styled(&mut self, ch: StyledChar) {
+    fn print_and_style(&mut self, ch: StyledChar) {
         self.stdout.queue(PrintStyledContent(ch.text)).unwrap();
     }
 
-    fn print_string(&mut self, ch: String) {
+    fn print(&mut self, ch: String) {
         self.stdout.queue(Print(ch)).unwrap();
     }
 
@@ -85,6 +87,20 @@ impl OutputArea for TermArea {
 
     fn flush(&mut self) {
         self.stdout.flush().expect("flushing failed, somehow");
+    }
+
+    fn partition_x(&mut self, x: u16) -> Self {
+        let end = OutputPos { x: self.origin.x + x - 1, y: self.end.y };
+        let term_area = TermArea::new(self.origin, end);
+        self.origin.x += x;
+        term_area
+    }
+
+    fn partition_y(&mut self, y: u16) -> Self {
+        let end = OutputPos { x: self.end.x, y: self.origin.y + y };
+        let term_area = TermArea::new(self.origin, end);
+        self.origin.y += y;
+        term_area
     }
 }
 
@@ -159,7 +175,7 @@ pub fn quit() {
     terminal::disable_raw_mode().unwrap();
 }
 
-/// The buffer containing a file, status line, and a number line.
+/// The buffer containing the file handler.
 pub struct FileBuffer {
     /// The current state of the file, with contents, cursors, and positioning.
     pub file_handler: FileHandler<TermArea>,
@@ -180,34 +196,12 @@ impl FileBuffer {
             file_handler: {
                 let area = TermArea::new(origin, end);
 
-                let mut file_handler = FileHandler::new(
-                    area, file_path, options.file_options);
-                // TODO: Add more parameters to this function.
-                let mut limit = 10;
-                let mut i = 3;
-
-                // The amount of cells the line numbers should take horizontally.
-                let line_num_width = loop {
-                    if file_handler.file.len() > limit {
-                        limit *= 10;
-                        i += 1;
-                    } else {
-                        break i;
-                    }
-                };
-
-                // Related to status bar
-                // TODO: Allow 3 status bar types: vim, kakoune, dynamic.
-                file_handler.area.end.y -= 2;
-
-                file_handler.area.origin.x += line_num_width;
-
-                file_handler
+                FileHandler::new(area, file_path, options.file_options)
             },
         };
 
         file_buffer.file_handler.parse_wrapping();
-        file_buffer.file_handler.print_contents();
+        file_buffer.file_handler.print_screen();
 
         Ok(file_buffer)
     }

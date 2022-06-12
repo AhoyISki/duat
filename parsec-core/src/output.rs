@@ -117,28 +117,15 @@ impl StyledChar {
 ///
 /// Examples include: The file buffer, status line, etc.
 pub trait OutputArea {
-    fn new(origin: OutputPos, end: OutputPos) -> Self;
-
-    /// Allocates an origin and end to an area.
-    ///
-    /// Should not be called directly.
-    fn allocate_area(
-        &self, origin: OutputPos, end: OutputPos) -> (OutputPos, OutputPos)  {
-        let (width, height) = (self.width(), self.height());
-        let origin = OutputPos { x: max(origin.x, 0), y: max(origin.y, 0) };
-        let end = OutputPos { x: min(end.x, width), y: min(end.y, height) };
-        (origin, end)
-    }
-
     /// Prints styled text.
     /// 
     /// Prints content that has colors, italics, bold, etc.
-    fn print_styled(&mut self, text: StyledChar);
+    fn print_and_style(&mut self, text: StyledChar);
 
     /// Prints plain text.
     /// 
     /// Will print to output without any styling whatsoever.
-    fn print_string(&mut self, text: String);
+    fn print(&mut self, text: String);
 
     /// Moves the relative printing cursor.
     /// 
@@ -158,4 +145,10 @@ pub trait OutputArea {
 
     /// Refreshes the area
     fn flush(&mut self);
+
+    /// Partitions the area on x, returning the area on the left.
+    fn partition_x(&mut self, x: u16) -> Self;
+
+    /// Partitions the area on x, returning the area at the top.
+    fn partition_y(&mut self, y: u16) -> Self;
 }
