@@ -15,18 +15,20 @@ use output::{
 
 use unicode_segmentation::{UnicodeSegmentation, /*GraphemeCursor*/};
 use unicode_width::UnicodeWidthStr;
-use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
+use crossterm::event::{ KeyEvent, KeyCode, KeyModifiers };
 
 // Any use of the terms col and line refers specifically to a position in the file,
 // x and y are reserved for positions on the screen.
 // TODO: move this to a more general file.
 // TODO: In the future, this shouldn't be public, probably.
+/// A position in the file (line and character address).
 #[derive(Copy, Clone)]
 pub struct FilePos {
     pub col: usize,
     pub line: usize,
 }
 
+/// A cursor in the text file. This is an editing cursor, not a printing cursor.
 pub struct Cursor {
     /// Position of the cursor on screen
     pos: CursorPos,
@@ -61,6 +63,7 @@ impl Cursor {
 }
 
 // TODO: move this to a more general file.
+/// A line in the text file.
 pub struct FileLine {
     wrap_cols: Vec<u16>,
     text: Vec<StyledChar>,
@@ -81,6 +84,7 @@ impl FileLine {
         &self.text
     }
 
+    /// Parses the wrapping of a single line
     fn parse_wrapping(&mut self, width: u16) {
         self.wrap_cols.clear();
         let mut index = width - 1;
@@ -95,6 +99,7 @@ impl FileLine {
     }
 }
 
+/// If and how to wrap lines at the end of the screen.
 #[derive(Copy, Clone, Debug)]
 pub enum WrapType {
     Width,
@@ -105,6 +110,7 @@ pub enum WrapType {
 
 // TODO: Move options to a centralized option place.
 // TODO: Make these private.
+/// Options specific to file printing.
 #[derive(Copy, Clone, Debug)]
 pub struct FileOptions {
     pub wrap_type: WrapType,
@@ -112,6 +118,7 @@ pub struct FileOptions {
     pub cursor_x_spacing: u16,
 }
 
+/// The options of the text editor.
 #[derive(Copy, Clone, Debug)]
 pub struct Options {
     pub file_options: FileOptions,
@@ -167,7 +174,7 @@ impl<T: OutputArea> FileHandler<T> {
                 wraps: 0,
             } ],
 
-            mappings: ModeList::new("default"),
+            mappings: ModeList::new(),
         };
 
         for line_text in raw_file.lines() {
@@ -201,32 +208,32 @@ impl<T: OutputArea> FileHandler<T> {
         map_actions! {
             file_handler: FileHandler<T>, mappings;
             "default" => [
-                // Move all cursors down
-                (KeyCode::Down, KeyModifiers::NONE) => {
+                // Move all cursors down.
+                key: (KeyCode::Down, KeyModifiers::NONE) => {
                     |handler: &mut FileHandler<T>| {
                         for i in 0..handler.cursors.len() {
                             handler.move_cursor_down(i, true);
                         }
                     }
                 },
-                // Move all cursors up
-                (KeyCode::Up, KeyModifiers::NONE) => {
+                // Move all cursors up.
+                key: (KeyCode::Up, KeyModifiers::NONE) => {
                     |handler: &mut FileHandler<T>| {
                         for i in 0..handler.cursors.len() {
                             handler.move_cursor_up(i, true);
                         }
                     }
                 },
-                // Move all cursors up
-                (KeyCode::Left, KeyModifiers::NONE) => {
+                // Move all cursors left.
+                key: (KeyCode::Left, KeyModifiers::NONE) => {
                     |handler: &mut FileHandler<T>| {
                         for i in 0..handler.cursors.len() {
                             handler.move_cursor_left(i, true);
                         }
                     }
                 },
-                // Move all cursors up
-                (KeyCode::Right, KeyModifiers::NONE) => {
+                // Move all cursors right.
+                key: (KeyCode::Right, KeyModifiers::NONE) => {
                     |handler: &mut FileHandler<T>| {
                         for i in 0..handler.cursors.len() {
                             handler.move_cursor_right(i, true);
@@ -329,7 +336,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Scrolls the file up by one line
     ///
-    /// - If it returns false, it means it is not possible to scroll up.
+    /// * If it returns false, it means it is not possible to scroll up.
     fn scroll_up(&mut self) -> bool {
         if self.top_line == 0 && self.top_wraps == 0 {
             false
@@ -350,7 +357,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Moves the cursor right on the file
     ///
-    /// - If `update == true`, self.pos and self.current will update
+    /// * If `update == true`, self.pos and self.current will update
     pub fn move_cursor_right(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("cursor not found");
         let line = self.file.get(cursor.target.line).expect("line not found");
@@ -372,7 +379,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Moves the cursor left on the file
     ///
-    /// - If `update == true`, the current cursor position will update
+    /// * If `update == true`, the current cursor position will update
     pub fn move_cursor_left(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
 
@@ -394,7 +401,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Moves the cursor down on the file
     ///
-    /// - If `update == true`, the current cursor position will update
+    /// * If `update == true`, the current cursor position will update
     pub fn move_cursor_down(&mut self, cursor_num: usize, update: bool){
         let cursor = self.cursors.get_mut(cursor_num).expect("invalid cursor");
 
@@ -408,7 +415,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Moves the cursor up on the file
     ///
-    /// - If `update == true`, the current cursor position will update
+    /// * If `update == true`, the current cursor position will update
     pub fn move_cursor_up(&mut self, cursor_num: usize, update: bool) {
         let cursor = self.cursors.get_mut(cursor_num).expect("cursor failed");
 
@@ -424,7 +431,7 @@ impl<T: OutputArea> FileHandler<T> {
 
     /// Parses the wrapping for all the lines in the file
     ///
-    /// - This should only be called when the wrap_type or width change.
+    /// * This should only be called when the wrap_type or width change.
     pub fn parse_wrapping(&mut self) {
         match self.options.wrap_type {
             WrapType::Width => {
@@ -442,6 +449,7 @@ impl<T: OutputArea> FileHandler<T> {
     }
 
     /* TODO: Finish this function */
+    /// Prints the contents of the file from line on the file.
     #[inline]
     pub fn print_contents(&mut self) {
         let (width, height) = (self.area.width() as usize, self.area.height());

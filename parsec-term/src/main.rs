@@ -9,21 +9,19 @@ use parsec_core::{
     Options,
     FileOptions,
     WrapType,
-    output::{
-        OutputPos,
-        WindowBuffer,
-    }
+    output::OutputPos
 };
-use terminal::{FileBuffer, TermBuffer};
+
+use terminal::{ TerminalApp, FileBuffer };
 
 fn main() {
-    let mut buffers = TermBuffer::new();
+    let mut buffers = TerminalApp::new();
 
     let (width, height) = crossterm::terminal::size().expect("crossterm");
     let origin = OutputPos { x: 0, y: 0 };
     let end = OutputPos { x: width, y: height };
 
-    // TODO: Option interfacing.
+    // TODO: Option interfacing. Potentially through compiled rust code.
     // TODO: Create a new() function instead of doing it like this.
     // TODO: Create a configuration file somewhere on the system.
     let options = Options {
@@ -39,8 +37,7 @@ fn main() {
         }
     };
 
-
-    // Basic utility to print readable error messages.
+    // The files being opened, and the options being set at runtime.
     let args: Vec<String> = env::args().collect();
 
     let current_dir = env::current_dir().expect("Invalid directory");

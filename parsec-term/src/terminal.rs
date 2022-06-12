@@ -10,7 +10,6 @@ use crossterm::{
 
 use parsec_core::output::{
     OutputArea, OutputPos,
-    WindowBuffer,
     StyledChar,
     InputHandler,
 };
@@ -19,6 +18,12 @@ use parsec_core::{
     FileHandler, Options,
 };
 
+/// An area in the terminal used for printing text.
+///
+/// These should be linked to something that can print. They should never need to
+/// tell a printing struct where an origin or end are, since they only need to know
+/// how much space is in the area, and the area deals with placing the text in the
+/// correct place.
 pub struct TermArea {
     origin: OutputPos,
     end: OutputPos,
@@ -26,8 +31,8 @@ pub struct TermArea {
     stdout: Stdout,
 }
 
-/// A buffer, which contains multiple areas.
-pub struct TermBuffer {
+/// The application itself, it contains all of the input handlers.
+pub struct TerminalApp {
     // Dimensions of the whole terminal
     width: u16,
     height: u16,
@@ -47,9 +52,6 @@ pub struct TermBuffer {
     pub input_handlers: Vec<Box<dyn InputHandler>>,
 }
 
-/// An area in the terminal.
-///
-/// Examples include: The file buffer, status line, etc.
 impl OutputArea for TermArea {
     fn new(origin: OutputPos, end: OutputPos) -> Self {
         TermArea { origin, end, stdout: stdout() }
@@ -85,12 +87,12 @@ impl OutputArea for TermArea {
     }
 }
 
-impl WindowBuffer for TermBuffer {
-    type Window = TermBuffer;
-
-    fn new() -> Self::Window {
+/// The terminal where the program will run.
+impl TerminalApp {
+    /// Returns a new instance of TermBuffer.
+    pub fn new() -> TerminalApp {
         let (width, height) = terminal::size().expect("crossterm");
-        TermBuffer {
+        TerminalApp {
             width,
             height,
 
@@ -98,12 +100,9 @@ impl WindowBuffer for TermBuffer {
         }
     }
 
-    /// Returns the dimensions of the terminal.
-    fn dims(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-
-    fn process_events(&mut self) {
+    // TODO: Deal with mouse and resize events.
+    /// Processes keyboard, mouse, and resize events.
+    pub fn process_events(&mut self) {
         // TODO: Add more event types
         // TODO: Quit in a way that makes more sense
         loop {
@@ -125,8 +124,8 @@ impl WindowBuffer for TermBuffer {
 
 /// Preliminary functions for startup.
 pub fn startup() {
-    // Making it so that if the application panics, the panic message is printed
-    // nicely and the terminal is in a somewhat usable state.
+    // This makes it so that if the application panics, the panic message is printed
+    // nicely and the terminal is left in a usable state.
     use std::panic::set_hook;
     set_hook(Box::new(|msg| {
         let mut stdout = stdout();
@@ -148,7 +147,7 @@ pub fn startup() {
           .execute(terminal::Clear(terminal::ClearType::All)).unwrap();
 }
 
-/// Returning the terminal to usable state.
+/// Quits the app and returns the terminal to usable state.
 pub fn quit() {
     let mut stdout = stdout();
 
@@ -159,12 +158,16 @@ pub fn quit() {
     terminal::disable_raw_mode().unwrap();
 }
 
+/// The buffer containing a file, status line, and a number line.
 pub struct FileBuffer {
-    /// The current state of the file, with contents, cursors, and positioning
+    /// The current state of the file, with contents, cursors, and positioning.
     pub file_handler: FileHandler<TermArea>,
 }
 
 impl FileBuffer {
+    /// Returns a new instance of an editing interface.
+    ///
+    /// That includes the file, the line numbers, and the status bar.
     pub fn new(
         origin: OutputPos, end: OutputPos, file_path: PathBuf,
         options: Options) -> io::Result<FileBuffer> {
@@ -172,7 +175,6 @@ impl FileBuffer {
         // TODO: Move this to a place where it is required.
         assert!(end > origin);
 
-        // The amount of cells the line numbers should take horizontally.
         let mut file_buffer = FileBuffer {
             file_handler: {
                 let area = TermArea::new(origin, end);
@@ -180,9 +182,10 @@ impl FileBuffer {
                 let mut file_handler = FileHandler::new(
                     area, file_path, options.file_options);
                 // TODO: Add more parameters to this function.
-                // TODO: This should not panic!
                 let mut limit = 10;
                 let mut i = 3;
+
+                // The amount of cells the line numbers should take horizontally.
                 let line_num_width = loop {
                     if file_handler.file.len() > limit {
                         limit *= 10;
