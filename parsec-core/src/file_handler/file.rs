@@ -87,7 +87,7 @@ pub struct File<T> {
     top_wraps: usize,
 
     /// The area allocated to the file.
-    area: T,
+    pub area: T,
 
     /// The options related to files.
     options: FileOptions,
@@ -95,7 +95,7 @@ pub struct File<T> {
     /// The edtiting cursors on the file.
     pub cursors: Vec<FileCursor>,
     /// The index of the main cursor. The file "follows it".
-    main_cursor: usize,
+    pub main_cursor: usize,
 }
 
 impl<T: OutputArea> File<T> {
@@ -107,11 +107,6 @@ impl<T: OutputArea> File<T> {
     /// Returns a reference to `top_line`
     pub fn top_wraps(&self) -> &usize {
         &self.top_wraps
-    }
-
-    /// Returns a reference to the area of the file.
-    pub fn area(&self) -> &T {
-        &self.area
     }
 
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
@@ -280,11 +275,6 @@ impl<T: OutputArea> File<T> {
 
             line += 1;
         }
-
-        let cursor = self.cursors.get(self.main_cursor).expect("invalid cursor");
-        self.area.move_cursor(cursor.pos.into());
-
-        self.area.flush();
     }
 }
 

@@ -48,7 +48,10 @@ pub struct FileCursor {
     desired_col: usize,
 
     /// How many times the cursor position wraps in the line.
-    wraps: u16
+    wraps: u16,
+
+    /// The text under the cursor.
+    cursor_text: StyledChar,
     // TODO: Eventually add a selection to the cursor.
 }
 
@@ -56,7 +59,7 @@ impl FileCursor {
     // NOTE: Basically a clone of `update()`, might refactor later.
     /// Returns a new instance of `FileCursor`.
     pub fn new<T: OutputArea>(pos: FilePos, file: &File<T>) -> FileCursor {
-        let width = file.area().width();
+        let width = file.area.width();
 
         // NOTE: This may not need to crash in the future.
         let line = file.lines.get(pos.line).expect("invalid line");
@@ -87,7 +90,14 @@ impl FileCursor {
             current: pos,
             target: pos,
             desired_col: pos.col,
-            wraps, 
+            wraps,
+            cursor_text: {
+                let mut ch = file.get_char(pos).expect("invalid character").clone();
+
+                ch.text = ch.text.attribute(Reverse);
+
+                ch
+            }
         }
     }
 
@@ -190,15 +200,8 @@ impl FileCursor {
     }
 
     // TODO: implement styling and other cursor shapes
-    pub fn print<T: OutputArea>(&self, file: File<T>, area: &mut T) {
+    pub fn print<T: OutputArea>(&self, area: &mut T) {
         area.move_cursor(self.pos.into());
-        match file.get_char(self.current) {
-            Some(ch) => {
-                let text = ch.text.clone().attribute(Reverse);
-                area.print_and_style(StyledChar::new_styled(text, ch.width));
-            }
-            None => {}
-        }
-        
+        area.print_and_style(self.cursor_text.clone());
     }
 }

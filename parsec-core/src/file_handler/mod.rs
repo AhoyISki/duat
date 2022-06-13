@@ -5,14 +5,13 @@ use crate::{
     impl_input_handler,
     config::FileOptions,
     input::{InputHandler, ModeList},
-    output::{OutputArea, StyledChar, OutputPos},
+    output::OutputArea,
 };
 
 mod file;
 use file::{FileLine, File};
 
 pub mod cursor;
-use cursor::{CursorPos, FilePos, FileCursor};
 
 use crossterm::event::{
     KeyEvent,
@@ -79,7 +78,7 @@ impl<T: OutputArea> FileHandler<T> {
                     |h: &mut FileHandler<T>| {
                         h.file.cursors.iter_mut()
                                       .for_each(|c| c.move_up(&h.file.lines));
-                        if h.file.has_scrolled() { h.print_screen() };
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors down.
@@ -87,7 +86,7 @@ impl<T: OutputArea> FileHandler<T> {
                     |h: &mut FileHandler<T>| {
                         h.file.cursors.iter_mut()
                                       .for_each(|c| c.move_down(&h.file.lines));
-                        if h.file.has_scrolled() { h.print_screen() };
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors left.
@@ -95,7 +94,7 @@ impl<T: OutputArea> FileHandler<T> {
                     |h: &mut FileHandler<T>| {
                         h.file.cursors.iter_mut()
                                       .for_each(|c| c.move_left(&h.file.lines));
-                        if h.file.has_scrolled() { h.print_screen() };
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors right.
@@ -103,14 +102,14 @@ impl<T: OutputArea> FileHandler<T> {
                     |h: &mut FileHandler<T>| {
                         h.file.cursors.iter_mut()
                                       .for_each(|c| c.move_right(&h.file.lines));
-                        if h.file.has_scrolled() { h.print_screen() };
+                        h.refresh_screen();
                     }
                 },
             ]
         }
 
         file_handler.file.parse_wrapping();
-        file_handler.print_screen();
+        file_handler.refresh_screen();
 
         file_handler
     }
@@ -118,8 +117,15 @@ impl<T: OutputArea> FileHandler<T> {
     /* TODO: Finish this function */
     /// Prints the contents of the file from line on the file.
     #[inline]
-    fn print_screen(&mut self) {
-        self.file.print_file();
+    fn refresh_screen(&mut self) {
+        if self.file.has_scrolled() {
+            self.file.print_file();
+        }
+
+        self.file.cursors.get(self.file.main_cursor).expect("invalid cursor")
+                         .print(&mut self.file.area);
+
+        self.file.area.flush();
     }
 }
 
