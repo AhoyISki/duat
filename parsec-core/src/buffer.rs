@@ -8,10 +8,7 @@ use crate::{
     output::OutputArea,
 };
 
-mod file;
-use file::{FileLine, File};
-
-pub mod cursor;
+use crate::file::{TextLine, File};
 
 use crossterm::event::{
     KeyEvent,
@@ -19,14 +16,13 @@ use crossterm::event::{
     KeyModifiers
 };
 
-// NOTE: This struct should strive to be completely UI agnostic, i.e., it should
-// work wether the app is used in a terminal or in a GUI.
+// NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
+// app is used in a terminal or in a GUI.
 pub struct FileHandler<T: OutputArea> {
     /// The contents of the file
     pub file: File<T>,
 
-    // Where exactly on the screen the origin and end of the area are placed is not
-    // important here.
+    // Where exactly on the screen the origin and end of the area are placed is not important here.
     /// The area allocated to the status line.
     pub status_line_area: T,
     /// The area allocated to the line numbers.
@@ -47,8 +43,7 @@ impl<T: OutputArea> FileHandler<T> {
 
         let mut file_handler = FileHandler {
             file: {
-                let lines: Vec<FileLine> = file.lines().map(|l| FileLine::new(l))
-                                               .collect();
+                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l)).collect();
 
                 let mut file_area = area.partition_y(area.height() - 2);
 
@@ -76,40 +71,36 @@ impl<T: OutputArea> FileHandler<T> {
                 // Move all cursors up.
                 key: (KeyCode::Up, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut()
-                                      .for_each(|c| c.move_up(&h.file.lines));
-                        h.refresh_screen();
+                        h.file.cursors.iter_mut().for_each(|c| c.move_up(&h.file.lines));
+                        h.refresh_screen(false);
                     }
                 },
                 // Move all cursors down.
                 key: (KeyCode::Down, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut()
-                                      .for_each(|c| c.move_down(&h.file.lines));
-                        h.refresh_screen();
+                        h.file.cursors.iter_mut().for_each(|c| c.move_down(&h.file.lines));
+                        h.refresh_screen(false);
                     }
                 },
                 // Move all cursors left.
                 key: (KeyCode::Left, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut()
-                                      .for_each(|c| c.move_left(&h.file.lines));
-                        h.refresh_screen();
+                        h.file.cursors.iter_mut().for_each(|c| c.move_left(&h.file.lines));
+                        h.refresh_screen(false);
                     }
                 },
                 // Move all cursors right.
                 key: (KeyCode::Right, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut()
-                                      .for_each(|c| c.move_right(&h.file.lines));
-                        h.refresh_screen();
+                        h.file.cursors.iter_mut().for_each(|c| c.move_right(&h.file.lines));
+                        h.refresh_screen(false);
                     }
                 },
             ]
         }
 
         file_handler.file.parse_wrapping();
-        file_handler.refresh_screen();
+        file_handler.refresh_screen(true);
 
         file_handler
     }
@@ -117,13 +108,10 @@ impl<T: OutputArea> FileHandler<T> {
     /* TODO: Finish this function */
     /// Prints the contents of the file from line on the file.
     #[inline]
-    fn refresh_screen(&mut self) {
-        if self.file.has_scrolled() {
-            self.file.print_file();
-        }
-
+    fn refresh_screen(&mut self, force: bool) {
+        self.file.print_file(force);
         self.file.cursors.get(self.file.main_cursor).expect("invalid cursor")
-                         .print(&mut self.file.area);
+            .print(&mut self.file.area);
 
         self.file.area.flush();
     }

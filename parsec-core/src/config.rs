@@ -7,6 +7,14 @@ pub enum WrapType {
     NoWrap,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum LineNumbers {
+    None,
+    Normal,
+    Relative,
+    Hybrid
+}
+
 // TODO: Move options to a centralized option place.
 // TODO: Make these private.
 /// Options specific to file printing.
@@ -15,6 +23,7 @@ pub struct FileOptions {
     pub wrap_type: WrapType,
     pub scrolloff: u16,
     pub x_spacing: u16,
+    pub line_numbers: LineNumbers,
 }
 
 /// The options of the text editor.

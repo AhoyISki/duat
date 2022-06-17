@@ -7,7 +7,7 @@ use crossterm::style::{
 
 use crate::output::{OutputArea, StyledChar};
 
-use super::file::{FileLine, File};
+use super::file::{TextLine, File};
 
 /// A position used for cursors.
 /// 
@@ -102,17 +102,22 @@ impl FileCursor {
     }
 
     /// Returns the cursor's position on the file.
-    pub fn current(&self) -> &FilePos {
-        &self.current
+    pub fn current(&self) -> FilePos {
+        self.current
     }
 
     /// Returns the cursor's position on the screen.
-    pub fn target(&self) -> &FilePos {
-        &self.target
+    pub fn target(&self) -> FilePos {
+        self.target
+    }
+
+    /// Returns the amount of times the cursor wraps around the line.
+    pub fn wraps(&self) -> u16 {
+        self.wraps
     }
 
     /// Moves the cursor up on the file.
-    pub fn move_up(&mut self, lines: &Vec<FileLine>) {
+    pub fn move_up(&mut self, lines: &Vec<TextLine>) {
         if self.target.line != 0 {
             if let Some(line) = lines.get(self.target.line - 1) {
                 self.target.col = min(self.desired_col, line.text().len());
@@ -122,7 +127,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor down on the file.
-    pub fn move_down(&mut self, lines: &Vec<FileLine>){
+    pub fn move_down(&mut self, lines: &Vec<TextLine>){
         if let Some(line) = lines.get(self.target.line + 1) {
             self.target.col = min(self.desired_col, line.text().len());
             self.target.line += 1;
@@ -130,7 +135,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor left on the file.
-    pub fn move_left(&mut self, lines: &Vec<FileLine>) {
+    pub fn move_left(&mut self, lines: &Vec<TextLine>) {
         if self.target.col == 0 {
             if self.current.line != 0 {
                 if let Some(line) = lines.get(self.current.line - 1) {
@@ -146,7 +151,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor right on the file.
-    pub fn move_right(&mut self, lines: &Vec<FileLine>) {
+    pub fn move_right(&mut self, lines: &Vec<TextLine>) {
         let line = lines.get(self.target.line).expect("invalid line");
 
         // TODO: Maybe add an option to change this 0 into the indentation.
@@ -163,7 +168,7 @@ impl FileCursor {
     }
 
     /// Updates the position of the cursor on the terminal.
-    pub fn update<T: OutputArea>(&mut self, lines: &Vec<FileLine>, area: &T) {
+    pub fn update<T: OutputArea>(&mut self, lines: &Vec<TextLine>, area: &T) {
         let width = area.width();
 
         let text = lines.get(self.target.line).expect("invalid line");
@@ -189,11 +194,11 @@ impl FileCursor {
             d_y += direction * (1 + line.wrap_cols().len() as i32);
         }
 
-        self.wraps = target_wraps as u16;
         // `y` is the combination of the initial position `pos.y`, the height between
         // lines `d_y`, the amount of times the cursor wraps around `target_wraps`
         // minus the amount of times the cursor originally wraped around `wraps`.
         self.pos.y = self.pos.y + d_y + target_wraps - self.wraps as i32;
+        self.wraps = target_wraps as u16;
         self.pos.x = (self.target.col as u16 + offset - (self.wraps * width)) as i32;
         self.current.line = self.target.line;
         self.current.col = self.target.col;

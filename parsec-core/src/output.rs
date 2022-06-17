@@ -9,7 +9,7 @@ use std::{
     cmp,
 };
 
-use crate::file_handler::cursor::CursorPos;
+use crate::cursor::CursorPos;
 
 /// A relative position where text is printed.
 ///

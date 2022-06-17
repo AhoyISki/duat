@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -6,11 +8,50 @@ use crate::{
     config::{FileOptions, WrapType}
 };
 
-use super::cursor::{CursorPos, FileCursor, FilePos};
+use crate::cursor::{CursorPos, FileCursor, FilePos};
+
+// TODO: Make this a generic free function, and make areas do bounds checking.
+/// Prints a line in a given position, skipping `skip` characters.
+///
+/// Returns the amount of lines that were printed.
+#[inline]
+fn print_line<T: OutputArea>(
+    line: &TextLine, area: &mut T, mut pos: OutputPos,
+    skip: usize, wrap: WrapType) -> u16 {
+    // Moves the printing cursor to the beginning of the line.
+    area.move_cursor(pos);
+
+    let mut printed_lines = 1;
+
+    let mut col = 0;
+
+    for ch in line.text().iter().skip(skip) {
+        if let WrapType::NoWrap = wrap {
+            if col + ch.width > area.width() as usize { break; }
+        }
+        
+        area.print_and_style(ch.clone());
+        col += 1;
+
+        if ch.is_wrapping {
+            printed_lines += 1;
+            pos.y += 1;
+            if pos.y > area.height() { break; }
+            area.move_cursor(pos);
+        }
+    }
+
+    // Erasing anything that is leftover
+    let width = area.width() as usize;
+    let erase_count = width - col % width;
+    area.print(" ".repeat(erase_count));
+
+    printed_lines
+}
 
 // TODO: move this to a more general file.
 /// A line in the text file.
-pub struct FileLine {
+pub struct TextLine {
     /// Which columns on the line should wrap around.
     wrap_cols: Vec<usize>,
     /// The text on the line.
@@ -23,10 +64,10 @@ pub struct FileLine {
     width: usize,
 }
 
-impl FileLine {
+impl TextLine {
     /// Returns a new instance of `FileLine`
-    pub fn new(text: &str) -> FileLine  {
-        let mut file_line = FileLine {
+    pub fn new(text: &str) -> TextLine  {
+        let mut file_line = TextLine {
             wrap_cols: Vec::new(),
             text: Vec::new(),
             indent: 0,
@@ -75,12 +116,13 @@ impl FileLine {
             index += width as usize;
         }
     }
+
 }
 
 /// File text and cursors.
 pub struct File<T> {
     /// The lines of the file.
-    pub lines: Vec<FileLine>,
+    pub lines: Vec<TextLine>,
     /// The index of the line at the top of the screen.
     top_line: usize,
     /// The number of times the top line should wrap.
@@ -110,7 +152,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
-    pub fn new(lines: Vec<FileLine>, options: FileOptions, area: T) -> File<T> {
+    pub fn new(lines: Vec<TextLine>, options: FileOptions, area: T) -> File<T> {
         let mut file = File {
             lines,
             // TODO: Remember last session.
@@ -146,13 +188,12 @@ impl<T: OutputArea> File<T> {
                 self.top_wraps -= 1;
             } else {
                 self.top_line -= 1;
-                let top_line = self.lines.get(self.top_line)
-                                              .expect("invalid line");
+                let top_line = self.lines.get(self.top_line).expect("invalid line");
                 self.top_wraps = top_line.wrap_cols.len();
             }
             // Moves the cursors down by one, to keep them in the same place in the
             // file.
-            self.cursors.iter_mut().for_each(|cursor| cursor.pos.y += 1);
+            self.cursors.iter_mut().for_each(|c| c.pos.y += 1);
             true
         }
     }
@@ -169,7 +210,7 @@ impl<T: OutputArea> File<T> {
         }
 
         // Moves the cursors up by one, to keep them in the same place in the file.
-        self.cursors.iter_mut().for_each(|cursor| cursor.pos.y -= 1);
+        self.cursors.iter_mut().for_each(|c| c.pos.y -= 1);
     }
 
     /// Parses the wrapping for all the lines in the file
@@ -208,7 +249,7 @@ impl<T: OutputArea> File<T> {
             true
         } else if cursor.pos.y < scrolloff as i32 {
             for _ in cursor.pos.y ..scrolloff as i32 {
-                if !self.scroll_up() { break; }
+                if !self.scroll_up() { return false }
             }
             true
         } else {
@@ -216,64 +257,65 @@ impl<T: OutputArea> File<T> {
         }
     }
 
-    /// Prints a single line in a given position, skipping `skip` characters.
-    #[inline]
-    fn print_line(&mut self, line: usize, pos: &mut OutputPos, skip: usize){
-        // Moves the printing cursor to the beginning of the line.
-        self.area.move_cursor(*pos);
-
-        let line = if let Some(line) = self.lines.get(line) {
-            line
-        } else {
-            pos.y += 1;
-            return
-        };
-        let mut col = 0;
-
-        for ch in line.text().iter().skip(skip) {
-            if let WrapType::NoWrap = self.options.wrap_type {
-                if col + ch.width > self.area.width() as usize { break; }
-            }
-
-            self.area.print_and_style(ch.clone());
-            col += 1;
-
-            if ch.is_wrapping {
-                pos.y += 1;
-                if pos.y > self.area.height() { break; }
-                self.area.move_cursor(*pos);
-            }
-        }
-
-        // Erasing anything that is leftover
-        let width = self.area.width() as usize;
-        let erase_count = width - col % width;
-        self.area.print(" ".repeat(erase_count));
-
-        pos.y += 1;
-    }
-
     /// Prints the file, according to its current position.
-    pub fn print_file(&mut self) {
-        let mut line_origin = OutputPos { x: 0, y: 0 };
+    pub fn print_file(&mut self, force: bool) {
 
-        // The line at the top of the screen and how many characters aren't shown.
-        let line = self.lines.get(self.top_line).expect("invalid line");
+        // Saving the current positions to print the lines where cursors have been.
+        let wrap_type = self.options.wrap_type;
+        let saved: Vec<(usize, CursorPos, u16)> = self.cursors.iter()
+            .map(|c| (c.current().line, c.pos, c.wraps())).collect();
+
+        // Updating the cursors on the file.
+        let has_scrolled = self.has_scrolled();
+
+        // The line at the top of the screen and the amount of hidden columns.
         let skip = if self.top_wraps > 0 {
-            *line.wrap_cols().get(self.top_wraps - 1).unwrap() as usize + 1
+            let line = self.lines.get(self.top_line).expect("invalid line");
+            *line.wrap_cols().get(self.top_wraps - 1).unwrap() + 1
         } else {
             0
         };
 
-        // Prints the first line and updates where to print next.
-        self.print_line(self.top_line, &mut line_origin, skip);
+        if has_scrolled || force {
+            let area = &mut self.area;
 
-        // Prints the remaining lines
-        let mut line = self.top_line + 1;
-        while line_origin.y <= self.area.height() {
-            self.print_line(line, &mut line_origin, 0);
+            let mut line_origin = OutputPos { x: 0, y: 0 };
 
-            line += 1;
+
+            // Prints the first line and updates where to print next.
+            let line = self.lines.get(self.top_line).expect("invalid line");
+            line_origin.y += print_line::<T>(line, area, line_origin, skip, wrap_type);
+
+            // Prints the remaining lines
+            for line in self.lines.iter().skip(self.top_line + 1) {
+                if line_origin.y > area.height() { break; }
+                line_origin.y += print_line::<T>(line, area, line_origin, 0, wrap_type);
+            }
+        } else {
+            let area = &mut self.area;
+
+            let mut printed_lines = Vec::new();
+
+            for (current, prev) in self.cursors.iter().zip(saved) {
+                let line = self.lines.get(prev.0).expect("invalid line");
+                let mut line_origin: OutputPos = prev.1.into();
+
+                line_origin.x = 0;
+                // Printing will never happen at a negative `y`.
+                line_origin.y = max(0, line_origin.y - prev.2);
+
+                if !printed_lines.contains(&current.current().line) {
+                    line_origin.y += if prev.0 == self.top_line {
+                        print_line::<T>(line, area, line_origin, skip, wrap_type)
+                    } else if line_origin.y < area.height() {
+                        print_line::<T>(line, area, line_origin, 0, wrap_type)
+                    } else {
+                        0
+                    };
+
+                    printed_lines.push(prev.0);
+                }
+            }
         }
     }
 }
