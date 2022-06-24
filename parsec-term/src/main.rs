@@ -9,7 +9,7 @@ use parsec_core::{
     config::{
         Options,
         FileOptions,
-        WrapType,
+        WrapMethod, LineNumbers, TabPlaces,
     },
     output::OutputPos
 };
@@ -32,14 +32,16 @@ fn main() {
     // TODO: Create a configuration file somewhere on the system.
     let options = Options {
         file_options: FileOptions {
-            wrap_type: if cfg!(feature = "wrapped") {
-                WrapType::Width
+            wrap_method: if cfg!(feature = "wrapped") {
+                WrapMethod::Width
             } else {
-                WrapType::NoWrap
+                WrapMethod::NoWrap
             },
 
-            x_spacing: 0,
-            scrolloff: 5,
+            scrolloff: OutputPos { x: 3, y: 5 },
+            line_numbers: LineNumbers::Hybrid,
+            tabs: TabPlaces::Regular(4),
+            wrap_indent: true
         }
     };
 
@@ -60,7 +62,7 @@ fn main() {
         } else {
             PathBuf::from(&current_dir).join(file_path)
         };
-        let file_buffer = FileBuffer::new(origin, end, file_path, options)
+        let file_buffer = FileBuffer::new(origin, end, file_path, &options)
                                      .expect("file not found");
         buffers.input_handlers.push(Box::from(file_buffer.file_handler));
     }

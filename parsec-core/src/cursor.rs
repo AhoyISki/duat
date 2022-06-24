@@ -1,11 +1,6 @@
-use std::cmp::min;
+use std::cmp::{min, max};
 
-use crossterm::style::{
-    Stylize,
-    Attribute::Reverse,
-};
-
-use crate::output::{OutputArea, StyledChar};
+use crate::{output::OutputArea, config::{TabPlaces, FileOptions}};
 
 use super::file::{TextLine, File};
 
@@ -45,13 +40,11 @@ pub struct FileCursor {
     /// If the cursor moves to a line that is at least as wide as the desired_col,
     /// it will be placed in the desired_col. If the line is shorter, it will be
     /// placed in the last column of the line.
-    desired_col: usize,
+    desired_x: usize,
 
     /// How many times the cursor position wraps in the line.
     wraps: u16,
 
-    /// The text under the cursor.
-    cursor_text: StyledChar,
     // TODO: Eventually add a selection to the cursor.
 }
 
@@ -89,15 +82,8 @@ impl FileCursor {
             pos: cursor_pos,
             current: pos,
             target: pos,
-            desired_col: pos.col,
+            desired_x: pos.col,
             wraps,
-            cursor_text: {
-                let mut ch = file.get_char(pos).expect("invalid character").clone();
-
-                ch.text = ch.text.attribute(Reverse);
-
-                ch
-            }
         }
     }
 
@@ -116,70 +102,69 @@ impl FileCursor {
         self.wraps
     }
 
-    /// Moves the cursor up on the file.
-    pub fn move_up(&mut self, lines: &Vec<TextLine>) {
-        if self.target.line != 0 {
-            if let Some(line) = lines.get(self.target.line - 1) {
-                self.target.col = min(self.desired_col, line.text().len());
-                self.target.line -= 1;
-            }
-        }
+    /// Moves the cursor vertically on the file. May also cause horizontal movement.
+    pub fn move_vertically(&mut self, lines: &Vec<TextLine>, count: i32, tabs: &TabPlaces) {
+        self.target.line = (self.target.line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
+
+        let mut text_iter = lines.get(self.target.line).expect("invalid line").text().iter().enumerate();
+
+        let mut total_width = 0;
+        self.target.col = 0;
+        // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
+        while let Some((index, ch)) = text_iter.next() {
+            total_width += ch.width(total_width, tabs) as u16;
+            self.target.col = index;
+            if total_width > self.desired_x as u16 { break }
+        };
     }
 
-    /// Moves the cursor down on the file.
-    pub fn move_down(&mut self, lines: &Vec<TextLine>){
-        if let Some(line) = lines.get(self.target.line + 1) {
-            self.target.col = min(self.desired_col, line.text().len());
-            self.target.line += 1;
-        }
-    }
+    /// Moves the cursor horizontally on the file. May also cause vertical movement.
+    pub fn move_horizontally(&mut self, lines: &Vec<TextLine>, count: i32, tabs: &TabPlaces) {
+        let mut new_col = self.target.col as i32 + count;
 
-    /// Moves the cursor left on the file.
-    pub fn move_left(&mut self, lines: &Vec<TextLine>) {
-        if self.target.col == 0 {
-            if self.current.line != 0 {
-                if let Some(line) = lines.get(self.current.line - 1) {
-                    self.target.col = line.text().len();
-                    self.desired_col = self.target.col;
-                    self.target.line -= 1;
-                }
-            }
-        } else {
-            self.target.col -= 1;
-            self.desired_col = self.target.col;
-        }
-    }
-
-    /// Moves the cursor right on the file.
-    pub fn move_right(&mut self, lines: &Vec<TextLine>) {
-        let line = lines.get(self.target.line).expect("invalid line");
-
-        // TODO: Maybe add an option to change this 0 into the indentation.
-        // TODO: Add an option to finish movement at the end of a line.
-        if self.target.col == line.text().len() {
-            if let Some(_) = lines.get(self.current.line + 1) {
-                self.target.col = 0;
-                self.target.line += 1;
+        if count >= 0 {
+            let mut line_iter = lines.iter().enumerate().skip(self.target.line);
+            // Subtract line lenghts until a column is within the line's bounds.
+            while let Some((index, line)) = line_iter.next() {
+                self.target.line = index;
+                if new_col <= line.text().len() as i32 || index == lines.len() - 1 { break }
+                new_col -= line.text().len() as i32 + 1;
             }
         } else {
-            self.target.col += 1;
-            self.desired_col = self.target.col;
+            let mut line_iter = lines.iter().enumerate().rev().skip(lines.len() - self.target.line);
+            // Add line lenghts until the column is positive or equal to 0, making it valid.
+            while let Some((index, line)) = line_iter.next() {
+                if new_col >= 0 { break }
+                new_col += line.text().len() as i32 + 1;
+                self.target.line = index;
+            }
         }
+
+        let line = lines.get(self.target.line).unwrap();
+        self.target.col = new_col.clamp(0, line.text().len() as i32) as usize;
+        self.desired_x = line.get_distance_to_col(self.target.col, tabs) as usize;
     }
 
     /// Updates the position of the cursor on the terminal.
-    pub fn update<T: OutputArea>(&mut self, lines: &Vec<TextLine>, area: &T) {
-        let width = area.width();
-
-        let text = lines.get(self.target.line).expect("invalid line");
-        // The sum of the distance between the wrapping char and the last column in
-        // the allocated area, for every wrapping char before `target.col`. 
-        let offset = text.wrap_cols().iter().filter(|&c| *c < self.target.col)
-                         .map(|&c| width - ((c as u16) % width + 1)).sum::<u16>();
-
+    pub fn update(&mut self, lines: &Vec<TextLine>, options: &FileOptions) {
+        let target_line = lines.get(self.target.line).expect("invalid line");
         // TODO: Calculate in relation to (width - indentation) with the possibility
         // of that being only on the first line, for wrapped lines that start at 0
-        let target_wraps = ((offset + self.target.col as u16) / width) as i32;
+        let (target_x, target_wraps) = {
+            let (target_wraps, first_col) =
+            match target_line.wrap_cols().iter().enumerate().rfind(|&c| *c.1 < self.target.col) {
+                Some((index, col)) => (index + 1, col + 1),
+                None => (0, 0),
+            };
+
+            let mut target_x = target_line.get_distance_to_col(self.target.col, &options.tabs)
+                - target_line.get_distance_to_col(first_col, &options.tabs);
+            if target_wraps > 0 && options.wrap_indent {
+                target_x += target_line.indent() as u16;
+            }
+
+            (target_x, target_wraps as u16)
+        };
 
         // The range shouldn't include the wrapped lines of the last line.
         let (line_range, direction) = if self.target.line > self.current.line {
@@ -188,7 +173,7 @@ impl FileCursor {
             (self.target.line..self.current.line, -1)
         } else { (0..0, 0) };
 
-        // The calculated `d_y`, taking into wrappings into account.
+        // The calculated `d_y`, taking wrappings into account.
         let mut d_y = 0;
         for line in lines.get(line_range).expect("invalid line") {
             d_y += direction * (1 + line.wrap_cols().len() as i32);
@@ -197,16 +182,10 @@ impl FileCursor {
         // `y` is the combination of the initial position `pos.y`, the height between
         // lines `d_y`, the amount of times the cursor wraps around `target_wraps`
         // minus the amount of times the cursor originally wraped around `wraps`.
-        self.pos.y = self.pos.y + d_y + target_wraps - self.wraps as i32;
+        self.pos.y = self.pos.y + d_y + target_wraps as i32 - self.wraps as i32;
         self.wraps = target_wraps as u16;
-        self.pos.x = (self.target.col as u16 + offset - (self.wraps * width)) as i32;
+        self.pos.x = target_x as i32;
         self.current.line = self.target.line;
         self.current.col = self.target.col;
-    }
-
-    // TODO: implement styling and other cursor shapes
-    pub fn print<T: OutputArea>(&self, area: &mut T) {
-        area.move_cursor(self.pos.into());
-        area.print_and_style(self.cursor_text.clone());
     }
 }

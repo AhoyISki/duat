@@ -1,19 +1,27 @@
-use std::{path::PathBuf, fs};
+use std::{
+    path::PathBuf,
+    fs
+};
 
 use crate::{
     map_actions,
     impl_input_handler,
-    config::FileOptions,
+    config::{FileOptions, LineNumbers},
     input::{InputHandler, ModeList},
-    output::OutputArea,
+    output::{OutputPos, OutputArea},
+    file::{TextLine, File}
 };
 
-use crate::file::{TextLine, File};
-
-use crossterm::event::{
-    KeyEvent,
-    KeyCode,
-    KeyModifiers
+use crossterm::{
+    event::{
+        KeyEvent,
+        KeyCode,
+        KeyModifiers
+    },
+    style::{
+        Stylize,
+        Attribute::Reverse
+    }
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
@@ -43,7 +51,8 @@ impl<T: OutputArea> FileHandler<T> {
 
         let mut file_handler = FileHandler {
             file: {
-                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l)).collect();
+                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &options.tabs))
+                                               .collect();
 
                 let mut file_area = area.partition_y(area.height() - 2);
 
@@ -71,28 +80,32 @@ impl<T: OutputArea> FileHandler<T> {
                 // Move all cursors up.
                 key: (KeyCode::Up, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut().for_each(|c| c.move_up(&h.file.lines));
+                        h.file.cursors.iter_mut()
+                            .for_each(|c| c.move_vertically(&h.file.lines, -1, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors down.
                 key: (KeyCode::Down, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut().for_each(|c| c.move_down(&h.file.lines));
+                        h.file.cursors.iter_mut()
+                            .for_each(|c| c.move_vertically(&h.file.lines, 1, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors left.
                 key: (KeyCode::Left, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut().for_each(|c| c.move_left(&h.file.lines));
+                        h.file.cursors.iter_mut()
+                            .for_each(|c| c.move_horizontally(&h.file.lines, -1, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors right.
                 key: (KeyCode::Right, KeyModifiers::NONE) => {
                     |h: &mut FileHandler<T>| {
-                        h.file.cursors.iter_mut().for_each(|c| c.move_right(&h.file.lines));
+                        h.file.cursors.iter_mut()
+                            .for_each(|c| c.move_horizontally(&h.file.lines, 1, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
@@ -110,8 +123,71 @@ impl<T: OutputArea> FileHandler<T> {
     #[inline]
     fn refresh_screen(&mut self, force: bool) {
         self.file.print_file(force);
-        self.file.cursors.get(self.file.main_cursor).expect("invalid cursor")
-            .print(&mut self.file.area);
+
+        // Prints the cursors
+        // TODO: Add styling for the main and secondary cursors.
+        for cursor in &self.file.cursors {
+            self.file.area.move_cursor(cursor.pos.into());
+            match self.file.get_char(cursor.current()) {
+                Some(ch) => {
+                    if ch.text.content() == "\t" {
+                        let tab_len = self.file.options.tabs.get_tab_len(OutputPos::from(cursor.pos).x);
+                        self.file.area.print(" ".repeat(tab_len as usize).attribute(Reverse));
+                    } else {
+                        self.file.area.print(ch.text.clone().attribute(Reverse));
+                    }
+                }
+                None => self.file.area.print(" ".yellow().attribute(Reverse)),
+            }
+        }
+
+        // Printing the line numbers
+        // NOTE: Might move to a separate function, but idk.
+        let mut pos = crate::output::OutputPos { x: 0, y: 0 };
+        let top_line = *self.file.top_line();
+
+        self.line_num_area.move_cursor(pos);
+
+        'a: for (index, line) in self.file.lines.iter().skip(top_line).enumerate() {
+            let wraps = if index == 0 {
+                *self.file.top_wraps()..(line.wrap_cols().len() + 1)
+            } else {
+                0..(line.wrap_cols().len() + 1)
+            };
+
+            for _ in wraps {
+                if pos.y > self.line_num_area.height() {
+                    break 'a;
+                }
+                let width = self.line_num_area.width() as usize;
+
+                let text = match self.file.options.line_numbers {
+                    LineNumbers::Absolute => format!("{:>4}│", index + top_line),
+                    LineNumbers::Relative => {
+                        let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
+                        format!("{:>w$}│", usize::abs_diff(index + top_line, main.line), w = width)
+                    },
+                    LineNumbers::Hybrid => {
+                        let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
+                        if index + top_line == main.line {
+                            format!("{:>w$}│", index + top_line, w = width)
+                        } else {
+                            format!("{:>w$}│", usize::abs_diff(index + top_line, main.line), w = width)
+                        }
+                    },
+                    _ => "".to_string(),
+                };
+                self.line_num_area.print(text);
+                pos.y += 1;
+                self.line_num_area.move_cursor(pos);
+            }
+        }
+
+        for _ in pos.y..(self.line_num_area.height() + 1) {
+            self.line_num_area.print("     ");
+            pos.y += 1;
+            self.line_num_area.move_cursor(pos);
+        }
 
         self.file.area.flush();
     }

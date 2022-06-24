@@ -1,5 +1,8 @@
-use std::io::{self, Stdout, stdout, Write};
-use std::path::PathBuf;
+use std::{
+    io::{self, Stdout, stdout, Write},
+    fmt::Display,
+    path::PathBuf
+};
 
 use crossterm::{
     style::{PrintStyledContent, Print},
@@ -64,7 +67,7 @@ impl OutputArea for TermArea {
         self.stdout.queue(PrintStyledContent(ch.text)).unwrap();
     }
 
-    fn print(&mut self, ch: String) {
+    fn print<T: Display>(&mut self, ch: T) {
         self.stdout.queue(Print(ch)).unwrap();
     }
 
@@ -183,7 +186,7 @@ impl FileBuffer {
     /// That includes the file, the line numbers, and the status bar.
     pub fn new(
         origin: OutputPos, end: OutputPos, file_path: PathBuf,
-        options: Options) -> io::Result<FileBuffer> {
+        options: &Options) -> io::Result<FileBuffer> {
         // The end  must be after the origin.
         // TODO: Move this to a place where it is required.
         assert!(end > origin);
@@ -192,7 +195,7 @@ impl FileBuffer {
             file_handler: {
                 let area = TermArea::new(origin, end);
 
-                FileHandler::new(area, file_path, options.file_options)
+                FileHandler::new(area, file_path, options.file_options.clone())
             },
         })
     }
