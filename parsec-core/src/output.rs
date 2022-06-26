@@ -91,7 +91,7 @@ impl Display for OutputPos {
 // It's a string because of multi byte UTF-8 and graphemes, which can be several
 // characters long.
 /// A character containing text and a style which applies to said text.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StyledChar {
     pub ch: StyledContent<String>,
     width: usize,

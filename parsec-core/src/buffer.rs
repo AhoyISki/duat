@@ -11,7 +11,7 @@ use crate::{
     output::{OutputPos, OutputArea},
     file::{TextLine, File},
     cursor::FilePos,
-    action::Insertion,
+    action::Selection,
 };
 
 use crossterm::{
@@ -53,8 +53,8 @@ impl<T: OutputArea> Buffer<T> {
 
         let mut file_handler = Buffer {
             file: {
-                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &options.tabs))
-                                               .collect();
+                let lines: Vec<TextLine> =
+                    file.lines().map(|l| TextLine::new(l, &options.tabs)).collect();
 
                 let mut file_area = area.partition_y(area.height() - 2);
 
@@ -111,44 +111,85 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(false);
                     }
                 },
+                key: (KeyCode::Delete, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let start_pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let line = h.file.lines.get(start_pos.line).unwrap();
+                        
+                        let end_pos = if start_pos.col < line.text().len() {
+                            FilePos { col: start_pos.col + 1, ..start_pos }
+                        } else if start_pos.line < h.file.lines.len() {
+                            FilePos { col: 0, line: start_pos.line + 1 }
+                        } else {
+                            return;
+                        };
+                        let selection = Selection::new(start_pos, end_pos, &h.file.lines);
+                        let text = vec!["".to_string()];
+
+                        let (_, do_refresh) = h.file.splice_text(selection, &text);
+                        h.refresh_screen(do_refresh);
+                    }
+                },
                 key: (KeyCode::Backspace, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let end_pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
                         
                         let start_pos = if end_pos.col > 0 {
-                            FilePos { col: end_pos.col - 1, ..end_pos }
+                            FilePos { col: end_pos.col - 3, ..end_pos }
                         } else if end_pos.line > 0 {
                             let line = h.file.lines.get(end_pos.line - 1).unwrap();
                             FilePos { col: line.text().len(), line: end_pos.line - 1 }
                         } else {
                             return;
                         };
+                        let selection = Selection::new(start_pos, end_pos, &h.file.lines);
+                        panic!("{:?}", selection);
+
                         let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
                         cursor.move_to(start_pos, &h.file.lines, &h.file.options);
-                        let (_, do_refresh) = h.file.splice_text(start_pos, end_pos, None);
+                        let text = vec!["".to_string()];
+                        let (_, do_refresh) = h.file.splice_text(selection, &text);
                         h.refresh_screen(do_refresh);
                     }
                 },
                 key: (KeyCode::Tab, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let (ch, move_len) = if h.file.options.tabs_as_spaces {
+                        let (text, move_len) = if h.file.options.tabs_as_spaces {
                             let tab_len = h.file.options.tabs.get_tab_len(pos.col as u16) as usize;
-                            (Insertion::new(" ".repeat(tab_len)), tab_len as i32)
+                            (vec![" ".repeat(tab_len)], tab_len as i32)
                         } else {
-                            (Insertion::new("\t".to_string()), 1)
+                            (vec!["\t".to_string()], 1)
                         };
-                        let (_, do_refresh) = h.file.insert_text(pos, &ch);
+                        let selection = Selection::new(pos, pos, &h.file.lines);
+
+                        let (_, do_refresh) = h.file.splice_text(selection, &text);
                         let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
                         cursor.move_hor(move_len, &h.file.lines, &h.file.options.tabs);
+                        h.refresh_screen(do_refresh);
+                    }
+                },
+                key: (KeyCode::Enter, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let text = vec!["".to_string(); 2];
+
+                        let selection = Selection::new(pos, pos, &h.file.lines);
+
+                        let (_, do_refresh) = h.file.splice_text(selection, &text);
+                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
+                        cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         h.refresh_screen(do_refresh);
                     }
                 },
                 _ => {
                     |h: &mut Buffer<T>, c: char| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let ch = Insertion::new(c.to_string());
-                        let (_, do_refresh) = h.file.insert_text(pos, &ch);
+                        let text = vec![c.to_string()];
+
+                        let selection = Selection::new(pos, pos, &h.file.lines);
+
+                        let (_, do_refresh) = h.file.splice_text(selection, &text);
                         let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
                         cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         h.refresh_screen(do_refresh);

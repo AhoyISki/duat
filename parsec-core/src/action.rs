@@ -1,59 +1,81 @@
-use crate::{cursor::{FileCursor, FilePos}, file::{TextLine, File}, output::OutputArea};
+use crate::{
+    cursor::{FilePos, FileCursor},
+    file::{TextLine, File},
+    output::OutputArea
+};
 
+#[derive(Debug)]
 pub struct Selection {
-    anchor: FilePos,
-    cursor: FileCursor,
-    lenght: usize,
+    start: FilePos,
+    end: FilePos,
+    content: Vec<String>,
 }
 
-/// What action was done to the selection:
-///
-/// - `Insert` places text before the selection.
-/// - `Append` places text after the selection.
-/// - `Delete` deletes the characters in the selection.
-enum Action {
-    Insert(Insertion),
-    Append(Insertion),
-    Delete,
+impl Selection {
+    /// Returns a new instance of Selection.
+    pub fn new(start: FilePos, end: FilePos, lines: &Vec<TextLine>) -> Selection {
+        let starting_line = lines.get(start.line).unwrap();
+
+        let content = if start.line == end.line {
+            vec![
+                starting_line.text().get(start.col..end.col).unwrap()
+                    .iter().map(|c| c.ch.content().clone()).collect()
+            ]
+        } else {
+            let starting_slice = starting_line.text().get(start.col..).unwrap()
+                .iter().map(|c| c.ch.content().clone()).collect();
+
+            let ending_line = lines.get(end.line).unwrap();
+            let ending_slice = ending_line.text().get(..end.col).unwrap()
+                .iter().map(|c| c.ch.content().clone()).collect();
+
+            let mut content = Vec::new();
+
+            content.push(starting_slice);
+
+            for line in lines.get((start.line + 1)..end.line).unwrap() {
+                content.push(line.text().iter().map(|c| c.ch.content().clone()).collect());
+            }
+
+            content.push(ending_slice);
+
+            content
+        };
+
+        Selection { start, end, content }
+    }
+
+    /// Returns a new selection, given some text. Used on insertions, for efficiency.
+    pub fn from_text(start: FilePos, end: FilePos, content: Vec<String>) -> Selection {
+        Selection { start, end, content }
+    }
+
+    ////////////////////////////////
+    // Getters
+    ////////////////////////////////
+    pub fn start(&self) -> FilePos { self.start }
+
+    pub fn end(&self) -> FilePos { self.end }
 }
 
 /// A point in the editing history, used for jumping back in time and undoing.
-struct HistoryPoint {
-    selections: Vec<Selection>,
-    actions: Vec<Vec<Action>>,
+pub struct Moment {
+    insertions: Vec<Selection>,
+    deletions: Vec<Selection>,
+    cursors: Vec<FileCursor>,
 }
 
-/// An insertion of text.
-#[derive(Clone, Debug)]
-pub struct Insertion {
-    lines: Vec<String>,
-    has_new_line: bool,
+struct Action {
+    main_selection: Selection,
+    secondary_selections: Vec<Selection>
 }
 
-impl Insertion {
-    pub fn new(mut text: String) -> Insertion {
-        Insertion {
-            lines: {
-                if text.chars().nth(0).unwrap() == '\n' {
-                    text.remove(0);
-                }
-                text.lines().map(|c| c.to_string()).collect::<Vec<String>>()
-            },
-            has_new_line: text.chars().nth(0).expect("empty insertion") == '\n',
-        }
-    }
-    ////////////////////////////////
-    // Getters
-    pub fn lines(&self) -> &Vec<String> {
-        &self.lines
+impl Moment {
+    pub fn add_insertion(&mut self, selection: Selection) {
+        if selection.start == 
+        
     }
 
-    pub fn has_new_line(&self) -> bool {
-        self.has_new_line
-    }
-}
-
-impl HistoryPoint {
     pub fn apply<T: OutputArea>(&self, file: &mut File<T>) {
         
     }

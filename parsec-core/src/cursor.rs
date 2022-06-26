@@ -20,7 +20,7 @@ pub struct CursorPos {
 // TODO: move this to a more general file.
 // TODO: In the future, this shouldn't be public, probably.
 /// A position in the file (line and character address).
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct FilePos {
     pub col: usize,
     pub line: usize,
@@ -83,8 +83,6 @@ pub struct FileCursor {
 
     /// How many times the cursor position wraps in the line.
     wraps: u16,
-
-    // TODO: Eventually add a selection to the cursor.
 }
 
 impl FileCursor {

@@ -1,4 +1,7 @@
-use std::{cmp::max, ops::{Range, RangeFrom, RangeBounds}};
+use std::{
+    cmp::max,
+    ops::RangeBounds
+};
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -6,7 +9,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::{
     config::{FileOptions, TabPlaces, WrapMethod},
     output::{OutputArea, OutputPos, StyledChar},
-    action::{Selection, Insertion},
+    action::Selection,
 };
 
 use crate::cursor::{CursorPos, FileCursor, FilePos};
@@ -43,6 +46,8 @@ impl TextLine {
         }
 
         file_line.width += file_line.text.len();
+        
+        file_line.calculate_indentation(tabs);
 
         file_line
     }
@@ -50,16 +55,17 @@ impl TextLine {
     /// Replaces a range in a line with text.
     ///
     /// The range may be empty, as in, `0..0`;
-    fn splice_text<R: RangeBounds<usize>>(&mut self, text: &str, range: R) {
+    fn splice_text<S, R>(&mut self, text: S, range: R) -> String
+    where S: Into<String>, R: RangeBounds<usize> {
         let mut processed_text = Vec::new();
 
-        for grapheme in text.graphemes(true) {
+        for grapheme in text.into().graphemes(true) {
             let width = UnicodeWidthStr::width(grapheme);
 
             processed_text.push(StyledChar::new(grapheme, width));
         }
         
-        self.text.splice(range, processed_text);
+        self.text.splice(range, processed_text).map(|c| c.ch.content().clone()).collect()
     }
 
     /// Calculates, sets, and returns the line's indentation.
@@ -148,27 +154,26 @@ impl TextLine {
         } else {
             (skip, 0)
         };
-        // if x_shift > 1 { panic!("{}, {}, {}", skip, leftover, x_shift) }
 
         area.print(" ".repeat(max(0, leftover) as usize));
 
-        for ch in self.text().iter().skip(skip) {
+        for placed_char in self.text().iter().skip(skip) {
             if let WrapMethod::NoWrap = options.wrap_method {
-                if col + ch.width(col, &options.tabs) > area.width() {
+                if col + placed_char.width(col, &options.tabs) > area.width() {
                     break;
                 }
             }
 
-            if ch.ch.content() == "\t" {
+            if placed_char.ch.content() == "\t" {
                 let tab_len = options.tabs.get_tab_len(col + x_shift);
                 area.print(" ".repeat(tab_len as usize));
                 col += tab_len;
             } else {
-                area.print(ch.ch.clone());
-                col += ch.width(col, &options.tabs);
+                area.print(placed_char.ch.clone());
+                col += placed_char.width(col, &options.tabs);
             }
 
-            if ch.is_wrapping {
+            if placed_char.is_wrapping {
                 printed_lines += 1;
                 pos.y += 1;
                 if pos.y > area.height() {
@@ -186,9 +191,9 @@ impl TextLine {
         if pos.y <= area.height() {
             // NOTE: Eventually will be improved when issue #53667 on rust-lang gets closed.
             if let WrapMethod::Width = options.wrap_method {
-                area.print(" ".repeat((width - col % width) as usize));
+                area.print(" ".repeat(width as usize));
             } else if col < width {
-                area.print(" ".repeat((width - col % width) as usize));
+                area.print(" ".repeat(width as usize));
             }
         }
 
@@ -254,8 +259,7 @@ impl<T: OutputArea> File<T> {
             main_cursor: 0,
         };
 
-        file.cursors
-            .push(FileCursor::new(FilePos { col: 0, line: 0 }, &file));
+        file.cursors.push(FileCursor::new(FilePos { col: 0, line: 0 }, &file));
 
         file
     }
@@ -287,88 +291,73 @@ impl<T: OutputArea> File<T> {
         }
     }
 
-    /// Inserts text at a given position in the file.
+    /// Replaces a selection in the file with new text.
     ///
     /// - If it returns true, the whole screen should be updated.
-    /// - It also returns the updated file position, given the insertion.
-    pub fn insert_text(&mut self, pos: FilePos, insertion: &Insertion) -> (FilePos, bool) {
-        let line = &mut self.lines.get_mut(pos.line).unwrap();
-        let first_insert = insertion.lines().get(0).unwrap();
-
-        if insertion.has_new_line() || insertion.lines().len() > 1 {
-            let cutoff_text = line.text.drain(pos.col..).map(|c| c.ch.content().clone())
-                                                        .collect::<String>();
-            
-            if insertion.has_new_line() {
-                self.lines.insert(pos.line + 1, TextLine::new(first_insert, &self.options.tabs));
-                let line = &mut self.lines.get_mut(pos.line + 1).unwrap();
-
-                line.calculate_indentation(&self.options.tabs);
-            } else {
-                line.splice_text(first_insert, pos.col..);
-                line.calculate_indentation(&self.options.tabs);
-            }
-
-            for (index, line) in insertion.lines().iter().enumerate().skip(1) {
-                self.lines.insert(pos.line + index + 1, TextLine::new(line, &self.options.tabs));
-                let line = &mut self.lines.get_mut(pos.line + index).unwrap();
-
-                if index == insertion.lines().len() - 1 {
-                    line.splice_text(&cutoff_text, line.text.len()..);
-                }
-
-                line.calculate_indentation(&self.options.tabs);
-            }
-
-            (pos, true)
-
-        // If the first check returns false, that means that there is just one line, that must be
-        // inserted at `pos`, without creating any new lines.
-        } else {
-
-            line.splice_text(first_insert, pos.col..pos.col);
-
-            let old_wrapping = line.wrap_cols.len();
-            line.calculate_indentation(&self.options.tabs);
-            if let WrapMethod::Width = self.options.wrap_method {
-                line.parse_wrapping(self.area.width(), &self.options);
-            }
-            let new_pos = FilePos { line: pos.line, col: pos.col + first_insert.len() };
-
-            // If the wrapping changes, the whole screen needs to be redrawn.
-            (new_pos, line.wrap_cols.len() != old_wrapping)
-        }
-    }
-
+    /// - The first element of the vector will be placed in the given position, without adding a
+    /// new line. Subsequent elements will be started with a new line, i.e. they will place a new
+    /// line of text in the `lines` vector. This means that, to just get a new line, you'd give
+    /// `vec!["".to_string(); 2]` as argument.
     pub fn splice_text(
-        &mut self, start: FilePos, end: FilePos,
-        insertion: Option<&Insertion>) -> (FilePos, bool) {
+        &mut self, selection: &Selection, lines: &Vec<String>) -> (Selection, bool) {
+        let (start, end) = (selection.start(), selection.end());
+
         assert!(end >= start);
-        let start_line = self.lines.get_mut(start.line).unwrap();
 
-        match insertion {
-            Some(_) => {(start, true)},
-            None => {
-                if start.line == end.line {
-                    start_line.splice_text("", start.col..end.col);
-                } else {
-                    start_line.text.drain(start.col..);
+        // In the case where both positions are in the same line, and no new lines are inserted,
+        // there's just one range to splice.
+        if start.line == end.line && lines.len() == 1 {
+            let starting_line = self.lines.get_mut(start.line).unwrap();
+            let old_wrapping = starting_line.wrap_cols.len();
 
-                    let end_line = self.lines.get(end.line).unwrap();
-                    let ending_text = end_line.text.get(end.col..).unwrap().to_vec();
+            starting_line.splice_text(lines.get(0).unwrap(), start.col..end.col);
+            starting_line.calculate_indentation(&self.options.tabs);
 
-                    self.lines.drain((start.line + 1)..=end.line);
+            let wrap_changed = if let WrapMethod::Width = self.options.wrap_method {
+                starting_line.parse_wrapping(self.area.width(), &self.options);
+                old_wrapping == starting_line.wrap_cols.len()
+            } else {
+                false
+            };
 
-                    let start_line = self.lines.get_mut(start.line).unwrap();
-                    start_line.text.extend(ending_text);
-                }
-                let start_line = self.lines.get_mut(start.line).unwrap();
-                start_line.calculate_indentation(&self.options.tabs);
-                if let WrapMethod::Width = self.options.wrap_method {
-                    start_line.parse_wrapping(self.area.width(), &self.options);
-                }
-                (start, true)
+            let end_pos = FilePos { col: end.col + lines.get(0).unwrap().len(), ..end };
+
+            (end_pos, wrap_changed)
+        // Otherwise, the first line will be cut from `selection.start`, and the last line will be
+        // cut until `selection.end`. All lines in between will be completely removed.
+        } else {
+            let ending_line = self.lines.get_mut(end.line).unwrap();
+
+            // Saving the text after `end.col` from the `ending_line`, to place it back on a new
+            // ending line. This is easier than removing until `end.col` and splicing new text,
+            // and automatically handles the "glueing" of lines together.
+            let cutoff_text = ending_line.splice_text("", end.col..);
+
+            // Remove all lines in the range, except for the first one, this follows from the last
+            // comment.
+            self.lines.drain((start.line + 1)..=end.line);
+
+            // Place every new line.
+            for (index, line) in lines.iter().enumerate().skip(1) {
+                self.lines.insert(start.line + index, TextLine::new(line, &self.options.tabs));
             }
+
+            let starting_line = self.lines.get_mut(start.line).unwrap();
+            starting_line.splice_text(lines.get(0).unwrap(), start.col..);
+            starting_line.calculate_indentation(&self.options.tabs);
+
+            let ending_line = self.lines.get_mut(start.line + lines.len() - 1).unwrap();
+            // The earlier text will be placed at the end of the last inserted line. If it doesn't
+            // exist, it will be placed at the end of the first line, with no extra calculations.
+            ending_line.splice_text(cutoff_text, ending_line.text.len()..);
+            ending_line.calculate_indentation(&self.options.tabs);
+
+            let end_pos = FilePos {
+                line: start.line + lines.len() - 1,
+                col: lines.last().unwrap().len()
+            };
+
+            (end_pos, true)
         }
     }
 
