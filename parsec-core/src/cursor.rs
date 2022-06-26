@@ -1,4 +1,4 @@
-use std::cmp::{min, max};
+use std::cmp;
 
 use crate::{output::OutputArea, config::{TabPlaces, FileOptions}};
 
@@ -25,6 +25,45 @@ pub struct FilePos {
     pub col: usize,
     pub line: usize,
 }
+
+impl cmp::PartialEq for FilePos {
+    fn eq(&self, other: &Self) -> bool {
+        self.line == other.line && self.col == other.col
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.line != other.line || self.col != other.col
+    }
+}
+
+impl cmp::PartialOrd for FilePos {
+    fn ge(&self, other: &Self) -> bool {
+        self.line > other.line || (self.line == other.line && self.col >= other.col)
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        self.line > other.line || (self.line == other.line && self.col > other.col)
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.line < other.line || (self.line == other.line && self.col <= other.col)
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        self.line < other.line || (self.line == other.line && self.col < other.col)
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        if self > other {
+            Some(cmp::Ordering::Greater)
+        } else if self < other {
+            Some(cmp::Ordering::Less)
+        } else {
+            Some(cmp::Ordering::Equal)
+        }
+    }
+}
+
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 pub struct FileCursor {
@@ -62,10 +101,10 @@ impl FileCursor {
 
         let wraps = (offset + pos.col as u16) / width;
 
-        let (line_range, direction) = if pos.line > *file.top_line() {
-            (pos.line..*file.top_line(), 1)
-        } else if pos.line < *file.top_line() {
-            (*file.top_line()..pos.line, -1)
+        let (line_range, direction) = if pos.line > file.top_line() {
+            (pos.line..file.top_line(), 1)
+        } else if pos.line < file.top_line() {
+            (file.top_line()..pos.line, -1)
         } else { (0..0, 0) };
 
         let mut y = wraps as i32;
@@ -87,26 +126,14 @@ impl FileCursor {
         }
     }
 
-    /// Returns the cursor's position on the file.
-    pub fn current(&self) -> FilePos {
-        self.current
-    }
-
-    /// Returns the cursor's position on the screen.
-    pub fn target(&self) -> FilePos {
-        self.target
-    }
-
-    /// Returns the amount of times the cursor wraps around the line.
-    pub fn wraps(&self) -> u16 {
-        self.wraps
-    }
-
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_vertically(&mut self, lines: &Vec<TextLine>, count: i32, tabs: &TabPlaces) {
-        self.target.line = (self.target.line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
+    pub fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+        let line = self.target.line;
+        self.target.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1)
+                           as usize;
 
-        let mut text_iter = lines.get(self.target.line).expect("invalid line").text().iter().enumerate();
+        let mut text_iter = lines.get(self.target.line).expect("invalid line").text()
+                                 .iter().enumerate();
 
         let mut total_width = 0;
         self.target.col = 0;
@@ -119,7 +146,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_horizontally(&mut self, lines: &Vec<TextLine>, count: i32, tabs: &TabPlaces) {
+    pub fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
         let mut new_col = self.target.col as i32 + count;
 
         if count >= 0 {
@@ -131,7 +158,8 @@ impl FileCursor {
                 new_col -= line.text().len() as i32 + 1;
             }
         } else {
-            let mut line_iter = lines.iter().enumerate().rev().skip(lines.len() - self.target.line);
+            let mut line_iter = lines.iter().enumerate().rev()
+                                     .skip(lines.len() - self.target.line);
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
                 if new_col >= 0 { break }
@@ -145,8 +173,34 @@ impl FileCursor {
         self.desired_x = line.get_distance_to_col(self.target.col, tabs) as usize;
     }
 
+    /// Moves the cursor to a position in the file.
+    ///
+    /// - If the position isn't valid, it will move to the "maximum" position allowed.
+    /// - Unlike `move_ver` and `move_hor`, this function will update the file, as it assumes that
+    /// you are moving once, and it doesn't make sense move to two places without updating.
+    pub fn move_to(&mut self, pos: FilePos, lines: &Vec<TextLine>, options: &FileOptions) {
+        let line;
+        self.target = FilePos {
+            line: {
+                line = pos.line.clamp(0, lines.len());
+                line
+            },
+            col: pos.col.clamp(0, lines.get(line).unwrap().text().len()),
+        };
+        self.desired_x = lines.get(line).unwrap()
+                              .get_distance_to_col(self.target.col, &options.tabs) as usize;
+
+        self.update(lines, options);
+    }
+
     /// Updates the position of the cursor on the terminal.
+    ///
+    /// - This function does not take horizontal scrolling into account.
     pub fn update(&mut self, lines: &Vec<TextLine>, options: &FileOptions) {
+        // If the target hasn't changed/the cursor has already been updated, nothing needs to
+        // be done.
+        if self.target == self.current { return }
+
         let target_line = lines.get(self.target.line).expect("invalid line");
         // TODO: Calculate in relation to (width - indentation) with the possibility
         // of that being only on the first line, for wrapped lines that start at 0
@@ -188,4 +242,24 @@ impl FileCursor {
         self.current.line = self.target.line;
         self.current.col = self.target.col;
     }
+
+    
+    ////////////////////////////////
+    // Getters
+    ////////////////////////////////
+    /// Returns the cursor's position on the file.
+    pub fn current(&self) -> FilePos {
+        self.current
+    }
+
+    /// Returns the cursor's position on the screen.
+    pub fn target(&self) -> FilePos {
+        self.target
+    }
+
+    /// Returns the amount of times the cursor wraps around the line.
+    pub fn wraps(&self) -> u16 {
+        self.wraps
+    }
+
 }

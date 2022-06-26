@@ -93,7 +93,7 @@ impl Display for OutputPos {
 /// A character containing text and a style which applies to said text.
 #[derive(Clone)]
 pub struct StyledChar {
-    pub text: StyledContent<String>,
+    pub ch: StyledContent<String>,
     width: usize,
 
     pub is_wrapping: bool,
@@ -102,7 +102,7 @@ pub struct StyledChar {
 impl StyledChar {
     /// Returns the width for the character. If it is a tab, calculates how big it should be.
     pub fn width(&self, x: u16, tabs: &TabPlaces) -> u16 {
-        if self.text.content() == "\t" {
+        if self.ch.content() == "\t" {
             tabs.get_tab_len(x) as u16
         } else {
             self.width as u16
@@ -112,7 +112,7 @@ impl StyledChar {
     /// Returns a new insance of `StyledChar`.
     pub fn new(grapheme: &str, width: usize) -> StyledChar {
         StyledChar {
-            text: StyledContent::new(ContentStyle::new(), grapheme.to_string()),
+            ch: StyledContent::new(ContentStyle::new(), grapheme.to_string()),
             width,
             is_wrapping: false
         }
@@ -121,7 +121,7 @@ impl StyledChar {
     /// Returns a new instance of `StyledChar` from an instance of `StyledContent`.
     pub fn new_styled(text: StyledContent<String>, width: usize) -> StyledChar {
         StyledChar {
-            text,
+            ch: text,
             width,
             is_wrapping: false
         }

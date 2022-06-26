@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Stdout, stdout, Write},
+    io::{Stdout, stdout, Write},
     fmt::Display,
     path::PathBuf
 };
@@ -13,7 +13,7 @@ use crossterm::{
 
 use parsec_core::{
     input::InputHandler,
-    buffer::FileHandler,
+    buffer::Buffer,
     config::Options,
     output::{
         OutputArea,
@@ -24,10 +24,9 @@ use parsec_core::{
 
 /// An area in the terminal used for printing text.
 ///
-/// These should be linked to something that can print. They should never need to
-/// tell a printing struct where an origin or end are, since they only need to know
-/// how much space is in the area, and the area deals with placing the text in the
-/// correct place.
+/// These should be linked to something that can print. They should never need to tell a printing
+/// struct where the origin or end are, since they only need to know how much space is in the area,
+/// and the area deals with placing the text in the correct place.
 pub struct TermArea {
     origin: OutputPos,
     end: OutputPos,
@@ -41,30 +40,9 @@ impl TermArea {
     }
 }
 
-/// The application itself, it contains all of the input handlers.
-pub struct TerminalApp {
-    // Dimensions of the whole terminal
-    width: u16,
-    height: u16,
-
-    /// The list of handlers for input
-    ///
-    /// Whenever a key is pressed, it will be sent to every input handler.
-    /// This key might be tied to an action, that contains a function, and may
-    /// contain a name.
-    /// - The function is of type fn(&mut Self), where Self is the type of the
-    /// input handler. This function will be executed on the instance of the input
-    /// handler.
-    /// - There may be a name, if there is, the user will be able to execute the
-    /// action from the command line, or map a key to the action directly, instead of
-    /// mapping it to an already mapped key. Simple actions (moving, placing 
-    /// characters, etc) are discouraged from having names.
-    pub input_handlers: Vec<Box<dyn InputHandler>>,
-}
-
 impl OutputArea for TermArea {
     fn print_and_style(&mut self, ch: StyledChar) {
-        self.stdout.queue(PrintStyledContent(ch.text)).unwrap();
+        self.stdout.queue(PrintStyledContent(ch.ch)).unwrap();
     }
 
     fn print<T: Display>(&mut self, ch: T) {
@@ -103,37 +81,23 @@ impl OutputArea for TermArea {
     }
 }
 
-/// The terminal where the program will run.
-impl TerminalApp {
-    /// Returns a new instance of TermBuffer.
-    pub fn new() -> TerminalApp {
-        let (width, height) = terminal::size().expect("crossterm");
-        TerminalApp {
-            width,
-            height,
-
-            input_handlers: Vec::new(),
-        }
-    }
-
-    // TODO: Deal with mouse and resize events.
-    /// Processes keyboard, mouse, and resize events.
-    pub fn process_events(&mut self) {
-        // TODO: Add more event types
-        // TODO: Quit in a way that makes more sense
-        loop {
-            match read().expect("crossterm") {
-                Event::Key(key) => {
-                    // NOTE: Remove this!!
-                    if key == KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE) {
-                        break
-                    }
-                    for input_handler in &mut self.input_handlers {
-                        input_handler.handle_key(key);
-                    }
+// TODO: Deal with mouse and resize events.
+/// Processes keyboard, mouse, and resize events.
+pub fn process_events(input_handlers: &mut Vec<Box<dyn InputHandler>>) {
+    // TODO: Add more event types
+    // TODO: Quit in a way that makes more sense
+    loop {
+        match read().expect("crossterm") {
+            Event::Key(key) => {
+                // NOTE: Remove this!!
+                if key == KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE) {
+                    break
                 }
-                _ => {},
+                for input_handler in &mut *input_handlers {
+                    input_handler.handle_key(key);
+                }
             }
+            _ => {},
         }
     }
 }
@@ -174,29 +138,9 @@ pub fn quit() {
     terminal::disable_raw_mode().unwrap();
 }
 
-/// The buffer containing the file handler.
-pub struct FileBuffer {
-    /// The current state of the file, with contents, cursors, and positioning.
-    pub file_handler: FileHandler<TermArea>,
-}
+pub fn new_buffer(
+    origin: OutputPos, end: OutputPos, file_path: PathBuf, options: &Options) -> Buffer<TermArea> {
+    let area = TermArea::new(origin, end);
 
-impl FileBuffer {
-    /// Returns a new instance of an editing interface.
-    ///
-    /// That includes the file, the line numbers, and the status bar.
-    pub fn new(
-        origin: OutputPos, end: OutputPos, file_path: PathBuf,
-        options: &Options) -> io::Result<FileBuffer> {
-        // The end  must be after the origin.
-        // TODO: Move this to a place where it is required.
-        assert!(end > origin);
-
-        Ok(FileBuffer {
-            file_handler: {
-                let area = TermArea::new(origin, end);
-
-                FileHandler::new(area, file_path, options.file_options.clone())
-            },
-        })
-    }
+    Buffer::new(area, file_path, options.file_options.clone())
 }

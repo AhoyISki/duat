@@ -11,17 +11,13 @@ use parsec_core::{
         FileOptions,
         WrapMethod, LineNumbers, TabPlaces,
     },
-    output::OutputPos
+    output::OutputPos, input::InputHandler
 };
 
 mod terminal;
-use terminal::{
-    TerminalApp,
-    FileBuffer
-};
 
 fn main() {
-    let mut buffers = TerminalApp::new();
+    let mut buffers: Vec<Box<dyn InputHandler>> = Vec::new();
 
     let (width, height) = crossterm::terminal::size().expect("crossterm");
     let origin = OutputPos { x: 0, y: 0 };
@@ -38,10 +34,11 @@ fn main() {
                 WrapMethod::NoWrap
             },
 
-            scrolloff: OutputPos { x: 3, y: 5 },
+            scrolloff: OutputPos { x: 5, y: 5 },
             line_numbers: LineNumbers::Hybrid,
             tabs: TabPlaces::Regular(4),
-            wrap_indent: true
+            wrap_indent: true,
+            tabs_as_spaces: true,
         }
     };
 
@@ -62,12 +59,11 @@ fn main() {
         } else {
             PathBuf::from(&current_dir).join(file_path)
         };
-        let file_buffer = FileBuffer::new(origin, end, file_path, &options)
-                                     .expect("file not found");
-        buffers.input_handlers.push(Box::from(file_buffer.file_handler));
+        let buffer = terminal::new_buffer(origin, end, file_path, &options);
+        buffers.push(Box::from(buffer));
     }
 
-    buffers.process_events();
+    terminal::process_events(&mut buffers);
 
     terminal::quit();
 }

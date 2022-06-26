@@ -26,7 +26,7 @@ pub struct ModeList<T> {
 pub struct Mode<T> {
     pub name: String,
     pub actions: Vec<MappedAction<T>>,
-    pub default_action: Option<fn(&mut T, &str)>,
+    pub default_action: Option<fn(&mut T, char)>,
 }
 
 impl<T> Mode<T> {
@@ -60,7 +60,7 @@ impl<T> Mode<T> {
     }
 
     /// Adds a default action to the mode.
-    pub fn add_default_action(&mut self, action: fn(&mut T, &str)) {
+    pub fn add_default_action(&mut self, action: fn(&mut T, char)) {
         self.default_action = Some(action);
     }
 }
@@ -179,7 +179,7 @@ macro_rules! map_actions {
                 $(key: ($lock_code:expr, $lock_modif:expr)   => { $lock_cmd:expr })?
                 $(name: $free_name:expr                       => { $free_cmd:expr })?
             ),*,
-            $(_ => $default_cmd:ident)?
+            $(_ => { $default_cmd:expr })?
         ]),*
     ) => {
 
@@ -204,6 +204,8 @@ macro_rules! map_actions {
                 )?
                 $(mode.add_action($free_cmd, Some($free_name), None);)?
             )*
+
+            $(mode.add_default_action($default_cmd);)?
         )*
     }
 }
@@ -236,8 +238,7 @@ macro_rules! impl_input_handler {
     ($handler_type:ty, $mode_list:ident) => {
         impl<T: OutputArea> InputHandler for $handler_type {
             fn handle_key(&mut self, key: KeyEvent) {
-                let mode = self.$mode_list.modes.get(self.$mode_list.current_mode)
-                                                .unwrap();
+                let mode = self.$mode_list.modes.get(self.$mode_list.current_mode).unwrap();
 
                 for action in &mode.actions {
                     if let Some(action_key) = action.key {
@@ -245,6 +246,12 @@ macro_rules! impl_input_handler {
                             (action.cmd)(self);
                             return;
                         }
+                    }
+                }
+
+                if let KeyCode::Char(key) = key.code {
+                    if let Some(action) = mode.default_action {
+                        (action)(self, key);
                     }
                 }
             }
@@ -277,8 +284,7 @@ macro_rules! impl_input_handler {
             }
 
             fn is_in_mode(&self, name: &str) -> bool {
-                let mode = self.$mode_list.modes.get(self.$mode_list.current_mode)
-                                                .unwrap();
+                let mode = self.$mode_list.modes.get(self.$mode_list.current_mode).unwrap();
 
                 mode.name == name
             }

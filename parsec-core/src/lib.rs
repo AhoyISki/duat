@@ -1,6 +1,7 @@
+pub mod action;
 pub mod buffer;
-mod file;
 pub mod cursor;
 pub mod config;
+mod file;
 pub mod input;
 pub mod output;

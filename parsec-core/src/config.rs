@@ -47,6 +47,7 @@ pub struct FileOptions {
     pub line_numbers: LineNumbers,
     pub tabs: TabPlaces,
     pub wrap_indent: bool,
+    pub tabs_as_spaces: bool,
 }
 
 /// The options of the text editor.

@@ -1,11 +1,12 @@
-use std::cmp::{min, max};
+use std::{cmp::max, ops::{Range, RangeFrom, RangeBounds}};
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
+    config::{FileOptions, TabPlaces, WrapMethod},
     output::{OutputArea, OutputPos, StyledChar},
-    config::{FileOptions, WrapMethod, TabPlaces}
+    action::{Selection, Insertion},
 };
 
 use crate::cursor::{CursorPos, FileCursor, FilePos};
@@ -27,25 +28,15 @@ pub struct TextLine {
 
 impl TextLine {
     /// Returns a new instance of `TextLine`
-    pub fn new(text: &str, tabs: &TabPlaces) -> TextLine  {
+    pub fn new(text: &str, tabs: &TabPlaces) -> TextLine {
         let mut file_line = TextLine {
             wrap_cols: Vec::new(),
             text: Vec::new(),
             indent: 0,
-            width: 0
+            width: 0,
         };
-        
-        let mut indenting = true;
 
         for grapheme in text.graphemes(true) {
-            // TODO: Add variable tab size.
-            // NOTE: This probably has some obscure bugs embeded in it.
-            if indenting && grapheme == " " {
-                file_line.indent += 1;
-            } else if indenting && grapheme == "\t" {
-                file_line.indent += tabs.get_tab_len(file_line.indent as u16) as usize;
-            } else { indenting = false; }
-
             let width = UnicodeWidthStr::width(grapheme);
 
             file_line.text.push(StyledChar::new(grapheme, width));
@@ -56,24 +47,62 @@ impl TextLine {
         file_line
     }
 
-    /// Returns the position of the wrapping columns.
-    pub fn wrap_cols(&self) -> &Vec<usize> {
-        &self.wrap_cols
+    /// Replaces a range in a line with text.
+    ///
+    /// The range may be empty, as in, `0..0`;
+    fn splice_text<R: RangeBounds<usize>>(&mut self, text: &str, range: R) {
+        let mut processed_text = Vec::new();
+
+        for grapheme in text.graphemes(true) {
+            let width = UnicodeWidthStr::width(grapheme);
+
+            processed_text.push(StyledChar::new(grapheme, width));
+        }
+        
+        self.text.splice(range, processed_text);
     }
 
-    /// Returns the contents of the line.
-    pub fn text(&self) -> &Vec<StyledChar> {
-        &self.text
+    /// Calculates, sets, and returns the line's indentation.
+    pub fn calculate_indentation(&mut self, tabs: &TabPlaces) -> usize {
+        let mut indent = 0;
+        for ch in &self.text {
+            if ch.ch.content() == " " || ch.ch.content() == "\t" {
+                indent += ch.width(indent, tabs);
+            } else {
+                break;
+            }
+        }
+        self.indent = indent as usize;
+        indent as usize
     }
 
-    /// Returns the width of the line.
-    pub fn width(&self) -> usize {
-        self.width
+    /// Returns the visual distance to a certain column.
+    pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> u16 {
+        let mut width = 0;
+        for col in self.text.get(0..col).expect("invalid col") {
+            width += col.width(width, tabs);
+        }
+        width
     }
 
-    /// Returns the indentation of the line.
-    pub fn indent(&self) -> usize {
-        self.indent
+    /// Returns the column found at a certain visual distance from 0. Also returns any leftovers.
+    ///
+    /// The leftover number is positive if the width of the characters is greater (happens if the
+    /// last character has a width greater than 1), and it is negative if the distance is greater
+    /// (happens if there aren't enough characters to cover the distance.
+    pub fn get_col_at_distance(&self, dist: u16, tabs: &TabPlaces) -> (usize, i32) {
+        let (mut index, mut width) = (0, 0);
+        let mut text_iter = self.text.iter();
+        while width < dist {
+            match text_iter.next() {
+                Some(ch) => {
+                    width += ch.width(width, tabs);
+                    index += 1;
+                }
+                None => break,
+            }
+        }
+        (index, width as i32 - dist as i32)
     }
 
     /// Parses the wrapping of a single line.
@@ -91,38 +120,13 @@ impl TextLine {
                 cur_x = 0;
                 self.wrap_cols.push(index);
                 ch.is_wrapping = true;
-                if options.wrap_indent { wrap_indentation = self.indent as u16; }
+                if options.wrap_indent {
+                    wrap_indentation = self.indent as u16;
+                }
+            } else {
+                ch.is_wrapping = false;
             }
         }
-    }
-
-    /// Returns the visual distance to a certain column.
-    pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> u16 {
-        let mut width = 0;
-        for col in self.text.get(0..col).expect("invalid col") {
-            width += col.width(width, tabs);
-        }
-        width
-    }
-
-    /// Returns the column found at a certain visual distance from 0. Also returns any leftovers.
-    ///
-    /// The leftover number is positive if the width of the characters is greater (happens if the last
-    /// character has a width greater than 1), and it is negative if the distance is greater (happens if
-    /// there aren't enough characters to cover the distance.
-    pub fn get_col_at_distance(&self, dist: u16, tabs: &TabPlaces) -> (usize, i32) {
-        let (mut index, mut width) = (0, 0);
-        let mut text_iter = self.text.iter();
-        while width < dist {
-            match text_iter.next() {
-                Some(ch) => {
-                    width += ch.width(width, tabs);
-                    index += 1;
-                },
-                None => break
-            }
-        }
-        (index, width as i32 - dist as i32 )
     }
 
     // TODO: Make this a generic free function, and make areas do bounds checking.
@@ -132,7 +136,7 @@ impl TextLine {
     #[inline]
     fn print<T: OutputArea>(
         &self, area: &mut T, mut pos: OutputPos, skip: usize,
-        options: &FileOptions, x_shift: u16) -> u16 {
+        options: &FileOptions, x_shift: u16, ) -> u16 {
         // Moves the printing cursor to the beginning of the line.
         area.move_cursor(pos);
 
@@ -150,24 +154,30 @@ impl TextLine {
 
         for ch in self.text().iter().skip(skip) {
             if let WrapMethod::NoWrap = options.wrap_method {
-                if col + ch.width(col, &options.tabs) > area.width() { break; }
+                if col + ch.width(col, &options.tabs) > area.width() {
+                    break;
+                }
             }
 
-            if ch.text.content() == "\t" {
-                let tab_len = options.tabs.get_tab_len(col);
+            if ch.ch.content() == "\t" {
+                let tab_len = options.tabs.get_tab_len(col + x_shift);
                 area.print(" ".repeat(tab_len as usize));
-                col += tab_len; 
+                col += tab_len;
             } else {
-                area.print(ch.text.clone());
+                area.print(ch.ch.clone());
                 col += ch.width(col, &options.tabs);
             }
-            
+
             if ch.is_wrapping {
-                printed_lines +=1;
+                printed_lines += 1;
                 pos.y += 1;
-                if pos.y > area.height() { break; }
+                if pos.y > area.height() {
+                    break;
+                }
                 area.move_cursor(pos);
-                if options.wrap_indent && pos.x == 0 { area.print(" ".repeat(self.indent)); }
+                if options.wrap_indent && pos.x == 0 {
+                    area.print(" ".repeat(self.indent));
+                }
             }
         }
 
@@ -183,6 +193,25 @@ impl TextLine {
         }
 
         printed_lines
+    }
+    
+    ////////////////////////////////
+    // Getters
+    ////////////////////////////////
+    pub fn wrap_cols(&self) -> &Vec<usize> {
+        &self.wrap_cols
+    }
+
+    pub fn text(&self) -> &Vec<StyledChar> {
+        &self.text
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn indent(&self) -> usize {
+        self.indent
     }
 }
 
@@ -211,16 +240,6 @@ pub struct File<T> {
 }
 
 impl<T: OutputArea> File<T> {
-    /// Returns a reference to `top_line`
-    pub fn top_line(&self) -> &usize {
-        &self.top_line
-    }
-
-    /// Returns a reference to `top_line`
-    pub fn top_wraps(&self) -> &usize {
-        &self.top_wraps
-    }
-
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
     pub fn new(lines: Vec<TextLine>, options: FileOptions, area: T) -> File<T> {
         let mut file = File {
@@ -235,7 +254,8 @@ impl<T: OutputArea> File<T> {
             main_cursor: 0,
         };
 
-        file.cursors.push(FileCursor::new(FilePos {col: 0, line: 0}, &file));
+        file.cursors
+            .push(FileCursor::new(FilePos { col: 0, line: 0 }, &file));
 
         file
     }
@@ -248,13 +268,138 @@ impl<T: OutputArea> File<T> {
         }
     }
 
-    /// Scrolls the file up by one line
+    /// Parses the wrapping for all the lines in the file.
     ///
-    /// * If it returns false, it means it is not possible to scroll up.
-    fn scroll_up(&mut self) -> bool {
-        if self.top_line == 0 && self.top_wraps == 0 {
-            false
+    /// * This should only be called when the wrap_type or width change.
+    pub fn parse_wrapping(&mut self) {
+        match self.options.wrap_method {
+            WrapMethod::Width => {
+                for line in self.lines.iter_mut() {
+                    line.parse_wrapping(self.area.width(), &self.options);
+                }
+            }
+            WrapMethod::NoWrap => {
+                for line in self.lines.iter_mut() {
+                    line.wrap_cols.clear();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Inserts text at a given position in the file.
+    ///
+    /// - If it returns true, the whole screen should be updated.
+    /// - It also returns the updated file position, given the insertion.
+    pub fn insert_text(&mut self, pos: FilePos, insertion: &Insertion) -> (FilePos, bool) {
+        let line = &mut self.lines.get_mut(pos.line).unwrap();
+        let first_insert = insertion.lines().get(0).unwrap();
+
+        if insertion.has_new_line() || insertion.lines().len() > 1 {
+            let cutoff_text = line.text.drain(pos.col..).map(|c| c.ch.content().clone())
+                                                        .collect::<String>();
+            
+            if insertion.has_new_line() {
+                self.lines.insert(pos.line + 1, TextLine::new(first_insert, &self.options.tabs));
+                let line = &mut self.lines.get_mut(pos.line + 1).unwrap();
+
+                line.calculate_indentation(&self.options.tabs);
+            } else {
+                line.splice_text(first_insert, pos.col..);
+                line.calculate_indentation(&self.options.tabs);
+            }
+
+            for (index, line) in insertion.lines().iter().enumerate().skip(1) {
+                self.lines.insert(pos.line + index + 1, TextLine::new(line, &self.options.tabs));
+                let line = &mut self.lines.get_mut(pos.line + index).unwrap();
+
+                if index == insertion.lines().len() - 1 {
+                    line.splice_text(&cutoff_text, line.text.len()..);
+                }
+
+                line.calculate_indentation(&self.options.tabs);
+            }
+
+            (pos, true)
+
+        // If the first check returns false, that means that there is just one line, that must be
+        // inserted at `pos`, without creating any new lines.
         } else {
+
+            line.splice_text(first_insert, pos.col..pos.col);
+
+            let old_wrapping = line.wrap_cols.len();
+            line.calculate_indentation(&self.options.tabs);
+            if let WrapMethod::Width = self.options.wrap_method {
+                line.parse_wrapping(self.area.width(), &self.options);
+            }
+            let new_pos = FilePos { line: pos.line, col: pos.col + first_insert.len() };
+
+            // If the wrapping changes, the whole screen needs to be redrawn.
+            (new_pos, line.wrap_cols.len() != old_wrapping)
+        }
+    }
+
+    pub fn splice_text(
+        &mut self, start: FilePos, end: FilePos,
+        insertion: Option<&Insertion>) -> (FilePos, bool) {
+        assert!(end >= start);
+        let start_line = self.lines.get_mut(start.line).unwrap();
+
+        match insertion {
+            Some(_) => {(start, true)},
+            None => {
+                if start.line == end.line {
+                    start_line.splice_text("", start.col..end.col);
+                } else {
+                    start_line.text.drain(start.col..);
+
+                    let end_line = self.lines.get(end.line).unwrap();
+                    let ending_text = end_line.text.get(end.col..).unwrap().to_vec();
+
+                    self.lines.drain((start.line + 1)..=end.line);
+
+                    let start_line = self.lines.get_mut(start.line).unwrap();
+                    start_line.text.extend(ending_text);
+                }
+                let start_line = self.lines.get_mut(start.line).unwrap();
+                start_line.calculate_indentation(&self.options.tabs);
+                if let WrapMethod::Width = self.options.wrap_method {
+                    start_line.parse_wrapping(self.area.width(), &self.options);
+                }
+                (start, true)
+            }
+        }
+    }
+
+    /// Updates the file's scrolling and checks if it has scrolled.
+    pub fn update_scroll(&mut self) -> bool {
+        let scrolloff = self.options.scrolloff;
+
+        let mut pos = self
+            .cursors
+            .get(self.main_cursor)
+            .expect("cursor not found")
+            .pos;
+
+        // Scroll if the cursor surpasses the soft cap of the cursor_zone.
+        let mut has_scrolled = false;
+
+        // Vertical check:
+        while pos.y > (self.area.height() - scrolloff.y) as i32 {
+            if self.lines.get(self.top_line).unwrap().wrap_cols.len() > self.top_wraps {
+                self.top_wraps += 1;
+            } else {
+                self.top_line += 1;
+                self.top_wraps = 0;
+            }
+            has_scrolled = true;
+            pos.y -= 1;
+            self.cursors.iter_mut().for_each(|c| c.pos.y -= 1);
+        }
+
+        // Stop scrolling when the line at the top of the screen is already the first line.
+        while pos.y < scrolloff.y as i32 && !(self.top_line == 0 && self.top_wraps == 0) {
             if self.top_wraps > 0 {
                 self.top_wraps -= 1;
             } else {
@@ -264,98 +409,36 @@ impl<T: OutputArea> File<T> {
             }
             // Moves the cursors down by one, to keep them in the same place in the
             // file.
-            self.cursors.iter_mut().for_each(|c| c.pos.y += 1);
-            true
-        }
-    }
-
-    /// Scrolls the file down by one line
-    fn scroll_down(&mut self) -> bool {
-        let top_line = self.lines.get(self.top_line).expect("invalid line");
-
-        if top_line.wrap_cols.len() > self.top_wraps {
-            self.top_wraps += 1;
-        } else {
-            self.top_line += 1;
-            self.top_wraps = 0;
-        }
-
-        // Moves the cursors up by one, to keep them in the same place in the file.
-        self.cursors.iter_mut().for_each(|c| c.pos.y -= 1);
-
-        true
-    }
-
-    fn scroll_left(&mut self) -> bool {
-        if self.x_shift > 0 {
-            self.x_shift -= 1;
-            self.cursors.iter_mut().for_each(|c| c.pos.x += 1);
-            
-            true
-        } else {
-            false
-        }
-    }
-
-    fn scroll_right(&mut self) -> bool {
-        self.x_shift += 1;
-        self.cursors.iter_mut().for_each(|c| c.pos.x -= 1);
-
-        true
-    }
-
-    /// Parses the wrapping for all the lines in the file
-    ///
-    /// * This should only be called when the wrap_type or width change.
-    pub fn parse_wrapping(&mut self) {
-        match self.options.wrap_method {
-            WrapMethod::Width => {
-                for line in self.lines.iter_mut() {
-                    line.parse_wrapping(self.area.width(), &self.options);
-                }
-            },
-            WrapMethod::NoWrap => {
-                for line in self.lines.iter_mut() {
-                    line.wrap_cols.clear();
-                }
-            },
-            _ => {},
-        }
-    }
-
-    /// Updates the file and checks if it has scrolled.
-    pub fn has_scrolled(&mut self) -> bool {
-        let scrolloff = self.options.scrolloff;
-
-        let mut pos = self.cursors.get(self.main_cursor).expect("cursor not found").pos;
-
-        // Scroll if the cursor surpasses the soft cap of the cursor_zone.
-        let mut has_scrolled = false;
-
-        // Vertical check:
-        while pos.y > (self.area.height() - scrolloff.y) as i32 {
-            has_scrolled |= self.scroll_down();
-            pos.y -= 1;
-        }
-        while pos.y < scrolloff.y as i32 {
-            has_scrolled |= self.scroll_up();
+            has_scrolled = true;
             pos.y += 1;
+            self.cursors.iter_mut().for_each(|c| c.pos.y += 1);
         }
 
-        let current = self.cursors.get(self.main_cursor).expect("cursor not found").current();
+        let current = self
+            .cursors
+            .get(self.main_cursor)
+            .expect("cursor not found")
+            .current();
         let line = self.lines.get(current.line).unwrap();
 
         // Horizontal check, done only when the screen can scroll horizontally:
         if let WrapMethod::NoWrap = self.options.wrap_method {
             let distance = line.get_distance_to_col(current.col, &self.options.tabs);
+
+            // If the distance is greater, it means that the cursor is out of bounds.
             if distance >= self.x_shift + self.area.width() - scrolloff.x {
+                // Shift by the amount required to keep the cursor in bounds.
                 self.x_shift = distance + scrolloff.x + 1 - self.area.width();
                 has_scrolled = true;
+            // Check if `self.x_shift` is already at 0, if it is, no scrolling is dones.
             } else if distance <= self.x_shift + scrolloff.x && self.x_shift != 0 {
-                self.x_shift = max(distance as i32 - scrolloff.x as i32 , 0) as u16;
+                self.x_shift = distance.saturating_sub(scrolloff.x);
                 has_scrolled = true;
             }
-            self.cursors.iter_mut().for_each(|c| c.pos.x -= self.x_shift as i32);
+            // If the screen moves `x` forward, cursors must move `x` backward to keep them steady.
+            self.cursors
+                .iter_mut()
+                .for_each(|c| c.pos.x -= self.x_shift as i32);
         }
 
         has_scrolled
@@ -363,16 +446,15 @@ impl<T: OutputArea> File<T> {
 
     /// Prints the file, according to its current position.
     pub fn print_file(&mut self, force: bool) {
-
         // Saving the current positions to print the lines where cursors have been.
-        let saved: Vec<(usize, CursorPos, u16)> = self.cursors.iter()
-            .map(|c| (c.current().line, c.pos, c.wraps())).collect();
+        let saved: Vec<(usize, CursorPos, u16)> = self
+            .cursors.iter().map(|c| (c.current().line, c.pos, c.wraps())).collect();
 
         // Updates the information for each cursor in the file.
         self.cursors.iter_mut().for_each(|c| c.update(&self.lines, &self.options));
 
         // Checks if said update has caused the file to scroll.
-        let has_scrolled = self.has_scrolled();
+        let has_scrolled = self.update_scroll();
 
         // The line at the top of the screen and the amount of hidden columns.
         let skip = if self.top_wraps > 0 {
@@ -382,6 +464,7 @@ impl<T: OutputArea> File<T> {
             0
         };
 
+        // If the file has scrolled, reprint the whole screen.
         if has_scrolled || force {
             let area = &mut self.area;
 
@@ -393,19 +476,20 @@ impl<T: OutputArea> File<T> {
 
             // Prints the remaining lines
             for line in self.lines.iter().skip(self.top_line + 1) {
-                if line_origin.y > area.height() { break; }
+                if line_origin.y > area.height() {
+                    break;
+                }
                 line_origin.y += line.print(area, line_origin, 0, &self.options, self.x_shift);
             }
 
-            // Clears until the end of the screen.
+            // Clears the lines where nothing has been printed.
             for _ in line_origin.y..=self.area.height() {
                 self.area.move_cursor(line_origin);
                 self.area.print(" ".repeat(self.area.width() as usize));
                 line_origin.y += 1;
             }
+        // If it hasn't, only reprint the lines where cursors have been in.
         } else {
-            let area = &mut self.area;
-
             let mut printed_lines = Vec::new();
 
             for (current, prev) in self.cursors.iter().zip(saved) {
@@ -418,9 +502,15 @@ impl<T: OutputArea> File<T> {
 
                 if !printed_lines.contains(&current.current().line) {
                     line_origin.y += if prev.0 == self.top_line {
-                        line.print(area, line_origin, skip, &self.options, self.x_shift)
-                    } else if line_origin.y < area.height() {
-                        line.print(area, line_origin, 0, &self.options, self.x_shift)
+                        line.print(
+                            &mut self.area,
+                            line_origin,
+                            skip,
+                            &self.options,
+                            self.x_shift,
+                        )
+                    } else if line_origin.y < self.area.height() {
+                        line.print(&mut self.area, line_origin, 0, &self.options, self.x_shift)
                     } else {
                         0
                     };
@@ -430,6 +520,19 @@ impl<T: OutputArea> File<T> {
             }
         }
     }
+
+    ////////////////////////////////
+    // Getters
+    ////////////////////////////////
+    pub fn top_line(&self) -> usize {
+        self.top_line
+    }
+
+    pub fn top_wraps(&self) -> usize {
+        self.top_wraps
+    }
+
+    pub fn x_shift(&self) -> u16 {
+        self.x_shift
+    }
 }
-
-

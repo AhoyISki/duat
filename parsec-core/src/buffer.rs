@@ -9,7 +9,9 @@ use crate::{
     config::{FileOptions, LineNumbers},
     input::{InputHandler, ModeList},
     output::{OutputPos, OutputArea},
-    file::{TextLine, File}
+    file::{TextLine, File},
+    cursor::FilePos,
+    action::Insertion,
 };
 
 use crossterm::{
@@ -26,7 +28,7 @@ use crossterm::{
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
 // app is used in a terminal or in a GUI.
-pub struct FileHandler<T: OutputArea> {
+pub struct Buffer<T: OutputArea> {
     /// The contents of the file
     pub file: File<T>,
 
@@ -37,19 +39,19 @@ pub struct FileHandler<T: OutputArea> {
     pub line_num_area: T,
 
     /// List of mapped modes for file editing.
-    mappings: ModeList<FileHandler<T>>,
+    mappings: ModeList<Buffer<T>>,
 }
 
-impl<T: OutputArea> FileHandler<T> {
+impl<T: OutputArea> Buffer<T> {
     /// Returns a new instance of ContentArea
-    pub fn new(mut area: T, path: PathBuf, options: FileOptions) -> FileHandler<T> {
+    pub fn new(mut area: T, path: PathBuf, options: FileOptions) -> Buffer<T> {
         // TODO: In the future, this will not panic!
         // TODO: Move this to a more general file.
         let file = fs::read_to_string(path).expect("file not found");
 
         let line_num_area;
 
-        let mut file_handler = FileHandler {
+        let mut file_handler = Buffer {
             file: {
                 let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &options.tabs))
                                                .collect();
@@ -79,36 +81,79 @@ impl<T: OutputArea> FileHandler<T> {
             "insert" => [
                 // Move all cursors up.
                 key: (KeyCode::Up, KeyModifiers::NONE) => {
-                    |h: &mut FileHandler<T>| {
+                    |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut()
-                            .for_each(|c| c.move_vertically(&h.file.lines, -1, &h.file.options.tabs));
+                            .for_each(|c| c.move_ver(-1, &h.file.lines, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors down.
                 key: (KeyCode::Down, KeyModifiers::NONE) => {
-                    |h: &mut FileHandler<T>| {
+                    |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut()
-                            .for_each(|c| c.move_vertically(&h.file.lines, 1, &h.file.options.tabs));
+                            .for_each(|c| c.move_ver(1, &h.file.lines, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors left.
                 key: (KeyCode::Left, KeyModifiers::NONE) => {
-                    |h: &mut FileHandler<T>| {
+                    |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut()
-                            .for_each(|c| c.move_horizontally(&h.file.lines, -1, &h.file.options.tabs));
+                            .for_each(|c| c.move_hor(-1, &h.file.lines, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
                 // Move all cursors right.
                 key: (KeyCode::Right, KeyModifiers::NONE) => {
-                    |h: &mut FileHandler<T>| {
+                    |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut()
-                            .for_each(|c| c.move_horizontally(&h.file.lines, 1, &h.file.options.tabs));
+                            .for_each(|c| c.move_hor(1, &h.file.lines, &h.file.options.tabs));
                         h.refresh_screen(false);
                     }
                 },
+                key: (KeyCode::Backspace, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let end_pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        
+                        let start_pos = if end_pos.col > 0 {
+                            FilePos { col: end_pos.col - 1, ..end_pos }
+                        } else if end_pos.line > 0 {
+                            let line = h.file.lines.get(end_pos.line - 1).unwrap();
+                            FilePos { col: line.text().len(), line: end_pos.line - 1 }
+                        } else {
+                            return;
+                        };
+                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
+                        cursor.move_to(start_pos, &h.file.lines, &h.file.options);
+                        let (_, do_refresh) = h.file.splice_text(start_pos, end_pos, None);
+                        h.refresh_screen(do_refresh);
+                    }
+                },
+                key: (KeyCode::Tab, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let (ch, move_len) = if h.file.options.tabs_as_spaces {
+                            let tab_len = h.file.options.tabs.get_tab_len(pos.col as u16) as usize;
+                            (Insertion::new(" ".repeat(tab_len)), tab_len as i32)
+                        } else {
+                            (Insertion::new("\t".to_string()), 1)
+                        };
+                        let (_, do_refresh) = h.file.insert_text(pos, &ch);
+                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
+                        cursor.move_hor(move_len, &h.file.lines, &h.file.options.tabs);
+                        h.refresh_screen(do_refresh);
+                    }
+                },
+                _ => {
+                    |h: &mut Buffer<T>, c: char| {
+                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let ch = Insertion::new(c.to_string());
+                        let (_, do_refresh) = h.file.insert_text(pos, &ch);
+                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
+                        cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                        h.refresh_screen(do_refresh);
+                    }
+                }
             ]
         }
 
@@ -130,11 +175,12 @@ impl<T: OutputArea> FileHandler<T> {
             self.file.area.move_cursor(cursor.pos.into());
             match self.file.get_char(cursor.current()) {
                 Some(ch) => {
-                    if ch.text.content() == "\t" {
-                        let tab_len = self.file.options.tabs.get_tab_len(OutputPos::from(cursor.pos).x);
+                    if ch.ch.content() == "\t" {
+                        let modified_x = OutputPos::from(cursor.pos).x + self.file.x_shift();
+                        let tab_len = self.file.options.tabs.get_tab_len(modified_x);
                         self.file.area.print(" ".repeat(tab_len as usize).attribute(Reverse));
                     } else {
-                        self.file.area.print(ch.text.clone().attribute(Reverse));
+                        self.file.area.print(ch.ch.clone().attribute(Reverse));
                     }
                 }
                 None => self.file.area.print(" ".yellow().attribute(Reverse)),
@@ -144,13 +190,13 @@ impl<T: OutputArea> FileHandler<T> {
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.
         let mut pos = crate::output::OutputPos { x: 0, y: 0 };
-        let top_line = *self.file.top_line();
+        let top_line = self.file.top_line();
 
         self.line_num_area.move_cursor(pos);
 
         'a: for (index, line) in self.file.lines.iter().skip(top_line).enumerate() {
             let wraps = if index == 0 {
-                *self.file.top_wraps()..(line.wrap_cols().len() + 1)
+                self.file.top_wraps()..(line.wrap_cols().len() + 1)
             } else {
                 0..(line.wrap_cols().len() + 1)
             };
@@ -193,4 +239,4 @@ impl<T: OutputArea> FileHandler<T> {
     }
 }
 
-impl_input_handler!(FileHandler<T>, mappings);
+impl_input_handler!(Buffer<T>, mappings);
