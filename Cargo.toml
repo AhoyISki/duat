@@ -2,5 +2,4 @@
 members = [
     "parsec-core",
     "parsec-term",
-    "crossterm"
 ]
