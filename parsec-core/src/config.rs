@@ -9,6 +9,15 @@ pub enum WrapMethod {
     NoWrap,
 }
 
+impl WrapMethod {
+    pub fn is_wrapped(&self) -> bool {
+        match self {
+            WrapMethod::NoWrap => false,
+            _ => true,
+        }
+    }
+}
+
 /// How to show the line numbers on screen.
 #[derive(Copy, Clone, Debug)]
 pub enum LineNumbers {
@@ -42,12 +51,20 @@ impl TabPlaces {
 /// Options specific to file printing.
 #[derive(Clone, Debug)]
 pub struct FileOptions {
+    /// How to wrap the file.
     pub wrap_method: WrapMethod,
+    /// The distance between the cursor and the edges of the screen when scrolling.
     pub scrolloff: OutputPos,
+    /// How to show the line numbers.
     pub line_numbers: LineNumbers,
+    /// How to indent.
     pub tabs: TabPlaces,
+    /// Wether to indent wrapped lines or not.
     pub wrap_indent: bool,
+    /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
+    /// If ranges in text should include grapheme parts (diacritics, &zwj, skin color, etc).
+    pub fractional_graphemes: bool,
 }
 
 /// The options of the text editor.

@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
-    fs
+    fs,
+    cmp::*,
 };
 
 use crate::{
@@ -8,10 +9,10 @@ use crate::{
     impl_input_handler,
     config::{FileOptions, LineNumbers},
     input::{InputHandler, ModeList},
-    output::{OutputPos, OutputArea},
+    output::{OutputPos, OutputArea, TextChar},
     file::{TextLine, File},
-    cursor::FilePos,
-    action::Selection,
+    cursor::TextPos,
+    action::TextRange,
 };
 
 use crossterm::{
@@ -40,6 +41,7 @@ pub struct Buffer<T: OutputArea> {
 
     /// List of mapped modes for file editing.
     mappings: ModeList<Buffer<T>>,
+
 }
 
 impl<T: OutputArea> Buffer<T> {
@@ -111,94 +113,141 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(false);
                     }
                 },
-                key: (KeyCode::Delete, KeyModifiers::NONE) => {
+                key: (KeyCode::Up, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
-                        let start_pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let line = h.file.lines.get(start_pos.line).unwrap();
-                        
-                        let end_pos = if start_pos.col < line.text().len() {
-                            FilePos { col: start_pos.col + 1, ..start_pos }
-                        } else if start_pos.line < h.file.lines.len() {
-                            FilePos { col: 0, line: start_pos.line + 1 }
-                        } else {
-                            return;
-                        };
-                        let selection = Selection::new(start_pos, end_pos, &h.file.lines);
-                        let text = vec!["".to_string()];
-
-                        let (_, do_refresh) = h.file.splice_text(selection, &text);
-                        h.refresh_screen(do_refresh);
+                        h.file.cursors.iter_mut().for_each(|c| {
+                            if let None = c.anchor() { c.set_anchor(); }
+                            c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
+                        });
+                        h.refresh_screen(false);
                     }
                 },
-                key: (KeyCode::Backspace, KeyModifiers::NONE) => {
+                // Move all cursors down.
+                key: (KeyCode::Down, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
-                        let end_pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        h.file.cursors.iter_mut().for_each(|c| {
+                            if let None = c.anchor() { c.set_anchor(); }
+                            c.move_ver(1, &h.file.lines, &h.file.options.tabs);
+                        });
+                        h.refresh_screen(false);
+                    }
+                },
+                // Move all cursors left.
+                key: (KeyCode::Left, KeyModifiers::SHIFT) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.cursors.iter_mut().for_each(|c| {
+                            if let None = c.anchor() { c.set_anchor(); }
+                            c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
+                        });
+                        h.refresh_screen(false);
+                    }
+                },
+                // Move all cursors right.
+                key: (KeyCode::Right, KeyModifiers::SHIFT) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.cursors.iter_mut().for_each(|c| {
+                            if let None = c.anchor() { c.set_anchor(); }
+                            c.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                        });
+                        h.refresh_screen(false);
+                    }
+                },
+                // Deletes either the character in front, or the selection.
+                key: (KeyCode::Delete, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let cursor = h.file.cursors.get(h.file.main_cursor).unwrap();
+
+                        let mut start = cursor.current();
+                        let line = h.file.lines.get(start.line).unwrap();
                         
-                        let start_pos = if end_pos.col > 0 {
-                            FilePos { col: end_pos.col - 3, ..end_pos }
-                        } else if end_pos.line > 0 {
-                            let line = h.file.lines.get(end_pos.line - 1).unwrap();
-                            FilePos { col: line.text().len(), line: end_pos.line - 1 }
+                        let end = if let Some(anchor) = cursor.anchor() {
+                            let end = max(start, anchor);
+                            start = min(start, anchor);
+                            end
+                        } else if start.col < line.text().len() {
+                            TextPos { col: start.col + 1, ..start }
+                        } else if start.line < h.file.lines.len() {
+                            TextPos { col: 0, line: start.line + 1 }
                         } else {
                             return;
                         };
-                        let selection = Selection::new(start_pos, end_pos, &h.file.lines);
-                        panic!("{:?}", selection);
 
-                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
-                        cursor.move_to(start_pos, &h.file.lines, &h.file.options);
-                        let text = vec!["".to_string()];
-                        let (_, do_refresh) = h.file.splice_text(selection, &text);
-                        h.refresh_screen(do_refresh);
+                        let range = TextRange { start, end };
+                        let edit = vec![""];
+
+						let refresh_needed = h.file.edit(edit, range);
+						h.refresh_screen(refresh_needed);
+                    }
+                },
+                // Deletes either the character behind, or the selection.
+                key: (KeyCode::Backspace, KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        let cursor = h.file.cursors.get(h.file.main_cursor).unwrap();
+
+                        let mut end = cursor.current();
+                        
+                        let start = if let Some(anchor) = cursor.anchor() {
+                            let start = min(end, anchor);
+                            end = max(end, anchor);
+                            start
+                        } else if end.col > 0 {
+                            TextPos { col: end.col - 1, ..end }
+                        } else if end.line > 0 {
+                            let line = h.file.lines.get(end.line - 1).unwrap();
+                            TextPos { col: line.text().len(), line: end.line - 1 }
+                        } else {
+                            return;
+                        };
+
+                        let range = TextRange { start, end };
+                        let edit = vec![""];
+
+						let refresh_needed = h.file.edit(edit, range);
+						h.refresh_screen(refresh_needed);
                     }
                 },
                 key: (KeyCode::Tab, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let (text, move_len) = if h.file.options.tabs_as_spaces {
-                            let tab_len = h.file.options.tabs.get_tab_len(pos.col as u16) as usize;
-                            (vec![" ".repeat(tab_len)], tab_len as i32)
-                        } else {
-                            (vec!["\t".to_string()], 1)
-                        };
-                        let selection = Selection::new(pos, pos, &h.file.lines);
 
-                        let (_, do_refresh) = h.file.splice_text(selection, &text);
-                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
-                        cursor.move_hor(move_len, &h.file.lines, &h.file.options.tabs);
-                        h.refresh_screen(do_refresh);
+                        let edit = if h.file.options.tabs_as_spaces {
+                            let tab_len = h.file.options.tabs.get_tab_len(pos.col as u16) as usize;
+                            vec![" ".repeat(tab_len)]
+                        } else {
+                            vec!["\t".to_string()]
+                        };
+
+						let range = TextRange { start: pos, end: pos };
+
+						let refresh_needed = h.file.edit(edit, range);
+						h.refresh_screen(refresh_needed);
                     }
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let text = vec!["".to_string(); 2];
 
-                        let selection = Selection::new(pos, pos, &h.file.lines);
+						let range = TextRange { start: pos, end: pos };
+                        let edit = vec![""; 2];
 
-                        let (_, do_refresh) = h.file.splice_text(selection, &text);
-                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
-                        cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
-                        h.refresh_screen(do_refresh);
+						let refresh_needed = h.file.edit(edit, range);
+						h.refresh_screen(refresh_needed);
                     }
                 },
                 _ => {
                     |h: &mut Buffer<T>, c: char| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
-                        let text = vec![c.to_string()];
 
-                        let selection = Selection::new(pos, pos, &h.file.lines);
+						let range = TextRange { start: pos, end: pos };
+                        let edit = vec![c];
 
-                        let (_, do_refresh) = h.file.splice_text(selection, &text);
-                        let cursor = h.file.cursors.get_mut(h.file.main_cursor).unwrap();
-                        cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
-                        h.refresh_screen(do_refresh);
+						h.file.edit(edit, range);
+						h.refresh_screen(false);
                     }
                 }
             ]
         }
 
-        file_handler.file.parse_wrapping();
         file_handler.refresh_screen(true);
 
         file_handler
@@ -215,16 +264,17 @@ impl<T: OutputArea> Buffer<T> {
         for cursor in &self.file.cursors {
             self.file.area.move_cursor(cursor.pos.into());
             match self.file.get_char(cursor.current()) {
-                Some(ch) => {
-                    if ch.ch.content() == "\t" {
+                Some(TextChar::Primary(main_char)) => {
+                    if main_char.ch == '\t' {
                         let modified_x = OutputPos::from(cursor.pos).x + self.file.x_shift();
                         let tab_len = self.file.options.tabs.get_tab_len(modified_x);
                         self.file.area.print(" ".repeat(tab_len as usize).attribute(Reverse));
                     } else {
-                        self.file.area.print(ch.ch.clone().attribute(Reverse));
+                        self.file.area.print(main_char.ch.clone().attribute(Reverse));
                     }
                 }
                 None => self.file.area.print(" ".yellow().attribute(Reverse)),
+                _ => {}
             }
         }
 

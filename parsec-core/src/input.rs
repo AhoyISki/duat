@@ -4,15 +4,15 @@ use crossterm::event::KeyEvent;
 ///
 /// * If there is a key, it's already mapped when starting the app.
 /// * If there is a name, it can be called from the command line.
-pub struct MappedAction<T> {
-    pub cmd: fn(&mut T),
+pub struct MappedCommand<T> {
+    pub command: fn(&mut T),
     pub name: Option<String>,
     pub key: Option<KeyEvent>,
 }
 
-impl<T> MappedAction<T> {
-    fn new(cmd: fn(&mut T), name: Option<String>, key: Option<KeyEvent>) -> Self {
-        MappedAction { cmd, name, key }
+impl<T> MappedCommand<T> {
+    fn new(command: fn(&mut T), name: Option<String>, key: Option<KeyEvent>) -> Self {
+        MappedCommand { command, name, key }
     }
 }
 
@@ -25,7 +25,7 @@ pub struct ModeList<T> {
 /// A mode containing mappings, like vim's insert, normal and visual modes.
 pub struct Mode<T> {
     pub name: String,
-    pub actions: Vec<MappedAction<T>>,
+    pub mapped_commands: Vec<MappedCommand<T>>,
     pub default_action: Option<fn(&mut T, char)>,
 }
 
@@ -34,7 +34,7 @@ impl<T> Mode<T> {
     pub fn new(name: &str) -> Mode<T> {
         Mode {
             name: name.to_string(),
-            actions: Vec::new(),
+            mapped_commands: Vec::new(),
             default_action: None,
         }
     }
@@ -46,8 +46,8 @@ impl<T> Mode<T> {
         if let (None, None) = (name, key) {
             panic!("An unreachable option has been created");
         }
-        self.actions.push(
-            MappedAction::new(
+        self.mapped_commands.push(
+            MappedCommand::new(
                 action,
                 if let Some(name) = name {
                     Some(name.to_string())
@@ -116,24 +116,23 @@ pub trait InputHandler {
 ///             mappings: Mappings::new(),
 ///         }
 ///
-///         map_actions!(
+///         map_commands!(
 ///             handler: MyStruct, mappings;
 ///             // The first mode is the default mode of the `InputHandler`.
 ///             "first_mode" => [
-///                 // Action mapped to a name and a KeyEvent. This action can be
-///                 // remapped and called from the command line. It also has a
+///                 // Action mapped to a name and a KeyEvent. This action can be remapped and
+///                 // called from the command line. It also has a
 ///                 // default KeyEvent.
 ///                 (key_code, key_modifiers), "action_name_1" => { method_1 },
-///                 // Action mapped to a KeyEvent only. This action can only be
-///                 // remapped through the original mapping. Without a name, it
-///                 // can't be called from the command line. 
+///                 // Action mapped to a KeyEvent only. This action can only be remapped through 
+///                 // the original mapping. Without a name, it can't be called using a command.
 ///                 key: (key_code, key_modifiers) => { method_2 },
 ///                 // Action mapped to a name only. This action can be remapped and
 ///                 // called from the command line, but it has no default mapping.
 ///                 name: "action_name_2" => { method_3 },
 ///                 // Default action. This action is only called if no other actions
-///                 // have been. It will only be called on symbols, so things like
-///                 // Esc, Del, and F keys won't be detected.
+///                 // have been. It will only be called on characters, so things like
+///                 // Esc, Del, and F(num) keys won't be detected.
 ///                 _ => { default_method }
 ///             // Other modes may be accessed by changing mappings.current_mode
 ///             // to the correct index (0 for "first_mode", 1 for "second_mode").
@@ -158,7 +157,7 @@ pub trait InputHandler {
 ///         handler
 ///     }
 ///
-///     // Actions cannot take any input, since the only thing they know is that they
+///     // Commands cannot take any input, since the only thing they know is that they
 ///     // have been triggered.
 ///     fn method_1(&mut self) { ... }
 ///     fn method_2(&mut self) { ... }
@@ -212,7 +211,7 @@ macro_rules! map_actions {
 
 /// Implements `InputHandler` automatically.
 ///
-/// Note: This macro must be called alongside map_actions! for proper mapping
+/// Note: This macro must be called alongside map_commands! for proper mapping
 /// implementation.
 ///
 /// # Examples
@@ -227,7 +226,7 @@ macro_rules! map_actions {
 ///
 /// impl MyStruct {
 ///     fn new() -> MyStruct {
-///         map_actions!( ... );
+///         map_commands!( ... );
 ///     }
 /// }
 ///
@@ -240,10 +239,10 @@ macro_rules! impl_input_handler {
             fn handle_key(&mut self, key: KeyEvent) {
                 let mode = self.$mode_list.modes.get(self.$mode_list.current_mode).unwrap();
 
-                for action in &mode.actions {
+                for action in &mode.mapped_commands {
                     if let Some(action_key) = action.key {
                         if key == action_key {
-                            (action.cmd)(self);
+                            (action.command)(self);
                             return;
                         }
                     }
@@ -258,7 +257,7 @@ macro_rules! impl_input_handler {
 
             fn bind_action(&mut self, name: &str, key: KeyEvent) {
                 for mode in &mut self.$mode_list.modes {
-                    for action in &mut mode.actions {
+                    for action in &mut mode.mapped_commands {
                         if let Some(option_name) = action.name.clone() {
                             if option_name == name {
                                 action.key = Some(key);
@@ -273,7 +272,7 @@ macro_rules! impl_input_handler {
                 let mut name_vec = Vec::new();
 
                 for mode in &self.$mode_list.modes {
-                    for action in &mode.actions {
+                    for action in &mode.mapped_commands {
                         if let Some(name) = &action.name {
                             name_vec.push(name.clone());
                         }

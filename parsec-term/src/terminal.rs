@@ -17,7 +17,7 @@ use parsec_core::{
     config::Options,
     output::{
         OutputArea,
-        StyledChar,
+        MainChar,
         OutputPos,
     }
 };
@@ -41,8 +41,7 @@ impl TermArea {
 }
 
 impl OutputArea for TermArea {
-    fn print_and_style(&mut self, ch: StyledChar) {
-        self.stdout.queue(PrintStyledContent(ch.ch)).unwrap();
+    fn print_and_style(&mut self, ch: MainChar) {
     }
 
     fn print<T: Display>(&mut self, ch: T) {

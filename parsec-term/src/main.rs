@@ -39,6 +39,7 @@ fn main() {
             tabs: TabPlaces::Regular(4),
             wrap_indent: true,
             tabs_as_spaces: true,
+            fractional_graphemes: false,
         }
     };
 
