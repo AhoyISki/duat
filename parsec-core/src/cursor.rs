@@ -1,21 +1,20 @@
-use std::{cmp, ops};
-
 use crate::{
-    output::{OutputArea, TextChar},
-    config::{TabPlaces, FileOptions},
+    config::{FileOptions, TabPlaces},
+    file::get_char_width,
+    output::OutputArea,
 };
 
-use super::file::{TextLine, File};
+use super::file::{File, TextLine};
 
 /// A position used for cursors.
-/// 
+///
 /// This object indicates where each cursor is, in relation to the output
 /// area. This means that the cursors should be able to have negative
 /// positions. In y for previous lines, and in x for previous columns.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CursorPos {
     pub x: i32,
-    pub y: i32
+    pub y: i32,
 }
 
 // Any use of the terms col and line refers specifically to a position in the file,
@@ -23,32 +22,38 @@ pub struct CursorPos {
 // TODO: move this to a more general file.
 // TODO: In the future, this shouldn't be public, probably.
 /// A position in a `Vec<String>` (line and character address).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TextPos {
     pub col: usize,
     pub line: usize,
 }
 
-impl ops::Add for TextPos {
+impl std::ops::Add for TextPos {
     type Output = TextPos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line + rhs.line, col: self.col + rhs.col }
+        TextPos {
+            line: self.line + rhs.line,
+            col: self.col + rhs.col,
+        }
     }
 }
 
-impl ops::Sub for TextPos {
+impl std::ops::Sub for TextPos {
     type Output = TextPos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line - rhs.line, col: self.col - rhs.col }
+        TextPos {
+            line: self.line - rhs.line,
+            col: self.col - rhs.col,
+        }
     }
 }
 
 // This is done because if the line of `self` is bigger than the line of `other`, it doesn't matter
 // what the column of `other` is, `self > other`, but if the line is the same, that's when columns
 // should actually be compared. `#[derive(PartialOrd, Ord)]` would just do a blind comparison.
-impl cmp::PartialOrd for TextPos {
+impl std::cmp::PartialOrd for TextPos {
     fn ge(&self, other: &Self) -> bool {
         self.line > other.line || (self.line == other.line && self.col >= other.col)
     }
@@ -65,21 +70,61 @@ impl cmp::PartialOrd for TextPos {
         self.line < other.line || (self.line == other.line && self.col < other.col)
     }
 
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self > other {
-            Some(cmp::Ordering::Greater)
+            Some(std::cmp::Ordering::Greater)
         } else if self < other {
-            Some(cmp::Ordering::Less)
+            Some(std::cmp::Ordering::Less)
         } else {
-            Some(cmp::Ordering::Equal)
+            Some(std::cmp::Ordering::Equal)
+        }
+    }
+}
+
+impl Ord for TextPos {
+    fn clamp(self, min: Self, max: Self) -> Self
+    where
+        Self: Sized,
+    {
+        if self < min {
+            min
+        } else if self > max {
+            max
+        } else {
+            self
+        }
+    }
+
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        unsafe { self.partial_cmp(other).unwrap_unchecked() }
+    }
+
+    fn max(self, other: Self) -> Self
+    where
+        Self: Sized,
+    {
+        if other > self {
+            other
+        } else {
+            self
+        }
+    }
+
+    fn min(self, other: Self) -> Self
+    where
+        Self: Sized,
+    {
+        if other < self {
+            other
+        } else {
+            self
         }
     }
 }
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
+#[derive(Debug)]
 pub struct FileCursor {
-    /// Position of the cursor on screen.
-    pub pos: CursorPos,
     /// Current position of the cursor in the file.
     current: TextPos,
     /// Target position of the cursor in the file.
@@ -95,46 +140,25 @@ pub struct FileCursor {
     desired_x: usize,
 
     /// How many times the cursor position wraps in the line.
-    wraps: u16,
+    current_wraps: usize,
 }
 
 impl FileCursor {
     // NOTE: Basically a clone of `update()`, might refactor later.
     /// Returns a new instance of `FileCursor`.
-    pub fn new<T: OutputArea>(pos: TextPos, file: &File<T>) -> FileCursor {
-        let width = file.area.width();
-
-        // NOTE: This may not need to crash in the future.
-        let line = file.lines.get(pos.line).expect("invalid line");
-        
-        let offset = line.wrap_cols().iter().filter(|&c| *c < pos.col)
-                         .map(|&c| width - ((c as u16) % width + 1)).sum::<u16>();
-
-        let wraps = (offset + pos.col as u16) / width;
-
-        let (line_range, direction) = if pos.line > file.top_line() {
-            (pos.line..file.top_line(), 1)
-        } else if pos.line < file.top_line() {
-            (file.top_line()..pos.line, -1)
-        } else { (0..0, 0) };
-
-        let mut y = wraps as i32;
-        for line in file.lines.get(line_range).unwrap() {
-            y += direction * (1 + line.wrap_cols().len() as i32);
-        }
-
-        let cursor_pos = CursorPos {
-            x: ((pos.col as u16 + offset) - (width * wraps)) as i32,
-            y,
+    pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> FileCursor {
+        let line = lines.get(pos.line).unwrap();
+        let current_wraps = match line.wrap_iter() {
+            Some(wrap_iter) => wrap_iter.filter(|&c| c < pos.col as usize).last().unwrap_or(0),
+            None => 0,
         };
-
+        
         FileCursor {
-            pos: cursor_pos,
             current: pos,
             target: pos,
             anchor: None,
-            desired_x: pos.col,
-            wraps,
+            desired_x: line.get_distance_to_col(pos.col, tabs),
+            current_wraps,
         }
     }
 
@@ -144,18 +168,18 @@ impl FileCursor {
         self.target.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
 
         let mut text_iter =
-            lines.get(self.target.line).expect("invalid line").text().iter().enumerate();
+            lines.get(self.target.line).expect("invalid line").text().chars().enumerate();
 
         let mut total_width = 0;
         self.target.col = 0;
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        while let Some((index, text_char)) = text_iter.next() {
-            if let TextChar::Primary(main_char) = text_char {
-                total_width += main_char.width(total_width, tabs) as u16;
-                self.target.col = index;
-                if total_width > self.desired_x as u16 { break }
+        while let Some((index, ch)) = text_iter.next() {
+            total_width += get_char_width(ch, total_width, tabs);
+            self.target.col = index;
+            if total_width > self.desired_x {
+                break;
             }
-        };
+        }
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
@@ -167,16 +191,19 @@ impl FileCursor {
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
                 self.target.line = index;
-                if new_col <= line.text().len() as i32 || index == lines.len() - 1 { break }
-                new_col -= line.text().len() as i32 + 1;
+                if new_col <= line.text().chars().count() as i32 {
+                    break;
+                }
+                new_col -= line.text().chars().count() as i32 + 1;
             }
         } else {
-            let mut line_iter = lines.iter().enumerate().rev()
-                                     .skip(lines.len() - self.target.line);
+            let mut line_iter = lines.iter().enumerate().take(self.target.line).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
-                if new_col >= 0 { break }
-                new_col += line.text().len() as i32 + 1;
+                if new_col >= 0 {
+                    break;
+                }
+                new_col += line.text().chars().count() as i32 + 1;
                 self.target.line = index;
             }
         }
@@ -194,80 +221,44 @@ impl FileCursor {
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
         let line = pos.line.clamp(0, lines.len());
         self.target = TextPos {
-            line, 
+            line,
             col: pos.col.clamp(0, lines.get(line).unwrap().text().len()),
         };
-        self.desired_x = lines.get(line).unwrap()
-                              .get_distance_to_col(self.target.col, &options.tabs) as usize;
-
-        self.update(lines, options);
+        let line = lines.get(line).unwrap();
+        self.desired_x = line.get_distance_to_col(self.target.col, &options.tabs) as usize;
     }
 
-	/// Sets the position of the anchor to be the same as the current cursor position in the file.
-	///
-	/// The `anchor` and `current` can act as a range of text on the file.
-	pub fn set_anchor(&mut self) {
-    	self.anchor = Some(self.current);
-	}
+    /// Sets the position of the anchor to be the same as the current cursor position in the file.
+    ///
+    /// The `anchor` and `current` can act as a range of text on the file.
+    pub fn set_anchor(&mut self) {
+        self.anchor = Some(self.current);
+    }
 
-	/// Unsets the anchor.
-	///
-	/// This is done so the cursor no longer has a valid selection.
-	pub fn unset_anchor(&mut self) {
-    	self.anchor = None;
-	}
+    /// Unsets the anchor.
+    ///
+    /// This is done so the cursor no longer has a valid selection.
+    pub fn unset_anchor(&mut self) {
+        self.anchor = None;
+    }
 
     /// Updates the position of the cursor on the terminal.
     ///
     /// - This function does not take horizontal scrolling into account.
-    pub fn update(&mut self, lines: &Vec<TextLine>, options: &FileOptions) {
+    pub fn update(&mut self, lines: &Vec<TextLine>) {
         // If the target hasn't changed/the cursor has already been updated, nothing needs to
         // be done.
-        if self.target == self.current { return }
+        if self.target == self.current { return; }
 
-        let target_line = lines.get(self.target.line).expect("invalid line");
-        // TODO: Calculate in relation to (width - indentation) with the possibility
-        // of that being only on the first line, for wrapped lines that start at 0
-        let (target_x, target_wraps) = {
-            let (target_wraps, first_col) =
-            match target_line.wrap_cols().iter().enumerate().rfind(|&c| *c.1 < self.target.col) {
-                Some((index, col)) => (index + 1, col + 1),
-                None => (0, 0),
-            };
+		let line = lines.get(self.target.line).unwrap();
 
-            let mut target_x = target_line.get_distance_to_col(self.target.col, &options.tabs)
-                - target_line.get_distance_to_col(first_col, &options.tabs);
-            if target_wraps > 0 && options.wrap_indent {
-                target_x += target_line.indent() as u16;
-            }
-
-            (target_x, target_wraps as u16)
+        self.current = self.target;
+        self.current_wraps = match line.wrap_iter() {
+            Some(wrap_iter) => wrap_iter.filter(|&c| c < self.current.col).last().unwrap_or(0),
+            None => 0,
         };
-
-        // The range shouldn't include the wrapped lines of the last line.
-        let (line_range, direction) = if self.target.line > self.current.line {
-            (self.current.line..self.target.line, 1)
-        } else if self.target.line < self.current.line {
-            (self.target.line..self.current.line, -1)
-        } else { (0..0, 0) };
-
-        // The calculated `d_y`, taking wrappings into account.
-        let mut d_y = 0;
-        for line in lines.get(line_range).expect("invalid line") {
-            d_y += direction * (1 + line.wrap_cols().len() as i32);
-        }
-
-        // `y` is the combination of the initial position `pos.y`, the height between
-        // lines `d_y`, the amount of times the cursor wraps around `target_wraps`
-        // minus the amount of times the cursor originally wraped around `wraps`.
-        self.pos.y = self.pos.y + d_y + target_wraps as i32 - self.wraps as i32;
-        self.wraps = target_wraps as u16;
-        self.pos.x = target_x as i32;
-        self.current.line = self.target.line;
-        self.current.col = self.target.col;
     }
 
-    
     ////////////////////////////////
     // Getters
     ////////////////////////////////
@@ -281,13 +272,13 @@ impl FileCursor {
         self.target
     }
 
-	/// Returns the cursor's anchor on the file.
-	pub fn anchor(&self) -> Option<TextPos> {
-    	self.anchor
-	}
+    /// Returns the cursor's anchor on the file.
+    pub fn anchor(&self) -> Option<TextPos> {
+        self.anchor
+    }
 
     /// Returns the amount of times the cursor wraps around the line.
-    pub fn wraps(&self) -> u16 {
-        self.wraps
+    pub fn current_wraps(&self) -> usize {
+        self.current_wraps
     }
 }

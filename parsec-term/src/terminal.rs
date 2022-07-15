@@ -1,25 +1,21 @@
 use std::{
-    io::{Stdout, stdout, Write},
     fmt::Display,
-    path::PathBuf
+    io::{stdout, Stdout, Write},
+    path::PathBuf,
 };
 
 use crossterm::{
-    style::{PrintStyledContent, Print},
-    QueueableCommand, ExecutableCommand,
-    cursor::MoveTo, terminal,
-    event::{read, Event, KeyEvent, KeyCode, KeyModifiers},
+    cursor::{MoveTo, SavePosition, RestorePosition},
+    event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
+    style::{Print, SetStyle},
+    terminal, ExecutableCommand, QueueableCommand,
 };
 
 use parsec_core::{
-    input::InputHandler,
     buffer::Buffer,
     config::Options,
-    output::{
-        OutputArea,
-        MainChar,
-        OutputPos,
-    }
+    input::InputHandler,
+    output::{OutputArea, OutputPos},
 };
 
 /// An area in the terminal used for printing text.
@@ -36,12 +32,17 @@ pub struct TermArea {
 
 impl TermArea {
     fn new(origin: OutputPos, end: OutputPos) -> Self {
-        TermArea { origin, end, stdout: stdout() }
+        TermArea {
+            origin,
+            end,
+            stdout: stdout(),
+        }
     }
 }
 
 impl OutputArea for TermArea {
-    fn print_and_style(&mut self, ch: MainChar) {
+    fn style(&mut self, tag: parsec_core::tags::CharTag) {
+        self.stdout.queue(SavePosition).unwrap();
     }
 
     fn print<T: Display>(&mut self, ch: T) {
@@ -49,31 +50,37 @@ impl OutputArea for TermArea {
     }
 
     fn move_cursor(&mut self, pos: OutputPos) {
-        self.stdout.queue(MoveTo(self.origin.x + pos.x, self.origin.y + pos.y))
-                   .unwrap();
+        self.stdout.queue(MoveTo(self.origin.x + pos.x, self.origin.y + pos.y)).unwrap();
     }
 
-    fn width(&self) -> u16 {
-        self.end.x - self.origin.x
+    fn width(&self) -> usize {
+        (self.end.x - self.origin.x) as usize
     }
 
-    fn height(&self) -> u16 {
-        self.end.y - self.origin.y
+    fn height(&self) -> usize {
+        (self.end.y - self.origin.y) as usize
     }
 
     fn flush(&mut self) {
+        self.stdout.queue(RestorePosition).unwrap();
         self.stdout.flush().expect("flushing failed, somehow");
     }
 
     fn partition_x(&mut self, x: u16) -> Self {
-        let end = OutputPos { x: self.origin.x + x - 1, y: self.end.y };
+        let end = OutputPos {
+            x: self.origin.x + x - 1,
+            y: self.end.y,
+        };
         let term_area = TermArea::new(self.origin, end);
         self.origin.x += x;
         term_area
     }
 
     fn partition_y(&mut self, y: u16) -> Self {
-        let end = OutputPos { x: self.end.x, y: self.origin.y + y };
+        let end = OutputPos {
+            x: self.end.x,
+            y: self.origin.y + y,
+        };
         let term_area = TermArea::new(self.origin, end);
         self.origin.y += y;
         term_area
@@ -90,13 +97,13 @@ pub fn process_events(input_handlers: &mut Vec<Box<dyn InputHandler>>) {
             Event::Key(key) => {
                 // NOTE: Remove this!!
                 if key == KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE) {
-                    break
+                    break;
                 }
                 for input_handler in &mut *input_handlers {
                     input_handler.handle_key(key);
                 }
             }
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -108,12 +115,16 @@ pub fn startup() {
     use std::panic::set_hook;
     set_hook(Box::new(|msg| {
         let mut stdout = stdout();
-        
+
         terminal::disable_raw_mode().unwrap();
 
-        stdout.execute(terminal::EnableLineWrap).unwrap()
-              .execute(terminal::Clear(terminal::ClearType::All)).unwrap()
-              .execute(MoveTo(0, 0)).unwrap();
+        stdout
+            .execute(terminal::EnableLineWrap)
+            .unwrap()
+            .execute(terminal::Clear(terminal::ClearType::All))
+            .unwrap()
+            .execute(MoveTo(0, 0))
+            .unwrap();
 
         println!("{}", msg);
     }));
@@ -122,23 +133,34 @@ pub fn startup() {
 
     terminal::enable_raw_mode().unwrap();
 
-    stdout.execute(terminal::DisableLineWrap).unwrap()
-          .execute(terminal::Clear(terminal::ClearType::All)).unwrap();
+    stdout
+        .execute(terminal::DisableLineWrap)
+        .unwrap()
+        .execute(terminal::Clear(terminal::ClearType::All))
+        .unwrap();
 }
 
 /// Quits the app and returns the terminal to usable state.
 pub fn quit() {
     let mut stdout = stdout();
 
-    stdout.execute(terminal::EnableLineWrap).unwrap()
-          .execute(terminal::Clear(terminal::ClearType::All)).unwrap()
-          .execute(MoveTo(0, 0)).unwrap();
+    stdout
+        .execute(terminal::EnableLineWrap)
+        .unwrap()
+        .execute(terminal::Clear(terminal::ClearType::All))
+        .unwrap()
+        .execute(MoveTo(0, 0))
+        .unwrap();
 
     terminal::disable_raw_mode().unwrap();
 }
 
 pub fn new_buffer(
-    origin: OutputPos, end: OutputPos, file_path: PathBuf, options: &Options) -> Buffer<TermArea> {
+    origin: OutputPos,
+    end: OutputPos,
+    file_path: PathBuf,
+    options: &Options,
+) -> Buffer<TermArea> {
     let area = TermArea::new(origin, end);
 
     Buffer::new(area, file_path, options.file_options.clone())

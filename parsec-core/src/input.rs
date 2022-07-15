@@ -40,23 +40,15 @@ impl<T> Mode<T> {
     }
 
     /// Adds an action to the mode.
-    pub fn add_action(&mut self, action: fn(&mut T), name: Option<&str>,
-        key: Option<KeyEvent>) {
-
+    pub fn add_action(&mut self, action: fn(&mut T), name: Option<&str>, key: Option<KeyEvent>) {
         if let (None, None) = (name, key) {
             panic!("An unreachable option has been created");
         }
-        self.mapped_commands.push(
-            MappedCommand::new(
-                action,
-                if let Some(name) = name {
-                    Some(name.to_string())
-                } else {
-                    None
-                },
-                key
-            )
-        );
+        self.mapped_commands.push(MappedCommand::new(
+            action,
+            if let Some(name) = name { Some(name.to_string()) } else { None },
+            key,
+        ));
     }
 
     /// Adds a default action to the mode.
@@ -77,7 +69,6 @@ impl<T> ModeList<T> {
         self.modes.push(Mode::new(name));
     }
 }
-
 
 /// Handles inputs from the user.
 ///
@@ -103,7 +94,7 @@ pub trait InputHandler {
 /// # Examples
 ///
 /// Usage:
-/// 
+///
 /// ```
 /// struct MyStruct {
 ///     ...,
@@ -124,7 +115,7 @@ pub trait InputHandler {
 ///                 // called from the command line. It also has a
 ///                 // default KeyEvent.
 ///                 (key_code, key_modifiers), "action_name_1" => { method_1 },
-///                 // Action mapped to a KeyEvent only. This action can only be remapped through 
+///                 // Action mapped to a KeyEvent only. This action can only be remapped through
 ///                 // the original mapping. Without a name, it can't be called using a command.
 ///                 key: (key_code, key_modifiers) => { method_2 },
 ///                 // Action mapped to a name only. This action can be remapped and
@@ -168,7 +159,7 @@ pub trait InputHandler {
 ///     fn default_method(&mut self, &str) { ... }
 /// }
 /// ```
-/// 
+///
 #[macro_export]
 macro_rules! map_actions {
     ($handler:ident: $handler_type:ty, $mode_list:ident;
@@ -187,7 +178,7 @@ macro_rules! map_actions {
 
         $(
             $handler.$mode_list.add_mode($mode);
-            
+
             index += 1;
 
             let mode = $handler.$mode_list.modes.get_mut(index - 1).unwrap();
@@ -288,7 +279,7 @@ macro_rules! impl_input_handler {
                 mode.name == name
             }
         }
-    }
+    };
 }
 
 // TODO: Allow the binding of multiple actions to the same key;

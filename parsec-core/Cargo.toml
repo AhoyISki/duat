@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 unicode-segmentation = "*"
 unicode-width = "*"
-crossterm = "*"
+crossterm = { version = "*", path = "../../crossterm/" }

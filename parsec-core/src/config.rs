@@ -1,5 +1,3 @@
-use crate::output::OutputPos;
-
 /// If and how to wrap lines at the end of the screen.
 #[derive(Copy, Clone, Debug)]
 pub enum WrapMethod {
@@ -7,6 +5,13 @@ pub enum WrapMethod {
     Capped(u16),
     Word,
     NoWrap,
+}
+
+// Pretty much only exists because i wanted one of these with usize as its builtin type.
+#[derive(Copy, Clone, Debug)]
+pub struct ScrollOff {
+    pub d_y: usize,
+    pub d_x: usize,
 }
 
 impl WrapMethod {
@@ -24,19 +29,19 @@ pub enum LineNumbers {
     None,
     Absolute,
     Relative,
-    Hybrid
+    Hybrid,
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.
 #[derive(Clone, Debug)]
 pub enum TabPlaces {
-    Regular(u16),
-    Varied(Vec<u16>),
+    Regular(usize),
+    Varied(Vec<usize>),
 }
 
 impl TabPlaces {
     /// Returns the amount of spaces between a position and the next tab place.
-    pub fn get_tab_len(&self, x: u16) -> u16 {
+    pub fn get_tab_len(&self, x: usize) -> usize {
         match self {
             TabPlaces::Regular(step) => (step - (x % step)),
             TabPlaces::Varied(steps) => {
@@ -54,7 +59,7 @@ pub struct FileOptions {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.
-    pub scrolloff: OutputPos,
+    pub scrolloff: ScrollOff,
     /// How to show the line numbers.
     pub line_numbers: LineNumbers,
     /// How to indent.
@@ -63,8 +68,6 @@ pub struct FileOptions {
     pub wrap_indent: bool,
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
-    /// If ranges in text should include grapheme parts (diacritics, &zwj, skin color, etc).
-    pub fractional_graphemes: bool,
 }
 
 /// The options of the text editor.

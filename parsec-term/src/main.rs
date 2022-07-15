@@ -1,17 +1,11 @@
-use std::{
-    env,
-    path::PathBuf,
-};
+use std::{env, path::PathBuf};
 
 use dirs;
 
 use parsec_core::{
-    config::{
-        Options,
-        FileOptions,
-        WrapMethod, LineNumbers, TabPlaces,
-    },
-    output::OutputPos, input::InputHandler
+    config::{FileOptions, LineNumbers, Options, TabPlaces, WrapMethod, ScrollOff},
+    input::InputHandler,
+    output::OutputPos,
 };
 
 mod terminal;
@@ -21,7 +15,10 @@ fn main() {
 
     let (width, height) = crossterm::terminal::size().expect("crossterm");
     let origin = OutputPos { x: 0, y: 0 };
-    let end = OutputPos { x: width, y: height };
+    let end = OutputPos {
+        x: width,
+        y: height,
+    };
 
     // TODO: Option interfacing. Potentially through compiled rust code.
     // TODO: Create a new() function instead of doing it like this.
@@ -34,13 +31,12 @@ fn main() {
                 WrapMethod::NoWrap
             },
 
-            scrolloff: OutputPos { x: 5, y: 5 },
+            scrolloff: ScrollOff { d_x: 5, d_y: 5 },
             line_numbers: LineNumbers::Hybrid,
             tabs: TabPlaces::Regular(4),
             wrap_indent: true,
             tabs_as_spaces: true,
-            fractional_graphemes: false,
-        }
+        },
     };
 
     // The files being opened, and the options being set at runtime.
