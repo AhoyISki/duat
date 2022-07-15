@@ -1,8 +1,10 @@
-use std::cmp::max;
+use std::cmp::{min, max};
+use std::mem::min_align_of_val;
 
 use unicode_width::UnicodeWidthChar;
 
 use crate::cursor::{FileCursor, TextPos};
+use crate::tags::LineFlags;
 use crate::{
     action::{History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
@@ -18,12 +20,23 @@ pub struct TextLine {
 
     /// The text on the line.
     text: String,
+    line_flags: LineFlags,
 }
 
 impl TextLine {
     /// Returns a new instance of `TextLine`.
     pub fn new(text: &str) -> TextLine {
-        TextLine { char_tags: None, text: String::from(text) }
+        let mut line_flags = LineFlags::empty();
+        
+        if text.chars().all(|c| UnicodeWidthChar::width(c) == Some(1)) {
+            line_flags |= LineFlags::PURE_1_COL;
+        }
+
+		if text.is_ascii() {
+			line_flags |= LineFlags::PURE_ASCII;
+		};
+
+        TextLine { char_tags: None, text: String::from(text), line_flags }
     }
 
     /// Returns the line's indentation.
@@ -45,13 +58,17 @@ impl TextLine {
     pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> usize {
         let mut width = 0;
 
-        for ch in self.text.chars().take(col) {
-            width += if ch == '\t' {
-                tabs.get_tab_len(width)
-            } else {
-                UnicodeWidthChar::width(ch).unwrap_or(1)
-            };
-        }
+		if self.line_flags.contains(LineFlags::PURE_1_COL) {
+    		width = col
+		} else {
+            for ch in self.text.chars().take(col) {
+                width += if ch == '\t' {
+                    tabs.get_tab_len(width)
+                } else {
+                    UnicodeWidthChar::width(ch).unwrap_or(1)
+                };
+            }
+		}
 
         width
     }
@@ -62,21 +79,35 @@ impl TextLine {
     /// last checked character has a width greater than 1), and it is negative if the distance is
     /// greater (happens if there aren't enough characters to cover the distance.
     pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, i32) {
-        let (mut index, mut dist_sum) = (0, 0);
+        let (mut byte, mut dist_sum) = (0, 0);
         let mut text_iter = self.text.chars();
 
-        // NOTE: This looks really stupid.
-        while let (Some(ch), true) = (text_iter.next(), dist_sum < min_dist) {
-            dist_sum += if ch == '\t' {
-                tabs.get_tab_len(dist_sum)
+        if self.line_flags.contains(LineFlags::PURE_1_COL) {
+            (byte, dist_sum) = if self.line_flags.contains(LineFlags::PURE_ASCII) {
+                (min(min_dist, self.text.len()), min(self.text.len() - min_dist, 0))
             } else {
-                UnicodeWidthChar::width_cjk(ch).unwrap_or(1)
-            };
+                match self.text.char_indices().nth(min_dist) {
+                    Some((byte, _)) => (byte, 0),
+                    None => {
+                        let count = self.text.chars().count();
+                        (count, min_dist - count)
+                    }
+                }
+            }
+        } else {
+            // NOTE: This looks really stupid.
+            while let (Some(ch), true) = (text_iter.next(), dist_sum < min_dist) {
+                dist_sum += if ch == '\t' {
+                    tabs.get_tab_len(dist_sum)
+                } else {
+                    UnicodeWidthChar::width_cjk(ch).unwrap_or(1)
+                };
 
-            index += 1;
+                byte += 1;
+            }
         }
 
-        (index, dist_sum as i32 - min_dist as i32)
+        (byte, dist_sum as i32 - min_dist as i32)
     }
 
     /// Parses the wrapping of a single line.
@@ -99,21 +130,36 @@ impl TextLine {
             },
         };
 
-        let mut distance_sum = 0;
-        let mut wrap_indentation = 0;
+        let mut char_index = 0;
+        let mut indent_wrap = 0;
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
-        for (index, ch) in self.text.chars().enumerate() {
-            distance_sum += get_char_width(ch, distance_sum, &options.tabs);
+        if self.line_flags.contains(LineFlags::PURE_1_COL & LineFlags::PURE_ASCII) {
+            char_index = width;
+            while char_index < self.text.len() {
+                char_tags.push((char_index, CharTag::WrapppingChar));
 
-            if distance_sum > width - wrap_indentation {
-                distance_sum = get_char_width(ch, distance_sum, &options.tabs);
+				if options.wrap_indent {
+    				indent_wrap = indent;
+				}
 
-                char_tags.push((index, CharTag::WrapppingChar));
+				// `width` goes to the first character of the next line, so `n * width` would be
+				// off by `n - 1` characters, which is why the `- 1` is there.
+                char_index += width - indent_wrap - 1;
+            }
+        } else {
+            for (index, ch) in self.text.chars().enumerate() {
+                char_index += get_char_width(ch, char_index, &options.tabs);
 
-                if options.wrap_indent {
-                    wrap_indentation = indent;
+                if char_index > width - indent_wrap {
+                    char_index = get_char_width(ch, char_index, &options.tabs);
+
+                    char_tags.push((index, CharTag::WrapppingChar));
+
+                    if options.wrap_indent {
+                        indent_wrap = indent;
+                    }
                 }
             }
         }
@@ -137,9 +183,10 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    fn print<T: OutputArea>(
-        &self, area: &mut T, shift: OutputPos, skip: usize, options: &FileOptions,
-    ) -> u16 {
+    fn print<T>(&self, area: &mut T, shift: OutputPos, skip: usize, options: &FileOptions) -> u16
+    where
+        T: OutputArea
+    {
         // Moves the printing cursor to the beginning of the line.
         let mut printing_pos = OutputPos { x: 0, ..shift };
         area.move_cursor(printing_pos);
@@ -161,6 +208,14 @@ impl TextLine {
         area.print(" ".repeat(max(0, leftover) as usize));
 
         let text_iter = self.text.chars().chain(std::iter::once(' ')).enumerate().skip(skip);
+
+		let char_width = |c, x| {
+    		if self.line_flags.contains(LineFlags::PURE_1_COL) {
+                1
+    		} else {
+        		get_char_width(c, x, &options.tabs)
+    		}
+		};
 
         if let Some(tags) = &self.char_tags {
             let mut wrap_iter = unsafe { self.wrap_iter().unwrap_unchecked() };
@@ -210,7 +265,7 @@ impl TextLine {
                     }
                 }
 
-                let char_width = get_char_width(ch, d_x, &options.tabs);
+                let char_width = char_width(ch, d_x);
                 d_x += char_width;
                 if let WrapMethod::NoWrap = options.wrap_method {
                     if d_x > area.width() {
@@ -227,7 +282,7 @@ impl TextLine {
             }
         } else {
             for (_, ch) in text_iter {
-                let char_width = get_char_width(ch, d_x, &options.tabs);
+                let char_width = char_width(ch, d_x);
                 d_x += char_width;
                 if d_x > area.width() {
                     break;
@@ -411,13 +466,24 @@ impl<T: OutputArea> File<T> {
                 // will definitely be `info.top_line`.
                 let mut needs_new_print_info = target.line <= info.top_line;
                 for (index, line) in lines_iter.enumerate().rev() {
+                    if index == 0 {
+                        let wrap_count = unsafe { line.wrap_iter().unwrap_unchecked().count() };
+                        let limited_scrolloff = scrolloff.d_y.saturating_sub(d_y + 2);
+
+                        info.top_line = 0;
+                        info.top_wraps = wrap_count.saturating_sub(limited_scrolloff);
+                        has_scrolled = true;
+
+						break;
+                    }
+
                     // Add the vertical distance, as 1 line plus the times it wraps around.
                     // `target.line` was already added as `target_wraps`.
                     if index != target.line {
                         d_y += unsafe { line.wrap_iter().unwrap_unchecked().count() + 1 };
                     };
 
-                    if index == info.top_line {
+					if index == info.top_line {
                         // This means we ran into the top line too early, and must scroll up.
                         // `info.top_wraps` is here because the top line might be partially off
                         // screen, and we'd be "comparing" only against the shown wraps, which is
@@ -429,6 +495,10 @@ impl<T: OutputArea> File<T> {
                         } else if !needs_new_print_info {
                             break;
                         }
+                    }
+
+                    if unsafe { crate::buffer::FOR_TEST } {
+                        panic!("{}, {}, {}", info.top_line, info.top_wraps, d_y)
                     }
 
                     // In this case, we have either passed through `info.top_line` while too close,

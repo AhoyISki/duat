@@ -138,6 +138,7 @@ dependencies = [
 name = "parsec-core"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "crossterm",
  "unicode-segmentation",
  "unicode-width",
