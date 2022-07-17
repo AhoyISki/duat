@@ -1,10 +1,10 @@
+use std::cmp::max;
+
+use super::file::TextLine;
 use crate::{
     config::{FileOptions, TabPlaces},
     file::get_char_width,
-    output::OutputArea,
 };
-
-use super::file::{File, TextLine};
 
 /// A position used for cursors.
 ///
@@ -28,14 +28,23 @@ pub struct TextPos {
     pub line: usize,
 }
 
+impl TextPos {
+    pub fn move_line(&self, line: usize) -> TextPos {
+        TextPos { line: self.line + line, ..*self }
+    }
+}
+
 impl std::ops::Add for TextPos {
     type Output = TextPos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TextPos {
-            line: self.line + rhs.line,
-            col: self.col + rhs.col,
-        }
+        TextPos { line: self.line + rhs.line, col: self.col + rhs.col }
+    }
+}
+
+impl std::ops::AddAssign for TextPos {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
     }
 }
 
@@ -43,10 +52,13 @@ impl std::ops::Sub for TextPos {
     type Output = TextPos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos {
-            line: self.line - rhs.line,
-            col: self.col - rhs.col,
-        }
+        TextPos { line: self.line - rhs.line, col: self.col - rhs.col }
+    }
+}
+
+impl std::ops::SubAssign for TextPos {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
     }
 }
 
@@ -152,7 +164,7 @@ impl FileCursor {
             Some(wrap_iter) => wrap_iter.filter(|&c| c < pos.col as usize).last().unwrap_or(0),
             None => 0,
         };
-        
+
         FileCursor {
             current: pos,
             target: pos,
@@ -220,10 +232,8 @@ impl FileCursor {
     /// you are moving once, and it doesn't make sense move to two places without updating.
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
         let line = pos.line.clamp(0, lines.len());
-        self.target = TextPos {
-            line,
-            col: pos.col.clamp(0, lines.get(line).unwrap().text().len()),
-        };
+        self.target =
+            TextPos { line, col: pos.col.clamp(0, lines.get(line).unwrap().text().len()) };
         let line = lines.get(line).unwrap();
         self.desired_x = line.get_distance_to_col(self.target.col, &options.tabs) as usize;
     }
@@ -248,9 +258,11 @@ impl FileCursor {
     pub fn update(&mut self, lines: &Vec<TextLine>) {
         // If the target hasn't changed/the cursor has already been updated, nothing needs to
         // be done.
-        if self.target == self.current { return; }
+        if self.target == self.current {
+            return;
+        }
 
-		let line = lines.get(self.target.line).unwrap();
+        let line = lines.get(self.target.line).unwrap();
 
         self.current = self.target;
         self.current_wraps = match line.wrap_iter() {

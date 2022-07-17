@@ -1,5 +1,8 @@
 use std::{cmp::*, fs, path::PathBuf};
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use unicode_width::UnicodeWidthChar;
+
 use crate::{
     action::TextRange,
     config::{FileOptions, LineNumbers},
@@ -10,9 +13,6 @@ use crate::{
     map_actions,
     output::OutputArea,
 };
-
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use unicode_width::UnicodeWidthChar;
 
 pub static mut FOR_TEST: bool = false;
 
@@ -219,6 +219,16 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(refresh_needed);
                     }
                 },
+                key: (KeyCode::Char('r'), KeyModifiers::ALT) => {
+                    |_: &mut Buffer<T>| {
+                        unsafe { FOR_TEST = true };
+                    }
+                },
+                key: (KeyCode::Char('m'), KeyModifiers::ALT) => {
+                    |h: &mut Buffer<T>| {
+                        panic!("{:#?}", h.file.history.moments[0]);
+                    }
+                },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
@@ -270,7 +280,7 @@ impl<T: OutputArea> Buffer<T> {
                     } else {
                         0..(wrap_iter.count() + 1)
                     }
-                }
+                },
                 None => 0..1,
             };
 
@@ -285,7 +295,7 @@ impl<T: OutputArea> Buffer<T> {
                     LineNumbers::Relative => {
                         let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
                         format!("{:>w$}│", usize::abs_diff(index + top_line, main.line), w = width)
-                    }
+                    },
                     LineNumbers::Hybrid => {
                         let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
                         if index + top_line == main.line {
@@ -297,7 +307,7 @@ impl<T: OutputArea> Buffer<T> {
                                 w = width
                             )
                         }
-                    }
+                    },
                     _ => "".to_string(),
                 };
                 self.line_num_area.print(text);

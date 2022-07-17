@@ -32,11 +32,7 @@ pub struct Mode<T> {
 impl<T> Mode<T> {
     /// Returns a new instance of `Mode`.
     pub fn new(name: &str) -> Mode<T> {
-        Mode {
-            name: name.to_string(),
-            mapped_commands: Vec::new(),
-            default_action: None,
-        }
+        Mode { name: name.to_string(), mapped_commands: Vec::new(), default_action: None }
     }
 
     /// Adds an action to the mode.
@@ -59,10 +55,7 @@ impl<T> Mode<T> {
 
 impl<T> ModeList<T> {
     pub fn new() -> ModeList<T> {
-        ModeList {
-            modes: Vec::new(),
-            current_mode: 0,
-        }
+        ModeList { modes: Vec::new(), current_mode: 0 }
     }
 
     pub fn add_mode(&mut self, name: &str) {
@@ -159,7 +152,6 @@ pub trait InputHandler {
 ///     fn default_method(&mut self, &str) { ... }
 /// }
 /// ```
-///
 #[macro_export]
 macro_rules! map_actions {
     ($handler:ident: $handler_type:ty, $mode_list:ident;

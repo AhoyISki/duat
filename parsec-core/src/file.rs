@@ -1,4 +1,4 @@
-use std::cmp::{min, max};
+use std::cmp::{max, min};
 use std::mem::min_align_of_val;
 
 use unicode_width::UnicodeWidthChar;
@@ -27,14 +27,14 @@ impl TextLine {
     /// Returns a new instance of `TextLine`.
     pub fn new(text: &str) -> TextLine {
         let mut line_flags = LineFlags::empty();
-        
+
         if text.chars().all(|c| UnicodeWidthChar::width(c) == Some(1)) {
             line_flags |= LineFlags::PURE_1_COL;
         }
 
-		if text.is_ascii() {
-			line_flags |= LineFlags::PURE_ASCII;
-		};
+        if text.is_ascii() {
+            line_flags |= LineFlags::PURE_ASCII;
+        };
 
         TextLine { char_tags: None, text: String::from(text), line_flags }
     }
@@ -58,9 +58,9 @@ impl TextLine {
     pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> usize {
         let mut width = 0;
 
-		if self.line_flags.contains(LineFlags::PURE_1_COL) {
-    		width = col
-		} else {
+        if self.line_flags.contains(LineFlags::PURE_1_COL) {
+            width = col
+        } else {
             for ch in self.text.chars().take(col) {
                 width += if ch == '\t' {
                     tabs.get_tab_len(width)
@@ -68,7 +68,7 @@ impl TextLine {
                     UnicodeWidthChar::width(ch).unwrap_or(1)
                 };
             }
-		}
+        }
 
         width
     }
@@ -91,7 +91,7 @@ impl TextLine {
                     None => {
                         let count = self.text.chars().count();
                         (count, min_dist - count)
-                    }
+                    },
                 }
             }
         } else {
@@ -140,12 +140,12 @@ impl TextLine {
             while char_index < self.text.len() {
                 char_tags.push((char_index, CharTag::WrapppingChar));
 
-				if options.wrap_indent {
-    				indent_wrap = indent;
-				}
+                if options.wrap_indent {
+                    indent_wrap = indent;
+                }
 
-				// `width` goes to the first character of the next line, so `n * width` would be
-				// off by `n - 1` characters, which is why the `- 1` is there.
+                // `width` goes to the first character of the next line, so `n * width` would be
+                // off by `n - 1` characters, which is why the `- 1` is there.
                 char_index += width - indent_wrap - 1;
             }
         } else {
@@ -185,7 +185,7 @@ impl TextLine {
     #[inline]
     fn print<T>(&self, area: &mut T, shift: OutputPos, skip: usize, options: &FileOptions) -> u16
     where
-        T: OutputArea
+        T: OutputArea,
     {
         // Moves the printing cursor to the beginning of the line.
         let mut printing_pos = OutputPos { x: 0, ..shift };
@@ -209,13 +209,13 @@ impl TextLine {
 
         let text_iter = self.text.chars().chain(std::iter::once(' ')).enumerate().skip(skip);
 
-		let char_width = |c, x| {
-    		if self.line_flags.contains(LineFlags::PURE_1_COL) {
+        let char_width = |c, x| {
+            if self.line_flags.contains(LineFlags::PURE_1_COL) {
                 1
-    		} else {
-        		get_char_width(c, x, &options.tabs)
-    		}
-		};
+            } else {
+                get_char_width(c, x, &options.tabs)
+            }
+        };
 
         if let Some(tags) = &self.char_tags {
             let mut wrap_iter = unsafe { self.wrap_iter().unwrap_unchecked() };
@@ -255,7 +255,7 @@ impl TextLine {
                             area.move_cursor(printing_pos);
 
                             if options.wrap_indent && shift.x == 0 {
-                                area.print(" ".repeat(self.indent(&options.tabs)));
+                                (0..self.indent(&options.tabs)).for_each(|_| area.print(' '));
                             }
                         } else if let CharTag::MainCursor = tag {
                             area.style(tag);
@@ -314,8 +314,8 @@ impl TextLine {
     ////////////////////////////////
     // Getters
     ////////////////////////////////
-    pub fn text(&self) -> &String {
-        &self.text
+    pub fn text(&self) -> &str {
+        &self.text.as_str()
     }
 }
 
@@ -339,7 +339,8 @@ pub struct File<T> {
     pub main_cursor: usize,
 
     /// The history of edits on this file.
-    history: History,
+    // NOTE: remove pub.
+    pub history: History,
 }
 
 impl<T: OutputArea> File<T> {
@@ -467,14 +468,18 @@ impl<T: OutputArea> File<T> {
                 let mut needs_new_print_info = target.line <= info.top_line;
                 for (index, line) in lines_iter.enumerate().rev() {
                     if index == 0 {
+                        // The top line may not actually change in this case.
+                        let old_top = (info.top_line, info.top_wraps);
+
                         let wrap_count = unsafe { line.wrap_iter().unwrap_unchecked().count() };
                         let limited_scrolloff = scrolloff.d_y.saturating_sub(d_y + 2);
 
                         info.top_line = 0;
                         info.top_wraps = wrap_count.saturating_sub(limited_scrolloff);
-                        has_scrolled = true;
 
-						break;
+                        has_scrolled = old_top != (info.top_line, info.top_wraps);
+
+                        break;
                     }
 
                     // Add the vertical distance, as 1 line plus the times it wraps around.
@@ -483,7 +488,7 @@ impl<T: OutputArea> File<T> {
                         d_y += unsafe { line.wrap_iter().unwrap_unchecked().count() + 1 };
                     };
 
-					if index == info.top_line {
+                    if index == info.top_line {
                         // This means we ran into the top line too early, and must scroll up.
                         // `info.top_wraps` is here because the top line might be partially off
                         // screen, and we'd be "comparing" only against the shown wraps, which is
@@ -495,10 +500,6 @@ impl<T: OutputArea> File<T> {
                         } else if !needs_new_print_info {
                             break;
                         }
-                    }
-
-                    if unsafe { crate::buffer::FOR_TEST } {
-                        panic!("{}, {}, {}", info.top_line, info.top_wraps, d_y)
                     }
 
                     // In this case, we have either passed through `info.top_line` while too close,
@@ -553,10 +554,15 @@ impl<T: OutputArea> File<T> {
         }
 
         for cursor in &mut self.cursors {
-            if cursor.current() >= old_range.end {
-                let new_pos = new_range.end + cursor.current() - old_range.end;
-                cursor.move_to(new_pos, &self.lines, &self.options)
-            }
+            let new_pos = if cursor.current().line == old_range.end.line {
+                new_range.end + cursor.current() - old_range.end
+            } else if cursor.current().line > old_range.end.line {
+                cursor.current().move_line(new_range.end.line - old_range.end.line)
+            } else {
+                continue;
+            };
+
+            cursor.move_to(new_pos, &self.lines, &self.options)
         }
 
         full_refresh_needed
@@ -677,99 +683,6 @@ impl<T: OutputArea> File<T> {
     pub fn x_shift(&self) -> usize {
         self.print_info.x_shift
     }
-}
-
-// NOTE: `new` must not be empty! It has to have at least one `String` even if it's empty.
-/// Splices a `Vec<String>` into another `Vec<String>`.
-
-pub fn splice_lines(
-    old: &mut Vec<TextLine>, edit: Vec<String>, range: TextRange,
-) -> (Vec<String>, TextRange) {
-    let (start, end) = (range.start, range.end);
-    let first_edit = edit[0].as_str();
-
-    // The text that was there before the edit.
-    let mut old_text = Vec::with_capacity(end.line + 1 - start.line);
-
-    // A simple splicing is enough for splices that involve just a single line in both ends.
-    if start.line == end.line && edit.len() == 1 {
-        let first_line = &mut old[start.line];
-
-        let mut char_indices = first_line.text.char_indices();
-
-        let last_byte = match char_indices.nth(end.col) {
-            Some((byte, _)) => byte,
-            None => first_line.text.bytes().count(),
-        };
-
-        let first_byte = if end.col > start.col {
-            char_indices = first_line.text.char_indices();
-            match char_indices.nth(start.col) {
-                Some((byte, _)) => byte,
-                None => 0,
-            }
-        } else {
-            last_byte
-        };
-
-        let replaced_text = &first_line.text[first_byte..last_byte];
-
-        old_text.push(replaced_text.to_owned());
-
-        first_line.text.replace_range(first_byte..last_byte, first_edit);
-    } else {
-        let last_line = &mut old[end.line];
-        let mut char_indices = last_line.text.char_indices();
-        let last_byte = match char_indices.nth(end.col) {
-            Some((byte, _)) => byte,
-            None => last_line.text.bytes().count(),
-        };
-
-        // The end of the last line will be placed at the end of insertions.
-        let cutoff = last_line.text.drain(last_byte..).collect::<String>();
-
-        // Replacing the original end of the first line with the start of `new`.
-        let first_line = &mut old[start.line];
-        let mut char_indices = first_line.text.char_indices();
-        match char_indices.nth(start.col) {
-            Some((first_byte, _)) => {
-                let replaced_text = &first_line.text[first_byte..].to_owned();
-                old_text.push(replaced_text.clone());
-
-                first_line.text.replace_range(first_byte.., first_edit);
-            },
-            None => {
-                old_text.push(String::from(""));
-
-                first_line.text.push_str(first_edit);
-            },
-        };
-
-		if end.line > start.line {
-            old_text.extend(old[(start.line + 1)..end.line].iter().map(|l| l.text().to_owned()));
-            old_text.push(old[end.line].text[..last_byte].to_owned());
-		}
-
-        // Splice aditional lines after the first one. This includes the last line in the range.
-        old.splice(
-            (start.line + 1)..=end.line,
-            edit.get(1..).unwrap().iter().map(|l| TextLine::new(l)),
-        );
-
-        // Adding the remaining text to the last line.
-        old[start.line + edit.len() - 1].text.push_str(&cutoff);
-    };
-
-    let new_range = TextRange {
-        start: range.start,
-        end: if edit.len() == 1 {
-            TextPos { line: start.line, col: start.col + edit.get(0).unwrap().chars().count() }
-        } else {
-            TextPos { line: start.line + edit.len() - 1, col: edit.last().unwrap().chars().count() }
-        },
-    };
-
-    (old_text, new_range)
 }
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {

@@ -60,10 +60,7 @@ impl ops::Add for OutputPos {
     type Output = OutputPos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        OutputPos {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
+        OutputPos { x: self.x + rhs.x, y: self.y + rhs.y }
     }
 }
 
@@ -71,10 +68,7 @@ impl ops::Add<CursorPos> for OutputPos {
     type Output = OutputPos;
 
     fn add(self, rhs: CursorPos) -> Self::Output {
-        OutputPos {
-            x: self.x + rhs.x as u16,
-            y: self.y + rhs.y as u16,
-        }
+        OutputPos { x: self.x + rhs.x as u16, y: self.y + rhs.y as u16 }
     }
 }
 
@@ -118,10 +112,7 @@ impl cmp::PartialOrd for OutputPos {
 
 impl From<CursorPos> for OutputPos {
     fn from(pos: CursorPos) -> Self {
-        OutputPos {
-            x: pos.x as u16,
-            y: pos.y as u16,
-        }
+        OutputPos { x: pos.x as u16, y: pos.y as u16 }
     }
 }
 
