@@ -1,7 +1,5 @@
 use std::cmp::{max, min};
-use std::ops::RangeBounds;
 
-use crossterm::style::Stylize;
 use unicode_width::UnicodeWidthChar;
 
 use crate::cursor::{FileCursor, TextPos};
@@ -17,7 +15,7 @@ use crate::{
 /// A line in the text file.
 pub struct TextLine {
     /// Which columns on the line should wrap around.
-    char_tags: Option<Box<Vec<(usize, CharTag)>>>,
+    char_tags: Option<Box<Vec<(u32, CharTag)>>>,
 
     /// The text on the line.
     text: String,
@@ -129,7 +127,7 @@ impl TextLine {
         if self.line_flags.contains(LineFlags::PURE_1_COL & LineFlags::PURE_ASCII) {
             char_index = width;
             while char_index < self.text.len() {
-                char_tags.push((char_index, CharTag::WrapppingChar));
+                char_tags.push((char_index as u32, CharTag::WrapppingChar));
 
                 if options.wrap_indent {
                     indent_wrap = indent;
@@ -146,7 +144,7 @@ impl TextLine {
                 if char_index > width - indent_wrap {
                     char_index = get_char_width(ch, char_index, &options.tabs);
 
-                    char_tags.push((index, CharTag::WrapppingChar));
+                    char_tags.push((index as u32, CharTag::WrapppingChar));
 
                     if options.wrap_indent {
                         indent_wrap = indent;
@@ -161,7 +159,7 @@ impl TextLine {
     }
 
     /// Returns an iterator over the wrapping columns of the line.
-    pub fn wrap_iter(&self) -> Option<impl Iterator<Item = usize> + '_> {
+    pub fn wrap_iter(&self) -> Option<impl Iterator<Item = u32> + '_> {
         if let Some(tags) = self.char_tags.as_ref() {
             Some(tags.iter().filter(|(_, t)| matches!(t, CharTag::WrapppingChar)).map(|(c, _)| *c))
         } else {
@@ -216,18 +214,18 @@ impl TextLine {
             // immediately, in order to print the text in the correct place. This will happen if
             // the top line wraps and has indentation.
             if let Some(col) = wrap_iter.next() {
-                if skip >= col && options.wrap_indent {
+                if skip >= col as usize && options.wrap_indent {
                     area.print(" ".repeat(self.indent(&options.tabs)));
                 } else {
                 }
             }
 
-            let mut tags_iter = tags.iter().skip_while(|(c, _)| *c < skip);
+            let mut tags_iter = tags.iter().skip_while(|(c, _)| *c < skip as u32);
             let mut current_char_tag = tags_iter.next();
 
             for (col, ch) in text_iter {
                 while let Some(&(tag_col, tag)) = current_char_tag {
-                    if col as usize == tag_col {
+                    if col == tag_col as usize {
                         current_char_tag = tags_iter.next();
 
                         if let CharTag::WrapppingChar = tag {
@@ -409,10 +407,10 @@ impl<T: OutputArea> File<T> {
         } else {
             let (current_wraps, target_wraps, lines_iter) = unsafe {
                 let wraps = self.lines.get_unchecked(current.line).wrap_iter().unwrap_unchecked();
-                let cur = wraps.filter(|&c| c <= current.col).count();
+                let cur = wraps.filter(|&c| c <= current.col as u32).count();
 
                 let wraps = self.lines.get_unchecked(target.line).wrap_iter().unwrap_unchecked();
-                let tar = wraps.filter(|&c| c <= target.col).count();
+                let tar = wraps.filter(|&c| c <= target.col as u32).count();
 
                 (cur, tar, self.lines.get_unchecked_mut(..=target.line).iter_mut())
             };
@@ -687,10 +685,10 @@ impl<T: OutputArea> File<T> {
         let char_tags = &mut self.lines.get_mut(current.line).unwrap().char_tags.as_deref_mut();
         match char_tags {
             Some(tags) => {
-                tags.push((current.col, CharTag::MainCursor));
+                tags.push((current.col as u32, CharTag::MainCursor));
                 tags.sort();
             },
-            None => *char_tags = Some(&mut vec![(current.col, CharTag::MainCursor)]),
+            None => *char_tags = Some(&mut vec![(current.col as u32, CharTag::MainCursor)]),
         }
 
         let info = self.print_info;
@@ -708,7 +706,7 @@ impl<T: OutputArea> File<T> {
             let mut line_origin = OutputPos { x: 0, y: 0 };
 
             // Prints the first line and updates where to print next.
-            line_origin.y += self.print_file_line(info.top_line, skip, line_origin.y);
+            line_origin.y += self.print_file_line(info.top_line, skip as usize, line_origin.y);
 
             // Prints the remaining lines
             for index in (info.top_line + 1)..self.lines.len() {

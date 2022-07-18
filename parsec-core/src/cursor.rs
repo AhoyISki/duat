@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use super::file::TextLine;
 use crate::{
     config::{FileOptions, TabPlaces},

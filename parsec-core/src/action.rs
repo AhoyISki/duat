@@ -1,7 +1,4 @@
-use std::{
-    cmp::{max, min},
-    ops::RangeInclusive,
-};
+use std::ops::RangeInclusive;
 
 use crate::{cursor::TextPos, file::TextLine, output::PrintInfo};
 
