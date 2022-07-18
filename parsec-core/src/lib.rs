@@ -6,3 +6,6 @@ mod file;
 pub mod input;
 pub mod output;
 pub mod tags;
+
+// Useful for testing.
+pub static mut FOR_TEST: bool = false;

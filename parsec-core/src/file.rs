@@ -1,6 +1,7 @@
 use std::cmp::{max, min};
-use std::mem::min_align_of_val;
+use std::ops::RangeBounds;
 
+use crossterm::style::Stylize;
 use unicode_width::UnicodeWidthChar;
 
 use crate::cursor::{FileCursor, TextPos};
@@ -26,17 +27,7 @@ pub struct TextLine {
 impl TextLine {
     /// Returns a new instance of `TextLine`.
     pub fn new(text: &str) -> TextLine {
-        let mut line_flags = LineFlags::empty();
-
-        if text.chars().all(|c| UnicodeWidthChar::width(c) == Some(1)) {
-            line_flags |= LineFlags::PURE_1_COL;
-        }
-
-        if text.is_ascii() {
-            line_flags |= LineFlags::PURE_ASCII;
-        };
-
-        TextLine { char_tags: None, text: String::from(text), line_flags }
+        TextLine { char_tags: None, text: String::from(text), line_flags: LineFlags::empty() }
     }
 
     /// Returns the line's indentation.
@@ -324,7 +315,7 @@ pub struct File<T> {
     /// The lines of the file.
     pub lines: Vec<TextLine>,
 
-    /// Where to start printing on the file.
+    /// Where on the file to start printing.
     print_info: PrintInfo,
 
     /// The area allocated to the file.
@@ -363,7 +354,9 @@ impl<T: OutputArea> File<T> {
             &file.options.tabs,
         ));
 
-        file.parse_wrapping();
+        for line in 0..file.lines.len() {
+            file.update_line_info(line);
+        }
 
         file
     }
@@ -536,6 +529,26 @@ impl<T: OutputArea> File<T> {
         has_scrolled
     }
 
+    // TODO: Eventually will include syntax highlighting, hover info, etc.
+    /// Updates the information for a line in the file.
+    ///
+    /// Returns `true` if the screen needs a full refresh.
+    pub fn update_line_info(&mut self, line: usize) -> bool {
+        let line = &mut self.lines[line];
+
+        line.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
+        line.line_flags.set(
+            LineFlags::PURE_1_COL,
+            !line.text.chars().any(|c| (UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t')),
+        );
+
+        if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
+            line.parse_wrapping(self.area.width(), &self.options)
+        } else {
+            false
+        }
+    }
+
     /// Applies a splice to the file.
     pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange) -> bool
     where
@@ -543,7 +556,12 @@ impl<T: OutputArea> File<T> {
     {
         let old_lines_len = self.lines.len();
 
-        let new_range = self.history.add_change(&mut self.lines, edit, old_range);
+        let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
+        let mut edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
+        let mut full_refresh_needed =
+            edits.iter_mut().any(|l| l.parse_wrapping(self.area.width(), &self.options));
+
+        self.lines.splice(old_range.lines(), edits);
 
         let mut full_refresh_needed = self.lines.len() != old_lines_len;
 
@@ -566,6 +584,56 @@ impl<T: OutputArea> File<T> {
         }
 
         full_refresh_needed
+    }
+
+    /// Undoes the last moment in history.
+    pub fn undo(&mut self) {
+        let (changes, print_info) = self.history.undo(&mut self.lines);
+        self.print_info = print_info;
+
+        for (edit, splice) in &changes {
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
+
+            let added_range = TextRange { start: splice.start, end: splice.added_end };
+            self.lines.splice(added_range.lines(), edit);
+            for line in added_range.lines() {
+                self.update_line_info(line);
+            }
+        }
+
+        let mut cursor_iter = self.cursors.iter_mut();
+        let mut new_cursors = Vec::new();
+
+        for (_, splice) in changes {
+            if let Some(cursor) = cursor_iter.next() {
+                cursor.move_to(splice.taken_end, &self.lines, &self.options);
+            } else {
+                new_cursors.push(FileCursor::new(
+                    splice.taken_end,
+                    &self.lines,
+                    &self.options.tabs,
+                ));
+            }
+        }
+    }
+
+    /// Re-does the last moment in history.
+    pub fn redo(&mut self) {
+        let (changes, print_info) = self.history.redo(&mut self.lines);
+        self.print_info = print_info;
+
+        self.cursors.clear();
+        for (edit, splice) in changes {
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
+
+            let taken_range = TextRange { start: splice.start, end: splice.taken_end };
+            self.lines.splice(taken_range.lines(), edit);
+            for line in taken_range.lines() {
+                self.update_line_info(line);
+            }
+
+            self.cursors.push(FileCursor::new(splice.added_end, &self.lines, &self.options.tabs));
+        }
     }
 
     pub fn print_file_line(&mut self, index: usize, skip: usize, y_shift: u16) -> u16 {
@@ -682,6 +750,10 @@ impl<T: OutputArea> File<T> {
 
     pub fn x_shift(&self) -> usize {
         self.print_info.x_shift
+    }
+
+    pub fn print_info(&self) -> PrintInfo {
+        self.print_info
     }
 }
 

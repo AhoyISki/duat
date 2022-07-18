@@ -13,7 +13,7 @@ pub struct OutputPos {
     pub y: u16,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
     /// The index of the line at the top of the screen.
     pub top_line: usize,

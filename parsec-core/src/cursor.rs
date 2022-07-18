@@ -150,9 +150,6 @@ pub struct FileCursor {
     /// it will be placed in the desired_col. If the line is shorter, it will be
     /// placed in the last column of the line.
     desired_x: usize,
-
-    /// How many times the cursor position wraps in the line.
-    current_wraps: usize,
 }
 
 impl FileCursor {
@@ -160,17 +157,11 @@ impl FileCursor {
     /// Returns a new instance of `FileCursor`.
     pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> FileCursor {
         let line = lines.get(pos.line).unwrap();
-        let current_wraps = match line.wrap_iter() {
-            Some(wrap_iter) => wrap_iter.filter(|&c| c < pos.col as usize).last().unwrap_or(0),
-            None => 0,
-        };
-
         FileCursor {
             current: pos,
             target: pos,
             anchor: None,
             desired_x: line.get_distance_to_col(pos.col, tabs),
-            current_wraps,
         }
     }
 
@@ -265,10 +256,6 @@ impl FileCursor {
         let line = lines.get(self.target.line).unwrap();
 
         self.current = self.target;
-        self.current_wraps = match line.wrap_iter() {
-            Some(wrap_iter) => wrap_iter.filter(|&c| c < self.current.col).last().unwrap_or(0),
-            None => 0,
-        };
     }
 
     ////////////////////////////////
@@ -287,10 +274,5 @@ impl FileCursor {
     /// Returns the cursor's anchor on the file.
     pub fn anchor(&self) -> Option<TextPos> {
         self.anchor
-    }
-
-    /// Returns the amount of times the cursor wraps around the line.
-    pub fn current_wraps(&self) -> usize {
-        self.current_wraps
     }
 }

@@ -1,7 +1,6 @@
 use std::{cmp::*, fs, path::PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use unicode_width::UnicodeWidthChar;
 
 use crate::{
     action::TextRange,
@@ -13,8 +12,6 @@ use crate::{
     map_actions,
     output::OutputArea,
 };
-
-pub static mut FOR_TEST: bool = false;
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
 // app is used in a terminal or in a GUI.
@@ -112,7 +109,6 @@ impl<T: OutputArea> Buffer<T> {
                 key: (KeyCode::Up, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut().for_each(|c| {
-                            unsafe { FOR_TEST = true; }
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
                         });
@@ -123,7 +119,6 @@ impl<T: OutputArea> Buffer<T> {
                 key: (KeyCode::Down, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut().for_each(|c| {
-                            unsafe { FOR_TEST = true; }
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(1, &h.file.lines, &h.file.options.tabs);
                         });
@@ -134,7 +129,6 @@ impl<T: OutputArea> Buffer<T> {
                 key: (KeyCode::Left, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut().for_each(|c| {
-                            unsafe { FOR_TEST = true; }
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
                         });
@@ -145,7 +139,6 @@ impl<T: OutputArea> Buffer<T> {
                 key: (KeyCode::Right, KeyModifiers::SHIFT) => {
                     |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut().for_each(|c| {
-                            unsafe { FOR_TEST = true; }
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         });
@@ -219,14 +212,31 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(refresh_needed);
                     }
                 },
-                key: (KeyCode::Char('r'), KeyModifiers::ALT) => {
+                key: (KeyCode::Char('t'), KeyModifiers::ALT) => {
                     |_: &mut Buffer<T>| {
-                        unsafe { FOR_TEST = true };
+                        unsafe { crate::FOR_TEST = true };
                     }
                 },
                 key: (KeyCode::Char('m'), KeyModifiers::ALT) => {
                     |h: &mut Buffer<T>| {
-                        panic!("{:#?}", h.file.history.moments[0]);
+                        panic!("{:#?}", h.file.history.moments);
+                    }
+                },
+                key: (KeyCode::Char('h'), KeyModifiers::CONTROL) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.history.new_moment(h.file.print_info());
+                    }
+                },
+                key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.undo();
+                        h.refresh_screen(true);
+                    }
+                },
+                key: (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.redo();
+                        h.refresh_screen(true);
                     }
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {

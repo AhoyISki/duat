@@ -1,4 +1,7 @@
-use std::ops::RangeInclusive;
+use std::{
+    cmp::{max, min},
+    ops::RangeInclusive,
+};
 
 use crate::{cursor::TextPos, file::TextLine, output::PrintInfo};
 
@@ -15,10 +18,21 @@ impl TextRange {
         self.start.line..=self.end.line
     }
 
-	/// Returns true if the other range is contained within this one.
-	pub fn contains(&self, other: TextRange) -> bool {
-    	self.start <= other.start && self.end >= other.end
-	}
+    /// Returns true if the other range is contained within this one.
+    pub fn contains_range(&self, other: TextRange) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
+}
+
+/// A range describing a splice operation;
+#[derive(Debug, Clone, Copy)]
+pub struct Splice {
+    /// The start of both texts.
+    pub start: TextPos,
+    /// The end of the added text.
+    pub added_end: TextPos,
+    /// The end of the taken text.
+    pub taken_end: TextPos,
 }
 
 #[derive(Debug)]
@@ -38,12 +52,12 @@ enum Action {
 struct Change {
     /// The text that was added in this change.
     added_text: Vec<String>,
-    /// The range that the replaced text used to occupy.
-    added_range: TextRange,
+
     /// The text that was replaced in this change.
     taken_text: Vec<String>,
-    /// The new range that the added text occupies.
-    taken_range: TextRange,
+
+    /// The splice involving the two texts.
+    splice: Splice,
 }
 
 /// A moment in history, which may contain changes, or may just contain selections.
@@ -63,6 +77,8 @@ pub struct Moment {
 pub struct History {
     /// The list of moments in this file's editing history.
     pub moments: Vec<Moment>,
+
+    current_moment: usize,
 }
 
 // Since the history gets deleted when moments prior to the current one are added, changes in file
@@ -72,31 +88,30 @@ pub struct History {
 // jump to the correct location.
 impl Change {
     /// Applies the change to the given text.
-    fn apply(&self, lines: &mut Vec<TextLine>) {
-        let edit_lines = lines[self.added_range.lines()].iter().map(|l| l.text()).collect();
+    fn apply(&self, lines: &Vec<TextLine>) -> Vec<String> {
+        let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
-        // Returns
-        let (edit, _) = extend_edit(edit_lines, self.added_text.clone(), self.added_range);
-        let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
+        let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
-        lines.splice(self.added_range.lines(), edit);
+        extend_edit(edit_lines, self.added_text.clone(), taken_range).0
     }
 
     /// Undoes the change and returns the modified text.
-    fn undo(&self, lines: &mut Vec<TextLine>) {
-        let undo_lines = lines[self.taken_range.lines()].iter().map(|l| l.text()).collect();
+    fn undo(&self, lines: &Vec<TextLine>) -> Vec<String> {
+        let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
 
-        // Returns
-        let (undo, _) = extend_edit(undo_lines, self.taken_text.clone(), self.added_range);
-        let undo: Vec<TextLine> = undo.iter().map(|l| TextLine::new(l)).collect();
+        let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
 
-        lines.splice(self.added_range.lines(), undo);
+        extend_edit(undo_lines, self.taken_text.clone(), added_range).0
     }
 }
 
 impl History {
     pub fn new() -> History {
-        History { moments: vec![Moment { print_info: None, actions: Vec::new() }] }
+        History {
+            moments: vec![Moment { print_info: None, actions: Vec::new() }],
+            current_moment: 0,
+        }
     }
 
     /// Tries to "merge" the change with an already existing change. If that fails, pushes a
@@ -104,19 +119,18 @@ impl History {
     ///     
     /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
     pub fn add_change<T>(
-        &mut self, lines: &mut Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
-    ) -> TextRange
+        &mut self, lines: &Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
+    ) -> (Vec<String>, TextRange)
     where
         T: ToString,
     {
         let moment = self.moments.last_mut().unwrap();
 
-        let mut edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
+        let edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
 
-        let edited_lines =
-            lines[edit_range.lines()].iter().map(|l| l.text()).collect::<Vec<&str>>();
+        let edited_lines: Vec<&str> = lines[edit_range.lines()].iter().map(|l| l.text()).collect();
 
-        let taken_text = if edited_lines.len() == 1 {
+        let mut taken_text = if edited_lines.len() == 1 {
             let line = edited_lines.first().unwrap();
 
             let first_byte = get_byte(line, edit_range.start.col);
@@ -143,91 +157,121 @@ impl History {
         // old range, and the end of the last line in the old range. That way, we can simply splice
         // it back on to the original `Vec<TextLine>`, with no further changes necessary.
         let (full_lines, added_range) = extend_edit(edited_lines, edit.clone(), edit_range);
-        let full_lines = full_lines.iter().map(|l| TextLine::new(l)).collect::<Vec<TextLine>>();
 
+        // There are two scenarios in which we can append an edit to an existing change:
+        // 1- The edit happens within the bounds of the change.
+        // 2- The edit happens exactly before the change.
+        //
+        // In practice, the only difference between the two is that the second one requires that we
+        // change `change.taken_text` and `change.splice_start`.
         if let Some(Action::Change(change)) = moment.actions.last_mut() {
-            // When text gets appended directly to the end of the previous edit, we can merge it.
-            if edit_range.start == change.added_range.end && edit_range.end == edit_range.start {
-                // If the action isn't a change, appending a change to it makes no sense.
-                // The first line of the edit goes into the last line of the previous edit.
-                change.added_text.last_mut().unwrap().push_str(&edit[0]);
-                // Subsequent lines are appended to the end of the previous edit.
-                if edit.len() > 1 {
-                    change.added_text.extend_from_slice(&edit[1..]);
-                }
-                // Only the end of the new text needs to change here.
-                change.added_range.end = added_range.end;
+            let change_added_range =
+                TextRange { start: change.splice.start, end: change.splice.added_end };
 
-                // The last line of `old_text` needs to be extended by the first line of the
-                // removed text, since the first line involves no '\n'.
-                change.taken_text.last_mut().unwrap().push_str(taken_text[0]);
-                // Subsequent lines are then appended to the end of `old_text`.
-                if taken_text.len() > 1 {
-                    let taken_text =
-                        taken_text[1..].iter().map(|l| l.to_string()).collect::<Vec<String>>();
-
-                    change.taken_text.extend_from_slice(&taken_text);
-                }
-
-                lines.splice(edit_range.lines(), full_lines);
-		        return added_range;
-
-            // Specific case when the text new edit is within the range of the previous edit.
-            // This happens, for example, when pressing backspace on text you just added.
-            } else if change.added_range.contains(edit_range) {
-
+            if change_added_range.contains_range(edit_range)
+                || change.splice.start == edit_range.end
+            {
                 // The `edit_range` positions in relation to the change's `new_range`, so we can
                 // splice the edit in.
-                let start = edit_range.start - change.added_range.start;
-                let end = edit_range.end - change.added_range.start;
-                let relative_range = TextRange { start, end };
+                let start = edit_range.start - change.splice.start;
+                let end = edit_range.end - change.splice.start;
+                let rel_edit_range = TextRange { start, end };
 
-                if unsafe { crate::buffer::FOR_TEST } {
-                    panic!("{:#?}", edit_range);
-                }
-
-                let old_added_lines = &change.added_text[relative_range.lines()];
+                let old_added_lines = &change.added_text[rel_edit_range.lines()];
                 let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
 
-                let (change_added_text, change_range) = extend_edit(str_vec, edit, relative_range);
-				change.added_text.splice(relative_range.lines(), change_added_text);
+                let (change_lines, rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
 
-				// If I replace text with bigger text, `change_range.end` will be bigger, If I
-				// replace text with smaller text, `edit_range.end` will be bigger. This takes into
-				// account edits in any range in the original `change`.
-                change.added_range.end += change_range.end - relative_range.end;
+                // The absolute positions of `rel_added_range`.
+                let start = rel_added_range.start + change.splice.start;
+                let end = rel_added_range.end + change.splice.start;
+                let added_range = TextRange { start, end };
 
-                lines.splice(edit_range.lines(), full_lines);
-		        return added_range;
-		    // In case the old change can be succesfully appended to the new edit.
-		    // This happens, for example, after pressing backspace multiple times.
-            } else if edit_range.end == change.added_range.start {
-                edit.last_mut().unwrap().push_str(change.added_text.first().unwrap());
-                if change.added_text.len() > 1 {
-                    edit.extend_from_slice(&change.added_text[1..]);
+                // If the edit happens exactly before the previous change, we need to add the taken
+                // text and move `change.start`.
+                if change.splice.start == edit_range.end {
+                    change.taken_text[0].insert_str(0, taken_text.pop().unwrap());
+                    let taken_text =
+                        taken_text.iter().map(|l| l.to_string()).collect::<Vec<String>>();
+
+                    change.taken_text.splice(0..0, taken_text);
+
+                    change.splice.start = edit_range.start;
                 }
 
-				change.added_text = edit;
-				change.added_range.start = edit_range.start;
+                // If I replace text with bigger text, `change_range.end` will be bigger, If I
+                // replace text with smaller text, `edit_range.end` will be bigger. This takes into
+                // account edits in any range in the original `change`.
+                change.splice.added_end.line += added_range.end.line - edit_range.end.line;
+                if edit_range.end.line == change.splice.added_end.line {
+                    change.splice.added_end.col =
+                        change_lines.last().unwrap().chars().count() + change.splice.start.col;
+                }
 
-                lines.splice(edit_range.lines(), full_lines);
-		        return added_range;
+                change.added_text.splice(rel_edit_range.lines(), change_lines);
+
+                return (full_lines, added_range);
             }
-        // In any other case, it's not really possible to merge the edits.
         }
-        let taken_text = taken_text.iter().map(|l| l.to_string()).collect::<Vec<String>>();
-        //panic!("{:#?}", added_range);
+        let taken_text: Vec<String> = taken_text.iter().map(|l| l.to_string()).collect();
 
         let change = Change {
             added_text: edit,
-            added_range,
-            taken_range: edit_range,
             taken_text,
+            splice: Splice {
+                start: edit_range.start,
+                added_end: added_range.end,
+                taken_end: edit_range.end,
+            },
         };
         moment.actions.push(Action::Change(change));
 
-        lines.splice(edit_range.lines(), full_lines);
-        added_range
+        (full_lines, added_range)
+    }
+
+    /// Declares that the current moment is complete and moving to the next one.
+    pub fn new_moment(&mut self, print_info: PrintInfo) {
+        self.moments.last_mut().unwrap().print_info = Some(print_info);
+
+        self.moments.push(Moment { print_info: None, actions: Vec::new() });
+        self.current_moment += 1;
+    }
+
+    /// Undoes the changes of the last moment and returns a vector containing range changes.
+    pub fn undo(&mut self, lines: &Vec<TextLine>) -> (Vec<(Vec<String>, Splice)>, PrintInfo) {
+        let mut range_vec = Vec::new();
+
+        // TODO: make this return an error for when we're at the first moment.
+        self.current_moment = self.current_moment.saturating_sub(1);
+
+        for action in &self.moments[self.current_moment].actions {
+            if let Action::Change(change) = action {
+                let undo_lines = change.undo(lines);
+
+                range_vec.push((undo_lines, change.splice));
+            }
+        }
+
+        (range_vec, self.moments[self.current_moment].print_info.unwrap())
+    }
+
+    /// Undoes the changes of the last moment and returns a vector containing range changes.
+    pub fn redo(&mut self, lines: &Vec<TextLine>) -> (Vec<(Vec<String>, Splice)>, PrintInfo) {
+        let mut range_vec = Vec::new();
+
+        for action in &self.moments[self.current_moment].actions {
+            if let Action::Change(change) = action {
+                let redo_lines = change.apply(lines);
+
+                range_vec.push((redo_lines, change.splice));
+            }
+        }
+        let print_info = self.moments[self.current_moment].print_info.unwrap();
+
+        // TODO: make this return an error for when we're at the last moment.
+        self.current_moment = min(self.current_moment + 1, self.moments.len());
+
+        (range_vec, print_info)
     }
 }
 
@@ -250,7 +294,7 @@ pub fn extend_edit(
 ) -> (Vec<String>, TextRange) {
     let start = range.start;
 
-	let last_edit_len = edit.last().unwrap().chars().count();
+    let last_edit_len = edit.last().unwrap().chars().count();
 
     // Where the byte of `range.start` is.
     let first_line = old.first().unwrap();
