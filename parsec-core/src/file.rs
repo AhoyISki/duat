@@ -561,7 +561,7 @@ impl<T: OutputArea> File<T> {
 
         self.lines.splice(old_range.lines(), edits);
 
-        let mut full_refresh_needed = self.lines.len() != old_lines_len;
+        full_refresh_needed |= self.lines.len() != old_lines_len;
 
         if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
             for line in &mut self.lines[new_range.start.line..=new_range.end.line] {

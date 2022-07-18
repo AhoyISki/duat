@@ -212,6 +212,11 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(refresh_needed);
                     }
                 },
+                key: (KeyCode::Char('m'), KeyModifiers::ALT) => {
+                    |h: &mut Buffer<T>| {
+                        panic!("{:#?}", h.file.history.moments)
+                    }
+                },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
                         h.file.undo();
