@@ -77,8 +77,10 @@ pub struct Moment {
 pub struct History {
     /// The list of moments in this file's editing history.
     pub moments: Vec<Moment>,
-
+	/// The currently active moment.
     current_moment: usize,
+    /// If we're in the beginning of the history and can't undo anything.
+    is_on_start: bool,
 }
 
 // Since the history gets deleted when moments prior to the current one are added, changes in file
@@ -111,6 +113,7 @@ impl History {
         History {
             moments: vec![Moment { print_info: None, actions: Vec::new() }],
             current_moment: 0,
+            is_on_start: true,
         }
     }
 
@@ -124,7 +127,11 @@ impl History {
     where
         T: ToString,
     {
+        // Cut off any actions that take place after the current one. We don't really want trees.
+        unsafe { self.moments.set_len(self.current_moment + 1) };
         let moment = self.moments.last_mut().unwrap();
+
+        self.is_on_start = false;
 
         let edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
 
@@ -231,18 +238,26 @@ impl History {
 
     /// Declares that the current moment is complete and moving to the next one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
-        self.moments.last_mut().unwrap().print_info = Some(print_info);
+        // If the last moment in history is empty, we can keep using it.
+        if !self.moments.last().unwrap().actions.is_empty() {
+            self.moments.last_mut().unwrap().print_info = Some(print_info);
 
-        self.moments.push(Moment { print_info: None, actions: Vec::new() });
-        self.current_moment += 1;
+            self.moments.push(Moment { print_info: None, actions: Vec::new() });
+            self.current_moment += 1;
+        }
     }
 
     /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn undo(&mut self, lines: &Vec<TextLine>) -> (Vec<(Vec<String>, Splice)>, PrintInfo) {
-        let mut range_vec = Vec::new();
+    pub fn undo(
+        &mut self, lines: &Vec<TextLine>,
+    ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
+        if self.is_on_start {
+            return None
+        } else if self.current_moment == 0 {
+            self.is_on_start = true
+        }
 
-        // TODO: make this return an error for when we're at the first moment.
-        self.current_moment = self.current_moment.saturating_sub(1);
+        let mut range_vec = Vec::new();
 
         for action in &self.moments[self.current_moment].actions {
             if let Action::Change(change) = action {
@@ -252,11 +267,18 @@ impl History {
             }
         }
 
-        (range_vec, self.moments[self.current_moment].print_info.unwrap())
+        // TODO: make this return an error for when we're at the first moment.
+        self.current_moment = self.current_moment.saturating_sub(1);
+
+        Some((range_vec, self.moments[self.current_moment].print_info))
     }
 
+    // TODO: Return a custom Result instead.
     /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn redo(&mut self, lines: &Vec<TextLine>) -> (Vec<(Vec<String>, Splice)>, PrintInfo) {
+    pub fn redo(
+        &mut self, lines: &Vec<TextLine>,
+    ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
+        if self.current_moment == self.moments.len() - 1 { return None; }
         let mut range_vec = Vec::new();
 
         for action in &self.moments[self.current_moment].actions {
@@ -266,12 +288,12 @@ impl History {
                 range_vec.push((redo_lines, change.splice));
             }
         }
-        let print_info = self.moments[self.current_moment].print_info.unwrap();
+        let print_info = self.moments[self.current_moment].print_info;
 
         // TODO: make this return an error for when we're at the last moment.
-        self.current_moment = min(self.current_moment + 1, self.moments.len());
+        self.current_moment += 1;
 
-        (range_vec, print_info)
+        Some((range_vec, print_info))
     }
 }
 

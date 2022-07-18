@@ -212,21 +212,6 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(refresh_needed);
                     }
                 },
-                key: (KeyCode::Char('t'), KeyModifiers::ALT) => {
-                    |_: &mut Buffer<T>| {
-                        unsafe { crate::FOR_TEST = true };
-                    }
-                },
-                key: (KeyCode::Char('m'), KeyModifiers::ALT) => {
-                    |h: &mut Buffer<T>| {
-                        panic!("{:#?}", h.file.history.moments);
-                    }
-                },
-                key: (KeyCode::Char('h'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
-                        h.file.history.new_moment(h.file.print_info());
-                    }
-                },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
                         h.file.undo();
@@ -245,6 +230,19 @@ impl<T: OutputArea> Buffer<T> {
 
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![""; 2];
+
+                        let refresh_needed = h.file.splice_edit(edit, range);
+                        h.refresh_screen(refresh_needed);
+                    }
+                },
+                key: (KeyCode::Char(' '), KeyModifiers::NONE) => {
+                    |h: &mut Buffer<T>| {
+                        h.file.history.new_moment(h.file.print_info());
+
+                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+
+                        let range = TextRange { start: pos, end: pos };
+                        let edit = vec![' '];
 
                         let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);

@@ -588,8 +588,11 @@ impl<T: OutputArea> File<T> {
 
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
-        let (changes, print_info) = self.history.undo(&mut self.lines);
-        self.print_info = print_info;
+        let (changes, print_info) = match self.history.undo(&mut self.lines) {
+            Some((changes, print_info)) => (changes, print_info),
+            None => return,
+        };
+        self.print_info = print_info.unwrap_or(self.print_info);
 
         for (edit, splice) in &changes {
             let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
@@ -615,15 +618,18 @@ impl<T: OutputArea> File<T> {
                 ));
             }
         }
+        self.cursors.extend(new_cursors);
     }
 
     /// Re-does the last moment in history.
     pub fn redo(&mut self) {
-        let (changes, print_info) = self.history.redo(&mut self.lines);
-        self.print_info = print_info;
+        let (changes, print_info) = match self.history.redo(&mut self.lines) {
+            Some((changes, print_info)) => (changes, print_info),
+            None => return,
+        };
+        self.print_info = print_info.unwrap_or(self.print_info);
 
-        self.cursors.clear();
-        for (edit, splice) in changes {
+        for (edit, splice) in &changes {
             let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
 
             let taken_range = TextRange { start: splice.start, end: splice.taken_end };
@@ -631,9 +637,23 @@ impl<T: OutputArea> File<T> {
             for line in taken_range.lines() {
                 self.update_line_info(line);
             }
-
-            self.cursors.push(FileCursor::new(splice.added_end, &self.lines, &self.options.tabs));
         }
+
+        let mut cursor_iter = self.cursors.iter_mut();
+        let mut new_cursors = Vec::new();
+
+        for (_, splice) in changes {
+            if let Some(cursor) = cursor_iter.next() {
+                cursor.move_to(splice.added_end, &self.lines, &self.options);
+            } else {
+                new_cursors.push(FileCursor::new(
+                    splice.added_end,
+                    &self.lines,
+                    &self.options.tabs,
+                ));
+            }
+        }
+        self.cursors.extend(new_cursors);
     }
 
     pub fn print_file_line(&mut self, index: usize, skip: usize, y_shift: u16) -> u16 {
