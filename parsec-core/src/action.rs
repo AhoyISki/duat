@@ -38,12 +38,6 @@ pub struct Selection {
     pub anchor_pos: TextPos,
 }
 
-#[derive(Debug)]
-enum Action {
-    Jump(Selection),
-    Change(Change),
-}
-
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
 #[derive(Debug)]
 struct Change {
@@ -66,7 +60,7 @@ pub struct Moment {
     /// Where the file was printed at the time this moment happened.
     print_info: Option<PrintInfo>,
     /// A list of actions, which may be changes, or simply selections of text.
-    actions: Vec<Action>,
+    changes: Vec<Change>,
 }
 
 /// The history of edits, contains all moments.
@@ -74,9 +68,9 @@ pub struct Moment {
 pub struct History {
     /// The list of moments in this file's editing history.
     pub moments: Vec<Moment>,
-	/// The currently active moment.
+    /// The currently active moment.
     current_moment: usize,
-    // This exists to make 
+    // This exists to make
     /// Wether or not the user has undone/redone past actions.
     traveled_in_time: bool,
 }
@@ -109,7 +103,7 @@ impl Change {
 impl History {
     pub fn new() -> History {
         History {
-            moments: vec![Moment { print_info: None, actions: Vec::new() }],
+            moments: vec![Moment { print_info: None, changes: Vec::new() }],
             current_moment: 1,
             traveled_in_time: false,
         }
@@ -133,7 +127,7 @@ impl History {
             self.current_moment += 1;
             self.traveled_in_time = false;
 
-            self.moments.push(Moment { actions: Vec::new(), print_info: None });
+            self.moments.push(Moment { changes: Vec::new(), print_info: None });
             self.moments.last_mut().unwrap()
         } else {
             match self.moments.last_mut() {
@@ -141,9 +135,9 @@ impl History {
                 None => {
                     self.current_moment += 1;
 
-                    self.moments.push(Moment { actions: Vec::new(), print_info: None });
+                    self.moments.push(Moment { changes: Vec::new(), print_info: None });
                     self.moments.last_mut().unwrap()
-                }
+                },
             }
         };
 
@@ -185,7 +179,7 @@ impl History {
         //
         // In practice, the only difference between the two is that the second one requires that we
         // change `change.taken_text` and `change.splice_start`.
-        if let Some(Action::Change(change)) = moment.actions.last_mut() {
+        if let Some(change) = moment.changes.last_mut() {
             let change_added_range =
                 TextRange { start: change.splice.start, end: change.splice.added_end };
 
@@ -245,7 +239,7 @@ impl History {
                 taken_end: edit_range.end,
             },
         };
-        moment.actions.push(Action::Change(change));
+        moment.changes.push(change);
 
         (full_lines, added_range)
     }
@@ -253,10 +247,10 @@ impl History {
     /// Declares that the current moment is complete and moving to the next one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
-        if !self.moments.last().unwrap().actions.is_empty() {
+        if !self.moments.last().unwrap().changes.is_empty() {
             self.moments.last_mut().unwrap().print_info = Some(print_info);
 
-            self.moments.push(Moment { print_info: None, actions: Vec::new() });
+            self.moments.push(Moment { print_info: None, changes: Vec::new() });
             self.current_moment += 1;
         }
     }
@@ -265,7 +259,9 @@ impl History {
     pub fn undo(
         &mut self, lines: &Vec<TextLine>,
     ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
-        if self.current_moment == 0 { return None; }
+        if self.current_moment == 0 {
+            return None;
+        }
 
         // TODO: make this return an error for when we're at the first moment.
         self.current_moment = self.current_moment.saturating_sub(1);
@@ -273,12 +269,10 @@ impl History {
 
         let mut changes = Vec::new();
 
-        for action in &self.moments[self.current_moment].actions {
-            if let Action::Change(change) = action {
-                let undo_lines = change.undo(lines);
+        for change in &self.moments[self.current_moment].changes {
+            let undo_lines = change.undo(lines);
 
-                changes.push((undo_lines, change.splice));
-            }
+            changes.push((undo_lines, change.splice));
         }
 
         Some((changes, self.moments[self.current_moment].print_info))
@@ -290,17 +284,17 @@ impl History {
         &mut self, lines: &Vec<TextLine>,
     ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
         // TODO: make this return an error for when we're at the last moment.
-        if self.current_moment == self.moments.len() { return None; }
+        if self.current_moment == self.moments.len() {
+            return None;
+        }
         self.traveled_in_time = true;
 
         let mut changes = Vec::new();
 
-        for action in &self.moments[self.current_moment].actions {
-            if let Action::Change(change) = action {
-                let redo_lines = change.apply(lines);
+        for change in &self.moments[self.current_moment].changes {
+            let redo_lines = change.apply(lines);
 
-                changes.push((redo_lines, change.splice));
-            }
+            changes.push((redo_lines, change.splice));
         }
         let print_info = self.moments[self.current_moment].print_info;
 

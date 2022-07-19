@@ -8,14 +8,14 @@ use crate::{
     action::{History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
     output::{OutputArea, OutputPos, PrintInfo},
-    tags::CharTag,
+    tags::{CharTag, CharTags},
 };
 
 // TODO: move this to a more general file.
 /// A line in the text file.
 pub struct TextLine {
     /// Which columns on the line should wrap around.
-    char_tags: Option<Box<Vec<(u32, CharTag)>>>,
+    char_tags: Option<Box<CharTags>>,
 
     /// The text on the line.
     text: String,
@@ -107,13 +107,13 @@ impl TextLine {
 
         let (char_tags, prev_len) = match self.char_tags.as_mut() {
             Some(char_tags) => {
-                let prev_len = char_tags.len();
+                let prev_len = char_tags.vec().len();
                 char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
                 (char_tags, prev_len)
             },
             None => {
-                self.char_tags = Some(Box::from(Vec::new()));
+                self.char_tags = Some(Box::from(CharTags::new()));
 
                 (self.char_tags.as_mut().unwrap(), 0)
             },
@@ -121,13 +121,14 @@ impl TextLine {
 
         let mut char_index = 0;
         let mut indent_wrap = 0;
+        let mut additions = Vec::new();
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.line_flags.contains(LineFlags::PURE_1_COL & LineFlags::PURE_ASCII) {
             char_index = width;
             while char_index < self.text.len() {
-                char_tags.push((char_index as u32, CharTag::WrapppingChar));
+                additions.push((char_index as u32, CharTag::WrapppingChar));
 
                 if options.wrap_indent {
                     indent_wrap = indent;
@@ -144,7 +145,7 @@ impl TextLine {
                 if char_index > width - indent_wrap {
                     char_index = get_char_width(ch, char_index, &options.tabs);
 
-                    char_tags.push((index as u32, CharTag::WrapppingChar));
+                    additions.push((index as u32, CharTag::WrapppingChar));
 
                     if options.wrap_indent {
                         indent_wrap = indent;
@@ -153,19 +154,33 @@ impl TextLine {
             }
         }
 
-        self.char_tags.as_mut().unwrap().sort();
+        char_tags.insert_slice(additions.as_slice());
 
-        self.char_tags.as_mut().unwrap().len() != prev_len
+        self.char_tags.as_mut().unwrap().vec().len() != prev_len
     }
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> Option<impl Iterator<Item = u32> + '_> {
         if let Some(tags) = self.char_tags.as_ref() {
-            Some(tags.iter().filter(|(_, t)| matches!(t, CharTag::WrapppingChar)).map(|(c, _)| *c))
+            Some(
+                tags.vec()
+                    .iter()
+                    .filter(|(_, t)| matches!(t, CharTag::WrapppingChar))
+                    .map(|(c, _)| *c),
+            )
         } else {
             None
         }
     }
+
+	/// Returns how many characters are in the line.
+	pub fn char_count(&self) -> usize {
+    	if self.line_flags.contains(LineFlags::PURE_ASCII) {
+        	self.text.len()
+    	} else {
+        	self.text.chars().count()
+    	}
+	}
 
     // NOTE: It always prints at `x = 0`, `x` in pos is treated here as an `x_shift`.
     /// Prints a line in a given position, skipping `skip` characters.
@@ -220,10 +235,10 @@ impl TextLine {
                 }
             }
 
-            let mut tags_iter = tags.iter().skip_while(|(c, _)| *c < skip as u32);
+            let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| *c < skip as u32);
             let mut current_char_tag = tags_iter.next();
 
-            for (col, ch) in text_iter {
+            'a: for (col, ch) in text_iter {
                 while let Some(&(tag_col, tag)) = current_char_tag {
                     if col == tag_col as usize {
                         current_char_tag = tags_iter.next();
@@ -238,7 +253,7 @@ impl TextLine {
                             printing_pos.y += 1;
 
                             if printing_pos.y as usize > area.height() {
-                                break;
+                                break 'a;
                             }
 
                             area.move_cursor(printing_pos);
@@ -421,6 +436,7 @@ impl<T: OutputArea> File<T> {
             if target.line > current.line
                 || (target.line == current.line && target_wraps > current_wraps)
             {
+                let mut top_offset = 0;
                 for (index, line) in lines_iter.enumerate().rev() {
                     // Add the vertical distance, as 1 line plus the times it wraps around.
                     // `target.line` was already added as `target_wraps`.
@@ -428,9 +444,13 @@ impl<T: OutputArea> File<T> {
                         d_y += unsafe { line.wrap_iter().unwrap_unchecked().count() + 1 };
                     }
 
+                    if index == info.top_line {
+                        top_offset = info.top_wraps
+                    };
+
                     // If this happens first, that means the distance between `target.line` and
                     // `info.top_line` is greater than allowed height of the cursor.
-                    if d_y >= self.area.height() - scrolloff.d_y {
+                    if d_y >= self.area.height() + top_offset - scrolloff.d_y {
                         info.top_line = index;
                         // If this equals 0, that means the distance has matched up perfectly,
                         // i.e. the distance between the new `info.top_line` is exactly what's
@@ -456,23 +476,8 @@ impl<T: OutputArea> File<T> {
             {
                 // Set this flag immediately in this case, because the first line that checks out
                 // will definitely be `info.top_line`.
-                let mut needs_new_print_info = target.line <= info.top_line;
+                let mut needs_new_print_info = target.line < info.top_line;
                 for (index, line) in lines_iter.enumerate().rev() {
-                    if index == 0 {
-                        // The top line may not actually change in this case.
-                        let old_top = (info.top_line, info.top_wraps);
-
-                        let wrap_count = unsafe { line.wrap_iter().unwrap_unchecked().count() };
-                        let limited_scrolloff = scrolloff.d_y.saturating_sub(d_y + 2);
-
-                        info.top_line = 0;
-                        info.top_wraps = wrap_count.saturating_sub(limited_scrolloff);
-
-                        has_scrolled = old_top != (info.top_line, info.top_wraps);
-
-                        break;
-                    }
-
                     // Add the vertical distance, as 1 line plus the times it wraps around.
                     // `target.line` was already added as `target_wraps`.
                     if index != target.line {
@@ -495,9 +500,9 @@ impl<T: OutputArea> File<T> {
 
                     // In this case, we have either passed through `info.top_line` while too close,
                     // or not passed through, so a new `info.top_line` is behind the old one.
-                    if needs_new_print_info && d_y >= scrolloff.d_y {
+                    if needs_new_print_info && (d_y >= scrolloff.d_y || index == 0) {
                         info.top_line = index;
-                        info.top_wraps = d_y - scrolloff.d_y;
+                        info.top_wraps = d_y.saturating_sub(scrolloff.d_y);
                         has_scrolled = true;
 
                         break;
@@ -555,18 +560,13 @@ impl<T: OutputArea> File<T> {
         let old_lines_len = self.lines.len();
 
         let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
-        let mut edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
-        let mut full_refresh_needed =
-            edits.iter_mut().any(|l| l.parse_wrapping(self.area.width(), &self.options));
-
+        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
         self.lines.splice(old_range.lines(), edits);
 
-        full_refresh_needed |= self.lines.len() != old_lines_len;
+        let mut full_refresh_needed = self.lines.len() != old_lines_len;
 
-        if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
-            for line in &mut self.lines[new_range.start.line..=new_range.end.line] {
-                full_refresh_needed |= line.parse_wrapping(self.area.width(), &self.options);
-            }
+        for line in new_range.lines() {
+            full_refresh_needed |= self.update_line_info(line);
         }
 
         for cursor in &mut self.cursors {
@@ -673,23 +673,33 @@ impl<T: OutputArea> File<T> {
         let has_scrolled = self.update_print_info();
 
         let current = self.cursors.get(self.main_cursor).unwrap().current();
-        match &mut self.lines.get_mut(current.line).unwrap().char_tags {
-            Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
-            None => {},
+
+        let target = self.cursors.get(self.main_cursor).unwrap().target();
+
+        let char_tags = &mut self.lines.get_mut(target.line).unwrap().char_tags.as_deref_mut();
+        match char_tags {
+            Some(tags) => {
+                if current.line == target.line {
+                    tags.update_cursor(target.col as u32)
+                } else {
+                    tags.insert((target.col as u32, CharTag::MainCursor));
+                    match &mut self.lines.get_mut(current.line).unwrap().char_tags {
+                        Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
+                        None => {},
+                    }
+                }
+            },
+            None => {
+                *char_tags = Some(&mut CharTags::from(&[(target.col as u32, CharTag::MainCursor)]));
+                match &mut self.lines.get_mut(current.line).unwrap().char_tags {
+                    Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
+                    None => {},
+                }
+            },
         }
 
         // Updates the information for each cursor in the file.
         self.cursors.iter_mut().for_each(|c| c.update(&self.lines));
-
-        let current = self.cursors.get(self.main_cursor).unwrap().target();
-        let char_tags = &mut self.lines.get_mut(current.line).unwrap().char_tags.as_deref_mut();
-        match char_tags {
-            Some(tags) => {
-                tags.push((current.col as u32, CharTag::MainCursor));
-                tags.sort();
-            },
-            None => *char_tags = Some(&mut vec![(current.col as u32, CharTag::MainCursor)]),
-        }
 
         let info = self.print_info;
 
