@@ -173,14 +173,14 @@ impl TextLine {
         }
     }
 
-	/// Returns how many characters are in the line.
-	pub fn char_count(&self) -> usize {
-    	if self.line_flags.contains(LineFlags::PURE_ASCII) {
-        	self.text.len()
-    	} else {
-        	self.text.chars().count()
-    	}
-	}
+    /// Returns how many characters are in the line.
+    pub fn char_count(&self) -> usize {
+        if self.line_flags.contains(LineFlags::PURE_ASCII) {
+            self.text.len()
+        } else {
+            self.text.chars().count()
+        }
+    }
 
     // NOTE: It always prints at `x = 0`, `x` in pos is treated here as an `x_shift`.
     /// Prints a line in a given position, skipping `skip` characters.
@@ -372,27 +372,6 @@ impl<T: OutputArea> File<T> {
         }
 
         file
-    }
-
-    /// Parses the wrapping for all the lines in the file.
-    ///
-    /// * This should only be called when the wrap_type or width change.
-    pub fn parse_wrapping(&mut self) {
-        match self.options.wrap_method {
-            WrapMethod::Width => {
-                for line in self.lines.iter_mut() {
-                    line.parse_wrapping(self.area.width(), &self.options);
-                }
-            },
-            WrapMethod::NoWrap => {
-                for line in self.lines.iter_mut() {
-                    if let Some(tags) = &mut line.char_tags {
-                        tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar))
-                    }
-                }
-            },
-            _ => {},
-        }
     }
 
     /// Updates the file's scrolling and checks if it has scrolled.
@@ -654,15 +633,6 @@ impl<T: OutputArea> File<T> {
         self.cursors.extend(new_cursors);
     }
 
-    pub fn print_file_line(&mut self, index: usize, skip: usize, y_shift: u16) -> u16 {
-        let info = self.print_info;
-
-        let line_origin = OutputPos { x: info.x_shift as u16, y: y_shift };
-
-        let line = self.lines.get(index).unwrap();
-        line.print(&mut self.area, line_origin, skip, &self.options)
-    }
-
     /// Prints the file, according to its current position.
     pub fn print_file(&mut self, force: bool) {
         // Saving the current cursor lines, in case the case that the whole screen doesn't need to
@@ -698,24 +668,26 @@ impl<T: OutputArea> File<T> {
         // The line at the top of the screen and the amount of hidden columns.
         let skip = if info.top_wraps > 0 {
             let line = self.lines.get(info.top_line).expect("invalid line");
-            unsafe { line.wrap_iter().unwrap_unchecked().nth(info.top_wraps - 1).unwrap() }
+            unsafe { line.wrap_iter().unwrap_unchecked().nth(info.top_wraps - 1).unwrap() as usize }
         } else {
             0
         };
 
         // If the file has scrolled, reprint the whole screen.
         if has_scrolled || force {
-            let mut line_origin = OutputPos { x: 0, y: 0 };
+            let mut line_origin = OutputPos { x: info.x_shift as u16, y: 0 };
 
             // Prints the first line and updates where to print next.
-            line_origin.y += self.print_file_line(info.top_line, skip as usize, line_origin.y);
+            let mut lines_iter = self.lines.iter();
+            let top_line = lines_iter.nth(info.top_line).unwrap();
+            line_origin.y += top_line.print(&mut self.area, line_origin, skip, &self.options);
 
             // Prints the remaining lines
-            for index in (info.top_line + 1)..self.lines.len() {
+            while let Some(line) = lines_iter.next() {
                 if line_origin.y as usize > self.area.height() {
                     break;
                 }
-                line_origin.y += self.print_file_line(index, 0, line_origin.y);
+                line_origin.y += line.print(&mut self.area, line_origin, 0, &self.options);
             }
 
             // Clears the lines where nothing has been printed.
@@ -732,30 +704,40 @@ impl<T: OutputArea> File<T> {
             lines.sort_unstable();
             lines.dedup();
 
-            let mut height_sum = 0;
-            let mut last_line_count = info.top_line;
+            let mut last_counted_line = info.top_line;
+
+            let mut line_origin = OutputPos { x: info.x_shift as u16, y: 0 };
 
             for index in lines {
-                if index < info.top_line {
-                    continue;
-                } 
+                if index < info.top_line { continue; }
 
-                let lines_iter = self.lines.get(last_line_count..index).unwrap().iter();
+				// Do this to not count lines multiple times unnecessarily.
+                let lines_iter = self.lines.get(last_counted_line..index).unwrap().iter();
 
-                height_sum += if let WrapMethod::NoWrap = self.options.wrap_method {
+				// Calculating the vertical distance between the last printed line and the new line.
+				// If there's no wrapping, we can just take the amount of lines in between.
+                line_origin.y += if let WrapMethod::NoWrap = self.options.wrap_method {
                     lines_iter.count() as u16
+                // If there is wrapping, we need to add it to the calculations.
                 } else {
-                    lines_iter
-                        .map(|l| unsafe { 1 + l.wrap_iter().unwrap_unchecked().count() as u16 })
-                        .sum()
+                    lines_iter.map(|l| 1 + l.wrap_iter().unwrap().count() as u16).sum()
                 };
 
-                last_line_count = index;
+				if line_origin.y as usize > self.area.height() { break; }
 
-				if index == info.top_line {
-                    self.print_file_line(index, skip as usize, 0);
+                last_counted_line = index;
+                let line = &self.lines[index];
+
+                if index == info.top_line {
+    				// The top line will be printed at the top, no matter what.
+                    let top_left = OutputPos { x: info.x_shift as u16, y: 0 };
+                    line.print(&mut self.area, top_left, skip as usize, &self.options);
+
+					// If the top line wraps 5 times, and `info.top_wraps == 2`, only 3 of those
+					// lines are shown, and the y position need only go down by 3.
+					line_origin.y -= info.top_wraps as u16;
                 } else {
-                    self.print_file_line(index, 0, height_sum - info.top_wraps as u16);
+                    line.print(&mut self.area, line_origin,0, &self.options);
                 }
             }
         }
