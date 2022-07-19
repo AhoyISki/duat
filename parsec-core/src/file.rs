@@ -187,16 +187,17 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    fn print<T>(&self, area: &mut T, shift: OutputPos, skip: usize, options: &FileOptions) -> u16
+    fn print<T>(
+        &self, area: &mut T, x_shift: usize, y: u16, skip: usize, options: &FileOptions
+    ) -> u16
     where
         T: OutputArea,
     {
         // Moves the printing cursor to the beginning of the line.
-        let mut printing_pos = OutputPos { x: 0, ..shift };
+        let mut printing_pos = OutputPos { x: 0, y };
         area.move_cursor(printing_pos);
 
         let mut printed_lines = 1;
-        let mut d_x = 0;
 
         let (skip, leftover) = if let WrapMethod::NoWrap = options.wrap_method {
             // Knowing this code, this would seem to overwrite `top_wraps`. But since this value is
@@ -204,10 +205,12 @@ impl TextLine {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance(shift.x as usize, &options.tabs)
+            self.get_col_at_distance(x_shift, &options.tabs)
         } else {
             (skip, 0)
         };
+
+        let mut d_x = 0;
 
         area.print(" ".repeat(max(0, leftover) as usize));
 
@@ -258,7 +261,7 @@ impl TextLine {
 
                             area.move_cursor(printing_pos);
 
-                            if options.wrap_indent && shift.x == 0 {
+                            if options.wrap_indent && x_shift == 0 {
                                 (0..self.indent(&options.tabs)).for_each(|_| area.print(' '));
                             }
                         } else if let CharTag::MainCursor = tag {
@@ -269,7 +272,7 @@ impl TextLine {
                     }
                 }
 
-                let char_width = char_width(ch, d_x);
+                let char_width = char_width(ch, d_x + x_shift + leftover as usize);
                 d_x += char_width;
                 if let WrapMethod::NoWrap = options.wrap_method {
                     if d_x > area.width() {
@@ -489,20 +492,20 @@ impl<T: OutputArea> File<T> {
                 }
             }
         }
-        let current = self.cursors.get(self.main_cursor).expect("cursor not found").current();
-        let line = self.lines.get(current.line).unwrap();
+        let target = &self.cursors[self.main_cursor].target();
+        let line = &self.lines[target.line];
 
         // Horizontal scroll check, done only when the screen can scroll horizontally:
         if let WrapMethod::NoWrap = self.options.wrap_method {
-            let distance = line.get_distance_to_col(current.col, &self.options.tabs);
+            let distance = line.get_distance_to_col(target.col, &self.options.tabs);
 
             // If the distance is greater, it means that the cursor is out of bounds.
-            if distance >= info.x_shift + self.area.width() - scrolloff.d_x {
+            if distance > info.x_shift + self.area.width() - scrolloff.d_x {
                 // Shift by the amount required to keep the cursor in bounds.
-                info.x_shift = distance + scrolloff.d_x + 1 - self.area.width();
+                info.x_shift = distance + scrolloff.d_x - self.area.width();
                 has_scrolled = true;
             // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
-            } else if distance <= info.x_shift + scrolloff.d_x && info.x_shift != 0 {
+            } else if distance < info.x_shift + scrolloff.d_x {
                 info.x_shift = distance.saturating_sub(scrolloff.d_x);
                 has_scrolled = true;
             }
@@ -643,20 +646,20 @@ impl<T: OutputArea> File<T> {
         let has_scrolled = self.update_print_info();
 
         let current = self.cursors.get(self.main_cursor).unwrap().current();
-        match &mut self.lines.get_mut(current.line).unwrap().char_tags {
-            Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
-            None => {},
+        if let Some(tags) = &mut self.lines.get_mut(current.line).unwrap().char_tags {
+            tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor))
         }
 
         let target = self.cursors.get(self.main_cursor).unwrap().target();
 
-        let char_tags = &mut self.lines.get_mut(target.line).unwrap().char_tags.as_deref_mut();
+        let char_tags = &mut self.lines[target.line].char_tags.as_deref_mut();
         match char_tags {
             Some(tags) => {
                 tags.insert((target.col as u32, CharTag::MainCursor));
             },
             None => {
-                *char_tags = Some(&mut CharTags::from(&[(target.col as u32, CharTag::MainCursor)]));
+                self.lines[target.line].char_tags = 
+                	Some(Box::new(CharTags::from(&[(target.col as u32, CharTag::MainCursor)])));
             },
         }
 
@@ -667,7 +670,7 @@ impl<T: OutputArea> File<T> {
 
         // The line at the top of the screen and the amount of hidden columns.
         let skip = if info.top_wraps > 0 {
-            let line = self.lines.get(info.top_line).expect("invalid line");
+            let line = self.lines.get(info.top_line).unwrap();
             unsafe { line.wrap_iter().unwrap_unchecked().nth(info.top_wraps - 1).unwrap() as usize }
         } else {
             0
@@ -675,26 +678,26 @@ impl<T: OutputArea> File<T> {
 
         // If the file has scrolled, reprint the whole screen.
         if has_scrolled || force {
-            let mut line_origin = OutputPos { x: info.x_shift as u16, y: 0 };
+            let mut y = 0;
 
             // Prints the first line and updates where to print next.
             let mut lines_iter = self.lines.iter();
             let top_line = lines_iter.nth(info.top_line).unwrap();
-            line_origin.y += top_line.print(&mut self.area, line_origin, skip, &self.options);
+            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options);
 
             // Prints the remaining lines
             while let Some(line) = lines_iter.next() {
-                if line_origin.y as usize > self.area.height() {
+                if y as usize > self.area.height() {
                     break;
                 }
-                line_origin.y += line.print(&mut self.area, line_origin, 0, &self.options);
+                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options);
             }
 
             // Clears the lines where nothing has been printed.
-            for _ in (line_origin.y as usize)..=self.area.height() {
-                self.area.move_cursor(line_origin);
-                self.area.print(" ".repeat(self.area.width() as usize));
-                line_origin.y += 1;
+            for _ in (y as usize)..=self.area.height() {
+                self.area.move_cursor(OutputPos { x: 0, y });
+                self.area.print(" ".repeat(self.area.width()));
+                y += 1;
             }
         // If it hasn't, only reprint the lines where cursors have been in.
         } else {
@@ -706,7 +709,7 @@ impl<T: OutputArea> File<T> {
 
             let mut last_counted_line = info.top_line;
 
-            let mut line_origin = OutputPos { x: info.x_shift as u16, y: 0 };
+            let mut y = 0;
 
             for index in lines {
                 if index < info.top_line { continue; }
@@ -716,28 +719,27 @@ impl<T: OutputArea> File<T> {
 
 				// Calculating the vertical distance between the last printed line and the new line.
 				// If there's no wrapping, we can just take the amount of lines in between.
-                line_origin.y += if let WrapMethod::NoWrap = self.options.wrap_method {
+                y += if let WrapMethod::NoWrap = self.options.wrap_method {
                     lines_iter.count() as u16
                 // If there is wrapping, we need to add it to the calculations.
                 } else {
                     lines_iter.map(|l| 1 + l.wrap_iter().unwrap().count() as u16).sum()
                 };
 
-				if line_origin.y as usize > self.area.height() { break; }
+				if y as usize > self.area.height() { break; }
 
                 last_counted_line = index;
                 let line = &self.lines[index];
 
                 if index == info.top_line {
     				// The top line will be printed at the top, no matter what.
-                    let top_left = OutputPos { x: info.x_shift as u16, y: 0 };
-                    line.print(&mut self.area, top_left, skip as usize, &self.options);
+                    line.print(&mut self.area, info.x_shift, 0, skip as usize, &self.options);
 
 					// If the top line wraps 5 times, and `info.top_wraps == 2`, only 3 of those
 					// lines are shown, and the y position need only go down by 3.
-					line_origin.y -= info.top_wraps as u16;
+					y -= info.top_wraps as u16;
                 } else {
-                    line.print(&mut self.area, line_origin,0, &self.options);
+                    line.print(&mut self.area, info.x_shift, y, 0, &self.options);
                 }
             }
         }

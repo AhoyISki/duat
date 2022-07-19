@@ -35,7 +35,7 @@ fn main() {
             line_numbers: LineNumbers::Hybrid,
             tabs: TabPlaces::Regular(4),
             wrap_indent: true,
-            tabs_as_spaces: true,
+            tabs_as_spaces: false,
         },
     };
 
