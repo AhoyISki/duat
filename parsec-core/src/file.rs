@@ -125,7 +125,7 @@ impl TextLine {
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
-        if self.line_flags.contains(LineFlags::PURE_1_COL & LineFlags::PURE_ASCII) {
+        if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
             char_index = width;
             while char_index < self.text.len() {
                 additions.push((char_index as u32, CharTag::WrapppingChar));
@@ -136,7 +136,7 @@ impl TextLine {
 
                 // `width` goes to the first character of the next line, so `n * width` would be
                 // off by `n - 1` characters, which is why the `- 1` is there.
-                char_index += width - indent_wrap - 1;
+                char_index += width - indent_wrap;
             }
         } else {
             for (index, ch) in self.text.chars().enumerate() {
@@ -542,7 +542,7 @@ impl<T: OutputArea> File<T> {
         line.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
         line.line_flags.set(
             LineFlags::PURE_1_COL,
-            !line.text.chars().any(|c| (UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t')),
+            !line.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
         );
 
         if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
@@ -673,28 +673,20 @@ impl<T: OutputArea> File<T> {
         let has_scrolled = self.update_print_info();
 
         let current = self.cursors.get(self.main_cursor).unwrap().current();
+        match &mut self.lines.get_mut(current.line).unwrap().char_tags {
+            Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
+            None => {},
+        }
 
         let target = self.cursors.get(self.main_cursor).unwrap().target();
 
         let char_tags = &mut self.lines.get_mut(target.line).unwrap().char_tags.as_deref_mut();
         match char_tags {
             Some(tags) => {
-                if current.line == target.line {
-                    tags.update_cursor(target.col as u32)
-                } else {
-                    tags.insert((target.col as u32, CharTag::MainCursor));
-                    match &mut self.lines.get_mut(current.line).unwrap().char_tags {
-                        Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
-                        None => {},
-                    }
-                }
+                tags.insert((target.col as u32, CharTag::MainCursor));
             },
             None => {
                 *char_tags = Some(&mut CharTags::from(&[(target.col as u32, CharTag::MainCursor)]));
-                match &mut self.lines.get_mut(current.line).unwrap().char_tags {
-                    Some(tags) => tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor)),
-                    None => {},
-                }
             },
         }
 
@@ -746,7 +738,7 @@ impl<T: OutputArea> File<T> {
             for index in lines {
                 if index < info.top_line {
                     continue;
-                }
+                } 
 
                 let lines_iter = self.lines.get(last_line_count..index).unwrap().iter();
 
@@ -760,7 +752,11 @@ impl<T: OutputArea> File<T> {
 
                 last_line_count = index;
 
-                self.print_file_line(index, 0, height_sum - info.top_wraps as u16);
+				if index == info.top_line {
+                    self.print_file_line(index, skip as usize, 0);
+                } else {
+                    self.print_file_line(index, 0, height_sum - info.top_wraps as u16);
+                }
             }
         }
     }
