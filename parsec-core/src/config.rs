@@ -46,7 +46,7 @@ impl TabPlaces {
             TabPlaces::Regular(step) => (step - (x % step)),
             TabPlaces::Varied(steps) => {
                 steps.iter().find(|&s| *s > x).expect("not enough tabs") - x
-            },
+            }
         }
     }
 }

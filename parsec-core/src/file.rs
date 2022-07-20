@@ -1,9 +1,10 @@
 use std::cmp::{max, min};
 
+use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
 use crate::cursor::{FileCursor, TextPos};
-use crate::tags::LineFlags;
+use crate::tags::{Form, LineFlags};
 use crate::{
     action::{History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
@@ -24,8 +25,22 @@ pub struct TextLine {
 
 impl TextLine {
     /// Returns a new instance of `TextLine`.
-    pub fn new(text: &str) -> TextLine {
-        TextLine { char_tags: None, text: String::from(text), line_flags: LineFlags::empty() }
+    pub fn new(text: &str, reg: &Regex) -> TextLine {
+        let mut forms = Vec::new();
+        for (num, range) in reg.find_iter(text).enumerate() {
+            forms.push((
+                range.start() as u32,
+                CharTag::AppendForm { index: 0, identifier: num as u8 },
+            ));
+
+            forms.push((range.end() as u32, CharTag::RemoveForm(num as u8)))
+        }
+
+        let mut char_tags = CharTags::new();
+        char_tags.insert_slice(forms.as_slice());
+        let char_tags = Some(Box::new(char_tags));
+
+        TextLine { char_tags, text: String::from(text), line_flags: LineFlags::empty() }
     }
 
     /// Returns the line's indentation.
@@ -41,6 +56,15 @@ impl TextLine {
         }
 
         indent_sum as usize
+    }
+
+    /// Returns the byte index of a given column.
+    pub fn get_byte_at(&self, col: usize) -> usize {
+        if self.line_flags.contains(LineFlags::PURE_ASCII) {
+            col
+        } else {
+            self.text.char_indices().nth(col).unwrap_or((self.text.len(), ' ')).0
+        }
     }
 
     /// Returns the visual distance to a certain column.
@@ -68,35 +92,33 @@ impl TextLine {
     /// last checked character has a width greater than 1), and it is negative if the distance is
     /// greater (happens if there aren't enough characters to cover the distance.
     pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, i32) {
-        let (mut byte, mut dist_sum) = (0, 0);
-        let mut text_iter = self.text.chars();
+        let (mut col, mut distance) = (0, 0);
 
         if self.line_flags.contains(LineFlags::PURE_1_COL) {
-            (byte, dist_sum) = if self.line_flags.contains(LineFlags::PURE_ASCII) {
+            (col, distance) = if self.line_flags.contains(LineFlags::PURE_ASCII) {
+                // The second one is `min()` because if `self.text.len() < min_dist`, it will
+                // overflow.
                 (min(min_dist, self.text.len()), min(self.text.len() - min_dist, 0))
             } else {
-                match self.text.char_indices().nth(min_dist) {
-                    Some((byte, _)) => (byte, 0),
+                match self.text.chars().enumerate().nth(min_dist) {
+                    Some((col, _)) => (col, 0),
                     None => {
                         let count = self.text.chars().count();
                         (count, min_dist - count)
-                    },
+                    }
                 }
             }
         } else {
-            // NOTE: This looks really stupid.
-            while let (Some(ch), true) = (text_iter.next(), dist_sum < min_dist) {
-                dist_sum += if ch == '\t' {
-                    tabs.get_tab_len(dist_sum)
-                } else {
-                    UnicodeWidthChar::width_cjk(ch).unwrap_or(1)
-                };
+            let mut text_iter = self.text.chars().enumerate();
 
-                byte += 1;
+            // NOTE: This looks really stupid.
+            while let (Some((new_col, ch)), true) = (text_iter.next(), distance < min_dist) {
+                distance += get_char_width(ch, distance, tabs);
+                col = new_col;
             }
         }
 
-        (byte, dist_sum as i32 - min_dist as i32)
+        (col, distance as i32 - min_dist as i32)
     }
 
     /// Parses the wrapping of a single line.
@@ -105,30 +127,31 @@ impl TextLine {
     pub fn parse_wrapping(&mut self, width: usize, options: &FileOptions) -> bool {
         let indent = self.indent(&options.tabs);
 
+        // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
         let (char_tags, prev_len) = match self.char_tags.as_mut() {
             Some(char_tags) => {
                 let prev_len = char_tags.vec().len();
                 char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
                 (char_tags, prev_len)
-            },
+            }
             None => {
                 self.char_tags = Some(Box::from(CharTags::new()));
 
                 (self.char_tags.as_mut().unwrap(), 0)
-            },
+            }
         };
 
-        let mut char_index = 0;
+        let mut distance = 0;
         let mut indent_wrap = 0;
         let mut additions = Vec::new();
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            char_index = width;
-            while char_index < self.text.len() {
-                additions.push((char_index as u32, CharTag::WrapppingChar));
+            distance = width;
+            while distance < self.text.len() + 1 {
+                additions.push((distance as u32, CharTag::WrapppingChar));
 
                 if options.wrap_indent {
                     indent_wrap = indent;
@@ -136,14 +159,15 @@ impl TextLine {
 
                 // `width` goes to the first character of the next line, so `n * width` would be
                 // off by `n - 1` characters, which is why the `- 1` is there.
-                char_index += width - indent_wrap;
+                distance += width - indent_wrap;
             }
         } else {
-            for (index, ch) in self.text.chars().enumerate() {
-                char_index += get_char_width(ch, char_index, &options.tabs);
+            let last_space = std::iter::once((self.text.len(), ' '));
+            for (index, ch) in self.text.char_indices().chain(last_space) {
+                distance += get_char_width(ch, distance, &options.tabs);
 
-                if char_index > width - indent_wrap {
-                    char_index = get_char_width(ch, char_index, &options.tabs);
+                if distance > width - indent_wrap {
+                    distance = get_char_width(ch, distance, &options.tabs);
 
                     additions.push((index as u32, CharTag::WrapppingChar));
 
@@ -154,6 +178,7 @@ impl TextLine {
             }
         }
 
+        // The insertion operation is more efficient if I insert already sorted slices.
         char_tags.insert_slice(additions.as_slice());
 
         self.char_tags.as_mut().unwrap().vec().len() != prev_len
@@ -188,7 +213,8 @@ impl TextLine {
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
     fn print<T>(
-        &self, area: &mut T, x_shift: usize, y: u16, skip: usize, options: &FileOptions
+        &self, area: &mut T, x_shift: usize, y: u16, skip: usize, options: &FileOptions,
+        forms: &Vec<Form>,
     ) -> u16
     where
         T: OutputArea,
@@ -214,8 +240,6 @@ impl TextLine {
 
         area.print(" ".repeat(max(0, leftover) as usize));
 
-        let text_iter = self.text.chars().chain(std::iter::once(' ')).enumerate().skip(skip);
-
         let char_width = |c, x| {
             if self.line_flags.contains(LineFlags::PURE_1_COL) {
                 1
@@ -225,6 +249,11 @@ impl TextLine {
         };
 
         if let Some(tags) = &self.char_tags {
+            // The last space exists to print things at the end of the line, for example, a cursor.
+            let last_space = std::iter::once((self.text.len(), ' '));
+            let text_iter =
+                self.text.char_indices().chain(last_space).skip_while(|&(b, _)| b < skip);
+
             let mut wrap_iter = unsafe { self.wrap_iter().unwrap_unchecked() };
 
             // In the case where the amount of skipped characters is greater than the placement of
@@ -238,12 +267,41 @@ impl TextLine {
                 }
             }
 
-            let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| *c < skip as u32);
+            // This is a compromise for performance. The editor will look back at 10 instances of
+            // character tags and execute any form changes that show up.
+            let pre_skip =
+                match tags.vec().iter().enumerate().find(|(_, (c, _))| (*c as usize) >= skip) {
+                    Some((first_shown_tag, _)) => first_shown_tag.saturating_sub(10),
+                    None => tags.vec().len().saturating_sub(10),
+                };
+            if unsafe { crate::FOR_TEST } {
+                panic!("{}", pre_skip)
+            }
+
+            // Iterating from 10 character tags back, until the first tag is printed.
+            let tags_iter =
+                tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
+
+            for (_, tag) in tags_iter {
+                if let &CharTag::AppendForm { index, identifier } = tag {
+                    area.push_form(&forms[index as usize], identifier);
+                } else if let &CharTag::RemoveForm(identifier) = tag {
+                    area.remove_form(identifier);
+                }
+            }
+
+            // Every other tag will be iterated with the text.
+            // NOTE: Not the most efficient way of doing this.
+            let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| (*c as usize) < skip);
             let mut current_char_tag = tags_iter.next();
 
-            'a: for (col, ch) in text_iter {
-                while let Some(&(tag_col, tag)) = current_char_tag {
-                    if col == tag_col as usize {
+            let wrap_indent = if options.wrap_indent { self.indent(&options.tabs) } else { 0 };
+
+            'a: for (byte, ch) in text_iter {
+                let char_width = char_width(ch, d_x + x_shift + leftover as usize);
+
+                while let Some(&(tag_byte, tag)) = current_char_tag {
+                    if byte == tag_byte as usize {
                         current_char_tag = tags_iter.next();
 
                         if let CharTag::WrapppingChar = tag {
@@ -259,20 +317,31 @@ impl TextLine {
                                 break 'a;
                             }
 
+                            // If the character is wide, fill the rest of the terminal line with
+                            // spaces.
+                            (d_x..(area.width() - wrap_indent)).for_each(|_| area.print(' '));
+
+                            d_x = 0;
+
                             area.move_cursor(printing_pos);
 
-                            if options.wrap_indent && x_shift == 0 {
-                                (0..self.indent(&options.tabs)).for_each(|_| area.print(' '));
+                            (0..wrap_indent).for_each(|_| area.print(' '));
+                        } else if let CharTag::PrimaryCursor = tag {
+                            area.place_cursor(tag);
+                        } else if let CharTag::SecondaryCursor = tag {
+                            if area.can_place_secondary_cursor() {
+                                area.place_cursor(tag);
                             }
-                        } else if let CharTag::MainCursor = tag {
-                            area.style(tag);
+                        } else if let CharTag::AppendForm { index, identifier } = tag {
+                            area.push_form(&forms[index as usize], identifier);
+                        } else if let CharTag::RemoveForm(identifier) = tag {
+                            area.remove_form(identifier);
                         }
                     } else {
                         break;
                     }
                 }
 
-                let char_width = char_width(ch, d_x + x_shift + leftover as usize);
                 d_x += char_width;
                 if let WrapMethod::NoWrap = options.wrap_method {
                     if d_x > area.width() {
@@ -288,7 +357,8 @@ impl TextLine {
                 }
             }
         } else {
-            for (_, ch) in text_iter {
+            let text_iter = self.text.chars().chain(std::iter::once(' ')).skip(skip);
+            for ch in text_iter {
                 let char_width = char_width(ch, d_x);
                 d_x += char_width;
                 if d_x > area.width() {
@@ -304,9 +374,13 @@ impl TextLine {
             }
         }
 
+        area.clear_form_stack();
+
         // Erasing anything that is leftover
         let width = area.width();
         if printing_pos.y as usize <= area.height() {
+            // Most forms (with the exceptions of strings and comments) are not allowed to carry
+            // over lines.
             // NOTE: Eventually will be improved when issue #53667 on rust-lang gets closed.
             if let WrapMethod::Width = options.wrap_method {
                 area.print(" ".repeat(width));
@@ -365,7 +439,7 @@ impl<T: OutputArea> File<T> {
         };
 
         file.cursors.push(FileCursor::new(
-            TextPos { col: 0, line: 0 },
+            TextPos { col: 0, byte: 0, line: 0 },
             &file.lines,
             &file.options.tabs,
         ));
@@ -404,10 +478,10 @@ impl<T: OutputArea> File<T> {
         } else {
             let (current_wraps, target_wraps, lines_iter) = unsafe {
                 let wraps = self.lines.get_unchecked(current.line).wrap_iter().unwrap_unchecked();
-                let cur = wraps.filter(|&c| c <= current.col as u32).count();
+                let cur = wraps.filter(|&c| c < current.byte as u32).count();
 
                 let wraps = self.lines.get_unchecked(target.line).wrap_iter().unwrap_unchecked();
-                let tar = wraps.filter(|&c| c <= target.col as u32).count();
+                let tar = wraps.filter(|&c| c < target.byte as u32).count();
 
                 (cur, tar, self.lines.get_unchecked_mut(..=target.line).iter_mut())
             };
@@ -474,7 +548,8 @@ impl<T: OutputArea> File<T> {
                         if d_y < scrolloff.d_y + info.top_wraps {
                             needs_new_print_info = true;
                         // If this happens, we ran into `info.top_line` while below `scrolloff.y`,
-                        // this means we're in the "middle" of the screen, and don't need to scroll.
+                        // this means we're in the "middle" of the screen, and don't need to
+                        // scroll.
                         } else if !needs_new_print_info {
                             break;
                         }
@@ -535,14 +610,14 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Applies a splice to the file.
-    pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange) -> bool
+    pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange, reg: &Regex) -> bool
     where
         S: ToString,
     {
         let old_lines_len = self.lines.len();
 
         let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
-        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
+        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l, reg)).collect();
         self.lines.splice(old_range.lines(), edits);
 
         let mut full_refresh_needed = self.lines.len() != old_lines_len;
@@ -567,7 +642,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Undoes the last moment in history.
-    pub fn undo(&mut self) {
+    pub fn undo(&mut self, reg: &Regex) {
         let (changes, print_info) = match self.history.undo(&mut self.lines) {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
@@ -575,7 +650,7 @@ impl<T: OutputArea> File<T> {
         self.print_info = print_info.unwrap_or(self.print_info);
 
         for (edit, splice) in &changes {
-            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, reg)).collect();
 
             let added_range = TextRange { start: splice.start, end: splice.added_end };
             self.lines.splice(added_range.lines(), edit);
@@ -602,7 +677,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Re-does the last moment in history.
-    pub fn redo(&mut self) {
+    pub fn redo(&mut self, reg: &Regex) {
         let (changes, print_info) = match self.history.redo(&mut self.lines) {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
@@ -610,7 +685,7 @@ impl<T: OutputArea> File<T> {
         self.print_info = print_info.unwrap_or(self.print_info);
 
         for (edit, splice) in &changes {
-            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l)).collect();
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, &reg)).collect();
 
             let taken_range = TextRange { start: splice.start, end: splice.taken_end };
             self.lines.splice(taken_range.lines(), edit);
@@ -637,30 +712,38 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Prints the file, according to its current position.
-    pub fn print_file(&mut self, force: bool) {
+    pub fn print_file(&mut self, force: bool, forms: &Vec<Form>) {
         // Saving the current cursor lines, in case the case that the whole screen doesn't need to
         // be reprinted.
-        let old_cursor_lines: Vec<usize> = self.cursors.iter().map(|c| c.current().line).collect();
+        let mut cursor_lines: Vec<usize> =
+            self.cursors.iter().map(|c| [c.current().line, c.target().line]).flatten().collect();
 
         // Checks if the main cursor's position change has caused the line to scroll.
         let has_scrolled = self.update_print_info();
 
         let current = self.cursors.get(self.main_cursor).unwrap().current();
         if let Some(tags) = &mut self.lines.get_mut(current.line).unwrap().char_tags {
-            tags.retain(|(_, t)| !matches!(t, CharTag::MainCursor))
+            tags.retain(|(_, t)| !matches!(t, CharTag::PrimaryCursor))
         }
 
         let target = self.cursors.get(self.main_cursor).unwrap().target();
 
-        let char_tags = &mut self.lines[target.line].char_tags.as_deref_mut();
+        let line = &mut self.lines[target.line];
+        // If the cursor is at the end of the line, it's syntax will be placed at a virtual ' '.
+        // The same goes for any type of syntax highlighting.
+        let byte = line.text.char_indices().nth(target.col).unwrap_or((line.text.len(), ' ')).0;
+        let char_tags = line.char_tags.as_deref_mut();
+
         match char_tags {
+            // If there are char tags, insert the `MainCursor` char_tag in an appropriate position.
             Some(tags) => {
-                tags.insert((target.col as u32, CharTag::MainCursor));
-            },
+                tags.insert((byte as u32, CharTag::PrimaryCursor));
+            }
+            // If there aren't, create one and then insert `MainCursor`.
             None => {
-                self.lines[target.line].char_tags = 
-                	Some(Box::new(CharTags::from(&[(target.col as u32, CharTag::MainCursor)])));
-            },
+                line.char_tags =
+                    Some(Box::new(CharTags::from(&[(byte as u32, CharTag::PrimaryCursor)])));
+            }
         }
 
         // Updates the information for each cursor in the file.
@@ -683,42 +766,41 @@ impl<T: OutputArea> File<T> {
             // Prints the first line and updates where to print next.
             let mut lines_iter = self.lines.iter();
             let top_line = lines_iter.nth(info.top_line).unwrap();
-            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options);
+            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options, forms);
 
             // Prints the remaining lines
             while let Some(line) = lines_iter.next() {
                 if y as usize > self.area.height() {
                     break;
                 }
-                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options);
+                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
             }
 
             // Clears the lines where nothing has been printed.
             for _ in (y as usize)..=self.area.height() {
                 self.area.move_cursor(OutputPos { x: 0, y });
-                self.area.print(" ".repeat(self.area.width()));
+                (0..self.area.width()).for_each(|_| self.area.print(' '));
                 y += 1;
             }
         // If it hasn't, only reprint the lines where cursors have been in.
         } else {
-            let mut lines: Vec<usize> = self.cursors.iter().map(|c| c.current().line).collect();
-
-            lines.extend(old_cursor_lines);
-            lines.sort_unstable();
-            lines.dedup();
+            cursor_lines.sort_unstable();
+            cursor_lines.dedup();
 
             let mut last_counted_line = info.top_line;
 
             let mut y = 0;
 
-            for index in lines {
-                if index < info.top_line { continue; }
+            for index in cursor_lines {
+                if index < info.top_line {
+                    continue;
+                }
 
-				// Do this to not count lines multiple times unnecessarily.
+                // Do this to not count lines multiple times unnecessarily.
                 let lines_iter = self.lines.get(last_counted_line..index).unwrap().iter();
 
-				// Calculating the vertical distance between the last printed line and the new line.
-				// If there's no wrapping, we can just take the amount of lines in between.
+                // Calculating the vertical distance between the last printed line and the new line.
+                // If there's no wrapping, we can just take the amount of lines in between.
                 y += if let WrapMethod::NoWrap = self.options.wrap_method {
                     lines_iter.count() as u16
                 // If there is wrapping, we need to add it to the calculations.
@@ -726,20 +808,19 @@ impl<T: OutputArea> File<T> {
                     lines_iter.map(|l| 1 + l.wrap_iter().unwrap().count() as u16).sum()
                 };
 
-				if y as usize > self.area.height() { break; }
+                if y as usize > self.area.height() + info.top_wraps {
+                    break;
+                }
 
                 last_counted_line = index;
                 let line = &self.lines[index];
 
                 if index == info.top_line {
-    				// The top line will be printed at the top, no matter what.
-                    line.print(&mut self.area, info.x_shift, 0, skip as usize, &self.options);
-
-					// If the top line wraps 5 times, and `info.top_wraps == 2`, only 3 of those
-					// lines are shown, and the y position need only go down by 3.
-					y -= info.top_wraps as u16;
+                    // The top line will be printed at the top, no matter what.
+                    line.print(&mut self.area, info.x_shift, 0, skip, &self.options, forms);
                 } else {
-                    line.print(&mut self.area, info.x_shift, y, 0, &self.options);
+                    let y = y - info.top_wraps as u16;
+                    line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
                 }
             }
         }
@@ -766,9 +847,5 @@ impl<T: OutputArea> File<T> {
 }
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
-    if ch == '\t' {
-        tabs.get_tab_len(col)
-    } else {
-        UnicodeWidthChar::width(ch).unwrap_or(1)
-    }
+    if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
 }

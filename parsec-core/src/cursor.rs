@@ -23,6 +23,7 @@ pub struct CursorPos {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TextPos {
     pub col: usize,
+    pub byte: usize,
     pub line: usize,
 }
 
@@ -36,7 +37,7 @@ impl std::ops::Add for TextPos {
     type Output = TextPos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line + rhs.line, col: self.col + rhs.col }
+        TextPos { line: self.line + rhs.line, byte: self.byte + rhs.byte, col: self.col + rhs.col }
     }
 }
 
@@ -50,7 +51,7 @@ impl std::ops::Sub for TextPos {
     type Output = TextPos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line - rhs.line, col: self.col - rhs.col }
+        TextPos { line: self.line - rhs.line, byte: self.byte + rhs.byte, col: self.col - rhs.col }
     }
 }
 
@@ -113,22 +114,14 @@ impl Ord for TextPos {
     where
         Self: Sized,
     {
-        if other > self {
-            other
-        } else {
-            self
-        }
+        if other > self { other } else { self }
     }
 
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
     {
-        if other < self {
-            other
-        } else {
-            self
-        }
+        if other < self { other } else { self }
     }
 }
 
@@ -168,15 +161,15 @@ impl FileCursor {
         let line = self.target.line;
         self.target.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
 
-        let mut text_iter =
-            lines.get(self.target.line).expect("invalid line").text().chars().enumerate();
+        let mut text_iter = lines[self.target.line].text().char_indices().enumerate();
 
         let mut total_width = 0;
         self.target.col = 0;
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        while let Some((index, ch)) = text_iter.next() {
+        while let Some((col, (byte, ch))) = text_iter.next() {
             total_width += get_char_width(ch, total_width, tabs);
-            self.target.col = index;
+            self.target.col = col;
+            self.target.byte = byte;
             if total_width > self.desired_x {
                 break;
             }
@@ -185,32 +178,33 @@ impl FileCursor {
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
-        let mut new_col = self.target.col as i32 + count;
+        let mut col = self.target.col as i32 + count;
 
         if count >= 0 {
             let mut line_iter = lines.iter().enumerate().skip(self.target.line);
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
                 self.target.line = index;
-                if new_col <= line.char_count() as i32 {
+                if col <= line.char_count() as i32 {
                     break;
                 }
-                new_col -= line.char_count() as i32 + 1;
+                col -= line.char_count() as i32 + 1;
             }
         } else {
             let mut line_iter = lines.iter().enumerate().take(self.target.line).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
-                if new_col >= 0 {
+                if col >= 0 {
                     break;
                 }
-                new_col += line.char_count() as i32 + 1;
+                col += line.char_count() as i32 + 1;
                 self.target.line = index;
             }
         }
 
         let line = lines.get(self.target.line).unwrap();
-        self.target.col = new_col.clamp(0, line.text().len() as i32) as usize;
+        self.target.col = col.clamp(0, line.text().len() as i32) as usize;
+        self.target.byte = line.get_byte_at(col as usize);
         self.desired_x = line.get_distance_to_col(self.target.col, tabs) as usize;
     }
 
@@ -221,8 +215,10 @@ impl FileCursor {
     /// you are moving once, and it doesn't make sense move to two places without updating.
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
         let line = pos.line.clamp(0, lines.len());
-        self.target =
-            TextPos { line, col: pos.col.clamp(0, lines.get(line).unwrap().text().len()) };
+        let col = pos.col.clamp(0, lines.get(line).unwrap().text().len());
+        let byte = lines[line].get_byte_at(col);
+
+        self.target = TextPos { line, byte, col };
         let line = lines.get(line).unwrap();
         self.desired_x = line.get_distance_to_col(self.target.col, &options.tabs) as usize;
     }

@@ -137,7 +137,7 @@ impl History {
 
                     self.moments.push(Moment { changes: Vec::new(), print_info: None });
                     self.moments.last_mut().unwrap()
-                },
+                }
             }
         };
 
@@ -311,8 +311,8 @@ impl History {
 // ###########$##
 //
 // And you want to replace the text at the positions $<=x<$ with %%%%%.
-// You can just take the first part of the first line, and the last part of the last line and insert
-// them on %%%%%. This way, you'll get:
+// You can just take the first part of the first line, and the last part of the last line and
+// insert them on %%%%%. This way, you'll get:
 //
 // ####%%%%%$##
 //
@@ -338,15 +338,20 @@ pub fn extend_edit(
     let last_byte = get_byte(last_line, range.end.col);
 
     // Appending the end of the last original line into the edit.
+    let edit_len = edit.len();
     let last_edit_line = edit.last_mut().unwrap();
     last_edit_line.push_str(&last_line[last_byte..]);
 
     let added_range = TextRange {
         start: range.start,
-        end: if edit.len() == 1 {
-            TextPos { line: start.line, col: start.col + last_edit_len }
+        end: if edit_len == 1 {
+            let col = start.col + last_edit_len;
+            let byte = get_byte(last_edit_line, col);
+            TextPos { line: start.line, col, byte }
         } else {
-            TextPos { line: start.line + edit.len() - 1, col: last_edit_len }
+            let col = last_edit_len;
+            let byte = get_byte(last_edit_line, col);
+            TextPos { line: start.line + edit.len() - 1, col: last_edit_len, byte }
         },
     };
 

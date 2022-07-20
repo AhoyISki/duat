@@ -7,7 +7,7 @@ use std::{
 use crossterm::{
     cursor::{MoveTo, SavePosition, RestorePosition},
     event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
-    style::{Print, SetStyle},
+    style::{Print, SetStyle, ContentStyle, Color, Attributes, Attribute, ResetColor},
     terminal, ExecutableCommand, QueueableCommand,
 };
 
@@ -16,6 +16,7 @@ use parsec_core::{
     config::Options,
     input::InputHandler,
     output::{OutputArea, OutputPos},
+    tags::{CharTag, Form},
 };
 
 /// An area in the terminal used for printing text.
@@ -28,6 +29,8 @@ pub struct TermArea {
     end: OutputPos,
 
     stdout: Stdout,
+
+	form_stack: Vec<(Form, u8)>,
 }
 
 impl TermArea {
@@ -36,14 +39,77 @@ impl TermArea {
             origin,
             end,
             stdout: stdout(),
+            form_stack: Vec::new(),
         }
     }
+
+	fn print_form_stack(&mut self) {
+    	let mut final_style = ContentStyle {
+        	foreground_color: Some(Color::Reset),
+        	background_color: Some(Color::Reset),
+        	underline_color: Some(Color::Reset),
+        	attributes: Attributes::from(Attribute::Reset),
+    	};
+    	let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
+
+    	for &(Form { style, is_final }, _) in &self.form_stack {
+        	//panic!("{:#?}", style);
+        	if let Some(color) = style.foreground_color {
+            	if !fg_done { final_style.foreground_color = Some(color) }
+                if is_final { fg_done = true }
+        	}
+        	if let Some(color) = style.background_color {
+            	if !bg_done { final_style.background_color = Some(color) }
+                if is_final { bg_done = true }
+        	}
+        	if let Some(color) = style.foreground_color {
+            	if !ul_done { final_style.underline_color = Some(color) }
+                if is_final { ul_done = true }
+        	}
+        	if !attr_done { final_style.attributes = style.attributes }
+            if is_final { attr_done = true }
+
+			if fg_done && bg_done && ul_done && attr_done { break; }
+    	}
+
+		self.stdout.queue(SetStyle(final_style)).unwrap();
+	}
 }
 
 impl OutputArea for TermArea {
-    fn style(&mut self, tag: parsec_core::tags::CharTag) {
-        self.stdout.queue(SavePosition).unwrap();
+	fn can_place_secondary_cursor(&self) -> bool {
+    	false
+	}
+
+    fn place_cursor(&mut self, tag: CharTag) {
+        match tag {
+            CharTag::PrimaryCursor => {
+                // I have no idea why I have to do this, but if I don't, forms act weird.
+                self.stdout.queue(ResetColor).unwrap().queue(SavePosition).unwrap();
+				self.print_form_stack();
+            },
+            CharTag::SecondaryCursor => panic!("Secondary cursors not allowed on the terminal!"),
+            _ => panic!("Other character tags are not supposed to be handled directly!"),
+        };
     }
+
+	fn push_form(&mut self, form: &Form, identifier: u8) {
+    	self.form_stack.push((*form, identifier));
+
+		self.print_form_stack();
+	}
+
+	fn remove_form(&mut self, identifier: u8) {
+    	self.form_stack.retain(|&(_, i)| i != identifier);
+
+		self.print_form_stack();
+	}
+
+	fn clear_form_stack(&mut self) {
+    	self.form_stack.clear();
+
+		self.stdout.queue(ResetColor).unwrap();
+	}
 
     fn print<T: Display>(&mut self, ch: T) {
         self.stdout.queue(Print(ch)).unwrap();
@@ -145,12 +211,10 @@ pub fn quit() {
     let mut stdout = stdout();
 
     stdout
-        .execute(terminal::EnableLineWrap)
-        .unwrap()
-        .execute(terminal::Clear(terminal::ClearType::All))
-        .unwrap()
-        .execute(MoveTo(0, 0))
-        .unwrap();
+        .execute(terminal::EnableLineWrap).unwrap()
+        .execute(ResetColor).unwrap()
+        .execute(terminal::Clear(terminal::ClearType::All)).unwrap()
+        .execute(MoveTo(0, 0)).unwrap();
 
     terminal::disable_raw_mode().unwrap();
 }

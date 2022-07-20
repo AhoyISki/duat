@@ -10,8 +10,9 @@ edition = "2021"
 unicode-segmentation = "*"
 unicode-width = "*"
 
-# Form handling
+# Style handling
 crossterm = { version = "*", path = "../../crossterm/" }
 
 # Utility
 bitflags = "*"
+regex = "*"

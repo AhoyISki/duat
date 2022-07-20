@@ -1,6 +1,11 @@
 use std::{cmp, fmt::Display, ops};
 
-use crate::{cursor::CursorPos, tags::CharTag};
+use crossterm::style::ContentStyle;
+
+use crate::{
+    cursor::CursorPos,
+    tags::{CharTag, Form},
+};
 
 /// A relative position where text is printed.
 ///
@@ -27,8 +32,26 @@ pub struct PrintInfo {
 ///
 /// Examples include: The file buffer, status line, line numbers, etc.
 pub trait OutputArea {
-    /// Sets the printing style for subsequent text. Or prints the main cursor.
-    fn style(&mut self, form: CharTag);
+    /// Wether or not this area can place multiple carets for the `SecondaryCursor` tag.
+    fn can_place_secondary_cursor(&self) -> bool;
+
+    /// Places a cursor on the screen
+    ///
+    /// #Panics
+    ///
+    /// * Panics if you try to place a `SecondaryCursor` in an area that can't do that.
+    /// Check `can_place_secondary_cursor()` for this information.
+    /// * Also panics if you place any tag that isn't `PrimaryCursor` or `SecondaryCursor`.
+    fn place_cursor(&mut self, cursor: CharTag);
+
+    /// Changes the style for subsequent printed characters.
+    fn push_form(&mut self, form: &Form, identifier: u8);
+
+    /// Changes the style for subsequent printed characters.
+    fn remove_form(&mut self, identifier: u8);
+
+    /// Clears the form stack.
+    fn clear_form_stack(&mut self);
 
     /// Prints plain text.
     ///

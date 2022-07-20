@@ -1,6 +1,10 @@
 use std::{cmp::*, fs, path::PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::{
+    event::{KeyCode, KeyEvent, KeyModifiers},
+    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
+};
+use regex::Regex;
 
 use crate::{
     action::TextRange,
@@ -11,6 +15,7 @@ use crate::{
     input::{InputHandler, ModeList},
     map_actions,
     output::OutputArea,
+    tags::Form,
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
@@ -27,6 +32,12 @@ pub struct Buffer<T: OutputArea> {
 
     /// List of mapped modes for file editing.
     mappings: ModeList<Buffer<T>>,
+
+    /// List of forms.
+    forms: Vec<Form>,
+
+    /// For testing ////////////////////////////////////////////////////
+    reg: Regex,
 }
 
 impl<T: OutputArea> Buffer<T> {
@@ -38,9 +49,11 @@ impl<T: OutputArea> Buffer<T> {
 
         let line_num_area;
 
+        let reg = Regex::new(r"\{|\}|\(|\)|\[|\]").unwrap();
+
         let mut file_handler = Buffer {
             file: {
-                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l)).collect();
+                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &reg)).collect();
 
                 let mut file_area = area.partition_y((area.height() - 2) as u16);
 
@@ -60,6 +73,16 @@ impl<T: OutputArea> Buffer<T> {
             line_num_area,
 
             mappings: ModeList::new(),
+
+            forms: {
+                let s_1 = ContentStyle::new().red();
+                let s_2 = ContentStyle::new().blue();
+                let s_3 = ContentStyle::new().green();
+
+                vec![Form::new(s_1, false), Form::new(s_2, true), Form::new(s_3, false)]
+            },
+
+            reg,
         };
 
         map_actions! {
@@ -142,7 +165,7 @@ impl<T: OutputArea> Buffer<T> {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen(true);
                     }
                 },
                 // Deletes either the character in front, or the selection.
@@ -156,9 +179,13 @@ impl<T: OutputArea> Buffer<T> {
                         let (start, end) = if let Some(anchor) = cursor.anchor() {
                             (min(current, anchor), max(current, anchor))
                         } else if current.col < line.text().len() {
-                            (current, TextPos { col: current.col + 1, ..current })
+                            let col = current.col + 1;
+                            let byte = line.get_byte_at(col);
+                            (current, TextPos { col, byte, ..current })
                         } else if current.line < h.file.lines.len() {
-                            (current, TextPos { col: 0, line: current.line + 1 })
+                            let col = 0;
+                            let byte = line.get_byte_at(col);
+                            (current, TextPos { col, byte, line: current.line + 1 })
                         } else {
                             return;
                         };
@@ -166,7 +193,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start, end };
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -176,14 +203,19 @@ impl<T: OutputArea> Buffer<T> {
                         let cursor = h.file.cursors.get(h.file.main_cursor).unwrap();
 
                         let current = cursor.current();
+                        let line = h.file.lines.get(current.line).unwrap();
 
                         let (start, end) = if let Some(anchor) = cursor.anchor() {
                             (min(current, anchor), max(current, anchor))
                         } else if cursor.current().col > 0 {
-                            (TextPos { col: current.col - 1, ..current }, current)
+                            let col = current.col - 1;
+                            let byte = line.get_byte_at(col);
+                            (TextPos { col, byte, ..current }, current)
                         } else if current.line > 0 {
                             let line = h.file.lines.get(current.line - 1).unwrap();
-                            (TextPos { col: line.text().len(), line: current.line - 1 }, current)
+                            let col = line.text().len();
+                            let byte = line.get_byte_at(col);
+                            (TextPos { col, byte, line: current.line - 1 }, current)
                         } else {
                             return;
                         };
@@ -191,7 +223,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start, end };
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -208,7 +240,7 @@ impl<T: OutputArea> Buffer<T> {
 
                         let range = TextRange { start: pos, end: pos };
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -219,14 +251,19 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
-                        h.file.undo();
+                        h.file.undo(&h.reg);
                         h.refresh_screen(true);
                     }
                 },
                 key: (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
-                        h.file.redo();
+                        h.file.redo(&h.reg);
                         h.refresh_screen(true);
+                    }
+                },
+                key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                    |h: &mut Buffer<T>| {
+                        unsafe { crate::FOR_TEST = true }
                     }
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
@@ -236,7 +273,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![""; 2];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -249,7 +286,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![' '];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -260,7 +297,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![c];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
                         h.refresh_screen(refresh_needed);
                     }
                 }
@@ -276,7 +313,7 @@ impl<T: OutputArea> Buffer<T> {
     /// Prints the contents of the file from line on the file.
     #[inline]
     fn refresh_screen(&mut self, force: bool) {
-        self.file.print_file(force);
+        self.file.print_file(force, &self.forms);
 
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.
@@ -293,7 +330,7 @@ impl<T: OutputArea> Buffer<T> {
                     } else {
                         0..(wrap_iter.count() + 1)
                     }
-                },
+                }
                 None => 0..1,
             };
 
@@ -308,7 +345,7 @@ impl<T: OutputArea> Buffer<T> {
                     LineNumbers::Relative => {
                         let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
                         format!("{:>w$}│", usize::abs_diff(index + top_line, main.line), w = width)
-                    },
+                    }
                     LineNumbers::Hybrid => {
                         let main = self.file.cursors.get(self.file.main_cursor).unwrap().current();
                         if index + top_line == main.line {
@@ -320,7 +357,7 @@ impl<T: OutputArea> Buffer<T> {
                                 w = width
                             )
                         }
-                    },
+                    }
                     _ => "".to_string(),
                 };
                 self.line_num_area.print(text);
