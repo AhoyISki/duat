@@ -171,7 +171,7 @@ impl TextLine {
 
                     additions.push((index as u32, CharTag::WrapppingChar));
 
-                    if options.wrap_indent {
+                    if options.wrap_indent && indent < width {
                         indent_wrap = indent;
                     }
                 }
@@ -267,16 +267,18 @@ impl TextLine {
                 }
             }
 
-            // This is a compromise for performance. The editor will look back at 10 instances of
-            // character tags and execute any form changes that show up.
-            let pre_skip =
+            // NOTE: This is a freakishly large number of tags to be in a single line.
+            // NOTE: If a line you wrote has this many tags, frankly, you're a bad programmer.
+            let pre_skip = if tags.vec().len() < 300 {
+                0
+            // If, somehow, `len >= 300`, we look back at 100 lines back, to complete any forms
+            // that could possibly show up.
+            } else {
                 match tags.vec().iter().enumerate().find(|(_, (c, _))| (*c as usize) >= skip) {
-                    Some((first_shown_tag, _)) => first_shown_tag.saturating_sub(10),
-                    None => tags.vec().len().saturating_sub(10),
-                };
-            if unsafe { crate::FOR_TEST } {
-                panic!("{}", pre_skip)
-            }
+                    Some((first_shown_tag, _)) => first_shown_tag.saturating_sub(100),
+                    None => tags.vec().len().saturating_sub(100),
+                }
+            };
 
             // Iterating from 10 character tags back, until the first tag is printed.
             let tags_iter =
@@ -295,7 +297,10 @@ impl TextLine {
             let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| (*c as usize) < skip);
             let mut current_char_tag = tags_iter.next();
 
-            let wrap_indent = if options.wrap_indent { self.indent(&options.tabs) } else { 0 };
+            let wrap_indent = self.indent(&options.tabs);
+            // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
+            let wrap_indent =
+                if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
             'a: for (byte, ch) in text_iter {
                 let char_width = char_width(ch, d_x + x_shift + leftover as usize);
