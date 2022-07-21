@@ -1,3 +1,4 @@
+
 use std::ops::RangeInclusive;
 
 use crate::{cursor::TextPos, file::TextLine, output::PrintInfo};
@@ -10,7 +11,7 @@ pub struct TextRange {
 }
 
 impl TextRange {
-    /// Returns the lines involved in the range.
+    /// Returns a range with all the lines involved in the edit.
     pub fn lines(&self) -> RangeInclusive<usize> {
         self.start.line..=self.end.line
     }
@@ -200,42 +201,59 @@ impl History {
                     change.splice.start = edit_range.start;
                 }
 
-                // The `edit_range` positions in relation to the change's `new_range`, so we can
-                // splice the edit in.
-                let start = edit_range.start.line_aware_sub(change.splice.start);
-                let end = edit_range.end.line_aware_sub(change.splice.start);
+				// Since the old change doesn't necessarily start at the 0th line, we need to get
+				// the relative position of `edit_range`, in order to splice correctly.
+				// If the edit doesn't change the line at `change.splice.start`, its column does not
+				// matter when calculating `rel_edit_range`s position.
+                let mut start = edit_range.start.hor_sub(change.splice.start);
+                let mut end = edit_range.end.hor_sub(change.splice.start);
+
+				// More relative positioning.
+                start.line -= change.splice.start.line;
+                end.line -= change.splice.start.line;
+
                 let rel_edit_range = TextRange { start, end };
 
+				// If this is the case, the new splice start could be anywhere above the old one,
+				// And you can't really take lines from `change.added_text` with a negative index.
 				let rel_lines = if old_splice_start == edit_range.end {
-    				if unsafe { crate::FOR_TEST } { panic!(); }
     				0..=0
+        		// If it is not the case, we know the edit range is contained in
+        		// `change.added_range`, and as such, we can splice regularly.
 				} else {
     				rel_edit_range.lines()
 				};
 
                 let old_added_lines = &change.added_text[rel_lines.clone()];
                 let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
-                
-                let (change_lines, rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
-                change.added_text.splice(rel_lines, change_lines);
+
+				// Here, `edit_lines` is the original `edit`, but filled in with the text from
+				// `str_vec`, the exact same way `extend_edit()` modifies a range in the file.
+                let (edit_lines, mut rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
+                change.added_text.splice(rel_lines, edit_lines);
 
                 // The absolute positions of `rel_added_range`.
-                let start = rel_added_range.start + change.splice.start;
-                let end = rel_added_range.end + change.splice.start;
+                // Since this is already a relative position, we add `change.splice.start.line` to
+                // make it absolute.
+                rel_added_range.start.line += change.splice.start.line;
+                rel_added_range.end.line += change.splice.start.line;
+
+                let start = rel_added_range.start.hor_add(change.splice.start);
+                let end = rel_added_range.end.hor_add(change.splice.start);
                 let added_range = TextRange { start, end };
 
-                // If I replace text with bigger text, `change_range.end` will be bigger, If I
-                // replace text with smaller text, `edit_range.end` will be bigger. This takes into
-                // account edits in any range in the original `change`.
+				// If this is the case, the column of `edit_range` is taken into account.
+				// Any text that is added, no matter how many lines it has, will inevitably have its
+				// end in the same line as `change.added_range`, which is why we don't check.
                 if change.splice.added_end.line == edit_range.end.line {
                     change.splice.added_end -= edit_range.end;
                     change.splice.added_end += added_range.end;
+                // The opposite is the case here.
                 } else {
                     change.splice.added_end.line -= edit_range.end.line;
                     change.splice.added_end.line += added_range.end.line;
                 }
 
-                if unsafe { crate::FOR_TEST } { panic!("edit_range: {:#?},\nadded_range: {:#?},\nchange: {:#?},\nrel_edit_range {:#?}", edit_range, added_range, change, rel_added_range) }
                 return (full_lines, added_range);
             }
         }
@@ -251,6 +269,9 @@ impl History {
             },
         };
         moment.changes.push(change);
+
+        if unsafe { crate::FOR_TEST } { panic!("{:#?}", self.moments) }
+
 
         (full_lines, added_range)
     }

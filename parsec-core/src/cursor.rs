@@ -32,21 +32,21 @@ impl TextPos {
         TextPos { line: self.line + line, ..*self }
     }
 
-	/// Subtracts conditionally depending on if the positions are in the same line.
-	pub fn line_aware_add(&self, other: TextPos) -> TextPos {
+	/// Adds horizontal components if the lines are equal.
+	pub fn hor_add(&self, other: TextPos) -> TextPos {
     	if self.line == other.line {
-        	*self + other
+        	TextPos { line: self.line, ..(*self + other) }
     	} else {
-        	TextPos { col: self.col, byte: self.byte, line: self.line + other.line }
+        	*self
     	}
 	}
 
-	/// Subtracts conditionally depending on if the positions are in the same line.
-	pub fn line_aware_sub(&self, other: TextPos) -> TextPos {
+	/// Subtracts horizontal components if the lines are equal.
+	pub fn hor_sub(&self, other: TextPos) -> TextPos {
     	if self.line == other.line {
-        	*self - other
+        	TextPos { line: self.line, ..(*self - other) }
     	} else {
-        	TextPos { col: self.col, byte: self.byte, line: self.line - other.line }
+        	*self
     	}
 	}
 }
