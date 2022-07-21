@@ -1,4 +1,41 @@
-
+//! The editor's way of editing text.
+//!
+//! This module contains all the operations that deal with editing a file's contents. The edits
+//! happen by taking a range of lines from the original file and sending back a vector of lines,
+//! equivalent to the original set of lines with an edit applied to it. The vast majority of the
+//! time, this just involves taking the original string and placing one character on it (typing).
+//!
+//! This module also deals with the history system and undoing/redoing changes. The history system
+//! works like this.
+//!
+//! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and one
+//! `PrintInfo`. `Change`s are "simple" splices that contain the original text, the text that was
+//! added, their respective ending positions in the file, and a starting position.
+//!
+//! Whenever you undo a `Moment`, all of its splices are reversed on the file, sequentially,
+//! and the file's `PrintInfo` is updated to the `Moment`'s `PrintInfo`. We change the `PrintInfo`
+//! in order to send the user back to the position he was in previously, as he can just look at the
+//! same place on the screen for the changes, which I think of as much less jarring.
+//!
+//! Undoing/redoing `Moment`s also has the effect of moving all `FileCursor`s below the splice's
+//! start to a new position, or creating a new `FileCursor` to take a change into effect. This has
+//! some interesting implications. Since parsec wants to be able to emulate both vim and kakoune, it
+//! needs to be able to adapt to both of its history systems.
+//!
+//! In vim, if you type text, move around, and type more text, all in insert mode, vim would
+//! consider that to be 2 `Moment`s. To fully undo the action, you would have to press `u` twice.
+//! Go ahead, try it. Parsec is consistent with this, you could make a history system that considers
+//! any cursor movement to be a new `Moment`, and since all `Moment`s would only have 1 `Change`,
+//! multiple cursors would never happen by undoing/redoing, which is consistent with vim.
+//!
+//! In kakoune, if you do the same as in vim, and then undo, you will undo both actions at once, and
+//! will now have two cursors. Parsec, again, can be consistent with this, you just have to put both
+//! `Change`s in a single `Moment`, which is done by default.
+//!
+//! All this is to say that history management is an editor specific configuration. In vim, any
+//! cursor movement should create a new `Moment`, in kakoune, any insertion of text is considered a
+//! `Moment`, in most other text editors, a space, tab, or new line, is what creates a `Moment`.
+//! Which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
 use crate::{cursor::TextPos, file::TextLine, output::PrintInfo};
