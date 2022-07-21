@@ -2,7 +2,7 @@ use std::{cmp::*, fs, path::PathBuf};
 
 use crossterm::{
     event::{KeyCode, KeyEvent, KeyModifiers},
-    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
+    style::{ContentStyle, Stylize},
 };
 use regex::Regex;
 
@@ -37,23 +37,24 @@ pub struct Buffer<T: OutputArea> {
     forms: Vec<Form>,
 
     /// For testing ////////////////////////////////////////////////////
-    reg: Regex,
+    reg: Vec<Regex>,
 }
 
 impl<T: OutputArea> Buffer<T> {
     /// Returns a new instance of ContentArea
     pub fn new(mut area: T, path: PathBuf, options: FileOptions) -> Buffer<T> {
         // TODO: In the future, this will not panic!
-        // TODO: Move this to a more general file.
         let file = fs::read_to_string(path).expect("file not found");
 
         let line_num_area;
 
-        let reg = Regex::new(r"\{|\}|\(|\)|\[|\]").unwrap();
+        let bracket_regex = Regex::new(r"\{|\}|\(|\)|\[|\]").unwrap();
+        let string_regex = Regex::new(r#"""#).unwrap();
+        let regs = vec![bracket_regex, string_regex];
 
         let mut file_handler = Buffer {
             file: {
-                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &reg)).collect();
+                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &regs)).collect();
 
                 let mut file_area = area.partition_y((area.height() - 2) as u16);
 
@@ -75,14 +76,13 @@ impl<T: OutputArea> Buffer<T> {
             mappings: ModeList::new(),
 
             forms: {
-                let s_1 = ContentStyle::new().red();
-                let s_2 = ContentStyle::new().blue();
-                let s_3 = ContentStyle::new().green();
+                let bracket = ContentStyle::new().red();
+                let string = ContentStyle::new().green();
 
-                vec![Form::new(s_1, false), Form::new(s_2, true), Form::new(s_3, false)]
+                vec![Form::new(bracket, false, false), Form::new(string, false, true)]
             },
 
-            reg,
+            reg: regs,
         };
 
         map_actions! {
@@ -245,11 +245,6 @@ impl<T: OutputArea> Buffer<T> {
                         h.refresh_screen(refresh_needed);
                     }
                 },
-                key: (KeyCode::Char('m'), KeyModifiers::ALT) => {
-                    |h: &mut Buffer<T>| {
-                        panic!("{:#?}", h.file.history.moments)
-                    }
-                },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
                         h.file.undo(&h.reg);
@@ -263,7 +258,7 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
+                    |_: &mut Buffer<T>| {
                         unsafe { crate::FOR_TEST = true }
                     }
                 },

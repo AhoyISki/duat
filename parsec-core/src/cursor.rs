@@ -4,17 +4,6 @@ use crate::{
     file::get_char_width,
 };
 
-/// A position used for cursors.
-///
-/// This object indicates where each cursor is, in relation to the output
-/// area. This means that the cursors should be able to have negative
-/// positions. In y for previous lines, and in x for previous columns.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct CursorPos {
-    pub x: i32,
-    pub y: i32,
-}
-
 // Any use of the terms col and line refers specifically to a position in the file,
 // x and y are reserved for positions on the screen.
 // TODO: move this to a more general file.
@@ -81,7 +70,7 @@ impl std::ops::SubAssign for TextPos {
 
 // This is done because if the line of `self` is bigger than the line of `other`, it doesn't matter
 // what the column of `other` is, `self > other`, but if the line is the same, that's when columns
-// should actually be compared. `#[derive(PartialOrd, Ord)]` would just do a blind comparison.
+// should be compared. `#[derive(PartialOrd, Ord)]` would just do a "both are bigger" comparison.
 impl std::cmp::PartialOrd for TextPos {
     fn ge(&self, other: &Self) -> bool {
         self.line > other.line || (self.line == other.line && self.col >= other.col)
@@ -110,6 +99,9 @@ impl std::cmp::PartialOrd for TextPos {
     }
 }
 
+// Same deal here, for some reason, `Impl Ord` doesn't seem to take my implementation of
+// `PartialOrd`, when considering how to implement `Ord` and just goes for the "both are bigger"
+// comparison.
 impl Ord for TextPos {
     fn clamp(self, min: Self, max: Self) -> Self
     where
@@ -229,8 +221,6 @@ impl FileCursor {
     /// Moves the cursor to a position in the file.
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
-    /// - Unlike `move_ver` and `move_hor`, this function will update the file, as it assumes that
-    /// you are moving once, and it doesn't make sense move to two places without updating.
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
         let line = pos.line.clamp(0, lines.len());
         let col = pos.col.clamp(0, lines.get(line).unwrap().text().len());
@@ -243,7 +233,7 @@ impl FileCursor {
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
-    /// The `anchor` and `current` can act as a range of text on the file.
+    /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
         self.anchor = Some(self.current);
     }
@@ -258,15 +248,7 @@ impl FileCursor {
     /// Updates the position of the cursor on the terminal.
     ///
     /// - This function does not take horizontal scrolling into account.
-    pub fn update(&mut self, lines: &Vec<TextLine>) {
-        // If the target hasn't changed/the cursor has already been updated, nothing needs to
-        // be done.
-        if self.target == self.current {
-            return;
-        }
-
-        let line = lines.get(self.target.line).unwrap();
-
+    pub fn update(&mut self) {
         self.current = self.target;
     }
 

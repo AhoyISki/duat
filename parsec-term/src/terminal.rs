@@ -52,8 +52,7 @@ impl TermArea {
     	};
     	let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-    	for &(Form { style, is_final }, _) in &self.form_stack {
-        	//panic!("{:#?}", style);
+    	for &(Form { style, is_final, .. }, _) in &self.form_stack {
         	if let Some(color) = style.foreground_color {
             	if !fg_done { final_style.foreground_color = Some(color) }
                 if is_final { fg_done = true }

@@ -1,11 +1,6 @@
 use std::{cmp, fmt::Display, ops};
 
-use crossterm::style::ContentStyle;
-
-use crate::{
-    cursor::CursorPos,
-    tags::{CharTag, Form},
-};
+use crate::tags::{CharTag, Form};
 
 /// A relative position where text is printed.
 ///
@@ -87,14 +82,6 @@ impl ops::Add for OutputPos {
     }
 }
 
-impl ops::Add<CursorPos> for OutputPos {
-    type Output = OutputPos;
-
-    fn add(self, rhs: CursorPos) -> Self::Output {
-        OutputPos { x: self.x + rhs.x as u16, y: self.y + rhs.y as u16 }
-    }
-}
-
 impl cmp::PartialEq for OutputPos {
     fn eq(&self, other: &Self) -> bool {
         self.x == other.x && self.y == other.y
@@ -130,17 +117,5 @@ impl cmp::PartialOrd for OutputPos {
         } else {
             Some(cmp::Ordering::Equal)
         }
-    }
-}
-
-impl From<CursorPos> for OutputPos {
-    fn from(pos: CursorPos) -> Self {
-        OutputPos { x: pos.x as u16, y: pos.y as u16 }
-    }
-}
-
-impl Display for OutputPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {})", self.x, self.y)
     }
 }

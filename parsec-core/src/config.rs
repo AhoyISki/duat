@@ -14,15 +14,6 @@ pub struct ScrollOff {
     pub d_x: usize,
 }
 
-impl WrapMethod {
-    pub fn is_wrapped(&self) -> bool {
-        match self {
-            WrapMethod::NoWrap => false,
-            _ => true,
-        }
-    }
-}
-
 /// How to show the line numbers on screen.
 #[derive(Copy, Clone, Debug)]
 pub enum LineNumbers {

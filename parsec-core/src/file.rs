@@ -25,19 +25,24 @@ pub struct TextLine {
 
 impl TextLine {
     /// Returns a new instance of `TextLine`.
-    pub fn new(text: &str, reg: &Regex) -> TextLine {
-        let mut forms = Vec::new();
-        for (num, range) in reg.find_iter(text).enumerate() {
-            forms.push((
-                range.start() as u32,
-                CharTag::AppendForm { index: 0, identifier: num as u8 },
-            ));
+    pub fn new(text: &str, regs: &Vec<Regex>) -> TextLine {
+        let mut char_tags = CharTags::new();
 
-            forms.push((range.end() as u32, CharTag::RemoveForm(num as u8)))
+        for (index, reg) in regs.iter().enumerate() {
+            let mut forms = Vec::new();
+
+            for (num, range) in reg.find_iter(text).enumerate() {
+                forms.push((
+                    range.start() as u32,
+                    CharTag::AppendForm { index: index as u16, identifier: num as u8 },
+                ));
+
+                forms.push((range.end() as u32, CharTag::RemoveForm(num as u8)))
+            }
+
+            char_tags.insert_slice(forms.as_slice());
         }
 
-        let mut char_tags = CharTags::new();
-        char_tags.insert_slice(forms.as_slice());
         let char_tags = Some(Box::new(char_tags));
 
         TextLine { char_tags, text: String::from(text), line_flags: LineFlags::empty() }
@@ -426,7 +431,6 @@ pub struct File<T> {
     pub main_cursor: usize,
 
     /// The history of edits on this file.
-    // NOTE: remove pub.
     pub history: History,
 }
 
@@ -488,8 +492,6 @@ impl<T: OutputArea> File<T> {
 
                 let wraps = self.lines.get_unchecked(target.line).wrap_iter().unwrap_unchecked();
                 let tar = wraps.filter(|&c| c <= target.byte as u32).count();
-
-                let tags = self.lines[target.line].char_tags.as_ref().unwrap_unchecked();
 
                 (cur, tar, self.lines.get_unchecked_mut(..=target.line).iter_mut())
             };
@@ -618,14 +620,14 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Applies a splice to the file.
-    pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange, reg: &Regex) -> bool
+    pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange, regs: &Vec<Regex>) -> bool
     where
         S: ToString,
     {
         let old_lines_len = self.lines.len();
 
         let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
-        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l, reg)).collect();
+        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l, regs)).collect();
 
         self.lines.splice(old_range.lines(), edits);
 
@@ -651,7 +653,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Undoes the last moment in history.
-    pub fn undo(&mut self, reg: &Regex) {
+    pub fn undo(&mut self, regs: &Vec<Regex>) {
         let (changes, print_info) = match self.history.undo(&mut self.lines) {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
@@ -659,9 +661,9 @@ impl<T: OutputArea> File<T> {
         self.print_info = print_info.unwrap_or(self.print_info);
 
         for (edit, splice) in &changes {
-            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, reg)).collect();
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, regs)).collect();
 
-            let added_range = TextRange { start: splice.start, end: splice.added_end };
+            let added_range = TextRange { start: splice.start(), end: splice.added_end() };
             self.lines.splice(added_range.lines(), edit);
             for line in added_range.lines() {
                 self.update_line_info(line);
@@ -673,10 +675,10 @@ impl<T: OutputArea> File<T> {
 
         for (_, splice) in changes {
             if let Some(cursor) = cursor_iter.next() {
-                cursor.move_to(splice.taken_end, &self.lines, &self.options);
+                cursor.move_to(splice.taken_end(), &self.lines, &self.options);
             } else {
                 new_cursors.push(FileCursor::new(
-                    splice.taken_end,
+                    splice.taken_end(),
                     &self.lines,
                     &self.options.tabs,
                 ));
@@ -686,7 +688,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Re-does the last moment in history.
-    pub fn redo(&mut self, reg: &Regex) {
+    pub fn redo(&mut self, regs: &Vec<Regex>) {
         let (changes, print_info) = match self.history.redo(&mut self.lines) {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
@@ -694,9 +696,9 @@ impl<T: OutputArea> File<T> {
         self.print_info = print_info.unwrap_or(self.print_info);
 
         for (edit, splice) in &changes {
-            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, &reg)).collect();
+            let edit: Vec<TextLine> = edit.iter().map(|l| TextLine::new(l, regs)).collect();
 
-            let taken_range = TextRange { start: splice.start, end: splice.taken_end };
+            let taken_range = TextRange { start: splice.start(), end: splice.taken_end() };
             self.lines.splice(taken_range.lines(), edit);
             for line in taken_range.lines() {
                 self.update_line_info(line);
@@ -708,10 +710,10 @@ impl<T: OutputArea> File<T> {
 
         for (_, splice) in changes {
             if let Some(cursor) = cursor_iter.next() {
-                cursor.move_to(splice.added_end, &self.lines, &self.options);
+                cursor.move_to(splice.added_end(), &self.lines, &self.options);
             } else {
                 new_cursors.push(FileCursor::new(
-                    splice.added_end,
+                    splice.added_end(),
                     &self.lines,
                     &self.options.tabs,
                 ));
@@ -756,7 +758,7 @@ impl<T: OutputArea> File<T> {
         }
 
         // Updates the information for each cursor in the file.
-        self.cursors.iter_mut().for_each(|c| c.update(&self.lines));
+        self.cursors.iter_mut().for_each(|c| c.update());
 
         let info = self.print_info;
 

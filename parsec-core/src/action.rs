@@ -63,17 +63,27 @@ impl TextRange {
 #[derive(Debug, Clone, Copy)]
 pub struct Splice {
     /// The start of both texts.
-    pub start: TextPos,
+    start: TextPos,
     /// The end of the added text.
-    pub added_end: TextPos,
+    added_end: TextPos,
     /// The end of the taken text.
-    pub taken_end: TextPos,
+    taken_end: TextPos,
 }
 
-#[derive(Debug)]
-pub struct Selection {
-    pub cursor_pos: TextPos,
-    pub anchor_pos: TextPos,
+impl Splice {
+    ////////////////////////////////
+    // Getters
+    ////////////////////////////////
+    pub fn start(&self) -> TextPos {
+        self.start
+    }
+    pub fn added_end(&self) -> TextPos {
+        self.added_end
+    }
+
+    pub fn taken_end(&self) -> TextPos {
+        self.taken_end
+    }
 }
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
@@ -89,35 +99,6 @@ struct Change {
     splice: Splice,
 }
 
-/// A moment in history, which may contain changes, or may just contain selections.
-///
-/// It also contains information about how to print the file, so that going back in time is less
-/// jaring.
-#[derive(Debug)]
-pub struct Moment {
-    /// Where the file was printed at the time this moment happened.
-    print_info: Option<PrintInfo>,
-    /// A list of actions, which may be changes, or simply selections of text.
-    changes: Vec<Change>,
-}
-
-/// The history of edits, contains all moments.
-#[derive(Debug)]
-pub struct History {
-    /// The list of moments in this file's editing history.
-    pub moments: Vec<Moment>,
-    /// The currently active moment.
-    current_moment: usize,
-    // This exists to make
-    /// Wether or not the user has undone/redone past actions.
-    traveled_in_time: bool,
-}
-
-// Since the history gets deleted when moments prior to the current one are added, changes in file
-// positions, (e.g. if lines get added before a change, moving the changed lines down the file), we
-// don't need to care about changes to positions, and can splice in the same positions of the
-// change. However, in the case of jumping, the new position needs to be calculated in order to
-// jump to the correct location.
 impl Change {
     /// Applies the change to the given text.
     fn apply(&self, lines: &Vec<TextLine>) -> Vec<String> {
@@ -136,6 +117,30 @@ impl Change {
 
         extend_edit(undo_lines, self.taken_text.clone(), added_range).0
     }
+}
+
+/// A moment in history, which may contain changes, or may just contain selections.
+///
+/// It also contains information about how to print the file, so that going back in time is less
+/// jaring.
+#[derive(Debug)]
+pub struct Moment {
+    /// Where the file was printed at the time this moment happened.
+    print_info: Option<PrintInfo>,
+    /// A list of actions, which may be changes, or simply selections of text.
+    changes: Vec<Change>,
+}
+
+/// The history of edits, contains all moments.
+#[derive(Debug)]
+pub struct History {
+    /// The list of moments in this file's editing history.
+    moments: Vec<Moment>,
+    /// The currently active moment.
+    current_moment: usize,
+    // This exists to make
+    /// Wether or not the user has undone/redone past actions.
+    traveled_in_time: bool,
 }
 
 impl History {
@@ -307,13 +312,10 @@ impl History {
         };
         moment.changes.push(change);
 
-        if unsafe { crate::FOR_TEST } { panic!("{:#?}", self.moments) }
-
-
         (full_lines, added_range)
     }
 
-    /// Declares that the current moment is complete and moving to the next one.
+    /// Declares that the current moment is complete and moves to the next one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
         if !self.moments.last().unwrap().changes.is_empty() {
@@ -377,13 +379,13 @@ impl History {
 //
 // ####$###########
 // ########
-// ###########$##
+// ###########§##
 //
-// And you want to replace the text at the positions $<=x<$ with %%%%%.
+// And you want to replace the text at the positions $<=x<§ with %%%%%.
 // You can just take the first part of the first line, and the last part of the last line and
 // insert them on %%%%%. This way, you'll get:
 //
-// ####%%%%%$##
+// ####%%%%%§##
 //
 // And your edit is complete.
 /// Returns an edit with the part of the original lines appended to it.

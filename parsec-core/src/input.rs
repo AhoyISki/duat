@@ -22,6 +22,16 @@ pub struct ModeList<T> {
     pub current_mode: usize,
 }
 
+impl<T> ModeList<T> {
+    pub fn new() -> ModeList<T> {
+        ModeList { modes: Vec::new(), current_mode: 0 }
+    }
+
+    pub fn add_mode(&mut self, name: &str) {
+        self.modes.push(Mode::new(name));
+    }
+}
+
 /// A mode containing mappings, like vim's insert, normal and visual modes.
 pub struct Mode<T> {
     pub name: String,
@@ -50,16 +60,6 @@ impl<T> Mode<T> {
     /// Adds a default action to the mode.
     pub fn add_default_action(&mut self, action: fn(&mut T, char)) {
         self.default_action = Some(action);
-    }
-}
-
-impl<T> ModeList<T> {
-    pub fn new() -> ModeList<T> {
-        ModeList { modes: Vec::new(), current_mode: 0 }
-    }
-
-    pub fn add_mode(&mut self, name: &str) {
-        self.modes.push(Mode::new(name));
     }
 }
 
