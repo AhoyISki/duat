@@ -221,6 +221,7 @@ impl<T: OutputArea> Buffer<T> {
                         };
 
                         let range = TextRange { start, end };
+
                         let edit = vec![""];
 
                         let refresh_needed = h.file.splice_edit(edit, range, &h.reg);

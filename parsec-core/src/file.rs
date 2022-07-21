@@ -126,6 +126,7 @@ impl TextLine {
     /// Returns `true` if the amount of wrapped lines has changed.
     pub fn parse_wrapping(&mut self, width: usize, options: &FileOptions) -> bool {
         let indent = self.indent(&options.tabs);
+        let indent = if options.wrap_indent && indent < width { indent } else { 0 };
 
         // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
         let (char_tags, prev_len) = match self.char_tags.as_mut() {
@@ -153,16 +154,16 @@ impl TextLine {
             while distance < self.text.len() + 1 {
                 additions.push((distance as u32, CharTag::WrapppingChar));
 
-                if options.wrap_indent {
-                    indent_wrap = indent;
-                }
+                indent_wrap = indent;
 
                 // `width` goes to the first character of the next line, so `n * width` would be
                 // off by `n - 1` characters, which is why the `- 1` is there.
                 distance += width - indent_wrap;
             }
         } else {
+            // If the line reaches the capped limit, it should wrap, even if on the last character.
             let last_space = std::iter::once((self.text.len(), ' '));
+
             for (index, ch) in self.text.char_indices().chain(last_space) {
                 distance += get_char_width(ch, distance, &options.tabs);
 
@@ -171,15 +172,15 @@ impl TextLine {
 
                     additions.push((index as u32, CharTag::WrapppingChar));
 
-                    if options.wrap_indent && indent < width {
-                        indent_wrap = indent;
-                    }
+                    indent_wrap = indent;
                 }
             }
         }
 
         // The insertion operation is more efficient if I insert already sorted slices.
         char_tags.insert_slice(additions.as_slice());
+
+        
 
         self.char_tags.as_mut().unwrap().vec().len() != prev_len
     }
@@ -483,10 +484,12 @@ impl<T: OutputArea> File<T> {
         } else {
             let (current_wraps, target_wraps, lines_iter) = unsafe {
                 let wraps = self.lines.get_unchecked(current.line).wrap_iter().unwrap_unchecked();
-                let cur = wraps.filter(|&c| c < current.byte as u32).count();
+                let cur = wraps.filter(|&c| c <= current.byte as u32).count();
 
                 let wraps = self.lines.get_unchecked(target.line).wrap_iter().unwrap_unchecked();
-                let tar = wraps.filter(|&c| c < target.byte as u32).count();
+                let tar = wraps.filter(|&c| c <= target.byte as u32).count();
+
+                let tags = self.lines[target.line].char_tags.as_ref().unwrap_unchecked();
 
                 (cur, tar, self.lines.get_unchecked_mut(..=target.line).iter_mut())
             };
@@ -623,6 +626,7 @@ impl<T: OutputArea> File<T> {
 
         let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
         let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l, reg)).collect();
+
         self.lines.splice(old_range.lines(), edits);
 
         let mut full_refresh_needed = self.lines.len() != old_lines_len;

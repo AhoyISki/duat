@@ -186,21 +186,7 @@ impl History {
             if change_added_range.contains_range(edit_range)
                 || change.splice.start == edit_range.end
             {
-                // The `edit_range` positions in relation to the change's `new_range`, so we can
-                // splice the edit in.
-                let start = edit_range.start - change.splice.start;
-                let end = edit_range.end - change.splice.start;
-                let rel_edit_range = TextRange { start, end };
-
-                let old_added_lines = &change.added_text[rel_edit_range.lines()];
-                let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
-
-                let (change_lines, rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
-
-                // The absolute positions of `rel_added_range`.
-                let start = rel_added_range.start + change.splice.start;
-                let end = rel_added_range.end + change.splice.start;
-                let added_range = TextRange { start, end };
+                let old_splice_start = change.splice.start;
 
                 // If the edit happens exactly before the previous change, we need to add the taken
                 // text and move `change.start`.
@@ -214,17 +200,42 @@ impl History {
                     change.splice.start = edit_range.start;
                 }
 
+                // The `edit_range` positions in relation to the change's `new_range`, so we can
+                // splice the edit in.
+                let start = edit_range.start.line_aware_sub(change.splice.start);
+                let end = edit_range.end.line_aware_sub(change.splice.start);
+                let rel_edit_range = TextRange { start, end };
+
+				let rel_lines = if old_splice_start == edit_range.end {
+    				if unsafe { crate::FOR_TEST } { panic!(); }
+    				0..=0
+				} else {
+    				rel_edit_range.lines()
+				};
+
+                let old_added_lines = &change.added_text[rel_lines.clone()];
+                let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
+                
+                let (change_lines, rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
+                change.added_text.splice(rel_lines, change_lines);
+
+                // The absolute positions of `rel_added_range`.
+                let start = rel_added_range.start + change.splice.start;
+                let end = rel_added_range.end + change.splice.start;
+                let added_range = TextRange { start, end };
+
                 // If I replace text with bigger text, `change_range.end` will be bigger, If I
                 // replace text with smaller text, `edit_range.end` will be bigger. This takes into
                 // account edits in any range in the original `change`.
-                change.splice.added_end.line += added_range.end.line - edit_range.end.line;
-                if edit_range.end.line == change.splice.added_end.line {
-                    change.splice.added_end.col =
-                        change_lines.last().unwrap().chars().count() + change.splice.start.col;
+                if change.splice.added_end.line == edit_range.end.line {
+                    change.splice.added_end -= edit_range.end;
+                    change.splice.added_end += added_range.end;
+                } else {
+                    change.splice.added_end.line -= edit_range.end.line;
+                    change.splice.added_end.line += added_range.end.line;
                 }
 
-                change.added_text.splice(rel_edit_range.lines(), change_lines);
-
+                if unsafe { crate::FOR_TEST } { panic!("edit_range: {:#?},\nadded_range: {:#?},\nchange: {:#?},\nrel_edit_range {:#?}", edit_range, added_range, change, rel_added_range) }
                 return (full_lines, added_range);
             }
         }

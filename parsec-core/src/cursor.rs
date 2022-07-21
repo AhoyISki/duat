@@ -31,6 +31,24 @@ impl TextPos {
     pub fn move_line(&self, line: usize) -> TextPos {
         TextPos { line: self.line + line, ..*self }
     }
+
+	/// Subtracts conditionally depending on if the positions are in the same line.
+	pub fn line_aware_add(&self, other: TextPos) -> TextPos {
+    	if self.line == other.line {
+        	*self + other
+    	} else {
+        	TextPos { col: self.col, byte: self.byte, line: self.line + other.line }
+    	}
+	}
+
+	/// Subtracts conditionally depending on if the positions are in the same line.
+	pub fn line_aware_sub(&self, other: TextPos) -> TextPos {
+    	if self.line == other.line {
+        	*self - other
+    	} else {
+        	TextPos { col: self.col, byte: self.byte, line: self.line - other.line }
+    	}
+	}
 }
 
 impl std::ops::Add for TextPos {
@@ -51,7 +69,7 @@ impl std::ops::Sub for TextPos {
     type Output = TextPos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line - rhs.line, byte: self.byte + rhs.byte, col: self.col - rhs.col }
+        TextPos { line: self.line - rhs.line, byte: self.byte - rhs.byte, col: self.col - rhs.col }
     }
 }
 
