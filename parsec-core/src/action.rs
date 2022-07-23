@@ -341,9 +341,7 @@ impl History {
     }
 
     /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn undo(
-        &mut self, lines: &mut Vec<TextLine>,
-    ) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
+    pub fn undo(&mut self, lines: &mut Vec<TextLine>) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
         if self.current_moment == 0 {
             return None;
         }
@@ -364,9 +362,7 @@ impl History {
 
     // TODO: Return a custom Result instead.
     /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn redo(
-        &mut self, lines: &mut Vec<TextLine>,
-    ) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
+    pub fn redo(&mut self, lines: &mut Vec<TextLine>) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
         // TODO: make this return an error for when we're at the last moment.
         if self.current_moment == self.moments.len() {
             return None;

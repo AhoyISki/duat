@@ -77,9 +77,8 @@ impl TextLine {
     /// Returns the column found at a certain visual distance from 0. Also returns any leftovers.
     ///
     /// The leftover number is positive if the width of the characters is greater (happens if the
-    /// last checked character has a width greater than 1), and it is negative if the distance is
-    /// greater (happens if there aren't enough characters to cover the distance.
-    pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, i32) {
+    /// last checked character has a width greater than 1), and 0 otherwise.
+    pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, usize) {
         let (mut col, mut distance) = (0, 0);
 
         if self.line_flags.contains(LineFlags::PURE_1_COL) {
@@ -102,11 +101,11 @@ impl TextLine {
             // NOTE: This looks really stupid.
             while let (Some((new_col, ch)), true) = (text_iter.next(), distance < min_dist) {
                 distance += get_char_width(ch, distance, tabs);
-                col = new_col;
+                col = new_col + 1;
             }
         }
 
-        (col, distance as i32 - min_dist as i32)
+        (col, distance.saturating_sub(min_dist))
     }
 
     /// Parses the wrapping of a single line.
@@ -191,7 +190,7 @@ impl TextLine {
 
         let mut printed_lines = 1;
 
-        let (skip, leftover) = if let WrapMethod::NoWrap = options.wrap_method {
+        let (skip, d_x) = if let WrapMethod::NoWrap = options.wrap_method {
             // Knowing this code, this would seem to overwrite `top_wraps`. But since this value is
             // always 0 when wrapping is disabled, it doesn't matter.
             // The leftover here represents the amount of characters that should not be printed,
@@ -201,10 +200,9 @@ impl TextLine {
         } else {
             (skip, 0)
         };
+        let mut d_x = d_x as usize;
 
-        let mut d_x = 0;
-
-        area.print(" ".repeat(max(0, leftover) as usize));
+        (0..d_x).for_each(|_| area.print(' '));
 
         let char_width = |c, x| {
             if self.line_flags.contains(LineFlags::PURE_1_COL) {
@@ -214,8 +212,9 @@ impl TextLine {
             }
         };
 
-        // The last space exists to print things at the end of the line, for example, a cursor.
-        let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
+        let mut text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
+
+		if unsafe { crate::FOR_TEST } { panic!("{}, {}", text_iter.next().unwrap().1, skip); }
 
         let mut wraps = self.wrap_iter();
         let tags = &self.char_tags;
@@ -266,7 +265,7 @@ impl TextLine {
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
         'a: for (byte, ch) in text_iter {
-            let char_width = char_width(ch, d_x + x_shift + leftover as usize);
+            let char_width = char_width(ch, d_x + x_shift);
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
