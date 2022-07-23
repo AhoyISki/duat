@@ -8,9 +8,9 @@
 //! This module also deals with the history system and undoing/redoing changes. The history system
 //! works like this:
 //!
-//! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and one
-//! `PrintInfo`. `Change`s are "simple" splices that contain the original text, the text that was
-//! added, their respective ending positions in the file, and a starting position.
+//! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and
+//! one `PrintInfo`. `Change`s are "simple" splices that contain the original text, the text that
+//! was added, their respective ending positions in the file, and a starting position.
 //!
 //! Whenever you undo a `Moment`, all of its splices are reversed on the file, sequentially,
 //! and the file's `PrintInfo` is updated to the `Moment`'s `PrintInfo`. We change the `PrintInfo`
@@ -19,18 +19,18 @@
 //!
 //! Undoing/redoing `Moment`s also has the effect of moving all `FileCursor`s below the splice's
 //! start to a new position, or creating a new `FileCursor` to take a change into effect. This has
-//! some interesting implications. Since parsec wants to be able to emulate both vim and kakoune, it
-//! needs to be able to adapt to both of its history systems.
+//! some interesting implications. Since parsec wants to be able to emulate both vim and kakoune,
+//! it needs to be able to adapt to both of its history systems.
 //!
 //! In vim, if you type text, move around, and type more text, all in insert mode, vim would
 //! consider that to be 2 `Moment`s. To fully undo the action, you would have to press `u` twice.
-//! Go ahead, try it. Parsec is consistent with this, you could make a history system that considers
-//! any cursor movement to be a new `Moment`, and since all `Moment`s would only have 1 `Change`,
-//! multiple cursors would never happen by undoing/redoing, which is consistent with vim.
+//! Go ahead, try it. Parsec is consistent with this, you could make a history system that
+//! considers any cursor movement to be a new `Moment`, and since all `Moment`s would only have 1
+//! `Change`, multiple cursors would never happen by undoing/redoing, which is consistent with vim.
 //!
-//! In kakoune, if you do the same as in vim, and then undo, you will undo both actions at once, and
-//! will now have two cursors. Parsec, again, can be consistent with this, you just have to put both
-//! `Change`s in a single `Moment`, which is done by default.
+//! In kakoune, if you do the same as in vim, and then undo, you will undo both actions at once,
+//! and will now have two cursors. Parsec, again, can be consistent with this, you just have to put
+//! both `Change`s in a single `Moment`, which is done by default.
 //!
 //! All this is to say that history management is an editor specific configuration. In vim, any
 //! cursor movement should create a new `Moment`, in kakoune, any insertion of text is considered a
@@ -38,7 +38,11 @@
 //! Which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{cursor::TextPos, file::TextLine, output::PrintInfo};
+use crate::{
+    cursor::{get_byte_distance, TextPos},
+    file::TextLine,
+    output::PrintInfo,
+};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -77,6 +81,7 @@ impl Splice {
     pub fn start(&self) -> TextPos {
         self.start
     }
+
     pub fn added_end(&self) -> TextPos {
         self.added_end
     }
@@ -104,26 +109,26 @@ impl Change {
     fn apply(&self, lines: &mut Vec<TextLine>) {
         let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
-		// The added lines where taken_range resides.
+        // The added lines where taken_range resides.
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
         let full_lines = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
         let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
 
-		lines.splice(taken_range.lines(), full_lines);
+        lines.splice(taken_range.lines(), full_lines);
     }
 
     /// Undoes the change and returns the modified text.
     fn undo(&self, lines: &mut Vec<TextLine>) {
         let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
 
-		// The lines where `added_range` resides.
+        // The lines where `added_range` resides.
         let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
 
         let full_lines = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
         let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
 
-		lines.splice(added_range.lines(), full_lines);
+        lines.splice(added_range.lines(), full_lines);
     }
 }
 
@@ -147,7 +152,7 @@ pub struct History {
     /// The currently active moment.
     current_moment: usize,
 
-	// NOTE: Will almost definitely get rid of this.
+    // NOTE: Will almost definitely get rid of this.
     /// Wether or not the user has undone/redone past actions.
     traveled_in_time: bool,
 }
@@ -254,34 +259,34 @@ impl History {
                     change.splice.start = edit_range.start;
                 }
 
-				// Since the old change doesn't necessarily start at the 0th line, we need to get
-				// the relative position of `edit_range`, in order to splice correctly.
-				// If the edit doesn't change the line at `change.splice.start`, its column does not
-				// matter when calculating `rel_edit_range`s position.
-                let mut start = edit_range.start.hor_sub(change.splice.start);
-                let mut end = edit_range.end.hor_sub(change.splice.start);
+                // Since the old change doesn't necessarily start at the 0th line, we need to get
+                // the relative position of `edit_range`, in order to splice correctly.
+                // If the edit doesn't change the line at `change.splice.start`, its column does not
+                // matter when calculating `rel_edit_range`s position.
+                let mut start = edit_range.start.col_sub(change.splice.start);
+                let mut end = edit_range.end.col_sub(change.splice.start);
 
-				// More relative positioning.
+                // More relative positioning.
                 start.line -= change.splice.start.line;
                 end.line -= change.splice.start.line;
 
                 let rel_edit_range = TextRange { start, end };
 
-				// If this is the case, the new splice start could be anywhere above the old one,
-				// And you can't really take lines from `change.added_text` with a negative index.
-				let rel_lines = if old_splice_start == edit_range.end {
-    				0..=0
-        		// If it is not the case, we know the edit range is contained in
-        		// `change.added_range`, and as such, we can splice regularly.
-				} else {
-    				rel_edit_range.lines()
-				};
+                // If this is the case, the new splice start could be anywhere above the old one,
+                // And you can't really take lines from `change.added_text` with a negative index.
+                let rel_lines = if old_splice_start == edit_range.end {
+                    0..=0
+                    // If it is not the case, we know the edit range is contained in
+                    // `change.added_range`, and as such, we can splice regularly.
+                } else {
+                    rel_edit_range.lines()
+                };
 
                 let old_added_lines = &change.added_text[rel_lines.clone()];
                 let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
 
-				// Here, `edit_lines` is the original `edit`, but filled in with the text from
-				// `str_vec`, the exact same way `extend_edit()` modifies a range in the file.
+                // Here, `edit_lines` is the original `edit`, but filled in with the text from
+                // `str_vec`, the exact same way `extend_edit()` modifies a range in the file.
                 let (edit_lines, mut rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
                 change.added_text.splice(rel_lines, edit_lines);
 
@@ -291,13 +296,13 @@ impl History {
                 rel_added_range.start.line += change.splice.start.line;
                 rel_added_range.end.line += change.splice.start.line;
 
-                let start = rel_added_range.start.hor_add(change.splice.start);
-                let end = rel_added_range.end.hor_add(change.splice.start);
+                let start = rel_added_range.start.col_add(change.splice.start);
+                let end = rel_added_range.end.col_add(change.splice.start);
                 let added_range = TextRange { start, end };
 
-				// If this is the case, the column of `edit_range` is taken into account.
-				// Any text that is added, no matter how many lines it has, will inevitably have its
-				// end in the same line as `change.added_range`, which is why we don't check.
+                // If this is the case, the column of `edit_range` is taken into account.
+                // Any text that is added, no matter how many lines it has, will inevitably have its
+                // end in the same line as `change.added_range`, which is why we don't check.
                 if change.splice.added_end.line == edit_range.end.line {
                     change.splice.added_end -= edit_range.end;
                     change.splice.added_end += added_range.end;
@@ -324,7 +329,9 @@ impl History {
 
         moment.changes.push(change);
 
-		if unsafe { crate::FOR_TEST } { panic!("{:#?}", self.moments) }
+        if unsafe { crate::FOR_TEST } {
+            panic!("{:#?}", self.moments)
+        }
 
         (full_lines, added_range)
     }
@@ -350,7 +357,7 @@ impl History {
         self.current_moment = self.current_moment.saturating_sub(1);
         self.traveled_in_time = true;
 
-		let moment = &self.moments[self.current_moment];
+        let moment = &self.moments[self.current_moment];
         let splices = moment.changes.iter().map(|c| c.splice).collect();
 
         for change in moment.changes.iter().rev() {
@@ -369,7 +376,7 @@ impl History {
         }
         self.traveled_in_time = true;
 
-		let moment = &self.moments[self.current_moment];
+        let moment = &self.moments[self.current_moment];
         let mut splices = Vec::with_capacity(moment.changes.len());
 
         for change in &moment.changes {
@@ -403,6 +410,7 @@ pub fn extend_edit(
 ) -> (Vec<String>, TextRange) {
     let start = range.start;
 
+	let byte = start.byte + edit.iter().map(|l| l.len()).sum::<usize>();
     let last_edit_len = edit.last().unwrap().chars().count();
 
     // Where the byte of `range.start` is.
@@ -425,13 +433,9 @@ pub fn extend_edit(
     let added_range = TextRange {
         start: range.start,
         end: if edit_len == 1 {
-            let col = start.col + last_edit_len;
-            let byte = get_byte(last_edit_line, col);
-            TextPos { line: start.line, col, byte }
+            TextPos { line: start.line, byte, col: start.col + last_edit_len }
         } else {
-            let col = last_edit_len;
-            let byte = get_byte(last_edit_line, col);
-            TextPos { line: start.line + edit.len() - 1, col: last_edit_len, byte }
+            TextPos { line: start.line + edit.len() - 1, byte, col: last_edit_len }
         },
     };
 

@@ -1,4 +1,4 @@
-use std::{cmp::*, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use crossterm::{
     event::{KeyCode, KeyEvent, KeyModifiers},
@@ -9,8 +9,7 @@ use regex::Regex;
 use crate::{
     action::TextRange,
     config::{FileOptions, LineNumbers},
-    cursor::TextPos,
-    file::{File, TextLine},
+    file::File,
     impl_input_handler,
     input::{InputHandler, ModeList},
     map_actions,
@@ -77,7 +76,7 @@ impl<T: OutputArea> Buffer<T> {
                 let bracket = ContentStyle::new().red();
                 let string = ContentStyle::new().green();
 
-                vec![Form::new(bracket, false, false), Form::new(string, false, true)]
+                vec![Form::new(bracket, false), Form::new(string, false)]
             },
         };
 
@@ -167,26 +166,14 @@ impl<T: OutputArea> Buffer<T> {
                 // Deletes either the character in front, or the selection.
                 key: (KeyCode::Delete, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
-                        let cursor = h.file.cursors.get(h.file.main_cursor).unwrap();
+                        let cursor = &mut h.file.cursors[h.file.main_cursor];
 
-                        let current = cursor.current();
-                        let line = h.file.lines.get(current.line).unwrap();
-
-                        let (start, end) = if let Some(anchor) = cursor.anchor() {
-                            (min(current, anchor), max(current, anchor))
-                        } else if current.col < line.text().len() - 1 {
-                            let col = current.col + 1;
-                            let byte = line.get_byte_at(col);
-                            (current, TextPos { col, byte, ..current })
-                        } else if current.line < h.file.lines.len() {
-                            let col = 0;
-                            let byte = line.get_byte_at(col);
-                            (current, TextPos { col, byte, line: current.line + 1 })
-                        } else {
-                            return;
+                        if cursor.anchor().is_none() {
+                            cursor.set_anchor();
+                            cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         };
 
-                        let range = TextRange { start, end };
+						let range = cursor.range();
                         let edit = vec![""];
 
                         let refresh_needed = h.file.splice_edit(edit, range);
@@ -196,28 +183,14 @@ impl<T: OutputArea> Buffer<T> {
                 // Deletes either the character behind, or the selection.
                 key: (KeyCode::Backspace, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
-                        let cursor = h.file.cursors.get(h.file.main_cursor).unwrap();
+                        let cursor = &mut h.file.cursors[h.file.main_cursor];
 
-                        let current = cursor.current();
-                        let line = h.file.lines.get(current.line).unwrap();
-
-                        let (start, end) = if let Some(anchor) = cursor.anchor() {
-                            (min(current, anchor), max(current, anchor))
-                        } else if cursor.current().col > 0 {
-                            let col = current.col - 1;
-                            let byte = line.get_byte_at(col);
-                            (TextPos { col, byte, ..current }, current)
-                        } else if current.line > 0 {
-                            let line = h.file.lines.get(current.line - 1).unwrap();
-                            let col = line.text().len();
-                            let byte = line.get_byte_at(col);
-                            (TextPos { col, byte, line: current.line - 1 }, current)
-                        } else {
-                            return;
+                        if cursor.anchor().is_none() {
+                            cursor.set_anchor();
+                            cursor.move_hor(-1, &h.file.lines, &h.file.options.tabs);
                         };
 
-                        let range = TextRange { start, end };
-
+						let range = cursor.range();
                         let edit = vec![""];
 
                         let refresh_needed = h.file.splice_edit(edit, range);
@@ -226,16 +199,16 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 key: (KeyCode::Tab, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
-                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let cursor = &mut h.file.cursors[h.file.main_cursor];
 
                         let edit = if h.file.options.tabs_as_spaces {
-                            let tab_len = h.file.options.tabs.get_tab_len(pos.col);
+                            let tab_len = h.file.options.tabs.get_tab_len(cursor.target().col);
                             vec![" ".repeat(tab_len)]
                         } else {
                             vec!["\t".to_string()]
                         };
 
-                        let range = TextRange { start: pos, end: pos };
+						let range = cursor.range();
 
                         let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
@@ -260,12 +233,11 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
-                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let cursor = &h.file.cursors[h.file.main_cursor];
 
-                        let range = TextRange { start: pos, end: pos };
                         let edit = vec![""; 2];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -273,23 +245,21 @@ impl<T: OutputArea> Buffer<T> {
                     |h: &mut Buffer<T>| {
                         h.file.history.new_moment(h.file.print_info());
 
-                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let cursor = &h.file.cursors[h.file.main_cursor];
 
-                        let range = TextRange { start: pos, end: pos };
                         let edit = vec![' '];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
                         h.refresh_screen(refresh_needed);
                     }
                 },
                 _ => {
                     |h: &mut Buffer<T>, c: char| {
-                        let pos = h.file.cursors.get(h.file.main_cursor).unwrap().current();
+                        let cursor = &h.file.cursors[h.file.main_cursor];
 
-                        let range = TextRange { start: pos, end: pos };
                         let edit = vec![c];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
                         h.refresh_screen(refresh_needed);
                     }
                 }

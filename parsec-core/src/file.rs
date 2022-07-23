@@ -3,6 +3,7 @@ use std::cmp::{max, min};
 use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
+use crate::action::get_byte;
 use crate::cursor::{FileCursor, TextPos};
 use crate::tags::{Form, LineFlags};
 use crate::{
@@ -47,7 +48,7 @@ impl TextLine {
     }
 
     /// Returns the byte index of a given column.
-    pub fn get_byte_at(&self, col: usize) -> usize {
+    pub fn get_line_byte_at(&self, col: usize) -> usize {
         if self.line_flags.contains(LineFlags::PURE_ASCII) {
             col
         } else {
@@ -74,38 +75,43 @@ impl TextLine {
         width
     }
 
-    /// Returns the column found at a certain visual distance from 0. Also returns any leftovers.
+    /// Returns the column and byte found at visual distance from 0. Also returns any leftovers.
     ///
     /// The leftover number is positive if the width of the characters is greater (happens if the
     /// last checked character has a width greater than 1), and 0 otherwise.
     pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, usize) {
-        let (mut col, mut distance) = (0, 0);
-
         if self.line_flags.contains(LineFlags::PURE_1_COL) {
-            (col, distance) = if self.line_flags.contains(LineFlags::PURE_ASCII) {
-                // The second one is `min()` because if `self.text.len() < min_dist`, it will
-                // overflow.
-                (min(min_dist, self.text.len()), min(self.text.len() - min_dist, 0))
+            if self.line_flags.contains(LineFlags::PURE_ASCII) {
+                let byte = min(min_dist, self.text.len() - 1);
+
+                (byte, 0)
             } else {
                 match self.text.chars().enumerate().nth(min_dist) {
                     Some((col, _)) => (col, 0),
                     None => {
                         let count = self.text.chars().count();
-                        (count, min_dist - count)
+
+                        (count - 1, 0)
                     }
                 }
             }
         } else {
+            let (mut col, mut distance) = (0, 0);
+
             let mut text_iter = self.text.chars().enumerate();
 
-            // NOTE: This looks really stupid.
-            while let (Some((new_col, ch)), true) = (text_iter.next(), distance < min_dist) {
-                distance += get_char_width(ch, distance, tabs);
-                col = new_col + 1;
-            }
-        }
+            while let Some((new_col, ch)) = text_iter.next() {
+                col = new_col;
 
-        (col, distance.saturating_sub(min_dist))
+                if distance >= min_dist {
+                    break;
+                }
+
+                distance += get_char_width(ch, distance, tabs);
+            }
+
+            (col, distance.saturating_sub(min_dist))
+        }
     }
 
     /// Parses the wrapping of a single line.
@@ -118,7 +124,6 @@ impl TextLine {
         // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
         let prev_len = self.char_tags.vec().len();
         self.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
-
 
         let mut distance = 0;
         let mut indent_wrap = 0;
@@ -160,7 +165,11 @@ impl TextLine {
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.char_tags.vec().iter().filter(|(_, t)| matches!(t, CharTag::WrapppingChar)).map(|(c, _)| *c)
+        self.char_tags
+            .vec()
+            .iter()
+            .filter(|(_, t)| matches!(t, CharTag::WrapppingChar))
+            .map(|(c, _)| *c)
     }
 
     /// Returns how many characters are in the line.
@@ -212,9 +221,7 @@ impl TextLine {
             }
         };
 
-        let mut text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
-
-		if unsafe { crate::FOR_TEST } { panic!("{}, {}", text_iter.next().unwrap().1, skip); }
+        let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
 
         let mut wraps = self.wrap_iter();
         let tags = &self.char_tags;
@@ -374,8 +381,8 @@ pub struct File<T> {
     /// The history of edits on this file.
     pub history: History,
 
-	/// Patterns for syntax highlighting.
-	patterns: Vec<Regex>,
+    /// Patterns for syntax highlighting.
+    patterns: Vec<Regex>,
 }
 
 impl<T: OutputArea> File<T> {
@@ -433,15 +440,15 @@ impl<T: OutputArea> File<T> {
                 has_scrolled = true;
             }
         } else {
-            let (current_wraps, target_wraps, lines_iter) = unsafe {
-                let wraps = self.lines.get_unchecked(current.line).wrap_iter();
-                let cur = wraps.filter(|&c| c <= current.byte as u32).count();
+            let line = &self.lines[current.line];
+            let current_byte = line.get_line_byte_at(current.col);
+            let current_wraps = line.wrap_iter().filter(|&c| c <= current_byte as u32).count();
 
-                let wraps = self.lines.get_unchecked(target.line).wrap_iter();
-                let tar = wraps.filter(|&c| c <= target.byte as u32).count();
+            let line = &self.lines[target.line];
+            let target_byte = line.get_line_byte_at(target.col);
+            let target_wraps = line.wrap_iter().filter(|&c| c <= target_byte as u32).count();
 
-                (cur, tar, self.lines.get_unchecked_mut(..=target.line).iter_mut())
-            };
+            let lines_iter = self.lines[..=target.line].iter_mut();
 
             let mut d_y = target_wraps;
 
@@ -524,6 +531,7 @@ impl<T: OutputArea> File<T> {
                 }
             }
         }
+
         let target = &self.cursors[self.main_cursor].target();
         let line = &self.lines[target.line];
 
@@ -567,7 +575,6 @@ impl<T: OutputArea> File<T> {
 
             line.char_tags.insert_slice(forms.as_slice());
         }
-
 
         line.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
         line.line_flags.set(
@@ -623,7 +630,7 @@ impl<T: OutputArea> File<T> {
         };
         self.print_info = print_info.unwrap_or(self.print_info);
 
-		let mut changed_lines = Vec::new();
+        let mut changed_lines = Vec::new();
 
         for splice in &splices {
             let taken_range = TextRange { start: splice.start(), end: splice.taken_end() };
@@ -640,7 +647,7 @@ impl<T: OutputArea> File<T> {
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-		for splice in splices.iter() {
+        for splice in splices.iter() {
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.taken_end(), &self.lines, &self.options);
             } else {
@@ -650,7 +657,7 @@ impl<T: OutputArea> File<T> {
                     &self.options.tabs,
                 ));
             }
-		}
+        }
 
         self.cursors.extend(new_cursors);
     }
@@ -663,7 +670,7 @@ impl<T: OutputArea> File<T> {
         };
         self.print_info = print_info.unwrap_or(self.print_info);
 
-		let mut changed_lines = Vec::new();
+        let mut changed_lines = Vec::new();
 
         for splice in &splices {
             let added_range = TextRange { start: splice.start(), end: splice.added_end() };
@@ -680,7 +687,7 @@ impl<T: OutputArea> File<T> {
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-		for splice in splices {
+        for splice in splices {
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.added_end(), &self.lines, &self.options);
             } else {
@@ -690,7 +697,7 @@ impl<T: OutputArea> File<T> {
                     &self.options.tabs,
                 ));
             }
-		}
+        }
 
         self.cursors.extend(new_cursors);
     }
@@ -715,7 +722,7 @@ impl<T: OutputArea> File<T> {
         // If the cursor is at the end of the line, it's syntax will be placed at a virtual ' '.
         // The same goes for any type of syntax highlighting.
         let byte = line.text.char_indices().nth(target.col).unwrap_or((line.text.len(), ' ')).0;
-        line.char_tags.insert((byte as u32, CharTag::PrimaryCursor)); 
+        line.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
 
         // Updates the information for each cursor in the file.
         self.cursors.iter_mut().for_each(|c| c.update());

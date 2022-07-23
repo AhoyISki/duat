@@ -1,13 +1,12 @@
+use std::cmp::{max, min};
+
 use super::file::TextLine;
 use crate::{
+    action::TextRange,
     config::{FileOptions, TabPlaces},
-    file::get_char_width,
 };
 
-// Any use of the terms col and line refers specifically to a position in the file,
-// x and y are reserved for positions on the screen.
-// TODO: move this to a more general file.
-// TODO: In the future, this shouldn't be public, probably.
+// NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TextPos {
@@ -21,23 +20,15 @@ impl TextPos {
         TextPos { line: self.line + line, ..*self }
     }
 
-	/// Adds horizontal components if the lines are equal.
-	pub fn hor_add(&self, other: TextPos) -> TextPos {
-    	if self.line == other.line {
-        	TextPos { line: self.line, ..(*self + other) }
-    	} else {
-        	*self
-    	}
-	}
+    /// Adds columns given `self.line == other.line`.
+    pub fn col_add(&self, other: TextPos) -> TextPos {
+        if self.line == other.line { TextPos { line: self.line, ..(*self + other) } } else { *self }
+    }
 
-	/// Subtracts horizontal components if the lines are equal.
-	pub fn hor_sub(&self, other: TextPos) -> TextPos {
-    	if self.line == other.line {
-        	TextPos { line: self.line, ..(*self - other) }
-    	} else {
-        	*self
-    	}
-	}
+    /// Subtracts columns given `self.line == other.line`.
+    pub fn col_sub(&self, other: TextPos) -> TextPos {
+        if self.line == other.line { TextPos { line: self.line, ..(*self - other) } } else { *self }
+    }
 }
 
 impl std::ops::Add for TextPos {
@@ -138,10 +129,18 @@ impl Ord for TextPos {
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 #[derive(Debug)]
 pub struct FileCursor {
+    // The `current` adn `target` positions pretty much exist solely for more versatile comparisons
+    // of movement when printing to the screen.
+    // Often, you'll see `old_target` being used as a variable instead of `current`. This is
+    // because the user may want to execute multiple movements in rapid succession without
+    // printing to the screen, and `current` is just a useful reminder of where the cursor was
+    // the last the screen was printed.
     /// Current position of the cursor in the file.
     current: TextPos,
+
     /// Target position of the cursor in the file.
     target: TextPos,
+
     /// An anchor for a selection.
     anchor: Option<TextPos>,
 
@@ -158,9 +157,11 @@ impl FileCursor {
     /// Returns a new instance of `FileCursor`.
     pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> FileCursor {
         let line = lines.get(pos.line).unwrap();
+        let origin = TextPos { line: 0, byte: 0, col: 0 };
         FileCursor {
             current: pos,
             target: pos,
+            // This should be fine.
             anchor: None,
             desired_x: line.get_distance_to_col(pos.col, tabs),
         }
@@ -168,26 +169,24 @@ impl FileCursor {
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
     pub fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+        let old_target = self.target;
+
         let line = self.target.line;
         self.target.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
+        let line = &lines[self.target.line];
 
-        let mut text_iter = lines[self.target.line].text().char_indices().enumerate();
-
-        let mut total_width = 0;
-        self.target.col = 0;
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        while let Some((col, (byte, ch))) = text_iter.next() {
-            total_width += get_char_width(ch, total_width, tabs);
-            self.target.col = col;
-            self.target.byte = byte;
-            if total_width > self.desired_x {
-                break;
-            }
-        }
+        (self.target.col, _) = line.get_col_at_distance(self.desired_x, tabs);
+
+        // NOTE: Change this to `saturating_sub_signed` once that gets merged.
+        self.target.byte = (self.target.byte as isize
+            + get_byte_distance(lines, old_target, self.target))
+            as usize;
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+        let old_target = self.target;
         let mut col = self.target.col as i32 + count;
 
         if count >= 0 {
@@ -214,20 +213,31 @@ impl FileCursor {
 
         let line = lines.get(self.target.line).unwrap();
         self.target.col = col.clamp(0, line.text().len() as i32) as usize;
-        self.target.byte = line.get_byte_at(col as usize);
+
+        // NOTE: Change this to `saturating_sub_signed` once that gets merged.
+        self.target.byte = (self.target.byte as isize
+            + get_byte_distance(lines, old_target, self.target))
+            as usize;
+
         self.desired_x = line.get_distance_to_col(self.target.col, tabs) as usize;
     }
 
     /// Moves the cursor to a position in the file.
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
+    /// - This command sets `desired_x`.
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
-        let line = pos.line.clamp(0, lines.len());
-        let col = pos.col.clamp(0, lines.get(line).unwrap().text().len());
-        let byte = lines[line].get_byte_at(col);
+        let old_target = self.target;
 
-        self.target = TextPos { line, byte, col };
-        let line = lines.get(line).unwrap();
+        self.target.line = pos.line.clamp(0, lines.len());
+        self.target.col = pos.col.clamp(0, lines.get(self.target.line).unwrap().text().len());
+
+        // NOTE: Change this to `saturating_sub_signed` once that gets merged.
+        self.target.byte = (self.target.byte as isize
+            + get_byte_distance(lines, old_target, self.target))
+            as usize;
+
+        let line = lines.get(self.target.line).unwrap();
         self.desired_x = line.get_distance_to_col(self.target.col, &options.tabs) as usize;
     }
 
@@ -235,7 +245,7 @@ impl FileCursor {
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
-        self.anchor = Some(self.current);
+        self.anchor = Some(self.target);
     }
 
     /// Unsets the anchor.
@@ -243,6 +253,15 @@ impl FileCursor {
     /// This is done so the cursor no longer has a valid selection.
     pub fn unset_anchor(&mut self) {
         self.anchor = None;
+    }
+
+    /// Returns the range between `target` and `anchor`.
+    ///
+    /// If `anchor` isn't set, returns an empty range on `target`.
+    pub fn range(&self) -> TextRange {
+        let anchor = self.anchor.unwrap_or(self.target);
+
+        TextRange { start: min(self.target, anchor), end: max(self.target, anchor) }
     }
 
     /// Updates the position of the cursor on the terminal.
@@ -269,4 +288,28 @@ impl FileCursor {
     pub fn anchor(&self) -> Option<TextPos> {
         self.anchor
     }
+}
+
+// This function is just a much more efficient way of getting the byte in a position than having to
+// add up every line's len, reducing possibly thousands of -- albeit cheap -- operations to usually
+// only 30.
+// NOTE: It could still be made more efficient.
+/// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
+///
+/// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
+pub fn get_byte_distance(lines: &Vec<TextLine>, current: TextPos, target: TextPos) -> isize {
+    let mut distance = lines[target.line].get_line_byte_at(target.col) as isize;
+    distance -= lines[current.line].get_line_byte_at(current.col) as isize;
+
+    let (direction, range) = if target.line > current.line {
+        (1, current.line..target.line)
+    } else if target.line < current.line {
+        (-1, target.line..current.line)
+    } else {
+        return distance;
+    };
+
+    lines[range].iter().for_each(|l| distance += direction * (l.text().len() as isize));
+
+    distance
 }
