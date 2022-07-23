@@ -683,10 +683,10 @@ impl<T: OutputArea> File<T> {
 
 		for splice in splices {
             if let Some(cursor) = cursors.next() {
-                cursor.move_to(splice.taken_end(), &self.lines, &self.options);
+                cursor.move_to(splice.added_end(), &self.lines, &self.options);
             } else {
                 new_cursors.push(FileCursor::new(
-                    splice.taken_end(),
+                    splice.added_end(),
                     &self.lines,
                     &self.options.tabs,
                 ));

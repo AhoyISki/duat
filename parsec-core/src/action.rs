@@ -1,9 +1,9 @@
-//! The editor's way of editing text.
+//! Parsec's way of editing text.
 //!
 //! This module contains all the operations that deal with editing a file's contents. The edits
 //! happen by taking a range of lines from the original file and replacing it by a vector of lines,
 //! equivalent to the original set of lines with an edit applied to it. The vast majority of the
-//! time, this just involves taking the original string and placing one character on it (typing).
+//! time, this just involves taking one original line and placing one character on it (typing).
 //!
 //! This module also deals with the history system and undoing/redoing changes. The history system
 //! works like this:
@@ -104,6 +104,7 @@ impl Change {
     fn apply(&self, lines: &mut Vec<TextLine>) {
         let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
+		// The added lines where taken_range resides.
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
         let full_lines = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
@@ -383,7 +384,7 @@ impl History {
 
         self.current_moment += 1;
 
-        Some((splices, self.moments[self.current_moment].print_info))
+        Some((splices, self.moments[self.current_moment - 1].print_info))
     }
 }
 
