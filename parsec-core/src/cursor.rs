@@ -195,10 +195,10 @@ impl FileCursor {
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
                 self.target.line = index;
-                if col <= line.char_count() as i32 {
+                if col < line.char_count() as i32 {
                     break;
                 }
-                col -= line.char_count() as i32 + 1;
+                col -= line.char_count() as i32;
             }
         } else {
             let mut line_iter = lines.iter().enumerate().take(self.target.line).rev();
@@ -207,7 +207,7 @@ impl FileCursor {
                 if col >= 0 {
                     break;
                 }
-                col += line.char_count() as i32 + 1;
+                col += line.char_count() as i32;
                 self.target.line = index;
             }
         }

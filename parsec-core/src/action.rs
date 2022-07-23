@@ -1,12 +1,12 @@
 //! The editor's way of editing text.
 //!
 //! This module contains all the operations that deal with editing a file's contents. The edits
-//! happen by taking a range of lines from the original file and sending back a vector of lines,
+//! happen by taking a range of lines from the original file and replacing it by a vector of lines,
 //! equivalent to the original set of lines with an edit applied to it. The vast majority of the
 //! time, this just involves taking the original string and placing one character on it (typing).
 //!
 //! This module also deals with the history system and undoing/redoing changes. The history system
-//! works like this.
+//! works like this:
 //!
 //! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and one
 //! `PrintInfo`. `Change`s are "simple" splices that contain the original text, the text that was
@@ -101,21 +101,28 @@ struct Change {
 
 impl Change {
     /// Applies the change to the given text.
-    fn apply(&self, lines: &Vec<TextLine>) -> Vec<String> {
+    fn apply(&self, lines: &mut Vec<TextLine>) {
         let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
-        extend_edit(edit_lines, self.added_text.clone(), taken_range).0
+        let full_lines = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
+        let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
+
+		lines.splice(taken_range.lines(), full_lines);
     }
 
     /// Undoes the change and returns the modified text.
-    fn undo(&self, lines: &Vec<TextLine>) -> Vec<String> {
+    fn undo(&self, lines: &mut Vec<TextLine>) {
         let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
 
+		// The lines where `added_range` resides.
         let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
 
-        extend_edit(undo_lines, self.taken_text.clone(), added_range).0
+        let full_lines = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
+        let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
+
+		lines.splice(added_range.lines(), full_lines);
     }
 }
 
@@ -138,7 +145,8 @@ pub struct History {
     moments: Vec<Moment>,
     /// The currently active moment.
     current_moment: usize,
-    // This exists to make
+
+	// NOTE: Will almost definitely get rid of this.
     /// Wether or not the user has undone/redone past actions.
     traveled_in_time: bool,
 }
@@ -157,7 +165,7 @@ impl History {
     ///     
     /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
     pub fn add_change<T>(
-        &mut self, lines: &Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
+        &mut self, lines: &mut Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
     ) -> (Vec<String>, TextRange)
     where
         T: ToString,
@@ -184,7 +192,9 @@ impl History {
             }
         };
 
-        let edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
+        let mut edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
+        // Insert a '\n' at the end of every line, skipping the last one.
+        edit.iter_mut().rev().skip(1).for_each(|l| l.push('\n'));
 
         let edited_lines: Vec<&str> = lines[edit_range.lines()].iter().map(|l| l.text()).collect();
 
@@ -310,7 +320,10 @@ impl History {
                 taken_end: edit_range.end,
             },
         };
+
         moment.changes.push(change);
+
+		if unsafe { crate::FOR_TEST } { panic!("{:#?}", self.moments) }
 
         (full_lines, added_range)
     }
@@ -328,8 +341,8 @@ impl History {
 
     /// Undoes the changes of the last moment and returns a vector containing range changes.
     pub fn undo(
-        &mut self, lines: &Vec<TextLine>,
-    ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
+        &mut self, lines: &mut Vec<TextLine>,
+    ) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
         if self.current_moment == 0 {
             return None;
         }
@@ -338,40 +351,39 @@ impl History {
         self.current_moment = self.current_moment.saturating_sub(1);
         self.traveled_in_time = true;
 
-        let mut changes = Vec::new();
+		let moment = &self.moments[self.current_moment];
+        let splices = moment.changes.iter().map(|c| c.splice).collect();
 
-        for change in &self.moments[self.current_moment].changes {
-            let undo_lines = change.undo(lines);
-
-            changes.push((undo_lines, change.splice));
+        for change in moment.changes.iter().rev() {
+            change.undo(lines);
         }
 
-        Some((changes, self.moments[self.current_moment].print_info))
+        Some((splices, self.moments[self.current_moment].print_info))
     }
 
     // TODO: Return a custom Result instead.
     /// Undoes the changes of the last moment and returns a vector containing range changes.
     pub fn redo(
-        &mut self, lines: &Vec<TextLine>,
-    ) -> Option<(Vec<(Vec<String>, Splice)>, Option<PrintInfo>)> {
+        &mut self, lines: &mut Vec<TextLine>,
+    ) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
         // TODO: make this return an error for when we're at the last moment.
         if self.current_moment == self.moments.len() {
             return None;
         }
         self.traveled_in_time = true;
 
-        let mut changes = Vec::new();
+		let moment = &self.moments[self.current_moment];
+        let mut splices = Vec::with_capacity(moment.changes.len());
 
-        for change in &self.moments[self.current_moment].changes {
-            let redo_lines = change.apply(lines);
+        for change in &moment.changes {
+            change.apply(lines);
 
-            changes.push((redo_lines, change.splice));
+            splices.push(change.splice);
         }
-        let print_info = self.moments[self.current_moment].print_info;
 
         self.current_moment += 1;
 
-        Some((changes, print_info))
+        Some((splices, self.moments[self.current_moment].print_info))
     }
 }
 

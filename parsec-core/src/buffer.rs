@@ -35,9 +35,6 @@ pub struct Buffer<T: OutputArea> {
 
     /// List of forms.
     forms: Vec<Form>,
-
-    /// For testing ////////////////////////////////////////////////////
-    reg: Vec<Regex>,
 }
 
 impl<T: OutputArea> Buffer<T> {
@@ -50,11 +47,12 @@ impl<T: OutputArea> Buffer<T> {
 
         let bracket_regex = Regex::new(r"\{|\}|\(|\)|\[|\]").unwrap();
         let string_regex = Regex::new(r#"""#).unwrap();
-        let regs = vec![bracket_regex, string_regex];
+        let patterns = vec![bracket_regex, string_regex];
 
         let mut file_handler = Buffer {
             file: {
-                let lines: Vec<TextLine> = file.lines().map(|l| TextLine::new(l, &regs)).collect();
+                // The lines must be '\n' terminated for better compatibility with tree-sitter.
+                let lines: Vec<&str> = file.split_inclusive('\n').collect();
 
                 let mut file_area = area.partition_y((area.height() - 2) as u16);
 
@@ -67,7 +65,7 @@ impl<T: OutputArea> Buffer<T> {
                 }
                 line_num_area = file_area.partition_x(line_num_width);
 
-                File::new(lines, options, file_area)
+                File::new(lines, options, file_area, patterns)
             },
 
             status_line_area: area,
@@ -81,8 +79,6 @@ impl<T: OutputArea> Buffer<T> {
 
                 vec![Form::new(bracket, false, false), Form::new(string, false, true)]
             },
-
-            reg: regs,
         };
 
         map_actions! {
@@ -178,7 +174,7 @@ impl<T: OutputArea> Buffer<T> {
 
                         let (start, end) = if let Some(anchor) = cursor.anchor() {
                             (min(current, anchor), max(current, anchor))
-                        } else if current.col < line.text().len() {
+                        } else if current.col < line.text().len() - 1 {
                             let col = current.col + 1;
                             let byte = line.get_byte_at(col);
                             (current, TextPos { col, byte, ..current })
@@ -193,7 +189,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start, end };
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -224,7 +220,7 @@ impl<T: OutputArea> Buffer<T> {
 
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -241,19 +237,19 @@ impl<T: OutputArea> Buffer<T> {
 
                         let range = TextRange { start: pos, end: pos };
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
-                        h.file.undo(&h.reg);
+                        h.file.undo();
                         h.refresh_screen(true);
                     }
                 },
                 key: (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
-                        h.file.redo(&h.reg);
+                        h.file.redo();
                         h.refresh_screen(true);
                     }
                 },
@@ -269,7 +265,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![""; 2];
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -282,7 +278,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![' '];
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -293,7 +289,7 @@ impl<T: OutputArea> Buffer<T> {
                         let range = TextRange { start: pos, end: pos };
                         let edit = vec![c];
 
-                        let refresh_needed = h.file.splice_edit(edit, range, &h.reg);
+                        let refresh_needed = h.file.splice_edit(edit, range);
                         h.refresh_screen(refresh_needed);
                     }
                 }
@@ -319,15 +315,10 @@ impl<T: OutputArea> Buffer<T> {
         self.line_num_area.move_cursor(pos);
 
         'a: for (index, line) in self.file.lines.iter().skip(top_line).enumerate() {
-            let wraps = match line.wrap_iter() {
-                Some(wrap_iter) => {
-                    if index == 0 {
-                        self.file.top_wraps()..(wrap_iter.count() + 1)
-                    } else {
-                        0..(wrap_iter.count() + 1)
-                    }
-                }
-                None => 0..1,
+            let wraps = if index == 0 {
+                self.file.top_wraps()..(line.wrap_iter().count() + 1)
+            } else {
+                0..(line.wrap_iter().count() + 1)
             };
 
             for _ in wraps {
