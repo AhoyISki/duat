@@ -1,10 +1,9 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 
 use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
-use crate::action::get_byte;
-use crate::cursor::{FileCursor, TextPos};
+use crate::cursor::{FileCursor, TextPos, self};
 use crate::tags::{Form, LineFlags};
 use crate::{
     action::{History, TextRange},
@@ -17,7 +16,7 @@ use crate::{
 /// A line in the text file.
 pub struct TextLine {
     /// Which columns on the line should wrap around.
-    char_tags: CharTags,
+    pub(crate) char_tags: CharTags,
 
     /// The text on the line.
     text: String,
@@ -254,7 +253,7 @@ impl TextLine {
         let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
 
         for (_, tag) in tags_iter {
-            if let &CharTag::AppendForm { index, identifier } = tag {
+            if let &CharTag::AppendForm { index, id: identifier } = tag {
                 area.push_form(&forms[index as usize], identifier);
             } else if let &CharTag::RemoveForm(identifier) = tag {
                 area.remove_form(identifier);
@@ -306,7 +305,7 @@ impl TextLine {
                         if area.can_place_secondary_cursor() {
                             area.place_cursor(tag);
                         }
-                    } else if let CharTag::AppendForm { index, identifier } = tag {
+                    } else if let CharTag::AppendForm { index, id: identifier } = tag {
                         area.push_form(&forms[index as usize], identifier);
                     } else if let CharTag::RemoveForm(identifier) = tag {
                         area.remove_form(identifier);
@@ -561,21 +560,6 @@ impl<T: OutputArea> File<T> {
     pub fn update_line_info(&mut self, line: usize) -> bool {
         let line = &mut self.lines[line];
 
-        for (index, reg) in self.patterns.iter().enumerate() {
-            let mut forms = Vec::new();
-
-            for (num, range) in reg.find_iter(&line.text).enumerate() {
-                forms.push((
-                    range.start() as u32,
-                    CharTag::AppendForm { index: index as u16, identifier: num as u8 },
-                ));
-
-                forms.push((range.end() as u32, CharTag::RemoveForm(num as u8)))
-            }
-
-            line.char_tags.insert_slice(forms.as_slice());
-        }
-
         line.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
         line.line_flags.set(
             LineFlags::PURE_1_COL,
@@ -608,10 +592,17 @@ impl<T: OutputArea> File<T> {
         }
 
         for cursor in &mut self.cursors {
-            let new_pos = if cursor.current().line == old_range.end.line {
-                new_range.end + cursor.current() - old_range.end
-            } else if cursor.current().line > old_range.end.line {
-                cursor.current().move_line(new_range.end.line - old_range.end.line)
+            let new_pos = if cursor.target() > old_range.end {
+				if unsafe { crate::FOR_TEST } { panic!("{:#?}, {:#?}, {:#?}", new_range, old_range, cursor.target() )}
+
+                let mut new_pos = cursor.target();
+                new_pos = new_pos.col_add(new_range.end).col_sub(old_range.end);
+                new_pos.line += new_range.end.line;
+                new_pos.line -= old_range.end.line;
+
+				new_pos
+            } else if cursor.target() > old_range.start {
+                min(cursor.target(), new_range.end)
             } else {
                 continue;
             };

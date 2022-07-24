@@ -329,10 +329,6 @@ impl History {
 
         moment.changes.push(change);
 
-        if unsafe { crate::FOR_TEST } {
-            panic!("{:#?}", self.moments)
-        }
-
         (full_lines, added_range)
     }
 
@@ -410,7 +406,7 @@ pub fn extend_edit(
 ) -> (Vec<String>, TextRange) {
     let start = range.start;
 
-	let byte = start.byte + edit.iter().map(|l| l.len()).sum::<usize>();
+    let byte = start.byte + edit.iter().map(|l| l.len()).sum::<usize>();
     let last_edit_len = edit.last().unwrap().chars().count();
 
     // Where the byte of `range.start` is.

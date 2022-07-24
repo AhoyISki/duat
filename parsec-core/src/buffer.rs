@@ -173,10 +173,11 @@ impl<T: OutputArea> Buffer<T> {
                             cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         };
 
-						let range = cursor.range();
+                        let range = cursor.range();
                         let edit = vec![""];
 
                         let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.cursors[h.file.main_cursor].unset_anchor();
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -190,10 +191,11 @@ impl<T: OutputArea> Buffer<T> {
                             cursor.move_hor(-1, &h.file.lines, &h.file.options.tabs);
                         };
 
-						let range = cursor.range();
+                        let range = cursor.range();
                         let edit = vec![""];
 
                         let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.cursors[h.file.main_cursor].unset_anchor();
                         h.refresh_screen(refresh_needed);
                     }
                 },
@@ -208,9 +210,10 @@ impl<T: OutputArea> Buffer<T> {
                             vec!["\t".to_string()]
                         };
 
-						let range = cursor.range();
+                        let range = cursor.range();
 
                         let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.cursors[h.file.main_cursor].unset_anchor();
                         h.refresh_screen(refresh_needed);
                     }
                 },
