@@ -30,7 +30,7 @@ pub struct TermArea {
 
     stdout: Stdout,
 
-	form_stack: Vec<(Form, u8)>,
+	form_stack: Vec<(Form, u16)>,
 }
 
 impl TermArea {
@@ -92,16 +92,18 @@ impl OutputArea for TermArea {
         };
     }
 
-	fn push_form(&mut self, form: &Form, identifier: u8) {
-    	self.form_stack.push((*form, identifier));
+	fn push_form(&mut self, form: &Form, index: u16) {
+    	self.form_stack.push((*form, index));
 
 		self.print_form_stack();
 	}
 
-	fn remove_form(&mut self, identifier: u8) {
-    	self.form_stack.retain(|&(_, i)| i != identifier);
+	fn remove_form(&mut self, index: u16) {
+    	if let Some(element) = self.form_stack.iter().enumerate().rfind(|(_, (_, i))| *i == index) {
+        	self.form_stack.remove(element.0);
 
-		self.print_form_stack();
+    		self.print_form_stack();
+    	}
 	}
 
 	fn clear_form_stack(&mut self) {

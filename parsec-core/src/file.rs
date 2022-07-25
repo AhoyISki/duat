@@ -253,10 +253,10 @@ impl TextLine {
         let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
 
         for (_, tag) in tags_iter {
-            if let &CharTag::AppendForm { index, id: identifier } = tag {
-                area.push_form(&forms[index as usize], identifier);
-            } else if let &CharTag::RemoveForm(identifier) = tag {
-                area.remove_form(identifier);
+            if let &CharTag::AppendForm(index) = tag {
+                area.push_form(&forms[index as usize], index);
+            } else if let &CharTag::RemoveForm(index) = tag {
+                area.remove_form(index);
             }
         }
 
@@ -305,10 +305,10 @@ impl TextLine {
                         if area.can_place_secondary_cursor() {
                             area.place_cursor(tag);
                         }
-                    } else if let CharTag::AppendForm { index, id: identifier } = tag {
-                        area.push_form(&forms[index as usize], identifier);
-                    } else if let CharTag::RemoveForm(identifier) = tag {
-                        area.remove_form(identifier);
+                    } else if let CharTag::AppendForm(index) = tag {
+                        area.push_form(&forms[index as usize], index);
+                    } else if let CharTag::RemoveForm(index) = tag {
+                        area.remove_form(index);
                     }
                 } else {
                     break;
@@ -592,7 +592,7 @@ impl<T: OutputArea> File<T> {
         }
 
         for cursor in &mut self.cursors {
-            let new_pos = if cursor.target() > old_range.end {
+            let new_pos = if cursor.target() >= old_range.end {
                 if unsafe { crate::FOR_TEST } {
                     panic!("{:#?}, {:#?}, {:#?}", new_range, old_range, cursor.target())
                 }

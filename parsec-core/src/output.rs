@@ -40,10 +40,10 @@ pub trait OutputArea {
     fn place_cursor(&mut self, cursor: CharTag);
 
     /// Changes the style for subsequent printed characters.
-    fn push_form(&mut self, form: &Form, identifier: u8);
+    fn push_form(&mut self, form: &Form, index: u16);
 
     /// Changes the style for subsequent printed characters.
-    fn remove_form(&mut self, identifier: u8);
+    fn remove_form(&mut self, index: u16);
 
     /// Clears the form stack.
     fn clear_form_stack(&mut self);

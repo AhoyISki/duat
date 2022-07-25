@@ -206,6 +206,7 @@ struct RecursiveMatcher {
 struct FormPatterns(Vec<FormPattern>);
 
 /// A position indexed by its byte in relation to the line, instead of column.
+#[derive(Clone, Copy)]
 struct LineBytePos {
     /// The line in the file.
     line: usize,
@@ -216,6 +217,7 @@ struct LineBytePos {
 }
 
 /// A range of positions indexed by line byte, instead of column.
+#[derive(Clone, Copy)]
 struct LineByteRange {
     start: LineBytePos,
     end: LineBytePos,
@@ -231,11 +233,15 @@ impl FormPatterns {
     /// First, it will match itself in the entire segment, secondly, it will match any subpatterns
     /// on segments of itself.
     fn match_text(&self, lines: &mut [TextLine], range: LineByteRange) {
-        let lines = lines.iter_mut().enumerate().take(range.end.line + 1).skip(range.start.line);
         let (start, end) = (range.start, range.end);
+        let lines_iter = lines.iter_mut().enumerate().take(end.line + 1).skip(start.line);
         let mut file_byte = start.file_byte;
 
-        for (index, line) in lines {
+        let mut recurse_ranges = Vec::new();
+
+        for (index, line) in lines_iter {
+            let mut char_tags = CharTags::new();
+
             let (text, line_start) = if range.start.line == range.end.line {
                 (str::from_utf8(&line.text().as_bytes()[start.byte..end.byte]).unwrap(), start.byte)
             } else if index == range.start.line {
@@ -248,13 +254,13 @@ impl FormPatterns {
 
             for pattern in &self.0 {
                 if let MatchingSpan::Word(Matcher::Regex(reg)) = &pattern.matching_span {
-                    let mut ranges = Vec::new();
+                    let mut pattern_char_tags = Vec::new();
 
                     for range in reg.find_iter(text) {
                         let form_start = CharTag::AppendForm(pattern.form_index);
                         let form_end = CharTag::AppendForm(pattern.form_index);
 
-                        ranges.extend_from_slice(&[
+                        pattern_char_tags.extend_from_slice(&[
                             (range.start() as u32, form_start),
                             (range.end() as u32, form_end),
                         ]);
@@ -273,18 +279,21 @@ impl FormPatterns {
                                     file_byte: range.end() + file_byte,
                                 }
                             };
-
-                            pattern.patterns.match_text(slice::from_mut(line), match_range);
+                            
+							recurse_ranges.push((match_range, &pattern.patterns));
                         }
                     }
 
-                    line.char_tags.insert_slice(ranges.as_slice());
+                    char_tags.insert_slice(pattern_char_tags.as_slice());
+                // TODO: This.
+                } else if let MatchingSpan::Word(Matcher::TsCapture(_id)) = &pattern.matching_span {
+
+                // TODO: This as well.
                 } else if let MatchingSpan::Bounds(Matcher::Regex(start), Matcher::Regex(end)) =
                     &pattern.matching_span
                 {
-                    let start_iter = start.find_iter(text);
-                    let end_iter = end.find_iter(text);
-                    let subpatterns = pattern.patterns;
+                    let mut start_iter = start.find_iter(text);
+                    let mut end_iter = end.find_iter(text);
 
                     let mut start_ranges = Vec::new();
 
@@ -295,16 +304,22 @@ impl FormPatterns {
                         start_ranges.push((start, CharTag::AppendMlForm(pattern.form_index)));
                     }
 
-                    line.char_tags.insert_slice(start_ranges.as_slice());
+                    char_tags.insert_slice(start_ranges.as_slice());
 
                     while let Some(range) = end_iter.next() {
                         let end = range.end() as u32;
                         end_ranges.push((end, CharTag::RemoveMlForm(pattern.form_index)));
                     }
 
-                    line.char_tags.insert_slice(end_ranges.as_slice());
+                    char_tags.insert_slice(end_ranges.as_slice());
                 }
             }
+
+            line.char_tags.insert_slice(char_tags.0.as_slice());
+        }
+
+        for (range, patterns) in recurse_ranges {
+            patterns.match_text(lines, range);
         }
     }
 }
