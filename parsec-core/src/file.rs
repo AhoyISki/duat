@@ -1,15 +1,18 @@
 use std::cmp::min;
 
+use crossterm::style::{ContentStyle, Stylize};
 use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
-use crate::cursor::{self, FileCursor, TextPos};
-use crate::tags::{Form, LineFlags};
 use crate::{
     action::{History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
+    cursor::{FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
-    tags::{CharTag, CharTags},
+    tags::{
+        CharTag, CharTags, Form, FormPattern, FormPatterns, LineBytePos, LineByteRange, LineFlags,
+        Matcher, Pattern,
+    },
 };
 
 // TODO: move this to a more general file.
@@ -253,10 +256,10 @@ impl TextLine {
         let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
 
         for (_, tag) in tags_iter {
-            if let &CharTag::AppendForm(index) = tag {
+            if let &CharTag::PushForm(index) = tag {
                 area.push_form(&forms[index as usize], index);
-            } else if let &CharTag::RemoveForm(index) = tag {
-                area.remove_form(index);
+            } else if let &CharTag::PopForm(index) = tag {
+                area.pop_form(index);
             }
         }
 
@@ -305,10 +308,14 @@ impl TextLine {
                         if area.can_place_secondary_cursor() {
                             area.place_cursor(tag);
                         }
-                    } else if let CharTag::AppendForm(index) = tag {
+                    } else if let CharTag::PushForm(index) = tag {
                         area.push_form(&forms[index as usize], index);
-                    } else if let CharTag::RemoveForm(index) = tag {
-                        area.remove_form(index);
+                    } else if let CharTag::PopForm(index) = tag {
+                        area.pop_form(index);
+                    } else if let CharTag::PushMlForm(index) = tag {
+                        area.push_ml_form(&forms[index as usize], index);
+                    } else if let CharTag::PopMlForm(index) = tag {
+                        area.pop_ml_form(index);
                     }
                 } else {
                     break;
@@ -332,7 +339,7 @@ impl TextLine {
             }
         }
 
-        area.clear_form_stack();
+        area.clear_normal_forms();
 
         // Erasing anything that is leftover
         let width = area.width();
@@ -381,13 +388,44 @@ pub struct File<T> {
     pub history: History,
 
     /// Patterns for syntax highlighting.
-    patterns: Vec<Regex>,
+    patterns: FormPatterns,
+
+    /// Forms for syntax highlighting.
+    forms: Vec<Form>,
 }
 
 impl<T: OutputArea> File<T> {
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
     pub fn new(lines: Vec<&str>, options: FileOptions, area: T, patterns: Vec<Regex>) -> File<T> {
         let lines = lines.iter().map(|l| TextLine::new(l)).collect();
+
+        let mut form_patterns = FormPatterns(Vec::new());
+        let matcher = Matcher::Regex(Regex::new(r"\{|\}|\[|\]|\(|\)").unwrap());
+        let pattern = Pattern::Word(matcher);
+        let form_pattern = FormPattern::new(0, pattern);
+        form_patterns.0.push(form_pattern);
+
+        let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
+        let pattern = Pattern::Word(matcher);
+        let mut form_pattern = FormPattern::new(1, pattern);
+
+        let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
+        let pattern = Pattern::Word(matcher);
+
+        form_pattern.push(2, pattern);
+        form_patterns.0.push(form_pattern);
+
+        let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
+        let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
+        let pattern = Pattern::Bounds(matcher_start, matcher_end);
+        let mut form_pattern = FormPattern::new(3, pattern);
+
+        let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
+        let pattern = Pattern::Word(matcher);
+
+        form_pattern.push(4, pattern);
+
+        form_patterns.0.push(form_pattern);
 
         let mut file = File {
             lines,
@@ -398,7 +436,14 @@ impl<T: OutputArea> File<T> {
             cursors: Vec::new(),
             main_cursor: 0,
             history: History::new(),
-            patterns,
+            patterns: form_patterns,
+            forms: vec![
+                Form { style: ContentStyle::new().red(), is_final: false },
+                Form { style: ContentStyle::new().green(), is_final: false },
+                Form { style: ContentStyle::new().on_white(), is_final: false },
+                Form { style: ContentStyle::new().blue(), is_final: false },
+                Form { style: ContentStyle::new().on_yellow(), is_final: false },
+            ],
         };
 
         file.cursors.push(FileCursor::new(
@@ -410,6 +455,14 @@ impl<T: OutputArea> File<T> {
         for line in 0..file.lines.len() {
             file.update_line_info(line);
         }
+
+        let file_byte = file.lines.iter().map(|l| l.text.len()).sum();
+
+        let start = LineBytePos { line: 0, byte: 0, file_byte: 0 };
+        let end = LineBytePos { line: file.lines.len() - 1, byte: 0, file_byte };
+        let range = LineByteRange { start, end };
+
+        file.patterns.match_text(file.lines.as_mut_slice(), range);
 
         file
     }
@@ -612,6 +665,25 @@ impl<T: OutputArea> File<T> {
             cursor.move_to(new_pos, &self.lines, &self.options)
         }
 
+        let start_byte = self.lines[new_range.start.line].get_line_byte_at(new_range.start.col);
+        let end_line = &self.lines[new_range.end.line].text();
+        let end_byte = self.lines[new_range.end.line].get_line_byte_at(new_range.end.col);
+
+        let start = LineBytePos {
+            line: new_range.start.line,
+            byte: 0,
+            file_byte: new_range.start.byte - start_byte,
+        };
+        let end = LineBytePos {
+            line: new_range.end.line,
+            byte: end_line.len(),
+            file_byte: new_range.end.byte - end_byte + end_line.len(),
+        };
+
+        let range = LineByteRange { start, end };
+
+        self.patterns.match_text(self.lines.as_mut_slice(), range);
+
         full_refresh_needed
     }
 
@@ -696,7 +768,7 @@ impl<T: OutputArea> File<T> {
     }
 
     /// Prints the file, according to its current position.
-    pub fn print_file(&mut self, force: bool, forms: &Vec<Form>) {
+    pub fn print_file(&mut self, force: bool) {
         // Saving the current cursor lines, in case the case that the whole screen doesn't need to
         // be reprinted.
         let mut cursor_lines: Vec<usize> =
@@ -737,14 +809,14 @@ impl<T: OutputArea> File<T> {
             // Prints the first line and updates where to print next.
             let mut lines_iter = self.lines.iter();
             let top_line = lines_iter.nth(info.top_line).unwrap();
-            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options, forms);
+            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options, &self.forms);
 
             // Prints the remaining lines
             while let Some(line) = lines_iter.next() {
                 if y as usize > self.area.height() {
                     break;
                 }
-                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
+                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, &self.forms);
             }
 
             // Clears the lines where nothing has been printed.
@@ -788,13 +860,15 @@ impl<T: OutputArea> File<T> {
 
                 if index == info.top_line {
                     // The top line will be printed at the top, no matter what.
-                    line.print(&mut self.area, info.x_shift, 0, skip, &self.options, forms);
+                    line.print(&mut self.area, info.x_shift, 0, skip, &self.options, &self.forms);
                 } else {
                     let y = y - info.top_wraps as u16;
-                    line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
+                    line.print(&mut self.area, info.x_shift, y, 0, &self.options, &self.forms);
                 }
             }
         }
+
+		self.area.clear_all_forms();
     }
 
     ////////////////////////////////

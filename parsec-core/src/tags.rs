@@ -1,10 +1,10 @@
-use std::{slice, str};
+use std::str;
 
 use bitflags::bitflags;
-use crossterm::style::{ContentStyle, SetAttribute};
+use crossterm::style::ContentStyle;
 use regex::Regex;
 
-use crate::{action::TextRange, cursor::TextPos, file::TextLine};
+use crate::file::TextLine;
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -13,14 +13,14 @@ pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
     /// Appends a form to the stack.
-    AppendForm(u16),
+    PushForm(u16),
     /// Removes a form from the stack. It won't always be the last one.
-    RemoveForm(u16),
+    PopForm(u16),
 
     /// Appends a multi-line form to the stack.
-    AppendMlForm(u16),
+    PushMlForm(u16),
     /// Removes a multi-line form from the stack. It won't always be the last one.
-    RemoveMlForm(u16),
+    PopMlForm(u16),
     /// Appends/removes a multi-line form from the stack, depending on if it was there or not.
     BoundMlForm(u16),
 
@@ -163,7 +163,7 @@ impl Form {
 }
 
 /// A matcher primarily for syntax highlighting.
-enum Matcher {
+pub enum Matcher {
     /// A regular expression.
     Regex(Regex),
     /// A tree-sitter capture.
@@ -172,7 +172,7 @@ enum Matcher {
 
 // Patterns can occupy multiple lines only if they are defined as an opening and ending bound.
 /// Indicates wether a pattern should be able to occupy multiple lines, and how.
-enum MatchingSpan {
+pub enum Pattern {
     /// A simple pattern matcher.
     Word(Matcher),
     /// A bounded pattern matcher.
@@ -184,46 +184,47 @@ enum MatchingSpan {
 }
 
 /// An assossiation of a pattern with a spcecific form.
-struct FormPattern {
+pub struct FormPattern {
     /// The index of the form assossiated with this pattern.
     form_index: u16,
     /// What defines what the range will be.
-    matching_span: MatchingSpan,
+    pattern: Pattern,
     /// Patterns that can match inside of the original match range.
     patterns: Box<FormPatterns>,
 }
 
 impl FormPattern {
-    pub fn new(form_index: u16, matching_span: MatchingSpan) -> FormPattern {
-        FormPattern { form_index, matching_span, patterns: Box::new(FormPatterns::new()) }
+    pub fn new(form_index: u16, pattern: Pattern) -> FormPattern {
+        FormPattern { form_index, pattern, patterns: Box::new(FormPatterns::new()) }
+    }
+
+    pub fn push(&mut self, form_index: u16, pattern: Pattern) {
+        self.patterns.0.push(FormPattern::new(form_index, pattern));
     }
 }
 
-struct RecursiveMatcher {
-    cur_id: u8,
-}
-
-struct FormPatterns(Vec<FormPattern>);
+pub struct FormPatterns(pub Vec<FormPattern>);
 
 /// A position indexed by its byte in relation to the line, instead of column.
-#[derive(Clone, Copy)]
-struct LineBytePos {
+#[derive(Clone, Copy, PartialEq)]
+pub struct LineBytePos {
     /// The line in the file.
-    line: usize,
+    pub line: usize,
     /// The byte in relation to the line.
-    byte: usize,
+    pub byte: usize,
     /// The byte in relation to the beginning of the file.
-    file_byte: usize,
+    pub file_byte: usize,
 }
 
 /// A range of positions indexed by line byte, instead of column.
 #[derive(Clone, Copy)]
-struct LineByteRange {
-    start: LineBytePos,
-    end: LineBytePos,
+pub struct LineByteRange {
+    pub start: LineBytePos,
+    pub end: LineBytePos,
 }
 
 impl FormPatterns {
+    /// Returns a new instance of `FormPatterns`
     pub fn new() -> FormPatterns {
         FormPatterns(Vec::new())
     }
@@ -232,12 +233,13 @@ impl FormPatterns {
     ///
     /// First, it will match itself in the entire segment, secondly, it will match any subpatterns
     /// on segments of itself.
-    fn match_text(&self, lines: &mut [TextLine], range: LineByteRange) {
+    pub fn match_text(&self, lines: &mut [TextLine], range: LineByteRange) {
         let (start, end) = (range.start, range.end);
         let lines_iter = lines.iter_mut().enumerate().take(end.line + 1).skip(start.line);
         let mut file_byte = start.file_byte;
 
         let mut recurse_ranges = Vec::new();
+        let mut recurse_starts = Vec::new();
 
         for (index, line) in lines_iter {
             let mut char_tags = CharTags::new();
@@ -253,16 +255,16 @@ impl FormPatterns {
             };
 
             for pattern in &self.0 {
-                if let MatchingSpan::Word(Matcher::Regex(reg)) = &pattern.matching_span {
+                if let Pattern::Word(Matcher::Regex(reg)) = &pattern.pattern {
                     let mut pattern_char_tags = Vec::new();
 
                     for range in reg.find_iter(text) {
-                        let form_start = CharTag::AppendForm(pattern.form_index);
-                        let form_end = CharTag::AppendForm(pattern.form_index);
+                        let form_start = CharTag::PushForm(pattern.form_index);
+                        let form_end = CharTag::PopForm(pattern.form_index);
 
                         pattern_char_tags.extend_from_slice(&[
-                            (range.start() as u32, form_start),
-                            (range.end() as u32, form_end),
+                            ((line_start + range.start()) as u32, form_start),
+                            ((line_start + range.end()) as u32, form_end),
                         ]);
 
                         // If there are patterns that can match within this one, do a recursion.
@@ -277,43 +279,76 @@ impl FormPatterns {
                                     line: index,
                                     byte: range.end() + line_start,
                                     file_byte: range.end() + file_byte,
-                                }
+                                },
                             };
-                            
-							recurse_ranges.push((match_range, &pattern.patterns));
+
+                            recurse_ranges.push((match_range, &pattern.patterns));
                         }
                     }
 
                     char_tags.insert_slice(pattern_char_tags.as_slice());
                 // TODO: This.
-                } else if let MatchingSpan::Word(Matcher::TsCapture(_id)) = &pattern.matching_span {
+                } else if let Pattern::Word(Matcher::TsCapture(_id)) = &pattern.pattern {
 
-                // TODO: This as well.
-                } else if let MatchingSpan::Bounds(Matcher::Regex(start), Matcher::Regex(end)) =
-                    &pattern.matching_span
+                    // TODO: This as well.
+                } else if let Pattern::Bounds(Matcher::Regex(start), Matcher::Regex(end)) =
+                    &pattern.pattern
                 {
                     let mut start_iter = start.find_iter(text);
                     let mut end_iter = end.find_iter(text);
 
-                    let mut start_ranges = Vec::new();
+                    let mut range_tags = Vec::new();
 
                     let mut end_ranges = Vec::new();
 
                     while let Some(range) = start_iter.next() {
-                        let start = range.start() as u32;
-                        start_ranges.push((start, CharTag::AppendMlForm(pattern.form_index)));
+                        let start = (range.start() + line_start) as u32;
+                        range_tags.push((start, CharTag::PushMlForm(pattern.form_index)));
+
+                        if pattern.patterns.0.len() > 0 {
+                            let range_start = LineBytePos {
+                                line: index,
+                                byte: range.start() + line_start,
+                                file_byte: range.start() + file_byte,
+                            };
+
+                            recurse_starts.push((range_start, pattern.form_index));
+                        }
                     }
 
-                    char_tags.insert_slice(start_ranges.as_slice());
+                    char_tags.insert_slice(range_tags.as_slice());
 
                     while let Some(range) = end_iter.next() {
-                        let end = range.end() as u32;
-                        end_ranges.push((end, CharTag::RemoveMlForm(pattern.form_index)));
+                        let end = (range.end() + line_start) as u32;
+                        end_ranges.push((end, CharTag::PopMlForm(pattern.form_index)));
+
+                        if pattern.patterns.0.len() > 0 {
+                            let end = LineBytePos {
+                                line: index,
+                                byte: range.end() + line_start,
+                                file_byte: range.end() + file_byte,
+                            };
+
+                            match recurse_starts.iter().enumerate().find(|(_, &(p, i))| {
+                                p.file_byte < end.file_byte && i == pattern.form_index
+                            }) {
+                                Some((pos, &(start, _))) => {
+                                    let range = LineByteRange { start, end };
+
+                                    recurse_ranges.push((range, &pattern.patterns));
+
+                                    recurse_starts.remove(pos);
+                                }
+                                None => {}
+                            }
+                        }
                     }
 
                     char_tags.insert_slice(end_ranges.as_slice());
                 }
             }
+
+            file_byte += text.len();
 
             line.char_tags.insert_slice(char_tags.0.as_slice());
         }

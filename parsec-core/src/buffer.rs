@@ -7,7 +7,6 @@ use crossterm::{
 use regex::Regex;
 
 use crate::{
-    action::TextRange,
     config::{FileOptions, LineNumbers},
     file::File,
     impl_input_handler,
@@ -31,9 +30,6 @@ pub struct Buffer<T: OutputArea> {
 
     /// List of mapped modes for file editing.
     mappings: ModeList<Buffer<T>>,
-
-    /// List of forms.
-    forms: Vec<Form>,
 }
 
 impl<T: OutputArea> Buffer<T> {
@@ -71,13 +67,6 @@ impl<T: OutputArea> Buffer<T> {
             line_num_area,
 
             mappings: ModeList::new(),
-
-            forms: {
-                let bracket = ContentStyle::new().red();
-                let string = ContentStyle::new().green();
-
-                vec![Form::new(bracket, false), Form::new(string, false)]
-            },
         };
 
         map_actions! {
@@ -278,7 +267,7 @@ impl<T: OutputArea> Buffer<T> {
     /// Prints the contents of the file from line on the file.
     #[inline]
     fn refresh_screen(&mut self, force: bool) {
-        self.file.print_file(force, &self.forms);
+        self.file.print_file(force);
 
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.

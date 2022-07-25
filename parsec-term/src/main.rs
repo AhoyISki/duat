@@ -1,9 +1,8 @@
 use std::{env, path::PathBuf};
 
 use dirs;
-
 use parsec_core::{
-    config::{FileOptions, LineNumbers, Options, TabPlaces, WrapMethod, ScrollOff},
+    config::{FileOptions, LineNumbers, Options, ScrollOff, TabPlaces, WrapMethod},
     input::InputHandler,
     output::OutputPos,
 };
@@ -15,10 +14,7 @@ fn main() {
 
     let (width, height) = crossterm::terminal::size().expect("crossterm");
     let origin = OutputPos { x: 0, y: 0 };
-    let end = OutputPos {
-        x: width,
-        y: height,
-    };
+    let end = OutputPos { x: width, y: height };
 
     // TODO: Option interfacing. Potentially through compiled rust code.
     // TODO: Create a new() function instead of doing it like this.

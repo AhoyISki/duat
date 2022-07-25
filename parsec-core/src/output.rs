@@ -39,14 +39,23 @@ pub trait OutputArea {
     /// * Also panics if you place any tag that isn't `PrimaryCursor` or `SecondaryCursor`.
     fn place_cursor(&mut self, cursor: CharTag);
 
-    /// Changes the style for subsequent printed characters.
+    /// Appends a normal form to the stack.
     fn push_form(&mut self, form: &Form, index: u16);
 
-    /// Changes the style for subsequent printed characters.
-    fn remove_form(&mut self, index: u16);
+    /// Removes a normal form from the stack.
+    fn pop_form(&mut self, index: u16);
 
-    /// Clears the form stack.
-    fn clear_form_stack(&mut self);
+    /// Appends a multi-line form to the stack.
+    fn push_ml_form(&mut self, form: &Form, index: u16);
+
+    /// Removes a multi-line form from the stack.
+    fn pop_ml_form(&mut self, index: u16);
+
+    /// Clears the normal forms from the stack, keeping only multi-line forms in.
+    fn clear_normal_forms(&mut self);
+
+    /// Clears both normal and multi-line forms from the stack.
+    fn clear_all_forms(&mut self);
 
     /// Prints plain text.
     ///
