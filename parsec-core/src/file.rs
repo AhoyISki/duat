@@ -3,7 +3,7 @@ use std::cmp::min;
 use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
-use crate::cursor::{FileCursor, TextPos, self};
+use crate::cursor::{self, FileCursor, TextPos};
 use crate::tags::{Form, LineFlags};
 use crate::{
     action::{History, TextRange},
@@ -593,14 +593,16 @@ impl<T: OutputArea> File<T> {
 
         for cursor in &mut self.cursors {
             let new_pos = if cursor.target() > old_range.end {
-				if unsafe { crate::FOR_TEST } { panic!("{:#?}, {:#?}, {:#?}", new_range, old_range, cursor.target() )}
+                if unsafe { crate::FOR_TEST } {
+                    panic!("{:#?}, {:#?}, {:#?}", new_range, old_range, cursor.target())
+                }
 
                 let mut new_pos = cursor.target();
                 new_pos = new_pos.col_add(new_range.end).col_sub(old_range.end);
                 new_pos.line += new_range.end.line;
                 new_pos.line -= old_range.end.line;
 
-				new_pos
+                new_pos
             } else if cursor.target() > old_range.start {
                 min(cursor.target(), new_range.end)
             } else {
