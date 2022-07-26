@@ -3,8 +3,9 @@ use std::str;
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
 use regex::Regex;
+use smallvec::SmallVec;
 
-use crate::file::TextLine;
+use crate::{action::TextRange, file::TextLine};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -42,6 +43,7 @@ pub enum CharTag {
 
 bitflags! {
     /// A memory and processor efficient way of keeping track of information about a line.
+    #[derive(Default)]
     pub struct LineFlags: u16 {
         // Implemented:
         /// If all characters in the line are ascii.
@@ -74,7 +76,7 @@ bitflags! {
 // Since all insertions (wrappings, syntax, cursors, etc) already come sorted, it makes sense to
 // create efficient insertion algorithms that take that into account.
 /// A vector of `CharTags`.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CharTags(Vec<(u32, CharTag)>);
 
 impl CharTags {
@@ -103,7 +105,8 @@ impl CharTags {
 
         let mut new_char_tags = char_tags.iter();
         let mut old_char_tags = self.0.iter().enumerate();
-        let mut insertions = Vec::with_capacity(new_char_tags.len());
+
+        let mut insertions: SmallVec<[usize; 30]> = SmallVec::with_capacity(char_tags.len());
 
         let (mut index, mut pos) = (0, 0);
 
@@ -143,6 +146,53 @@ impl CharTags {
         F: Fn((u32, CharTag)) -> bool,
     {
         self.0.retain(|&(c, t)| do_retain((c, t)))
+    }
+
+    pub fn merge(&mut self, char_tags: CharTags) {
+        self.insert_slice(char_tags.0.as_slice());
+    }
+}
+
+pub struct SmallCharTags(SmallVec<[(u32, CharTag); 30]>);
+
+impl SmallCharTags {
+    /// Given a sorted list of `CharTag`s, efficiently inserts them.
+    pub fn insert_slice(&mut self, char_tags: &[(u32, CharTag)]) {
+        // To prevent unnecessary allocations.
+        self.0.reserve(char_tags.len());
+
+        let mut new_char_tags = char_tags.iter();
+        let mut old_char_tags = self.0.iter().enumerate();
+
+        let len = char_tags.len();
+        let mut insertions: SmallVec<[usize; 30]> = SmallVec::with_capacity(len);
+
+        let (mut index, mut pos) = (0, 0);
+
+        'a: while let Some(&(col, _)) = new_char_tags.next() {
+            // Iterate until we get a position with a column where we can place the char_tag.
+            while col > pos {
+                match old_char_tags.next() {
+                    Some((new_index, &(new_pos, _))) => (index, pos) = (new_index, new_pos),
+                    // If no more characters are found, we can just dump the rest at the end.
+                    None => break 'a,
+                }
+            }
+            // Can't mutate the vector in here.
+            insertions.push(index as usize);
+        }
+
+        // Restarting the iterator.
+        let mut new_char_tags = char_tags.iter();
+
+        for (index, pos) in insertions.iter().enumerate() {
+            // As I add char_tags,the positions need to be incremented.
+            self.0.insert(pos + index, *new_char_tags.next().unwrap());
+        }
+
+        // The remaining characters here had positions bigger than any original `CharTag`.
+        // As such, since they are sorted, we can just dump them at the end.
+        self.0.extend_from_slice(&char_tags[insertions.len()..]);
     }
 }
 
@@ -206,7 +256,7 @@ impl FormPattern {
 pub struct FormPatterns(pub Vec<FormPattern>);
 
 /// A position indexed by its byte in relation to the line, instead of column.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct LineBytePos {
     /// The line in the file.
     pub line: usize,
@@ -217,32 +267,62 @@ pub struct LineBytePos {
 }
 
 /// A range of positions indexed by line byte, instead of column.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct LineByteRange {
     pub start: LineBytePos,
     pub end: LineBytePos,
 }
 
-impl FormPatterns {
+#[derive(Debug, Default)]
+pub struct LineInfo {
+    pub line: usize,
+    pub char_tags: CharTags,
+    pub line_flags: LineFlags,
+}
+
+impl<'a> FormPatterns {
     /// Returns a new instance of `FormPatterns`
     pub fn new() -> FormPatterns {
         FormPatterns(Vec::new())
+    }
+
+    pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<LineInfo> {
+        let (start, end) = (range.start, range.end);
+        let mut lines_info: Vec<LineInfo> =
+            (range.lines()).map(|l| LineInfo { line: l, ..Default::default() }).collect();
+
+        let from_zero = lines[start.line].get_line_byte_at(start.col);
+        let start = LineBytePos { line: start.line, byte: 0, file_byte: start.byte - from_zero };
+
+        let end_line_len = lines[end.line].text().len();
+        let to_end = end_line_len - lines[end.line].get_line_byte_at(end.col);
+        let end = LineBytePos { line: end.line, byte: end_line_len, file_byte: end.byte + to_end };
+
+        let range = LineByteRange { start, end };
+
+        self.match_text(lines, range, lines_info.as_mut_slice());
+
+        lines_info
     }
 
     /// Recursively match a pattern on a piece of text.
     ///
     /// First, it will match itself in the entire segment, secondly, it will match any subpatterns
     /// on segments of itself.
-    pub fn match_text(&self, lines: &mut [TextLine], range: LineByteRange) {
+    fn match_text(
+        &self, lines: &[TextLine], range: LineByteRange, info: &'a mut [LineInfo],
+    ) -> &'a [LineInfo] {
         let (start, end) = (range.start, range.end);
-        let lines_iter = lines.iter_mut().enumerate().take(end.line + 1).skip(start.line);
+        let lines_iter = lines.iter().enumerate().take(end.line + 1).skip(start.line);
         let mut file_byte = start.file_byte;
+        let range_start_line = if info.len() == 0 { start.line } else { info[0].line };
 
         let mut recurse_ranges = Vec::new();
         let mut recurse_starts = Vec::new();
 
         for (index, line) in lines_iter {
-            let mut char_tags = CharTags::new();
+            if unsafe { crate::FOR_TEST } { panic!() }
+            let mut char_tags = SmallCharTags(SmallVec::new());
 
             let (text, line_start) = if range.start.line == range.end.line {
                 (str::from_utf8(&line.text().as_bytes()[start.byte..end.byte]).unwrap(), start.byte)
@@ -256,7 +336,7 @@ impl FormPatterns {
 
             for pattern in &self.0 {
                 if let Pattern::Word(Matcher::Regex(reg)) = &pattern.pattern {
-                    let mut pattern_char_tags = Vec::new();
+                    let mut pattern_char_tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
                     for range in reg.find_iter(text) {
                         let form_start = CharTag::PushForm(pattern.form_index);
@@ -297,9 +377,9 @@ impl FormPatterns {
                     let mut start_iter = start.find_iter(text);
                     let mut end_iter = end.find_iter(text);
 
-                    let mut range_tags = Vec::new();
+                    let mut range_tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
-                    let mut end_ranges = Vec::new();
+                    let mut end_ranges: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
                     while let Some(range) = start_iter.next() {
                         let start = (range.start() + line_start) as u32;
@@ -350,11 +430,13 @@ impl FormPatterns {
 
             file_byte += text.len();
 
-            line.char_tags.insert_slice(char_tags.0.as_slice());
+            info[index - range_start_line].char_tags.insert_slice(char_tags.0.as_slice());
         }
 
         for (range, patterns) in recurse_ranges {
-            patterns.match_text(lines, range);
+            patterns.match_text(lines, range, info);
         }
+
+        info
     }
 }

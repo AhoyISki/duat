@@ -40,10 +40,6 @@ impl<T: OutputArea> Buffer<T> {
 
         let line_num_area;
 
-        let bracket_regex = Regex::new(r"\{|\}|\(|\)|\[|\]").unwrap();
-        let string_regex = Regex::new(r#"""#).unwrap();
-        let patterns = vec![bracket_regex, string_regex];
-
         let mut file_handler = Buffer {
             file: {
                 // The lines must be '\n' terminated for better compatibility with tree-sitter.
@@ -60,7 +56,7 @@ impl<T: OutputArea> Buffer<T> {
                 }
                 line_num_area = file_area.partition_x(line_num_width);
 
-                File::new(lines, options, file_area, patterns)
+                File::new(lines, options, file_area)
             },
 
             status_line_area: area,

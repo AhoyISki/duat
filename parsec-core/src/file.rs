@@ -11,7 +11,7 @@ use crate::{
     output::{OutputArea, OutputPos, PrintInfo},
     tags::{
         CharTag, CharTags, Form, FormPattern, FormPatterns, LineBytePos, LineByteRange, LineFlags,
-        Matcher, Pattern,
+        Matcher, Pattern, LineInfo,
     },
 };
 
@@ -396,7 +396,7 @@ pub struct File<T> {
 
 impl<T: OutputArea> File<T> {
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
-    pub fn new(lines: Vec<&str>, options: FileOptions, area: T, patterns: Vec<Regex>) -> File<T> {
+    pub fn new(lines: Vec<&str>, options: FileOptions, area: T) -> File<T> {
         let lines = lines.iter().map(|l| TextLine::new(l)).collect();
 
         let mut form_patterns = FormPatterns(Vec::new());
@@ -456,13 +456,20 @@ impl<T: OutputArea> File<T> {
             file.update_line_info(line);
         }
 
-        let file_byte = file.lines.iter().map(|l| l.text.len()).sum();
+        let start = TextPos { line: 0, col: 0, byte: 0 };
 
-        let start = LineBytePos { line: 0, byte: 0, file_byte: 0 };
-        let end = LineBytePos { line: file.lines.len() - 1, byte: 0, file_byte };
-        let range = LineByteRange { start, end };
+        let col = file.lines.last().unwrap().text.chars().count();
+        let byte = file.lines.iter().map(|l| l.text.len()).sum();
+        let end = TextPos { line: file.lines.len() - 1, col, byte };
 
-        file.patterns.match_text(file.lines.as_mut_slice(), range);
+        let range = TextRange { start, end };
+
+        let line_infos = file.patterns.match_text_range(file.lines.as_slice(), range);
+
+		for LineInfo { line, char_tags, line_flags } in line_infos {
+    		file.lines[line].char_tags.merge(char_tags);
+    		file.lines[line].line_flags |= line_flags;
+		}
 
         file
     }
@@ -646,10 +653,6 @@ impl<T: OutputArea> File<T> {
 
         for cursor in &mut self.cursors {
             let new_pos = if cursor.target() >= old_range.end {
-                if unsafe { crate::FOR_TEST } {
-                    panic!("{:#?}, {:#?}, {:#?}", new_range, old_range, cursor.target())
-                }
-
                 let mut new_pos = cursor.target();
                 new_pos = new_pos.col_add(new_range.end).col_sub(old_range.end);
                 new_pos.line += new_range.end.line;
@@ -665,24 +668,12 @@ impl<T: OutputArea> File<T> {
             cursor.move_to(new_pos, &self.lines, &self.options)
         }
 
-        let start_byte = self.lines[new_range.start.line].get_line_byte_at(new_range.start.col);
-        let end_line = &self.lines[new_range.end.line].text();
-        let end_byte = self.lines[new_range.end.line].get_line_byte_at(new_range.end.col);
+        let line_infos = self.patterns.match_text_range(self.lines.as_slice(), new_range);
 
-        let start = LineBytePos {
-            line: new_range.start.line,
-            byte: 0,
-            file_byte: new_range.start.byte - start_byte,
-        };
-        let end = LineBytePos {
-            line: new_range.end.line,
-            byte: end_line.len(),
-            file_byte: new_range.end.byte - end_byte + end_line.len(),
-        };
-
-        let range = LineByteRange { start, end };
-
-        self.patterns.match_text(self.lines.as_mut_slice(), range);
+		for LineInfo { line, char_tags, line_flags } in line_infos {
+    		self.lines[line].char_tags.merge(char_tags);
+    		self.lines[line].line_flags |= line_flags;
+		}
 
         full_refresh_needed
     }
@@ -868,7 +859,7 @@ impl<T: OutputArea> File<T> {
             }
         }
 
-		self.area.clear_all_forms();
+        self.area.clear_all_forms();
     }
 
     ////////////////////////////////
