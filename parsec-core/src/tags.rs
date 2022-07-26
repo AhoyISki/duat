@@ -153,49 +153,6 @@ impl CharTags {
     }
 }
 
-pub struct SmallCharTags(SmallVec<[(u32, CharTag); 30]>);
-
-impl SmallCharTags {
-    /// Given a sorted list of `CharTag`s, efficiently inserts them.
-    pub fn insert_slice(&mut self, char_tags: &[(u32, CharTag)]) {
-        // To prevent unnecessary allocations.
-        self.0.reserve(char_tags.len());
-
-        let mut new_char_tags = char_tags.iter();
-        let mut old_char_tags = self.0.iter().enumerate();
-
-        let len = char_tags.len();
-        let mut insertions: SmallVec<[usize; 30]> = SmallVec::with_capacity(len);
-
-        let (mut index, mut pos) = (0, 0);
-
-        'a: while let Some(&(col, _)) = new_char_tags.next() {
-            // Iterate until we get a position with a column where we can place the char_tag.
-            while col > pos {
-                match old_char_tags.next() {
-                    Some((new_index, &(new_pos, _))) => (index, pos) = (new_index, new_pos),
-                    // If no more characters are found, we can just dump the rest at the end.
-                    None => break 'a,
-                }
-            }
-            // Can't mutate the vector in here.
-            insertions.push(index as usize);
-        }
-
-        // Restarting the iterator.
-        let mut new_char_tags = char_tags.iter();
-
-        for (index, pos) in insertions.iter().enumerate() {
-            // As I add char_tags,the positions need to be incremented.
-            self.0.insert(pos + index, *new_char_tags.next().unwrap());
-        }
-
-        // The remaining characters here had positions bigger than any original `CharTag`.
-        // As such, since they are sorted, we can just dump them at the end.
-        self.0.extend_from_slice(&char_tags[insertions.len()..]);
-    }
-}
-
 // TODO: Eventually make these private, so only rune configuration can change them.
 #[derive(Clone, Copy)]
 pub struct Form {
@@ -300,7 +257,7 @@ impl<'a> FormPatterns {
 
         let range = LineByteRange { start, end };
 
-        self.match_text(lines, range, lines_info.as_mut_slice());
+        self.match_text(lines, range, lines_info.as_mut_slice(), true);
 
         lines_info
     }
@@ -310,22 +267,35 @@ impl<'a> FormPatterns {
     /// First, it will match itself in the entire segment, secondly, it will match any subpatterns
     /// on segments of itself.
     fn match_text(
-        &self, lines: &[TextLine], range: LineByteRange, info: &'a mut [LineInfo],
-    ) -> &'a [LineInfo] {
-        let (start, end) = (range.start, range.end);
-        let lines_iter = lines.iter().enumerate().take(end.line + 1).skip(start.line);
-        let mut file_byte = start.file_byte;
-        let range_start_line = if info.len() == 0 { start.line } else { info[0].line };
+        &self, lines: &[TextLine], range: LineByteRange, info: &'a mut [LineInfo], is_first: bool
+    ) -> Option<[Vec<(LineBytePos, u16)>; 2]> {
+        // These two vectors will contain any unmatched starts or ends to matching ranges.
+        // This is useful in case the user types a match to these, since we'll be able to quickly
+        // discern where syntax highlighting needs to be recalculated.
+        let mut leftover_starts = Vec::new();
+        let mut leftover_ends = Vec::new();
 
+        let (start, end) = (range.start, range.end);
+        // last line is included.
+        let lines_iter = lines.iter().enumerate().take(end.line + 1).skip(start.line);
+
+        // This number is used specifically for tree-sitter, which deals in absolute bytes.
+        // The use of bytes here, instead of columns on a line, allows me to completely ignore
+        // where characters begin and end, and deal only in bytes.
+        let mut file_byte = start.file_byte;
+        // `line_number - range_start_line == the_correct_index_in_info`.
+        let range_start_line = info[0].line;
+
+		// The ranges where we'll match subpatterns of matched patterns.
         let mut recurse_ranges = Vec::new();
-        let mut recurse_starts = Vec::new();
 
         for (index, line) in lines_iter {
-            if unsafe { crate::FOR_TEST } { panic!() }
-            let mut char_tags = SmallCharTags(SmallVec::new());
+            let char_tags = &mut info[index - range_start_line].char_tags;
 
+            // If the range consists of only a single line, only check the byte range.
             let (text, line_start) = if range.start.line == range.end.line {
                 (str::from_utf8(&line.text().as_bytes()[start.byte..end.byte]).unwrap(), start.byte)
+            // Otherwise, check from the line start, which is only different in the first line.
             } else if index == range.start.line {
                 (str::from_utf8(&line.text().as_bytes()[start.byte..]).unwrap(), start.byte)
             } else if index == range.end.line {
@@ -335,13 +305,14 @@ impl<'a> FormPatterns {
             };
 
             for pattern in &self.0 {
+                // In this case, we know it'll only match a single line.
                 if let Pattern::Word(Matcher::Regex(reg)) = &pattern.pattern {
                     let mut pattern_char_tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
                     for range in reg.find_iter(text) {
+                        // Adding the form changes to `char_tags`.
                         let form_start = CharTag::PushForm(pattern.form_index);
                         let form_end = CharTag::PopForm(pattern.form_index);
-
                         pattern_char_tags.extend_from_slice(&[
                             ((line_start + range.start()) as u32, form_start),
                             ((line_start + range.end()) as u32, form_end),
@@ -349,6 +320,8 @@ impl<'a> FormPatterns {
 
                         // If there are patterns that can match within this one, do a recursion.
                         if pattern.patterns.0.len() > 0 {
+                            // Here, we'll simply feed the matche's range into a list of ranges that
+                            // should be checked, along with the patterns to check the range with.
                             let match_range = LineByteRange {
                                 start: LineBytePos {
                                     line: index,
@@ -386,41 +359,55 @@ impl<'a> FormPatterns {
                         range_tags.push((start, CharTag::PushMlForm(pattern.form_index)));
 
                         if pattern.patterns.0.len() > 0 {
-                            let range_start = LineBytePos {
+                            let start = LineBytePos {
                                 line: index,
                                 byte: range.start() + line_start,
                                 file_byte: range.start() + file_byte,
                             };
 
-                            recurse_starts.push((range_start, pattern.form_index));
+                            leftover_starts.push((start, pattern.form_index));
                         }
                     }
 
                     char_tags.insert_slice(range_tags.as_slice());
 
                     while let Some(range) = end_iter.next() {
+                        // We highlight to the end of this range.
                         let end = (range.end() + line_start) as u32;
                         end_ranges.push((end, CharTag::PopMlForm(pattern.form_index)));
 
-                        if pattern.patterns.0.len() > 0 {
-                            let end = LineBytePos {
-                                line: index,
-                                byte: range.end() + line_start,
-                                file_byte: range.end() + file_byte,
-                            };
+                        let end = LineBytePos {
+                            line: index,
+                            byte: range.end() + line_start,
+                            file_byte: range.end() + file_byte,
+                        };
 
-                            match recurse_starts.iter().enumerate().find(|(_, &(p, i))| {
-                                p.file_byte < end.file_byte && i == pattern.form_index
-                            }) {
-                                Some((pos, &(start, _))) => {
-                                    let range = LineByteRange { start, end };
+						// Try to find a start to this pattern, if we do, 
+                        match leftover_starts.iter().enumerate().find(|(_, &(p, i))| {
+                            p.file_byte < end.file_byte && i == pattern.form_index
+                        }) {
+                            Some((pos, &(start, _))) => {
+                                let range = LineByteRange { start, end };
 
-                                    recurse_ranges.push((range, &pattern.patterns));
+								// If the lines aren't the same, we must inform the `File` that
+								// there is a multi-line range in this region.
+                                if start.line < end.line && is_first {
+                                    let line = index - start.line;
+                                    info[line].line_flags.insert(LineFlags::START_FORM);
 
-                                    recurse_starts.remove(pos);
+                                    let line = index - end.line;
+                                    info[line].line_flags.insert(LineFlags::END_FORM);
                                 }
-                                None => {}
+
+								// If there are subpatterns, add this range to the matching ranges.
+                                if pattern.patterns.0.len() > 0 {
+                                    recurse_ranges.push((range, &pattern.patterns));
+                                }
+
+								// We don't want to match one start to multiple ends, do we?
+                                leftover_starts.remove(pos);
                             }
+                            None => leftover_ends.push((end, pattern.form_index))
                         }
                     }
 
@@ -429,14 +416,16 @@ impl<'a> FormPatterns {
             }
 
             file_byte += text.len();
-
-            info[index - range_start_line].char_tags.insert_slice(char_tags.0.as_slice());
         }
 
         for (range, patterns) in recurse_ranges {
-            patterns.match_text(lines, range, info);
+            patterns.match_text(lines, range, info, false);
         }
 
-        info
+		if is_first {
+    		Some([leftover_starts, leftover_ends])
+		} else {
+    		None
+		}
     }
 }

@@ -11,7 +11,7 @@ use crate::{
     output::{OutputArea, OutputPos, PrintInfo},
     tags::{
         CharTag, CharTags, Form, FormPattern, FormPatterns, LineBytePos, LineByteRange, LineFlags,
-        Matcher, Pattern, LineInfo,
+        LineInfo, Matcher, Pattern,
     },
 };
 
@@ -125,6 +125,8 @@ impl TextLine {
 
         // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
         let prev_len = self.char_tags.vec().len();
+		if unsafe { crate::FOR_TEST } { panic!("{:#?}, {}", self.char_tags, prev_len) }
+
         self.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
         let mut distance = 0;
@@ -161,6 +163,7 @@ impl TextLine {
 
         // The insertion operation is more efficient if I insert already sorted slices.
         self.char_tags.insert_slice(additions.as_slice());
+
 
         self.char_tags.vec().len() != prev_len
     }
@@ -466,10 +469,10 @@ impl<T: OutputArea> File<T> {
 
         let line_infos = file.patterns.match_text_range(file.lines.as_slice(), range);
 
-		for LineInfo { line, char_tags, line_flags } in line_infos {
-    		file.lines[line].char_tags.merge(char_tags);
-    		file.lines[line].line_flags |= line_flags;
-		}
+        for LineInfo { line, char_tags, line_flags } in line_infos {
+            file.lines[line].char_tags.merge(char_tags);
+            file.lines[line].line_flags |= line_flags;
+        }
 
         file
     }
@@ -640,13 +643,24 @@ impl<T: OutputArea> File<T> {
     {
         let old_lines_len = self.lines.len();
 
-        let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
-        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
+        let (mut edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
 
-        self.lines.splice(old_range.lines(), edits);
+		// If the length of the file has changed, we don't need to check if the wrapping of the new
+		// lines has changed, since the file will be reprinted anyway.
+        let mut full_refresh_needed = if self.lines.len() != old_lines_len {
+            let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
+            self.lines.splice(old_range.lines(), edits);
 
-        let mut full_refresh_needed = self.lines.len() != old_lines_len;
-
+            true
+        // Although the character tags will no longer be valid, they are still a good way to check
+        // if the wrapping has changed.
+        } else {
+            for (index, line) in &mut self.lines[new_range.lines()].iter_mut().enumerate() {
+                line.text = edits.remove(index);
+            }
+            false
+        };
+        
         for line in new_range.lines() {
             full_refresh_needed |= self.update_line_info(line);
         }
@@ -670,10 +684,10 @@ impl<T: OutputArea> File<T> {
 
         let line_infos = self.patterns.match_text_range(self.lines.as_slice(), new_range);
 
-		for LineInfo { line, char_tags, line_flags } in line_infos {
-    		self.lines[line].char_tags.merge(char_tags);
-    		self.lines[line].line_flags |= line_flags;
-		}
+        for LineInfo { line, char_tags, line_flags } in line_infos {
+            self.lines[line].char_tags.merge(char_tags);
+            self.lines[line].line_flags |= line_flags;
+        }
 
         full_refresh_needed
     }
