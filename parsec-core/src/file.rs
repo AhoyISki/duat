@@ -10,8 +10,7 @@ use crate::{
     cursor::{FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
     tags::{
-        CharTag, CharTags, Form, FormPattern, FormPatterns, LineBytePos, LineByteRange, LineFlags,
-        LineInfo, Matcher, Pattern,
+        CharTag, CharTags, Form, FormPattern, FormPatterns, LineFlags, LineInfo, Matcher, Pattern,
     },
 };
 
