@@ -134,7 +134,7 @@ impl TextLine {
         // Wrapping at the final character at the width of the area.
         if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
             distance = width;
-            while distance < self.text.len() + 1 {
+            while distance < self.text.len() {
                 additions.push((distance as u32, CharTag::WrapppingChar));
 
                 indent_wrap = indent;
