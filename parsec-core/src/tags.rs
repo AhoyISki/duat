@@ -1,5 +1,7 @@
 use std::{
+    cell::{Ref, RefCell, RefMut},
     ops::{Range, RangeFrom, RangeInclusive, RangeToInclusive},
+    rc::{Rc, Weak},
     str,
 };
 
@@ -53,20 +55,28 @@ bitflags! {
         const PURE_ASCII = 1 << 0;
         /// If there are no double/zero width characters or tabs.
         const PURE_1_COL = 1 << 1;
+        /// If the line is the beggining of a multi-line range.
+        const ML_BEGIN   = 1 << 2;
+        /// If the line is the end of multi-line range.
+        const ML_END     = 1 << 3;
+        /// If the line is in the middle of a multi-line range.
+        const ML_RANGE   = 1 << 4;
+        /// If the line works as either a start or an end to a multi-line range.
+        const ML_BOUND   = 1 << 5;
 
         // Not Implemented:
         // Wether or not the line can fold.
-        const CAN_FOLD   = 1 << 2;
+        const CAN_FOLD   = 1 << 6;
         /// Wether or not the line is folded.
-        const IS_FOLDED  = 1 << 3;
+        const IS_FOLDED  = 1 << 7;
         /// If the line is supposed to be replaced by another line when not hovered.
-        const CONCEALED  = 1 << 4;
+        const CONCEALED  = 1 << 8;
         /// If the line contains a pattern that acts as both the start and end of a multi-line form.
-        const FORM_BOUND = 1 << 5;
+        const FORM_BOUND = 1 << 9;
         /// If the line is a line wise comment.
-        const IS_COMMENT = 1 << 6;
+        const IS_COMMENT = 1 << 10;
         /// If the line is line wise documentation.
-        const IS_DOC     = 1 << 7;
+        const IS_DOC     = 1 << 11;
     }
 }
 
@@ -177,6 +187,24 @@ pub enum Matcher {
     TsCapture(usize),
 }
 
+impl PartialEq for Matcher {
+    fn ne(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Matcher::Regex(reg_1), Matcher::Regex(reg_2)) => reg_1.as_str() != reg_2.as_str(),
+            (Matcher::TsCapture(id_1), Matcher::TsCapture(id_2)) => id_1 != id_2,
+            _ => false,
+        }
+    }
+
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Matcher::Regex(reg_1), Matcher::Regex(reg_2)) => reg_1.as_str() == reg_2.as_str(),
+            (Matcher::TsCapture(id_1), Matcher::TsCapture(id_2)) => id_1 == id_2,
+            _ => false,
+        }
+    }
+}
+
 // Patterns can occupy multiple lines only if they are defined as an opening and ending bound.
 /// Indicates wether a pattern should be able to occupy multiple lines, and how.
 #[derive(Debug)]
@@ -199,16 +227,22 @@ pub struct FormPattern {
     /// What defines what the range will be.
     pattern: Pattern,
     /// Patterns that can match inside of the original match range.
-    patterns: Box<FormPatterns>,
+    patterns: Box<FormPatternList>,
 }
 
 impl FormPattern {
     pub fn new(form_index: u16, pattern: Pattern) -> FormPattern {
-        FormPattern { form_index, pattern, patterns: Box::new(FormPatterns::new()) }
+        FormPattern { form_index, pattern, patterns: Box::new(FormPatternList::new()) }
     }
 
-    pub fn push(&mut self, form_index: u16, pattern: Pattern) {
-        self.patterns.0.push(FormPattern::new(form_index, pattern));
+    pub fn push_fp(&mut self, matcher: Matcher, form_index: u16) {
+        let form_pattern = FormPattern {
+            form_index,
+            pattern: Pattern::Word(matcher),
+            patterns: Box::new(FormPatternList::new()),
+        };
+
+        self.patterns.0.push(form_pattern);
     }
 }
 
@@ -241,203 +275,14 @@ pub struct LineInfo {
     pub line_flags: LineFlags,
 }
 
+/// Special container for patterns associated with specific forms and subpatterns.
 #[derive(Debug)]
-enum MlRange<'a> {
-    Bounded { range: LineByteRange, pattern: &'a FormPattern },
-    LeftoverStart { start: LineBytePos, pattern: &'a FormPattern },
-    LeftoverEnd { end: LineBytePos, pattern: &'a FormPattern },
-}
+pub struct FormPatternList(pub Vec<FormPattern>);
 
-impl<'a> MlRange<'a> {
-    fn contains(&self, pos: LineBytePos) -> bool {
-        match self {
-            MlRange::Bounded { range: LineByteRange { start, end }, pattern } => {
-                start.file_byte <= pos.file_byte && end.file_byte > pos.file_byte
-            }
-            MlRange::LeftoverStart { start, pattern } => start.file_byte <= pos.file_byte,
-            MlRange::LeftoverEnd { end, pattern } => end.file_byte > pos.file_byte,
-        }
-    }
-
-    fn contains_line(&self, line: usize) -> bool {
-        match self {
-            MlRange::Bounded { range, .. } => line >= range.start.line && line <= range.end.line,
-            MlRange::LeftoverStart { start, .. } => line >= start.line,
-            MlRange::LeftoverEnd { end, .. } => line <= end.line,
-        }
-    }
-
-    fn start(&self) -> LineBytePos {
-        match self {
-            MlRange::Bounded { range, .. } => range.start,
-            MlRange::LeftoverStart { start, .. } => *start,
-            MlRange::LeftoverEnd { .. } => LineBytePos { line: 0, byte: 0, file_byte: 0 },
-        }
-    }
-
-    fn start_line(&self) -> usize {
-        match self {
-            MlRange::Bounded { range, .. } => range.start.line,
-            MlRange::LeftoverStart { start, .. } => start.line,
-            MlRange::LeftoverEnd { .. } => 0,
-        }
-    }
-
-    fn pattern(&self) -> &'a FormPattern {
-        match self {
-            &MlRange::Bounded { range, pattern } => pattern,
-            &MlRange::LeftoverStart { start, pattern } => pattern,
-            &MlRange::LeftoverEnd { end, pattern } => pattern,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct MlRangeList<'a>(Vec<MlRange<'a>>);
-
-impl<'a> MlRangeList<'a> {
-    /// Checks if a line is contained within a range of a multi-line form.
-    ///
-    /// Returns a range containing all the lines involved in said range that appear before the
-    /// checked line. Also returns the pattern used in the range.
-    pub fn wrapping_range(&self, line: usize) -> Option<(Range<usize>, &'a FormPattern)> {
-        match self.0.iter().find(|r| r.contains_line(line)) {
-            Some(range) => Some((range.start_line()..line, range.pattern())),
-            None => None,
-        }
-    }
-
-    /// Tries to match a given bound of a pattern.
-    ///
-    /// If the final range would occupy only a single line, it is removed.
-    fn match_bound(&mut self, range: MlRange) -> Option<LineBytePos> {
-        // If the range has no end, we need to look for an end to finish it.
-        if let MlRange::LeftoverStart { start, pattern } = range {
-            let matching_condition: &dyn Fn(&&MlRange) -> bool = &|r| -> bool {
-                // We can't match a `MlRange::LeftoverStart` with another.
-                !matches!(r, MlRange::LeftoverStart { .. })
-                    && r.pattern().form_index == pattern.form_index
-                	&& r.contains(start)
-            };
-
-            match self.0.iter().enumerate().find(|(_, r)| matching_condition(r)) {
-                Some((index, range)) => {
-                    if let MlRange::Bounded { range, pattern } = range {
-                        let old_start = range.start;
-                        let pattern = pattern.clone();
-
-                        let end = range.end;
-
-						// Change the start of the old `MlRange::Bounded` to the new start.
-						if start.line < end.line {
-                            self.0[index] =
-                                MlRange::Bounded { range: LineByteRange { start, end }, pattern };
-
-    						// Since the old start is still there, we need to change its status to
-    						// `MlRange::LeftoverStart`, since the new `MlRange::Bounded` has taken
-    						// its end.
-                            self.0.insert(
-                                index,
-                                MlRange::LeftoverStart { start: old_start, pattern }
-                            );
-						} else {
-    						// We don't need to keep track of non multi-line ranges.
-    						self.0.remove(index);
-						}
-
-						// Return the position that matched with the start, for subpattern matching.
-                        Some(end)
-                    } else if let MlRange::LeftoverEnd { end, pattern } = range {
-                        let end = *end;
-
-						if start.line < end.line {
-    						// Finish the range by transforming a `MlRange::LeftoverEnd` into a
-    						// `MlRange::Bounded`.
-                            self.0[index] =
-                                MlRange::Bounded { range: LineByteRange { start, end }, pattern };
-						} else {
-    						// We don't need to keep track of non multi-line ranges.
-    						self.0.remove(index);
-						}
-
-                        Some(end)
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            }
-        // If the range has no start, we should look for one to finish it.
-        } else if let MlRange::LeftoverEnd { end, pattern } = range {
-            let matching_condition: &dyn Fn(&&MlRange) -> bool = &|r| -> bool {
-                // We can't match a `MlRange::LeftoverEnd` with another.
-                !matches!(r, MlRange::LeftoverEnd { .. })
-                    && r.pattern().form_index == pattern.form_index
-                	&& r.contains(end)
-            };
-
-            match self.0.iter().enumerate().find(|(_, r)| matching_condition(r)) {
-                Some((index, range)) => {
-                    if let MlRange::Bounded { range, pattern } = range {
-                        let old_end = range.end;
-                        let pattern = pattern.clone();
-
-                        let start = range.start;
-
-						if start.line < end.line {
-    						// Change the start of the old `MlRange::Bounded` to the new start.
-                            self.0[index] =
-                                MlRange::Bounded { range: LineByteRange { start, end }, pattern };
-
-    						// Since the old end is still there, we need to change its status to
-    						// `MlRange::LeftoverEnd`, since the new `MlRange::Bounded` has taken
-    						// its start.
-                            self.0.insert(
-                                index + 1,
-                                MlRange::LeftoverEnd { end: old_end, pattern }
-                            );
-						} else {
-    						// We don't need to keep track of non multi-line ranges.
-    						self.0.remove(index);
-						}
-
-						// Return the position that matched with the end, for subpattern matching.
-                        Some(start)
-                    } else if let MlRange::LeftoverStart { start, pattern } = range {
-                        let start = *start;
-
-						if start.line < end.line {
-    						// Finish the range by transforming a `MlRange::LeftoverEnd` into a
-    						// `MlRange::Bounded`.
-                            self.0[index] =
-                                MlRange::Bounded { range: LineByteRange { start, end }, pattern };
-						} else {
-    						// We don't need to keep track of non multi-line ranges.
-    						self.0.remove(index);
-						}
-
-                        Some(start)
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            }
-        // This shouldn't happen.
-        } else {
-            None
-        }
-    }
-}
-
-/// Special container for
-#[derive(Debug)]
-pub struct FormPatterns(pub Vec<FormPattern>);
-
-impl<'a> FormPatterns {
+impl<'a> FormPatternList {
     /// Returns a new instance of `FormPatterns`
-    pub fn new() -> FormPatterns {
-        FormPatterns(Vec::new())
+    pub fn new() -> FormPatternList {
+        FormPatternList(Vec::new())
     }
 
     pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<LineInfo> {
@@ -458,7 +303,7 @@ impl<'a> FormPatterns {
 
         let range = LineByteRange { start, end };
 
-        panic!("{:#?}", self.match_text(lines, range, lines_info.as_mut_slice(), true));
+        self.match_text(lines, range, lines_info.as_mut_slice());
 
         lines_info
     }
@@ -467,12 +312,7 @@ impl<'a> FormPatterns {
     ///
     /// First, it will match itself in the entire segment, secondly, it will match any subpatterns
     /// on segments of itself.
-    fn match_text(
-        &self, lines: &[TextLine], range: LineByteRange, info: &'a mut [LineInfo], is_first: bool,
-    ) -> Option<MlRangeList> {
-        // The vector witch will contain all multi-line ranges in the tested range.
-        let mut ml_ranges = MlRangeList(Vec::new());
-
+    fn match_text(&self, lines: &[TextLine], range: LineByteRange, info: &'a mut [LineInfo]) {
         let (start, end) = (range.start, range.end);
         // last line is included.
         let lines_iter = lines.iter().enumerate().take(end.line + 1).skip(start.line);
@@ -502,22 +342,22 @@ impl<'a> FormPatterns {
                 (line.text(), 0)
             };
 
-            for pattern in &self.0 {
+            for form_pattern in &self.0 {
                 // In this case, we know it'll only match a single line.
-                if let Pattern::Word(Matcher::Regex(reg)) = &pattern.pattern {
+                if let Pattern::Word(Matcher::Regex(reg)) = &form_pattern.pattern {
                     let mut pattern_char_tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
                     for range in reg.find_iter(text) {
                         // Adding the form changes to `char_tags`.
-                        let form_start = CharTag::PushForm(pattern.form_index);
-                        let form_end = CharTag::PopForm(pattern.form_index);
+                        let form_start = CharTag::PushForm(form_pattern.form_index);
+                        let form_end = CharTag::PopForm(form_pattern.form_index);
                         pattern_char_tags.extend_from_slice(&[
                             ((line_start + range.start()) as u32, form_start),
                             ((line_start + range.end()) as u32, form_end),
                         ]);
 
                         // If there are patterns that can match within this one, do a recursion.
-                        if pattern.patterns.0.len() > 0 {
+                        if form_pattern.patterns.0.len() > 0 {
                             // Here, we'll simply feed the matche's range into a list of ranges that
                             // should be checked, along with the patterns to check the range with.
                             let match_range = LineByteRange {
@@ -533,15 +373,16 @@ impl<'a> FormPatterns {
                                 },
                             };
 
-                            recurse_ranges.push((match_range, &pattern.patterns));
+                            recurse_ranges.push((match_range, &form_pattern.patterns));
                         }
                     }
 
                     char_tags.insert_slice(pattern_char_tags.as_slice());
                 // TODO: This.
-                } else if let Pattern::Word(Matcher::TsCapture(_id)) = &pattern.pattern {
+                } else if let Pattern::Word(Matcher::TsCapture(_id)) = form_pattern.pattern {
+                    todo!();
                 } else if let Pattern::Bounds(Matcher::Regex(start), Matcher::Regex(end)) =
-                    &pattern.pattern
+                    &form_pattern.pattern
                 {
                     // Iterators over matches of the start and end patterns.
                     // NOTE: While each iterator will be ordered, an end pattern will not always
@@ -560,17 +401,14 @@ impl<'a> FormPatterns {
                         let start = (range.start() + line_start) as u32;
                         // Since bounded ranges can always take on multiple lines, always insert a
                         // multi-line form.
-                        start_tags.push((start, CharTag::PushMlForm(pattern.form_index)));
+                        start_tags.push((start, CharTag::PushMlForm(form_pattern.form_index)));
 
-                        if pattern.patterns.0.len() > 0 {
+                        if form_pattern.patterns.0.len() > 0 {
                             let start = LineBytePos {
                                 line: index,
                                 byte: range.start() + line_start,
                                 file_byte: range.start() + file_byte,
                             };
-
-                            // Assume that there won't be an end to this range, for now.
-                            ml_ranges.0.push(MlRange::LeftoverStart { start, pattern });
                         }
                     }
 
@@ -580,25 +418,13 @@ impl<'a> FormPatterns {
 
                     while let Some(range) = end_iter.next() {
                         let end = (range.end() + line_start) as u32;
-                        end_tags.push((end, CharTag::PopMlForm(pattern.form_index)));
+                        end_tags.push((end, CharTag::PopMlForm(form_pattern.form_index)));
 
                         let end = LineBytePos {
                             line: index,
                             byte: range.end() + line_start,
                             file_byte: range.end() + file_byte,
                         };
-
-                        let bound = MlRange::LeftoverEnd { end, pattern };
-
-                        // Try to find a start to this pattern.
-                        if let Some(start) = ml_ranges.match_bound(bound) {
-                            // If there are subpatterns, add this range to the matching ranges.
-                            if pattern.patterns.0.len() > 0 {
-                                let range = LineByteRange { start, end };
-
-                                recurse_ranges.push((range, &pattern.patterns));
-                            }
-                        }
                     }
 
                     char_tags.insert_slice(end_tags.as_slice());
@@ -609,13 +435,79 @@ impl<'a> FormPatterns {
         }
 
         for (range, patterns) in recurse_ranges {
-            patterns.match_text(lines, range, info, false);
+            patterns.match_text(lines, range, info);
         }
+    }
+}
 
-        if is_first {
-            Some(ml_ranges)
-        } else {
-            None
+pub struct TagManager {
+    /// The forms for syntax highlighting.
+    forms: Vec<Form>,
+
+    /// The patterns associated with said forms.
+    form_pattern_list: FormPatternList,
+}
+
+impl TagManager {
+    /// Returns a new instance of `TagManager`
+    pub fn new() -> TagManager {
+        TagManager {
+            forms: Vec::new(),
+            form_pattern_list: FormPatternList::new(),
         }
+    }
+
+    pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<LineInfo> {
+        self.form_pattern_list.match_text_range(lines, range)
+    }
+
+    /// Pushes a new form pattern.
+    ///
+    /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
+    pub fn push_fp(&mut self, matcher: Matcher, form_index: u16) -> &mut FormPattern {
+        let form_pattern = FormPattern {
+            form_index,
+            pattern: Pattern::Word(matcher),
+            patterns: Box::new(FormPatternList::new()),
+        };
+
+        self.form_pattern_list.0.push(form_pattern);
+
+        self.form_pattern_list.0.last_mut().unwrap()
+    }
+
+    /// Pushes a new multiline form pattern.
+    ///
+    /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
+    pub fn push_ml_fp(&mut self, bounds: [Matcher; 2], form_index: u16) -> &mut FormPattern {
+        // Move out of array and get rid of it without copying.
+        let [start, end] = bounds;
+
+        let form_pattern = if start == end {
+            FormPattern {
+                form_index,
+                pattern: Pattern::Bound(start),
+                patterns: Box::new(FormPatternList::new()),
+            }
+        } else {
+            FormPattern {
+                form_index,
+                pattern: Pattern::Bounds(start, end),
+                patterns: Box::new(FormPatternList::new()),
+            }
+        };
+
+        self.form_pattern_list.0.push(form_pattern);
+
+        self.form_pattern_list.0.last_mut().unwrap()
+    }
+
+    /// Pushes a new form onto the list.
+    pub fn push_form(&mut self, style: ContentStyle, is_final: bool) {
+        self.forms.push(Form { style, is_final });
+    }
+
+    pub fn forms(&self) -> &[Form] {
+        self.forms.as_ref()
     }
 }

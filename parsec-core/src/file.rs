@@ -9,9 +9,7 @@ use crate::{
     config::{FileOptions, TabPlaces, WrapMethod},
     cursor::{FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
-    tags::{
-        CharTag, CharTags, Form, FormPattern, FormPatterns, LineFlags, LineInfo, Matcher, Pattern,
-    },
+    tags::{CharTag, CharTags, Form, LineFlags, LineInfo, Matcher, TagManager},
 };
 
 // TODO: move this to a more general file.
@@ -192,7 +190,7 @@ impl TextLine {
     #[inline]
     fn print<T>(
         &self, area: &mut T, x_shift: usize, y: u16, skip: usize, options: &FileOptions,
-        forms: &Vec<Form>,
+        forms: &[Form],
     ) -> u16
     where
         T: OutputArea,
@@ -389,11 +387,8 @@ pub struct File<T> {
     /// The history of edits on this file.
     pub history: History,
 
-    /// Patterns for syntax highlighting.
-    patterns: FormPatterns,
-
-    /// Forms for syntax highlighting.
-    forms: Vec<Form>,
+	/// The manager for character tags and file flag mutation.
+	tag_manager: TagManager,
 }
 
 impl<T: OutputArea> File<T> {
@@ -401,33 +396,32 @@ impl<T: OutputArea> File<T> {
     pub fn new(lines: Vec<&str>, options: FileOptions, area: T) -> File<T> {
         let lines = lines.iter().map(|l| TextLine::new(l)).collect();
 
-        let mut form_patterns = FormPatterns(Vec::new());
+		let mut tag_manager = TagManager::new();
         let matcher = Matcher::Regex(Regex::new(r"\{|\}|\[|\]|\(|\)").unwrap());
-        let pattern = Pattern::Word(matcher);
-        let form_pattern = FormPattern::new(0, pattern);
-        form_patterns.0.push(form_pattern);
+        tag_manager.push_fp(matcher, 0);
 
-        let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
-        let pattern = Pattern::Word(matcher);
-        let mut form_pattern = FormPattern::new(1, pattern);
+        tag_manager.push_form(ContentStyle::new().red(), false);
+        tag_manager.push_form(ContentStyle::new().green(), false);
+        tag_manager.push_form(ContentStyle::new().on_white(), false);
+        tag_manager.push_form(ContentStyle::new().blue(), false);
+        tag_manager.push_form(ContentStyle::new().on_yellow(), false);
 
-        let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
-        let pattern = Pattern::Word(matcher);
+		{
+            let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
+            let mut filesys_fps = tag_manager.push_fp(matcher, 1);
 
-        form_pattern.push(2, pattern);
-        form_patterns.0.push(form_pattern);
+            let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
+            filesys_fps.push_fp(matcher, 2);
+		}
 
-        let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
-        let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
-        let pattern = Pattern::Bounds(matcher_start, matcher_end);
-        let mut form_pattern = FormPattern::new(3, pattern);
+		{
+            let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
+            let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
+    		let mut bounds_fps = tag_manager.push_ml_fp([matcher_start, matcher_end], 3);
 
-        let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
-        let pattern = Pattern::Word(matcher);
-
-        form_pattern.push(4, pattern);
-
-        form_patterns.0.push(form_pattern);
+            let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
+            bounds_fps.push_fp(matcher, 4);
+		}
 
         let mut file = File {
             lines,
@@ -438,14 +432,7 @@ impl<T: OutputArea> File<T> {
             cursors: Vec::new(),
             main_cursor: 0,
             history: History::new(),
-            patterns: form_patterns,
-            forms: vec![
-                Form { style: ContentStyle::new().red(), is_final: false },
-                Form { style: ContentStyle::new().green(), is_final: false },
-                Form { style: ContentStyle::new().on_white(), is_final: false },
-                Form { style: ContentStyle::new().blue(), is_final: false },
-                Form { style: ContentStyle::new().on_yellow(), is_final: false },
-            ],
+            tag_manager,
         };
 
         file.cursors.push(FileCursor::new(
@@ -466,7 +453,7 @@ impl<T: OutputArea> File<T> {
 
         let range = TextRange { start, end };
 
-        let line_infos = file.patterns.match_text_range(file.lines.as_slice(), range);
+        let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range);
 
         for LineInfo { line, char_tags, line_flags } in line_infos {
             file.lines[line].char_tags.merge(char_tags);
@@ -655,6 +642,7 @@ impl<T: OutputArea> File<T> {
         // if the wrapping has changed.
         } else {
             for (index, line) in &mut self.lines[new_range.lines()].iter_mut().enumerate() {
+                // Change only the text, keep the rest of the line's information valid.
                 line.text = edits.remove(index);
             }
             false
@@ -681,7 +669,7 @@ impl<T: OutputArea> File<T> {
             cursor.move_to(new_pos, &self.lines, &self.options)
         }
 
-        let line_infos = self.patterns.match_text_range(self.lines.as_slice(), new_range);
+        let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
 
         for LineInfo { line, char_tags, line_flags } in line_infos {
             self.lines[line].char_tags.merge(char_tags);
@@ -797,6 +785,7 @@ impl<T: OutputArea> File<T> {
         self.cursors.iter_mut().for_each(|c| c.update());
 
         let info = self.print_info;
+        let forms = self.tag_manager.forms();
 
         // The line at the top of the screen and the amount of hidden columns.
         let skip = if info.top_wraps > 0 {
@@ -813,14 +802,14 @@ impl<T: OutputArea> File<T> {
             // Prints the first line and updates where to print next.
             let mut lines_iter = self.lines.iter();
             let top_line = lines_iter.nth(info.top_line).unwrap();
-            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options, &self.forms);
+            y += top_line.print(&mut self.area, info.x_shift, y, skip, &self.options, forms);
 
             // Prints the remaining lines
             while let Some(line) = lines_iter.next() {
                 if y as usize > self.area.height() {
                     break;
                 }
-                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, &self.forms);
+                y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
             }
 
             // Clears the lines where nothing has been printed.
@@ -864,10 +853,10 @@ impl<T: OutputArea> File<T> {
 
                 if index == info.top_line {
                     // The top line will be printed at the top, no matter what.
-                    line.print(&mut self.area, info.x_shift, 0, skip, &self.options, &self.forms);
+                    line.print(&mut self.area, info.x_shift, 0, skip, &self.options, forms);
                 } else {
                     let y = y - info.top_wraps as u16;
-                    line.print(&mut self.area, info.x_shift, y, 0, &self.options, &self.forms);
+                    line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
                 }
             }
         }
