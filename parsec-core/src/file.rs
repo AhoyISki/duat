@@ -115,16 +115,11 @@ impl TextLine {
     /// Parses the wrapping of a single line.
     ///
     /// Returns `true` if the amount of wrapped lines has changed.
-    pub fn parse_wrapping(&mut self, width: usize, options: &FileOptions) -> bool {
+    pub fn parse_wrapping(&mut self, width: usize, options: &FileOptions, wraps: usize) -> bool {
         let indent = self.indent(&options.tabs);
         let indent = if options.wrap_indent && indent < width { indent } else { 0 };
 
-        // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
-        let prev_len = self.info.char_tags.vec().len();
-        if unsafe { crate::FOR_TEST } {
-            panic!("{:#?}, {}", self.info.char_tags, prev_len)
-        }
-
+		// Clear all `WrapppingChar`s from `char_tags`.
         self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
         let mut distance = 0;
@@ -162,12 +157,13 @@ impl TextLine {
         // The insertion operation is more efficient if I insert already sorted slices.
         self.info.char_tags.insert_slice(additions.as_slice());
 
-        self.info.char_tags.vec().len() != prev_len
+        self.info.char_tags.vec().len() != wraps
     }
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.info.char_tags
+        self.info
+            .char_tags
             .vec()
             .iter()
             .filter(|(_, t)| matches!(t, CharTag::WrapppingChar))
@@ -434,7 +430,7 @@ impl<T: OutputArea> File<T> {
         ));
 
         for line in 0..file.lines.len() {
-            file.update_line_info(line);
+            file.update_line_info(line, 0);
         }
 
         let start = TextPos { line: 0, col: 0, byte: 0 };
@@ -597,7 +593,7 @@ impl<T: OutputArea> File<T> {
     /// Updates the information for a line in the file.
     ///
     /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info(&mut self, line: usize) -> bool {
+    pub fn update_line_info(&mut self, line: usize, wraps: usize) -> bool {
         let line = &mut self.lines[line];
 
         line.info.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
@@ -607,7 +603,7 @@ impl<T: OutputArea> File<T> {
         );
 
         if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
-            line.parse_wrapping(self.area.width(), &self.options)
+            line.parse_wrapping(self.area.width(), &self.options, wraps)
         } else {
             false
         }
@@ -618,31 +614,29 @@ impl<T: OutputArea> File<T> {
     where
         S: ToString,
     {
-        let (mut edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
+        let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
 
-        // If the length of the file has changed, we don't need to check if the wrapping of the new
-        // lines has changed, since the file will be reprinted anyway.
-        let mut full_refresh_needed = if new_range.lines().count() != old_range.lines().count() {
-            let first_start_pattern_id = self.lines[new_range.start.line].info.start_pattern_id;
+        let old_lines_len = self.lines.len();
 
-            let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
-            self.lines.splice(old_range.lines(), edits);
+        // This pattern id should carry over to the first line of the splice.
+        let first_start_pattern_id = self.lines[new_range.start.line].info.start_pattern_id;
 
-			self.lines[new_range.start.line].info.start_pattern_id = first_start_pattern_id;
+		// Create this count because I'm gonna wipe `char_tags`, voiding the previous information.
+        let prior_wrap_counts: Vec<usize> =
+            self.lines[new_range.lines()].iter().map(|l| l.wrap_iter().count()).collect();
 
-            true
-        // Although the character tags will no longer be valid, they are still a good way to check
-        // if the wrapping has changed.
-        } else {
-            for (index, line) in &mut self.lines[new_range.lines()].iter_mut().enumerate() {
-                // Change only the text, keep the rest of the line's information valid.
-                line.text = edits.remove(index);
-            }
-            false
-        };
+        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
+        self.lines.splice(old_range.lines(), edits);
 
-        for line in new_range.lines() {
-            full_refresh_needed |= self.update_line_info(line);
+        self.lines[new_range.start.line].info.start_pattern_id = first_start_pattern_id;
+
+		// If the length of `lines` changes, a situation where a refresh isn't needed doesn't exist.
+        let mut full_refresh_needed = old_lines_len != self.lines.len();
+
+		// The check may take lines that weren't in the old range, but that honestly doesn't matter,
+		// since, if `old_range.lines() != new_range.lines()`, a full refresh would be done anyway.
+        for (line, wrap_count) in new_range.lines().zip(prior_wrap_counts) {
+            full_refresh_needed |= self.update_line_info(line, wrap_count);
         }
 
         for cursor in &mut self.cursors {
@@ -686,7 +680,9 @@ impl<T: OutputArea> File<T> {
 
             for line in taken_range.lines() {
                 if !changed_lines.contains(&line) {
-                    self.update_line_info(line);
+                    // The count doesn't actually matter here, since I'm going to refresh the screen
+                    // anyway.
+                    self.update_line_info(line, 0);
 
                     changed_lines.push(line)
                 }
@@ -705,6 +701,13 @@ impl<T: OutputArea> File<T> {
                     &self.lines,
                     &self.options.tabs,
                 ));
+            }
+
+			let range = TextRange { start: splice.start(), end: splice.taken_end() };
+            let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), range);
+
+            for (line_info, line_num) in line_infos {
+                self.lines[line_num].info = line_info;
             }
         }
 
@@ -726,7 +729,9 @@ impl<T: OutputArea> File<T> {
 
             for line in added_range.lines() {
                 if !changed_lines.contains(&line) {
-                    self.update_line_info(line);
+                    // The count doesn't actually matter here, since I'm going to refresh the screen
+                    // anyway.
+                    self.update_line_info(line, 0);
 
                     changed_lines.push(line)
                 }
@@ -745,6 +750,13 @@ impl<T: OutputArea> File<T> {
                     &self.lines,
                     &self.options.tabs,
                 ));
+            }
+
+			let range = TextRange { start: splice.start(), end: splice.added_end() };
+            let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), range);
+
+            for (line_info, line_num) in line_infos {
+                self.lines[line_num].info = line_info;
             }
         }
 
