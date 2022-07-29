@@ -15,20 +15,19 @@ use crate::{
 // TODO: move this to a more general file.
 /// A line in the text file.
 pub struct TextLine {
-    /// Which columns on the line should wrap around.
-    pub(crate) char_tags: CharTags,
-
     /// The text on the line.
     text: String,
-    line_flags: LineFlags,
+
+    /// Information about a line.
+    pub(crate) info: LineInfo,
 }
 
 impl TextLine {
     /// Returns a new instance of `TextLine`.
     pub fn new(text: &str) -> TextLine {
-        let char_tags = CharTags::new();
+        let info = LineInfo::default();
 
-        TextLine { char_tags, text: String::from(text), line_flags: LineFlags::empty() }
+        TextLine { text: String::from(text), info }
     }
 
     /// Returns the line's indentation.
@@ -48,7 +47,7 @@ impl TextLine {
 
     /// Returns the byte index of a given column.
     pub fn get_line_byte_at(&self, col: usize) -> usize {
-        if self.line_flags.contains(LineFlags::PURE_ASCII) {
+        if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
             col
         } else {
             self.text.char_indices().nth(col).unwrap_or((self.text.len(), ' ')).0
@@ -59,7 +58,7 @@ impl TextLine {
     pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> usize {
         let mut width = 0;
 
-        if self.line_flags.contains(LineFlags::PURE_1_COL) {
+        if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
             width = col
         } else {
             for ch in self.text.chars().take(col) {
@@ -79,8 +78,8 @@ impl TextLine {
     /// The leftover number is positive if the width of the characters is greater (happens if the
     /// last checked character has a width greater than 1), and 0 otherwise.
     pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, usize) {
-        if self.line_flags.contains(LineFlags::PURE_1_COL) {
-            if self.line_flags.contains(LineFlags::PURE_ASCII) {
+        if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
+            if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
                 let byte = min(min_dist, self.text.len() - 1);
 
                 (byte, 0)
@@ -121,10 +120,12 @@ impl TextLine {
         let indent = if options.wrap_indent && indent < width { indent } else { 0 };
 
         // Clear the `WrappingChar`s off of the vector or create a new vector if it didn't exist.
-        let prev_len = self.char_tags.vec().len();
-		if unsafe { crate::FOR_TEST } { panic!("{:#?}, {}", self.char_tags, prev_len) }
+        let prev_len = self.info.char_tags.vec().len();
+        if unsafe { crate::FOR_TEST } {
+            panic!("{:#?}, {}", self.info.char_tags, prev_len)
+        }
 
-        self.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
+        self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
         let mut distance = 0;
         let mut indent_wrap = 0;
@@ -132,7 +133,7 @@ impl TextLine {
 
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
-        if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
+        if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
             distance = width;
             while distance < self.text.len() {
                 additions.push((distance as u32, CharTag::WrapppingChar));
@@ -159,15 +160,14 @@ impl TextLine {
         }
 
         // The insertion operation is more efficient if I insert already sorted slices.
-        self.char_tags.insert_slice(additions.as_slice());
+        self.info.char_tags.insert_slice(additions.as_slice());
 
-
-        self.char_tags.vec().len() != prev_len
+        self.info.char_tags.vec().len() != prev_len
     }
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.char_tags
+        self.info.char_tags
             .vec()
             .iter()
             .filter(|(_, t)| matches!(t, CharTag::WrapppingChar))
@@ -176,7 +176,7 @@ impl TextLine {
 
     /// Returns how many characters are in the line.
     pub fn char_count(&self) -> usize {
-        if self.line_flags.contains(LineFlags::PURE_ASCII) {
+        if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
             self.text.len()
         } else {
             self.text.chars().count()
@@ -216,7 +216,7 @@ impl TextLine {
         (0..d_x).for_each(|_| area.print(' '));
 
         let char_width = |c, x| {
-            if self.line_flags.contains(LineFlags::PURE_1_COL) {
+            if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
                 1
             } else {
                 get_char_width(c, x, &options.tabs)
@@ -226,7 +226,7 @@ impl TextLine {
         let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
 
         let mut wraps = self.wrap_iter();
-        let tags = &self.char_tags;
+        let tags = &self.info.char_tags;
 
         // In the case where the amount of skipped characters is greater than the placement of
         // the first wrapped one, if `options.wrap_indent`, we need to indent the text
@@ -312,10 +312,6 @@ impl TextLine {
                         area.push_form(&forms[index as usize], index);
                     } else if let CharTag::PopForm(index) = tag {
                         area.pop_form(index);
-                    } else if let CharTag::PushMlForm(index) = tag {
-                        area.push_ml_form(&forms[index as usize], index);
-                    } else if let CharTag::PopMlForm(index) = tag {
-                        area.pop_ml_form(index);
                     }
                 } else {
                     break;
@@ -387,8 +383,8 @@ pub struct File<T> {
     /// The history of edits on this file.
     pub history: History,
 
-	/// The manager for character tags and file flag mutation.
-	tag_manager: TagManager,
+    /// The manager for character tags and file flag mutation.
+    tag_manager: TagManager,
 }
 
 impl<T: OutputArea> File<T> {
@@ -396,32 +392,28 @@ impl<T: OutputArea> File<T> {
     pub fn new(lines: Vec<&str>, options: FileOptions, area: T) -> File<T> {
         let lines = lines.iter().map(|l| TextLine::new(l)).collect();
 
-		let mut tag_manager = TagManager::new();
+        let mut tag_manager = TagManager::new();
         let matcher = Matcher::Regex(Regex::new(r"\{|\}|\[|\]|\(|\)").unwrap());
-        tag_manager.push_fp(matcher, 0);
+        tag_manager.push_word(matcher, Some(0));
+
+        let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
+        let mut id = tag_manager.push_word(matcher, Some(1));
+
+        let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
+        tag_manager.push_subword(matcher, Some(2), id);
+
+        let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
+        let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
+        let mut id = tag_manager.push_bounds([matcher_start, matcher_end], Some(3));
+
+        let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
+        tag_manager.push_subword(matcher, Some(4), id);
 
         tag_manager.push_form(ContentStyle::new().red(), false);
         tag_manager.push_form(ContentStyle::new().green(), false);
         tag_manager.push_form(ContentStyle::new().on_white(), false);
         tag_manager.push_form(ContentStyle::new().blue(), false);
         tag_manager.push_form(ContentStyle::new().on_yellow(), false);
-
-		{
-            let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
-            let mut filesys_fps = tag_manager.push_fp(matcher, 1);
-
-            let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
-            filesys_fps.push_fp(matcher, 2);
-		}
-
-		{
-            let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
-            let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
-    		let mut bounds_fps = tag_manager.push_ml_fp([matcher_start, matcher_end], 3);
-
-            let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
-            bounds_fps.push_fp(matcher, 4);
-		}
 
         let mut file = File {
             lines,
@@ -455,9 +447,8 @@ impl<T: OutputArea> File<T> {
 
         let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range);
 
-        for LineInfo { line, char_tags, line_flags } in line_infos {
-            file.lines[line].char_tags.merge(char_tags);
-            file.lines[line].line_flags |= line_flags;
+        for (line_info, line_num) in line_infos {
+            file.lines[line_num].info = line_info;
         }
 
         file
@@ -609,8 +600,8 @@ impl<T: OutputArea> File<T> {
     pub fn update_line_info(&mut self, line: usize) -> bool {
         let line = &mut self.lines[line];
 
-        line.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
-        line.line_flags.set(
+        line.info.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
+        line.info.line_flags.set(
             LineFlags::PURE_1_COL,
             !line.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
         );
@@ -627,15 +618,17 @@ impl<T: OutputArea> File<T> {
     where
         S: ToString,
     {
-        let old_lines_len = self.lines.len();
-
         let (mut edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
 
-		// If the length of the file has changed, we don't need to check if the wrapping of the new
-		// lines has changed, since the file will be reprinted anyway.
-        let mut full_refresh_needed = if self.lines.len() != old_lines_len {
+        // If the length of the file has changed, we don't need to check if the wrapping of the new
+        // lines has changed, since the file will be reprinted anyway.
+        let mut full_refresh_needed = if new_range.lines().count() != old_range.lines().count() {
+            let first_start_pattern_id = self.lines[new_range.start.line].info.start_pattern_id;
+
             let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
             self.lines.splice(old_range.lines(), edits);
+
+			self.lines[new_range.start.line].info.start_pattern_id = first_start_pattern_id;
 
             true
         // Although the character tags will no longer be valid, they are still a good way to check
@@ -647,7 +640,7 @@ impl<T: OutputArea> File<T> {
             }
             false
         };
-        
+
         for line in new_range.lines() {
             full_refresh_needed |= self.update_line_info(line);
         }
@@ -671,9 +664,8 @@ impl<T: OutputArea> File<T> {
 
         let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
 
-        for LineInfo { line, char_tags, line_flags } in line_infos {
-            self.lines[line].char_tags.merge(char_tags);
-            self.lines[line].line_flags |= line_flags;
+        for (line_info, line_num) in line_infos {
+            self.lines[line_num].info = line_info;
         }
 
         full_refresh_needed
@@ -770,7 +762,7 @@ impl<T: OutputArea> File<T> {
         let has_scrolled = self.update_print_info();
 
         let current = self.cursors.get(self.main_cursor).unwrap().current();
-        let char_tags = &mut self.lines.get_mut(current.line).unwrap().char_tags;
+        let char_tags = &mut self.lines.get_mut(current.line).unwrap().info.char_tags;
         char_tags.retain(|(_, t)| !matches!(t, CharTag::PrimaryCursor));
 
         let target = self.cursors.get(self.main_cursor).unwrap().target();
@@ -779,7 +771,7 @@ impl<T: OutputArea> File<T> {
         // If the cursor is at the end of the line, it's syntax will be placed at a virtual ' '.
         // The same goes for any type of syntax highlighting.
         let byte = line.text.char_indices().nth(target.col).unwrap_or((line.text.len(), ' ')).0;
-        line.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
+        line.info.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
 
         // Updates the information for each cursor in the file.
         self.cursors.iter_mut().for_each(|c| c.update());
@@ -885,5 +877,9 @@ impl<T: OutputArea> File<T> {
 }
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
-    if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
+    if ch == '\t' {
+        tabs.get_tab_len(col)
+    } else {
+        UnicodeWidthChar::width(ch).unwrap_or(1)
+    }
 }
