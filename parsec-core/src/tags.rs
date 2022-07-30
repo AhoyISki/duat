@@ -85,7 +85,7 @@ impl CharTags {
     /// More efficient insertion method that requires no sorting.
     pub fn insert(&mut self, char_tag: (u32, CharTag)) {
         match self.0.iter().enumerate().find(|(_, (c, _))| *c > char_tag.0) {
-            Some((pos, (_, _))) => self.0.insert(pos, char_tag),
+            Some((pos, _)) => self.0.insert(pos, char_tag),
             None => self.0.push(char_tag),
         }
     }
@@ -96,13 +96,13 @@ impl CharTags {
         self.0.reserve(char_tags.len());
 
         let mut new_char_tags = char_tags.iter();
-        let mut old_char_tags = self.0.iter().enumerate();
 
         let mut insertions: SmallVec<[usize; 30]> = SmallVec::with_capacity(char_tags.len());
 
         'a: while let Some(&(col, _)) = new_char_tags.next() {
             // Iterate until we get a position with a column where we can place the char_tag.
 
+            let mut old_char_tags = self.0.iter().enumerate();
             let index = match old_char_tags.find(|(_, &(p, _))| p > col) {
                 Some((new_index, _)) => new_index,
                 // If no more characters are found, we can just dump the rest at the end.
@@ -311,15 +311,17 @@ impl FormPattern {
 
         for form_pattern in &self.form_pattern_list {
             for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
-                for (index, line) in lines.iter().enumerate() {
+                let mut file_byte = start.file_byte;
+
+                for (index, line) in lines.iter().take(end.line + 1).skip(start.line).enumerate() {
                     let (text, line_start) = if lines.len() == 1 {
                         (&line.text().as_bytes()[start.byte..end.byte], start.byte)
                     } else if index == 0 {
                         (&line.text().as_bytes()[start.byte..], start.byte)
-                    } else if index != lines.len() - 1 {
-                        (line.text().as_bytes(), 0)
-                    } else {
+                    } else if index == end.line - start.line {
                         (&line.text().as_bytes()[..end.byte], 0)
+                    } else {
+                        (line.text().as_bytes(), 0)
                     };
 
                     let text = str::from_utf8(text).unwrap();
@@ -331,12 +333,12 @@ impl FormPattern {
                             let start = LineBytePos {
                                 line: info[index].1,
                                 byte: range.0 + line_start,
-                                file_byte: range.0 + start.file_byte,
+                                file_byte: range.0 + file_byte,
                             };
                             let end = LineBytePos {
                                 line: info[index].1,
                                 byte: range.1 + line_start,
-                                file_byte: range.1 + start.file_byte,
+                                file_byte: range.1 + file_byte,
                             };
                             let range = LineByteRange { start, end };
 
@@ -362,7 +364,6 @@ impl FormPattern {
                             // Match subpatterns.
                             if form_pattern.form_pattern_list.len() > 0 {
                                 let mut ranges = LineByteRanges(vec![range]);
-                                let lines = std::slice::from_ref(&lines[index]);
                                 let info = std::slice::from_mut(&mut info[index]);
 
                                 // This inner vector represents all the places that were poked
@@ -378,8 +379,19 @@ impl FormPattern {
 
                         info[index].0.char_tags.insert_slice(match_tags.as_slice());
                     }
+
+                    file_byte += text.len();
                 }
             }
+
+			if ranges_to_poke.len() > 0 {
+                for &range_to_poke in &ranges_to_poke {
+                    ranges.poke(range_to_poke);
+                }
+                //panic!("{:#?}", self.form_pattern_list);
+			}
+
+            ranges_to_poke.clear();
         }
 
         ranges_to_poke
@@ -418,7 +430,7 @@ impl FormPattern {
             }
         }
 
-        self.match_text(&lines[start.line..=end.line], &mut ranges, lines_info.as_mut_slice());
+        self.match_text(lines, &mut ranges, lines_info.as_mut_slice());
 
         lines_info
     }
@@ -491,7 +503,6 @@ impl TagManager {
         };
 
         self.default_form.form_pattern_list.push(form_pattern);
-        self.default_form.form_pattern_list.sort_by(|a, b| a.is_exclusive.cmp(&b.is_exclusive));
 
         self.last_id
     }
@@ -550,9 +561,8 @@ impl TagManager {
         };
 
         self.default_form.form_pattern_list.push(form_pattern);
-        self.default_form.form_pattern_list.sort_by(|a, b| a.is_exclusive.cmp(&b.is_exclusive));
 
-        self.default_form.form_pattern_list.last().unwrap().id
+        self.last_id
     }
 
     /// Pushes a new form onto the list.
