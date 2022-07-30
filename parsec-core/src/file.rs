@@ -9,7 +9,7 @@ use crate::{
     config::{FileOptions, TabPlaces, WrapMethod},
     cursor::{FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
-    tags::{CharTag, CharTags, Form, LineFlags, LineInfo, Matcher, TagManager},
+    tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
 };
 
 // TODO: move this to a more general file.
@@ -269,6 +269,9 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
+		//println!("{:?}", tags);
+		//return 1;
+
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
 
@@ -390,20 +393,20 @@ impl<T: OutputArea> File<T> {
 
         let mut tag_manager = TagManager::new();
         let matcher = Matcher::Regex(Regex::new(r"\{|\}|\[|\]|\(|\)").unwrap());
-        tag_manager.push_word(matcher, Some(0));
-
-        let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
-        let mut id = tag_manager.push_word(matcher, Some(1));
-
-        let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
-        tag_manager.push_subword(matcher, Some(2), id);
+        tag_manager.push_word(matcher, Some(0), true);
 
         let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
         let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
-        let mut id = tag_manager.push_bounds([matcher_start, matcher_end], Some(3));
+        let id = tag_manager.push_bounds([matcher_start, matcher_end], Some(3), true);
 
-        let matcher = Matcher::Regex(Regex::new(r"\n").unwrap());
-        tag_manager.push_subword(matcher, Some(4), id);
+        let matcher = Matcher::Regex(Regex::new(r"asd").unwrap());
+        tag_manager.push_subword(matcher, Some(4), true, id);
+
+        let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
+        let id = tag_manager.push_word(matcher, Some(1), false);
+
+        let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
+        tag_manager.push_subword(matcher, Some(2), true, id);
 
         tag_manager.push_form(ContentStyle::new().red(), false);
         tag_manager.push_form(ContentStyle::new().green(), false);
@@ -429,10 +432,6 @@ impl<T: OutputArea> File<T> {
             &file.options.tabs,
         ));
 
-        for line in 0..file.lines.len() {
-            file.update_line_info(line, 0);
-        }
-
         let start = TextPos { line: 0, col: 0, byte: 0 };
 
         let col = file.lines.last().unwrap().text.chars().count();
@@ -445,6 +444,10 @@ impl<T: OutputArea> File<T> {
 
         for (line_info, line_num) in line_infos {
             file.lines[line_num].info = line_info;
+        }
+
+        for line in 0..file.lines.len() {
+            file.update_line_info(line, 0);
         }
 
         file
@@ -633,6 +636,12 @@ impl<T: OutputArea> File<T> {
 		// If the length of `lines` changes, a situation where a refresh isn't needed doesn't exist.
         let mut full_refresh_needed = old_lines_len != self.lines.len();
 
+        let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
+
+        for (line_info, line_num) in line_infos {
+            self.lines[line_num].info = line_info;
+        }
+
 		// The check may take lines that weren't in the old range, but that honestly doesn't matter,
 		// since, if `old_range.lines() != new_range.lines()`, a full refresh would be done anyway.
         for (line, wrap_count) in new_range.lines().zip(prior_wrap_counts) {
@@ -656,12 +665,6 @@ impl<T: OutputArea> File<T> {
             cursor.move_to(new_pos, &self.lines, &self.options)
         }
 
-        let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
-
-        for (line_info, line_num) in line_infos {
-            self.lines[line_num].info = line_info;
-        }
-
         full_refresh_needed
     }
 
@@ -675,24 +678,10 @@ impl<T: OutputArea> File<T> {
 
         let mut changed_lines = Vec::new();
 
-        for splice in &splices {
-            let taken_range = TextRange { start: splice.start(), end: splice.taken_end() };
-
-            for line in taken_range.lines() {
-                if !changed_lines.contains(&line) {
-                    // The count doesn't actually matter here, since I'm going to refresh the screen
-                    // anyway.
-                    self.update_line_info(line, 0);
-
-                    changed_lines.push(line)
-                }
-            }
-        }
-
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-        for splice in splices.iter() {
+        for splice in &splices {
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.taken_end(), &self.lines, &self.options);
             } else {
@@ -711,6 +700,21 @@ impl<T: OutputArea> File<T> {
             }
         }
 
+        for splice in splices {
+            let taken_range = TextRange { start: splice.start(), end: splice.taken_end() };
+
+            for line in taken_range.lines() {
+                if !changed_lines.contains(&line) {
+                    // The count doesn't actually matter here, since I'm going to refresh the screen
+                    // anyway.
+                    self.update_line_info(line, 0);
+
+                    changed_lines.push(line)
+                }
+            }
+        }
+
+
         self.cursors.extend(new_cursors);
     }
 
@@ -724,24 +728,10 @@ impl<T: OutputArea> File<T> {
 
         let mut changed_lines = Vec::new();
 
-        for splice in &splices {
-            let added_range = TextRange { start: splice.start(), end: splice.added_end() };
-
-            for line in added_range.lines() {
-                if !changed_lines.contains(&line) {
-                    // The count doesn't actually matter here, since I'm going to refresh the screen
-                    // anyway.
-                    self.update_line_info(line, 0);
-
-                    changed_lines.push(line)
-                }
-            }
-        }
-
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-        for splice in splices {
+        for splice in &splices {
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.added_end(), &self.lines, &self.options);
             } else {
@@ -761,6 +751,20 @@ impl<T: OutputArea> File<T> {
         }
 
         self.cursors.extend(new_cursors);
+
+        for splice in splices {
+            let added_range = TextRange { start: splice.start(), end: splice.added_end() };
+
+            for line in added_range.lines() {
+                if !changed_lines.contains(&line) {
+                    // The count doesn't actually matter here, since I'm going to refresh the screen
+                    // anyway.
+                    self.update_line_info(line, 0);
+
+                    changed_lines.push(line)
+                }
+            }
+        }
     }
 
     /// Prints the file, according to its current position.
