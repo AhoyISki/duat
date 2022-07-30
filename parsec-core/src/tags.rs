@@ -307,18 +307,21 @@ impl FormPattern {
     fn match_text(
         &self, lines: &[TextLine], ranges: &mut LineByteRanges, info: &mut [(LineInfo, usize)],
     ) -> SmallVec<[LineByteRange; 32]> {
-        let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
+        let mut poked_ranges = SmallVec::<[LineByteRange; 32]>::new();
+        let first_line = ranges.0[0].start.line;
 
         for form_pattern in &self.form_pattern_list {
+            let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
+
             for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
                 let mut file_byte = start.file_byte;
 
-                for (index, line) in lines.iter().take(end.line + 1).skip(start.line).enumerate() {
-                    let (text, line_start) = if lines.len() == 1 {
+                for (index, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
+                    let (text, line_start) = if start.line == end.line {
                         (&line.text().as_bytes()[start.byte..end.byte], start.byte)
-                    } else if index == 0 {
+                    } else if index == start.line {
                         (&line.text().as_bytes()[start.byte..], start.byte)
-                    } else if index == end.line - start.line {
+                    } else if index == end.line {
                         (&line.text().as_bytes()[..end.byte], 0)
                     } else {
                         (line.text().as_bytes(), 0)
@@ -327,31 +330,31 @@ impl FormPattern {
                     let text = str::from_utf8(text).unwrap();
 
                     if let Pattern::Word(matcher) = &form_pattern.pattern {
-                        let mut match_tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
+                        let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
                         for range in matcher.find_iter(text) {
-                            let start = LineBytePos {
-                                line: info[index].1,
+                            let match_start = LineBytePos {
+                                line: index,
                                 byte: range.0 + line_start,
                                 file_byte: range.0 + file_byte,
                             };
-                            let end = LineBytePos {
-                                line: info[index].1,
+                            let match_end = LineBytePos {
+                                line: index,
                                 byte: range.1 + line_start,
                                 file_byte: range.1 + file_byte,
                             };
-                            let range = LineByteRange { start, end };
+                            let range = LineByteRange { start: match_start, end: match_end };
 
                             // There may be many forms to a `FormPattern` only push the `Some`s.
                             for form in &form_pattern.form_indices {
                                 if let &Some(form) = form {
-                                    match_tags.push((start.byte as u32, CharTag::PushForm(form)));
+                                    tags.push((match_start.byte as u32, CharTag::PushForm(form)));
                                 }
                             }
                             // This looks dumb but it's correct.
                             for form in &form_pattern.form_indices {
                                 if let &Some(form) = form {
-                                    match_tags.push((end.byte as u32, CharTag::PopForm(form)));
+                                    tags.push((match_end.byte as u32, CharTag::PopForm(form)));
                                 }
                             }
 
@@ -364,7 +367,7 @@ impl FormPattern {
                             // Match subpatterns.
                             if form_pattern.form_pattern_list.len() > 0 {
                                 let mut ranges = LineByteRanges(vec![range]);
-                                let info = std::slice::from_mut(&mut info[index]);
+                                let info = std::slice::from_mut(&mut info[index - start.line]);
 
                                 // This inner vector represents all the places that were poked
                                 // within the matched range.
@@ -377,24 +380,23 @@ impl FormPattern {
                             }
                         }
 
-                        info[index].0.char_tags.insert_slice(match_tags.as_slice());
+                        info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
+                    } else if let Pattern::Bounds(start_matcher, _) = &form_pattern.pattern {
+                        
                     }
 
                     file_byte += text.len();
                 }
             }
 
-			if ranges_to_poke.len() > 0 {
-                for &range_to_poke in &ranges_to_poke {
-                    ranges.poke(range_to_poke);
-                }
-                //panic!("{:#?}", self.form_pattern_list);
-			}
+            for &range_to_poke in &ranges_to_poke {
+                ranges.poke(range_to_poke);
+            }
 
-            ranges_to_poke.clear();
+			poked_ranges.extend(ranges_to_poke)
         }
 
-        ranges_to_poke
+        poked_ranges
     }
 
     pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<(LineInfo, usize)> {
@@ -431,6 +433,8 @@ impl FormPattern {
         }
 
         self.match_text(lines, &mut ranges, lines_info.as_mut_slice());
+
+        if unsafe { crate::FOR_TEST } { panic!("{:#?}", ranges.0) }
 
         lines_info
     }
