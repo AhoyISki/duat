@@ -1,15 +1,22 @@
-use std::{cmp::max, collections::btree_map::Range, str};
+use std::{
+    cmp::max,
+    collections::btree_map::{Range, RangeMut},
+    str,
+};
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
-use regex::{bytes::{CaptureLocations, Match}, Regex};
+use regex::{
+    bytes::{CaptureLocations, Match},
+    Regex,
+};
 use smallvec::SmallVec;
 
 use crate::{action::TextRange, file::TextLine};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
@@ -35,6 +42,18 @@ pub enum CharTag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
     PermanentConceal { index: u16 },
+}
+
+impl std::fmt::Debug for CharTag {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    	match self {
+        	CharTag::PushForm(form) => write!(f, "PuF({})", form),
+        	CharTag::PopForm(form) => write!(f, "PoF({})", form),
+        	CharTag::WrapppingChar => write!(f, "W"),
+        	CharTag::PrimaryCursor => write!(f, "PC"),
+        	_ => write!(f, "other")
+    	}
+	}
 }
 
 bitflags! {
@@ -268,6 +287,12 @@ struct LineByteRange {
     end: LineBytePos,
 }
 
+impl LineByteRange {
+    fn contains(&self, pos: LineBytePos) -> bool {
+        pos.file_byte >= self.start.file_byte && pos.file_byte < self.end.file_byte
+    }
+}
+
 struct LineByteRanges(Vec<LineByteRange>);
 
 impl LineByteRanges {
@@ -306,15 +331,21 @@ impl LineInfo {
 impl FormPattern {
     fn match_text(
         &self, lines: &[TextLine], ranges: &mut LineByteRanges, info: &mut [(LineInfo, usize)],
-    ) -> SmallVec<[LineByteRange; 32]> {
+    ) -> (SmallVec<[LineByteRange; 32]>, LineByteRange) {
         let mut poked_ranges = SmallVec::<[LineByteRange; 32]>::new();
         let first_line = ranges.0[0].start.line;
 
-        for form_pattern in &self.form_pattern_list {
-            let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
+        let mut checked_range = LineByteRange {
+            start: ranges.0.first().unwrap().start,
+            end: ranges.0.last().unwrap().end,
+        };
 
-            for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
-                let mut file_byte = start.file_byte;
+        //panic!("{:#?}", self.form_pattern_list);
+
+        if let Pattern::Bounds(start_matcher, end_matcher) = &self.pattern {
+            'a: for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
+                let file_byte = start.file_byte;
+				let mut inner_count = 1;
 
                 for (index, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
                     let (text, line_start) = if start.line == end.line {
@@ -329,9 +360,77 @@ impl FormPattern {
 
                     let text = str::from_utf8(text).unwrap();
 
-                    if let Pattern::Word(matcher) = &form_pattern.pattern {
-                        let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
+					let mut start_iter = start_matcher.find_iter(text);
+    				let mut end_iter = end_matcher.find_iter(text);
 
+    				loop {
+        				let (match_start, match_end) = (start_iter.next(), end_iter.next());
+        				match (match_start, match_end) {
+            				(Some(match_start), Some(match_end)) => {
+                				if match_start.0 > match_end.0 { inner_count -= 1; }
+            				}
+            				(Some(_), None) => inner_count += 1,
+            				(None, Some(_)) => inner_count -= 1,
+            				(None, None) => break,
+        				}
+
+        				if inner_count == 0 {
+            				let match_end = match_end.unwrap();
+            				checked_range.end = LineBytePos {
+                                line: index,
+                                byte: match_end.0 + line_start,
+                                file_byte: match_end.0 + file_byte,
+                            };
+
+                            ranges.poke(LineByteRange { start: checked_range.end, end });
+
+                            let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
+
+                            for form in &self.form_indices {
+                                if let &Some(form) = form {
+                                    tags.push((
+                                        (match_end.1 + line_start) as u32,
+                                        CharTag::PopForm(form),
+                                    ));
+                                }
+                            }
+
+                            info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
+            				//if index == 1 { panic!("{:#?}", info.iter().take(5).collect::<Vec<&(LineInfo, usize)>>()) }
+
+                            break 'a;
+        				}
+    				};
+
+                }
+            }
+        }
+
+        for form_pattern in &self.form_pattern_list {
+            let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
+            let mut checked_ranges = SmallVec::<[LineByteRange; 10]>::new();
+
+            for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
+                if start.byte == end.byte { continue; }
+
+                let mut file_byte = start.file_byte;
+
+                for (index, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line) {
+                    let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
+
+                    let (text, line_start) = if start.line == end.line {
+                        (&line.text().as_bytes()[start.byte..end.byte], start.byte)
+                    } else if index == start.line {
+                        (&line.text().as_bytes()[start.byte..], start.byte)
+                    } else if index == end.line {
+                        (&line.text().as_bytes()[..end.byte], 0)
+                    } else {
+                        (line.text().as_bytes(), 0)
+                    };
+
+                    let text = str::from_utf8(text).unwrap();
+
+                    if let Pattern::Word(matcher) = &form_pattern.pattern {
                         for range in matcher.find_iter(text) {
                             let match_start = LineBytePos {
                                 line: index,
@@ -345,20 +444,20 @@ impl FormPattern {
                             };
                             let range = LineByteRange { start: match_start, end: match_end };
 
-                            // There may be many forms to a `FormPattern` only push the `Some`s.
-                            for form in &form_pattern.form_indices {
+                            // The count is here to ensure that the order of elements remains
+                            // consistent.
+                            for form in form_pattern.form_indices.iter() {
                                 if let &Some(form) = form {
                                     tags.push((match_start.byte as u32, CharTag::PushForm(form)));
                                 }
                             }
-                            // This looks dumb but it's correct.
-                            for form in &form_pattern.form_indices {
+                            for form in form_pattern.form_indices.iter() {
                                 if let &Some(form) = form {
                                     tags.push((match_end.byte as u32, CharTag::PopForm(form)));
                                 }
                             }
 
-                        	// If the pattern is exclusive, nothing should be allowed to match on
+                            // If the pattern is exclusive, nothing should be allowed to match on
                             // its range.
                             if form_pattern.is_exclusive {
                                 ranges_to_poke.push(range);
@@ -371,19 +470,66 @@ impl FormPattern {
 
                                 // This inner vector represents all the places that were poked
                                 // within the matched range.
-                                let inner_pokes = form_pattern.match_text(lines, &mut ranges, info);
+                                let pokes = form_pattern.match_text(lines, &mut ranges, info).0;
 
                                 // If the pattern wasn't exclusive, maybe some of its innards were?
                                 if !form_pattern.is_exclusive {
-                                    ranges_to_poke.extend(inner_pokes);
+                                    ranges_to_poke.extend(pokes);
                                 }
                             }
                         }
-
-                        info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
                     } else if let Pattern::Bounds(start_matcher, _) = &form_pattern.pattern {
-                        
+                        for range in start_matcher.find_iter(text) {
+                            let match_start = LineBytePos {
+                                line: index,
+                                byte: range.1 + line_start,
+                                file_byte: range.1 + file_byte,
+                            };
+
+							let mut already_checked = false;
+                            for range in &checked_ranges {
+                                already_checked |= range.contains(match_start);
+                            }
+                            // If the start of the match is in an already checked range, we
+                            // don't need to match its subpatterns again.
+                            if !already_checked {
+                                let info = &mut info[(index - start.line)..];
+
+                                // The count is here to ensure that the order of elements
+                                // remains consistent.
+                                for form in &form_pattern.form_indices {
+                                    if let &Some(form) = form {
+                                        tags.push((
+                                            (match_start.byte - 1) as u32,
+                                            CharTag::PushForm(form),
+                                        ));
+                                    }
+                                }
+
+                                let range = LineByteRange { start: match_start, end };
+
+                                let mut ranges = LineByteRanges(vec![range]);
+
+                                // By this point, it will be known wether or not we have found
+                                // an end to the range.
+                                let (pokes, checked_range) =
+                                    form_pattern.match_text(lines, &mut ranges, info);
+
+                                // The returned range must not be checked again.
+                                checked_ranges.push(checked_range);
+
+                                // If the pattern is exclusive, nothing should be allowed to
+                                // match on its range.
+                                if form_pattern.is_exclusive {
+                                    ranges_to_poke.push(checked_range);
+                                } else {
+                                    ranges_to_poke.extend(pokes);
+                                }
+                            }
+                        }
                     }
+
+                    info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
 
                     file_byte += text.len();
                 }
@@ -393,10 +539,10 @@ impl FormPattern {
                 ranges.poke(range_to_poke);
             }
 
-			poked_ranges.extend(ranges_to_poke)
+            poked_ranges.extend(ranges_to_poke)
         }
 
-        poked_ranges
+        (poked_ranges, checked_range)
     }
 
     pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<(LineInfo, usize)> {
@@ -418,23 +564,7 @@ impl FormPattern {
         let mut ranges = LineByteRanges(vec![LineByteRange { start, end }]);
 
         // First, match according to what pattern_id was in the start of the line.
-        let id = lines_info[0].0.start_pattern_id;
-        if let (Some(form_pattern), true) = (self.search_for_id(id), id != self.id) {
-            // If the pattern inherits from its parents, and the same is the case for its
-            // decendants, we should get the same range back.
-            // What this means is that we can pattern match from the default `FormPattern` only
-            // where matches happened and `heir == true` for a given `FormPattern`.
-            // NOTE: Currently this has the slight issue of `CharTag` duplication on nested ranges,
-            // this should rarely be a problem, though.
-            let to_poke = form_pattern.match_text(lines, &mut ranges, lines_info.as_mut_slice());
-            for range in to_poke {
-                ranges.poke(range);
-            }
-        }
-
         self.match_text(lines, &mut ranges, lines_info.as_mut_slice());
-
-        if unsafe { crate::FOR_TEST } { panic!("{:#?}", ranges.0) }
 
         lines_info
     }

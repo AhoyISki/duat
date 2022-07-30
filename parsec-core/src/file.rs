@@ -269,9 +269,6 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
-		//println!("{:?}", tags);
-		//return 1;
-
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
 
@@ -409,7 +406,7 @@ impl<T: OutputArea> File<T> {
         tag_manager.push_subword(matcher, Some(2), true, id);
 
 		let matcher = Matcher::Regex(Regex::new(r"tem").unwrap());
-		tag_manager.push_word(matcher, Some(3), false);
+		tag_manager.push_word(matcher, Some(1), false);
 
         let matcher = Matcher::Regex(Regex::new(r"y").unwrap());
         tag_manager.push_word(matcher, Some(0), false);
