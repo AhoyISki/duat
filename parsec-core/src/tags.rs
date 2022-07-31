@@ -474,14 +474,16 @@ impl FormPattern {
                                 if inner_count == 0 {
                                     matched_ranges
                                         .push(LineByteRange { start, end: end_match.end });
+                                    latest_start = None;
                                 }
                             }
                         }
                     }
 
-                    if inner_count > 0 && false {
+                    if inner_count > 0 {
                         matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end })
                     }
+                    //if start.file_byte != 0 { panic!("{:#?}", matched_ranges); }
 
                     for range in matched_ranges {
                         for line in range.start.line..=range.end.line {
@@ -503,9 +505,6 @@ impl FormPattern {
                                 }
                             }
 
-                            if unsafe { crate::FOR_TEST } {
-                                panic!("{}, {}, {}", line, first_line, info.len())
-                            }
                             info[line - first_line].0.char_tags.insert_slice(tags.as_slice());
                         }
                         // The count is here to ensure that the order of elements remains
