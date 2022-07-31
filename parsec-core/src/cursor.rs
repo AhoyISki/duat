@@ -153,11 +153,9 @@ pub struct FileCursor {
 }
 
 impl FileCursor {
-    // NOTE: Basically a clone of `update()`, might refactor later.
     /// Returns a new instance of `FileCursor`.
     pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> FileCursor {
         let line = lines.get(pos.line).unwrap();
-        let origin = TextPos { line: 0, byte: 0, col: 0 };
         FileCursor {
             current: pos,
             target: pos,

@@ -1,16 +1,8 @@
-use std::{
-    cmp::max,
-    collections::btree_map::{Range, RangeMut},
-    fs::FileType,
-    str,
-};
+use std::str;
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
-use regex::{
-    bytes::{CaptureLocations, Match},
-    Regex,
-};
+use regex::Regex;
 use smallvec::SmallVec;
 
 use crate::{action::TextRange, file::TextLine};
@@ -241,7 +233,7 @@ impl<'a> Iterator for MatchIter<'a> {
                 })
             }
             // TODO: This, obviously.
-            MatchIter::TsCapture(ts_iter) => todo!(),
+            MatchIter::TsCapture(_ts_iter) => todo!(),
         }
     }
 }
@@ -297,12 +289,6 @@ struct LineBytePos {
 struct LineByteRange {
     start: LineBytePos,
     end: LineBytePos,
-}
-
-impl LineByteRange {
-    fn contains(&self, pos: LineBytePos) -> bool {
-        pos.file_byte >= self.start.file_byte && pos.file_byte < self.end.file_byte
-    }
 }
 
 struct LineByteRanges(Vec<LineByteRange>);
@@ -474,6 +460,7 @@ impl FormPattern {
                                 if inner_count == 0 {
                                     matched_ranges
                                         .push(LineByteRange { start, end: end_match.end });
+
                                     latest_start = None;
                                 }
                             }
@@ -483,7 +470,6 @@ impl FormPattern {
                     if inner_count > 0 {
                         matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end })
                     }
-                    //if start.file_byte != 0 { panic!("{:#?}", matched_ranges); }
 
                     for range in matched_ranges {
                         for line in range.start.line..=range.end.line {
@@ -565,23 +551,10 @@ impl FormPattern {
         lines_info
     }
 
-    /// Returns a reference to the `FormPattern` with the given id.
-    fn search_for_id(&self, id: u16) -> Option<&FormPattern> {
-        for form_pattern in &self.form_pattern_list {
-            if form_pattern.id == id {
-                return Some(form_pattern);
-            } else {
-                if let Some(form_pattern) = form_pattern.search_for_id(id) {
-                    return Some(form_pattern);
-                }
-            }
-        }
-
-        None
-    }
-
     /// Returns a mutable reference to the `FormPattern` with the given id.
     fn search_for_id_mut(&mut self, id: u16) -> Option<&mut FormPattern> {
+        if self.id == id { return Some(self); }
+
         for form_pattern in &mut self.form_pattern_list {
             if form_pattern.id == id {
                 return Some(form_pattern);
@@ -621,56 +594,49 @@ impl TagManager {
     /// Pushes a new form pattern.
     ///
     /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
-    pub fn push_word(&mut self, matcher: Matcher, form_index: Option<u16>, heir: bool) -> u16 {
+    pub fn push_word(
+        &mut self, matcher: Matcher, form_index: Option<u16>, is_exclusive: bool, id: u16,
+    ) -> u16 {
         self.last_id += 1;
+
+        let found_form_pattern = match self.default_form.search_for_id_mut(id) {
+            Some(found_form_pattern) => found_form_pattern,
+            None => todo!(),
+        };
+
+        let mut form_indices = found_form_pattern.form_indices.clone();
+        form_indices.push(form_index);
 
         let form_pattern = FormPattern {
             form_indices: vec![form_index],
             pattern: Pattern::Word(matcher),
             form_pattern_list: Vec::new(),
             id: self.last_id,
-            is_exclusive: heir,
-        };
-
-        self.default_form.form_pattern_list.push(form_pattern);
-
-        self.last_id
-    }
-
-    pub fn push_subword(
-        &mut self, matcher: Matcher, form_index: Option<u16>, is_exclusive: bool, id: u16,
-    ) {
-        self.last_id += 1;
-
-        let found = if let Some(found) = self.default_form.search_for_id_mut(id) {
-            found
-        } else {
-            return;
-        };
-
-        let mut form_indices = found.form_indices.clone();
-        form_indices.push(form_index);
-
-        let form_pattern = FormPattern {
-            form_indices,
-            pattern: Pattern::Word(matcher),
-            form_pattern_list: Vec::new(),
-            id: self.last_id,
             is_exclusive,
         };
 
-        found.form_pattern_list.push(form_pattern);
+        found_form_pattern.form_pattern_list.push(form_pattern);
+
+        self.last_id
     }
 
     /// Pushes a new multiline form pattern.
     ///
     /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
     pub fn push_bounds(
-        &mut self, bounds: [Matcher; 2], form_index: Option<u16>, heir: bool,
+        &mut self, bounds: [Matcher; 2], form_index: Option<u16>, is_exclusive: bool, id: u16,
     ) -> u16 {
         // Move out of array and get rid of it without copying.
         let [start, end] = bounds;
         self.last_id += 1;
+
+        let found_form_pattern = match self.default_form.search_for_id_mut(id) {
+            Some(found_form_pattern) => found_form_pattern,
+            None => todo!(),
+        };
+
+        let mut form_indices = found_form_pattern.form_indices.clone();
+        form_indices.push(form_index);
 
         let form_pattern = if start == end {
             FormPattern {
@@ -678,7 +644,7 @@ impl TagManager {
                 pattern: Pattern::Bound(start),
                 form_pattern_list: Vec::new(),
                 id: self.last_id,
-                is_exclusive: heir,
+                is_exclusive,
             }
         } else {
             FormPattern {
@@ -686,11 +652,11 @@ impl TagManager {
                 pattern: Pattern::Bounds(start, end),
                 form_pattern_list: Vec::new(),
                 id: self.last_id,
-                is_exclusive: heir,
+                is_exclusive,
             }
         };
 
-        self.default_form.form_pattern_list.push(form_pattern);
+        found_form_pattern.form_pattern_list.push(form_pattern);
 
         self.last_id
     }

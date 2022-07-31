@@ -39,7 +39,7 @@
 use std::ops::RangeInclusive;
 
 use crate::{
-    cursor::{get_byte_distance, TextPos},
+    cursor::TextPos,
     file::TextLine,
     output::PrintInfo,
 };

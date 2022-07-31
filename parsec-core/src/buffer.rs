@@ -1,10 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use crossterm::{
-    event::{KeyCode, KeyEvent, KeyModifiers},
-    style::{ContentStyle, Stylize},
-};
-use regex::Regex;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
     config::{FileOptions, LineNumbers},
@@ -13,7 +9,6 @@ use crate::{
     input::{InputHandler, ModeList},
     map_actions,
     output::OutputArea,
-    tags::Form,
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
