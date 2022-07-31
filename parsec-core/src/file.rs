@@ -392,18 +392,18 @@ impl<T: OutputArea> File<T> {
         let matcher = Matcher::Regex(Regex::new(r"\{|\}|\[|\]|\(|\)").unwrap());
         tag_manager.push_word(matcher, Some(0), false);
 
-        let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
-        let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
-        let id = tag_manager.push_bounds([matcher_start, matcher_end], Some(3), false);
-
-        let matcher = Matcher::Regex(Regex::new(r"asd").unwrap());
-        tag_manager.push_subword(matcher, Some(4), false, id);
-
         let matcher = Matcher::Regex(Regex::new(r"filesystem").unwrap());
         let id = tag_manager.push_word(matcher, Some(1), false);
 
         let matcher = Matcher::Regex(Regex::new(r"sys").unwrap());
         tag_manager.push_subword(matcher, Some(2), true, id);
+
+        let matcher_start = Matcher::Regex(Regex::new(r"<").unwrap());
+        let matcher_end = Matcher::Regex(Regex::new(r">").unwrap());
+        let id = tag_manager.push_bounds([matcher_start, matcher_end], Some(3), true);
+
+        let matcher = Matcher::Regex(Regex::new(r"asd").unwrap());
+        tag_manager.push_subword(matcher, Some(4), false, id);
 
 		let matcher = Matcher::Regex(Regex::new(r"tem").unwrap());
 		tag_manager.push_word(matcher, Some(1), false);
