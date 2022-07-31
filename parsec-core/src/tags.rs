@@ -1,7 +1,7 @@
 use std::str;
 
 use bitflags::bitflags;
-use crossterm::style::ContentStyle;
+use crossterm::{style::ContentStyle, terminal::EnableLineWrap};
 use regex::Regex;
 use smallvec::SmallVec;
 
@@ -94,11 +94,6 @@ impl CharTags {
     /// Creates a new instance of `CharTags`.
     pub fn new() -> CharTags {
         CharTags(Vec::new())
-    }
-
-    /// Creates a new instance of `CharTags`, given a slice of `CharTag`s.
-    pub fn from(slice: &[(u32, CharTag)]) -> CharTags {
-        CharTags(Vec::from(slice))
     }
 
     /// More efficient insertion method that requires no sorting.
@@ -333,7 +328,7 @@ pub struct LineInfo {
 
 impl LineInfo {
     fn from(line: &TextLine) -> LineInfo {
-        LineInfo { char_tags: CharTags::new(), line_flags: LineFlags::default() }
+        LineInfo { char_tags: CharTags::new(), ..line.info }
     }
 }
 
@@ -468,7 +463,10 @@ impl FormPattern {
                     }
 
                     if inner_count > 0 {
-                        matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end })
+                        matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end });
+                        if end.byte == lines[end.line].text().len() {
+                            info[end.line - first_line].0.line_flags.insert(LineFlags::END_ML)
+                        }
                     }
 
                     for range in matched_ranges {
@@ -533,20 +531,44 @@ impl FormPattern {
     }
 
     pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<(LineInfo, usize)> {
-        let (start, end) = (range.start, range.end);
+        let (start_pos, end_pos) = (range.start, range.end);
+        let (start_line, end_line) = (&lines[start_pos.line], &lines[end_pos.line]);
+
+        let mut lines_iter = lines.iter().take(range.start.line).rev();
+
+		let mut start = LineBytePos {
+    		line: range.start.line,
+    		byte: 0,
+    		file_byte: range.start.byte - start_line.get_line_byte_at(start_pos.col)
+		};
+        while let Some(line) = lines_iter.next() {
+            if line.info.line_flags.contains(LineFlags::END_ML) {
+                start.line -= 1;
+                start.file_byte -= line.text().len();
+            } else {
+                break;
+            }
+        }
+
+        let mut lines_iter = lines.iter().skip(end_pos.line);
+
+        let mut end = LineBytePos {
+            line: end_pos.line,
+            byte: end_line.text().len(),
+            file_byte: end_pos.byte + end_line.text().len() - end_line.get_line_byte_at(end_pos.col)
+        };
+		while let Some(line) = lines_iter.next() {
+    		if line.info.line_flags.contains(LineFlags::BEGIN_ML) {
+        		end.line += 1;
+        		end.byte = line.text().len();
+        		end.file_byte += line.text().len();
+    		} else {
+        		break;
+    		}
+		}
+
         let mut lines_info: Vec<(LineInfo, usize)> =
-            (range.lines()).map(|l| (LineInfo::from(&lines[l]), l)).collect();
-
-        // The distance from the beginning of the real line.
-        let from_zero = lines[start.line].get_line_byte_at(start.col);
-        // No matter what the range is, the first iteration goes only through whole lines, since
-        // we don't know if `Pattern::Word`s will be completed before the range's start.
-        let start = LineBytePos { line: start.line, byte: 0, file_byte: start.byte - from_zero };
-
-        let end_line_len = lines[end.line].text().len();
-        // The distance to the end of the last line in the range.
-        let to_end = end_line_len - lines[end.line].get_line_byte_at(end.col);
-        let end = LineBytePos { line: end.line, byte: end_line_len, file_byte: end.byte + to_end };
+            (start.line..=end.line).map(|l| (LineInfo::from(&lines[l]), l)).collect();
 
         let mut ranges = LineByteRanges(vec![LineByteRange { start, end }]);
 

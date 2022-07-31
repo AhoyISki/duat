@@ -269,9 +269,6 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
-		println!("{:?}", self.info.line_flags);
-		return 1;
-
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
 
