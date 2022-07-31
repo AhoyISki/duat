@@ -269,6 +269,9 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
+		println!("{:?}", self.info.line_flags);
+		return 1;
+
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
 
@@ -624,17 +627,12 @@ impl<T: OutputArea> File<T> {
 
         let old_lines_len = self.lines.len();
 
-        // This pattern id should carry over to the first line of the splice.
-        let first_start_pattern_id = self.lines[new_range.start.line].info.start_pattern_id;
-
 		// Create this count because I'm gonna wipe `char_tags`, voiding the previous information.
         let prior_wrap_counts: Vec<usize> =
             self.lines[new_range.lines()].iter().map(|l| l.wrap_iter().count()).collect();
 
         let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
         self.lines.splice(old_range.lines(), edits);
-
-        self.lines[new_range.start.line].info.start_pattern_id = first_start_pattern_id;
 
 		// If the length of `lines` changes, a situation where a refresh isn't needed doesn't exist.
         let mut full_refresh_needed = old_lines_len != self.lines.len();

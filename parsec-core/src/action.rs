@@ -109,9 +109,6 @@ impl Change {
     fn apply(&self, lines: &mut Vec<TextLine>) {
         let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
-        // This pattern id should carry over to the first line of the splice.
-        let first_start_pattern_id = lines[taken_range.start.line].info.start_pattern_id;
-
         // The added lines where taken_range resides.
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
@@ -119,16 +116,11 @@ impl Change {
         let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
 
         lines.splice(taken_range.lines(), full_lines);
-
-        lines[taken_range.start.line].info.start_pattern_id = first_start_pattern_id;
     }
 
     /// Undoes the change and returns the modified text.
     fn undo(&self, lines: &mut Vec<TextLine>) {
         let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
-
-        // This pattern id should carry over to the first line of the splice.
-        let first_start_pattern_id = lines[added_range.start.line].info.start_pattern_id;
 
         // The lines where `added_range` resides.
         let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
@@ -137,8 +129,6 @@ impl Change {
         let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
 
         lines.splice(added_range.lines(), full_lines);
-
-        lines[added_range.start.line].info.start_pattern_id = first_start_pattern_id;
     }
 }
 

@@ -59,19 +59,26 @@ bitflags! {
         /// If there are no double/zero width characters or tabs.
         const PURE_1_COL = 1 << 1;
 
+        // Partially implemented:
+        // This is implemented this way for range tracking reasons.
+        // If a line has `ENDING_ML` the next line *must* have `BEGINNING_ML` or else the range
+        // makes no sense. The same also makes no sense in the opposite scenario.
+        /// If the line is in the beginning or the middle of a multi-line range.
+        const BEGIN_ML   = 1 << 2;
+        /// If the line is in the middle or end of a multi-line range.
+        const END_ML     = 1 << 3;
+
         // Not Implemented:
         // Wether or not the line can fold.
-        const CAN_FOLD   = 1 << 6;
+        const CAN_FOLD   = 1 << 4;
         /// Wether or not the line is folded.
-        const IS_FOLDED  = 1 << 7;
+        const IS_FOLDED  = 1 << 5;
         /// If the line is supposed to be replaced by another line when not hovered.
-        const CONCEALED  = 1 << 8;
-        /// If the line contains a pattern that acts as both the start and end of a multi-line form.
-        const FORM_BOUND = 1 << 9;
+        const CONCEALED  = 1 << 6;
         /// If the line is a line wise comment.
-        const IS_COMMENT = 1 << 10;
+        const IS_COMMENT = 1 << 7;
         /// If the line is line wise documentation.
-        const IS_DOC     = 1 << 11;
+        const IS_DOC     = 1 << 8;
     }
 }
 
@@ -322,18 +329,11 @@ impl LineByteRanges {
 pub struct LineInfo {
     pub char_tags: CharTags,
     pub line_flags: LineFlags,
-    pub start_pattern_id: u16,
-    pub end_pattern_id: u16,
 }
 
 impl LineInfo {
     fn from(line: &TextLine) -> LineInfo {
-        LineInfo {
-            char_tags: CharTags::new(),
-            line_flags: LineFlags::default(),
-            start_pattern_id: line.info.start_pattern_id,
-            end_pattern_id: line.info.end_pattern_id,
-        }
+        LineInfo { char_tags: CharTags::new(), line_flags: LineFlags::default() }
     }
 }
 
@@ -475,7 +475,12 @@ impl FormPattern {
                         for line in range.start.line..=range.end.line {
                             let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
-                            let start = if line == range.start.line { range.start.byte } else { 0 };
+                            let start = if line == range.start.line {
+                                range.start.byte
+                            } else {
+                                info[line - first_line].0.line_flags.insert(LineFlags::BEGIN_ML);
+                                0
+                            };
 
                             for form in form_pattern.form_indices.iter() {
                                 if let &Some(form) = form {
@@ -489,6 +494,8 @@ impl FormPattern {
                                         tags.push((range.end.byte as u32, CharTag::PopForm(form)));
                                     }
                                 }
+                            } else {
+                                info[line - first_line].0.line_flags.insert(LineFlags::END_ML);
                             }
 
                             info[line - first_line].0.char_tags.insert_slice(tags.as_slice());
@@ -546,14 +553,14 @@ impl FormPattern {
         // First, match according to what pattern_id was in the start of the line.
         self.match_text(lines, &mut ranges, lines_info.as_mut_slice());
 
-        //panic!("{:#?}", ranges.0);
-
         lines_info
     }
 
     /// Returns a mutable reference to the `FormPattern` with the given id.
     fn search_for_id_mut(&mut self, id: u16) -> Option<&mut FormPattern> {
-        if self.id == id { return Some(self); }
+        if self.id == id {
+            return Some(self);
+        }
 
         for form_pattern in &mut self.form_pattern_list {
             if form_pattern.id == id {
