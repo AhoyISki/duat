@@ -269,6 +269,9 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
+		//println!("{}, {}", self.info.char_tags.vec().len(), " ".repeat(area.width()));
+		//return 1;
+
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
 
@@ -637,7 +640,11 @@ impl<T: OutputArea> File<T> {
         let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
 
         for (line_info, line_num) in line_infos {
-            self.lines[line_num].info = line_info;
+            self.lines[line_num].info.char_tags = line_info.char_tags;
+            self.lines[line_num].info.line_flags = line_info.line_flags;
+            if !new_range.lines().contains(&line_num) {
+                self.update_line_info(line_num, self.lines[line_num].wrap_iter().count());
+            }
         }
 
 		// The check may take lines that weren't in the old range, but that honestly doesn't matter,
