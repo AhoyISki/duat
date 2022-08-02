@@ -70,7 +70,7 @@ impl<T: OutputArea> Buffer<T> {
                             c.unset_anchor();
                             c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors down.
@@ -80,7 +80,7 @@ impl<T: OutputArea> Buffer<T> {
                             c.unset_anchor();
                             c.move_ver(1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors left.
@@ -90,7 +90,7 @@ impl<T: OutputArea> Buffer<T> {
                             c.unset_anchor();
                             c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Move all cursors right.
@@ -100,7 +100,7 @@ impl<T: OutputArea> Buffer<T> {
                             c.unset_anchor();
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Place anchor and move all cursors up.
@@ -110,7 +110,7 @@ impl<T: OutputArea> Buffer<T> {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Place anchor and move all cursors down.
@@ -120,7 +120,7 @@ impl<T: OutputArea> Buffer<T> {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Place anchor and move all cursors left.
@@ -130,7 +130,7 @@ impl<T: OutputArea> Buffer<T> {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(false);
+                        h.refresh_screen();
                     }
                 },
                 // Place anchor and move all cursors right.
@@ -140,7 +140,7 @@ impl<T: OutputArea> Buffer<T> {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
                         });
-                        h.refresh_screen(true);
+                        h.refresh_screen();
                     }
                 },
                 // Deletes either the character in front, or the selection.
@@ -156,9 +156,9 @@ impl<T: OutputArea> Buffer<T> {
                         let range = cursor.range();
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.splice_edit(edit, range);
                         h.file.cursors[h.file.main_cursor].unset_anchor();
-                        h.refresh_screen(refresh_needed);
+                        h.refresh_screen();
                     }
                 },
                 // Deletes either the character behind, or the selection.
@@ -174,9 +174,9 @@ impl<T: OutputArea> Buffer<T> {
                         let range = cursor.range();
                         let edit = vec![""];
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.splice_edit(edit, range);
                         h.file.cursors[h.file.main_cursor].unset_anchor();
-                        h.refresh_screen(refresh_needed);
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Tab, KeyModifiers::NONE) => {
@@ -192,21 +192,21 @@ impl<T: OutputArea> Buffer<T> {
 
                         let range = cursor.range();
 
-                        let refresh_needed = h.file.splice_edit(edit, range);
+                        h.file.splice_edit(edit, range);
                         h.file.cursors[h.file.main_cursor].unset_anchor();
-                        h.refresh_screen(refresh_needed);
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
                         h.file.undo();
-                        h.refresh_screen(true);
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<T>| {
                         h.file.redo();
-                        h.refresh_screen(true);
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
@@ -220,8 +220,8 @@ impl<T: OutputArea> Buffer<T> {
 
                         let edit = vec![""; 2];
 
-                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
-                        h.refresh_screen(refresh_needed);
+                        h.file.splice_edit(edit, cursor.range());
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char(' '), KeyModifiers::NONE) => {
@@ -232,8 +232,8 @@ impl<T: OutputArea> Buffer<T> {
 
                         let edit = vec![' '];
 
-                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
-                        h.refresh_screen(refresh_needed);
+                        h.file.splice_edit(edit, cursor.range());
+                        h.refresh_screen();
                     }
                 },
                 _ => {
@@ -242,14 +242,14 @@ impl<T: OutputArea> Buffer<T> {
 
                         let edit = vec![c];
 
-                        let refresh_needed = h.file.splice_edit(edit, cursor.range());
-                        h.refresh_screen(refresh_needed || unsafe { crate::FOR_TEST });
+                        h.file.splice_edit(edit, cursor.range());
+                        h.refresh_screen();
                     }
                 }
             ]
         }
 
-        file_handler.refresh_screen(true);
+        file_handler.refresh_screen();
 
         file_handler
     }
@@ -257,8 +257,8 @@ impl<T: OutputArea> Buffer<T> {
     /* TODO: Finish this function */
     /// Prints the contents of the file from line on the file.
     #[inline]
-    fn refresh_screen(&mut self, force: bool) {
-        self.file.print_file(force);
+    fn refresh_screen(&mut self) {
+        self.file.print_file();
 
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.

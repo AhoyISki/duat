@@ -1,7 +1,7 @@
 use std::str;
 
 use bitflags::bitflags;
-use crossterm::{style::ContentStyle, terminal::EnableLineWrap};
+use crossterm::style::ContentStyle;
 use regex::Regex;
 use smallvec::SmallVec;
 
