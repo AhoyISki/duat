@@ -211,7 +211,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
                     |_: &mut Buffer<T>| {
-                        unsafe { crate::FOR_TEST = true }
+                        unsafe { crate::FOR_TEST = !crate::FOR_TEST }
                     }
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
@@ -243,7 +243,7 @@ impl<T: OutputArea> Buffer<T> {
                         let edit = vec![c];
 
                         let refresh_needed = h.file.splice_edit(edit, cursor.range());
-                        h.refresh_screen(refresh_needed);
+                        h.refresh_screen(refresh_needed || unsafe { crate::FOR_TEST });
                     }
                 }
             ]

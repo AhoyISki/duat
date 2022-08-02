@@ -174,7 +174,7 @@ impl Form {
 }
 
 /// A matcher primarily for syntax highlighting.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Matcher {
     /// A regular expression.
     Regex(Regex),
@@ -242,7 +242,7 @@ impl<'a> Iterator for MatchIter<'a> {
 
 // Patterns can occupy multiple lines only if they are defined as an opening and ending bound.
 /// Indicates wether a pattern should be able to occupy multiple lines, and how.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub enum Pattern {
     /// This pattern will automatically match the entire file, used for default pattern_lists.
     #[default]
@@ -530,47 +530,13 @@ impl FormPattern {
         poked_ranges
     }
 
-    pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<(LineInfo, usize)> {
-        let (start_pos, end_pos) = (range.start, range.end);
-        let (start_line, end_line) = (&lines[start_pos.line], &lines[end_pos.line]);
-
-        let mut lines_iter = lines.iter().take(range.start.line).rev();
-
-		let mut start = LineBytePos {
-    		line: range.start.line,
-    		byte: 0,
-    		file_byte: range.start.byte - start_line.get_line_byte_at(start_pos.col)
-		};
-        while let Some(line) = lines_iter.next() {
-            if line.info.line_flags.contains(LineFlags::END_ML) {
-                start.line -= 1;
-                start.file_byte -= line.text().len();
-            } else {
-                break;
-            }
-        }
-
-        let mut lines_iter = lines.iter().skip(end_pos.line);
-
-        let mut end = LineBytePos {
-            line: end_pos.line,
-            byte: end_line.text().len(),
-            file_byte: end_pos.byte + end_line.text().len() - end_line.get_line_byte_at(end_pos.col)
-        };
-		while let Some(line) = lines_iter.next() {
-    		if line.info.line_flags.contains(LineFlags::BEGIN_ML) {
-        		end.line += 1;
-        		end.byte = line.text().len();
-        		end.file_byte += line.text().len();
-    		} else {
-        		break;
-    		}
-		}
+    fn color_text(&self, lines: &[TextLine], range: LineByteRange) -> Vec<(LineInfo, usize)> {
+        let (start, end) = (range.start, range.end);
 
         let mut lines_info: Vec<(LineInfo, usize)> =
             (start.line..=end.line).map(|l| (LineInfo::from(&lines[l]), l)).collect();
 
-        let mut ranges = LineByteRanges(vec![LineByteRange { start, end }]);
+        let mut ranges = LineByteRanges(vec![range]);
 
         // First, match according to what pattern_id was in the start of the line.
         self.match_text(lines, &mut ranges, lines_info.as_mut_slice());
@@ -602,22 +568,72 @@ pub struct TagManager {
     /// The forms for syntax highlighting.
     forms: Vec<Form>,
 
+    // NOTE: This exists pretty much only for performance reasons. If you splice text that has no
+    // pattern bounds in it, then you don't need to update the syntax highlighting of other lines,
+    // (at least, not for that reason).
+    /// The list of all patterns that are bounded.
+    bounded_forms: Vec<Pattern>,
+
     /// The patterns associated with said forms.
     default_form: FormPattern,
 
     // This exists solely for pushing new `FormPatterns` into the `default_form` `FormPattern` tree.
-    /// 1 + the last id that was used for a `FormPattern`.
+    /// The last id that was used for a `FormPattern`.
     last_id: u16,
 }
 
 impl TagManager {
     /// Returns a new instance of `TagManager`
     pub fn new() -> TagManager {
-        TagManager { forms: Vec::new(), default_form: FormPattern::default(), last_id: 0 }
+        TagManager {
+            forms: Vec::new(),
+            bounded_forms: Vec::new(),
+            default_form: FormPattern::default(),
+            last_id: 0,
+        }
     }
 
     pub fn match_text_range(&self, lines: &[TextLine], range: TextRange) -> Vec<(LineInfo, usize)> {
-        self.default_form.match_text_range(lines, range)
+        let (start_pos, end_pos) = (range.start, range.end);
+        let (start_line, end_line) = (&lines[start_pos.line], &lines[end_pos.line]);
+
+        let mut lines_iter = lines.iter().take(range.start.line).rev();
+
+        let mut start = LineBytePos {
+            line: range.start.line,
+            byte: 0,
+            file_byte: range.start.byte - start_line.get_line_byte_at(start_pos.col),
+        };
+        while let Some(line) = lines_iter.next() {
+            if line.info.line_flags.contains(LineFlags::END_ML) {
+                start.line -= 1;
+                start.file_byte -= line.text().len();
+            } else {
+                break;
+            }
+        }
+
+        let mut lines_iter = lines.iter().skip(end_pos.line + 1);
+
+        let mut end = LineBytePos {
+            line: end_pos.line,
+            byte: end_line.text().len(),
+            file_byte: end_pos.byte + end_line.text().len()
+                - end_line.get_line_byte_at(end_pos.col),
+        };
+        while let Some(line) = lines_iter.next() {
+            if line.info.line_flags.contains(LineFlags::BEGIN_ML) {
+                end.line += 1;
+                end.byte = line.text().len();
+                end.file_byte += line.text().len();
+            } else {
+                break;
+            }
+        }
+
+        let range = LineByteRange { start, end };
+
+        self.default_form.color_text(lines, range)
     }
 
     /// Pushes a new form pattern.
@@ -667,22 +683,20 @@ impl TagManager {
         let mut form_indices = found_form_pattern.form_indices.clone();
         form_indices.push(form_index);
 
-        let form_pattern = if start == end {
-            FormPattern {
-                form_indices: vec![form_index],
-                pattern: Pattern::Bound(start),
-                form_pattern_list: Vec::new(),
-                id: self.last_id,
-                is_exclusive,
-            }
+        let pattern = if start == end {
+            Pattern::Bound(start)
         } else {
-            FormPattern {
-                form_indices: vec![form_index],
-                pattern: Pattern::Bounds(start, end),
-                form_pattern_list: Vec::new(),
-                id: self.last_id,
-                is_exclusive,
-            }
+            Pattern::Bounds(start, end)
+        };
+
+        self.bounded_forms.push(pattern.clone());
+
+        let form_pattern = FormPattern {
+            form_indices: vec![form_index],
+            pattern,
+            form_pattern_list: Vec::new(),
+            id: self.last_id,
+            is_exclusive,
         };
 
         found_form_pattern.form_pattern_list.push(form_pattern);

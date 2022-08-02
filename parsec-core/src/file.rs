@@ -269,8 +269,10 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
-		//println!("{}, {}", self.info.char_tags.vec().len(), " ".repeat(area.width()));
-		//return 1;
+		if unsafe { crate::FOR_TEST } {
+    		println!("{:?}, {}", self.info.line_flags, " ".repeat(area.width()));
+    		return 1;
+		}
 
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
