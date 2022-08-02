@@ -113,51 +113,61 @@ impl TextLine {
         }
     }
 
-    /// Parses the wrapping of a single line.
+    // TODO: Eventually will include syntax highlighting, hover info, etc.
+    /// Updates the information for a line in the file.
     ///
-    /// Returns `true` if the amount of wrapped lines has changed.
-    pub fn parse_wrapping(&mut self, width: usize, options: &FileOptions) {
-        let indent = self.indent(&options.tabs);
-        let indent = if options.wrap_indent && indent < width { indent } else { 0 };
+    /// Returns `true` if the screen needs a full refresh.
+    pub fn update_line_info(&mut self, options: &FileOptions, width: usize) {
+        self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
+        self.info.line_flags.set(
+            LineFlags::PURE_1_COL,
+            !self.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
+        );
 
-		// Clear all `WrapppingChar`s from `char_tags`.
-        self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
+        if !matches!(options.wrap_method, WrapMethod::NoWrap) {
+            let indent = self.indent(&options.tabs);
+            let indent = if options.wrap_indent && indent < width { indent } else { 0 };
 
-        let mut distance = 0;
-        let mut indent_wrap = 0;
-        let mut additions = SmallVec::<[(u32, CharTag); 32]>::new();
+	            // Clear all `WrapppingChar`s from `char_tags`.
+            self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
-        // TODO: Add an enum parameter signifying the wrapping type.
-        // Wrapping at the final character at the width of the area.
-        if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = width;
-            while distance < self.text.len() {
-                additions.push((distance as u32, CharTag::WrapppingChar));
+            let mut distance = 0;
+            let mut indent_wrap = 0;
+            let mut additions = SmallVec::<[(u32, CharTag); 10]>::new();
 
-                indent_wrap = indent;
-
-                // `width` goes to the first character of the next line, so `n * width` would be
-                // off by `n - 1` characters, which is why the `- 1` is there.
-                distance += width - indent_wrap;
-            }
-        } else {
-            // If the line reaches the capped limit, it should wrap, even if on the last character.
-            for (index, ch) in self.text.char_indices() {
-                distance += get_char_width(ch, distance, &options.tabs);
-
-                if distance > width - indent_wrap {
-                    distance = get_char_width(ch, distance, &options.tabs);
-
-                    additions.push((index as u32, CharTag::WrapppingChar));
+            // TODO: Add an enum parameter signifying the wrapping type.
+            // Wrapping at the final character at the width of the area.
+            if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
+                distance = width;
+                while distance < self.text.len() {
+                    additions.push((distance as u32, CharTag::WrapppingChar));
 
                     indent_wrap = indent;
+
+                    // `width` goes to the first character of the next line, so `n * width` would be
+                    // off by `n - 1` characters, which is why the `- 1` is there.
+                    distance += width - indent_wrap;
+                }
+            } else {
+                // If the line reaches the capped limit, it should wrap, even if on the last character.
+                for (index, ch) in self.text.char_indices() {
+                    distance += get_char_width(ch, distance, &options.tabs);
+
+                    if distance > width - indent_wrap {
+                        distance = get_char_width(ch, distance, &options.tabs);
+
+                        additions.push((index as u32, CharTag::WrapppingChar));
+
+                        indent_wrap = indent;
+                    }
                 }
             }
-        }
 
-        // The insertion operation is more efficient if I insert already sorted slices.
-        self.info.char_tags.insert_slice(additions.as_slice());
+            // The insertion operation is more efficient if I insert already sorted slices.
+            self.info.char_tags.insert_slice(additions.as_slice());
+        };
     }
+
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
@@ -453,8 +463,8 @@ impl<T: OutputArea> File<T> {
             file.lines[line_num].info = line_info;
         }
 
-        for line in 0..file.lines.len() {
-            file.update_line_info(line);
+        for line in file.lines {
+            line.update_line_info(&file.options, area.width());
         }
 
         file
@@ -588,24 +598,6 @@ impl<T: OutputArea> File<T> {
         }
     }
 
-    // TODO: Eventually will include syntax highlighting, hover info, etc.
-    /// Updates the information for a line in the file.
-    ///
-    /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info(&mut self, line: usize) {
-        let line = &mut self.lines[line];
-
-        line.info.line_flags.set(LineFlags::PURE_ASCII, line.text.is_ascii());
-        line.info.line_flags.set(
-            LineFlags::PURE_1_COL,
-            !line.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
-        );
-
-        if !matches!(self.options.wrap_method, WrapMethod::NoWrap) {
-            line.parse_wrapping(self.area.width(), &self.options);
-        }
-    }
-
     /// Applies a splice to the file.
     pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange)
     where
@@ -621,7 +613,7 @@ impl<T: OutputArea> File<T> {
         for (line_info, line_num) in line_infos {
             self.lines[line_num].info.char_tags = line_info.char_tags;
             self.lines[line_num].info.line_flags = line_info.line_flags;
-            self.update_line_info(line_num);
+            self.lines[line_num].update_line_info(&self.options, self.area.width());
         }
 
         for cursor in &mut self.cursors {
@@ -650,8 +642,6 @@ impl<T: OutputArea> File<T> {
         };
         self.print_info = print_info.unwrap_or(self.print_info);
 
-        let mut changed_lines = Vec::new();
-
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
@@ -671,23 +661,9 @@ impl<T: OutputArea> File<T> {
 
             for (line_info, line_num) in line_infos {
                 self.lines[line_num].info = line_info;
+                self.lines[line_num].update_line_info(&self.options, self.area.width())
             }
         }
-
-        for splice in splices {
-            let taken_range = TextRange { start: splice.start(), end: splice.taken_end() };
-
-            for line in taken_range.lines() {
-                if !changed_lines.contains(&line) {
-                    // The count doesn't actually matter here, since I'm going to refresh the screen
-                    // anyway.
-                    self.update_line_info(line);
-
-                    changed_lines.push(line)
-                }
-            }
-        }
-
 
         self.cursors.extend(new_cursors);
     }
@@ -699,8 +675,6 @@ impl<T: OutputArea> File<T> {
             None => return,
         };
         self.print_info = print_info.unwrap_or(self.print_info);
-
-        let mut changed_lines = Vec::new();
 
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
@@ -721,24 +695,11 @@ impl<T: OutputArea> File<T> {
 
             for (line_info, line_num) in line_infos {
                 self.lines[line_num].info = line_info;
+                self.lines[line_num].update_line_info(&self.options, self.area.width())
             }
         }
 
         self.cursors.extend(new_cursors);
-
-        for splice in splices {
-            let added_range = TextRange { start: splice.start(), end: splice.added_end() };
-
-            for line in added_range.lines() {
-                if !changed_lines.contains(&line) {
-                    // The count doesn't actually matter here, since I'm going to refresh the screen
-                    // anyway.
-                    self.update_line_info(line);
-
-                    changed_lines.push(line)
-                }
-            }
-        }
     }
 
     /// Prints the file, according to its current position.

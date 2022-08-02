@@ -18,9 +18,6 @@ pub enum CharTag {
     /// Removes a form from the stack. It won't always be the last one.
     PopForm(u16),
 
-    ///
-    MlRangeLine(u16),
-
     /// Wraps *before* printing the character, not after.
     WrapppingChar,
 
