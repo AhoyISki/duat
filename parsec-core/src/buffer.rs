@@ -1,6 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, io::Read};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use wl_clipboard_rs::paste::{get_contents, ClipboardType, MimeType, Seat};
 
 use crate::{
     config::{FileOptions, LineNumbers},
@@ -214,6 +215,22 @@ impl<T: OutputArea> Buffer<T> {
                         unsafe { crate::FOR_TEST = !crate::FOR_TEST }
                     }
                 },
+                key: (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                    |h: &mut Buffer<T>| {
+                        let result =
+                            get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Text);
+
+						let mut paste = Vec::new();
+						result.unwrap().0.read_to_end(&mut paste).unwrap();
+						let contents = String::from_utf8_lossy(&paste);
+                        let edit = contents.split_inclusive('\n').collect();
+                        
+                        let cursor = &h.file.cursors[h.file.main_cursor];
+
+                        h.file.splice_edit(edit, cursor.range());
+                        h.refresh_screen();
+                    }
+                },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
                     |h: &mut Buffer<T>| {
                         let cursor = &h.file.cursors[h.file.main_cursor];
@@ -263,13 +280,13 @@ impl<T: OutputArea> Buffer<T> {
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.
         let mut pos = crate::output::OutputPos { x: 0, y: 0 };
-        let top_line = self.file.top_line();
+        let top_line = self.file.print_info().top_line;
 
         self.line_num_area.move_cursor(pos);
 
         'a: for (index, line) in self.file.lines.iter().skip(top_line).enumerate() {
             let wraps = if index == 0 {
-                self.file.top_wraps()..(line.wrap_iter().count() + 1)
+                self.file.print_info().top_wraps..(line.wrap_iter().count() + 1)
             } else {
                 0..(line.wrap_iter().count() + 1)
             };

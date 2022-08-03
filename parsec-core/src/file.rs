@@ -269,7 +269,6 @@ impl TextLine {
         }
 
         // Every other tag will be iterated with the text.
-        // NOTE: Not the most efficient way of doing this.
         let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| (*c as usize) < skip);
         let mut current_char_tag = tags_iter.next();
 
@@ -463,8 +462,8 @@ impl<T: OutputArea> File<T> {
             file.lines[line_num].info = line_info;
         }
 
-        for line in file.lines {
-            line.update_line_info(&file.options, area.width());
+        for line in &mut file.lines {
+            line.update_line_info(&file.options, file.area.width());
         }
 
         file
@@ -538,11 +537,8 @@ impl<T: OutputArea> File<T> {
                     }
                 }
             // Case where we're moving up.
-            // TODO: Ignore cases where the line is at least `scrolloff.d_y` lines above
             // `info.top_line` after implementing line folding.
-            } else if target.line < current.line
-                || (target.line == current.line && target_wraps < current_wraps)
-            {
+            } else {
                 // Set this flag immediately in this case, because the first line that checks out
                 // will definitely be `info.top_line`.
                 let mut needs_new_print_info = target.line < info.top_line;
@@ -580,12 +576,10 @@ impl<T: OutputArea> File<T> {
             }
         }
 
-        let target = &self.cursors[self.main_cursor].target();
-        let line = &self.lines[target.line];
-
         // Horizontal scroll check, done only when the screen can scroll horizontally:
         if let WrapMethod::NoWrap = self.options.wrap_method {
-            let distance = line.get_distance_to_col(target.col, &self.options.tabs);
+            let target_line = &self.lines[target.line];
+            let distance = target_line.get_distance_to_col(target.col, &self.options.tabs);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + self.area.width() - scrolloff.d_x {
@@ -640,7 +634,7 @@ impl<T: OutputArea> File<T> {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
         };
-        self.print_info = print_info.unwrap_or(self.print_info);
+        //self.print_info = print_info.unwrap_or(self.print_info);
 
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
@@ -760,18 +754,6 @@ impl<T: OutputArea> File<T> {
     ////////////////////////////////
     // Getters
     ////////////////////////////////
-    pub fn top_line(&self) -> usize {
-        self.print_info.top_line
-    }
-
-    pub fn top_wraps(&self) -> usize {
-        self.print_info.top_wraps
-    }
-
-    pub fn x_shift(&self) -> usize {
-        self.print_info.x_shift
-    }
-
     pub fn print_info(&self) -> PrintInfo {
         self.print_info
     }
