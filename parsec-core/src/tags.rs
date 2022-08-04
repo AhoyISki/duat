@@ -483,7 +483,11 @@ impl FormPattern {
                         let mut end_iter = ender.match_iter(text, range);
 
                         loop {
-                            if let Some(range) = start_iter.next() {
+                            let (match_start, match_end) = (start_iter.next(), end_iter.next());
+
+                            if let (None, None) = (match_start, match_end) { break; }
+
+                            if let Some(range) = match_start {
                                 match (latest_start, latest_end) {
                                     (Some(start), Some(end)) => {
                                         if range.start > end && inner_count == 0 {
@@ -499,7 +503,7 @@ impl FormPattern {
                                 }
                             }
 
-                            if let Some(range) = end_iter.next() {
+                            if let Some(range) = match_end {
                                 match (latest_start, latest_end) {
                                     (Some(start), None) => {
                                         if range.end > start {
