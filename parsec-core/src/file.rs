@@ -460,10 +460,7 @@ impl<T: OutputArea> File<T> {
 
         for (line_info, line_num) in line_infos {
             file.lines[line_num].info = line_info;
-        }
-
-        for line in &mut file.lines {
-            line.update_line_info(&file.options, file.area.width());
+            file.lines[line_num].update_line_info(&file.options, file.area.width());
         }
 
         file
@@ -605,8 +602,7 @@ impl<T: OutputArea> File<T> {
         let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
 
         for (line_info, line_num) in line_infos {
-            self.lines[line_num].info.char_tags = line_info.char_tags;
-            self.lines[line_num].info.line_flags = line_info.line_flags;
+            self.lines[line_num].info = line_info;
             self.lines[line_num].update_line_info(&self.options, self.area.width());
         }
 

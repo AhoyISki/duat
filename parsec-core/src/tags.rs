@@ -1,4 +1,4 @@
-use std::{cmp::max, str};
+use std::{cmp::max, str, f32::consts::E};
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
@@ -472,63 +472,64 @@ impl FormPattern {
 
                         info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
                     }
-                } else if let Pattern::Bounds(starter, ender) = &form_pattern.pattern {
+                } else if let Pattern::Bounds(start_matcher, end_matcher) = &form_pattern.pattern {
                     let mut matched_ranges = SmallVec::<[LineByteRange; 10]>::new();
-                    let mut inner_count: i32 = 0;
-                    let mut latest_start: Option<LineBytePos> = None;
-                    let mut latest_end: Option<LineBytePos> = None;
+                    let mut starts = SmallVec::<[LineBytePos; 32]>::new();
+                    let mut ends = SmallVec::<[LineBytePos; 32]>::new();
 
                     for (_, text, range) in lines_iter {
-                        let mut start_iter = starter.match_iter(text, range);
-                        let mut end_iter = ender.match_iter(text, range);
-
-                        loop {
-                            let (match_start, match_end) = (start_iter.next(), end_iter.next());
-
-                            if let (None, None) = (match_start, match_end) { break; }
-
-                            if let Some(range) = match_start {
-                                match (latest_start, latest_end) {
-                                    (Some(start), Some(end)) => {
-                                        if range.start > end && inner_count == 0 {
-                                            matched_ranges.push(LineByteRange { start, end });
-
-                                            latest_start = Some(range.start);
-                                        } else {
-                                            inner_count += 1;
-                                        }
-                                    }
-                                    (Some(_), None) => inner_count += 1,
-                                    (None, _) => latest_start = Some(range.start),
-                                }
-                            }
-
-                            if let Some(range) = match_end {
-                                match (latest_start, latest_end) {
-                                    (Some(start), None) => {
-                                        if range.end > start {
-                                            latest_end = Some(range.end);
-                                        }
-                                    }
-                                    (None, None) => latest_end = Some(range.end),
-                                    (Some(_), Some(end)) => {
-                                        latest_end = Some(max(end, range.end));
-                                        inner_count -= 1;    
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
+                        starts.extend(start_matcher.match_iter(text, range).map(|r| r.start));
+                        ends.extend(end_matcher.match_iter(text, range).map(|r| r.end));
                     }
 
-                    if let Some(start) = latest_start {
-                        if inner_count == 0 {
-                            matched_ranges.push(LineByteRange { start, end: latest_end.unwrap() })
-                        } else if inner_count > 0 {
-                            matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end });
-                            if end.byte == lines[end.line].text().len() {
-                                info[end.line - first_line].0.ending_id = form_pattern.id;
+                    let mut start_iter = starts.iter();
+                    let mut current_start = None;
+                    let mut next_start = None;
+                    let mut inner_count = 0;
+                    let mut iter_starts = true;
+
+                    for end in ends {
+                        if let Some(start) = next_start {
+                            if end < start {
+                                iter_starts = false;
+                            } else {
+                                current_start = next_start;
+                                next_start = None;
+
+                                iter_starts = true;
+                                inner_count += 1;
                             }
+                        }
+
+						if iter_starts {
+                            while let Some(&start) = start_iter.next() {
+                                if start < end {
+                                    if inner_count == 0 {
+                                        current_start = Some(start);
+                                    }
+
+                                    inner_count += 1;
+                                } else {
+                                    next_start = Some(start);
+
+                                    break;
+                                }
+                            }
+						}
+
+                        inner_count -= 1;
+
+						if let (Some(start), true) = (current_start, inner_count == 0) {
+    						matched_ranges.push(LineByteRange { start, end });
+
+        					current_start = None;
+						}
+                    }
+
+                    if let Some(start) = next_start {
+                        matched_ranges.push(LineByteRange { start, end });
+                        if end.byte == lines[end.line].text().len() {
+                            info[end.line - first_line].0.ending_id = form_pattern.id;
                         }
                     }
 
