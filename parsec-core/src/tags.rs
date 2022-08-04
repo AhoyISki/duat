@@ -1,4 +1,4 @@
-use std::str;
+use std::{cmp::max, str};
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
@@ -210,7 +210,7 @@ enum MatchIter<'a> {
 impl<'a> Iterator for MatchIter<'a> {
     type Item = LineByteRange;
 
-	/// Returns an `Option<LineByteRange>` for the next element in the iterator.
+    /// Returns an `Option<LineByteRange>` for the next element in the iterator.
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             MatchIter::Regex((regs, range)) => {
@@ -267,7 +267,7 @@ pub struct FormPattern {
 // useful for regex calculation, while the file's byte is useful for tree-sitter capture, while the
 // column (char index) of the line is completely useless.
 /// A position indexed by its byte in relation to the line, instead of column.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LineBytePos {
     /// The line in the file.
     line: usize,
@@ -277,6 +277,70 @@ struct LineBytePos {
     file_byte: usize,
 }
 
+impl PartialOrd for LineBytePos {
+    fn gt(&self, other: &Self) -> bool {
+        self.file_byte > other.file_byte
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        self.file_byte >= other.file_byte
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        self.file_byte < other.file_byte
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.file_byte <= other.file_byte
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self > other {
+            Some(std::cmp::Ordering::Greater)
+        } else if self < other {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            Some(std::cmp::Ordering::Equal)
+        }
+    }
+}
+
+impl Ord for LineBytePos {
+    fn clamp(self, min: Self, max: Self) -> Self
+    where
+        Self: Sized, {
+        if self < min {
+            min
+        } else if self > max {
+            max
+        } else {
+            self
+        }
+    }
+
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    	if self > other {
+        	std::cmp::Ordering::Greater
+    	} else if self < other {
+        	std::cmp::Ordering::Less
+    	} else {
+        	std::cmp::Ordering::Equal
+    	}
+	}
+
+	fn max(self, other: Self) -> Self
+    where
+        Self: Sized, {
+        if self > other { self } else { other }
+    }
+
+    fn min(self, other: Self) -> Self
+    where
+        Self: Sized, {
+        if self < other { self } else { other }
+    }
+}
+
 /// A range of positions indexed by line byte, instead of column.
 #[derive(Debug, Clone, Copy)]
 struct LineByteRange {
@@ -284,6 +348,7 @@ struct LineByteRange {
     end: LineBytePos,
 }
 
+#[derive(Debug)]
 struct LineByteRanges(Vec<LineByteRange>);
 
 impl LineByteRanges {
@@ -299,7 +364,7 @@ impl LineByteRanges {
 
             let mut ranges_iter = self.0.iter().enumerate().skip(index);
 
-			// Look for a range that can fit the end of the poke, and remove all ranges in between.
+            // Look for a range that can fit the end of the poke, and remove all ranges in between.
             while let Some((last_checked, &range)) = ranges_iter.next() {
                 if range.end.file_byte >= poke.end.file_byte {
                     let last_cut_range = LineByteRange { start: poke.end, ..range };
@@ -409,59 +474,57 @@ impl FormPattern {
                     }
                 } else if let Pattern::Bounds(starter, ender) = &form_pattern.pattern {
                     let mut matched_ranges = SmallVec::<[LineByteRange; 10]>::new();
-                    let mut inner_count: usize = 0;
-                    let mut latest_start = None;
+                    let mut inner_count: i32 = 0;
+                    let mut latest_start: Option<LineBytePos> = None;
+                    let mut latest_end: Option<LineBytePos> = None;
 
                     for (_, text, range) in lines_iter {
-                        let mut starter = starter.match_iter(text, range);
-                        let mut ender = ender.match_iter(text, range);
+                        let mut start_iter = starter.match_iter(text, range);
+                        let mut end_iter = ender.match_iter(text, range);
 
                         loop {
-                            let (start_match, end_match) = (starter.next(), ender.next());
-                            match (start_match, end_match) {
-                                (Some(start_match), Some(end_match)) => {
-                                    if start_match.start.file_byte > end_match.start.file_byte {
-                                        if inner_count == 1 {
-                                            matched_ranges.push(LineByteRange {
-                                                start: latest_start.unwrap(),
-                                                end: end_match.end,
-                                            });
-                                        }
+                            if let Some(range) = start_iter.next() {
+                                match (latest_start, latest_end) {
+                                    (Some(start), Some(end)) => {
+                                        if range.start > end && inner_count == 0 {
+                                            matched_ranges.push(LineByteRange { start, end });
 
-                                        inner_count = inner_count.clamp(1, usize::MAX);
-                                    } else {
-                                        if inner_count == 0 {
-                                            matched_ranges.push(LineByteRange {
-                                                start: start_match.start,
-                                                end: end_match.end,
-                                            });
+                                            latest_start = Some(range.start);
+                                        } else {
+                                            inner_count += 1;
                                         }
                                     }
+                                    (Some(_), None) => inner_count += 1,
+                                    (None, _) => latest_start = Some(range.start),
                                 }
-                                (Some(_), None) => inner_count += 1,
-                                (None, Some(_)) => inner_count = inner_count.saturating_sub(1),
-                                (None, None) => break,
                             }
 
-                            if let (Some(match_start), true) = (start_match, inner_count == 1) {
-                                latest_start = Some(match_start.start);
-                            }
-
-                            if let (Some(start), Some(end_match)) = (latest_start, end_match) {
-                                if inner_count == 0 {
-                                    matched_ranges
-                                        .push(LineByteRange { start, end: end_match.end });
-
-                                    latest_start = None;
+                            if let Some(range) = end_iter.next() {
+                                match (latest_start, latest_end) {
+                                    (Some(start), None) => {
+                                        if range.end > start {
+                                            latest_end = Some(range.end);
+                                        }
+                                    }
+                                    (None, None) => latest_end = Some(range.end),
+                                    (Some(_), Some(end)) => {
+                                        latest_end = Some(max(end, range.end));
+                                        inner_count -= 1;    
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
                     }
 
-                    if inner_count > 0 {
-                        matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end });
-                        if end.byte == lines[end.line].text().len() {
-                            info[end.line - first_line].0.ending_id = form_pattern.id;
+                    if let Some(start) = latest_start {
+                        if inner_count == 0 {
+                            matched_ranges.push(LineByteRange { start, end: latest_end.unwrap() })
+                        } else if inner_count > 0 {
+                            matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end });
+                            if end.byte == lines[end.line].text().len() {
+                                info[end.line - first_line].0.ending_id = form_pattern.id;
+                            }
                         }
                     }
 
@@ -679,11 +742,8 @@ impl TagManager {
         let mut form_indices = found_form_pattern.form_indices.clone();
         form_indices.push(form_index);
 
-        let pattern = if start == end {
-            Pattern::Bound(start)
-        } else {
-            Pattern::Bounds(start, end)
-        };
+        let pattern =
+            if start == end { Pattern::Bound(start) } else { Pattern::Bounds(start, end) };
 
         self.bounded_forms.push(pattern.clone());
 
