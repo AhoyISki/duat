@@ -99,7 +99,7 @@ impl<T: OutputArea> Buffer<T> {
                     |h: &mut Buffer<T>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
-                            c.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                            c.move_hor(10, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }

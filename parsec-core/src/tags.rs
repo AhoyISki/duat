@@ -56,15 +56,6 @@ bitflags! {
         /// If there are no double/zero width characters or tabs.
         const PURE_1_COL = 1 << 1;
 
-        // Partially implemented:
-        // This is implemented this way for range tracking reasons.
-        // If a line has `ENDING_ML` the next line *must* have `BEGINNING_ML` or else the range
-        // makes no sense. The same also makes no sense in the opposite scenario.
-        /// If the line is in the beginning or the middle of a multi-line range.
-        const BEGIN_ML   = 1 << 2;
-        /// If the line is in the middle or end of a multi-line range.
-        const END_ML     = 1 << 3;
-
         // Not Implemented:
         // Wether or not the line can fold.
         const CAN_FOLD   = 1 << 4;
@@ -198,7 +189,8 @@ impl PartialEq for Matcher {
 }
 
 impl Matcher {
-    fn find_iter<'a>(&'a self, text: &'a str, range: LineByteRange) -> MatchIter {
+    /// Returns an iterator over the matches on a string.
+    fn match_iter<'a>(&'a self, text: &'a str, range: LineByteRange) -> MatchIter {
         match self {
             Matcher::Regex(reg) => MatchIter::Regex((reg.find_iter(text), range)),
             Matcher::TsCapture(id) => {
@@ -209,6 +201,7 @@ impl Matcher {
     }
 }
 
+/// An enumerator specifically made for iterating through the matches in a string.
 enum MatchIter<'a> {
     Regex((regex::Matches<'a, 'a>, LineByteRange)),
     TsCapture((std::iter::Once<(usize, usize)>, LineByteRange)),
@@ -217,6 +210,7 @@ enum MatchIter<'a> {
 impl<'a> Iterator for MatchIter<'a> {
     type Item = LineByteRange;
 
+	/// Returns an `Option<LineByteRange>` for the next element in the iterator.
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             MatchIter::Regex((regs, range)) => {
@@ -296,13 +290,16 @@ impl LineByteRanges {
     // NOTE: This assumes you are matchin in ascending order of position.
     /// "Pokes" a hole in the range.
     fn poke(&mut self, poke: LineByteRange) {
+        // Find the range that contains the first point, in order to start poking.
         if let Some((index, &range)) =
             self.0.iter().enumerate().find(|(_, r)| r.end.file_byte > poke.start.file_byte)
         {
+            // The first range after having its end removed by the poke.
             let first_cut_range = LineByteRange { start: range.start, end: poke.start };
 
             let mut ranges_iter = self.0.iter().enumerate().skip(index);
 
+			// Look for a range that can fit the end of the poke, and remove all ranges in between.
             while let Some((last_checked, &range)) = ranges_iter.next() {
                 if range.end.file_byte >= poke.end.file_byte {
                     let last_cut_range = LineByteRange { start: poke.end, ..range };
@@ -321,6 +318,8 @@ impl LineByteRanges {
 pub struct LineInfo {
     pub char_tags: CharTags,
     pub line_flags: LineFlags,
+    starting_id: u16,
+    ending_id: u16,
 }
 
 impl LineInfo {
@@ -374,7 +373,7 @@ impl FormPattern {
                     for (index, text, range) in lines_iter {
                         let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
-                        for range in matcher.find_iter(text, range) {
+                        for range in matcher.match_iter(text, range) {
                             // The count is here to ensure that the order of elements remains
                             // consistent.
                             for form in form_pattern.form_indices.iter() {
@@ -414,8 +413,8 @@ impl FormPattern {
                     let mut latest_start = None;
 
                     for (_, text, range) in lines_iter {
-                        let mut starter = starter.find_iter(text, range);
-                        let mut ender = ender.find_iter(text, range);
+                        let mut starter = starter.match_iter(text, range);
+                        let mut ender = ender.match_iter(text, range);
 
                         loop {
                             let (start_match, end_match) = (starter.next(), ender.next());
@@ -462,7 +461,7 @@ impl FormPattern {
                     if inner_count > 0 {
                         matched_ranges.push(LineByteRange { start: latest_start.unwrap(), end });
                         if end.byte == lines[end.line].text().len() {
-                            info[end.line - first_line].0.line_flags.insert(LineFlags::END_ML)
+                            info[end.line - first_line].0.ending_id = form_pattern.id;
                         }
                     }
 
@@ -473,7 +472,7 @@ impl FormPattern {
                             let start = if line == range.start.line {
                                 range.start.byte
                             } else {
-                                info[line - first_line].0.line_flags.insert(LineFlags::BEGIN_ML);
+                                info[line - first_line].0.starting_id = form_pattern.id;
                                 0
                             };
 
@@ -490,7 +489,7 @@ impl FormPattern {
                                     }
                                 }
                             } else {
-                                info[line - first_line].0.line_flags.insert(LineFlags::END_ML);
+                                info[line - first_line].0.ending_id = form_pattern.id;
                             }
 
                             info[line - first_line].0.char_tags.insert_slice(tags.as_slice());
@@ -602,7 +601,7 @@ impl TagManager {
             file_byte: range.start.byte - start_line.get_line_byte_at(start_pos.col),
         };
         while let Some(line) = lines_iter.next() {
-            if line.info.line_flags.contains(LineFlags::END_ML) {
+            if line.info.ending_id != 0 {
                 start.line -= 1;
                 start.file_byte -= line.text().len();
             } else {
@@ -619,7 +618,7 @@ impl TagManager {
                 - end_line.get_line_byte_at(end_pos.col),
         };
         while let Some(line) = lines_iter.next() {
-            if line.info.line_flags.contains(LineFlags::BEGIN_ML) {
+            if line.info.starting_id != 0 {
                 end.line += 1;
                 end.byte = line.text().len();
                 end.file_byte += line.text().len();
