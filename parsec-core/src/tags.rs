@@ -554,7 +554,11 @@ impl FormPattern {
                         }
                     }
 
-                    if let Some(start) = next_start {
+                    if let None = current_start {
+                        current_start = next_start.or(start_iter.next().copied())
+                    }
+
+                    if let Some(start) = current_start {
                         matched_ranges.push(LineByteRange { start, end });
                         if end.byte == lines[end.line].text().len() {
                             info[end.line - first_line].0.ending_id = form_pattern.id;
