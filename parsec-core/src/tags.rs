@@ -1,4 +1,4 @@
-use std::{cmp::max, f32::consts::E, str};
+use std::{cmp::max, str};
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;
@@ -9,7 +9,7 @@ use crate::{action::TextRange, file::TextLine};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
@@ -32,18 +32,6 @@ pub enum CharTag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
     PermanentConceal { index: u16 },
-}
-
-impl std::fmt::Debug for CharTag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CharTag::PushForm(form) => write!(f, "PuF({})", form),
-            CharTag::PopForm(form) => write!(f, "PoF({})", form),
-            CharTag::WrapppingChar => write!(f, "W"),
-            CharTag::PrimaryCursor => write!(f, "PC"),
-            _ => write!(f, "other"),
-        }
-    }
 }
 
 bitflags! {
@@ -75,7 +63,7 @@ bitflags! {
 // Since all insertions (wrappings, syntax, cursors, etc) already come sorted, it makes sense to
 // create efficient insertion algorithms that take that into account.
 /// A vector of `CharTags`.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CharTags(Vec<(u32, CharTag)>);
 
 impl CharTags {
@@ -86,6 +74,7 @@ impl CharTags {
 
     /// More efficient insertion method that requires no sorting.
     pub fn insert(&mut self, char_tag: (u32, CharTag)) {
+        // It just finds the first element with a bigger number and puts the `char_tag` behind it.
         match self.0.iter().enumerate().find(|(_, (c, _))| *c > char_tag.0) {
             Some((pos, _)) => self.0.insert(pos, char_tag),
             None => self.0.push(char_tag),
@@ -94,16 +83,14 @@ impl CharTags {
 
     /// Given a sorted list of `CharTag`s, efficiently inserts them.
     pub fn insert_slice(&mut self, char_tags: &[(u32, CharTag)]) {
-        // To prevent unnecessary allocations.
         self.0.reserve(char_tags.len());
-
         let mut new_char_tags = char_tags.iter();
 
+        // In what positions each `CharTag` needs to be placed.
         let mut insertions: SmallVec<[usize; 30]> = SmallVec::with_capacity(char_tags.len());
 
         'a: while let Some(&(col, _)) = new_char_tags.next() {
             // Iterate until we get a position with a column where we can place the char_tag.
-
             let mut old_char_tags = self.0.iter().enumerate();
             let index = match old_char_tags.find(|(_, &(p, _))| p > col) {
                 Some((new_index, _)) => new_index,
@@ -111,15 +98,13 @@ impl CharTags {
                 None => break 'a,
             };
 
-            // Can't mutate the vector in here.
             insertions.push(index as usize);
         }
 
-        // Restarting the iterator.
+        // Iterating again, but, this time, inserting each `CharTag` in its calculated position.
         let mut new_char_tags = char_tags.iter();
-
         for (index, pos) in insertions.iter().enumerate() {
-            // As I add char_tags,the positions need to be incremented.
+            // If we insert at `pos`, all future `pos`s will be shifted by 1, thus `pos + index`.
             self.0.insert(pos + index, *new_char_tags.next().unwrap());
         }
 
@@ -133,20 +118,18 @@ impl CharTags {
         &self.0
     }
 
+    /// The same as a regular `Vec::retain`, but we only care about what `CharTag` it is.
     pub fn retain<F>(&mut self, do_retain: F)
     where
         F: Fn((u32, CharTag)) -> bool,
     {
         self.0.retain(|&(c, t)| do_retain((c, t)))
     }
-
-    pub fn merge(&mut self, char_tags: CharTags) {
-        self.insert_slice(char_tags.0.as_slice());
-    }
 }
 
-// TODO: Eventually make these private, so only rune configuration can change them.
+// TODO: Eventually make these private, so they can only be changed on the configuration.
 #[derive(Clone, Copy)]
+/// A style for text.
 pub struct Form {
     /// The `Form`'s colors and attributes.
     pub style: ContentStyle,
@@ -201,7 +184,7 @@ impl Matcher {
     }
 }
 
-/// An enumerator specifically made for iterating through the matches in a string.
+/// An enumerator specifically made for iterating through multiple types of matches in a string.
 enum MatchIter<'a> {
     Regex((regex::Matches<'a, 'a>, LineByteRange)),
     TsCapture((std::iter::Once<(usize, usize)>, LineByteRange)),
@@ -241,8 +224,6 @@ pub enum Pattern {
     /// A simple pattern matcher.
     Word(Matcher),
     /// A bounded pattern matcher.
-    ///
-    /// Everything within the bounds matches, and is capable of matching exclusive patterns.
     Bound(Matcher),
     /// A bounded pattern matcher, with different patterns at each end.
     Bounds(Matcher, Matcher),
@@ -359,6 +340,7 @@ struct LineByteRange {
     end: LineBytePos,
 }
 
+/// A list of ranges, specifically made with "poking" in mind.
 #[derive(Debug)]
 struct LineByteRanges(Vec<LineByteRange>);
 
@@ -390,7 +372,7 @@ impl LineByteRanges {
 }
 
 /// Information about the line that isn't its text.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LineInfo {
     pub char_tags: CharTags,
     pub line_flags: LineFlags,
@@ -398,36 +380,40 @@ pub struct LineInfo {
     ending_id: u16,
 }
 
-impl LineInfo {
-    fn from(line: &TextLine) -> LineInfo {
-        LineInfo { char_tags: CharTags::new(), ..line.info }
-    }
-}
-
 impl FormPattern {
+    /// Matches a given pattern and its subpatterns on a range of text.
     fn match_text(
         &self, lines: &[TextLine], ranges: &mut LineByteRanges, info: &mut [(LineInfo, usize)],
-        last_pattern: &[(LineBytePos, u16, usize)],
+        end_ranges: &[(LineBytePos, u16, usize)],
     ) -> (SmallVec<[LineByteRange; 32]>, Vec<(LineBytePos, u16, usize)>) {
+        // The finalized vector with all ranges that were occupied by exclusive patterns.
         let mut poked_ranges = SmallVec::<[LineByteRange; 32]>::new();
-        let mut pattern_to_return = Vec::new();
+        // The finalized list of multi-line ranges that weren't closed off.
+        let mut new_end_ranges = Vec::new();
 
+        // This line is used for referencing `info`.
         let first_line = ranges.0[0].start.line;
 
         for form_pattern in &self.form_pattern_list {
+            // This vector is temporary so that we don't poke the same ranges multiple times.
             let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
-            let mut last_range_pattern = Vec::new();
+            // Same as `ending_ranges`, but for this specific `FormPattern`.
+            let mut pattern_end_ranges = Vec::new();
 
             for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
-                last_range_pattern.clear();
+                // Clear at the start, unless we're in the last range.
+                pattern_end_ranges.clear();
                 let file_byte = start.file_byte;
 
+                // An iterator over the lines in the range, it returns the truncated text of the
+                // line, the line's number, and a `LineByteRange`, where the line is in the file.
                 let lines_iter = lines
                     .iter()
                     .enumerate()
                     .take(end.line + 1)
                     .skip(start.line)
                     .map(|(n, l)| {
+                        // If there's just one line, the range is truncated differently.
                         if start.line == end.line {
                             (n, &l.text().as_bytes()[start.byte..end.byte], start.byte)
                         } else if n == start.line {
@@ -450,6 +436,7 @@ impl FormPattern {
                         ))
                     });
 
+                // Matching on single line words.
                 if let Pattern::Word(matcher) = &form_pattern.pattern {
                     for (index, text, range) in lines_iter {
                         let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
@@ -488,11 +475,14 @@ impl FormPattern {
 
                         info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
                     }
+                // Matching on multi-line ranges with different bounds.
                 } else if let Pattern::Bounds(start_matcher, end_matcher) = &form_pattern.pattern {
+                    // The finalized list of ranges where the bounds have matched.
                     let mut matched_ranges = SmallVec::<[LineByteRange; 10]>::new();
                     let mut starts = SmallVec::<[LineBytePos; 32]>::new();
                     let mut ends = SmallVec::<[LineBytePos; 32]>::new();
 
+                    // Collect every match inside the range.
                     for (_, text, range) in lines_iter {
                         starts.extend(start_matcher.match_iter(text, range).map(|r| r.start));
                         ends.extend(end_matcher.match_iter(text, range).map(|r| r.end));
@@ -500,11 +490,14 @@ impl FormPattern {
 
                     let mut start_iter = starts.iter();
                     let (mut current_start, mut inner_count) =
-                        if let Some(pattern) = last_pattern.get(0) {
+                        // If `ending_ranges[0].id` matches, this means that the line must start
+                        // with this `FormPattern` and with the given `inner_count`.
+                        // In any other case, there is no default starting match.
+                        if let Some(pattern) = end_ranges.get(0) {
                             if pattern.1 == form_pattern.id {
                                 (
-                                    last_pattern.get(0).map(|&(p, _, _)| p),
-                                    last_pattern.get(0).map(|&(_, _, c)| c).unwrap_or(0),
+                                    end_ranges.get(0).map(|&(p, _, _)| p),
+                                    end_ranges.get(0).map(|&(_, _, c)| c).unwrap_or(0),
                                 )
                             } else {
                                 (None, 0)
@@ -520,8 +513,13 @@ impl FormPattern {
                         if let Some(start) = next_start {
                             if end < start {
                                 iter_starts = false;
+                            // If we found an ending match after `next_start` we need to start a
+                            // new range.
                             } else {
-                                current_start = next_start;
+                                // Only update `current_start` if we have finished a range.
+                                if inner_count == 0 {
+                                    current_start = next_start
+                                }
                                 next_start = None;
 
                                 iter_starts = true;
@@ -530,11 +528,11 @@ impl FormPattern {
                         }
 
                         if iter_starts {
+                            // Iterate until we find a starting match that comes after the ending
+                            // match. That might possibly be a completed range.
                             while let Some(&start) = start_iter.next() {
                                 if start < end {
-                                    if inner_count == 0 {
-                                        current_start = Some(start);
-                                    }
+                                    current_start = current_start.or(Some(start));
 
                                     inner_count += 1;
                                 } else {
@@ -545,7 +543,8 @@ impl FormPattern {
                             }
                         }
 
-                        inner_count -= 1;
+                        // A negative `inner_count` would match inverted ranges.
+                        inner_count = inner_count.saturating_sub(1);
 
                         if let (Some(start), true) = (current_start, inner_count == 0) {
                             matched_ranges.push(LineByteRange { start, end });
@@ -554,16 +553,17 @@ impl FormPattern {
                         }
                     }
 
-                    if let None = current_start {
-                        current_start = next_start.or(start_iter.next().copied())
-                    }
+                    // Check for any possible remaining start matches.
+                    current_start = current_start.or(next_start.or(start_iter.next().copied()));
 
+                    // If we find any, match until the end of the range.
                     if let Some(start) = current_start {
                         matched_ranges.push(LineByteRange { start, end });
+                        // If we're at the end of a line, the next lines must also match the range.
                         if end.byte == lines[end.line].text().len() {
                             info[end.line - first_line].0.ending_id = form_pattern.id;
 
-                            last_range_pattern.push((end, form_pattern.id, 1 + start_iter.count()))
+                            pattern_end_ranges.push((end, form_pattern.id, 1 + start_iter.count()))
                         }
                     }
 
@@ -571,19 +571,23 @@ impl FormPattern {
                         for line in range.start.line..=range.end.line {
                             let mut tags: SmallVec<[(u32, CharTag); 10]> = SmallVec::new();
 
+                            // The start is the starting byte in the first line, 0 otherwise.
                             let start = if line == range.start.line {
                                 range.start.byte
                             } else {
+                                // On lines other than the first, the line starts with the id.
                                 info[line - first_line].0.starting_id = form_pattern.id;
                                 0
                             };
 
+                            // The form of the range is applied on every line.
                             for form in form_pattern.form_indices.iter() {
                                 if let &Some(form) = form {
                                     tags.push((start as u32, CharTag::PushForm(form)));
                                 }
                             }
 
+                            // Popping the form only really needs to be done at the end.
                             if line == range.end.line {
                                 for form in form_pattern.form_indices.iter() {
                                     if let &Some(form) = form {
@@ -591,28 +595,29 @@ impl FormPattern {
                                     }
                                 }
                             } else {
+                                // On lines other than the last, the line ends with the id.
                                 info[line - first_line].0.ending_id = form_pattern.id;
                             }
 
                             info[line - first_line].0.char_tags.insert_slice(tags.as_slice());
                         }
-                        // The count is here to ensure that the order of elements remains
-                        // consistent.
 
-                        let mut ranges = LineByteRanges(vec![range]);
-                        let (start, end) = (range.start, range.end);
-                        let line_range = (start.line - first_line)..=(end.line - first_line);
+                        let line_range =
+                            (range.start.line - first_line)..=(range.end.line - first_line);
                         let info = &mut info[line_range];
 
-                        let pattern_slice = &pattern_to_return.get(1..).unwrap_or(&[]);
-                        // This inner vector represents all the places that were poked
-                        // within the matched range.
-                        let (pokes, returned_pattern) =
+                        let pattern_slice = &new_end_ranges.get(1..).unwrap_or(&[]);
+
+                        // Apply all subpatterns on all matched ranges.
+                        let mut ranges = LineByteRanges(vec![range]);
+                        let (pokes, end_range) =
                             form_pattern.match_text(lines, &mut ranges, info, pattern_slice);
 
-                        if let Some(pattern) = last_pattern.get(0) {
+                        if let Some(pattern) = end_ranges.get(0) {
                             if pattern.1 == form_pattern.id {
-                                last_range_pattern.extend(returned_pattern);
+                                // In theory, this only returns a non empty range if there were
+                                // unfinished multi-line ranges at the end of the last range.
+                                pattern_end_ranges.extend(end_range);
                             }
                         }
 
@@ -632,30 +637,34 @@ impl FormPattern {
 
             poked_ranges.extend(ranges_to_poke);
 
-			if let Some(last_pattern) = last_range_pattern.last() {
-    			if last_pattern.0.line == info.last().unwrap().1 {
-                    pattern_to_return = last_range_pattern;
-    			}
-			}
+            if let Some(last_pattern) = pattern_end_ranges.last() {
+                if last_pattern.0.line == info.last().unwrap().1 {
+                    // `end_ranges` can only contain one position, so we move `pattern_end_ranges`.
+                    new_end_ranges = pattern_end_ranges;
+                }
+            }
         }
 
-        (poked_ranges, pattern_to_return)
+        (poked_ranges, new_end_ranges)
     }
 
     fn color_text(
-        &self, lines: &[TextLine], range: LineByteRange, last_pattern: &[(LineBytePos, u16, usize)],
+        &self, lines: &[TextLine], range: LineByteRange,
+        last_pattern: &[(LineBytePos, u16, usize)], max_line: usize,
     ) -> (Vec<(LineInfo, usize)>, Vec<(LineBytePos, u16, usize)>) {
         let (start, end) = (range.start, range.end);
 
         let mut lines_info: Vec<(LineInfo, usize)> =
-            (start.line..=end.line).map(|l| (LineInfo::from(&lines[l]), l)).collect();
+            (start.line..=end.line).map(|l| (lines[l].info.clone(), l)).collect();
 
         let mut ranges = LineByteRanges(vec![range]);
 
         // First, match according to what pattern_id was in the start of the line.
         let pattern = self.match_text(lines, &mut ranges, &mut lines_info, last_pattern).1;
 
-        if unsafe { crate::FOR_TEST } { panic!("{:#?}", pattern) }
+        if unsafe { crate::FOR_TEST } {
+            panic!("{:#?}", pattern)
+        }
 
         (lines_info, pattern)
     }
@@ -726,7 +735,7 @@ impl TagManager {
     }
 
     pub fn match_text_range(
-        &mut self, lines: &[TextLine], range: TextRange,
+        &mut self, lines: &[TextLine], range: TextRange, max_line: usize,
     ) -> Vec<(LineInfo, usize)> {
         let (start_pos, end_pos) = (range.start, range.end);
         let (start_line, end_line) = (&lines[start_pos.line], &lines[end_pos.line]);
@@ -768,21 +777,17 @@ impl TagManager {
         let range = LineByteRange { start, end };
 
         let last_pattern: Vec<(LineBytePos, u16, usize)> = if self.last_pattern.pos < start {
-            self
-            .last_pattern
-            .patterns
-            .iter()
-            .map(|&(i, n)| (self.last_pattern.pos, i, n))
-            .collect()
+            self.last_pattern.patterns.iter().map(|&(i, n)| (self.last_pattern.pos, i, n)).collect()
         } else {
             Vec::new()
         };
 
-        let (info, last_pattern) = self.default_form.color_text(lines, range, &last_pattern);
+        let (info, last_pattern) =
+            self.default_form.color_text(lines, range, &last_pattern, max_line);
 
-		if let Some(last_pattern) = last_pattern.last() {
-    		self.last_pattern.pos = last_pattern.0;
-		}
+        if let Some(last_pattern) = last_pattern.last() {
+            self.last_pattern.pos = last_pattern.0;
+        }
         self.last_pattern.patterns = last_pattern.iter().map(|&(_, i, n)| (i, n)).collect();
 
         info
