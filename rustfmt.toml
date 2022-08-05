@@ -1,5 +1,5 @@
-use_small_heuristics = "Max"
 max_width = 100
+use_small_heuristics = "Max"
 array_width = 99
 attr_fn_like_width = 99
 chain_width = 99
