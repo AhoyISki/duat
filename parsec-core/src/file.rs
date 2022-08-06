@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthChar;
 use crate::{
     action::{History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
-    cursor::{FileCursor, TextPos},
+    cursor::{get_byte_distance, FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
     tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
 };
@@ -128,7 +128,7 @@ impl TextLine {
             let indent = self.indent(&options.tabs);
             let indent = if options.wrap_indent && indent < width { indent } else { 0 };
 
-	            // Clear all `WrapppingChar`s from `char_tags`.
+            // Clear all `WrapppingChar`s from `char_tags`.
             self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
 
             let mut distance = 0;
@@ -167,7 +167,6 @@ impl TextLine {
             self.info.char_tags.insert_slice(additions.as_slice());
         };
     }
-
 
     /// Returns an iterator over the wrapping columns of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
@@ -277,10 +276,10 @@ impl TextLine {
         let wrap_indent =
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
-		if unsafe { crate::FOR_TEST } {
-    		println!("{:?}, {}", self.info.line_flags, " ".repeat(area.width()));
-    		return 1;
-		}
+        if unsafe { crate::FOR_TEST } {
+            println!("{:?}, {}", self.info.line_flags, " ".repeat(area.width()));
+            return 1;
+        }
 
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
@@ -418,8 +417,8 @@ impl<T: OutputArea> File<T> {
         let matcher = Matcher::Regex(Regex::new(r"asd").unwrap());
         tag_manager.push_word(matcher, Some(4), false, id);
 
-		let matcher = Matcher::Regex(Regex::new(r"tem").unwrap());
-		tag_manager.push_word(matcher, Some(1), false, 0);
+        let matcher = Matcher::Regex(Regex::new(r"tem").unwrap());
+        tag_manager.push_word(matcher, Some(1), false, 0);
 
         let matcher = Matcher::Regex(Regex::new(r"y").unwrap());
         tag_manager.push_word(matcher, Some(0), false, 0);
@@ -456,7 +455,7 @@ impl<T: OutputArea> File<T> {
 
         let range = TextRange { start, end };
 
-        let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range);
+        let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range, end);
 
         for (line_info, line_num) in line_infos {
             file.lines[line_num].info = line_info;
@@ -589,6 +588,9 @@ impl<T: OutputArea> File<T> {
         }
     }
 
+    /// Matches a given range in the file.
+    pub fn match_range(&mut self, range: TextRange) {}
+
     /// Applies a splice to the file.
     pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange)
     where
@@ -599,12 +601,7 @@ impl<T: OutputArea> File<T> {
         let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
         self.lines.splice(old_range.lines(), edits);
 
-        let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), new_range);
-
-        for (line_info, line_num) in line_infos {
-            self.lines[line_num].info = line_info;
-            self.lines[line_num].update_line_info(&self.options, self.area.width());
-        }
+        match_range(&mut self.lines, new_range, &self.area, &self.options, &mut self.tag_manager);
 
         for cursor in &mut self.cursors {
             let new_pos = if cursor.target() >= old_range.end {
@@ -646,13 +643,8 @@ impl<T: OutputArea> File<T> {
                 ));
             }
 
-			let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), range);
-
-            for (line_info, line_num) in line_infos {
-                self.lines[line_num].info = line_info;
-                self.lines[line_num].update_line_info(&self.options, self.area.width())
-            }
+            let range = TextRange { start: splice.start(), end: splice.taken_end() };
+            match_range(&mut self.lines, range, &self.area, &self.options, &mut self.tag_manager);
         }
 
         self.cursors.extend(new_cursors);
@@ -680,13 +672,8 @@ impl<T: OutputArea> File<T> {
                 ));
             }
 
-			let range = TextRange { start: splice.start(), end: splice.added_end() };
-            let line_infos = self.tag_manager.match_text_range(self.lines.as_slice(), range);
-
-            for (line_info, line_num) in line_infos {
-                self.lines[line_num].info = line_info;
-                self.lines[line_num].update_line_info(&self.options, self.area.width())
-            }
+            let range = TextRange { start: splice.start(), end: splice.added_end() };
+            match_range(&mut self.lines, range, &self.area, &self.options, &mut self.tag_manager);
         }
 
         self.cursors.extend(new_cursors);
@@ -760,5 +747,26 @@ pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
         tabs.get_tab_len(col)
     } else {
         UnicodeWidthChar::width(ch).unwrap_or(1)
+    }
+}
+
+fn match_range<T>(
+    lines: &mut Vec<TextLine>, range: TextRange, area: &T, options: &FileOptions,
+    tag_manager: &mut TagManager,
+)
+where
+    T: OutputArea {
+    let max_line_num = min(range.end.line + area.height(), lines.len() - 1);
+    let max_line = &lines[max_line_num];
+    let mut max_pos =
+        TextPos { line: max_line_num, col: max_line.char_count(), byte: range.end.byte };
+
+    max_pos.byte = (max_pos.byte as isize + get_byte_distance(lines, range.end, max_pos)) as usize;
+
+    let line_infos = tag_manager.match_text_range(lines.as_slice(), range, max_pos);
+
+    for (line_info, line_num) in line_infos {
+        lines[line_num].info = line_info;
+        lines[line_num].update_line_info(options, area.width());
     }
 }

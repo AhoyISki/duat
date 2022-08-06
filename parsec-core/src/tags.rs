@@ -5,7 +5,7 @@ use crossterm::style::ContentStyle;
 use regex::Regex;
 use smallvec::SmallVec;
 
-use crate::{action::TextRange, file::TextLine};
+use crate::{action::TextRange, cursor::TextPos, file::TextLine};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -493,12 +493,9 @@ impl FormPattern {
                         // If `ending_ranges[0].id` matches, this means that the line must start
                         // with this `FormPattern` and with the given `inner_count`.
                         // In any other case, there is no default starting match.
-                        if let Some(pattern) = end_ranges.get(0) {
-                            if pattern.1 == form_pattern.id {
-                                (
-                                    end_ranges.get(0).map(|&(p, _, _)| p),
-                                    end_ranges.get(0).map(|&(_, _, c)| c).unwrap_or(0),
-                                )
+                        if let Some(end) = end_ranges.get(0) {
+                            if end.1 == form_pattern.id && start.file_byte == end.0.file_byte + 1 {
+                                (Some(start), end_ranges[0].2)
                             } else {
                                 (None, 0)
                             }
@@ -649,8 +646,7 @@ impl FormPattern {
     }
 
     fn color_text(
-        &self, lines: &[TextLine], range: LineByteRange,
-        last_pattern: &[(LineBytePos, u16, usize)], max_line: usize,
+        &self, lines: &[TextLine], range: LineByteRange, end_ranges: &[(LineBytePos, u16, usize)],
     ) -> (Vec<(LineInfo, usize)>, Vec<(LineBytePos, u16, usize)>) {
         let (start, end) = (range.start, range.end);
 
@@ -660,13 +656,11 @@ impl FormPattern {
         let mut ranges = LineByteRanges(vec![range]);
 
         // First, match according to what pattern_id was in the start of the line.
-        let pattern = self.match_text(lines, &mut ranges, &mut lines_info, last_pattern).1;
+        let end_ranges = self.match_text(lines, &mut ranges, &mut lines_info, end_ranges).1;
 
-        if unsafe { crate::FOR_TEST } {
-            panic!("{:#?}", pattern)
-        }
+        //if unsafe { crate::FOR_TEST } { panic!("{:?}", end_ranges) }
 
-        (lines_info, pattern)
+        (lines_info, end_ranges)
     }
 
     /// Returns a mutable reference to the `FormPattern` with the given id.
@@ -716,7 +710,7 @@ pub struct TagManager {
     last_id: u16,
 
     /// What pattern ids were used when last matching.
-    last_pattern: LastPattern,
+    end_ranges: LastPattern,
 }
 
 impl TagManager {
@@ -727,7 +721,7 @@ impl TagManager {
             bounded_forms: Vec::new(),
             default_form: FormPattern::default(),
             last_id: 0,
-            last_pattern: LastPattern {
+            end_ranges: LastPattern {
                 patterns: Vec::new(),
                 pos: LineBytePos { line: 0, byte: 0, file_byte: 0 },
             },
@@ -735,7 +729,7 @@ impl TagManager {
     }
 
     pub fn match_text_range(
-        &mut self, lines: &[TextLine], range: TextRange, max_line: usize,
+        &mut self, lines: &[TextLine], range: TextRange, max_pos: TextPos,
     ) -> Vec<(LineInfo, usize)> {
         let (start_pos, end_pos) = (range.start, range.end);
         let (start_line, end_line) = (&lines[start_pos.line], &lines[end_pos.line]);
@@ -748,7 +742,7 @@ impl TagManager {
             file_byte: range.start.byte - start_line.get_line_byte_at(start_pos.col),
         };
         while let Some(line) = lines_iter.next() {
-            if line.info.ending_id != 0 || start > self.last_pattern.pos {
+            if line.info.ending_id != 0 || start > self.end_ranges.pos {
                 start.line -= 1;
                 start.file_byte -= line.text().len();
             } else {
@@ -774,21 +768,40 @@ impl TagManager {
             }
         }
 
-        let range = LineByteRange { start, end };
-
-        let last_pattern: Vec<(LineBytePos, u16, usize)> = if self.last_pattern.pos < start {
-            self.last_pattern.patterns.iter().map(|&(i, n)| (self.last_pattern.pos, i, n)).collect()
-        } else {
-            Vec::new()
+        let max_line = &lines[max_pos.line];
+        let max_pos = LineBytePos {
+            line: max_pos.line,
+            byte: max_line.text().len(),
+            file_byte: max_pos.byte + max_line.text().len()
+                - max_line.get_line_byte_at(max_pos.col),
         };
 
-        let (info, last_pattern) =
-            self.default_form.color_text(lines, range, &last_pattern, max_line);
+        let range = LineByteRange { start, end };
 
-        if let Some(last_pattern) = last_pattern.last() {
-            self.last_pattern.pos = last_pattern.0;
+        let end_ranges: Vec<(LineBytePos, u16, usize)> =
+            self.end_ranges.patterns.iter().map(|&(i, n)| (self.end_ranges.pos, i, n)).collect();
+
+        let (mut info, end_ranges) = self.default_form.color_text(lines, range, &end_ranges);
+
+        self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
+        self.end_ranges.pos = end;
+
+        if !end_ranges.is_empty() && end.line < lines.len() - 1 {
+            let start = LineBytePos { line: end.line + 1, byte: 0, file_byte: end.file_byte + 1 };
+
+            if unsafe { crate::FOR_TEST } {
+                panic!("{:?}", start)
+            }
+
+            let range = LineByteRange { start, end: max_pos };
+
+            let (new_info, end_ranges) = self.default_form.color_text(lines, range, &end_ranges);
+
+            self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
+            self.end_ranges.pos = max_pos;
+
+            info.extend(new_info);
         }
-        self.last_pattern.patterns = last_pattern.iter().map(|&(_, i, n)| (i, n)).collect();
 
         info
     }
