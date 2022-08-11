@@ -275,6 +275,7 @@ impl<T: OutputArea> Buffer<T> {
     /// Prints the contents of the file from line on the file.
     #[inline]
     fn refresh_screen(&mut self) {
+        self.file.area.start_print();
         self.file.print_file();
 
         // Printing the line numbers
@@ -329,7 +330,7 @@ impl<T: OutputArea> Buffer<T> {
             self.line_num_area.move_cursor(pos);
         }
 
-        self.file.area.flush();
+        self.file.area.finish_print();
     }
 }
 

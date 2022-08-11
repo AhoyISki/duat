@@ -5,7 +5,7 @@ use std::{
 };
 
 use crossterm::{
-    cursor::{MoveTo, RestorePosition, SavePosition},
+    cursor::{MoveTo, RestorePosition, SavePosition, Hide, Show},
     event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
     style::{Attribute, Attributes, Color, ContentStyle, Print, ResetColor, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
@@ -160,8 +160,18 @@ impl OutputArea for TermArea {
         self.print_form_stack();
     }
 
+    fn start_print(&mut self) {
+        self.stdout.execute(Hide).unwrap();
+    }
+
     fn print<T: Display>(&mut self, ch: T) {
         self.stdout.queue(Print(ch)).unwrap();
+    }
+
+    fn finish_print(&mut self) {
+        self.stdout.queue(RestorePosition).unwrap();
+        self.stdout.queue(Show).unwrap();
+        self.stdout.flush().unwrap();
     }
 
     fn move_cursor(&mut self, pos: OutputPos) {
@@ -174,11 +184,6 @@ impl OutputArea for TermArea {
 
     fn height(&self) -> usize {
         (self.end.y - self.origin.y) as usize
-    }
-
-    fn flush(&mut self) {
-        self.stdout.queue(RestorePosition).unwrap();
-        self.stdout.flush().expect("flushing failed, somehow");
     }
 
     fn partition_x(&mut self, x: u16) -> Self {

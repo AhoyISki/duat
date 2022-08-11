@@ -57,10 +57,14 @@ pub trait OutputArea {
     /// Clears both normal and multi-line forms from the stack.
     fn clear_all_forms(&mut self);
 
-    /// Prints plain text.
-    ///
-    /// Will print to output without any styling whatsoever.
+	/// Tells the area that we're about to start printing.
+    fn start_print(&mut self);
+
+	/// Prints text at the current printing cursor's position.
     fn print<T: Display>(&mut self, text: T);
+
+    /// Tells the area that we're done printing
+    fn finish_print(&mut self);
 
     /// Moves the relative printing cursor.
     ///
@@ -72,9 +76,6 @@ pub trait OutputArea {
 
     /// Returns the height of the area
     fn height(&self) -> usize;
-
-    /// Refreshes the area
-    fn flush(&mut self);
 
     /// Partitions the area on x, returning the area on the left.
     fn partition_x(&mut self, x: u16) -> Self;

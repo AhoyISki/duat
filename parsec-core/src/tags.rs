@@ -248,7 +248,7 @@ pub struct FormPattern {
 // useful for regex calculation, while the file's byte is useful for tree-sitter capture, while the
 // column (char index) of the line is completely useless.
 /// A position indexed by its byte in relation to the line, instead of column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 struct LineBytePos {
     /// The line in the file.
     line: usize,
@@ -314,22 +314,14 @@ impl Ord for LineBytePos {
     where
         Self: Sized,
     {
-        if self > other {
-            self
-        } else {
-            other
-        }
+        if self > other { self } else { other }
     }
 
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
     {
-        if self < other {
-            self
-        } else {
-            other
-        }
+        if self < other { self } else { other }
     }
 }
 
@@ -384,7 +376,7 @@ impl FormPattern {
     /// Matches a given pattern and its subpatterns on a range of text.
     fn match_text(
         &self, lines: &[TextLine], ranges: &mut LineByteRanges, info: &mut [(LineInfo, usize)],
-        end_ranges: &[(LineBytePos, u16, usize)],
+        end_ranges: EndRanges,
     ) -> (SmallVec<[LineByteRange; 32]>, Vec<(LineBytePos, u16, usize)>) {
         // The finalized vector with all ranges that were occupied by exclusive patterns.
         let mut poked_ranges = SmallVec::<[LineByteRange; 32]>::new();
@@ -392,7 +384,8 @@ impl FormPattern {
         let mut new_end_ranges = Vec::new();
 
         // This line is used for referencing `info`.
-        let first_line = ranges.0[0].start.line;
+        let first_start = ranges.0[0].start;
+        let last_end = ranges.0.last().unwrap().end;
 
         for form_pattern in &self.form_pattern_list {
             // This vector is temporary so that we don't poke the same ranges multiple times.
@@ -463,7 +456,9 @@ impl FormPattern {
 
                             // This inner vector represents all the places that were poked
                             // within the matched range.
-                            let pokes = form_pattern.match_text(lines, &mut ranges, info, &[]).0;
+                            let pokes = form_pattern
+                                .match_text(lines, &mut ranges, info, EndRanges::default())
+                                .0;
 
                             // If the pattern wasn't exclusive, maybe some of its innards were?
                             if form_pattern.is_exclusive {
@@ -473,7 +468,7 @@ impl FormPattern {
                             }
                         }
 
-                        info[index - first_line].0.char_tags.insert_slice(tags.as_slice());
+                        info[index - first_start.line].0.char_tags.insert_slice(tags.as_slice());
                     }
                 // Matching on multi-line ranges with different bounds.
                 } else if let Pattern::Bounds(start_matcher, end_matcher) = &form_pattern.pattern {
@@ -493,9 +488,9 @@ impl FormPattern {
                         // If `ending_ranges[0].id` matches, this means that the line must start
                         // with this `FormPattern` and with the given `inner_count`.
                         // In any other case, there is no default starting match.
-                        if let Some(end) = end_ranges.get(0) {
-                            if end.1 == form_pattern.id && start.file_byte == end.0.file_byte + 1 {
-                                (Some(start), end_ranges[0].2)
+                        if let Some(end) = end_ranges.patterns.get(0) {
+                            if end.0 == form_pattern.id && start.file_byte == end_ranges.pos.file_byte + 1 {
+                                (Some(start), end_ranges.patterns[0].0)
                             } else {
                                 (None, 0)
                             }
@@ -558,7 +553,7 @@ impl FormPattern {
                         matched_ranges.push(LineByteRange { start, end });
                         // If we're at the end of a line, the next lines must also match the range.
                         if end.byte == lines[end.line].text().len() {
-                            info[end.line - first_line].0.ending_id = form_pattern.id;
+                            info[end.line - first_start.line].0.ending_id = form_pattern.id;
 
                             pattern_end_ranges.push((end, form_pattern.id, 1 + start_iter.count()))
                         }
@@ -573,7 +568,7 @@ impl FormPattern {
                                 range.start.byte
                             } else {
                                 // On lines other than the first, the line starts with the id.
-                                info[line - first_line].0.starting_id = form_pattern.id;
+                                info[line - first_start.line].0.starting_id = form_pattern.id;
                                 0
                             };
 
@@ -593,25 +588,28 @@ impl FormPattern {
                                 }
                             } else {
                                 // On lines other than the last, the line ends with the id.
-                                info[line - first_line].0.ending_id = form_pattern.id;
+                                info[line - first_start.line].0.ending_id = form_pattern.id;
                             }
 
-                            info[line - first_line].0.char_tags.insert_slice(tags.as_slice());
+                            info[line - first_start.line].0.char_tags.insert_slice(tags.as_slice());
                         }
 
-                        let line_range =
-                            (range.start.line - first_line)..=(range.end.line - first_line);
+                        let line_range = (range.start.line - first_start.line)
+                            ..=(range.end.line - first_start.line);
                         let info = &mut info[line_range];
 
-                        let pattern_slice = &new_end_ranges.get(1..).unwrap_or(&[]);
+                        let pattern_slice = EndRanges {
+                            patterns: Vec::from(end_ranges.patterns.get(1..).unwrap_or(&[])),
+                            pos: last_end,
+                        };
 
                         // Apply all subpatterns on all matched ranges.
                         let mut ranges = LineByteRanges(vec![range]);
                         let (pokes, end_range) =
                             form_pattern.match_text(lines, &mut ranges, info, pattern_slice);
 
-                        if let Some(pattern) = end_ranges.get(0) {
-                            if pattern.1 == form_pattern.id {
+                        if let Some(pattern) = end_ranges.patterns.get(0) {
+                            if pattern.0 == form_pattern.id {
                                 // In theory, this only returns a non empty range if there were
                                 // unfinished multi-line ranges at the end of the last range.
                                 pattern_end_ranges.extend(end_range);
@@ -646,12 +644,12 @@ impl FormPattern {
     }
 
     fn color_text(
-        &self, lines: &[TextLine], range: LineByteRange, end_ranges: &[(LineBytePos, u16, usize)],
+        &self, lines: &[TextLine], range: LineByteRange, end_ranges: EndRanges,
     ) -> (Vec<(LineInfo, usize)>, Vec<(LineBytePos, u16, usize)>) {
         let (start, end) = (range.start, range.end);
 
         let mut lines_info: Vec<(LineInfo, usize)> =
-            (start.line..=end.line).map(|l| (lines[l].info.clone(), l)).collect();
+            (start.line..=end.line).map(|l| (LineInfo::default(), l)).collect();
 
         let mut ranges = LineByteRanges(vec![range]);
 
@@ -684,7 +682,8 @@ impl FormPattern {
 }
 
 /// Information about how to match lines beyond the last line that was matched.
-struct LastPattern {
+#[derive(Default, Clone)]
+struct EndRanges {
     /// The list of patterns that were last active and the number of recursions of each.
     patterns: Vec<(u16, usize)>,
 
@@ -705,12 +704,13 @@ pub struct TagManager {
     /// The patterns associated with said forms.
     default_form: FormPattern,
 
-    // This exists solely for pushing new `FormPatterns` into the `default_form` `FormPattern` tree.
+    // This exists solely for pushing new `FormPatterns` into the `default_form` `FormPattern`
+    // tree.
     /// The last id that was used for a `FormPattern`.
     last_id: u16,
 
     /// What pattern ids were used when last matching.
-    end_ranges: LastPattern,
+    end_ranges: EndRanges,
 }
 
 impl TagManager {
@@ -721,7 +721,7 @@ impl TagManager {
             bounded_forms: Vec::new(),
             default_form: FormPattern::default(),
             last_id: 0,
-            end_ranges: LastPattern {
+            end_ranges: EndRanges {
                 patterns: Vec::new(),
                 pos: LineBytePos { line: 0, byte: 0, file_byte: 0 },
             },
@@ -778,10 +778,8 @@ impl TagManager {
 
         let range = LineByteRange { start, end };
 
-        let end_ranges: Vec<(LineBytePos, u16, usize)> =
-            self.end_ranges.patterns.iter().map(|&(i, n)| (self.end_ranges.pos, i, n)).collect();
-
-        let (mut info, end_ranges) = self.default_form.color_text(lines, range, &end_ranges);
+        let (mut info, end_ranges) =
+            self.default_form.color_text(lines, range, self.end_ranges.clone());
 
         self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
         self.end_ranges.pos = end;
@@ -794,8 +792,9 @@ impl TagManager {
             }
 
             let range = LineByteRange { start, end: max_pos };
+            let end_ranges = self.end_ranges.clone();
 
-            let (new_info, end_ranges) = self.default_form.color_text(lines, range, &end_ranges);
+            let (new_info, end_ranges) = self.default_form.color_text(lines, range, end_ranges);
 
             self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
             self.end_ranges.pos = max_pos;

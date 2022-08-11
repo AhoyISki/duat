@@ -144,12 +144,9 @@ impl TextLine {
 
                     indent_wrap = indent;
 
-                    // `width` goes to the first character of the next line, so `n * width` would be
-                    // off by `n - 1` characters, which is why the `- 1` is there.
                     distance += width - indent_wrap;
                 }
             } else {
-                // If the line reaches the capped limit, it should wrap, even if on the last character.
                 for (index, ch) in self.text.char_indices() {
                     distance += get_char_width(ch, distance, &options.tabs);
 
@@ -277,7 +274,7 @@ impl TextLine {
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
         if unsafe { crate::FOR_TEST } {
-            println!("{:?}, {}", self.info.line_flags, " ".repeat(area.width()));
+            println!("{:?}, {}", self.info.char_tags.vec().len(), " ".repeat(area.width()));
             return 1;
         }
 
