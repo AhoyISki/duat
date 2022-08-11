@@ -67,19 +67,22 @@ bitflags! {
 pub struct CharTags(Vec<(u32, CharTag)>);
 
 impl std::fmt::Debug for CharTags {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    	let print_vec: String = self.0.iter().map(|(b, t)| {
-        	match t {
-            	CharTag::PushForm(form) => format!("{}:PuF({})", b, form),
-            	CharTag::PopForm(form) => format!("{}PoF({})", b, form),
-            	CharTag::WrapppingChar => format!("{}:Wc", b),
-            	CharTag::PrimaryCursor => format!("{}:Pc", b),
-            	_ => todo!(),
-        	}
-    	}).collect::<Vec<String>>().join(", ");
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let print_vec: String = self
+            .0
+            .iter()
+            .map(|(b, t)| match t {
+                CharTag::PushForm(form) => format!("{}:PuF({})", b, form),
+                CharTag::PopForm(form) => format!("{}PoF({})", b, form),
+                CharTag::WrapppingChar => format!("{}:Wc", b),
+                CharTag::PrimaryCursor => format!("{}:Pc", b),
+                _ => todo!(),
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
 
-    	f.write_fmt(format_args!("CharTags: {}", print_vec))
-	}
+        f.write_fmt(format_args!("CharTags: {}", print_vec))
+    }
 }
 
 impl CharTags {
@@ -393,25 +396,23 @@ impl FormPattern {
     fn match_text(
         &self, lines: &[TextLine], ranges: &mut LineByteRanges, info: &mut [(LineInfo, usize)],
         end_ranges: EndRanges,
-    ) -> (SmallVec<[LineByteRange; 32]>, Vec<(LineBytePos, u16, usize)>) {
+    ) -> (SmallVec<[LineByteRange; 32]>, EndRanges) {
         // The finalized vector with all ranges that were occupied by exclusive patterns.
         let mut poked_ranges = SmallVec::<[LineByteRange; 32]>::new();
-        // The finalized list of multi-line ranges that weren't closed off.
-        let mut new_end_ranges = Vec::new();
 
         // This line is used for referencing `info`.
         let first_start = ranges.0[0].start;
         let last_end = ranges.0.last().unwrap().end;
 
+        // The finalized list of multi-line ranges that weren't closed off.
+        let mut new_ranges = EndRanges { patterns: Vec::new(), pos: last_end };
+
         for form_pattern in &self.form_pattern_list {
             // This vector is temporary so that we don't poke the same ranges multiple times.
             let mut ranges_to_poke = SmallVec::<[LineByteRange; 32]>::new();
-            // Same as `ending_ranges`, but for this specific `FormPattern`.
-            let mut pattern_end_ranges = Vec::new();
 
             for (start, end) in ranges.0.iter().map(|r| (r.start, r.end)) {
                 // Clear at the start, unless we're in the last range.
-                pattern_end_ranges.clear();
                 let file_byte = start.file_byte;
 
                 // An iterator over the lines in the range, it returns the truncated text of the
@@ -571,7 +572,7 @@ impl FormPattern {
                         if end.byte == lines[end.line].text().len() {
                             info[end.line - first_start.line].0.ending_id = form_pattern.id;
 
-                            pattern_end_ranges.push((end, form_pattern.id, 1 + start_iter.count()))
+                            new_ranges.patterns.push((form_pattern.id, 1 + start_iter.count()))
                         }
                     }
 
@@ -621,14 +622,14 @@ impl FormPattern {
 
                         // Apply all subpatterns on all matched ranges.
                         let mut ranges = LineByteRanges(vec![range]);
-                        let (pokes, end_range) =
+                        let (pokes, new_end_ranges) =
                             form_pattern.match_text(lines, &mut ranges, info, pattern_slice);
 
                         if let Some(pattern) = end_ranges.patterns.get(0) {
-                            if pattern.0 == form_pattern.id {
+                            if pattern.0 == form_pattern.id && new_end_ranges.pos == range.end {
                                 // In theory, this only returns a non empty range if there were
                                 // unfinished multi-line ranges at the end of the last range.
-                                pattern_end_ranges.extend(end_range);
+                                new_ranges.patterns.extend(new_end_ranges.patterns);
                             }
                         }
 
@@ -647,21 +648,14 @@ impl FormPattern {
             }
 
             poked_ranges.extend(ranges_to_poke);
-
-            if let Some(last_pattern) = pattern_end_ranges.last() {
-                if last_pattern.0.line == info.last().unwrap().1 {
-                    // `end_ranges` can only contain one position, so we move `pattern_end_ranges`.
-                    new_end_ranges = pattern_end_ranges;
-                }
-            }
         }
 
-        (poked_ranges, new_end_ranges)
+        (poked_ranges, new_ranges)
     }
 
     fn color_text(
         &self, lines: &[TextLine], range: LineByteRange, end_ranges: EndRanges,
-    ) -> (Vec<(LineInfo, usize)>, Vec<(LineBytePos, u16, usize)>) {
+    ) -> (Vec<(LineInfo, usize)>, EndRanges) {
         let (start, end) = (range.start, range.end);
 
         let mut lines_info: Vec<(LineInfo, usize)> =
@@ -795,10 +789,9 @@ impl TagManager {
         let (mut info, end_ranges) =
             self.default_form.color_text(lines, range, self.end_ranges.clone());
 
-        self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
-        self.end_ranges.pos = end;
+		self.end_ranges = end_ranges;
 
-        if !end_ranges.is_empty() && end.line < lines.len() - 1 {
+        if !self.end_ranges.patterns.is_empty() && end.line < lines.len() - 1 {
             let start = LineBytePos { line: end.line + 1, byte: 0, file_byte: end.file_byte + 1 };
 
             if unsafe { crate::FOR_TEST } {
@@ -810,8 +803,7 @@ impl TagManager {
 
             let (new_info, end_ranges) = self.default_form.color_text(lines, range, end_ranges);
 
-            self.end_ranges.patterns = end_ranges.iter().map(|&(_, i, n)| (i, n)).collect();
-            self.end_ranges.pos = max_pos;
+            self.end_ranges = end_ranges;
 
             info.extend(new_info);
         }
