@@ -211,8 +211,9 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                    |_: &mut Buffer<T>| {
+                    |h: &mut Buffer<T>| {
                         unsafe { crate::FOR_TEST = !crate::FOR_TEST }
+                        h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('v'), KeyModifiers::CONTROL) => {

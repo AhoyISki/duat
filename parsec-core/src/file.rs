@@ -274,7 +274,7 @@ impl TextLine {
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
         if unsafe { crate::FOR_TEST } {
-            println!("{:?}, {}", self.info.char_tags.vec().len(), " ".repeat(area.width()));
+            println!("{:?}, {}", self.info.char_tags, " ".repeat(area.width()));
             return 1;
         }
 

@@ -9,7 +9,7 @@ use crate::{action::TextRange, cursor::TextPos, file::TextLine};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
@@ -63,8 +63,24 @@ bitflags! {
 // Since all insertions (wrappings, syntax, cursors, etc) already come sorted, it makes sense to
 // create efficient insertion algorithms that take that into account.
 /// A vector of `CharTags`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct CharTags(Vec<(u32, CharTag)>);
+
+impl std::fmt::Debug for CharTags {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    	let print_vec: String = self.0.iter().map(|(b, t)| {
+        	match t {
+            	CharTag::PushForm(form) => format!("{}:PuF({})", b, form),
+            	CharTag::PopForm(form) => format!("{}PoF({})", b, form),
+            	CharTag::WrapppingChar => format!("{}:Wc", b),
+            	CharTag::PrimaryCursor => format!("{}:Pc", b),
+            	_ => todo!(),
+        	}
+    	}).collect::<Vec<String>>().join(", ");
+
+    	f.write_fmt(format_args!("CharTags: {}", print_vec))
+	}
+}
 
 impl CharTags {
     /// Creates a new instance of `CharTags`.
@@ -655,8 +671,6 @@ impl FormPattern {
 
         // First, match according to what pattern_id was in the start of the line.
         let end_ranges = self.match_text(lines, &mut ranges, &mut lines_info, end_ranges).1;
-
-        //if unsafe { crate::FOR_TEST } { panic!("{:?}", end_ranges) }
 
         (lines_info, end_ranges)
     }
