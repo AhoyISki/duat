@@ -360,9 +360,7 @@ impl LineByteRanges {
     /// "Pokes" a hole in the range.
     fn poke(&mut self, poke: LineByteRange) {
         // Find the range that contains the first point, in order to start poking.
-        if let Some((index, &range)) =
-            self.0.iter().enumerate().find(|(_, r)| r.end.file_byte > poke.start.file_byte)
-        {
+        if let Some((index, &range)) = self.0.iter().enumerate().find(|(_, r)| r.end > poke.start) {
             // The first range after having its end removed by the poke.
             let first_cut_range = LineByteRange { start: range.start, end: poke.start };
 
@@ -370,7 +368,7 @@ impl LineByteRanges {
 
             // Look for a range that can fit the end of the poke, and remove all ranges in between.
             while let Some((last_checked, &range)) = ranges_iter.next() {
-                if range.end.file_byte >= poke.end.file_byte {
+                if range.end >= poke.end {
                     let last_cut_range = LineByteRange { start: poke.end, ..range };
 
                     self.0.splice(index..=last_checked, [first_cut_range, last_cut_range]);
@@ -387,8 +385,8 @@ impl LineByteRanges {
 pub struct LineInfo {
     pub char_tags: CharTags,
     pub line_flags: LineFlags,
-    starting_id: u16,
-    ending_id: u16,
+    pub starting_id: u16,
+    pub ending_id: u16,
 }
 
 impl FormPattern {
@@ -403,9 +401,16 @@ impl FormPattern {
         // This line is used for referencing `info`.
         let first_start = ranges.0[0].start;
         let last_end = ranges.0.last().unwrap().end;
+        if first_start == last_end {
+            return (SmallVec::new(), EndRanges::default());
+        };
 
         // The finalized list of multi-line ranges that weren't closed off.
         let mut new_ranges = EndRanges { patterns: Vec::new(), pos: last_end };
+
+        if info.is_empty() {
+            panic!("{:?}", ranges)
+        }
 
         for form_pattern in &self.form_pattern_list {
             // This vector is temporary so that we don't poke the same ranges multiple times.
@@ -469,7 +474,10 @@ impl FormPattern {
                             // its range.
                             // Match subpatterns.
                             let mut ranges = LineByteRanges(vec![range]);
-                            let info = std::slice::from_mut(&mut info[index - start.line]);
+                            let info = std::slice::from_mut(&mut info[index - first_start.line]);
+                            if info.is_empty() {
+                                panic!("{:?}", ranges)
+                            }
 
                             // This inner vector represents all the places that were poked
                             // within the matched range.
@@ -507,6 +515,7 @@ impl FormPattern {
                         // In any other case, there is no default starting match.
                         if let Some(end) = end_ranges.patterns.get(0) {
                             if end.0 == form_pattern.id && start.file_byte == end_ranges.pos.file_byte + 1 {
+                                info[0].0.starting_id = form_pattern.id;
                                 (Some(start), end_ranges.patterns[0].0)
                             } else {
                                 (None, 0)
@@ -614,6 +623,9 @@ impl FormPattern {
                         let line_range = (range.start.line - first_start.line)
                             ..=(range.end.line - first_start.line);
                         let info = &mut info[line_range];
+                        if info.is_empty() {
+                            panic!("{:?}", ranges)
+                        }
 
                         let pattern_slice = EndRanges {
                             patterns: Vec::from(end_ranges.patterns.get(1..).unwrap_or(&[])),
@@ -658,15 +670,19 @@ impl FormPattern {
     ) -> (Vec<(LineInfo, usize)>, EndRanges) {
         let (start, end) = (range.start, range.end);
 
-        let mut lines_info: Vec<(LineInfo, usize)> =
+        let mut info: Vec<(LineInfo, usize)> =
             (start.line..=end.line).map(|l| (LineInfo::default(), l)).collect();
+
+        if unsafe { crate::FOR_TEST && info.is_empty() } {
+            panic!("{:#?}, {:#?}", info, range);
+        }
 
         let mut ranges = LineByteRanges(vec![range]);
 
         // First, match according to what pattern_id was in the start of the line.
-        let end_ranges = self.match_text(lines, &mut ranges, &mut lines_info, end_ranges).1;
+        let end_ranges = self.match_text(lines, &mut ranges, &mut info, end_ranges).1;
 
-        (lines_info, end_ranges)
+        (info, end_ranges)
     }
 
     /// Returns a mutable reference to the `FormPattern` with the given id.
@@ -789,14 +805,12 @@ impl TagManager {
         let (mut info, end_ranges) =
             self.default_form.color_text(lines, range, self.end_ranges.clone());
 
-		self.end_ranges = end_ranges;
+        self.end_ranges = end_ranges;
 
         if !self.end_ranges.patterns.is_empty() && end.line < lines.len() - 1 {
             let start = LineBytePos { line: end.line + 1, byte: 0, file_byte: end.file_byte + 1 };
 
-            if unsafe { crate::FOR_TEST } {
-                panic!("{:?}", start)
-            }
+            if start >= max_pos { return info; }
 
             let range = LineByteRange { start, end: max_pos };
             let end_ranges = self.end_ranges.clone();

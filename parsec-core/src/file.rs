@@ -274,7 +274,7 @@ impl TextLine {
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
         if unsafe { crate::FOR_TEST } {
-            println!("{:?}, {}", self.info.char_tags, " ".repeat(area.width()));
+            println!("{}, {}, {}", self.info.starting_id, self.info.ending_id, " ".repeat(area.width()));
             return 1;
         }
 
@@ -759,6 +759,8 @@ where
         TextPos { line: max_line_num, col: max_line.char_count(), byte: range.end.byte };
 
     max_pos.byte = (max_pos.byte as isize + get_byte_distance(lines, range.end, max_pos)) as usize;
+
+    if unsafe { crate::FOR_TEST } { panic!("{:?}", max_pos); }
 
     let line_infos = tag_manager.match_text_range(lines.as_slice(), range, max_pos);
 
