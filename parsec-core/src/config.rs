@@ -34,7 +34,7 @@ impl TabPlaces {
     /// Returns the amount of spaces between a position and the next tab place.
     pub fn get_tab_len(&self, x: usize) -> usize {
         match self {
-            TabPlaces::Regular(step) => (step - (x % step)),
+            TabPlaces::Regular(step) => step - (x % step),
             TabPlaces::Varied(steps) => {
                 steps.iter().find(|&s| *s > x).expect("not enough tabs") - x
             }

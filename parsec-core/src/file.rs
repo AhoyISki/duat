@@ -2,11 +2,10 @@ use std::cmp::min;
 
 use crossterm::style::{ContentStyle, Stylize};
 use regex::Regex;
-use smallvec::SmallVec;
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    action::{History, TextRange},
+    action::{History, TextRange, get_byte},
     config::{FileOptions, TabPlaces, WrapMethod},
     cursor::{get_byte_distance, FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
@@ -133,14 +132,13 @@ impl TextLine {
 
             let mut distance = 0;
             let mut indent_wrap = 0;
-            let mut additions = SmallVec::<[(u32, CharTag); 10]>::new();
 
             // TODO: Add an enum parameter signifying the wrapping type.
             // Wrapping at the final character at the width of the area.
             if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
                 distance = width;
                 while distance < self.text.len() {
-                    additions.push((distance as u32, CharTag::WrapppingChar));
+                    self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
 
                     indent_wrap = indent;
 
@@ -153,15 +151,12 @@ impl TextLine {
                     if distance > width - indent_wrap {
                         distance = get_char_width(ch, distance, &options.tabs);
 
-                        additions.push((index as u32, CharTag::WrapppingChar));
+                        self.info.char_tags.insert((index as u32, CharTag::WrapppingChar));
 
                         indent_wrap = indent;
                     }
                 }
             }
-
-            // The insertion operation is more efficient if I insert already sorted slices.
-            self.info.char_tags.insert_slice(additions.as_slice());
         };
     }
 
@@ -452,7 +447,7 @@ impl<T: OutputArea> File<T> {
 
         let range = TextRange { start, end };
 
-        let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range, end);
+        let line_infos = file.tag_manager.match_text_range(file.lines.as_slice(), range, end, true);
 
         for (line_info, line_num) in line_infos {
             file.lines[line_num].info = line_info;
@@ -585,9 +580,6 @@ impl<T: OutputArea> File<T> {
         }
     }
 
-    /// Matches a given range in the file.
-    pub fn match_range(&mut self, range: TextRange) {}
-
     /// Applies a splice to the file.
     pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange)
     where
@@ -624,7 +616,7 @@ impl<T: OutputArea> File<T> {
             Some((changes, print_info)) => (changes, print_info),
             None => return,
         };
-        //self.print_info = print_info.unwrap_or(self.print_info);
+        self.print_info = print_info.unwrap_or(self.print_info);
 
         let mut cursors = self.cursors.iter_mut();
         let mut new_cursors = Vec::new();
@@ -760,9 +752,22 @@ where
 
     max_pos.byte = (max_pos.byte as isize + get_byte_distance(lines, range.end, max_pos)) as usize;
 
-    if unsafe { crate::FOR_TEST } { panic!("{:?}", max_pos); }
+    let start = TextPos {
+        line: range.start.line,
+        col: 0,
+        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col)
+    };
 
-    let line_infos = tag_manager.match_text_range(lines.as_slice(), range, max_pos);
+	let len = lines[range.end.line].text().len();
+    let end = TextPos {
+        line: range.end.line,
+        col: lines[range.end.line].char_count(),
+        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col) + len
+    };
+
+    let range = TextRange { start, end };
+
+    let line_infos = tag_manager.match_text_range(lines.as_slice(), range, max_pos, true);
 
     for (line_info, line_num) in line_infos {
         lines[line_num].info = line_info;
