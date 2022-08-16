@@ -750,7 +750,7 @@ impl TagManager {
 
         self.last_match = last_match;
 
-        if end.line < lines.len() - 1 {
+        if range.end.line < lines.len() - 1 {
             // Check for a mismatch
             if info.last().unwrap().0.ending_id != lines[range.end.line + 1].info.starting_id {
                 if self.last_match.pos >= max_pos {

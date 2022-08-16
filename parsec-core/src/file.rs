@@ -5,7 +5,7 @@ use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    action::{History, TextRange, get_byte},
+    action::{get_byte, History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
     cursor::{get_byte_distance, FileCursor, TextPos},
     output::{OutputArea, OutputPos, PrintInfo},
@@ -269,7 +269,12 @@ impl TextLine {
             if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
 
         if unsafe { crate::FOR_TEST } {
-            println!("{}, {}, {}", self.info.starting_id, self.info.ending_id, " ".repeat(area.width()));
+            println!(
+                "{}, {}, {}",
+                self.info.starting_id,
+                self.info.ending_id,
+                " ".repeat(area.width())
+            );
             return 1;
         }
 
@@ -673,6 +678,23 @@ impl<T: OutputArea> File<T> {
         // Checks if the main cursor's position change has caused the line to scroll.
         self.update_print_info();
 
+        let main_cursor = self.cursors.get(self.main_cursor).unwrap();
+        let limit_line = min(main_cursor.target().line + self.area.height(), self.lines.len() - 1);
+        let mut start =
+            TextPos { line: limit_line, col: 0, byte: main_cursor.target().byte };
+        start.byte += get_byte_distance(&self.lines, main_cursor.target(), start) as usize;
+        let target_line = &self.lines[limit_line];
+        let range = TextRange {
+            start,
+            end: TextPos {
+                byte: start.byte + target_line.text.len(),
+                col: target_line.char_count(),
+                ..start
+            },
+        };
+
+        match_range(&mut self.lines, range, &self.area, &self.options, &mut self.tag_manager);
+
         let current = self.cursors.get(self.main_cursor).unwrap().current();
         let char_tags = &mut self.lines.get_mut(current.line).unwrap().info.char_tags;
         char_tags.retain(|(_, t)| !matches!(t, CharTag::PrimaryCursor));
@@ -732,19 +754,15 @@ impl<T: OutputArea> File<T> {
 }
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
-    if ch == '\t' {
-        tabs.get_tab_len(col)
-    } else {
-        UnicodeWidthChar::width(ch).unwrap_or(1)
-    }
+    if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
 }
 
 fn match_range<T>(
     lines: &mut Vec<TextLine>, range: TextRange, area: &T, options: &FileOptions,
     tag_manager: &mut TagManager,
-)
-where
-    T: OutputArea {
+) where
+    T: OutputArea,
+{
     let max_line_num = min(range.end.line + area.height(), lines.len() - 1);
     let max_line = &lines[max_line_num];
     let mut max_pos =
@@ -755,14 +773,14 @@ where
     let start = TextPos {
         line: range.start.line,
         col: 0,
-        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col)
+        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col),
     };
 
-	let len = lines[range.end.line].text().len();
+    let len = lines[range.end.line].text().len();
     let end = TextPos {
         line: range.end.line,
         col: lines[range.end.line].char_count(),
-        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col) + len
+        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col) + len,
     };
 
     let range = TextRange { start, end };
