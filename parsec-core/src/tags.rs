@@ -1,4 +1,4 @@
-use std::{cmp::max, ops::RangeInclusive, str};
+use std::{ops::RangeInclusive, str};
 
 use bitflags::bitflags;
 use crossterm::style::ContentStyle;

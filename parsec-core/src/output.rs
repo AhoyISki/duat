@@ -23,6 +23,59 @@ pub struct PrintInfo {
     pub x_shift: usize,
 }
 
+pub struct AreaId(usize);
+
+pub enum AreaSplit {
+    /// When the first area has a static width/height, and the second area has a dynamic size.
+    StaticFirst { len: usize },
+    /// When the second area has a static width/height, and the first area has a dynamic size.
+    StaticSecond { len: usize },
+    /// When both areas have a dynamic size, dictated by a ratio between 0 and 1.
+    Dynamic { ratio: f32 }
+}
+
+pub enum SplitDirection {
+    Horizontal,
+    Vertical
+}
+
+pub enum NodeType {
+    ParentNode { first: AreaId, second: AreaId, direction: SplitDirection, split: AreaSplit },
+    EndNode
+}
+
+pub struct AreaNode<T>
+where
+    T: Area {
+    area: T,
+    id: AreaId,
+    node_type: NodeType,
+    /// If true, all mouse input in any of its children will be redirected to itself.
+    master: bool
+}
+
+pub struct AreaNodeArena<T>
+where
+    T: Area {
+    areas: Vec<AreaNode<T>>,
+    last_id: usize
+}
+
+impl<T> AreaNodeArena<T>
+where
+    T: Area {
+    
+    
+}
+
+pub trait Area {
+    fn width(&self) -> usize;
+
+    fn height(&self) -> usize;
+
+    fn split(&mut self, split: SplitDirection, area_split: AreaSplit);
+}
+
 /// An area in the output (terminal or GUI).
 ///
 /// Examples include: The file buffer, status line, line numbers, etc.
