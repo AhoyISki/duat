@@ -23,57 +23,185 @@ pub struct PrintInfo {
     pub x_shift: usize,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct AreaId(usize);
 
-pub enum AreaSplit {
-    /// When the first area has a static width/height, and the second area has a dynamic size.
-    StaticFirst { len: usize },
-    /// When the second area has a static width/height, and the first area has a dynamic size.
-    StaticSecond { len: usize },
-    /// When both areas have a dynamic size, dictated by a ratio between 0 and 1.
-    Dynamic { ratio: f32 }
+#[derive(Clone, Copy)]
+pub enum Split {
+    Dynamic(f32),
+    Static,
 }
 
-pub enum SplitDirection {
+#[derive(Clone, Copy)]
+pub enum Axis {
     Horizontal,
-    Vertical
+    Vertical,
 }
 
+#[derive(Clone, Copy)]
 pub enum NodeType {
-    ParentNode { first: AreaId, second: AreaId, direction: SplitDirection, split: AreaSplit },
-    EndNode
+    ParentNode { first: AreaId, second: AreaId, axis: Axis, split: Split },
+    EndNode,
 }
 
-pub struct AreaNode<T>
+#[derive(Clone)]
+pub struct AreaNode<A>
 where
-    T: Area {
-    area: T,
+    A: Area,
+{
+    area: A,
+    parent: Option<AreaId>,
+    len: Option<usize>,
     id: AreaId,
     node_type: NodeType,
+    class: String,
     /// If true, all mouse input in any of its children will be redirected to itself.
-    master: bool
+    master: bool,
 }
 
-pub struct AreaNodeArena<T>
+#[derive(Clone, Copy)]
+pub enum Length {
+    Static(usize),
+    Ratio(f32),
+}
+
+pub trait AreaManager {
+    type Area: Area;
+
+	/// Updates a specific area and its decendants.
+    fn update_area(&self, areas: &mut Vec<AreaNode<Self::Area>>, id: AreaId);
+
+	/// Updates all areas.
+    fn update(&self, areas: &mut Vec<AreaNode<Self::Area>>);
+}
+
+pub enum Direction {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+pub struct AreaNodeTree<M>
 where
-    T: Area {
-    areas: Vec<AreaNode<T>>,
-    last_id: usize
+    M: AreaManager,
+{
+    handler: M,
+    areas: Vec<AreaNode<M::Area>>,
+    last_id: usize,
 }
 
-impl<T> AreaNodeArena<T>
+impl<M> AreaNodeTree<M>
 where
-    T: Area {
-    
-    
+    M: AreaManager,
+{
+    pub fn new(handler: M, area: M::Area, class: String) -> (AreaNodeTree<M>, AreaId) {
+        let area_node_tree = AreaNodeTree {
+            handler,
+            areas: vec![AreaNode {
+                area,
+                parent: None,
+                len: None,
+                id: AreaId(0),
+                node_type: NodeType::EndNode,
+                class,
+                master: true,
+            }],
+            last_id: 0,
+        };
+
+        (area_node_tree, AreaId(0))
+    }
+
+    /// Creates a new parent area, containing the old area and another newly created area.
+    pub fn push(
+        &mut self, id: AreaId, direction: Direction, len: Length, child_class: String,
+        parent_class: Option<String>,
+    ) -> (AreaId, AreaId) {
+        let old_node = self.areas.iter_mut().find(|n| n.id == id).expect("AreaId does not exist!");
+        old_node.parent = Some(AreaId(self.last_id + 2));
+        let (old_id, old_parent) = (old_node.id, old_node.parent);
+
+        assert!(old_node.len.is_none(), "The original area must be dinamically sized!");
+
+        self.last_id += 1;
+        self.areas.push(AreaNode {
+            len: if let Length::Static(len) = len { Some(len) } else { None },
+            id: AreaId(self.last_id),
+            node_type: NodeType::EndNode,
+            master: true,
+            class: child_class,
+            area: M::Area::new(),
+            parent: Some(AreaId(self.last_id + 1)),
+        });
+
+        self.areas.push(AreaNode {
+            len: None,
+            id: AreaId(self.last_id + 1),
+            node_type: {
+                let (first, second, axis) = match direction {
+                    Direction::Top => (AreaId(self.last_id), old_id, Axis::Vertical),
+                    Direction::Right => (old_id, AreaId(self.last_id), Axis::Horizontal),
+                    Direction::Bottom => (old_id, AreaId(self.last_id), Axis::Vertical),
+                    Direction::Left => (AreaId(self.last_id), old_id, Axis::Horizontal),
+                };
+
+                let split = match len {
+                    Length::Static(_) => Split::Static,
+                    Length::Ratio(ratio) => Split::Dynamic(ratio),
+                };
+
+                NodeType::ParentNode { first, second, axis, split }
+            },
+            master: false,
+            class: parent_class.unwrap_or(String::from("parsec-parent")),
+            area: M::Area::new(),
+            parent: old_parent,
+        });
+        self.last_id += 1;
+
+        self.handler.update(&mut self.areas);
+
+        (AreaId(self.last_id), AreaId(self.last_id - 1))
+    }
+
+    pub fn resize(&mut self, id: AreaId, new_len: usize) {
+        let node = self.areas.iter_mut().find(|n| n.id == id).expect("AreaId does not exist!");
+
+        match node.len {
+            Some(ref mut len) => *len = new_len,
+            None => panic!("You can only resize areas of static size!")
+        };
+
+        match node.parent {
+            Some(id) => self.handler.update_area(&mut self.areas, id),
+            None => self.handler.update(&mut self.areas)
+        }
+    }
+
+    pub fn set_ratio(&mut self, id: AreaId, new_ratio: f32) {
+        let node = self.areas.iter_mut().find(|n| n.id == id).expect("AreaId does not exist!");
+
+        match node.node_type {
+            NodeType::ParentNode { first: _, second: _, axis: _, mut split } => {
+                match split {
+                    Split::Dynamic(ref mut ratio) => *ratio = new_ratio,
+                    Split::Static => panic!("You can't set a ratio to a static split!")
+                }
+            }
+            NodeType::EndNode =>  panic!("You can't set a ratio to an end node!")
+        }
+
+        self.handler.update_area(&mut self.areas, id);
+    }
 }
 
-pub trait Area {
+pub trait Area: Copy + Clone {
+    fn new() -> Self;
+
     fn width(&self) -> usize;
 
     fn height(&self) -> usize;
-
-    fn split(&mut self, split: SplitDirection, area_split: AreaSplit);
 }
 
 /// An area in the output (terminal or GUI).
@@ -110,10 +238,10 @@ pub trait OutputArea {
     /// Clears both normal and multi-line forms from the stack.
     fn clear_all_forms(&mut self);
 
-	/// Tells the area that we're about to start printing.
+    /// Tells the area that we're about to start printing.
     fn start_print(&mut self);
 
-	/// Prints text at the current printing cursor's position.
+    /// Prints text at the current printing cursor's position.
     fn print<T: Display>(&mut self, text: T);
 
     /// Tells the area that we're done printing
