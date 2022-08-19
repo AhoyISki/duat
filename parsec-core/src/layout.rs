@@ -1,7 +1,8 @@
 use std::{cmp, fmt::Display, ops};
 
+use crate::file::TextLine;
 use crate::tags::{CharTag, Form};
-use crate::ui;
+use crate::ui::{self, Area};
 
 /// A relative position where text is printed.
 ///
@@ -123,4 +124,10 @@ impl cmp::PartialOrd for OutputPos {
             Some(cmp::Ordering::Equal)
         }
     }
+}
+
+pub trait Printable {
+    fn get_lines<A>(&mut self, area: &A) -> &[TextLine]
+    where
+        A: Area;
 }

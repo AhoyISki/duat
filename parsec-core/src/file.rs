@@ -10,6 +10,7 @@ use crate::{
     cursor::{get_byte_distance, FileCursor, TextPos},
     layout::{OutputArea, OutputPos, PrintInfo},
     tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
+    ui::{Area, AreaNode, ChildNode},
 };
 
 // TODO: move this to a more general file.
@@ -184,16 +185,16 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    fn print<T>(
-        &self, area: &mut T, x_shift: usize, y: u16, skip: usize, options: &FileOptions,
+    fn print<A>(
+        &self, node: &mut ChildNode<A>, x_shift: usize, y: u16, skip: usize, options: &FileOptions,
         forms: &[Form],
     ) -> u16
     where
-        T: OutputArea,
+        A: Area,
     {
         // Moves the printing cursor to the beginning of the line.
         let mut printing_pos = OutputPos { x: 0, y };
-        area.move_cursor(printing_pos);
+        node.area.move_to(printing_pos);
 
         let mut printed_lines = 1;
 
@@ -209,7 +210,7 @@ impl TextLine {
         };
         let mut d_x = d_x as usize;
 
-        (0..d_x).for_each(|_| area.print(' '));
+        (0..d_x).for_each(|_| node.area.print(' '));
 
         let char_width = |c, x| {
             if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
@@ -230,7 +231,7 @@ impl TextLine {
         // the top line wraps and has indentation.
         if let Some(col) = wraps.next() {
             if skip >= col as usize && options.wrap_indent {
-                area.print(" ".repeat(self.indent(&options.tabs)));
+                node.area.print(" ".repeat(self.indent(&options.tabs)));
             } else {
             }
         }
@@ -252,10 +253,10 @@ impl TextLine {
         let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
 
         for (_, tag) in tags_iter {
-            if let &CharTag::PushForm(index) = tag {
-                area.push_form(&forms[index as usize], index);
-            } else if let &CharTag::PopForm(index) = tag {
-                area.pop_form(index);
+            if let &CharTag::PushForm(id) = tag {
+                node.push_form(forms, id);
+            } else if let &CharTag::PopForm(id) = tag {
+                node.pop_form(id);
             }
         }
 
@@ -266,17 +267,7 @@ impl TextLine {
         let wrap_indent = self.indent(&options.tabs);
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
         let wrap_indent =
-            if options.wrap_indent && wrap_indent < area.width() { wrap_indent } else { 0 };
-
-        if unsafe { crate::FOR_TEST } {
-            println!(
-                "{}, {}, {}",
-                self.info.starting_id,
-                self.info.ending_id,
-                " ".repeat(area.width())
-            );
-            return 1;
-        }
+            if options.wrap_indent && wrap_indent < node.area.width() { wrap_indent } else { 0 };
 
         'a: for (byte, ch) in text_iter {
             let char_width = char_width(ch, d_x + x_shift);
@@ -294,29 +285,27 @@ impl TextLine {
                         printed_lines += 1;
                         printing_pos.y += 1;
 
-                        if printing_pos.y as usize > area.height() {
+                        if printing_pos.y as usize > node.area.height() {
                             break 'a;
                         }
 
                         // If the character is wide, fill the rest of the terminal line with
                         // spaces.
-                        (d_x..(area.width() - wrap_indent)).for_each(|_| area.print(' '));
+                        (d_x..(node.area.width() - wrap_indent)).for_each(|_| node.area.print(' '));
 
                         d_x = 0;
 
-                        area.move_cursor(printing_pos);
+                        node.area.move_to(printing_pos);
 
-                        (0..wrap_indent).for_each(|_| area.print(' '));
+                        (0..wrap_indent).for_each(|_| node.area.print(' '));
                     } else if let CharTag::PrimaryCursor = tag {
-                        area.place_cursor(tag);
+                        node.area.place_primary_cursor();
                     } else if let CharTag::SecondaryCursor = tag {
-                        if area.can_place_secondary_cursor() {
-                            area.place_cursor(tag);
-                        }
-                    } else if let CharTag::PushForm(index) = tag {
-                        area.push_form(&forms[index as usize], index);
-                    } else if let CharTag::PopForm(index) = tag {
-                        area.pop_form(index);
+                        node.area.place_secondary_cursor();
+                    } else if let CharTag::PushForm(id) = tag {
+                        node.push_form(forms, id);
+                    } else if let CharTag::PopForm(id) = tag {
+                        node.pop_form(id);
                     }
                 } else {
                     break;
@@ -325,33 +314,33 @@ impl TextLine {
 
             d_x += char_width;
             if let WrapMethod::NoWrap = options.wrap_method {
-                if d_x > area.width() {
+                if d_x > node.area.width() {
                     break;
                 }
             }
 
             if ch == '\t' {
                 // `repeat()` would use string allocation (I think).
-                (0..char_width).for_each(|_| area.print(' '));
+                (0..char_width).for_each(|_| node.area.print(' '));
             } else if ch == '\n' {
-                area.print(' ');
+                node.area.print(' ');
             } else {
-                area.print(ch);
+                node.area.print(ch);
             }
         }
 
-        area.clear_forms();
+        node.area.clear_form();
 
         // Erasing anything that is leftover
-        let width = area.width();
-        if printing_pos.y as usize <= area.height() {
+        let width = node.area.width();
+        if printing_pos.y as usize <= node.area.height() {
             // Most forms (with the exceptions of strings and comments) are not allowed to carry
             // over lines.
             // NOTE: Eventually will be improved when issue #53667 on rust-lang gets closed.
             if let WrapMethod::Width = options.wrap_method {
-                area.print(" ".repeat(width));
+                node.area.print(" ".repeat(width));
             } else if d_x < width {
-                area.print(" ".repeat(width));
+                node.area.print(" ".repeat(width));
             }
         }
 
@@ -367,7 +356,10 @@ impl TextLine {
 }
 
 /// File text and cursors.
-pub struct File<T> {
+pub struct File<A>
+where
+    A: Area,
+{
     /// The lines of the file.
     pub lines: Vec<TextLine>,
 
@@ -375,7 +367,7 @@ pub struct File<T> {
     print_info: PrintInfo,
 
     /// The area allocated to the file.
-    pub area: T,
+    pub area: A,
 
     /// The options related to files.
     pub options: FileOptions,
@@ -392,9 +384,12 @@ pub struct File<T> {
     tag_manager: TagManager,
 }
 
-impl<T: OutputArea> File<T> {
+impl<A> File<A>
+where
+    A: Area,
+{
     /// Returns a new instance of `File<T>`, given a `Vec<FileLine>`.
-    pub fn new(lines: Vec<&str>, options: FileOptions, area: T) -> File<T> {
+    pub fn new(lines: Vec<&str>, options: FileOptions, area: A) -> File<A> {
         let lines = lines.iter().map(|l| TextLine::new(l)).collect();
 
         let mut tag_manager = TagManager::new();
@@ -680,8 +675,7 @@ impl<T: OutputArea> File<T> {
 
         let main_cursor = self.cursors.get(self.main_cursor).unwrap();
         let limit_line = min(main_cursor.target().line + self.area.height(), self.lines.len() - 1);
-        let mut start =
-            TextPos { line: limit_line, col: 0, byte: main_cursor.target().byte };
+        let mut start = TextPos { line: limit_line, col: 0, byte: main_cursor.target().byte };
         start.byte += get_byte_distance(&self.lines, main_cursor.target(), start) as usize;
         let target_line = &self.lines[limit_line];
         let range = TextRange {
@@ -737,12 +731,12 @@ impl<T: OutputArea> File<T> {
 
         // Clears the lines where nothing has been printed.
         for _ in (y as usize)..=self.area.height() {
-            self.area.move_cursor(OutputPos { x: 0, y });
+            self.area.move_to(OutputPos { x: 0, y });
             (0..self.area.width()).for_each(|_| self.area.print(' '));
             y += 1;
         }
 
-        self.area.clear_forms();
+        self.area.clear_form();
     }
 
     ////////////////////////////////
@@ -757,11 +751,11 @@ pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
     if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
 }
 
-fn match_range<T>(
-    lines: &mut Vec<TextLine>, range: TextRange, area: &T, options: &FileOptions,
+fn match_range<A>(
+    lines: &mut Vec<TextLine>, range: TextRange, area: &A, options: &FileOptions,
     tag_manager: &mut TagManager,
 ) where
-    T: OutputArea,
+    A: Area,
 {
     let max_line_num = min(range.end.line + area.height(), lines.len() - 1);
     let max_line = &lines[max_line_num];

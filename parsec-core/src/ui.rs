@@ -27,24 +27,57 @@ pub enum NodeId {
 }
 
 pub trait Area {
+    /// Returns a new instance of `Area`
     fn new() -> Self;
 
+	//////////////////// Forms
+	/// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
 
-    fn place_main_cursor(&mut self);
+	// TODO: Give it a default form.
+	/// Clears the current form.
+    fn clear_form(&mut self);
 
+	// TODO: Give it a default form.
+	/// Places the primary cursor on the current printing position.
+    fn place_primary_cursor(&mut self);
+
+	// TODO: Give it a default form.
+	/// Places the secondary cursor on the current printing position.
     fn place_secondary_cursor(&mut self);
 
-    fn get_len(&mut self, ch: char) -> usize;
+	//////////////////// Printing
+	// NOTE: I don't foresee a use for this, where the column isn't 0 (next line). But I'll keep
+	// the full functionality just in case.
+	/// Moves the cursor to a given _character_ position.
+	///
+	/// In a variable width setting, this should move to a character on a given line.
+    fn move_to(&mut self, pos: OutputPos);
 
+	/// Tell the area that printing has begun.
+	// NOTE: You may not need to implement this.
+    fn start_printing(&mut self) {}
+
+	/// Tell the area that printing has ended.
+	// NOTE: You may not need to implement this.
+    fn stop_printing(&mut self) {}
+
+	/// Prints a character at the current position and moves the printing position forward.
     fn print<D>(&mut self, display: D)
     where
         D: Display;
 
-    fn move_to(&mut self, pos: OutputPos);
+	//////////////////// Getters
+	/// Gets the length of a character.
+	///
+	/// In a terminal, this would be in "cells", but in a variable width GUI, it could be in
+	/// pixels, or em. It really depends on the implementation.
+    fn get_char_len(&self, ch: char) -> usize;
 
+	/// Gets the width of the area.
     fn width(&self) -> usize;
 
+	/// Gets the height of the area.
     fn height(&self) -> usize;
 }
 
@@ -68,7 +101,7 @@ pub struct ChildNode<A>
 where
     A: Area,
 {
-    area: A,
+    pub(crate) area: A,
     parent: Option<ParentId>,
     len: Option<usize>,
     class: String,
@@ -116,7 +149,7 @@ impl<A> ChildNode<A>
 where
     A: Area,
 {
-    fn get_final_form(&self) -> Form {
+    pub fn get_final_form(&self) -> Form {
         let style = ContentStyle {
             foreground_color: Some(Color::Reset),
             background_color: Some(Color::Reset),
@@ -168,7 +201,7 @@ where
         form
     }
 
-    fn push_form(&mut self, forms: &Vec<Form>, id: u16) {
+    pub fn push_form(&mut self, forms: &[Form], id: u16) {
         self.form_stack.push((forms[id as usize], id));
 
         let form = self.get_final_form();
@@ -176,7 +209,7 @@ where
         self.area.set_form(form);
     }
 
-    fn pop_form(&mut self, index: u16) {
+    pub fn pop_form(&mut self, index: u16) {
         if let Some(element) = self.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == index) {
             self.form_stack.remove(element.0);
 

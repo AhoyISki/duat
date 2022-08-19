@@ -1,5 +1,7 @@
 use crossterm::event::KeyEvent;
 
+use crate::ui::Area;
+
 /// An action that executes a command on an instance of type T.
 ///
 /// * If there is a key, it's already mapped when starting the app.
@@ -218,7 +220,9 @@ macro_rules! map_actions {
 #[macro_export]
 macro_rules! impl_input_handler {
     ($handler_type:ty, $mode_list:ident) => {
-        impl<T: OutputArea> InputHandler for $handler_type {
+        impl<A> InputHandler for $handler_type
+        where
+            A: Area {
             fn handle_key(&mut self, key: KeyEvent) {
                 let mode = self.$mode_list.modes.get(self.$mode_list.current_mode).unwrap();
 

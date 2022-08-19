@@ -9,28 +9,32 @@ use crate::{
     impl_input_handler,
     input::{InputHandler, ModeList},
     map_actions,
-    layout::{OutputArea, OutputPos},
+    layout::{OutputArea, OutputPos}, ui::Area,
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
 // app is used in a terminal or in a GUI.
-pub struct Buffer<T: OutputArea> {
+pub struct Buffer<A>
+where
+    A: Area {
     /// The contents of the file
-    pub file: File<T>,
+    pub file: File<A>,
 
     // Where exactly on the screen the origin and end of the area are placed is not important here.
     /// The area allocated to the status line.
-    pub status_line_area: T,
+    pub status_line_area: A,
     /// The area allocated to the line numbers.
-    pub line_num_area: T,
+    pub line_num_area: A,
 
     /// List of mapped modes for file editing.
-    mappings: ModeList<Buffer<T>>,
+    mappings: ModeList<Buffer<A>>,
 }
 
-impl<T: OutputArea> Buffer<T> {
+impl<A> Buffer<A>
+where
+    A: Area {
     /// Returns a new instance of ContentArea
-    pub fn new(mut area: T, path: PathBuf, options: FileOptions) -> Buffer<T> {
+    pub fn new(mut area: A, path: PathBuf, options: FileOptions) -> Buffer<A> {
         // TODO: In the future, this will not panic!
         let file = fs::read_to_string(path).expect("file not found");
 
@@ -66,7 +70,7 @@ impl<T: OutputArea> Buffer<T> {
             "insert" => [
                 // Move all cursors up.
                 key: (KeyCode::Up, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
                             c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
@@ -76,7 +80,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Move all cursors down.
                 key: (KeyCode::Down, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
                             c.move_ver(1, &h.file.lines, &h.file.options.tabs);
@@ -86,7 +90,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Move all cursors left.
                 key: (KeyCode::Left, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
                             c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
@@ -96,7 +100,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Move all cursors right.
                 key: (KeyCode::Right, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
@@ -106,7 +110,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Place anchor and move all cursors up.
                 key: (KeyCode::Up, KeyModifiers::SHIFT) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
@@ -116,7 +120,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Place anchor and move all cursors down.
                 key: (KeyCode::Down, KeyModifiers::SHIFT) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_ver(1, &h.file.lines, &h.file.options.tabs);
@@ -126,7 +130,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Place anchor and move all cursors left.
                 key: (KeyCode::Left, KeyModifiers::SHIFT) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
@@ -136,7 +140,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Place anchor and move all cursors right.
                 key: (KeyCode::Right, KeyModifiers::SHIFT) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
                             c.move_hor(1, &h.file.lines, &h.file.options.tabs);
@@ -146,7 +150,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Deletes either the character in front, or the selection.
                 key: (KeyCode::Delete, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         let cursor = &mut h.file.cursors[h.file.main_cursor];
 
                         if cursor.anchor().is_none() {
@@ -164,7 +168,7 @@ impl<T: OutputArea> Buffer<T> {
                 },
                 // Deletes either the character behind, or the selection.
                 key: (KeyCode::Backspace, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         let cursor = &mut h.file.cursors[h.file.main_cursor];
 
                         if cursor.anchor().is_none() {
@@ -181,7 +185,7 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Tab, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         let cursor = &mut h.file.cursors[h.file.main_cursor];
 
                         let edit = if h.file.options.tabs_as_spaces {
@@ -199,25 +203,25 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.undo();
                         h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.redo();
                         h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         unsafe { crate::FOR_TEST = !crate::FOR_TEST }
                         h.refresh_screen();
                     }
                 },
                 key: (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         let result =
                             get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Text);
 
@@ -233,7 +237,7 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Enter, KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         let cursor = &h.file.cursors[h.file.main_cursor];
 
                         let edit = vec![""; 2];
@@ -243,7 +247,7 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 key: (KeyCode::Char(' '), KeyModifiers::NONE) => {
-                    |h: &mut Buffer<T>| {
+                    |h: &mut Buffer<A>| {
                         h.file.history.new_moment(h.file.print_info());
 
                         let cursor = &h.file.cursors[h.file.main_cursor];
@@ -255,7 +259,7 @@ impl<T: OutputArea> Buffer<T> {
                     }
                 },
                 _ => {
-                    |h: &mut Buffer<T>, c: char| {
+                    |h: &mut Buffer<A>, c: char| {
                         let cursor = &h.file.cursors[h.file.main_cursor];
 
                         let edit = vec![c];
@@ -276,7 +280,7 @@ impl<T: OutputArea> Buffer<T> {
     /// Prints the contents of the file from line on the file.
     #[inline]
     fn refresh_screen(&mut self) {
-        self.file.area.start_print();
+        self.file.area.start_printing();
         self.file.print_file();
 
         // Printing the line numbers
@@ -284,7 +288,7 @@ impl<T: OutputArea> Buffer<T> {
         let mut pos = OutputPos { x: 0, y: 0 };
         let top_line = self.file.print_info().top_line;
 
-        self.line_num_area.move_cursor(pos);
+        self.line_num_area.move_to(pos);
 
         'a: for (index, line) in self.file.lines.iter().skip(top_line).enumerate() {
             let wraps = if index == 0 {
@@ -321,18 +325,18 @@ impl<T: OutputArea> Buffer<T> {
                 };
                 self.line_num_area.print(text);
                 pos.y += 1;
-                self.line_num_area.move_cursor(pos);
+                self.line_num_area.move_to(pos);
             }
         }
 
         for _ in (pos.y as usize)..(self.line_num_area.height() + 1) {
             self.line_num_area.print("     ");
             pos.y += 1;
-            self.line_num_area.move_cursor(pos);
+            self.line_num_area.move_to(pos);
         }
 
-        self.file.area.finish_print();
+        self.file.area.start_printing();
     }
 }
 
-impl_input_handler!(Buffer<T>, mappings);
+impl_input_handler!(Buffer<A>, mappings);
