@@ -5,7 +5,7 @@ use std::{
 };
 
 use crossterm::{
-    cursor::{MoveTo, RestorePosition, SavePosition, Hide, Show},
+    cursor::{Hide, MoveTo, RestorePosition, SavePosition, Show},
     event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
     style::{Attribute, Attributes, Color, ContentStyle, Print, ResetColor, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
@@ -14,7 +14,7 @@ use parsec_core::{
     buffer::Buffer,
     config::Options,
     input::InputHandler,
-    output::{OutputArea, OutputPos},
+    layout::{OutputArea, OutputPos},
     tags::{CharTag, Form},
 };
 
@@ -55,33 +55,25 @@ impl TermArea {
         for &(Form { style, is_final, .. }, _, _) in &self.form_stack {
             if let Some(color) = style.foreground_color {
                 if !fg_done {
-                    final_style.foreground_color = Some(color)
-                }
-                if is_final {
-                    fg_done = true
+                    final_style.foreground_color = Some(color);
+                    if is_final { fg_done = true }
                 }
             }
             if let Some(color) = style.background_color {
                 if !bg_done {
-                    final_style.background_color = Some(color)
-                }
-                if is_final {
-                    bg_done = true
+                    final_style.background_color = Some(color);
+                    if is_final { bg_done = true }
                 }
             }
             if let Some(color) = style.foreground_color {
                 if !ul_done {
-                    final_style.underline_color = Some(color)
-                }
-                if is_final {
-                    ul_done = true
+                    final_style.underline_color = Some(color);
+                    if is_final { ul_done = true }
                 }
             }
-            if !attr_done {
-                final_style.attributes = style.attributes
-            }
-            if is_final {
-                attr_done = true
+            if !attr_done && !final_style.attributes.is_empty() {
+                final_style.attributes = style.attributes;
+                if is_final { attr_done = true }
             }
 
             if fg_done && bg_done && ul_done && attr_done {
@@ -98,14 +90,16 @@ impl OutputArea for TermArea {
         false
     }
 
-    fn place_cursor(&mut self, tag: CharTag) {
+    fn place_cursor(&mut self, tag: CharTagType) {
         match tag {
-            CharTag::PrimaryCursor => {
+            CharTagType::PrimaryCursor => {
                 // I have no idea why I have to do this, but if I don't, forms act weird.
                 self.stdout.queue(ResetColor).unwrap().queue(SavePosition).unwrap();
                 self.print_form_stack();
             }
-            CharTag::SecondaryCursor => panic!("Secondary cursors not allowed on the terminal!"),
+            CharTagType::SecondaryCursor => {
+                panic!("Secondary cursors not allowed on the terminal!")
+            }
             _ => panic!("Other character tags are not supposed to be handled directly!"),
         };
     }

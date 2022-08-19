@@ -9,7 +9,7 @@ use crate::{
     impl_input_handler,
     input::{InputHandler, ModeList},
     map_actions,
-    output::OutputArea,
+    layout::{OutputArea, OutputPos},
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
@@ -281,7 +281,7 @@ impl<T: OutputArea> Buffer<T> {
 
         // Printing the line numbers
         // NOTE: Might move to a separate function, but idk.
-        let mut pos = crate::output::OutputPos { x: 0, y: 0 };
+        let mut pos = OutputPos { x: 0, y: 0 };
         let top_line = self.file.print_info().top_line;
 
         self.line_num_area.move_cursor(pos);

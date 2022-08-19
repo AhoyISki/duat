@@ -41,7 +41,7 @@ use std::ops::RangeInclusive;
 use crate::{
     cursor::TextPos,
     file::TextLine,
-    output::PrintInfo,
+    layout::PrintInfo,
 };
 
 /// A range of `chars` in the file, that is, not bytes.

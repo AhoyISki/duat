@@ -8,7 +8,7 @@ use crate::{
     action::{get_byte, History, TextRange},
     config::{FileOptions, TabPlaces, WrapMethod},
     cursor::{get_byte_distance, FileCursor, TextPos},
-    output::{OutputArea, OutputPos, PrintInfo},
+    layout::{OutputArea, OutputPos, PrintInfo},
     tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
 };
 
@@ -340,7 +340,7 @@ impl TextLine {
             }
         }
 
-        area.clear_normal_forms();
+        area.clear_forms();
 
         // Erasing anything that is leftover
         let width = area.width();
@@ -742,7 +742,7 @@ impl<T: OutputArea> File<T> {
             y += 1;
         }
 
-        self.area.clear_all_forms();
+        self.area.clear_forms();
     }
 
     ////////////////////////////////

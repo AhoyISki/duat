@@ -131,6 +131,9 @@ pub struct Form {
     pub is_final: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FormId(u16);
+
 impl Form {
     /// Creates a new instance of `Form`.
     pub fn new(style: ContentStyle, is_final: bool) -> Form {
@@ -343,7 +346,7 @@ impl Pattern {
 #[derive(Debug, Default)]
 pub struct FormPattern {
     /// The index of the form assossiated with this pattern.
-    form: Option<u16>,
+    form: Option<FormId>,
     /// What defines what the range will be.
     pattern: Pattern,
     /// Patterns that can match inside of the original match range.
