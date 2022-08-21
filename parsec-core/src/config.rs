@@ -1,9 +1,10 @@
 /// If and how to wrap lines at the end of the screen.
-#[derive(Copy, Clone, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 pub enum WrapMethod {
     Width,
     Capped(u16),
     Word,
+    #[default]
     NoWrap,
 }
 
@@ -24,10 +25,16 @@ pub enum LineNumbers {
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum TabPlaces {
     Regular(usize),
     Varied(Vec<usize>),
+}
+
+impl Default for TabPlaces {
+	fn default() -> Self {
+    	TabPlaces::Regular(4)
+	}
 }
 
 impl TabPlaces {
@@ -40,6 +47,13 @@ impl TabPlaces {
             }
         }
     }
+}
+
+#[derive(Default)]
+pub struct PrintOptions {
+    pub wrap_method: WrapMethod,
+    pub wrap_indent: bool,
+    pub tab_places: TabPlaces,
 }
 
 // TODO: Move options to a centralized option place.

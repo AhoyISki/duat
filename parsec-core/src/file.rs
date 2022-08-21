@@ -6,11 +6,11 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::{
     action::{get_byte, History, TextRange},
-    config::{FileOptions, TabPlaces, WrapMethod},
+    config::{FileOptions, PrintOptions, TabPlaces, WrapMethod},
     cursor::{get_byte_distance, FileCursor, TextPos},
-    layout::{OutputArea, OutputPos, PrintInfo},
+    layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
-    ui::{Area, AreaNode, ChildNode},
+    ui::{Area, ChildNode},
 };
 
 // TODO: move this to a more general file.
@@ -161,7 +161,7 @@ impl TextLine {
         };
     }
 
-    /// Returns an iterator over the wrapping columns of the line.
+    /// Returns an iterator over the wrapping bytes of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
         self.info
             .char_tags
@@ -185,26 +185,18 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    fn print<A>(
-        &self, node: &mut ChildNode<A>, x_shift: usize, y: u16, skip: usize, options: &FileOptions,
+    pub(crate) fn print<A>(
+        &self, node: &mut ChildNode<A>, x_shift: usize, skip: usize, options: &PrintOptions,
         forms: &[Form],
-    ) -> u16
+    ) -> bool
     where
         A: Area,
     {
-        // Moves the printing cursor to the beginning of the line.
-        let mut printing_pos = OutputPos { x: 0, y };
-        node.area.move_to(printing_pos);
-
-        let mut printed_lines = 1;
-
         let (skip, d_x) = if let WrapMethod::NoWrap = options.wrap_method {
-            // Knowing this code, this would seem to overwrite `top_wraps`. But since this value is
-            // always 0 when wrapping is disabled, it doesn't matter.
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance(x_shift, &options.tabs)
+            self.get_col_at_distance(x_shift, &options.tab_places)
         } else {
             (skip, 0)
         };
@@ -216,7 +208,7 @@ impl TextLine {
             if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
                 1
             } else {
-                get_char_width(c, x, &options.tabs)
+                get_char_width(c, x, &options.tab_places)
             }
         };
 
@@ -231,8 +223,7 @@ impl TextLine {
         // the top line wraps and has indentation.
         if let Some(col) = wraps.next() {
             if skip >= col as usize && options.wrap_indent {
-                node.area.print(" ".repeat(self.indent(&options.tabs)));
-            } else {
+                (0..self.indent(&options.tab_places)).for_each(|c| node.area.print(' '));
             }
         }
 
@@ -264,7 +255,7 @@ impl TextLine {
         let mut tags_iter = tags.vec().iter().skip_while(|(c, _)| (*c as usize) < skip);
         let mut current_char_tag = tags_iter.next();
 
-        let wrap_indent = self.indent(&options.tabs);
+        let wrap_indent = self.indent(&options.tab_places);
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
         let wrap_indent =
             if options.wrap_indent && wrap_indent < node.area.width() { wrap_indent } else { 0 };
@@ -282,20 +273,12 @@ impl TextLine {
                             continue;
                         }
 
-                        printed_lines += 1;
-                        printing_pos.y += 1;
-
-                        if printing_pos.y as usize > node.area.height() {
-                            break 'a;
+                        if !node.area.next_line() {
+                            node.area.clear_form();
+                            return false;
                         }
 
-                        // If the character is wide, fill the rest of the terminal line with
-                        // spaces.
-                        (d_x..(node.area.width() - wrap_indent)).for_each(|_| node.area.print(' '));
-
                         d_x = 0;
-
-                        node.area.move_to(printing_pos);
 
                         (0..wrap_indent).for_each(|_| node.area.print(' '));
                     } else if let CharTag::PrimaryCursor = tag {
@@ -330,21 +313,7 @@ impl TextLine {
         }
 
         node.area.clear_form();
-
-        // Erasing anything that is leftover
-        let width = node.area.width();
-        if printing_pos.y as usize <= node.area.height() {
-            // Most forms (with the exceptions of strings and comments) are not allowed to carry
-            // over lines.
-            // NOTE: Eventually will be improved when issue #53667 on rust-lang gets closed.
-            if let WrapMethod::Width = options.wrap_method {
-                node.area.print(" ".repeat(width));
-            } else if d_x < width {
-                node.area.print(" ".repeat(width));
-            }
-        }
-
-        printed_lines
+        if !node.area.next_line() { false } else { true }
     }
 
     ////////////////////////////////
@@ -462,7 +431,7 @@ where
         let info = &mut self.print_info;
         let scrolloff = self.options.scrolloff;
 
-        let main_cursor = self.cursors.get(self.main_cursor).expect("cursor not found");
+        let main_cursor = self.cursors.get(self.main_cursor).unwrap();
         let current = main_cursor.current();
         let target = main_cursor.target();
 
@@ -479,11 +448,11 @@ where
         } else {
             let line = &self.lines[current.line];
             let current_byte = line.get_line_byte_at(current.col);
-            let current_wraps = line.wrap_iter().filter(|&c| c <= current_byte as u32).count();
+            let current_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
 
             let line = &self.lines[target.line];
             let target_byte = line.get_line_byte_at(target.col);
-            let target_wraps = line.wrap_iter().filter(|&c| c <= target_byte as u32).count();
+            let target_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
 
             let lines_iter = self.lines[..=target.line].iter_mut();
 
@@ -495,10 +464,8 @@ where
             {
                 let mut top_offset = 0;
                 for (index, line) in lines_iter.enumerate().rev() {
-                    // Add the vertical distance, as 1 line plus the times it wraps around.
-                    // `target.line` was already added as `target_wraps`.
                     if index != target.line {
-                        d_y += line.wrap_iter().count() + 1;
+                        d_y += 1 + line.wrap_iter().count();
                     }
 
                     if index == info.top_line {
@@ -529,12 +496,12 @@ where
             } else {
                 // Set this flag immediately in this case, because the first line that checks out
                 // will definitely be `info.top_line`.
-                let mut needs_new_print_info = target.line < info.top_line;
+                let mut needs_new_top_line = target.line < info.top_line;
                 for (index, line) in lines_iter.enumerate().rev() {
                     // Add the vertical distance, as 1 line plus the times it wraps around.
                     // `target.line` was already added as `target_wraps`.
                     if index != target.line {
-                        d_y += line.wrap_iter().count() + 1;
+                        d_y += 1 + line.wrap_iter().count();
                     };
 
                     if index == info.top_line {
@@ -543,18 +510,18 @@ where
                         // screen, and we'd be "comparing" only against the shown wraps, which is
                         // incorrect
                         if d_y < scrolloff.d_y + info.top_wraps {
-                            needs_new_print_info = true;
+                            needs_new_top_line = true;
                         // If this happens, we ran into `info.top_line` while below `scrolloff.y`,
                         // this means we're in the "middle" of the screen, and don't need to
                         // scroll.
-                        } else if !needs_new_print_info {
+                        } else if !needs_new_top_line {
                             break;
                         }
                     }
 
                     // In this case, we have either passed through `info.top_line` while too close,
                     // or not passed through, so a new `info.top_line` is behind the old one.
-                    if needs_new_print_info && (d_y >= scrolloff.d_y || index == 0) {
+                    if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
                         info.top_line = index;
                         info.top_wraps = d_y.saturating_sub(scrolloff.d_y);
 
@@ -727,13 +694,6 @@ where
                 break;
             }
             y += line.print(&mut self.area, info.x_shift, y, 0, &self.options, forms);
-        }
-
-        // Clears the lines where nothing has been printed.
-        for _ in (y as usize)..=self.area.height() {
-            self.area.move_to(OutputPos { x: 0, y });
-            (0..self.area.width()).for_each(|_| self.area.print(' '));
-            y += 1;
         }
 
         self.area.clear_form();

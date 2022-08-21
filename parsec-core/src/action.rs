@@ -93,7 +93,7 @@ impl Splice {
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
 #[derive(Debug)]
-struct Change {
+pub(crate) struct Change {
     /// The text that was added in this change.
     added_text: Vec<String>,
 

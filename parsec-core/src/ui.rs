@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
-use crate::{layout::OutputPos, tags::Form};
+use crate::{config::PrintOptions, layout::OutputPos, tags::Form};
 
 #[derive(Clone, Copy)]
 pub enum Split {
@@ -27,57 +27,54 @@ pub enum NodeId {
 }
 
 pub trait Area {
-    /// Returns a new instance of `Area`
-    fn new() -> Self;
-
-	//////////////////// Forms
-	/// Changes the form for subsequent characters.
+    //////////////////// Forms
+    /// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
 
-	// TODO: Give it a default form.
-	/// Clears the current form.
+    // TODO: Give it a default form.
+    /// Clears the current form.
     fn clear_form(&mut self);
 
-	// TODO: Give it a default form.
-	/// Places the primary cursor on the current printing position.
+    // TODO: Give it a default form.
+    /// Places the primary cursor on the current printing position.
     fn place_primary_cursor(&mut self);
 
-	// TODO: Give it a default form.
-	/// Places the secondary cursor on the current printing position.
+    // TODO: Give it a default form.
+    /// Places the secondary cursor on the current printing position.
     fn place_secondary_cursor(&mut self);
 
-	//////////////////// Printing
-	// NOTE: I don't foresee a use for this, where the column isn't 0 (next line). But I'll keep
-	// the full functionality just in case.
-	/// Moves the cursor to a given _character_ position.
+    //////////////////// Printing
+    /// Tell the area that printing has begun.
+    ///
+    /// This function should at the very least move the cursor to the top left position in the area.
+    fn start_printing(&mut self);
+
+    /// Tell the area that printing has ended.
+    ///
+    /// This function should clear the lines below the last printed line, and flush the contents if
+    /// necessary.
+    fn stop_printing(&mut self);
+
+    /// Prints a character at the current position and moves the printing position forward.
+    fn print(&mut self, ch: char);
+
+	/// Moves to the next line. If that's not possible, returns false.
 	///
-	/// In a variable width setting, this should move to a character on a given line.
-    fn move_to(&mut self, pos: OutputPos);
+	/// This function should also make sure that there is no leftover text after the current line's
+	/// end.
+    fn next_line(&mut self) -> bool;
 
-	/// Tell the area that printing has begun.
-	// NOTE: You may not need to implement this.
-    fn start_printing(&mut self) {}
-
-	/// Tell the area that printing has ended.
-	// NOTE: You may not need to implement this.
-    fn stop_printing(&mut self) {}
-
-	/// Prints a character at the current position and moves the printing position forward.
-    fn print<D>(&mut self, display: D)
-    where
-        D: Display;
-
-	//////////////////// Getters
-	/// Gets the length of a character.
-	///
-	/// In a terminal, this would be in "cells", but in a variable width GUI, it could be in
-	/// pixels, or em. It really depends on the implementation.
+    //////////////////// Getters
+    /// Gets the length of a character.
+    ///
+    /// In a terminal, this would be in "cells", but in a variable width GUI, it could be in
+    /// pixels, or em. It really depends on the implementation.
     fn get_char_len(&self, ch: char) -> usize;
 
-	/// Gets the width of the area.
+    /// Gets the width of the area.
     fn width(&self) -> usize;
 
-	/// Gets the height of the area.
+    /// Gets the height of the area.
     fn height(&self) -> usize;
 }
 
@@ -109,6 +106,7 @@ where
 
     id: ChildId,
     form_stack: Vec<(Form, u16)>,
+    options: PrintOptions,
 }
 
 pub enum AreaNode<A>
@@ -218,6 +216,10 @@ where
             self.area.set_form(form);
         }
     }
+
+    pub fn options(&self) -> &PrintOptions {
+        &self.options
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -256,7 +258,9 @@ impl<M> AreaNodeTree<M>
 where
     M: AreaManager,
 {
-    pub fn new(handler: M, area: M::Area, class: String) -> (AreaNodeTree<M>, ChildId) {
+    pub fn new(
+        handler: M, area: M::Area, class: String, options: Option<PrintOptions>,
+    ) -> (AreaNodeTree<M>, ChildId) {
         let area_node_tree = AreaNodeTree {
             handler,
             areas: vec![AreaNode::Child(ChildNode {
@@ -267,6 +271,7 @@ where
                 class,
                 master: true,
                 form_stack: Vec::new(),
+                options: options.unwrap_or(PrintOptions::default())
             })],
             last_id: 0,
         };
@@ -277,7 +282,7 @@ where
     /// Creates a new parent area, containing the old area and another newly created area.
     pub fn push(
         &mut self, id: NodeId, direction: Direction, len: Length, child_class: String,
-        parent_class: Option<String>,
+        parent_class: Option<String>, options: Option<PrintOptions>
     ) -> (ParentId, ChildId) {
         let old_node = self.areas.iter_mut().find(|n| n.id() == id).expect("AreaId doesn't exist!");
         *old_node.parent() = Some(ParentId(self.last_id + 2));
@@ -294,6 +299,7 @@ where
             area: M::Area::new(),
             parent: Some(ParentId(self.last_id + 1)),
             form_stack: Vec::new(),
+            options: options.unwrap_or(PrintOptions::default())
         }));
 
         let (first, second, axis) = match direction {
@@ -341,12 +347,12 @@ where
     pub fn set_ratio(&mut self, id: ParentId, new_ratio: f32) {
         let node = self.areas.iter_mut().find(|n| n.id() == NodeId::Parent(id)).unwrap();
 
-		if let AreaNode::Parent(parent) = node {
+        if let AreaNode::Parent(parent) = node {
             match parent.split {
                 Split::Dynamic(ref mut ratio) => *ratio = new_ratio,
                 Split::Static => panic!("You can't set a ratio to a static split!"),
-            };        
-		}
+            };
+        }
 
         self.handler.update_area(&mut self.areas, NodeId::Parent(id));
     }
