@@ -1,7 +1,6 @@
-use std::{fs, path::PathBuf, io::Read};
+use std::{fs, path::PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use wl_clipboard_rs::paste::{get_contents, ClipboardType, MimeType, Seat};
 
 use crate::{
     config::{FileOptions, LineNumbers},
@@ -9,7 +8,7 @@ use crate::{
     impl_input_handler,
     input::{InputHandler, ModeList},
     map_actions,
-    layout::{OutputArea, OutputPos}, ui::Area,
+    ui::Area,
 };
 
 // NOTE: This struct should strive to be completely UI agnostic, i.e., it should work wether the
@@ -217,22 +216,6 @@ where
                 key: (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
                     |h: &mut Buffer<A>| {
                         unsafe { crate::FOR_TEST = !crate::FOR_TEST }
-                        h.refresh_screen();
-                    }
-                },
-                key: (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
-                    |h: &mut Buffer<A>| {
-                        let result =
-                            get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Text);
-
-						let mut paste = Vec::new();
-						result.unwrap().0.read_to_end(&mut paste).unwrap();
-						let contents = String::from_utf8_lossy(&paste);
-                        let edit = contents.split_inclusive('\n').collect();
-                        
-                        let cursor = &h.file.cursors[h.file.main_cursor];
-
-                        h.file.splice_edit(edit, cursor.range());
                         h.refresh_screen();
                     }
                 },

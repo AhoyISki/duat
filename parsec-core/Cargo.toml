@@ -17,5 +17,3 @@ crossterm = { git = "https://github.com/crossterm-rs/crossterm", branch = "maste
 bitflags = "*"
 regex = "*"
 smallvec = "*"
-copypasta = "*"
-wl-clipboard-rs = "*"

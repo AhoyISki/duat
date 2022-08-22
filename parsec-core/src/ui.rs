@@ -104,7 +104,7 @@ where
     class: String,
     master: bool,
 
-    id: ChildId,
+    pub id: ChildId,
     form_stack: Vec<(Form, u16)>,
     options: PrintOptions,
 }

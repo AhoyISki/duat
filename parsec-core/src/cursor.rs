@@ -8,7 +8,7 @@ use crate::{
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TextPos {
     pub col: usize,
     pub byte: usize,
@@ -16,8 +16,10 @@ pub struct TextPos {
 }
 
 impl TextPos {
-    pub fn move_line(&self, line: usize) -> TextPos {
-        TextPos { line: self.line + line, ..*self }
+    pub fn translate_to(lines: &Vec<TextLine>, old: TextPos, line: usize, col: usize) -> TextPos {
+        let mut new = TextPos { line: line, col: 0, ..old };
+        new.byte = (new.byte as isize + get_byte_distance(lines, old, new)) as usize;
+		new
     }
 
     /// Adds columns given `self.line == other.line`.

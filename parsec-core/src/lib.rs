@@ -1,3 +1,5 @@
+#![feature(mixed_integer_ops)]
+
 pub mod action;
 pub mod buffer;
 pub mod config;

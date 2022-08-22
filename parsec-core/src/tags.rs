@@ -5,7 +5,7 @@ use crossterm::style::ContentStyle;
 use regex::Regex;
 use smallvec::SmallVec;
 
-use crate::{action::TextRange, cursor::TextPos, file::TextLine};
+use crate::{action::TextRange, cursor::TextPos, file::TextLine, ui::{ChildNode, Area}};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -14,9 +14,9 @@ pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(u16),
+    PushForm(FormId),
     /// Removes a form from the stack. It won't always be the last one.
-    PopForm(u16),
+    PopForm(FormId),
 
     /// Wraps *before* printing the character, not after.
     WrapppingChar,
@@ -32,6 +32,30 @@ pub enum CharTag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
     PermanentConceal { index: u16 },
+}
+
+impl CharTag {
+    pub(crate) fn trigger<A>(&self, node: &ChildNode<A>, forms: &[Form], wrap_indent: usize) -> bool
+    where
+        A: Area {
+        match self {
+            CharTag::PushForm(form) => node.push_form(forms, form.0),
+            CharTag::PopForm(form) => node.pop_form(form.0),
+            CharTag::WrapppingChar => {
+                if !node.area.next_line() {
+                    node.area.clear_form();
+                    return false;
+                }
+
+                (0..wrap_indent).for_each(|_| node.area.print(' '));
+            }
+            CharTag::PrimaryCursor => node.area.place_primary_cursor(),
+            CharTag::SecondaryCursor => node.area.place_secondary_cursor(),
+            _ => {}
+        }
+
+        true
+    }
 }
 
 bitflags! {
@@ -72,8 +96,8 @@ impl std::fmt::Debug for CharTags {
             .0
             .iter()
             .map(|(b, t)| match t {
-                CharTag::PushForm(form) => format!("{}:PuF({})", b, form),
-                CharTag::PopForm(form) => format!("{}PoF({})", b, form),
+                CharTag::PushForm(form) => format!("{}:PuF({})", b, form.0),
+                CharTag::PopForm(form) => format!("{}PoF({})", b, form.0),
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::PrimaryCursor => format!("{}:Pc", b),
                 _ => todo!(),
@@ -100,8 +124,8 @@ impl CharTags {
         }
     }
 
+	/// It's like `insert`, but it inserts "in the background". Used on multi-line ranges.
     pub fn bottom_insert(&mut self, char_tag: (u32, CharTag)) {
-        // It just finds the first element with a bigger number and puts the `char_tag` behind it.
         match self.0.iter().enumerate().rev().find(|(_, &(c, _))| c < char_tag.0) {
             Some((pos, _)) => self.0.insert(pos + 1, char_tag),
             None => self.0.insert(0, char_tag),
@@ -296,7 +320,9 @@ impl Pattern {
                     }
                     next_start = None;
 
-					if !do_iter_starts { inner_count += 1; }
+                    if !do_iter_starts {
+                        inner_count += 1;
+                    }
                     do_iter_starts = true;
                 }
 
@@ -369,6 +395,12 @@ struct TagPos {
     byte: usize,
     /// The byte in relation to the beginning of the file.
     file_byte: usize,
+}
+
+impl TagPos {
+    fn from_text(line: &TextLine, pos: TextPos) -> TagPos {
+        TagPos { line: pos.line, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
+    }
 }
 
 impl PartialOrd for TagPos {
@@ -545,7 +577,7 @@ impl FormPattern {
                         } else {
                             info[line - first_start.line].0.starting_id = form_match.id;
 
-							// The form here works kind of like a "background" of sorts.
+                            // The form here works kind of like a "background" of sorts.
                             if let Some(form) = form_match.form {
                                 tags.bottom_insert((0, CharTag::PushForm(form)));
                             }
@@ -672,7 +704,7 @@ pub struct TagManager {
     bounded_forms: Vec<Pattern>,
 
     /// The patterns associated with said forms.
-    default_form: FormPattern,
+    default: FormPattern,
 
     // This exists solely for pushing new `FormPatterns` into the `default_form` `FormPattern`
     // tree.
@@ -689,7 +721,7 @@ impl TagManager {
         TagManager {
             forms: Vec::new(),
             bounded_forms: Vec::new(),
-            default_form: FormPattern::default(),
+            default: FormPattern::default(),
             last_id: 0,
             last_match: LastMatch {
                 patterns: Vec::new(),
@@ -698,63 +730,58 @@ impl TagManager {
         }
     }
 
-    pub fn match_text_range(
-        &mut self, lines: &[TextLine], range: TextRange, max_pos: TextPos, file_changed: bool,
-    ) -> Vec<(LineInfo, usize)> {
-        let end = TagPos {
-            line: range.end.line,
-            byte: lines[range.end.line].text().len(),
-            file_byte: range.end.byte,
-        };
+    pub fn match_scroll(&mut self, lines: &[TextLine], end: TextPos) -> Vec<(LineInfo, usize)> {
+        let end = TagPos::from_text(&lines[end.line], end);
 
-        let max_pos = TagPos {
-            line: max_pos.line,
-            byte: lines[max_pos.line].text().len(),
-            file_byte: max_pos.byte,
-        };
+        if end > self.last_match.pos {
+            let range = TagRange { start: self.last_match.pos, end };
 
-        let range = if range.start.byte >= self.last_match.pos.file_byte {
-            TagRange { start: self.last_match.pos, end }
+            self.generate_info(lines, range, range.end)
         } else {
-            // If there is no new text, and the line was already matched, we need not do anything.
-            if !file_changed {
-                return Vec::new();
+            Vec::new()
+        }
+    }
+
+    pub fn match_range(
+        &mut self, lines: &[TextLine], range: TextRange, max_pos: TextPos,
+    ) -> Vec<(LineInfo, usize)> {
+        let max_pos = TagPos::from_text(&lines[max_pos.line], max_pos);
+
+        let start = TagPos::from_text(&lines[range.start.line], range.start);
+        let end = TagPos::from_text(&lines[range.end.line], range.end);
+        let mut range = TagRange { start, end };
+
+        let mut lines_iter = lines.iter().take(range.start.line).rev();
+        while let Some(line) = lines_iter.next() {
+            if line.info.ending_id != 0 {
+                range.start.line -= 1;
+                range.start.file_byte -= line.text().len();
+            } else {
+                break;
             }
+        }
 
-            let start = TagPos { line: range.start.line, byte: 0, file_byte: range.start.byte };
-            let mut range = TagRange { start, end };
-
-            let mut lines_iter = lines.iter().take(range.start.line).rev();
-            while let Some(line) = lines_iter.next() {
-                if line.info.ending_id != 0 {
-                    range.start.line -= 1;
-                    range.start.file_byte -= line.text().len();
-                } else {
-                    break;
-                }
+        let mut lines_iter = lines.iter().skip(range.end.line + 1);
+        while let Some(line) = lines_iter.next() {
+            if line.info.starting_id != 0 && range.end <= max_pos {
+                range.end.line += 1;
+                range.end.file_byte += line.text().len();
+                range.end.byte = line.text().len();
+            } else {
+                break;
             }
+        }
 
-            let mut lines_iter = lines.iter().skip(range.end.line + 1);
-            while let Some(line) = lines_iter.next() {
-                if line.info.starting_id != 0 && range.end <= max_pos {
-                    range.end.line += 1;
-                    range.end.file_byte += line.text().len();
-                    range.end.byte = line.text().len();
-                } else {
-                    break;
-                }
-            }
+        self.generate_info(lines, range, max_pos)
+    }
 
-            range
-        };
-
-        let (mut info, last_match) =
-            self.default_form.color_text(lines, range, self.last_match.clone());
-
-        self.last_match = last_match;
+    pub fn generate_info(
+        &mut self, lines: &[TextLine], range: TagRange, max_pos: TagPos,
+    ) -> Vec<(LineInfo, usize)> {
+        let mut info = Vec::new();
+        (info, self.last_match) = self.default.color_text(lines, range, self.last_match.clone());
 
         if range.end.line < lines.len() - 1 {
-            // Check for a mismatch
             if info.last().unwrap().0.ending_id != lines[range.end.line + 1].info.starting_id {
                 if self.last_match.pos >= max_pos {
                     return info;
@@ -763,7 +790,7 @@ impl TagManager {
                 let range = TagRange { start: self.last_match.pos, end: max_pos };
                 let end_ranges = self.last_match.clone();
 
-                let (new_info, end_ranges) = self.default_form.color_text(lines, range, end_ranges);
+                let (new_info, end_ranges) = self.default.color_text(lines, range, end_ranges);
 
                 self.last_match = end_ranges;
 
@@ -778,11 +805,11 @@ impl TagManager {
     ///
     /// Returns an id, for the purpose of subpattern matching.
     pub fn push_word(
-        &mut self, matcher: Matcher, form_index: Option<u16>, is_exclusive: bool, id: u16,
+        &mut self, matcher: Matcher, form_index: Option<FormId>, is_exclusive: bool, id: u16,
     ) -> u16 {
         self.last_id += 1;
 
-        let found_form_pattern = match self.default_form.search_for_id_mut(id) {
+        let found_form_pattern = match self.default.search_for_id_mut(id) {
             Some(found_form_pattern) => found_form_pattern,
             None => todo!(),
         };
@@ -804,13 +831,13 @@ impl TagManager {
     ///
     /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
     pub fn push_bounds(
-        &mut self, bounds: [Matcher; 2], form_index: Option<u16>, is_exclusive: bool, id: u16,
+        &mut self, bounds: [Matcher; 2], form_index: Option<FormId>, is_exclusive: bool, id: u16,
     ) -> u16 {
         // Move out of array and get rid of it without copying.
         let [start, end] = bounds;
         self.last_id += 1;
 
-        let found_form_pattern = match self.default_form.search_for_id_mut(id) {
+        let found_form_pattern = match self.default.search_for_id_mut(id) {
             Some(found_form_pattern) => found_form_pattern,
             None => todo!(),
         };
