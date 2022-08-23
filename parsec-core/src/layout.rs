@@ -2,15 +2,15 @@ use std::{
     cmp::{max, min},
     fs,
     ops::RangeInclusive,
-    path::PathBuf, io::LineWriter,
+    path::PathBuf,
 };
 
 use crate::{
-    action::{History, TextRange, extend_edit},
-    config::{FileOptions, PrintOptions, WrapMethod},
-    cursor::{FileCursor, TextPos},
+    action::{extend_edit, get_byte, History, TextRange},
+    config::{ConfigOptions, WrapMethod},
+    cursor::{get_byte_distance, TextCursor, TextPos},
     file::TextLine,
-    tags::{CharTag, Form, TagManager},
+    tags::{CharTag, Form, MatchManager},
     ui::{Area, AreaManager, ChildId, ChildNode, ParentId},
 };
 
@@ -84,7 +84,7 @@ pub trait PrintedArea {
     fn print_info(&mut self) -> &mut PrintInfo;
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, area: &dyn Area, options: &PrintOptions);
+    fn resize(&mut self, area: &dyn Area, options: &ConfigOptions);
 }
 
 /// An area where you can edit the text.
@@ -95,19 +95,20 @@ pub trait EditArea: PrintedArea {
     ///
     /// * A list of cursors. This includes cursors that shouldn't be printed on screen.
     /// * The index of the main cursor. Most of the time, this will be 0.
-    fn cursors(&mut self) -> (&mut Vec<FileCursor>, usize);
+    fn cursors(&mut self) -> (&mut Vec<TextCursor>, usize);
 }
 
 /// The text in a given area.
-struct Text {
+pub(crate) struct Text {
     lines: Vec<TextLine>,
     replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
+    match_manager: Option<MatchManager>,
 }
 
 // TODO: Properly implement replacements.
 impl Text {
     /// Prints the contents of a given area in a given `ChildNode`.
-    fn print(&self, node: &mut ChildNode<impl Area>, forms: &[Form], print_info: &PrintInfo) {
+    pub fn print(&self, node: &mut ChildNode<impl Area>, forms: &[Form], print_info: &PrintInfo) {
         node.area.start_printing();
 
         // Print the `top_line`.
@@ -130,7 +131,7 @@ impl Text {
     ///
     /// The first number is the `TextLine`'s index, and the second is the amount of visible lines
     /// on the screen the `TextLine` would occupy.
-    fn printed_lines(
+    pub fn printed_lines(
         &self, node: &ChildNode<impl Area>, print_info: &PrintInfo,
     ) -> Vec<(usize, usize)> {
         let height_sum = print_info.top_wraps + node.area.height();
@@ -152,22 +153,27 @@ impl Text {
         printed_lines
     }
 
-    fn splice(&mut self, cursor: &FileCursor, edit: impl AsRef<str>) {
-        let edit_lines = edit.as_ref().split_inclusive('\n').map(|t| String::from(t)).collect();
+    pub(crate) fn splice(&mut self, range: TextRange, edit: impl ToString, max_line: usize) {
+        let edit_lines = edit.to_string().split_inclusive('\n').map(|t| String::from(t)).collect();
 
-        let old = self.lines[cursor.range().lines()].iter().map(|l| l.text()).collect();
+        let old = self.lines[range.lines()].iter().map(|l| l.text()).collect();
 
-        let new_lines = extend_edit(old, edit_lines, cursor.range()).0;
+        let new_lines = extend_edit(old, edit_lines, range).0;
         let new_lines: Vec<TextLine> = new_lines.iter().map(|&l| TextLine::new(l)).collect();
 
-        self.lines.splice(cursor.range().lines(), new_lines); 
+        self.lines.splice(range.lines(), new_lines);
     }
 
-    fn lines(&self) -> &[TextLine] {
+    pub fn splice_on_cursor(&mut self, cursor: &TextCursor, edit: impl ToString) {
+        self.splice(cursor.range(), edit, self.lines.len() - 1);
+    }
+
+    pub fn lines(&self) -> &[TextLine] {
         self.lines.as_slice()
     }
 }
 
+/// A form of organizing the areas on a window.
 pub trait Layout {
     fn new(area_manager: impl AreaManager) -> Self;
 
@@ -188,25 +194,26 @@ pub struct FileArea {
     text: Text,
     print_info: PrintInfo,
     main_cursor: usize,
-    cursors: Vec<FileCursor>,
-    options: FileOptions,
-    tag_manager: TagManager,
+    cursors: Vec<TextCursor>,
+    options: ConfigOptions,
     child_id: ChildId,
     history: History,
 }
 
 impl FileArea {
-    fn new(path: PathBuf, options: FileOptions, node: ChildNode<impl Area>) -> FileArea {
+    fn new(
+        path: PathBuf, options: ConfigOptions, node: ChildNode<impl Area>,
+        match_manager: Option<MatchManager>,
+    ) -> FileArea {
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
-        let lines = file_contents.lines().map(|l| TextLine::new(l)).collect();
+        let lines = file_contents.lines().map(|l| TextLine::new(l.to_string())).collect();
 
         FileArea {
-            text: Text { lines, replacements: Vec::new() },
+            text: Text { lines, replacements: Vec::new(), match_manager },
             print_info: PrintInfo::default(),
             main_cursor: 0,
-            cursors: vec![FileCursor::new(TextPos::default(), &lines, &node.options().tab_places)],
-            tag_manager: TagManager::new(),
+            cursors: vec![TextCursor::new(TextPos::default(), &lines, &node.options().tab_places)],
             options,
             child_id: node.id,
             history: History::new(),
@@ -290,7 +297,7 @@ impl FileArea {
 
         if let WrapMethod::NoWrap = self.options.wrap_method {
             let target_line = &self.text.lines[target.line];
-            let distance = target_line.get_distance_to_col(target.col, &self.options.tabs);
+            let distance = target_line.get_distance_to_col(target.col, &self.options.tab_places);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + width - scrolloff.d_x {
@@ -334,7 +341,7 @@ impl FileArea {
         let main_cursor = self.cursors.get(self.main_cursor).unwrap();
         let limit_line =
             min(main_cursor.target().line + node.area.height(), self.text.lines.len() - 1);
-        let start = TextPos::translate_to(&self.text.lines, main_cursor.target(), 0, limit_line);
+        let start = main_cursor.target().translate_to(&self.text.lines, limit_line, 0);
         let target_line = &self.text.lines[limit_line];
         let range = TextRange {
             start,
@@ -344,6 +351,19 @@ impl FileArea {
                 ..start
             },
         };
+    }
+
+    fn edit(&mut self, cursor: TextCursor, edit: impl ToString) {
+        let lines = edit.to_string().split_inclusive('\n').collect();
+
+        let (edits, range) = self.history.add_change(&mut self.text.lines, lines, cursor.range());
+
+        let edits: Vec<TextLine> = edits.iter().map(|&l| TextLine::new(l)).collect();
+        self.text.lines.splice(cursor.range().lines(), edits);
+
+        if let Some(match_manager) = self.text.match_manager {
+            match_range(&mut self.text, cursor.range(), &self.options);
+        }
     }
 
     fn update_file(&mut self, node: &ChildNode<impl Area>) {
@@ -379,7 +399,7 @@ impl PrintedArea for FileArea {
         &mut self.print_info
     }
 
-    fn resize(&mut self, area: &dyn Area, options: &PrintOptions) {
+    fn resize(&mut self, area: &dyn Area, options: &ConfigOptions) {
         for line in self.text.lines {
             line.parse_wrapping(options, area.width());
         }
@@ -396,4 +416,34 @@ struct OneStatusLayout {
     status: StatusArea,
     side_areas: Vec<Box<dyn PrintedArea>>,
     files: Vec<FileBuffer>,
+}
+
+fn match_range(text: &mut Text, range: TextRange, area: &impl Area, options: &ConfigOptions) {
+    if let Some(match_manager) = text.match_manager {
+        let max_line_num = min(range.end.line + area.height(), text.lines.len() - 1);
+        let max_line = &text.lines[max_line_num];
+        let mut max_pos = range.end.translate_to(&text.lines, max_line_num, max_line.char_count());
+
+        let start = TextPos {
+            line: range.start.line,
+            col: 0,
+            byte: range.start.byte - get_byte(&text.lines[range.start.line].text(), range.start.col),
+        };
+
+        let len = text.lines[range.end.line].text().len();
+        let end = TextPos {
+            line: range.end.line,
+            col: text.lines[range.end.line].char_count(),
+            byte: range.end.byte - get_byte(&text.lines[range.end.line].text(), range.end.col) + len,
+        };
+
+        let range = TextRange { start, end };
+
+        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
+
+        for (line_info, line_num) in line_infos {
+            text.lines[line_num].info = line_info;
+            text.lines[line_num].update_line_info(options, area.width());
+        }
+    }
 }

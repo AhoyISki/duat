@@ -1,8 +1,8 @@
-use std::fmt::Display;
+use std::{rc::Rc, cell::RefCell};
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
-use crate::{config::PrintOptions, layout::OutputPos, tags::Form};
+use crate::{config::ConfigOptions, tags::Form};
 
 #[derive(Clone, Copy)]
 pub enum Split {
@@ -106,8 +106,12 @@ where
 
     pub id: ChildId,
     form_stack: Vec<(Form, u16)>,
-    options: PrintOptions,
+    options: ConfigOptions,
 }
+
+pub struct SharedNode<A>(Rc<RefCell<ChildNode<A>>>)
+where
+    A: Area;
 
 pub enum AreaNode<A>
 where
@@ -147,7 +151,7 @@ impl<A> ChildNode<A>
 where
     A: Area,
 {
-    pub fn get_final_form(&self) -> Form {
+    pub fn make_form(&self) -> Form {
         let style = ContentStyle {
             foreground_color: Some(Color::Reset),
             background_color: Some(Color::Reset),
@@ -202,7 +206,7 @@ where
     pub fn push_form(&mut self, forms: &[Form], id: u16) {
         self.form_stack.push((forms[id as usize], id));
 
-        let form = self.get_final_form();
+        let form = self.make_form();
 
         self.area.set_form(form);
     }
@@ -211,13 +215,13 @@ where
         if let Some(element) = self.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == index) {
             self.form_stack.remove(element.0);
 
-            let form = self.get_final_form();
+            let form = self.make_form();
 
             self.area.set_form(form);
         }
     }
 
-    pub fn options(&self) -> &PrintOptions {
+    pub fn options(&self) -> &ConfigOptions {
         &self.options
     }
 }
@@ -259,7 +263,7 @@ where
     M: AreaManager,
 {
     pub fn new(
-        handler: M, area: M::Area, class: String, options: Option<PrintOptions>,
+        handler: M, area: M::Area, class: String, options: Option<ConfigOptions>,
     ) -> (AreaNodeTree<M>, ChildId) {
         let area_node_tree = AreaNodeTree {
             handler,
@@ -271,7 +275,7 @@ where
                 class,
                 master: true,
                 form_stack: Vec::new(),
-                options: options.unwrap_or(PrintOptions::default())
+                options: options.unwrap_or(ConfigOptions::default())
             })],
             last_id: 0,
         };
@@ -282,7 +286,7 @@ where
     /// Creates a new parent area, containing the old area and another newly created area.
     pub fn push(
         &mut self, id: NodeId, direction: Direction, len: Length, child_class: String,
-        parent_class: Option<String>, options: Option<PrintOptions>
+        parent_class: Option<String>, options: Option<ConfigOptions>
     ) -> (ParentId, ChildId) {
         let old_node = self.areas.iter_mut().find(|n| n.id() == id).expect("AreaId doesn't exist!");
         *old_node.parent() = Some(ParentId(self.last_id + 2));
@@ -299,7 +303,7 @@ where
             area: M::Area::new(),
             parent: Some(ParentId(self.last_id + 1)),
             form_stack: Vec::new(),
-            options: options.unwrap_or(PrintOptions::default())
+            options: options.unwrap_or(ConfigOptions::default())
         }));
 
         let (first, second, axis) = match direction {

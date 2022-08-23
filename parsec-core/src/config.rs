@@ -9,16 +9,23 @@ pub enum WrapMethod {
 }
 
 // Pretty much only exists because i wanted one of these with usize as its builtin type.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
     pub d_y: usize,
     pub d_x: usize,
 }
 
+impl Default for ScrollOff {
+    fn default() -> Self {
+        ScrollOff { d_y: 5, d_x: 3 }
+    }
+}
+
 /// How to show the line numbers on screen.
-#[derive(Copy, Clone, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 pub enum LineNumbers {
     None,
+    #[default]
     Absolute,
     Relative,
     Hybrid,
@@ -49,18 +56,11 @@ impl TabPlaces {
     }
 }
 
-#[derive(Default)]
-pub struct PrintOptions {
-    pub wrap_method: WrapMethod,
-    pub wrap_indent: bool,
-    pub tab_places: TabPlaces,
-}
-
 // TODO: Move options to a centralized option place.
 // TODO: Make these private.
-/// Options specific to file printing.
-#[derive(Clone, Debug)]
-pub struct FileOptions {
+/// Some standard parsec options.
+#[derive(Default, Debug, Clone)]
+pub struct ConfigOptions {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.
@@ -68,15 +68,9 @@ pub struct FileOptions {
     /// How to show the line numbers.
     pub line_numbers: LineNumbers,
     /// How to indent.
-    pub tabs: TabPlaces,
+    pub tab_places: TabPlaces,
     /// Wether to indent wrapped lines or not.
     pub wrap_indent: bool,
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
-}
-
-/// The options of the text editor.
-#[derive(Clone, Debug)]
-pub struct Options {
-    pub file_options: FileOptions,
 }

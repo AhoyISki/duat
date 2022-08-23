@@ -38,11 +38,7 @@
 //! Which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{
-    cursor::TextPos,
-    file::TextLine,
-    layout::PrintInfo,
-};
+use crate::{cursor::TextPos, file::TextLine, layout::PrintInfo};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -113,7 +109,7 @@ impl Change {
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
         let full_lines = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
-        let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
+        let full_lines: Vec<TextLine> = full_lines.iter().map(|&l| TextLine::new(l)).collect();
 
         lines.splice(taken_range.lines(), full_lines);
     }
@@ -126,7 +122,7 @@ impl Change {
         let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
 
         let full_lines = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
-        let full_lines: Vec<TextLine> = full_lines.iter().map(|l| TextLine::new(l)).collect();
+        let full_lines: Vec<TextLine> = full_lines.iter().map(|&l| TextLine::new(l)).collect();
 
         lines.splice(added_range.lines(), full_lines);
     }

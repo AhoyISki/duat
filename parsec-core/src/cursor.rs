@@ -3,7 +3,7 @@ use std::cmp::{max, min};
 use super::file::TextLine;
 use crate::{
     action::TextRange,
-    config::{FileOptions, TabPlaces},
+    config::{ConfigOptions, TabPlaces},
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -16,9 +16,9 @@ pub struct TextPos {
 }
 
 impl TextPos {
-    pub fn translate_to(lines: &Vec<TextLine>, old: TextPos, line: usize, col: usize) -> TextPos {
-        let mut new = TextPos { line: line, col: 0, ..old };
-        new.byte = (new.byte as isize + get_byte_distance(lines, old, new)) as usize;
+    pub fn translate_to(self, lines: &Vec<TextLine>, line: usize, col: usize) -> TextPos {
+        let mut new = TextPos { line, col: 0, ..self };
+        new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
 		new
     }
 
@@ -130,7 +130,7 @@ impl Ord for TextPos {
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 #[derive(Debug)]
-pub struct FileCursor {
+pub struct TextCursor {
     // The `current` adn `target` positions pretty much exist solely for more versatile comparisons
     // of movement when printing to the screen.
     // Often, you'll see `old_target` being used as a variable instead of `current`. This is
@@ -154,11 +154,11 @@ pub struct FileCursor {
     desired_x: usize,
 }
 
-impl FileCursor {
+impl TextCursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> FileCursor {
+    pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> TextCursor {
         let line = lines.get(pos.line).unwrap();
-        FileCursor {
+        TextCursor {
             current: pos,
             target: pos,
             // This should be fine.
@@ -168,7 +168,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+    pub fn move_vertically(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
         let old_target = self.target;
 
         let line = self.target.line;
@@ -185,7 +185,7 @@ impl FileCursor {
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+    pub fn move_horizontally(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
         let old_target = self.target;
         let mut col = self.target.col as i32 + count;
 
@@ -226,7 +226,7 @@ impl FileCursor {
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &FileOptions) {
+    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &ConfigOptions) {
         let old_target = self.target;
 
         self.target.line = pos.line.clamp(0, lines.len());

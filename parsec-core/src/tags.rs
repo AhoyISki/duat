@@ -693,7 +693,8 @@ struct LastMatch {
     pos: TagPos,
 }
 
-pub struct TagManager {
+/// The object responsible for matching `TextLine`s on `Text`.
+pub struct MatchManager {
     /// The forms for syntax highlighting.
     forms: Vec<Form>,
 
@@ -715,10 +716,10 @@ pub struct TagManager {
     last_match: LastMatch,
 }
 
-impl TagManager {
+impl MatchManager {
     /// Returns a new instance of `TagManager`
-    pub fn new() -> TagManager {
-        TagManager {
+    pub fn new() -> MatchManager {
+        MatchManager {
             forms: Vec::new(),
             bounded_forms: Vec::new(),
             default: FormPattern::default(),

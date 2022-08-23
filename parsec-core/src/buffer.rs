@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    config::{FileOptions, LineNumbers},
+    config::{ConfigOptions, LineNumbers},
     file::File,
     impl_input_handler,
     input::{InputHandler, ModeList},
@@ -33,7 +33,7 @@ impl<A> Buffer<A>
 where
     A: Area {
     /// Returns a new instance of ContentArea
-    pub fn new(mut area: A, path: PathBuf, options: FileOptions) -> Buffer<A> {
+    pub fn new(mut area: A, path: PathBuf, options: ConfigOptions) -> Buffer<A> {
         // TODO: In the future, this will not panic!
         let file = fs::read_to_string(path).expect("file not found");
 
@@ -72,7 +72,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
-                            c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
+                            c.move_vertically(-1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -82,7 +82,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
-                            c.move_ver(1, &h.file.lines, &h.file.options.tabs);
+                            c.move_vertically(1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -92,7 +92,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
-                            c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
+                            c.move_horizontally(-1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -102,7 +102,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             c.unset_anchor();
-                            c.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                            c.move_horizontally(1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -112,7 +112,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
-                            c.move_ver(-1, &h.file.lines, &h.file.options.tabs);
+                            c.move_vertically(-1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -122,7 +122,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
-                            c.move_ver(1, &h.file.lines, &h.file.options.tabs);
+                            c.move_vertically(1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -132,7 +132,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
-                            c.move_hor(-1, &h.file.lines, &h.file.options.tabs);
+                            c.move_horizontally(-1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -142,7 +142,7 @@ where
                     |h: &mut Buffer<A>| {
                         h.file.cursors.iter_mut().for_each(|c| {
                             if let None = c.anchor() { c.set_anchor(); }
-                            c.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                            c.move_horizontally(1, &h.file.lines, &h.file.options.tabs);
                         });
                         h.refresh_screen();
                     }
@@ -154,7 +154,7 @@ where
 
                         if cursor.anchor().is_none() {
                             cursor.set_anchor();
-                            cursor.move_hor(1, &h.file.lines, &h.file.options.tabs);
+                            cursor.move_horizontally(1, &h.file.lines, &h.file.options.tabs);
                         };
 
                         let range = cursor.range();
@@ -172,7 +172,7 @@ where
 
                         if cursor.anchor().is_none() {
                             cursor.set_anchor();
-                            cursor.move_hor(-1, &h.file.lines, &h.file.options.tabs);
+                            cursor.move_horizontally(-1, &h.file.lines, &h.file.options.tabs);
                         };
 
                         let range = cursor.range();

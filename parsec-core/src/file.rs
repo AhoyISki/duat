@@ -1,15 +1,13 @@
 use std::cmp::min;
 
-use crossterm::style::{ContentStyle, Stylize};
-use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    action::{get_byte, History, TextRange},
-    config::{FileOptions, PrintOptions, TabPlaces, WrapMethod},
-    cursor::{get_byte_distance, FileCursor, TextPos},
+    action::{History, TextRange},
+    config::{PrintOptions,ParsecOptionss, TabPlaces, WrapMethod, ConfigOptions},
+    cursor::{TextCursor, TextPos},
     layout::PrintInfo,
-    tags::{CharTag, Form, LineFlags, LineInfo, Matcher, TagManager},
+    tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
     ui::{Area, ChildNode},
 };
 
@@ -117,7 +115,7 @@ impl TextLine {
     /// Updates the information for a line in the file.
     ///
     /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info(&mut self, options: &PrintOptions, width: usize) {
+    pub fn update_line_info(&mut self, options: &ConfigOptions, width: usize) {
         self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
         self.info.line_flags.set(
             LineFlags::PURE_1_COL,
@@ -127,7 +125,7 @@ impl TextLine {
 		self.parse_wrapping(options, width);
     }
     
-	pub fn parse_wrapping(&mut self, options: &PrintOptions, width: usize) {
+	pub fn parse_wrapping(&mut self, options: &ConfigOptions, width: usize) {
         let indent = if options.wrap_indent { self.indent(&options.tab_places) } else { 0 };
         let indent = if indent < width { indent } else { 0 };
 
@@ -188,7 +186,7 @@ impl TextLine {
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
     pub(crate) fn print<A>(
-        &self, node: &mut ChildNode<A>, x_shift: usize, skip: usize, options: &PrintOptions,
+        &self, node: &mut ChildNode<A>, x_shift: usize, skip: usize, options: &ConfigOptions,
         forms: &[Form],
     ) -> bool
     where
@@ -318,10 +316,10 @@ where
     pub area: A,
 
     /// The options related to files.
-    pub options: FileOptions,
+    pub options: PrintOptions,
 
     /// The edtiting cursors on the file.
-    pub cursors: Vec<FileCursor>,
+    pub cursors: Vec<TextCursor>,
     /// The index of the main cursor. The file "follows it".
     pub main_cursor: usize,
 
@@ -329,7 +327,7 @@ where
     pub history: History,
 
     /// The manager for character tags and file flag mutation.
-    tag_manager: TagManager,
+    tag_manager: MatchManager,
 }
 
 impl<A> File<A>
@@ -380,7 +378,7 @@ where
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.taken_end(), &self.lines, &self.options);
             } else {
-                new_cursors.push(FileCursor::new(
+                new_cursors.push(TextCursor::new(
                     splice.taken_end(),
                     &self.lines,
                     &self.options.tabs,
@@ -409,7 +407,7 @@ where
             if let Some(cursor) = cursors.next() {
                 cursor.move_to(splice.added_end(), &self.lines, &self.options);
             } else {
-                new_cursors.push(FileCursor::new(
+                new_cursors.push(TextCursor::new(
                     splice.added_end(),
                     &self.lines,
                     &self.options.tabs,
@@ -437,40 +435,4 @@ where
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
     if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
-}
-
-fn match_range<A>(
-    lines: &mut Vec<TextLine>, range: TextRange, area: &A, options: &FileOptions,
-    tag_manager: &mut TagManager,
-) where
-    A: Area,
-{
-    let max_line_num = min(range.end.line + area.height(), lines.len() - 1);
-    let max_line = &lines[max_line_num];
-    let mut max_pos =
-        TextPos { line: max_line_num, col: max_line.char_count(), byte: range.end.byte };
-
-    max_pos.byte = (max_pos.byte as isize + get_byte_distance(lines, range.end, max_pos)) as usize;
-
-    let start = TextPos {
-        line: range.start.line,
-        col: 0,
-        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col),
-    };
-
-    let len = lines[range.end.line].text().len();
-    let end = TextPos {
-        line: range.end.line,
-        col: lines[range.end.line].char_count(),
-        byte: range.start.byte - get_byte(&lines[range.start.line].text, range.start.col) + len,
-    };
-
-    let range = TextRange { start, end };
-
-    let line_infos = tag_manager.match_range(lines.as_slice(), range, max_pos);
-
-    for (line_info, line_num) in line_infos {
-        lines[line_num].info = line_info;
-        lines[line_num].update_line_info(options, area.width());
-    }
 }
