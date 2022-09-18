@@ -5,7 +5,12 @@ use crossterm::style::ContentStyle;
 use regex::Regex;
 use smallvec::SmallVec;
 
-use crate::{action::TextRange, cursor::TextPos, file::TextLine, ui::{ChildNode, Area}};
+use crate::{
+    action::TextRange,
+    cursor::TextPos,
+    file::TextLine,
+    ui::{EndNode, Container, Label, AreaManager},
+};
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -35,22 +40,25 @@ pub enum CharTag {
 }
 
 impl CharTag {
-    pub(crate) fn trigger<A>(&self, node: &ChildNode<A>, forms: &[Form], wrap_indent: usize) -> bool
+    pub(crate) fn trigger<M>(
+        &self, node: &mut EndNode<M>, forms: &[Form], wrap_indent: usize,
+    ) -> bool
     where
-        A: Area {
+        M: AreaManager
+    {
         match self {
             CharTag::PushForm(form) => node.push_form(forms, form.0),
             CharTag::PopForm(form) => node.pop_form(form.0),
             CharTag::WrapppingChar => {
-                if !node.area.next_line() {
-                    node.area.clear_form();
+                if !node.next_line() {
+                    node.clear_form();
                     return false;
                 }
 
-                (0..wrap_indent).for_each(|_| node.area.print(' '));
+                (0..wrap_indent).for_each(|_| node.print(' '));
             }
-            CharTag::PrimaryCursor => node.area.place_primary_cursor(),
-            CharTag::SecondaryCursor => node.area.place_secondary_cursor(),
+            CharTag::PrimaryCursor => node.place_primary_cursor(),
+            CharTag::SecondaryCursor => node.place_secondary_cursor(),
             _ => {}
         }
 
@@ -124,7 +132,7 @@ impl CharTags {
         }
     }
 
-	/// It's like `insert`, but it inserts "in the background". Used on multi-line ranges.
+    /// It's like `insert`, but it inserts "in the background". Used on multi-line ranges.
     pub fn bottom_insert(&mut self, char_tag: (u32, CharTag)) {
         match self.0.iter().enumerate().rev().find(|(_, &(c, _))| c < char_tag.0) {
             Some((pos, _)) => self.0.insert(pos + 1, char_tag),
@@ -369,7 +377,7 @@ impl Pattern {
 }
 
 /// An assossiation of a pattern with a spcecific form.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FormPattern {
     /// The index of the form assossiated with this pattern.
     form: Option<FormId>,
@@ -694,6 +702,7 @@ struct LastMatch {
 }
 
 /// The object responsible for matching `TextLine`s on `Text`.
+#[derive(Clone)]
 pub struct MatchManager {
     /// The forms for syntax highlighting.
     forms: Vec<Form>,
@@ -776,7 +785,7 @@ impl MatchManager {
         self.generate_info(lines, range, max_pos)
     }
 
-    pub fn generate_info(
+    fn generate_info(
         &mut self, lines: &[TextLine], range: TagRange, max_pos: TagPos,
     ) -> Vec<(LineInfo, usize)> {
         let mut info = Vec::new();

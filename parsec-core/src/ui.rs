@@ -1,32 +1,25 @@
-use std::{rc::Rc, cell::RefCell};
+use std::sync::{Arc, RwLock};
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
 use crate::{config::ConfigOptions, tags::Form};
 
-#[derive(Clone, Copy)]
-pub enum Split {
-    Dynamic(f32),
-    Static,
+pub trait Container {
+    // TODO: Return a result.
+    /// Requests a resize to the area, based on the direction of the parent.
+    fn request_len(&mut self, width: usize);
+
+    /// Gets the width of the area.
+    fn width(&self) -> usize;
+
+    /// Gets the height of the area.
+    fn height(&self) -> usize;
+
+    /// The direction where the second area was placed on the first.
+    fn direction(&self) -> Direction;
 }
 
-#[derive(Clone, Copy)]
-pub enum Axis {
-    Horizontal,
-    Vertical,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ParentId(usize);
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ChildId(usize);
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum NodeId {
-    Parent(ParentId),
-    Child(ChildId),
-}
-
-pub trait Area {
+pub trait Label {
     //////////////////// Forms
     /// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
@@ -46,7 +39,8 @@ pub trait Area {
     //////////////////// Printing
     /// Tell the area that printing has begun.
     ///
-    /// This function should at the very least move the cursor to the top left position in the area.
+    /// This function should at the very least move the cursor to the top left position in the
+    /// area.
     fn start_printing(&mut self);
 
     /// Tell the area that printing has ended.
@@ -58,11 +52,15 @@ pub trait Area {
     /// Prints a character at the current position and moves the printing position forward.
     fn print(&mut self, ch: char);
 
-	/// Moves to the next line. If that's not possible, returns false.
-	///
-	/// This function should also make sure that there is no leftover text after the current line's
-	/// end.
+    /// Moves to the next line. If that's not possible, returns false.
+    ///
+    /// This function should also make sure that there is no leftover text after the current line's
+    /// end.
     fn next_line(&mut self) -> bool;
+
+    // TODO: Return a result.
+    /// Requests a resize to the area, based on the direction of the parent.
+    fn request_len(&mut self, width: usize);
 
     //////////////////// Getters
     /// Gets the length of a character.
@@ -78,78 +76,104 @@ pub trait Area {
     fn height(&self) -> usize;
 }
 
-pub struct ParentNode<A>
+pub struct InnerMidNode<M>
 where
-    A: Area,
+    M: AreaManager + ?Sized,
 {
-    area: A,
-    parent: Option<ParentId>,
-    len: Option<usize>,
+    container: M::Container,
     class: String,
-    master: bool,
-
-    id: ParentId,
-    children: (NodeId, NodeId),
-    axis: Axis,
+    parent: Option<Box<MidNode<M>>>,
+    child_order: ChildOrder,
+    children: (Node<M>, Node<M>),
     split: Split,
 }
 
-pub struct ChildNode<A>
+pub struct MidNode<M>(Arc<RwLock<InnerMidNode<M>>>)
 where
-    A: Area,
+    M: AreaManager + ?Sized;
+
+impl<M> Clone for MidNode<M>
+where
+    M: AreaManager + ?Sized,
 {
-    pub(crate) area: A,
-    parent: Option<ParentId>,
-    len: Option<usize>,
+    fn clone(&self) -> Self {
+        MidNode(self.0.clone())
+    }
+}
+
+impl<M> MidNode<M>
+where
+    M: AreaManager,
+{
+    fn resize_second(&mut self, len: usize) {
+        let node = self.0.write().unwrap();
+
+        match node.split {
+            Split::Locked(_) => panic!("Don't try to resize a locked length area!"),
+            Split::Static(_) => {
+                let self_len = match node.container.direction() {
+                    Direction::Left | Direction::Right => self.0.read().unwrap().container.width(),
+                    _ => self.0.read().unwrap().container.height(),
+                };
+
+                if len < self_len {
+                    match &node.children.1 {
+                        Node::MidNode(node) => node.0.write().unwrap().container.request_len(len),
+                        Node::EndNode(node) => node.node.write().unwrap().label.request_len(len),
+                    }
+                }
+            }
+            Split::Ratio(_) => todo!(),
+        }
+    }
+
+    fn request_width(&self, width: usize) {
+        let mut node = self.0.write().unwrap();
+        match (node.child_order, &mut node.parent) {
+            (ChildOrder::Second, Some(parent_node)) => {
+                let inner_node = parent_node.0.read().unwrap();
+                if let Direction::Left | Direction::Right = inner_node.container.direction() {
+                    drop(inner_node);
+                    parent_node.resize_second(width);
+                }
+            }
+            // NOTE: I don't really know if I'm gonna do anything in here tbh.
+            _ => todo!(),
+        }
+    }
+}
+
+pub struct InnerEndNode<M>
+where
+    M: AreaManager + ?Sized,
+{
+    label: M::Label,
     class: String,
-    master: bool,
-
-    pub id: ChildId,
+    parent: Option<Box<MidNode<M>>>,
+    child_order: ChildOrder,
     form_stack: Vec<(Form, u16)>,
-    options: ConfigOptions,
 }
 
-pub struct SharedNode<A>(Rc<RefCell<ChildNode<A>>>)
+pub struct EndNode<M>
 where
-    A: Area;
-
-pub enum AreaNode<A>
-where
-    A: Area,
+    M: AreaManager + ?Sized,
 {
-    Child(ChildNode<A>),
-    Parent(ParentNode<A>),
+    node: Arc<RwLock<InnerEndNode<M>>>,
+    config: ConfigOptions,
 }
 
-impl<A> AreaNode<A>
+impl<M> Clone for EndNode<M>
 where
-    A: Area,
+    M: AreaManager + ?Sized,
 {
-    fn len(&mut self) -> &mut Option<usize> {
-        match self {
-            AreaNode::Child(child) => &mut child.len,
-            AreaNode::Parent(parent) => &mut parent.len,
-        }
-    }
-
-    fn parent(&mut self) -> &mut Option<ParentId> {
-        match self {
-            AreaNode::Child(child) => &mut child.parent,
-            AreaNode::Parent(parent) => &mut parent.parent,
-        }
-    }
-
-    fn id(&self) -> NodeId {
-        match self {
-            AreaNode::Child(child) => NodeId::Child(child.id),
-            AreaNode::Parent(parent) => NodeId::Parent(parent.id),
-        }
+    fn clone(&self) -> Self {
+        EndNode { node: self.node.clone(), config: self.config.clone() }
     }
 }
 
-impl<A> ChildNode<A>
+impl<M> EndNode<M>
 where
-    A: Area,
+    M: AreaManager,
 {
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
@@ -163,33 +187,18 @@ where
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-        for &(Form { style, is_final, .. }, _) in &self.form_stack {
-            if let Some(color) = style.foreground_color {
-                if !fg_done {
-                    form.style.foreground_color = Some(color);
-                    if is_final {
-                        fg_done = true
-                    }
-                }
-            }
-            if let Some(color) = style.background_color {
-                if !bg_done {
-                    form.style.background_color = Some(color);
-                    if is_final {
-                        bg_done = true
-                    }
-                }
-            }
-            if let Some(color) = style.foreground_color {
-                if !ul_done {
-                    form.style.underline_color = Some(color);
-                    if is_final {
-                        ul_done = true
-                    }
-                }
-            }
-            if !attr_done && !style.attributes.is_empty() {
-                form.style.attributes = style.attributes;
+        for &(Form { style, is_final, .. }, _) in &self.node.read().unwrap().form_stack {
+            let new_foreground = style.foreground_color;
+            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
+
+            let new_background = style.background_color;
+            set_var(&mut fg_done, &mut form.style.background_color, &new_background, is_final);
+
+            let new_underline = style.underline_color;
+            set_var(&mut fg_done, &mut form.style.underline_color, &new_underline, is_final);
+
+            if !attr_done {
+                form.style.attributes.extend(style.attributes);
                 if is_final {
                     attr_done = true
                 }
@@ -204,44 +213,107 @@ where
     }
 
     pub fn push_form(&mut self, forms: &[Form], id: u16) {
-        self.form_stack.push((forms[id as usize], id));
+        let mut node = self.node.write().unwrap();
+        node.form_stack.push((forms[id as usize], id));
 
         let form = self.make_form();
 
-        self.area.set_form(form);
+        node.label.set_form(form);
     }
 
-    pub fn pop_form(&mut self, index: u16) {
-        if let Some(element) = self.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == index) {
-            self.form_stack.remove(element.0);
+    pub fn pop_form(&mut self, id: u16) {
+        let mut node = self.node.write().unwrap();
+        if let Some((index, _)) = node.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == id) {
+            node.form_stack.remove(index);
 
             let form = self.make_form();
 
-            self.area.set_form(form);
+            node.label.set_form(form);
         }
     }
 
+    fn request_width(&self, width: usize) {
+        let mut node = self.node.write().unwrap();
+        match (node.child_order, &mut node.parent) {
+            (ChildOrder::Second, Some(parent_node)) => {
+                let inner_node = parent_node.0.read().unwrap();
+                if let Direction::Left | Direction::Right = inner_node.container.direction() {
+                    drop(inner_node);
+                    parent_node.resize_second(width);
+                }
+            }
+            // NOTE: I don't really know if I'm gonna do anything in here tbh.
+            _ => todo!(),
+        }
+    }
+
+    pub fn clear_form(&mut self) {
+        let mut node = self.node.write().unwrap();
+        node.form_stack.clear();
+    }
+
+    pub fn height(&self) -> usize {
+        let node = self.node.read().unwrap();
+        node.label.height()
+    }
+
+    pub fn width(&self) -> usize {
+        let node = self.node.read().unwrap();
+        node.label.width()
+    }
+
     pub fn options(&self) -> &ConfigOptions {
-        &self.options
+        &self.options()
+    }
+
+    pub(crate) fn start_printing(&mut self) {
+        self.node.write().unwrap().label.start_printing();
+    }
+
+    pub(crate) fn stop_printing(&mut self) {
+        self.node.write().unwrap().label.stop_printing();
+    }
+
+    pub(crate) fn print(&mut self, ch: char) {
+        self.node.write().unwrap().label.print(ch);
+    }
+
+    pub(crate) fn next_line(&mut self) -> bool {
+        self.node.write().unwrap().label.next_line()
+    }
+
+    pub(crate) fn place_primary_cursor(&mut self) {
+        self.node.write().unwrap().label.place_primary_cursor();
+    }
+
+    pub(crate) fn place_secondary_cursor(&mut self) {
+        self.node.write().unwrap().label.place_secondary_cursor();
     }
 }
 
+pub enum Node<M>
+where
+    M: AreaManager + ?Sized,
+{
+    MidNode(MidNode<M>),
+    EndNode(EndNode<M>),
+}
+
 #[derive(Clone, Copy)]
-pub enum Length {
+enum ChildOrder {
+    First,
+    Second,
+}
+
+/// A way of splitting areas.
+#[derive(Clone, Copy)]
+pub enum Split {
+    Locked(usize),
     Static(usize),
     Ratio(f32),
 }
 
-pub trait AreaManager {
-    type Area: Area;
-
-    /// Updates a specific area and its decendants.
-    fn update_area(&mut self, areas: &mut Vec<AreaNode<Self::Area>>, id: NodeId);
-
-    /// Updates all areas.
-    fn update(&mut self, areas: &mut Vec<AreaNode<Self::Area>>);
-}
-
+#[derive(Clone, Copy)]
 pub enum Direction {
     Top,
     Right,
@@ -249,115 +321,46 @@ pub enum Direction {
     Left,
 }
 
-pub struct AreaNodeTree<M>
-where
-    M: AreaManager,
-{
-    handler: M,
-    areas: Vec<AreaNode<M::Area>>,
-    last_id: usize,
+pub trait AreaManager {
+    type Container: Container + Clone;
+    type Label: Label + Clone;
+
+    /// Splits an area in two, and places each of the areas on a new parent area.
+    ///
+    /// # Returns
+    ///
+    /// * The new parent area first, and the new child area second.
+    ///
+    /// # Arguments
+    ///
+    /// * area: The area that will be split.
+    /// * direction: In what direction, relative to the old area, will the new area be inserted.
+    /// * split: How to decide where to place the barrier between the two areas. If
+    ///   `Split::Static`, the new area will have a fixed size, and resizing the parent area will
+    ///   only change the size of the old area. If `Split::Ratio`, resizing the parent will
+    ///   maintain a ratio between the two areas.
+    /// * glued: If `true`, the two areas will become inseparable, by moving one, you will move the
+    ///   other one with it.
+    fn split_end(
+        &mut self, node: &mut EndNode<Self>, direction: Direction, split: Split, glued: bool,
+    ) -> (MidNode<Self>, EndNode<Self>);
+
+    fn split_parent(
+        &mut self, area: &mut MidNode<Self>, direction: Direction, split: Split, glued: bool,
+    ) -> (MidNode<Self>, EndNode<Self>);
+
+    /// If there is only a single area, returns it, otherwise, returns nothing.
+    fn only_child(&self) -> Option<EndNode<Self>>;
 }
 
-impl<M> AreaNodeTree<M>
+fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
 where
-    M: AreaManager,
+    T: Clone,
 {
-    pub fn new(
-        handler: M, area: M::Area, class: String, options: Option<ConfigOptions>,
-    ) -> (AreaNodeTree<M>, ChildId) {
-        let area_node_tree = AreaNodeTree {
-            handler,
-            areas: vec![AreaNode::Child(ChildNode {
-                area,
-                parent: None,
-                len: None,
-                id: ChildId(0),
-                class,
-                master: true,
-                form_stack: Vec::new(),
-                options: options.unwrap_or(ConfigOptions::default())
-            })],
-            last_id: 0,
+    if let (Some(new_var), false) = (maybe_new, &is_set) {
+        *var = Some(new_var.clone());
+        if is_final {
+            *is_set = true
         };
-
-        (area_node_tree, ChildId(0))
-    }
-
-    /// Creates a new parent area, containing the old area and another newly created area.
-    pub fn push(
-        &mut self, id: NodeId, direction: Direction, len: Length, child_class: String,
-        parent_class: Option<String>, options: Option<ConfigOptions>
-    ) -> (ParentId, ChildId) {
-        let old_node = self.areas.iter_mut().find(|n| n.id() == id).expect("AreaId doesn't exist!");
-        *old_node.parent() = Some(ParentId(self.last_id + 2));
-        let (old_id, old_parent) = (old_node.id(), old_node.parent());
-
-        assert!(old_node.len().is_none(), "The original area must be dinamically sized!");
-
-        self.last_id += 1;
-        self.areas.push(AreaNode::Child(ChildNode {
-            len: if let Length::Static(len) = len { Some(len) } else { None },
-            id: ChildId(self.last_id),
-            master: true,
-            class: child_class,
-            area: M::Area::new(),
-            parent: Some(ParentId(self.last_id + 1)),
-            form_stack: Vec::new(),
-            options: options.unwrap_or(ConfigOptions::default())
-        }));
-
-        let (first, second, axis) = match direction {
-            Direction::Top => (NodeId::Child(ChildId(self.last_id)), old_id, Axis::Vertical),
-            Direction::Right => (old_id, NodeId::Child(ChildId(self.last_id)), Axis::Horizontal),
-            Direction::Bottom => (old_id, NodeId::Child(ChildId(self.last_id)), Axis::Vertical),
-            Direction::Left => (NodeId::Child(ChildId(self.last_id)), old_id, Axis::Horizontal),
-        };
-
-        self.areas.push(AreaNode::Parent(ParentNode {
-            len: None,
-            id: ParentId(self.last_id + 1),
-            master: false,
-            class: parent_class.unwrap_or(String::from("parsec-parent")),
-            area: M::Area::new(),
-            parent: *old_parent,
-            axis,
-            children: (first, second),
-            split: match len {
-                Length::Static(_) => Split::Static,
-                Length::Ratio(ratio) => Split::Dynamic(ratio),
-            },
-        }));
-        self.last_id += 1;
-
-        self.handler.update(&mut self.areas);
-
-        (ParentId(self.last_id), ChildId(self.last_id - 1))
-    }
-
-    pub fn resize(&mut self, id: NodeId, new_len: usize) {
-        let node = self.areas.iter_mut().find(|n| n.id() == id).expect("AreaId does not exist!");
-
-        match node.len() {
-            Some(ref mut len) => *len = new_len,
-            None => panic!("You can only resize areas of static size!"),
-        };
-
-        match node.parent() {
-            Some(id) => self.handler.update_area(&mut self.areas, NodeId::Parent(*id)),
-            None => self.handler.update(&mut self.areas),
-        }
-    }
-
-    pub fn set_ratio(&mut self, id: ParentId, new_ratio: f32) {
-        let node = self.areas.iter_mut().find(|n| n.id() == NodeId::Parent(id)).unwrap();
-
-        if let AreaNode::Parent(parent) = node {
-            match parent.split {
-                Split::Dynamic(ref mut ratio) => *ratio = new_ratio,
-                Split::Static => panic!("You can't set a ratio to a static split!"),
-            };
-        }
-
-        self.handler.update_area(&mut self.areas, NodeId::Parent(id));
     }
 }

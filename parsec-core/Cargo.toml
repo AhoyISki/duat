@@ -11,9 +11,10 @@ unicode-segmentation = "*"
 unicode-width = "*"
 
 # Style handling
-crossterm = { git = "https://github.com/crossterm-rs/crossterm", branch = "master" }
+crossterm = "*"
 
 # Utility
 bitflags = "*"
 regex = "*"
 smallvec = "*"
+dyn-clone = "*"

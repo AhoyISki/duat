@@ -1,17 +1,17 @@
 use std::{
     cmp::{max, min},
+    fmt::Write,
     fs,
-    ops::RangeInclusive,
     path::PathBuf,
 };
 
 use crate::{
-    action::{extend_edit, get_byte, History, TextRange},
-    config::{ConfigOptions, WrapMethod},
-    cursor::{get_byte_distance, TextCursor, TextPos},
-    file::TextLine,
-    tags::{CharTag, Form, MatchManager},
-    ui::{Area, AreaManager, ChildId, ChildNode, ParentId},
+    action::{History, TextRange},
+    config::{ConfigOptions, LineNumbers, RoState, RwState, WrapMethod},
+    cursor::{TextCursor, TextPos},
+    file::{update_range, Text, TextLine},
+    tags::{CharTag, MatchManager},
+    ui::{AreaManager, Direction, EndNode, Label, MidNode, Split},
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +27,8 @@ pub struct PrintInfo {
 impl PrintInfo {
     /// Scrolls the `PrintInfo` vertically by a given amount, on a given file.
     fn scroll_vertically(&mut self, mut d_y: i32, text: &Text) {
-        let mut lines_iter = text.lines.iter();
-
         if d_y > 0 {
-            lines_iter.skip(self.top_line);
+            let mut lines_iter = text.lines().iter().skip(self.top_line);
 
             while let Some(line) = lines_iter.next() {
                 let wrap_count = line.wrap_iter().count();
@@ -43,7 +41,7 @@ impl PrintInfo {
                 }
             }
         } else if d_y < 0 {
-            lines_iter.take(self.top_line).rev();
+            let mut lines_iter = text.lines().iter().take(self.top_line).rev();
 
             while let Some(line) = lines_iter.next() {
                 let wrap_count = line.wrap_iter().count();
@@ -58,12 +56,14 @@ impl PrintInfo {
         }
     }
 
-    fn scroll_horizontally(&mut self, mut d_x: i32, text: &Text, node: &ChildNode<impl Area>) {
+    fn scroll_horizontally(
+        &mut self, mut d_x: i32, text: &Text, label: &impl Label, options: &ConfigOptions,
+    ) {
         let mut max_d = 0;
 
-        for (index, _) in text.printed_lines(node, self) {
-            let line = text.lines[index];
-            let line_d = line.get_distance_to_col(line.char_count(), &node.options().tab_places);
+        for index in text.printed_lines(label.height(), self) {
+            let line = &text.lines()[index];
+            let line_d = line.get_distance_to_col(line.char_count(), &options.tab_places);
             max_d = max(max_d, line_d);
         }
 
@@ -73,22 +73,37 @@ impl PrintInfo {
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait PrintedArea {
-    /// Returns the `ChildId` associated with this area.
-    fn child_id(&self) -> ChildId;
+pub trait PrintArea<M>
+where
+    M: AreaManager,
+{
+    /// Returns the `ChildNode` associated with this area.
+    fn end_node(&self) -> &EndNode<M>;
 
-    // The text is mutable so you can at least scroll it.
-    /// Gets the text that should be printed to an area.
-    fn text(&self) -> &Text;
+    fn update(&mut self);
 
-    fn print_info(&mut self) -> &mut PrintInfo;
+    fn text(&self) -> RoState<Text>;
+
+    /// Returns the printing information of the file.
+    fn print_info(&self) -> PrintInfo {
+        PrintInfo::default()
+    }
+
+    /// Scrolls the text vertically by an amount.
+    fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, area: &dyn Area, options: &ConfigOptions);
+    fn resize(&mut self, label: &M::Label, options: &ConfigOptions) {}
 }
 
 /// An area where you can edit the text.
-pub trait EditArea: PrintedArea {
+pub trait EditArea<M>: PrintArea<M>
+where
+    M: AreaManager,
+{
+    /// Returns a mutable reference to the text.
+    fn mut_text(&mut self) -> &mut Text;
+
     /// Gets the cursors on the area.
     ///
     /// # Returns
@@ -98,131 +113,72 @@ pub trait EditArea: PrintedArea {
     fn cursors(&mut self) -> (&mut Vec<TextCursor>, usize);
 }
 
-/// The text in a given area.
-pub(crate) struct Text {
-    lines: Vec<TextLine>,
-    replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
-    match_manager: Option<MatchManager>,
+pub struct PrintedLines {
+    file: RoState<Text>,
+    print_info: RoState<PrintInfo>,
 }
 
-// TODO: Properly implement replacements.
-impl Text {
-    /// Prints the contents of a given area in a given `ChildNode`.
-    pub fn print(&self, node: &mut ChildNode<impl Area>, forms: &[Form], print_info: &PrintInfo) {
-        node.area.start_printing();
+impl PrintedLines {
+    pub fn lines(&self, child_node: &EndNode<impl AreaManager>) -> Vec<usize> {
+        let height = child_node.height();
+        let (text, print_info) = (self.file.read(), self.print_info.read());
+        let mut lines_iter = text.lines().iter().enumerate();
+        let mut printed_lines = Vec::with_capacity(child_node.height());
 
-        // Print the `top_line`.
-        let top_line = self.lines[print_info.top_line];
-        let top_wraps = print_info.top_wraps;
-        let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
-        top_line.print(node, print_info.x_shift, skip as usize, node.options(), forms);
-
-        // Prints other lines until it can't anymore.
-        for line in self.lines.iter().skip(print_info.top_line) {
-            if !line.print(node, print_info.x_shift, 0, node.options(), forms) {
-                break;
-            }
+        let top_line = lines_iter.nth(print_info.top_line).unwrap().1;
+        let mut d_y = min(height, 1 + top_line.wrap_iter().count() - print_info.top_wraps);
+        for _ in 0..d_y {
+            printed_lines.push(print_info.top_line);
         }
 
-        node.area.stop_printing();
-    }
-
-    /// Returns a list of all line indices that would be printed in a given node.
-    ///
-    /// The first number is the `TextLine`'s index, and the second is the amount of visible lines
-    /// on the screen the `TextLine` would occupy.
-    pub fn printed_lines(
-        &self, node: &ChildNode<impl Area>, print_info: &PrintInfo,
-    ) -> Vec<(usize, usize)> {
-        let height_sum = print_info.top_wraps + node.area.height();
-        let mut printed_lines = Vec::new();
-        let mut lines_iter = self.lines.iter().enumerate();
-
-        // List the top line.
-        let top_line = lines_iter.nth(print_info.top_line).unwrap();
-        let mut d_y = 1 + top_line.1.wrap_iter().count();
-        printed_lines.push((top_line.0, min(d_y - print_info.top_wraps, node.area.height())));
-
-        // List all the other lines.
-        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height_sum) {
-            let line_count = 1 + line.wrap_iter().count();
-            printed_lines.push((index, min(line_count, height_sum - d_y)));
-            d_y += line_count;
+        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
+            let old_d_y = d_y;
+            d_y = min(d_y + 1 + line.wrap_iter().count(), height);
+            for _ in old_d_y..d_y {
+                printed_lines.push(index);
+            }
         }
 
         printed_lines
     }
-
-    pub(crate) fn splice(&mut self, range: TextRange, edit: impl ToString, max_line: usize) {
-        let edit_lines = edit.to_string().split_inclusive('\n').map(|t| String::from(t)).collect();
-
-        let old = self.lines[range.lines()].iter().map(|l| l.text()).collect();
-
-        let new_lines = extend_edit(old, edit_lines, range).0;
-        let new_lines: Vec<TextLine> = new_lines.iter().map(|&l| TextLine::new(l)).collect();
-
-        self.lines.splice(range.lines(), new_lines);
-    }
-
-    pub fn splice_on_cursor(&mut self, cursor: &TextCursor, edit: impl ToString) {
-        self.splice(cursor.range(), edit, self.lines.len() - 1);
-    }
-
-    pub fn lines(&self) -> &[TextLine] {
-        self.lines.as_slice()
-    }
 }
 
-/// A form of organizing the areas on a window.
-pub trait Layout {
-    fn new(area_manager: impl AreaManager) -> Self;
-
-    fn new_file_buffer(&mut self, path: PathBuf);
-
-    fn push_above(&mut self, area: impl PrintedArea) -> ChildId;
-
-    fn push_below(&mut self, area: impl PrintedArea) -> ChildId;
-
-    fn push_right(&mut self, area: impl PrintedArea) -> ChildId;
-
-    fn push_left(&mut self, area: impl PrintedArea) -> ChildId;
-}
-
-pub struct StatusArea();
-
-pub struct FileArea {
-    text: Text,
-    print_info: PrintInfo,
-    main_cursor: usize,
-    cursors: Vec<TextCursor>,
-    options: ConfigOptions,
-    child_id: ChildId,
+pub struct FileWidget<M>
+where
+    M: AreaManager,
+{
+    text: RwState<Text>,
+    print_info: RwState<PrintInfo>,
+    main_cursor: RwState<usize>,
+    cursors: RwState<Vec<TextCursor>>,
+    end_node: EndNode<M>,
     history: History,
 }
 
-impl FileArea {
-    fn new(
-        path: PathBuf, options: ConfigOptions, node: ChildNode<impl Area>,
-        match_manager: Option<MatchManager>,
-    ) -> FileArea {
+impl<M> FileWidget<M>
+where
+    M: AreaManager,
+{
+    fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
-        let lines = file_contents.lines().map(|l| TextLine::new(l.to_string())).collect();
+        let text = RwState::new(Text::new(file_contents, match_manager.clone()));
+        let cursor =
+            TextCursor::new(TextPos::default(), text.read().lines(), &node.options().tab_places);
 
-        FileArea {
-            text: Text { lines, replacements: Vec::new(), match_manager },
-            print_info: PrintInfo::default(),
-            main_cursor: 0,
-            cursors: vec![TextCursor::new(TextPos::default(), &lines, &node.options().tab_places)],
-            options,
-            child_id: node.id,
+        FileWidget {
+            text,
+            print_info: RwState::new(PrintInfo::default()),
+            main_cursor: RwState::new(0),
+            cursors: RwState::new(vec![cursor]),
+            end_node: node,
             history: History::new(),
         }
     }
 
-    fn scroll_unwrapped(&mut self, current: TextPos, target: TextPos, height: usize) {
-        let info = &mut self.print_info;
-        let scrolloff = self.options.scrolloff;
+    fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
+        let info = &mut self.print_info.write();
+        let scrolloff = self.end_node.options().scrolloff;
 
         if target.line > info.top_line + height - scrolloff.d_y {
             info.top_line += target.line + scrolloff.d_y - info.top_line - height;
@@ -231,9 +187,11 @@ impl FileArea {
         }
     }
 
-    fn scroll_up(&mut self, current: TextPos, target: TextPos, mut d_y: usize) {
-        let lines_iter = self.text.lines[..=target.line].iter_mut();
-        let info = &mut self.print_info;
+    fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
+        let scrolloff = self.end_node.options().scrolloff;
+        let text = self.text.read();
+        let lines_iter = text.lines().iter().take(target.line);
+        let info = &mut self.print_info.write();
 
         // If the target line is above the top line, no matter what, a new top line is needed.
         let mut needs_new_top_line = target.line < info.top_line;
@@ -245,7 +203,7 @@ impl FileArea {
 
             if index == info.top_line {
                 // This means we ran into the top line too early, and must scroll up.
-                if d_y < self.options.scrolloff.d_y + info.top_wraps {
+                if d_y < scrolloff.d_y + info.top_wraps {
                     needs_new_top_line = true;
                 // If this happens, we're in the middle of the screen, and don't need to scroll.
                 } else if !needs_new_top_line {
@@ -253,16 +211,19 @@ impl FileArea {
                 }
             }
 
-            if needs_new_top_line && (d_y >= self.options.scrolloff.d_y || index == 0) {
+            if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
                 info.top_line = index;
-                info.top_wraps = d_y.saturating_sub(self.options.scrolloff.d_y);
+                info.top_wraps = d_y.saturating_sub(scrolloff.d_y);
                 break;
             }
         }
     }
 
     fn scroll_down(&mut self, current: TextPos, target: TextPos, mut d_y: usize, height: usize) {
-        let lines_iter = self.text.lines.iter_mut().take(target.line);
+        let scrolloff = self.end_node.options().scrolloff;
+        let text = self.text.read();
+        let lines_iter = text.lines().iter().take(target.line + 1);
+        let mut info = self.print_info.write();
         let mut top_offset = 0;
 
         for (index, line) in lines_iter.enumerate().rev() {
@@ -270,34 +231,35 @@ impl FileArea {
                 d_y += 1 + line.wrap_iter().count();
             }
 
-            if index == self.print_info.top_line {
-                top_offset = self.print_info.top_wraps
+            if index == info.top_line {
+                top_offset = info.top_wraps
             };
 
-            if d_y >= height + top_offset - self.options.scrolloff.d_y {
-                self.print_info.top_line = index;
+            if d_y >= height + top_offset - scrolloff.d_y {
+                info.top_line = index;
                 // If this equals 0, that means the distance has matched up perfectly,
                 // i.e. the distance between the new `info.top_line` is exactly what's
                 // needed for the full height. If it's greater than 0, `info.top_wraps`
                 // needs to adjust where the line actually begins to match up.
-                self.print_info.top_wraps = d_y + self.options.scrolloff.d_y - height;
+                info.top_wraps = d_y + scrolloff.d_y - height;
                 break;
             }
 
             // If this happens first, we're in the middle of the screen, and don't need to scroll.
-            if index == self.print_info.top_line {
+            if index == info.top_line {
                 break;
             }
         }
     }
 
-    fn scroll_horizontally(&mut self, current: TextPos, target: TextPos, width: usize) {
-        let info = &mut self.print_info;
-        let scrolloff = self.options.scrolloff;
+    fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
+        let mut info = self.print_info.write();
+        let scrolloff = self.end_node.options().scrolloff;
+        let tab_places = &self.end_node.options().tab_places;
 
-        if let WrapMethod::NoWrap = self.options.wrap_method {
-            let target_line = &self.text.lines[target.line];
-            let distance = target_line.get_distance_to_col(target.col, &self.options.tab_places);
+        if let WrapMethod::NoWrap = self.end_node.options().wrap_method {
+            let target_line = &self.text.read().lines[target.line];
+            let distance = target_line.get_distance_to_col(target.col, &tab_places);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + width - scrolloff.d_x {
@@ -310,39 +272,48 @@ impl FileArea {
         }
     }
 
-    fn update_print_info(&mut self, node: &ChildNode<impl Area>) {
-        let main_cursor = self.cursors.get(self.main_cursor).unwrap();
+    fn update_print_info(&mut self) {
+        let cursors = self.cursors.read();
+        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
         let current = main_cursor.current();
         let target = main_cursor.target();
 
-        let line = &self.text.lines[current.line];
+        let text = self.text.read();
+
+        let line = &text.lines()[current.line];
         let current_byte = line.get_line_byte_at(current.col);
         let current_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
 
-        let line = &self.text.lines[target.line];
+        let line = &text.lines()[target.line];
         let target_byte = line.get_line_byte_at(target.col);
         let target_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
 
-        let mut d_y = target_wraps;
+        let d_y = target_wraps;
 
-        if let WrapMethod::NoWrap = node.options().wrap_method {
-            self.scroll_unwrapped(current, target, node.area.height());
-            self.scroll_horizontally(current, target, node.area.width());
+        drop(text);
+        drop(cursors);
+
+        if let WrapMethod::NoWrap = self.end_node.options().wrap_method {
+            self.scroll_unwrapped(target, self.end_node.height());
+            self.scroll_horizontally(target, self.end_node.width());
         } else if target.line < current.line
             || (target.line == current.line && target_wraps < current_wraps)
         {
-            self.scroll_up(current, target, d_y);
+            self.scroll_up(target, d_y);
         } else {
-            self.scroll_down(current, target, d_y, node.area.height());
+            self.scroll_down(current, target, d_y, self.end_node.height());
         }
     }
 
-    fn match_scroll(&mut self, node: &ChildNode<impl Area>) {
-        let main_cursor = self.cursors.get(self.main_cursor).unwrap();
+    fn match_scroll(&mut self) {
+        let text = self.text.read();
+        let cursors = self.cursors.read();
+
+        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
         let limit_line =
-            min(main_cursor.target().line + node.area.height(), self.text.lines.len() - 1);
-        let start = main_cursor.target().translate_to(&self.text.lines, limit_line, 0);
-        let target_line = &self.text.lines[limit_line];
+            min(main_cursor.target().line + self.end_node.height(), text.lines().len() - 1);
+        let start = main_cursor.target().translate_to(text.lines(), limit_line, 0);
+        let target_line = &text.lines()[limit_line];
         let range = TextRange {
             start,
             end: TextPos {
@@ -354,96 +325,344 @@ impl FileArea {
     }
 
     fn edit(&mut self, cursor: TextCursor, edit: impl ToString) {
-        let lines = edit.to_string().split_inclusive('\n').collect();
+        let edit = edit.to_string();
+        let lines = edit.split_inclusive('\n').collect();
 
-        let (edits, range) = self.history.add_change(&mut self.text.lines, lines, cursor.range());
+        let mut text = self.text.write();
+        let (edits, _) = self.history.add_change(&mut text.lines, lines, cursor.range());
 
-        let edits: Vec<TextLine> = edits.iter().map(|&l| TextLine::new(l)).collect();
-        self.text.lines.splice(cursor.range().lines(), edits);
+        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l.clone())).collect();
+        text.lines.splice(cursor.range().lines(), edits);
 
-        if let Some(match_manager) = self.text.match_manager {
-            match_range(&mut self.text, cursor.range(), &self.options);
-        }
+        let max_line = max_line(&text, &self.print_info.read(), &self.end_node);
+        update_range(&mut text, cursor.range(), max_line, &self.end_node);
     }
 
-    fn update_file(&mut self, node: &ChildNode<impl Area>) {
-        self.update_print_info(node);
+    /// Undoes the last moment in history.
+    pub fn undo(&mut self) {
+        let options = self.end_node.options();
+        let mut text = self.text.write();
 
-        let current = self.cursors.get(self.main_cursor).unwrap().current();
-        let char_tags = &mut self.text.lines.get_mut(current.line).unwrap().info.char_tags;
+        let (splices, print_info) = match self.history.undo(&mut text.lines) {
+            Some((changes, print_info)) => (changes, print_info),
+            None => return,
+        };
+        let mut info = self.print_info.write();
+        *info = print_info.unwrap_or(*info);
+
+        let mut cursors = self.cursors.write();
+        let mut cursors_iter = cursors.iter_mut();
+        let mut new_cursors = Vec::new();
+
+        let max_line = max_line(&text, &info, &self.end_node);
+        for splice in &splices {
+            if let Some(cursor) = cursors_iter.next() {
+                cursor.move_to(splice.taken_end(), &text.lines, &options);
+            } else {
+                new_cursors.push(TextCursor::new(
+                    splice.taken_end(),
+                    &text.lines,
+                    &options.tab_places,
+                ));
+            }
+
+            let range = TextRange { start: splice.start(), end: splice.taken_end() };
+            update_range(&mut text, range, max_line, &self.end_node);
+        }
+
+        self.cursors.write().extend(new_cursors);
+    }
+
+    /// Re-does the last moment in history.
+    pub fn redo(&mut self) {
+        let options = self.end_node.options();
+        let mut text = self.text.write();
+
+        let (splices, print_info) = match self.history.redo(&mut text.lines) {
+            Some((changes, print_info)) => (changes, print_info),
+            None => return,
+        };
+        let mut info = self.print_info.write();
+        *info = print_info.unwrap_or(*info);
+
+        let mut cursors = self.cursors.write();
+        let mut cursors_iter = cursors.iter_mut();
+        let mut new_cursors = Vec::new();
+
+        let max_line = max_line(&text, &info, &self.end_node);
+        for splice in &splices {
+            if let Some(cursor) = cursors_iter.next() {
+                cursor.move_to(splice.added_end(), &text.lines, &options);
+            } else {
+                new_cursors.push(TextCursor::new(
+                    splice.added_end(),
+                    &text.lines,
+                    &options.tab_places,
+                ));
+            }
+
+            let range = TextRange { start: splice.start(), end: splice.added_end() };
+            update_range(&mut text, range, max_line, &self.end_node);
+        }
+
+        self.cursors.write().extend(new_cursors);
+    }
+
+    fn update_file(&mut self) {
+        self.update_print_info();
+
+        let cursors = self.cursors.read();
+        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
+        let current = main_cursor.current();
+        let target = main_cursor.target();
+
+        let mut text = self.text.write();
+        let char_tags = &mut text.lines.get_mut(current.line).unwrap().info.char_tags;
         char_tags.retain(|(_, t)| !matches!(t, CharTag::PrimaryCursor));
 
-        let target = self.cursors.get(self.main_cursor).unwrap().target();
-
-        let line = &mut self.text.lines[target.line];
+        let line = &mut text.lines[target.line];
         let byte = line.get_line_byte_at(target.col);
         line.info.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
 
         // Updates the information for each cursor in the file.
-        self.cursors.iter_mut().for_each(|c| c.update());
+        self.cursors.write().iter_mut().for_each(|c| c.update());
 
-        self.match_scroll(node);
-    }
-}
+        drop(text);
+        drop(cursors);
 
-impl PrintedArea for FileArea {
-    fn child_id(&self) -> ChildId {
-        self.child_id
+        self.match_scroll();
     }
 
-    fn text(&self) -> &Text {
-        &self.text
-    }
-
-    fn print_info(&mut self) -> &mut PrintInfo {
-        &mut self.print_info
-    }
-
-    fn resize(&mut self, area: &dyn Area, options: &ConfigOptions) {
-        for line in self.text.lines {
-            line.parse_wrapping(options, area.width());
+    fn printed_lines(&self) -> PrintedLines {
+        PrintedLines {
+            file: RoState::new(self.text.clone()),
+            print_info: RoState::new(self.print_info.clone()),
         }
     }
 }
 
-pub struct FileBuffer {
-    path: PathBuf,
-    file_area: FileArea,
-}
+impl<M> PrintArea<M> for FileWidget<M>
+where
+    M: AreaManager,
+{
+    fn end_node(&self) -> &EndNode<M> {
+        &self.end_node
+    }
 
-struct OneStatusLayout {
-    node: ParentId,
-    status: StatusArea,
-    side_areas: Vec<Box<dyn PrintedArea>>,
-    files: Vec<FileBuffer>,
-}
+    fn update(&mut self) {}
 
-fn match_range(text: &mut Text, range: TextRange, area: &impl Area, options: &ConfigOptions) {
-    if let Some(match_manager) = text.match_manager {
-        let max_line_num = min(range.end.line + area.height(), text.lines.len() - 1);
-        let max_line = &text.lines[max_line_num];
-        let mut max_pos = range.end.translate_to(&text.lines, max_line_num, max_line.char_count());
+    fn text(&self) -> RoState<Text> {
+        self.text.to_ro()
+    }
 
-        let start = TextPos {
-            line: range.start.line,
-            col: 0,
-            byte: range.start.byte - get_byte(&text.lines[range.start.line].text(), range.start.col),
-        };
+    fn print_info(&self) -> PrintInfo {
+        self.print_info.read().clone()
+    }
 
-        let len = text.lines[range.end.line].text().len();
-        let end = TextPos {
-            line: range.end.line,
-            col: text.lines[range.end.line].char_count(),
-            byte: range.end.byte - get_byte(&text.lines[range.end.line].text(), range.end.col) + len,
-        };
+    fn scroll_vertically(&mut self, d_y: i32) {
+        self.print_info.write().scroll_vertically(d_y, &self.text.read());
+    }
 
-        let range = TextRange { start, end };
-
-        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
-
-        for (line_info, line_num) in line_infos {
-            text.lines[line_num].info = line_info;
-            text.lines[line_num].update_line_info(options, area.width());
+    fn resize(&mut self, label: &M::Label, options: &ConfigOptions) {
+        for line in &mut self.text.write().lines {
+            line.parse_wrapping(options, label.width());
         }
     }
+}
+
+pub struct StatusArea<M>
+where
+    M: AreaManager,
+{
+    file_name: String,
+    child_node: EndNode<M>,
+}
+
+pub struct LineNumbersWidget<M>
+where
+    M: AreaManager,
+{
+    end_node: EndNode<M>,
+    printed_lines: PrintedLines,
+    main_cursor: RoState<usize>,
+    cursors: RoState<Vec<TextCursor>>,
+    text: RwState<Text>,
+}
+
+impl<M> LineNumbersWidget<M>
+where
+    M: AreaManager,
+{
+    fn new(file_area: &mut FileWidget<M>, area_manager: &mut M) -> (Self, MidNode<M>) {
+        let mut split = 3;
+        let mut num_exp = 10;
+        let text = file_area.text.write();
+
+        while text.lines().len() > num_exp {
+            num_exp *= 10;
+            split += 1;
+        }
+
+        let node = &mut file_area.end_node;
+        let (parent_node, child_node) =
+            area_manager.split_end(node, Direction::Left, Split::Static(split), true);
+        let printed_lines = file_area.printed_lines();
+        let main_cursor = file_area.main_cursor.to_ro();
+        let cursors = file_area.cursors.to_ro();
+
+        (
+            LineNumbersWidget {
+                end_node: child_node,
+                printed_lines,
+                main_cursor,
+                cursors,
+                text: RwState::new(Text::default()),
+            },
+            parent_node,
+        )
+    }
+}
+
+impl<M> PrintArea<M> for LineNumbersWidget<M>
+where
+    M: AreaManager,
+{
+    fn update(&mut self) {
+        let lines = self.printed_lines.lines(&self.end_node());
+        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().current().line;
+
+        // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
+        let mut line_numbers = String::with_capacity(4 * lines.len());
+
+        match self.end_node.options().line_numbers {
+            LineNumbers::Absolute => {
+                lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
+            }
+            LineNumbers::Relative => {
+                lines.iter().for_each(|&n| {
+                    write!(&mut line_numbers, "{}\n", usize::abs_diff(n, main_line)).unwrap()
+                });
+            }
+            LineNumbers::Hybrid => {
+                lines.iter().for_each(|&n| {
+                    write!(
+                        &mut line_numbers,
+                        "{}\n",
+                        if n != main_line { usize::abs_diff(n, main_line) } else { n }
+                    )
+                    .unwrap()
+                });
+            }
+            LineNumbers::None => panic!("How the hell did you get here?"),
+        }
+
+		let mut text = self.text.write();
+        *text = Text::new(line_numbers, None);
+    }
+
+    fn text(&self) -> RoState<Text> {
+        self.text.to_ro()
+    }
+
+    fn end_node(&self) -> &EndNode<M> {
+        &self.end_node
+    }
+}
+
+struct OneStatusLayout<M>
+where
+    M: AreaManager,
+{
+    area_manager: M,
+    status: StatusArea<M>,
+    areas: Vec<Box<dyn PrintArea<M>>>,
+    files: Vec<(FileWidget<M>, Option<MidNode<M>>)>,
+    master_node: Option<MidNode<M>>,
+    match_manager: MatchManager,
+}
+
+/// A form of organizing the areas on a window.
+pub trait Layout<M>
+where
+    M: AreaManager,
+{
+    fn new_file(&mut self, path: PathBuf);
+
+    fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    where
+        P: PrintArea<M>,
+        C: Fn(EndNode<M>) -> P;
+}
+
+impl<M> OneStatusLayout<M>
+where
+    M: AreaManager + 'static,
+{
+    fn new(mut area_manager: M, path: PathBuf, match_manager: MatchManager) -> Self {
+        let mut node = area_manager.only_child().unwrap();
+
+        let (master_node, child_node) =
+            area_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
+
+        let status = StatusArea { child_node, file_name: String::from(path.to_str().unwrap()) };
+
+        let mut layout = OneStatusLayout {
+            area_manager,
+            status,
+            areas: Vec::new(),
+            files: Vec::new(),
+            master_node: Some(master_node),
+            match_manager,
+        };
+
+        layout.new_file_with_node(path, node);
+
+        layout
+    }
+
+    fn new_file_with_node(&mut self, path: PathBuf, node: EndNode<M>) {
+        let mut file_widget =
+            FileWidget::<M>::new(path, node.clone(), &Some(self.match_manager.clone()));
+
+        if matches!(node.options().line_numbers, LineNumbers::None) {
+            self.files.push((file_widget, None));
+        } else {
+            let (line_numbers_widget, file_parent) =
+                LineNumbersWidget::new(&mut file_widget, &mut self.area_manager);
+
+            self.areas.push(Box::new(line_numbers_widget));
+
+            self.files.push((file_widget, Some(file_parent)));
+        }
+    }
+}
+
+impl<M> Layout<M> for OneStatusLayout<M>
+where
+    M: AreaManager + 'static,
+{
+    fn new_file(&mut self, path: PathBuf) {
+        let master_node = &mut self.master_node.as_mut().unwrap();
+        let (master_node, child_node) =
+            self.area_manager.split_parent(master_node, Direction::Right, Split::Ratio(0.5), false);
+
+        self.new_file_with_node(path, child_node);
+        self.master_node = Some(master_node);
+    }
+
+    fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    where
+        P: PrintArea<M>,
+        C: Fn(EndNode<M>) -> P,
+    {
+        let master_node = &mut self.master_node.as_mut().unwrap();
+        let (master_node, child_node) =
+            self.area_manager.split_parent(master_node, direction, split, false);
+
+        self.master_node = Some(master_node);
+    }
+}
+
+fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl AreaManager>) -> usize {
+    min(print_info.top_line + node.height(), text.lines().len())
 }

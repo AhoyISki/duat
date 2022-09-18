@@ -31,8 +31,24 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "crossterm"
-version = "0.24.0"
-source = "git+https://github.com/crossterm-rs/crossterm?branch=master#f59221e1a228d97c24d2318a51645eccc1bdf8e7"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e64e6c0fbe2c17357405f7c758c1ef960fce08bdfb2c03d88d2a18d7e09c4b67"
+dependencies = [
+ "bitflags",
+ "crossterm_winapi",
+ "libc",
+ "mio",
+ "parking_lot",
+ "signal-hook",
+ "signal-hook-mio",
+ "winapi",
+]
+
+[[package]]
+name = "crossterm"
+version = "0.25.0"
+source = "git+https://github.com/crossterm-rs/crossterm?branch=master#10d1dc246dcd708b4902d53a542f732cba32ce99"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
@@ -74,6 +90,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f94fa09c2aeea5b8839e414b7b841bf429fd25b9c522116ac97ee87856d88b2"
+
+[[package]]
 name = "getrandom"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -86,9 +108,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.127"
+version = "0.2.132"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "505e71a4706fa491e9b1b55f51b95d4037d0821ee40131190475f692b35b009b"
+checksum = "8371e4e5341c3a96db127eb2465ac681ced4c433e01dd0e938adbef26ba93ba5"
 
 [[package]]
 name = "lock_api"
@@ -155,7 +177,8 @@ name = "parsec-core"
 version = "0.1.0"
 dependencies = [
  "bitflags",
- "crossterm",
+ "crossterm 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dyn-clone",
  "regex",
  "smallvec",
  "unicode-segmentation",
@@ -166,7 +189,7 @@ dependencies = [
 name = "parsec-term"
 version = "0.1.0"
 dependencies = [
- "crossterm",
+ "crossterm 0.25.0 (git+https://github.com/crossterm-rs/crossterm?branch=master)",
  "dirs",
  "parsec-core",
 ]

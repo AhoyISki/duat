@@ -1,7 +1,5 @@
 use crossterm::event::KeyEvent;
 
-use crate::ui::Area;
-
 /// An action that executes a command on an instance of type T.
 ///
 /// * If there is a key, it's already mapped when starting the app.

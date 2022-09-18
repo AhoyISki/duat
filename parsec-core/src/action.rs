@@ -108,10 +108,10 @@ impl Change {
         // The added lines where taken_range resides.
         let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
 
-        let full_lines = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
-        let full_lines: Vec<TextLine> = full_lines.iter().map(|&l| TextLine::new(l)).collect();
+        let new = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
+        let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
 
-        lines.splice(taken_range.lines(), full_lines);
+        lines.splice(taken_range.lines(), new);
     }
 
     /// Undoes the change and returns the modified text.
@@ -121,10 +121,10 @@ impl Change {
         // The lines where `added_range` resides.
         let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
 
-        let full_lines = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
-        let full_lines: Vec<TextLine> = full_lines.iter().map(|&l| TextLine::new(l)).collect();
+        let new = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
+        let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
 
-        lines.splice(added_range.lines(), full_lines);
+        lines.splice(added_range.lines(), new);
     }
 }
 

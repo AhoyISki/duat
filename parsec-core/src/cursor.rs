@@ -16,7 +16,7 @@ pub struct TextPos {
 }
 
 impl TextPos {
-    pub fn translate_to(self, lines: &Vec<TextLine>, line: usize, col: usize) -> TextPos {
+    pub fn translate_to(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
         let mut new = TextPos { line, col: 0, ..self };
         new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
 		new
@@ -156,7 +156,7 @@ pub struct TextCursor {
 
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new(pos: TextPos, lines: &Vec<TextLine>, tabs: &TabPlaces) -> TextCursor {
+    pub fn new(pos: TextPos, lines: &[TextLine], tabs: &TabPlaces) -> TextCursor {
         let line = lines.get(pos.line).unwrap();
         TextCursor {
             current: pos,
@@ -238,7 +238,7 @@ impl TextCursor {
             as usize;
 
         let line = lines.get(self.target.line).unwrap();
-        self.desired_x = line.get_distance_to_col(self.target.col, &options.tabs) as usize;
+        self.desired_x = line.get_distance_to_col(self.target.col, &options.tab_places);
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
@@ -297,7 +297,7 @@ impl TextCursor {
 /// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
 ///
 /// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
-pub fn get_byte_distance(lines: &Vec<TextLine>, current: TextPos, target: TextPos) -> isize {
+pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) -> isize {
     let mut distance = lines[target.line].get_line_byte_at(target.col) as isize;
     distance -= lines[current.line].get_line_byte_at(current.col) as isize;
 

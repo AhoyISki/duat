@@ -1,14 +1,14 @@
-use std::cmp::min;
+use std::{cmp::min, ops::RangeInclusive};
 
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    action::{History, TextRange},
-    config::{PrintOptions,ParsecOptionss, TabPlaces, WrapMethod, ConfigOptions},
+    action::{extend_edit, get_byte, TextRange},
+    config::{ConfigOptions, TabPlaces, WrapMethod},
     cursor::{TextCursor, TextPos},
     layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{Area, ChildNode},
+    ui::{AreaManager, Container, EndNode, Label},
 };
 
 // TODO: move this to a more general file.
@@ -122,10 +122,10 @@ impl TextLine {
             !self.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
         );
 
-		self.parse_wrapping(options, width);
+        self.parse_wrapping(options, width);
     }
-    
-	pub fn parse_wrapping(&mut self, options: &ConfigOptions, width: usize) {
+
+    pub fn parse_wrapping(&mut self, options: &ConfigOptions, width: usize) {
         let indent = if options.wrap_indent { self.indent(&options.tab_places) } else { 0 };
         let indent = if indent < width { indent } else { 0 };
 
@@ -159,7 +159,7 @@ impl TextLine {
                 }
             }
         }
-	}
+    }
 
     /// Returns an iterator over the wrapping bytes of the line.
     pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
@@ -185,36 +185,24 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    pub(crate) fn print<A>(
-        &self, node: &mut ChildNode<A>, x_shift: usize, skip: usize, options: &ConfigOptions,
-        forms: &[Form],
-    ) -> bool
-    where
-        A: Area,
-    {
-        let (skip, d_x) = if let WrapMethod::NoWrap = options.wrap_method {
+    pub(crate) fn print(
+        &self, node: &mut EndNode<impl AreaManager>, x_shift: usize, skip: usize, forms: &[Form],
+    ) -> bool {
+        let (skip, d_x) = if let WrapMethod::NoWrap = node.options().wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance(x_shift, &options.tab_places)
+            self.get_col_at_distance(x_shift, &node.options().tab_places)
         } else {
             (skip, 0)
         };
 
         let mut d_x = d_x as usize;
-        (0..d_x).for_each(|_| node.area.print(' '));
-
-        let char_width = |c, x| {
-            if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
-                1
-            } else {
-                get_char_width(c, x, &options.tab_places)
-            }
-        };
+        (0..d_x).for_each(|_| node.print(' '));
 
         if let Some(first_wrap_col) = self.wrap_iter().next() {
-            if skip >= first_wrap_col as usize && options.wrap_indent {
-                (0..self.indent(&options.tab_places)).for_each(|c| node.area.print(' '));
+            if skip >= first_wrap_col as usize && node.options().wrap_indent {
+                (0..self.indent(&node.options().tab_places)).for_each(|_| node.print(' '));
             }
         }
 
@@ -232,27 +220,30 @@ impl TextLine {
         //};
 
         //// Iterating from 10 character tags back, until the first tag is printed.
-        //let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) < skip);
+        //let tags_iter = tags.vec().iter().skip(pre_skip).take_while(|(c, _)| (*c as usize) <
+        // skip);
 
-		// Iterate through the tags before the first unskipped character.
+        // Iterate through the tags before the first unskipped character.
         let mut tags_iter = self.info.char_tags.vec().iter();
         let mut current_char_tag = None;
         while let Some(tag) = tags_iter.next() {
             if tag.0 as usize >= skip {
                 current_char_tag = Some(tag);
                 break;
-            } if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
+            }
+            if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
                 tag.1.trigger(node, forms, 0);
             }
         }
 
-        let wrap_indent = if options.wrap_indent { self.indent(&options.tab_places) } else { 0 };
+        let wrap_indent =
+            if node.options().wrap_indent { self.indent(&node.options().tab_places) } else { 0 };
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
-        let wrap_indent = if wrap_indent < node.area.width() { wrap_indent } else { 0 };
+        let wrap_indent = if wrap_indent < node.width() { wrap_indent } else { 0 };
 
         let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
         for (byte, ch) in text_iter {
-            let char_width = char_width(ch, d_x + x_shift);
+            let char_width = get_char_width(ch, d_x + x_shift, &node.options().tab_places);
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
@@ -263,7 +254,7 @@ impl TextLine {
                         continue;
                     } else {
                         if !tag.trigger(node, forms, wrap_indent) {
-                            node.area.clear_form();
+                            node.clear_form();
                             return false;
                         }
                     }
@@ -273,24 +264,24 @@ impl TextLine {
             }
 
             d_x += char_width;
-            if let WrapMethod::NoWrap = options.wrap_method {
-                if d_x > node.area.width() {
+            if let WrapMethod::NoWrap = node.options().wrap_method {
+                if d_x > node.width() {
                     break;
                 }
             }
 
             if ch == '\t' {
                 // `repeat()` would use string allocation (I think).
-                (0..char_width).for_each(|_| node.area.print(' '));
+                (0..char_width).for_each(|_| node.print(' '));
             } else if ch == '\n' {
-                node.area.print(' ');
+                node.print(' ');
             } else {
-                node.area.print(ch);
+                node.print(ch);
             }
         }
 
-        node.area.clear_form();
-        if !node.area.next_line() { false } else { true }
+        node.clear_form();
+        if !node.next_line() { false } else { true }
     }
 
     ////////////////////////////////
@@ -301,138 +292,127 @@ impl TextLine {
     }
 }
 
-/// File text and cursors.
-pub struct File<A>
-where
-    A: Area,
-{
-    /// The lines of the file.
-    pub lines: Vec<TextLine>,
-
-    /// Where on the file to start printing.
-    print_info: PrintInfo,
-
-    /// The area allocated to the file.
-    pub area: A,
-
-    /// The options related to files.
-    pub options: PrintOptions,
-
-    /// The edtiting cursors on the file.
-    pub cursors: Vec<TextCursor>,
-    /// The index of the main cursor. The file "follows it".
-    pub main_cursor: usize,
-
-    /// The history of edits on this file.
-    pub history: History,
-
-    /// The manager for character tags and file flag mutation.
-    tag_manager: MatchManager,
+/// The text in a given area.
+#[derive(Default)]
+pub struct Text {
+    pub(crate) lines: Vec<TextLine>,
+    replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
+    pub(crate) match_manager: Option<MatchManager>,
 }
 
-impl<A> File<A>
-where
-    A: Area {
-    /// Applies a splice to the file.
-    pub fn splice_edit<S>(&mut self, edit: Vec<S>, old_range: TextRange)
-    where
-        S: ToString,
-    {
-        let (edits, new_range) = self.history.add_change(&mut self.lines, edit, old_range);
-
-        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l)).collect();
-        self.lines.splice(old_range.lines(), edits);
-
-        match_range(&mut self.lines, new_range, &self.area, &self.options, &mut self.tag_manager);
-
-        for cursor in &mut self.cursors {
-            let new_pos = if cursor.target() >= old_range.end {
-                let mut new_pos = cursor.target();
-                new_pos = new_pos.col_add(new_range.end).col_sub(old_range.end);
-                new_pos.line += new_range.end.line;
-                new_pos.line -= old_range.end.line;
-
-                new_pos
-            } else if cursor.target() > old_range.start {
-                min(cursor.target(), new_range.end)
-            } else {
-                continue;
-            };
-
-            cursor.move_to(new_pos, &self.lines, &self.options)
+// TODO: Properly implement replacements.
+impl Text {
+    pub fn new(text: String, match_manager: Option<MatchManager>) -> Self {
+        Text {
+            lines: text.split_inclusive('\n').map(|l| TextLine::new(l.to_string())).collect(),
+            replacements: Vec::new(),
+            match_manager,
         }
     }
 
-    /// Undoes the last moment in history.
-    pub fn undo(&mut self) {
-        let (splices, print_info) = match self.history.undo(&mut self.lines) {
-            Some((changes, print_info)) => (changes, print_info),
-            None => return,
-        };
-        self.print_info = print_info.unwrap_or(self.print_info);
+    /// Prints the contents of a given area in a given `EndNode`impl Container, .
+    pub fn print(&self, node: &mut EndNode<impl AreaManager>, print_info: PrintInfo) {
+        node.start_printing();
 
-        let mut cursors = self.cursors.iter_mut();
-        let mut new_cursors = Vec::new();
+        // Print the `top_line`.
+        let top_line = &self.lines[print_info.top_line];
+        let top_wraps = print_info.top_wraps;
+        let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
+        let forms = self.match_manager.as_ref().map(|m| m.forms()).unwrap_or(&[]);
+        top_line.print(node, print_info.x_shift, skip as usize, forms);
 
-        for splice in &splices {
-            if let Some(cursor) = cursors.next() {
-                cursor.move_to(splice.taken_end(), &self.lines, &self.options);
-            } else {
-                new_cursors.push(TextCursor::new(
-                    splice.taken_end(),
-                    &self.lines,
-                    &self.options.tabs,
-                ));
+        // Prints other lines until it can't anymore.
+        for line in self.lines.iter().skip(print_info.top_line) {
+            if !line.print(node, print_info.x_shift, 0, forms) {
+                break;
             }
-
-            let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            match_range(&mut self.lines, range, &self.area, &self.options, &mut self.tag_manager);
         }
 
-        self.cursors.extend(new_cursors);
+        node.stop_printing();
     }
 
-    /// Re-does the last moment in history.
-    pub fn redo(&mut self) {
-        let (splices, print_info) = match self.history.redo(&mut self.lines) {
-            Some((changes, print_info)) => (changes, print_info),
-            None => return,
-        };
-        self.print_info = print_info.unwrap_or(self.print_info);
+    /// Returns a list of all line indices that would be printed in a given node.
+    ///
+    /// The first number is the `TextLine`'s index, and the second is the amount of visible lines
+    /// on the screen the `TextLine` would occupy.
+    pub fn printed_lines(&self, height: usize, print_info: &PrintInfo) -> Vec<usize> {
+        let height_sum = print_info.top_wraps + height;
+        let mut printed_lines = Vec::new();
+        let mut lines_iter = self.lines.iter().enumerate();
 
-        let mut cursors = self.cursors.iter_mut();
-        let mut new_cursors = Vec::new();
+        // List the top line.
+        let top_line = lines_iter.nth(print_info.top_line).unwrap();
+        let mut d_y = 1 + top_line.1.wrap_iter().count();
+        for _ in 0..min(d_y - print_info.top_wraps, height) {
+            printed_lines.push(top_line.0);
+        }
 
-        for splice in &splices {
-            if let Some(cursor) = cursors.next() {
-                cursor.move_to(splice.added_end(), &self.lines, &self.options);
-            } else {
-                new_cursors.push(TextCursor::new(
-                    splice.added_end(),
-                    &self.lines,
-                    &self.options.tabs,
-                ));
+        // List all the other lines.
+        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height_sum) {
+            let line_count = 1 + line.wrap_iter().count();
+            for _ in 0..min(line_count, height_sum - d_y) {
+                printed_lines.push(index);
             }
-
-            let range = TextRange { start: splice.start(), end: splice.added_end() };
-            match_range(&mut self.lines, range, &self.area, &self.options, &mut self.tag_manager);
+            d_y += line_count;
         }
 
-        self.cursors.extend(new_cursors);
+        printed_lines
     }
 
-    /// Prints the file, according to its current position.
-    pub fn print_file(&mut self) {
+    pub(crate) fn splice(&mut self, range: TextRange, edit: impl ToString, max_line: usize) {
+        let edit_lines = edit.to_string().split_inclusive('\n').map(|t| String::from(t)).collect();
+
+        let old = self.lines[range.lines()].iter().map(|l| l.text()).collect();
+
+        let new_lines = extend_edit(old, edit_lines, range).0;
+        let new_lines: Vec<TextLine> = new_lines.iter().map(|l| TextLine::new(l.clone())).collect();
+
+        self.lines.splice(range.lines(), new_lines);
     }
 
-    ////////////////////////////////
-    // Getters
-    ////////////////////////////////
-    pub fn print_info(&self) -> PrintInfo {
-        self.print_info
+    /// Splices a given edit on the selection of a cursor.
+    pub fn splice_on_cursor(&mut self, cursor: &TextCursor, edit: impl ToString) {
+        self.splice(cursor.range(), edit, self.lines.len() - 1);
+    }
+
+    pub fn lines(&self) -> &[TextLine] {
+        self.lines.as_slice()
     }
 }
 
 pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
     if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
+}
+
+pub(crate) fn update_range(
+    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl AreaManager>,
+) {
+    if let Some(match_manager) = &mut text.match_manager {
+        let line = &text.lines[max_line];
+        let max_pos = range.end.translate_to(&text.lines, max_line, line.char_count());
+
+        let start = TextPos {
+            line: range.start.line,
+            col: 0,
+            byte: range.start.byte
+                - get_byte(&text.lines[range.start.line].text(), range.start.col),
+        };
+
+        let len = text.lines[range.end.line].text().len();
+        let end = TextPos {
+            line: range.end.line,
+            col: text.lines[range.end.line].char_count(),
+            byte: range.end.byte - get_byte(&text.lines[range.end.line].text(), range.end.col)
+                + len,
+        };
+
+        let range = TextRange { start, end };
+
+        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
+
+        for (line_info, line_num) in line_infos {
+            text.lines[line_num].info = line_info;
+            text.lines[line_num].update_line_info(node.options(), node.width());
+        }
+    }
 }
