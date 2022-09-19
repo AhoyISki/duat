@@ -3,6 +3,8 @@ use std::{
     fmt::Write,
     fs,
     path::PathBuf,
+    sync::{Arc, Mutex, RwLock},
+    thread,
 };
 
 use crate::{
@@ -11,7 +13,7 @@ use crate::{
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
     tags::{CharTag, MatchManager},
-    ui::{AreaManager, Direction, EndNode, Label, MidNode, Split},
+    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split},
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -73,33 +75,35 @@ impl PrintInfo {
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait PrintArea<M>
+pub trait Widget<M>: Send
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     /// Returns the `ChildNode` associated with this area.
     fn end_node(&self) -> &EndNode<M>;
 
     fn update(&mut self);
 
+    fn needs_update(&self) -> bool;
+
     fn text(&self) -> RoState<Text>;
 
     /// Returns the printing information of the file.
-    fn print_info(&self) -> PrintInfo {
-        PrintInfo::default()
+    fn print_info(&self) -> RoState<PrintInfo> {
+        RoState::new(PrintInfo::default())
     }
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, label: &M::Label, options: &ConfigOptions) {}
+    fn resize(&mut self, node: &EndNode<M>, options: &ConfigOptions) {}
 }
 
 /// An area where you can edit the text.
-pub trait EditArea<M>: PrintArea<M>
+pub trait EditArea<M>: Widget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     /// Returns a mutable reference to the text.
     fn mut_text(&mut self) -> &mut Text;
@@ -119,7 +123,7 @@ pub struct PrintedLines {
 }
 
 impl PrintedLines {
-    pub fn lines(&self, child_node: &EndNode<impl AreaManager>) -> Vec<usize> {
+    pub fn lines(&self, child_node: &EndNode<impl NodeManager>) -> Vec<usize> {
         let height = child_node.height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
@@ -141,11 +145,15 @@ impl PrintedLines {
 
         printed_lines
     }
+
+    pub fn has_changed(&self) -> bool {
+        self.file.has_changed() || self.print_info.has_changed()
+    }
 }
 
 pub struct FileWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     text: RwState<Text>,
     print_info: RwState<PrintInfo>,
@@ -155,9 +163,11 @@ where
     history: History,
 }
 
+unsafe impl<M> Send for FileWidget<M> where M: NodeManager {}
+
 impl<M> FileWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
@@ -370,6 +380,7 @@ where
             update_range(&mut text, range, max_line, &self.end_node);
         }
 
+        drop(cursors);
         self.cursors.write().extend(new_cursors);
     }
 
@@ -405,6 +416,7 @@ where
             update_range(&mut text, range, max_line, &self.end_node);
         }
 
+        drop(cursors);
         self.cursors.write().extend(new_cursors);
     }
 
@@ -425,25 +437,25 @@ where
         line.info.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
 
         // Updates the information for each cursor in the file.
+        drop(cursors);
         self.cursors.write().iter_mut().for_each(|c| c.update());
 
         drop(text);
-        drop(cursors);
 
         self.match_scroll();
     }
 
     fn printed_lines(&self) -> PrintedLines {
         PrintedLines {
-            file: RoState::new(self.text.clone()),
-            print_info: RoState::new(self.print_info.clone()),
+            file: RoState::from_rw(self.text.clone()),
+            print_info: RoState::from_rw(self.print_info.clone()),
         }
     }
 }
 
-impl<M> PrintArea<M> for FileWidget<M>
+impl<M> Widget<M> for FileWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     fn end_node(&self) -> &EndNode<M> {
         &self.end_node
@@ -451,28 +463,32 @@ where
 
     fn update(&mut self) {}
 
+    fn needs_update(&self) -> bool {
+        false
+    }
+
     fn text(&self) -> RoState<Text> {
         self.text.to_ro()
     }
 
-    fn print_info(&self) -> PrintInfo {
-        self.print_info.read().clone()
+    fn print_info(&self) -> RoState<PrintInfo> {
+        self.print_info.to_ro()
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {
         self.print_info.write().scroll_vertically(d_y, &self.text.read());
     }
 
-    fn resize(&mut self, label: &M::Label, options: &ConfigOptions) {
+    fn resize(&mut self, node: &EndNode<M>, options: &ConfigOptions) {
         for line in &mut self.text.write().lines {
-            line.parse_wrapping(options, label.width());
+            line.parse_wrapping(options, node.width());
         }
     }
 }
 
 pub struct StatusArea<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     file_name: String,
     child_node: EndNode<M>,
@@ -480,7 +496,7 @@ where
 
 pub struct LineNumbersWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     end_node: EndNode<M>,
     printed_lines: PrintedLines,
@@ -489,26 +505,29 @@ where
     text: RwState<Text>,
 }
 
+unsafe impl<M> Send for LineNumbersWidget<M> where M: NodeManager {}
+
 impl<M> LineNumbersWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
-    fn new(file_area: &mut FileWidget<M>, area_manager: &mut M) -> (Self, MidNode<M>) {
+    fn new(file_widget: &mut FileWidget<M>, area_manager: &mut M) -> (Self, MidNode<M>) {
         let mut split = 3;
         let mut num_exp = 10;
-        let text = file_area.text.write();
+        let text = file_widget.text.write();
 
         while text.lines().len() > num_exp {
             num_exp *= 10;
             split += 1;
         }
 
-        let node = &mut file_area.end_node;
+        let node = &mut file_widget.end_node;
         let (parent_node, child_node) =
             area_manager.split_end(node, Direction::Left, Split::Static(split), true);
-        let printed_lines = file_area.printed_lines();
-        let main_cursor = file_area.main_cursor.to_ro();
-        let cursors = file_area.cursors.to_ro();
+        drop(text);
+        let printed_lines = file_widget.printed_lines();
+        let main_cursor = file_widget.main_cursor.to_ro();
+        let cursors = file_widget.cursors.to_ro();
 
         (
             LineNumbersWidget {
@@ -523,9 +542,9 @@ where
     }
 }
 
-impl<M> PrintArea<M> for LineNumbersWidget<M>
+impl<M> Widget<M> for LineNumbersWidget<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
@@ -556,8 +575,12 @@ where
             LineNumbers::None => panic!("How the hell did you get here?"),
         }
 
-		let mut text = self.text.write();
+        let mut text = self.text.write();
         *text = Text::new(line_numbers, None);
+    }
+
+    fn needs_update(&self) -> bool {
+        self.printed_lines.has_changed()
     }
 
     fn text(&self) -> RoState<Text> {
@@ -571,32 +594,35 @@ where
 
 struct OneStatusLayout<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
-    area_manager: M,
+    node_manager: M,
     status: StatusArea<M>,
-    areas: Vec<Box<dyn PrintArea<M>>>,
+    widgets: Vec<Mutex<Box<dyn Widget<M>>>>,
     files: Vec<(FileWidget<M>, Option<MidNode<M>>)>,
     master_node: Option<MidNode<M>>,
     match_manager: MatchManager,
+    prints: Vec<(RoState<Text>, EndNode<M>, RoState<PrintInfo>)>,
 }
 
 /// A form of organizing the areas on a window.
 pub trait Layout<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     fn new_file(&mut self, path: PathBuf);
 
     fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: PrintArea<M>,
-        C: Fn(EndNode<M>) -> P;
+        P: Widget<M> + 'static,
+        C: Fn(EndNode<M>, &Self) -> P;
+
+    fn application_loop(&mut self);
 }
 
 impl<M> OneStatusLayout<M>
 where
-    M: AreaManager + 'static,
+    M: NodeManager + 'static,
 {
     fn new(mut area_manager: M, path: PathBuf, match_manager: MatchManager) -> Self {
         let mut node = area_manager.only_child().unwrap();
@@ -607,12 +633,13 @@ where
         let status = StatusArea { child_node, file_name: String::from(path.to_str().unwrap()) };
 
         let mut layout = OneStatusLayout {
-            area_manager,
+            node_manager: area_manager,
             status,
-            areas: Vec::new(),
+            widgets: Vec::new(),
             files: Vec::new(),
             master_node: Some(master_node),
             match_manager,
+            prints: Vec::new(),
         };
 
         layout.new_file_with_node(path, node);
@@ -621,30 +648,31 @@ where
     }
 
     fn new_file_with_node(&mut self, path: PathBuf, node: EndNode<M>) {
-        let mut file_widget =
-            FileWidget::<M>::new(path, node.clone(), &Some(self.match_manager.clone()));
+        let mut file = FileWidget::<M>::new(path, node.clone(), &Some(self.match_manager.clone()));
+
+        self.prints.push((file.text().clone(), node.clone(), file.print_info().clone()));
 
         if matches!(node.options().line_numbers, LineNumbers::None) {
-            self.files.push((file_widget, None));
+            self.files.push((file, None));
         } else {
             let (line_numbers_widget, file_parent) =
-                LineNumbersWidget::new(&mut file_widget, &mut self.area_manager);
+                LineNumbersWidget::new(&mut file, &mut self.node_manager);
 
-            self.areas.push(Box::new(line_numbers_widget));
+            self.widgets.push(Mutex::new(Box::new(line_numbers_widget)));
 
-            self.files.push((file_widget, Some(file_parent)));
+            self.files.push((file, Some(file_parent)));
         }
     }
 }
 
 impl<M> Layout<M> for OneStatusLayout<M>
 where
-    M: AreaManager + 'static,
+    M: NodeManager + 'static,
 {
     fn new_file(&mut self, path: PathBuf) {
         let master_node = &mut self.master_node.as_mut().unwrap();
         let (master_node, child_node) =
-            self.area_manager.split_parent(master_node, Direction::Right, Split::Ratio(0.5), false);
+            self.node_manager.split_parent(master_node, Direction::Right, Split::Ratio(0.5), false);
 
         self.new_file_with_node(path, child_node);
         self.master_node = Some(master_node);
@@ -652,17 +680,69 @@ where
 
     fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: PrintArea<M>,
-        C: Fn(EndNode<M>) -> P,
+        P: Widget<M> + 'static,
+        C: Fn(EndNode<M>, &Self) -> P,
     {
         let master_node = &mut self.master_node.as_mut().unwrap();
-        let (master_node, child_node) =
-            self.area_manager.split_parent(master_node, direction, split, false);
+        let (master_node, end_node) =
+            self.node_manager.split_parent(master_node, direction, split, false);
 
         self.master_node = Some(master_node);
+
+        let widget = constructor(end_node.clone(), &self);
+
+        self.prints.push((widget.text().clone(), end_node, widget.print_info().clone()));
+
+        self.widgets.push(Mutex::new(Box::new(widget)));
+    }
+
+    fn application_loop(&mut self) {
+        let mut widgets_to_update = Vec::new();
+        // TODO: Make this trigger only when input is given.
+        thread::scope(|s_0| {
+            loop {
+                // Should only happen when input is detected.
+                {
+                    // First, update all files simultaneously.
+                    thread::scope(|s_1| {
+                        for file in &mut self.files {
+                            s_1.spawn(|| file.0.update());
+                        }
+                    });
+
+    				// Second, check if any of the widgets need to be updated, given the newly
+    				// updated files.
+                    for (index, widget) in self.widgets.iter().enumerate() {
+                        // If the lock is unavailable, that means the widget is being updated.
+                        if let Ok(raw_widget) = widget.try_lock() {
+                            if raw_widget.needs_update() {
+                                widgets_to_update.push(index);
+                            }
+                        }
+                    }
+
+    				// Third, update said widgets, without blocking the loop from continuing, thus
+    				// allowing a slow thread to process without blocking input and updates.
+                    for index in &widgets_to_update {
+                        let widget = &self.widgets[*index];
+                        s_0.spawn(|| {
+                            widget.lock().unwrap().update();
+                        });
+                    }
+
+                    widgets_to_update.clear();
+                }
+
+				// This part should happen on every update, instantly catching up with widgets that
+				// just finished updating.
+                for (text, node, print_info) in &mut self.prints {
+                    text.read().print(node, *print_info.read());
+                }
+            }
+        })
     }
 }
 
-fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl AreaManager>) -> usize {
+fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl NodeManager>) -> usize {
     min(print_info.top_line + node.height(), text.lines().len())
 }

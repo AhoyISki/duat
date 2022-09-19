@@ -78,7 +78,7 @@ pub trait Label {
 
 pub struct InnerMidNode<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     container: M::Container,
     class: String,
@@ -88,37 +88,45 @@ where
     split: Split,
 }
 
-pub struct MidNode<M>(Arc<RwLock<InnerMidNode<M>>>)
+pub struct MidNode<M>
 where
-    M: AreaManager + ?Sized;
+    M: NodeManager + ?Sized,
+{
+    node: Arc<RwLock<InnerMidNode<M>>>,
+    config: ConfigOptions,
+}
 
 impl<M> Clone for MidNode<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     fn clone(&self) -> Self {
-        MidNode(self.0.clone())
+        MidNode { node: self.node.clone(), config: self.config.clone() }
     }
 }
 
 impl<M> MidNode<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     fn resize_second(&mut self, len: usize) {
-        let node = self.0.write().unwrap();
+        let node = self.node.write().unwrap();
 
         match node.split {
             Split::Locked(_) => panic!("Don't try to resize a locked length area!"),
             Split::Static(_) => {
                 let self_len = match node.container.direction() {
-                    Direction::Left | Direction::Right => self.0.read().unwrap().container.width(),
-                    _ => self.0.read().unwrap().container.height(),
+                    Direction::Left | Direction::Right => {
+                        self.node.read().unwrap().container.width()
+                    }
+                    _ => self.node.read().unwrap().container.height(),
                 };
 
                 if len < self_len {
                     match &node.children.1 {
-                        Node::MidNode(node) => node.0.write().unwrap().container.request_len(len),
+                        Node::MidNode(node) => {
+                            node.node.write().unwrap().container.request_len(len)
+                        }
                         Node::EndNode(node) => node.node.write().unwrap().label.request_len(len),
                     }
                 }
@@ -128,10 +136,10 @@ where
     }
 
     fn request_width(&self, width: usize) {
-        let mut node = self.0.write().unwrap();
+        let mut node = self.node.write().unwrap();
         match (node.child_order, &mut node.parent) {
             (ChildOrder::Second, Some(parent_node)) => {
-                let inner_node = parent_node.0.read().unwrap();
+                let inner_node = parent_node.node.read().unwrap();
                 if let Direction::Left | Direction::Right = inner_node.container.direction() {
                     drop(inner_node);
                     parent_node.resize_second(width);
@@ -145,7 +153,7 @@ where
 
 pub struct InnerEndNode<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     label: M::Label,
     class: String,
@@ -156,7 +164,7 @@ where
 
 pub struct EndNode<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     node: Arc<RwLock<InnerEndNode<M>>>,
     config: ConfigOptions,
@@ -164,7 +172,7 @@ where
 
 impl<M> Clone for EndNode<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     fn clone(&self) -> Self {
         EndNode { node: self.node.clone(), config: self.config.clone() }
@@ -173,7 +181,7 @@ where
 
 impl<M> EndNode<M>
 where
-    M: AreaManager,
+    M: NodeManager,
 {
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
@@ -236,7 +244,7 @@ where
         let mut node = self.node.write().unwrap();
         match (node.child_order, &mut node.parent) {
             (ChildOrder::Second, Some(parent_node)) => {
-                let inner_node = parent_node.0.read().unwrap();
+                let inner_node = parent_node.node.read().unwrap();
                 if let Direction::Left | Direction::Right = inner_node.container.direction() {
                     drop(inner_node);
                     parent_node.resize_second(width);
@@ -293,7 +301,7 @@ where
 
 pub enum Node<M>
 where
-    M: AreaManager + ?Sized,
+    M: NodeManager + ?Sized,
 {
     MidNode(MidNode<M>),
     EndNode(EndNode<M>),
@@ -321,7 +329,7 @@ pub enum Direction {
     Left,
 }
 
-pub trait AreaManager {
+pub trait NodeManager {
     type Container: Container + Clone;
     type Label: Label + Clone;
 

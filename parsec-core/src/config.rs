@@ -77,46 +77,103 @@ pub struct ConfigOptions {
     pub tabs_as_spaces: bool,
 }
 
-pub struct RwState<T>(Arc<RwLock<T>>);
+pub struct RwState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
 
 impl<T> RwState<T> {
     pub fn new(data: T) -> Self {
-        RwState(Arc::new(RwLock::new(data)))
+        // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
+        // `true` at least once, by copying the second value - 1.
+        RwState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
     }
 
+	/// Reads the information.
+	///
+	/// Also makes it so that `has_changed()` returns false.
     pub fn read(&self) -> RwLockReadGuard<T> {
+        let updated_version = self.1.read().unwrap();
+        let mut current_version = self.2.write().unwrap();
+
+        if *updated_version > *current_version {
+            *current_version = *updated_version;
+        }
+        
         self.0.read().unwrap()
     }
 
-    pub fn write(&self) -> RwLockWriteGuard<T> {
+	/// Returns a writeable reference to the state.
+	///
+	/// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
+    pub fn write(&mut self) -> RwLockWriteGuard<T> {
+        *self.1.write().unwrap() += 1;
         self.0.write().unwrap()
     }
 
     pub fn to_ro(&self) -> RoState<T> {
-        RoState(self.0.clone())
+        RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.1.read().unwrap() - 1))
+    }
+
+    pub fn has_changed(&self) -> bool {
+        let last_version = self.1.read().unwrap();
+        let mut current_version = self.2.write().unwrap();
+        let has_changed = *last_version > *current_version;
+        *current_version = *last_version;
+
+        has_changed
     }
 }
 
 impl<T> Clone for RwState<T> {
 	fn clone(&self) -> Self {
-    	RwState(self.0.clone())
+    	RwState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap() - 1))
 	}
 }
 
-pub struct RoState<T>(Arc<RwLock<T>>);
+pub struct RoState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
 
 impl<T> RoState<T> {
-    pub fn new(rw_state: RwState<T>) -> Self {
-        RoState(rw_state.0.clone())
+    
+    pub fn new(data: T) -> Self {
+        RoState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
     }
 
+    pub fn from_rw(rw: RwState<T>) -> Self {
+        RoState(rw.0.clone(), rw.1.clone(), RwLock::new(*rw.1.read().unwrap() - 1))
+    }
+
+	/// Reads the information.
+	///
+	/// Also makes it so that `has_changed()` returns false.
     pub fn read(&self) -> RwLockReadGuard<T> {
+        let updated_version = self.1.read().unwrap();
+        let mut current_version = self.2.write().unwrap();
+
+        if *updated_version > *current_version {
+            *current_version = *updated_version;
+        }
+        
         self.0.read().unwrap()
+    }
+
+	/// Checks if the state within has changed.
+	///
+	/// If you have called `has_changed()` or `read()`, without any changes, it will return false.
+    pub fn has_changed(&self) -> bool {
+        let updated_version = self.1.read().unwrap();
+        let mut current_version = self.2.write().unwrap();
+
+        if *updated_version > *current_version {
+            *current_version = *updated_version;
+
+            true
+        } else {
+            false
+        }
     }
 }
 
+// NOTE: Each `RoState` of a given state will have its own internal update counter.
 impl<T> Clone for RoState<T> {
 	fn clone(&self) -> Self {
-    	RoState(self.0.clone())
+    	RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap() - 1))
 	}
 }

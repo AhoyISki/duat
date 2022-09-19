@@ -9,7 +9,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     file::TextLine,
-    ui::{EndNode, Container, Label, AreaManager},
+    ui::{EndNode, Container, Label, NodeManager},
 };
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
@@ -44,7 +44,7 @@ impl CharTag {
         &self, node: &mut EndNode<M>, forms: &[Form], wrap_indent: usize,
     ) -> bool
     where
-        M: AreaManager
+        M: NodeManager
     {
         match self {
             CharTag::PushForm(form) => node.push_form(forms, form.0),
