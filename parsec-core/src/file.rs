@@ -4,11 +4,11 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::{
     action::{extend_edit, get_byte, TextRange},
-    config::{ConfigOptions, TabPlaces, WrapMethod},
+    config::{Config, TabPlaces, WrapMethod},
     cursor::{TextCursor, TextPos},
     layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{NodeManager, Container, EndNode, Label},
+    ui::{UiManager, Container, EndNode, Label},
 };
 
 // TODO: move this to a more general file.
@@ -115,7 +115,7 @@ impl TextLine {
     /// Updates the information for a line in the file.
     ///
     /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info(&mut self, options: &ConfigOptions, width: usize) {
+    pub fn update_line_info(&mut self, options: &Config, width: usize) {
         self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
         self.info.line_flags.set(
             LineFlags::PURE_1_COL,
@@ -125,7 +125,7 @@ impl TextLine {
         self.parse_wrapping(options, width);
     }
 
-    pub fn parse_wrapping(&mut self, options: &ConfigOptions, width: usize) {
+    pub fn parse_wrapping(&mut self, options: &Config, width: usize) {
         let indent = if options.wrap_indent { self.indent(&options.tab_places) } else { 0 };
         let indent = if indent < width { indent } else { 0 };
 
@@ -186,7 +186,7 @@ impl TextLine {
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
     pub(crate) fn print(
-        &self, node: &mut EndNode<impl NodeManager>, x_shift: usize, skip: usize, forms: &[Form],
+        &self, node: &mut EndNode<impl UiManager>, x_shift: usize, skip: usize, forms: &[Form],
     ) -> bool {
         let (skip, d_x) = if let WrapMethod::NoWrap = node.options().wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
@@ -311,7 +311,7 @@ impl Text {
     }
 
     /// Prints the contents of a given area in a given `EndNode`impl Container, .
-    pub fn print(&self, node: &mut EndNode<impl NodeManager>, print_info: PrintInfo) {
+    pub fn print(&self, node: &mut EndNode<impl UiManager>, print_info: PrintInfo) {
         node.start_printing();
 
         // Print the `top_line`.
@@ -385,7 +385,7 @@ pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
 }
 
 pub(crate) fn update_range(
-    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl NodeManager>,
+    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl UiManager>,
 ) {
     if let Some(match_manager) = &mut text.match_manager {
         let line = &text.lines[max_line];

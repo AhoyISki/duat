@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 use dirs;
 use parsec_core::{
-    config::{ConfigOptions, LineNumbers, Options, ScrollOff, TabPlaces, WrapMethod},
+    config::{Config, LineNumbers, Options, ScrollOff, TabPlaces, WrapMethod},
     input::InputHandler,
     output::OutputPos,
 };
@@ -20,7 +20,7 @@ fn main() {
     // TODO: Create a new() function instead of doing it like this.
     // TODO: Create a configuration file somewhere on the system.
     let options = Options {
-        file_options: ConfigOptions {
+        file_options: Config {
             wrap_method: if cfg!(feature = "wrapped") {
                 WrapMethod::Width
             } else {

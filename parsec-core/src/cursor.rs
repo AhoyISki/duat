@@ -3,7 +3,7 @@ use std::cmp::{max, min};
 use super::file::TextLine;
 use crate::{
     action::TextRange,
-    config::{ConfigOptions, TabPlaces},
+    config::{Config, TabPlaces},
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -226,7 +226,7 @@ impl TextCursor {
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &ConfigOptions) {
+    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &Config) {
         let old_target = self.target;
 
         self.target.line = pos.line.clamp(0, lines.len());

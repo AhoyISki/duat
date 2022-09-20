@@ -62,7 +62,7 @@ impl TabPlaces {
 // TODO: Make these private.
 /// Some standard parsec options.
 #[derive(Default, Debug, Clone)]
-pub struct ConfigOptions {
+pub struct Config {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.

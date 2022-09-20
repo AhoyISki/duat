@@ -9,11 +9,11 @@ use std::{
 
 use crate::{
     action::{History, TextRange},
-    config::{ConfigOptions, LineNumbers, RoState, RwState, WrapMethod},
+    config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
     tags::{CharTag, MatchManager},
-    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split},
+    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, UiManager},
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +59,7 @@ impl PrintInfo {
     }
 
     fn scroll_horizontally(
-        &mut self, mut d_x: i32, text: &Text, label: &impl Label, options: &ConfigOptions,
+        &mut self, mut d_x: i32, text: &Text, label: &impl Label, options: &Config,
     ) {
         let mut max_d = 0;
 
@@ -77,7 +77,7 @@ impl PrintInfo {
 /// An area where text will be printed to the screen.
 pub trait Widget<M>: Send
 where
-    M: NodeManager,
+    M: UiManager,
 {
     /// Returns the `ChildNode` associated with this area.
     fn end_node(&self) -> &EndNode<M>;
@@ -97,13 +97,13 @@ where
     fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, node: &EndNode<M>, options: &ConfigOptions) {}
+    fn resize(&mut self, node: &EndNode<M>, options: &Config) {}
 }
 
 /// An area where you can edit the text.
 pub trait EditArea<M>: Widget<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     /// Returns a mutable reference to the text.
     fn mut_text(&mut self) -> &mut Text;
@@ -123,7 +123,7 @@ pub struct PrintedLines {
 }
 
 impl PrintedLines {
-    pub fn lines(&self, child_node: &EndNode<impl NodeManager>) -> Vec<usize> {
+    pub fn lines(&self, child_node: &EndNode<impl UiManager>) -> Vec<usize> {
         let height = child_node.height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
@@ -153,7 +153,7 @@ impl PrintedLines {
 
 pub struct FileWidget<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     text: RwState<Text>,
     print_info: RwState<PrintInfo>,
@@ -163,11 +163,11 @@ where
     history: History,
 }
 
-unsafe impl<M> Send for FileWidget<M> where M: NodeManager {}
+unsafe impl<M> Send for FileWidget<M> where M: UiManager {}
 
 impl<M> FileWidget<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
@@ -455,7 +455,7 @@ where
 
 impl<M> Widget<M> for FileWidget<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     fn end_node(&self) -> &EndNode<M> {
         &self.end_node
@@ -479,39 +479,41 @@ where
         self.print_info.write().scroll_vertically(d_y, &self.text.read());
     }
 
-    fn resize(&mut self, node: &EndNode<M>, options: &ConfigOptions) {
+    fn resize(&mut self, node: &EndNode<M>, options: &Config) {
         for line in &mut self.text.write().lines {
             line.parse_wrapping(options, node.width());
         }
     }
 }
 
-pub struct StatusArea<M>
+pub struct StatusArea<U>
 where
-    M: NodeManager,
+    U: UiManager,
 {
     file_name: String,
-    child_node: EndNode<M>,
+    child_node: EndNode<U>,
 }
 
-pub struct LineNumbersWidget<M>
+pub struct LineNumbersWidget<U>
 where
-    M: NodeManager,
+    U: UiManager,
 {
-    end_node: EndNode<M>,
+    end_node: EndNode<U>,
     printed_lines: PrintedLines,
     main_cursor: RoState<usize>,
     cursors: RoState<Vec<TextCursor>>,
     text: RwState<Text>,
 }
 
-unsafe impl<M> Send for LineNumbersWidget<M> where M: NodeManager {}
+unsafe impl<M> Send for LineNumbersWidget<M> where M: UiManager {}
 
-impl<M> LineNumbersWidget<M>
+impl<U> LineNumbersWidget<U>
 where
-    M: NodeManager,
+    U: UiManager,
 {
-    fn new(file_widget: &mut FileWidget<M>, area_manager: &mut M) -> (Self, MidNode<M>) {
+    fn new(
+        file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
+    ) -> (Self, MidNode<U>) {
         let mut split = 3;
         let mut num_exp = 10;
         let text = file_widget.text.write();
@@ -523,7 +525,7 @@ where
 
         let node = &mut file_widget.end_node;
         let (parent_node, child_node) =
-            area_manager.split_end(node, Direction::Left, Split::Static(split), true);
+            node_manager.split_end(node, Direction::Left, Split::Static(split), true);
         drop(text);
         let printed_lines = file_widget.printed_lines();
         let main_cursor = file_widget.main_cursor.to_ro();
@@ -544,7 +546,7 @@ where
 
 impl<M> Widget<M> for LineNumbersWidget<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
@@ -592,23 +594,23 @@ where
     }
 }
 
-struct OneStatusLayout<M>
+struct OneStatusLayout<U>
 where
-    M: NodeManager,
+    U: UiManager,
 {
-    node_manager: M,
-    status: StatusArea<M>,
-    widgets: Vec<Mutex<Box<dyn Widget<M>>>>,
-    files: Vec<(FileWidget<M>, Option<MidNode<M>>)>,
-    master_node: Option<MidNode<M>>,
+    node_manager: NodeManager<U>,
+    status: StatusArea<U>,
+    widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
+    files: Vec<(FileWidget<U>, Option<MidNode<U>>)>,
+    master_node: Option<MidNode<U>>,
     match_manager: MatchManager,
-    prints: Vec<(RoState<Text>, EndNode<M>, RoState<PrintInfo>)>,
+    prints: Vec<(RoState<Text>, EndNode<U>, RoState<PrintInfo>)>,
 }
 
 /// A form of organizing the areas on a window.
 pub trait Layout<M>
 where
-    M: NodeManager,
+    M: UiManager,
 {
     fn new_file(&mut self, path: PathBuf);
 
@@ -620,20 +622,23 @@ where
     fn application_loop(&mut self);
 }
 
-impl<M> OneStatusLayout<M>
+impl<U> OneStatusLayout<U>
 where
-    M: NodeManager + 'static,
+    U: UiManager + 'static,
 {
-    fn new(mut area_manager: M, path: PathBuf, match_manager: MatchManager) -> Self {
-        let mut node = area_manager.only_child().unwrap();
+    fn new(
+        mut node_manager: NodeManager<U>, path: PathBuf, match_manager: MatchManager,
+        config: Option<Config>,
+    ) -> Self {
+        let mut node = node_manager.only_child(config, Some(String::from("code"))).unwrap();
 
         let (master_node, child_node) =
-            area_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
+            node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
 
         let status = StatusArea { child_node, file_name: String::from(path.to_str().unwrap()) };
 
         let mut layout = OneStatusLayout {
-            node_manager: area_manager,
+            node_manager,
             status,
             widgets: Vec::new(),
             files: Vec::new(),
@@ -647,8 +652,8 @@ where
         layout
     }
 
-    fn new_file_with_node(&mut self, path: PathBuf, node: EndNode<M>) {
-        let mut file = FileWidget::<M>::new(path, node.clone(), &Some(self.match_manager.clone()));
+    fn new_file_with_node(&mut self, path: PathBuf, node: EndNode<U>) {
+        let mut file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
 
         self.prints.push((file.text().clone(), node.clone(), file.print_info().clone()));
 
@@ -667,12 +672,12 @@ where
 
 impl<M> Layout<M> for OneStatusLayout<M>
 where
-    M: NodeManager + 'static,
+    M: UiManager + 'static,
 {
     fn new_file(&mut self, path: PathBuf) {
         let master_node = &mut self.master_node.as_mut().unwrap();
         let (master_node, child_node) =
-            self.node_manager.split_parent(master_node, Direction::Right, Split::Ratio(0.5), false);
+            self.node_manager.split_mid(master_node, Direction::Right, Split::Ratio(0.5), false);
 
         self.new_file_with_node(path, child_node);
         self.master_node = Some(master_node);
@@ -685,7 +690,7 @@ where
     {
         let master_node = &mut self.master_node.as_mut().unwrap();
         let (master_node, end_node) =
-            self.node_manager.split_parent(master_node, direction, split, false);
+            self.node_manager.split_mid(master_node, direction, split, false);
 
         self.master_node = Some(master_node);
 
@@ -710,8 +715,8 @@ where
                         }
                     });
 
-    				// Second, check if any of the widgets need to be updated, given the newly
-    				// updated files.
+                    // Second, check if any of the widgets need to be updated, given the newly
+                    // updated files.
                     for (index, widget) in self.widgets.iter().enumerate() {
                         // If the lock is unavailable, that means the widget is being updated.
                         if let Ok(raw_widget) = widget.try_lock() {
@@ -721,8 +726,8 @@ where
                         }
                     }
 
-    				// Third, update said widgets, without blocking the loop from continuing, thus
-    				// allowing a slow thread to process without blocking input and updates.
+                    // Third, update said widgets, without blocking the loop from continuing, thus
+                    // allowing a slow thread to process without blocking input and updates.
                     for index in &widgets_to_update {
                         let widget = &self.widgets[*index];
                         s_0.spawn(|| {
@@ -733,8 +738,8 @@ where
                     widgets_to_update.clear();
                 }
 
-				// This part should happen on every update, instantly catching up with widgets that
-				// just finished updating.
+                // This part should happen on every update, instantly catching up with widgets that
+                // just finished updating.
                 for (text, node, print_info) in &mut self.prints {
                     text.read().print(node, *print_info.read());
                 }
@@ -743,6 +748,6 @@ where
     }
 }
 
-fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl NodeManager>) -> usize {
+fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl UiManager>) -> usize {
     min(print_info.top_line + node.height(), text.lines().len())
 }
