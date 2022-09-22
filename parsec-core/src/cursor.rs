@@ -4,6 +4,7 @@ use super::file::TextLine;
 use crate::{
     action::TextRange,
     config::{Config, TabPlaces},
+    ui::{EndNode, Ui},
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -19,7 +20,7 @@ impl TextPos {
     pub fn translate_to(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
         let mut new = TextPos { line, col: 0, ..self };
         new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
-		new
+        new
     }
 
     /// Adds columns given `self.line == other.line`.
@@ -156,19 +157,19 @@ pub struct TextCursor {
 
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new(pos: TextPos, lines: &[TextLine], tabs: &TabPlaces) -> TextCursor {
+    pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
         let line = lines.get(pos.line).unwrap();
         TextCursor {
             current: pos,
             target: pos,
             // This should be fine.
             anchor: None,
-            desired_x: line.get_distance_to_col(pos.col, tabs),
+            desired_x: line.get_distance_to_col(pos.col, node),
         }
     }
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_vertically(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+    pub fn move_vertically(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
         let old_target = self.target;
 
         let line = self.target.line;
@@ -176,7 +177,7 @@ impl TextCursor {
         let line = &lines[self.target.line];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        (self.target.col, _) = line.get_col_at_distance(self.desired_x, tabs);
+        (self.target.col, _) = line.get_col_at_distance(self.desired_x, node);
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         self.target.byte = (self.target.byte as isize
@@ -185,7 +186,9 @@ impl TextCursor {
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_horizontally(&mut self, count: i32, lines: &Vec<TextLine>, tabs: &TabPlaces) {
+    pub fn move_horizontally(
+        &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
+    ) {
         let old_target = self.target;
         let mut col = self.target.col as i32 + count;
 
@@ -219,14 +222,14 @@ impl TextCursor {
             + get_byte_distance(lines, old_target, self.target))
             as usize;
 
-        self.desired_x = line.get_distance_to_col(self.target.col, tabs) as usize;
+        self.desired_x = line.get_distance_to_col(self.target.col, node) as usize;
     }
 
     /// Moves the cursor to a position in the file.
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, options: &Config) {
+    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
         let old_target = self.target;
 
         self.target.line = pos.line.clamp(0, lines.len());
@@ -238,7 +241,7 @@ impl TextCursor {
             as usize;
 
         let line = lines.get(self.target.line).unwrap();
-        self.desired_x = line.get_distance_to_col(self.target.col, &options.tab_places);
+        self.desired_x = line.get_distance_to_col(self.target.col, node);
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.

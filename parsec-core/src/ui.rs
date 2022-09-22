@@ -78,7 +78,7 @@ pub trait Label {
 
 pub struct InnerMidNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     container: M::Container,
     class: String,
@@ -90,7 +90,7 @@ where
 
 pub struct MidNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     inner: Arc<RwLock<InnerMidNode<M>>>,
     config: Config,
@@ -98,7 +98,7 @@ where
 
 impl<M> Clone for MidNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     fn clone(&self) -> Self {
         MidNode { inner: self.inner.clone(), config: self.config.clone() }
@@ -107,7 +107,7 @@ where
 
 impl<M> MidNode<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     fn resize_second(&mut self, len: usize) {
         let node = self.inner.write().unwrap();
@@ -153,7 +153,7 @@ where
 
 pub struct InnerEndNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     label: M::Label,
     class: String,
@@ -164,7 +164,7 @@ where
 
 pub struct EndNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     inner: Arc<RwLock<InnerEndNode<M>>>,
     config: Config,
@@ -172,7 +172,7 @@ where
 
 impl<M> Clone for EndNode<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     fn clone(&self) -> Self {
         EndNode { inner: self.inner.clone(), config: self.config.clone() }
@@ -181,7 +181,7 @@ where
 
 impl<M> EndNode<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
@@ -297,11 +297,19 @@ where
     pub(crate) fn place_secondary_cursor(&mut self) {
         self.inner.write().unwrap().label.place_secondary_cursor();
     }
+
+    pub fn get_char_len(&self, ch: char) -> usize {
+        self.inner.read().unwrap().label.get_char_len(ch)
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
 }
 
 pub enum Node<M>
 where
-    M: UiManager + ?Sized,
+    M: Ui + ?Sized,
 {
     MidNode(MidNode<M>),
     EndNode(EndNode<M>),
@@ -329,7 +337,7 @@ pub enum Direction {
     Left,
 }
 
-pub trait UiManager {
+pub trait Ui {
     type Container: Container + Clone;
     type Label: Label + Clone;
 
@@ -362,22 +370,26 @@ pub trait UiManager {
 
 pub struct NodeManager<U>(U)
 where
-    U: UiManager;
+    U: Ui;
 
-impl<U> NodeManager<U> where U: UiManager {
-
+impl<U> NodeManager<U>
+where
+    U: Ui,
+{
     fn new(ui_manager: U) -> Self {
         NodeManager(ui_manager)
     }
 
-    pub fn only_child(&mut self, config: Option<Config>, class: Option<String>) -> Option<EndNode<U>> {
+    pub fn only_child(
+        &mut self, config: Option<Config>, class: Option<String>,
+    ) -> Option<EndNode<U>> {
         self.0.only_label().map(|l| EndNode {
             inner: Arc::new(RwLock::new(InnerEndNode {
                 child_order: ChildOrder::First,
                 parent: None,
                 form_stack: Vec::new(),
                 class: class.unwrap_or(String::from("label")),
-                label: l
+                label: l,
             })),
             config: config.unwrap_or(Config::default()),
         })

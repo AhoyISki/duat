@@ -3,9 +3,12 @@ use std::{
     fmt::Write,
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::Mutex,
     thread,
+    time::Duration,
 };
+
+use crossterm::event::{self, poll};
 
 use crate::{
     action::{History, TextRange},
@@ -13,7 +16,7 @@ use crate::{
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
     tags::{CharTag, MatchManager},
-    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, UiManager},
+    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -59,13 +62,13 @@ impl PrintInfo {
     }
 
     fn scroll_horizontally(
-        &mut self, mut d_x: i32, text: &Text, label: &impl Label, options: &Config,
+        &mut self, mut d_x: i32, text: &Text, label: &impl Label, node: &EndNode<impl Ui>,
     ) {
         let mut max_d = 0;
 
         for index in text.printed_lines(label.height(), self) {
             let line = &text.lines()[index];
-            let line_d = line.get_distance_to_col(line.char_count(), &options.tab_places);
+            let line_d = line.get_distance_to_col(line.char_count(), node);
             max_d = max(max_d, line_d);
         }
 
@@ -77,7 +80,7 @@ impl PrintInfo {
 /// An area where text will be printed to the screen.
 pub trait Widget<M>: Send
 where
-    M: UiManager,
+    M: Ui,
 {
     /// Returns the `ChildNode` associated with this area.
     fn end_node(&self) -> &EndNode<M>;
@@ -103,7 +106,7 @@ where
 /// An area where you can edit the text.
 pub trait EditArea<M>: Widget<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     /// Returns a mutable reference to the text.
     fn mut_text(&mut self) -> &mut Text;
@@ -123,7 +126,7 @@ pub struct PrintedLines {
 }
 
 impl PrintedLines {
-    pub fn lines(&self, child_node: &EndNode<impl UiManager>) -> Vec<usize> {
+    pub fn lines(&self, child_node: &EndNode<impl Ui>) -> Vec<usize> {
         let height = child_node.height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
@@ -153,42 +156,41 @@ impl PrintedLines {
 
 pub struct FileWidget<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     text: RwState<Text>,
     print_info: RwState<PrintInfo>,
     main_cursor: RwState<usize>,
     cursors: RwState<Vec<TextCursor>>,
-    end_node: EndNode<M>,
+    node: EndNode<M>,
     history: History,
 }
 
-unsafe impl<M> Send for FileWidget<M> where M: UiManager {}
+unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 
 impl<M> FileWidget<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
         let text = RwState::new(Text::new(file_contents, match_manager.clone()));
-        let cursor =
-            TextCursor::new(TextPos::default(), text.read().lines(), &node.options().tab_places);
+        let cursor = TextCursor::new(TextPos::default(), text.read().lines(), &node);
 
         FileWidget {
             text,
             print_info: RwState::new(PrintInfo::default()),
             main_cursor: RwState::new(0),
             cursors: RwState::new(vec![cursor]),
-            end_node: node,
+            node,
             history: History::new(),
         }
     }
 
     fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
         let info = &mut self.print_info.write();
-        let scrolloff = self.end_node.options().scrolloff;
+        let scrolloff = self.node.options().scrolloff;
 
         if target.line > info.top_line + height - scrolloff.d_y {
             info.top_line += target.line + scrolloff.d_y - info.top_line - height;
@@ -198,7 +200,7 @@ where
     }
 
     fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
-        let scrolloff = self.end_node.options().scrolloff;
+        let scrolloff = self.node.options().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.line);
         let info = &mut self.print_info.write();
@@ -230,7 +232,7 @@ where
     }
 
     fn scroll_down(&mut self, current: TextPos, target: TextPos, mut d_y: usize, height: usize) {
-        let scrolloff = self.end_node.options().scrolloff;
+        let scrolloff = self.node.options().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.line + 1);
         let mut info = self.print_info.write();
@@ -264,12 +266,12 @@ where
 
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
         let mut info = self.print_info.write();
-        let scrolloff = self.end_node.options().scrolloff;
-        let tab_places = &self.end_node.options().tab_places;
+        let scrolloff = self.node.options().scrolloff;
+        let tab_places = &self.node.options().tab_places;
 
-        if let WrapMethod::NoWrap = self.end_node.options().wrap_method {
+        if let WrapMethod::NoWrap = self.node.options().wrap_method {
             let target_line = &self.text.read().lines[target.line];
-            let distance = target_line.get_distance_to_col(target.col, &tab_places);
+            let distance = target_line.get_distance_to_col(target.col, &self.node);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + width - scrolloff.d_x {
@@ -303,15 +305,15 @@ where
         drop(text);
         drop(cursors);
 
-        if let WrapMethod::NoWrap = self.end_node.options().wrap_method {
-            self.scroll_unwrapped(target, self.end_node.height());
-            self.scroll_horizontally(target, self.end_node.width());
+        if let WrapMethod::NoWrap = self.node.options().wrap_method {
+            self.scroll_unwrapped(target, self.node.height());
+            self.scroll_horizontally(target, self.node.width());
         } else if target.line < current.line
             || (target.line == current.line && target_wraps < current_wraps)
         {
             self.scroll_up(target, d_y);
         } else {
-            self.scroll_down(current, target, d_y, self.end_node.height());
+            self.scroll_down(current, target, d_y, self.node.height());
         }
     }
 
@@ -321,7 +323,7 @@ where
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
         let limit_line =
-            min(main_cursor.target().line + self.end_node.height(), text.lines().len() - 1);
+            min(main_cursor.target().line + self.node.height(), text.lines().len() - 1);
         let start = main_cursor.target().translate_to(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let range = TextRange {
@@ -344,13 +346,12 @@ where
         let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l.clone())).collect();
         text.lines.splice(cursor.range().lines(), edits);
 
-        let max_line = max_line(&text, &self.print_info.read(), &self.end_node);
-        update_range(&mut text, cursor.range(), max_line, &self.end_node);
+        let max_line = max_line(&text, &self.print_info.read(), &self.node);
+        update_range(&mut text, cursor.range(), max_line, &self.node);
     }
 
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
-        let options = self.end_node.options();
         let mut text = self.text.write();
 
         let (splices, print_info) = match self.history.undo(&mut text.lines) {
@@ -364,20 +365,16 @@ where
         let mut cursors_iter = cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-        let max_line = max_line(&text, &info, &self.end_node);
+        let max_line = max_line(&text, &info, &self.node);
         for splice in &splices {
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to(splice.taken_end(), &text.lines, &options);
+                cursor.move_to(splice.taken_end(), &text.lines, &self.node);
             } else {
-                new_cursors.push(TextCursor::new(
-                    splice.taken_end(),
-                    &text.lines,
-                    &options.tab_places,
-                ));
+                new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
             }
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            update_range(&mut text, range, max_line, &self.end_node);
+            update_range(&mut text, range, max_line, &self.node);
         }
 
         drop(cursors);
@@ -386,7 +383,6 @@ where
 
     /// Re-does the last moment in history.
     pub fn redo(&mut self) {
-        let options = self.end_node.options();
         let mut text = self.text.write();
 
         let (splices, print_info) = match self.history.redo(&mut text.lines) {
@@ -400,20 +396,16 @@ where
         let mut cursors_iter = cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
-        let max_line = max_line(&text, &info, &self.end_node);
+        let max_line = max_line(&text, &info, &self.node);
         for splice in &splices {
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to(splice.added_end(), &text.lines, &options);
+                cursor.move_to(splice.added_end(), &text.lines, &self.node);
             } else {
-                new_cursors.push(TextCursor::new(
-                    splice.added_end(),
-                    &text.lines,
-                    &options.tab_places,
-                ));
+                new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
             }
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            update_range(&mut text, range, max_line, &self.end_node);
+            update_range(&mut text, range, max_line, &self.node);
         }
 
         drop(cursors);
@@ -455,10 +447,10 @@ where
 
 impl<M> Widget<M> for FileWidget<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     fn end_node(&self) -> &EndNode<M> {
-        &self.end_node
+        &self.node
     }
 
     fn update(&mut self) {}
@@ -481,14 +473,14 @@ where
 
     fn resize(&mut self, node: &EndNode<M>, options: &Config) {
         for line in &mut self.text.write().lines {
-            line.parse_wrapping(options, node.width());
+            line.parse_wrapping(options, node);
         }
     }
 }
 
 pub struct StatusArea<U>
 where
-    U: UiManager,
+    U: Ui,
 {
     file_name: String,
     child_node: EndNode<U>,
@@ -496,7 +488,7 @@ where
 
 pub struct LineNumbersWidget<U>
 where
-    U: UiManager,
+    U: Ui,
 {
     end_node: EndNode<U>,
     printed_lines: PrintedLines,
@@ -505,11 +497,11 @@ where
     text: RwState<Text>,
 }
 
-unsafe impl<M> Send for LineNumbersWidget<M> where M: UiManager {}
+unsafe impl<M> Send for LineNumbersWidget<M> where M: Ui {}
 
 impl<U> LineNumbersWidget<U>
 where
-    U: UiManager,
+    U: Ui,
 {
     fn new(
         file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
@@ -523,7 +515,7 @@ where
             split += 1;
         }
 
-        let node = &mut file_widget.end_node;
+        let node = &mut file_widget.node;
         let (parent_node, child_node) =
             node_manager.split_end(node, Direction::Left, Split::Static(split), true);
         drop(text);
@@ -546,7 +538,7 @@ where
 
 impl<M> Widget<M> for LineNumbersWidget<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
@@ -596,7 +588,7 @@ where
 
 struct OneStatusLayout<U>
 where
-    U: UiManager,
+    U: Ui,
 {
     node_manager: NodeManager<U>,
     status: StatusArea<U>,
@@ -610,7 +602,7 @@ where
 /// A form of organizing the areas on a window.
 pub trait Layout<M>
 where
-    M: UiManager,
+    M: Ui,
 {
     fn new_file(&mut self, path: PathBuf);
 
@@ -624,7 +616,7 @@ where
 
 impl<U> OneStatusLayout<U>
 where
-    U: UiManager + 'static,
+    U: Ui + 'static,
 {
     fn new(
         mut node_manager: NodeManager<U>, path: PathBuf, match_manager: MatchManager,
@@ -672,7 +664,7 @@ where
 
 impl<M> Layout<M> for OneStatusLayout<M>
 where
-    M: UiManager + 'static,
+    M: Ui + 'static,
 {
     fn new_file(&mut self, path: PathBuf) {
         let master_node = &mut self.master_node.as_mut().unwrap();
@@ -706,8 +698,8 @@ where
         // TODO: Make this trigger only when input is given.
         thread::scope(|s_0| {
             loop {
-                // Should only happen when input is detected.
-                {
+                // TODO: Make this generalized.
+                if event::poll(Duration::from_millis(10)).expect("crossterm") {
                     // First, update all files simultaneously.
                     thread::scope(|s_1| {
                         for file in &mut self.files {
@@ -741,13 +733,15 @@ where
                 // This part should happen on every update, instantly catching up with widgets that
                 // just finished updating.
                 for (text, node, print_info) in &mut self.prints {
-                    text.read().print(node, *print_info.read());
+                    if text.has_changed() {
+                        text.read().print(node, *print_info.read());
+                    }
                 }
             }
         })
     }
 }
 
-fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl UiManager>) -> usize {
+fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
     min(print_info.top_line + node.height(), text.lines().len())
 }

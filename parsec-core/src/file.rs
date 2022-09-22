@@ -1,14 +1,12 @@
 use std::{cmp::min, ops::RangeInclusive};
 
-use unicode_width::UnicodeWidthChar;
-
 use crate::{
     action::{extend_edit, get_byte, TextRange},
     config::{Config, TabPlaces, WrapMethod},
     cursor::{TextCursor, TextPos},
     layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{UiManager, Container, EndNode, Label},
+    ui::{EndNode, Ui},
 };
 
 // TODO: move this to a more general file.
@@ -30,12 +28,12 @@ impl TextLine {
     }
 
     /// Returns the line's indentation.
-    pub fn indent(&self, tabs: &TabPlaces) -> usize {
+    pub fn indent(&self, node: &EndNode<impl Ui>) -> usize {
         let mut indent_sum = 0;
 
         for ch in self.text.chars() {
             if ch == ' ' || ch == '\t' {
-                indent_sum += get_char_width(ch, indent_sum, tabs);
+                indent_sum += get_char_width(ch, indent_sum, node);
             } else {
                 break;
             }
@@ -54,7 +52,7 @@ impl TextLine {
     }
 
     /// Returns the visual distance to a certain column.
-    pub fn get_distance_to_col(&self, col: usize, tabs: &TabPlaces) -> usize {
+    pub fn get_distance_to_col(&self, col: usize, node: &EndNode<impl Ui>) -> usize {
         let mut width = 0;
 
         if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
@@ -62,9 +60,9 @@ impl TextLine {
         } else {
             for ch in self.text.chars().take(col) {
                 width += if ch == '\t' {
-                    tabs.get_tab_len(width)
+                    node.config().tab_places.get_tab_len(width, node)
                 } else {
-                    UnicodeWidthChar::width(ch).unwrap_or(1)
+                    node.get_char_len(ch)
                 };
             }
         }
@@ -76,7 +74,7 @@ impl TextLine {
     ///
     /// The leftover number is positive if the width of the characters is greater (happens if the
     /// last checked character has a width greater than 1), and 0 otherwise.
-    pub fn get_col_at_distance(&self, min_dist: usize, tabs: &TabPlaces) -> (usize, usize) {
+    pub fn get_col_at_distance(&self, min_dist: usize, node: &EndNode<impl Ui>) -> (usize, usize) {
         if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
             if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
                 let byte = min(min_dist, self.text.len() - 1);
@@ -104,7 +102,7 @@ impl TextLine {
                     break;
                 }
 
-                distance += get_char_width(ch, distance, tabs);
+                distance += get_char_width(ch, distance, node);
             }
 
             (col, distance.saturating_sub(min_dist))
@@ -115,19 +113,19 @@ impl TextLine {
     /// Updates the information for a line in the file.
     ///
     /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info(&mut self, options: &Config, width: usize) {
+    pub fn update_line_info(&mut self, options: &Config, node: &EndNode<impl Ui>) {
         self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
         self.info.line_flags.set(
             LineFlags::PURE_1_COL,
-            !self.text.chars().any(|c| UnicodeWidthChar::width(c).unwrap_or(1) > 1 || c == '\t'),
+            !self.text.chars().any(|c| node.get_char_len(c) > 1 || c == '\t'),
         );
 
-        self.parse_wrapping(options, width);
+        self.parse_wrapping(options, node);
     }
 
-    pub fn parse_wrapping(&mut self, options: &Config, width: usize) {
-        let indent = if options.wrap_indent { self.indent(&options.tab_places) } else { 0 };
-        let indent = if indent < width { indent } else { 0 };
+    pub fn parse_wrapping(&mut self, options: &Config, node: &EndNode<impl Ui>) {
+        let indent = if options.wrap_indent { self.indent(node) } else { 0 };
+        let indent = if indent < node.width() { indent } else { 0 };
 
         // Clear all `WrapppingChar`s from `char_tags`.
         self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
@@ -138,20 +136,20 @@ impl TextLine {
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = width;
+            distance = node.width();
             while distance < self.text.len() {
                 self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
 
                 indent_wrap = indent;
 
-                distance += width - indent_wrap;
+                distance += node.width() - indent_wrap;
             }
         } else {
             for (index, ch) in self.text.char_indices() {
-                distance += get_char_width(ch, distance, &options.tab_places);
+                distance += get_char_width(ch, distance, node);
 
-                if distance > width - indent_wrap {
-                    distance = get_char_width(ch, distance, &options.tab_places);
+                if distance > node.width() - indent_wrap {
+                    distance = get_char_width(ch, distance, node);
 
                     self.info.char_tags.insert((index as u32, CharTag::WrapppingChar));
 
@@ -186,13 +184,13 @@ impl TextLine {
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
     pub(crate) fn print(
-        &self, node: &mut EndNode<impl UiManager>, x_shift: usize, skip: usize, forms: &[Form],
+        &self, node: &mut EndNode<impl Ui>, x_shift: usize, skip: usize, forms: &[Form],
     ) -> bool {
         let (skip, d_x) = if let WrapMethod::NoWrap = node.options().wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance(x_shift, &node.options().tab_places)
+            self.get_col_at_distance(x_shift, node)
         } else {
             (skip, 0)
         };
@@ -202,7 +200,7 @@ impl TextLine {
 
         if let Some(first_wrap_col) = self.wrap_iter().next() {
             if skip >= first_wrap_col as usize && node.options().wrap_indent {
-                (0..self.indent(&node.options().tab_places)).for_each(|_| node.print(' '));
+                (0..self.indent(node)).for_each(|_| node.print(' '));
             }
         }
 
@@ -236,14 +234,13 @@ impl TextLine {
             }
         }
 
-        let wrap_indent =
-            if node.options().wrap_indent { self.indent(&node.options().tab_places) } else { 0 };
+        let wrap_indent = if node.options().wrap_indent { self.indent(node) } else { 0 };
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
         let wrap_indent = if wrap_indent < node.width() { wrap_indent } else { 0 };
 
         let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
         for (byte, ch) in text_iter {
-            let char_width = get_char_width(ch, d_x + x_shift, &node.options().tab_places);
+            let char_width = get_char_width(ch, d_x + x_shift, node);
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
@@ -311,7 +308,7 @@ impl Text {
     }
 
     /// Prints the contents of a given area in a given `EndNode`impl Container, .
-    pub fn print(&self, node: &mut EndNode<impl UiManager>, print_info: PrintInfo) {
+    pub fn print(&self, node: &mut EndNode<impl Ui>, print_info: PrintInfo) {
         node.start_printing();
 
         // Print the `top_line`.
@@ -380,12 +377,16 @@ impl Text {
     }
 }
 
-pub fn get_char_width(ch: char, col: usize, tabs: &TabPlaces) -> usize {
-    if ch == '\t' { tabs.get_tab_len(col) } else { UnicodeWidthChar::width(ch).unwrap_or(1) }
+pub fn get_char_width(ch: char, col: usize, node: &EndNode<impl Ui>) -> usize {
+    if ch == '\t' {
+        node.config().tab_places.get_tab_len(col, &node)
+    } else {
+        node.get_char_len(ch)
+    }
 }
 
 pub(crate) fn update_range(
-    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl UiManager>,
+    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl Ui>,
 ) {
     if let Some(match_manager) = &mut text.match_manager {
         let line = &text.lines[max_line];
@@ -412,7 +413,7 @@ pub(crate) fn update_range(
 
         for (line_info, line_num) in line_infos {
             text.lines[line_num].info = line_info;
-            text.lines[line_num].update_line_info(node.options(), node.width());
+            text.lines[line_num].update_line_info(node.options(), node);
         }
     }
 }

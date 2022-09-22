@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 dirs = "*"
+unicode-width = "*"
 
-crossterm = { git = "https://github.com/crossterm-rs/crossterm", branch = "master" }
+crossterm = "*"
 parsec-core = { version = "*", path = "../parsec-core/" }
 
 [features]

@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 # Unicode
 unicode-segmentation = "*"
-unicode-width = "*"
 
 # Style handling
 crossterm = "*"
