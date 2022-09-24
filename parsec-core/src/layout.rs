@@ -653,7 +653,7 @@ where
 
         self.prints.push((file.text().clone(), node.clone(), file.print_info().clone()));
 
-        if true || matches!(node.config().line_numbers, LineNumbers::None) {
+        if matches!(node.config().line_numbers, LineNumbers::None) {
             self.files.push((file, None));
         } else {
             let (line_numbers_widget, file_parent) =
