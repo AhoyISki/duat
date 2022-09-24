@@ -8,16 +8,16 @@ use std::{
     time::Duration,
 };
 
-use crossterm::event::{self, poll};
+use crossterm::event::{self, poll, Event, KeyCode};
 
 use crate::{
     action::{History, TextRange},
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
+    saturating_add_signed,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
-    saturating_add_signed
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -493,7 +493,7 @@ pub struct LineNumbersWidget<U>
 where
     U: Ui,
 {
-    end_node: EndNode<U>,
+    node: EndNode<U>,
     printed_lines: PrintedLines,
     main_cursor: RoState<usize>,
     cursors: RoState<Vec<TextCursor>>,
@@ -526,16 +526,17 @@ where
         let main_cursor = file_widget.main_cursor.to_ro();
         let cursors = file_widget.cursors.to_ro();
 
-        (
-            LineNumbersWidget {
-                end_node: child_node,
-                printed_lines,
-                main_cursor,
-                cursors,
-                text: RwState::new(Text::default()),
-            },
-            parent_node,
-        )
+        let mut line_numbers = LineNumbersWidget {
+            node: child_node,
+            printed_lines,
+            main_cursor,
+            cursors,
+            text: RwState::new(Text::default()),
+        };
+
+        line_numbers.update();
+
+        (line_numbers, parent_node)
     }
 }
 
@@ -550,7 +551,7 @@ where
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
 
-        match self.end_node.config().line_numbers {
+        match self.node.config().line_numbers {
             LineNumbers::Absolute => {
                 lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
             }
@@ -585,7 +586,7 @@ where
     }
 
     fn end_node(&self) -> &EndNode<M> {
-        &self.end_node
+        &self.node
     }
 }
 
@@ -656,10 +657,15 @@ where
         if matches!(node.config().line_numbers, LineNumbers::None) {
             self.files.push((file, None));
         } else {
-            let (line_numbers_widget, file_parent) =
+            let (line_numbers, file_parent) =
                 LineNumbersWidget::new(&mut file, &mut self.node_manager);
 
-            self.widgets.push(Mutex::new(Box::new(line_numbers_widget)));
+            self.prints.push((
+                line_numbers.text(),
+                line_numbers.node.clone(),
+                RoState::new(PrintInfo::default()),
+            ));
+            self.widgets.push(Mutex::new(Box::new(line_numbers)));
 
             self.files.push((file, Some(file_parent)));
         }
@@ -700,8 +706,7 @@ where
     fn application_loop(&mut self) {
         let mut widgets_to_update = Vec::new();
 
-        //self.node_manager.startup();
-        // TODO: Make this trigger only when input is given.
+        self.node_manager.startup();
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.
@@ -712,6 +717,12 @@ where
                             s_1.spawn(|| file.0.update());
                         }
                     });
+
+					if let Event::Key(key_event) = event::read().unwrap() {
+    					if let KeyCode::Esc = key_event.code {
+        					break;
+    					}
+					}
 
                     // Second, check if any of the widgets need to be updated, given the newly
                     // updated files.
@@ -744,7 +755,9 @@ where
                     }
                 }
             }
-        })
+        });
+
+        self.node_manager.shutdown();
     }
 }
 

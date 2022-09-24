@@ -484,7 +484,7 @@ where
         self.0.startup();
     }
 
-    fn shutdown(&mut self) {
+    pub(crate) fn shutdown(&mut self) {
         self.0.shutdown();
     }
 }

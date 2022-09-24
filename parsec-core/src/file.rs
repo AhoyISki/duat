@@ -320,7 +320,7 @@ impl Text {
         top_line.print(node, print_info.x_shift, skip as usize, forms);
 
         // Prints other lines until it can't anymore.
-        for line in self.lines.iter().skip(print_info.top_line) {
+        for line in self.lines.iter().skip(print_info.top_line + 1) {
             if !line.print(node, print_info.x_shift, 0, forms) {
                 break;
             }
