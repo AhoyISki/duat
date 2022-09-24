@@ -5,6 +5,7 @@ use crate::{
     action::TextRange,
     config::{Config, TabPlaces},
     ui::{EndNode, Ui},
+    saturating_add_signed
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -19,7 +20,7 @@ pub struct TextPos {
 impl TextPos {
     pub fn translate_to(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
         let mut new = TextPos { line, col: 0, ..self };
-        new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
+        new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
         new
     }
 

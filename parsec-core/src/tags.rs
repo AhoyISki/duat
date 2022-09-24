@@ -154,7 +154,7 @@ impl CharTags {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// A style for text.
 pub struct Form {
     /// The `Form`'s colors and attributes.
@@ -702,7 +702,7 @@ struct LastMatch {
 }
 
 /// The object responsible for matching `TextLine`s on `Text`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MatchManager {
     /// The forms for syntax highlighting.
     forms: Vec<Form>,

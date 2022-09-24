@@ -270,10 +270,6 @@ where
         node.label.width()
     }
 
-    pub fn options(&self) -> &Config {
-        &self.options()
-    }
-
     pub(crate) fn start_printing(&mut self) {
         self.inner.write().unwrap().label.start_printing();
     }
@@ -282,6 +278,7 @@ where
         self.inner.write().unwrap().label.stop_printing();
     }
 
+	// TODO: Stop using `write()` a bazillion times over.
     pub(crate) fn print(&mut self, ch: char) {
         self.inner.write().unwrap().label.print(ch);
     }
@@ -366,6 +363,10 @@ pub trait Ui {
     ) -> (Self::Container, Self::Label);
 
     fn only_label(&mut self) -> Option<Self::Label>;
+
+    fn startup(&mut self);
+
+    fn shutdown(&mut self);
 }
 
 pub struct NodeManager<U>(U)
@@ -376,7 +377,7 @@ impl<U> NodeManager<U>
 where
     U: Ui,
 {
-    fn new(ui_manager: U) -> Self {
+    pub fn new(ui_manager: U) -> Self {
         NodeManager(ui_manager)
     }
 
@@ -400,17 +401,18 @@ where
     pub fn split_end(
         &mut self, node: &mut EndNode<U>, direction: Direction, split: Split, glued: bool,
     ) -> (MidNode<U>, EndNode<U>) {
-        let (container, label) =
-            self.0.split_label(&mut node.inner.write().unwrap().label, direction, split, glued);
+        let mut inner = node.inner.write().unwrap();
+        let (container, label) = self.0.split_label(&mut inner.label, direction, split, glued);
+        drop(inner);
 
-        let inner_node = node.inner.read().unwrap();
+        let inner = node.inner.read().unwrap();
 
         let end_node = EndNode {
             inner: Arc::new(RwLock::new(InnerEndNode {
                 child_order: ChildOrder::Second,
                 parent: None,
                 form_stack: Vec::new(),
-                class: inner_node.class.clone(),
+                class: inner.class.clone(),
                 label,
             })),
             config: node.config.clone(),
@@ -418,15 +420,16 @@ where
 
         let mid_node = MidNode {
             inner: Arc::new(RwLock::new(InnerMidNode {
-                child_order: inner_node.child_order,
+                child_order: inner.child_order,
                 children: (Node::EndNode(node.clone()), Node::EndNode(end_node.clone())),
                 split,
-                parent: inner_node.parent.clone(),
-                class: inner_node.class.clone(),
+                parent: inner.parent.clone(),
+                class: inner.class.clone(),
                 container,
             })),
             config: node.config.clone(),
         };
+        drop(inner);
 
         node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
         end_node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
@@ -475,6 +478,14 @@ where
         end_node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
 
         (mid_node, end_node)
+    }
+
+    pub(crate) fn startup(&mut self) {
+        self.0.startup();
+    }
+
+    fn shutdown(&mut self) {
+        self.0.shutdown();
     }
 }
 

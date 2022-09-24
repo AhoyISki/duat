@@ -11,6 +11,7 @@ use crate::{
 
 // TODO: move this to a more general file.
 /// A line in the text file.
+#[derive(Debug)]
 pub struct TextLine {
     /// The text on the line.
     text: String,
@@ -186,7 +187,7 @@ impl TextLine {
     pub(crate) fn print(
         &self, node: &mut EndNode<impl Ui>, x_shift: usize, skip: usize, forms: &[Form],
     ) -> bool {
-        let (skip, d_x) = if let WrapMethod::NoWrap = node.options().wrap_method {
+        let (skip, d_x) = if let WrapMethod::NoWrap = node.config().wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
@@ -199,7 +200,7 @@ impl TextLine {
         (0..d_x).for_each(|_| node.print(' '));
 
         if let Some(first_wrap_col) = self.wrap_iter().next() {
-            if skip >= first_wrap_col as usize && node.options().wrap_indent {
+            if skip >= first_wrap_col as usize && node.config().wrap_indent {
                 (0..self.indent(node)).for_each(|_| node.print(' '));
             }
         }
@@ -234,7 +235,7 @@ impl TextLine {
             }
         }
 
-        let wrap_indent = if node.options().wrap_indent { self.indent(node) } else { 0 };
+        let wrap_indent = if node.config().wrap_indent { self.indent(node) } else { 0 };
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
         let wrap_indent = if wrap_indent < node.width() { wrap_indent } else { 0 };
 
@@ -261,7 +262,7 @@ impl TextLine {
             }
 
             d_x += char_width;
-            if let WrapMethod::NoWrap = node.options().wrap_method {
+            if let WrapMethod::NoWrap = node.config().wrap_method {
                 if d_x > node.width() {
                     break;
                 }
@@ -290,7 +291,7 @@ impl TextLine {
 }
 
 /// The text in a given area.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Text {
     pub(crate) lines: Vec<TextLine>,
     replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
@@ -413,7 +414,7 @@ pub(crate) fn update_range(
 
         for (line_info, line_num) in line_infos {
             text.lines[line_num].info = line_info;
-            text.lines[line_num].update_line_info(node.options(), node);
+            text.lines[line_num].update_line_info(node.config(), node);
         }
     }
 }

@@ -177,6 +177,6 @@ impl<T> RoState<T> {
 // NOTE: Each `RoState` of a given state will have its own internal update counter.
 impl<T> Clone for RoState<T> {
 	fn clone(&self) -> Self {
-    	RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap() - 1))
+    	RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap()))
 	}
 }

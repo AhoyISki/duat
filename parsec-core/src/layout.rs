@@ -17,6 +17,7 @@ use crate::{
     file::{update_range, Text, TextLine},
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
+    saturating_add_signed
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,7 @@ impl PrintInfo {
             max_d = max(max_d, line_d);
         }
 
-        self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
+        self.x_shift = min(saturating_add_signed(self.x_shift, d_x as isize), max_d);
     }
 }
 
@@ -176,7 +177,9 @@ where
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
         let text = RwState::new(Text::new(file_contents, match_manager.clone()));
-        let cursor = TextCursor::new(TextPos::default(), text.read().lines(), &node);
+        let read = text.read();
+        let cursor = TextCursor::new(TextPos::default(), read.lines(), &node);
+        drop(read);
 
         FileWidget {
             text,
@@ -190,7 +193,7 @@ where
 
     fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
         let info = &mut self.print_info.write();
-        let scrolloff = self.node.options().scrolloff;
+        let scrolloff = self.node.config().scrolloff;
 
         if target.line > info.top_line + height - scrolloff.d_y {
             info.top_line += target.line + scrolloff.d_y - info.top_line - height;
@@ -200,7 +203,7 @@ where
     }
 
     fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
-        let scrolloff = self.node.options().scrolloff;
+        let scrolloff = self.node.config().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.line);
         let info = &mut self.print_info.write();
@@ -232,7 +235,7 @@ where
     }
 
     fn scroll_down(&mut self, current: TextPos, target: TextPos, mut d_y: usize, height: usize) {
-        let scrolloff = self.node.options().scrolloff;
+        let scrolloff = self.node.config().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.line + 1);
         let mut info = self.print_info.write();
@@ -266,10 +269,10 @@ where
 
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
         let mut info = self.print_info.write();
-        let scrolloff = self.node.options().scrolloff;
-        let tab_places = &self.node.options().tab_places;
+        let scrolloff = self.node.config().scrolloff;
+        let tab_places = &self.node.config().tab_places;
 
-        if let WrapMethod::NoWrap = self.node.options().wrap_method {
+        if let WrapMethod::NoWrap = self.node.config().wrap_method {
             let target_line = &self.text.read().lines[target.line];
             let distance = target_line.get_distance_to_col(target.col, &self.node);
 
@@ -305,7 +308,7 @@ where
         drop(text);
         drop(cursors);
 
-        if let WrapMethod::NoWrap = self.node.options().wrap_method {
+        if let WrapMethod::NoWrap = self.node.config().wrap_method {
             self.scroll_unwrapped(target, self.node.height());
             self.scroll_horizontally(target, self.node.width());
         } else if target.line < current.line
@@ -514,11 +517,11 @@ where
             num_exp *= 10;
             split += 1;
         }
+        drop(text);
 
         let node = &mut file_widget.node;
         let (parent_node, child_node) =
             node_manager.split_end(node, Direction::Left, Split::Static(split), true);
-        drop(text);
         let printed_lines = file_widget.printed_lines();
         let main_cursor = file_widget.main_cursor.to_ro();
         let cursors = file_widget.cursors.to_ro();
@@ -547,7 +550,7 @@ where
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
 
-        match self.end_node.options().line_numbers {
+        match self.end_node.config().line_numbers {
             LineNumbers::Absolute => {
                 lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
             }
@@ -586,7 +589,7 @@ where
     }
 }
 
-struct OneStatusLayout<U>
+pub struct OneStatusLayout<U>
 where
     U: Ui,
 {
@@ -604,7 +607,7 @@ pub trait Layout<M>
 where
     M: Ui,
 {
-    fn new_file(&mut self, path: PathBuf);
+    fn new_file(&mut self, path: &PathBuf);
 
     fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
@@ -618,8 +621,8 @@ impl<U> OneStatusLayout<U>
 where
     U: Ui + 'static,
 {
-    fn new(
-        mut node_manager: NodeManager<U>, path: PathBuf, match_manager: MatchManager,
+    pub fn new(
+        mut node_manager: NodeManager<U>, path: &PathBuf, match_manager: MatchManager,
         config: Option<Config>,
     ) -> Self {
         let mut node = node_manager.only_child(config, Some(String::from("code"))).unwrap();
@@ -644,12 +647,13 @@ where
         layout
     }
 
-    fn new_file_with_node(&mut self, path: PathBuf, node: EndNode<U>) {
-        let mut file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
+    fn new_file_with_node(&mut self, path: &PathBuf, node: EndNode<U>) {
+        let mut file =
+            FileWidget::<U>::new(path.clone(), node.clone(), &Some(self.match_manager.clone()));
 
         self.prints.push((file.text().clone(), node.clone(), file.print_info().clone()));
 
-        if matches!(node.options().line_numbers, LineNumbers::None) {
+        if true || matches!(node.config().line_numbers, LineNumbers::None) {
             self.files.push((file, None));
         } else {
             let (line_numbers_widget, file_parent) =
@@ -666,7 +670,7 @@ impl<M> Layout<M> for OneStatusLayout<M>
 where
     M: Ui + 'static,
 {
-    fn new_file(&mut self, path: PathBuf) {
+    fn new_file(&mut self, path: &PathBuf) {
         let master_node = &mut self.master_node.as_mut().unwrap();
         let (master_node, child_node) =
             self.node_manager.split_mid(master_node, Direction::Right, Split::Ratio(0.5), false);
@@ -695,6 +699,8 @@ where
 
     fn application_loop(&mut self) {
         let mut widgets_to_update = Vec::new();
+
+        //self.node_manager.startup();
         // TODO: Make this trigger only when input is given.
         thread::scope(|s_0| {
             loop {
