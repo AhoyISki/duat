@@ -9,7 +9,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     file::TextLine,
-    ui::{EndNode, Container, Label, Ui},
+    ui::{EndNode, Container, Label, Ui, RawEndNode},
 };
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
@@ -41,24 +41,21 @@ pub enum CharTag {
 
 impl CharTag {
     pub(crate) fn trigger<M>(
-        &self, node: &mut EndNode<M>, forms: &[Form], wrap_indent: usize,
+        &self, printer: &mut RawEndNode<M>, forms: &[Form], wrap_indent: usize,
     ) -> bool
     where
         M: Ui
     {
         match self {
-            CharTag::PushForm(form) => node.push_form(forms, form.0),
-            CharTag::PopForm(form) => node.pop_form(form.0),
+            CharTag::PushForm(form) => printer.push_form(forms, form.0),
+            CharTag::PopForm(form) => printer.pop_form(form.0),
             CharTag::WrapppingChar => {
-                if !node.next_line() {
-                    node.clear_form();
+                if !printer.next_line() {
                     return false;
                 }
-
-                (0..wrap_indent).for_each(|_| node.print(' '));
             }
-            CharTag::PrimaryCursor => node.place_primary_cursor(),
-            CharTag::SecondaryCursor => node.place_secondary_cursor(),
+            CharTag::PrimaryCursor => printer.place_primary_cursor(),
+            CharTag::SecondaryCursor => printer.place_secondary_cursor(),
             _ => {}
         }
 

@@ -11,6 +11,7 @@ pub mod ui;
 // Useful for testing.
 pub static mut FOR_TEST: bool = false;
 
+////////// Ad-hoc functions until they eventually get stabilized.
 pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
     if rhs > 0 {
         lhs.saturating_add(rhs as usize)

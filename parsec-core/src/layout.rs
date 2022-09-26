@@ -69,7 +69,7 @@ impl PrintInfo {
 
         for index in text.printed_lines(label.height(), self) {
             let line = &text.lines()[index];
-            let line_d = line.get_distance_to_col(line.char_count(), node);
+            let line_d = line.get_distance_to_col_node(line.char_count(), node);
             max_d = max(max_d, line_d);
         }
 
@@ -101,7 +101,7 @@ where
     fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, node: &EndNode<M>, options: &Config) {}
+    fn resize(&mut self, node: &EndNode<M>) {}
 }
 
 /// An area where you can edit the text.
@@ -274,7 +274,7 @@ where
 
         if let WrapMethod::NoWrap = self.node.config().wrap_method {
             let target_line = &self.text.read().lines[target.line];
-            let distance = target_line.get_distance_to_col(target.col, &self.node);
+            let distance = target_line.get_distance_to_col_node(target.col, &self.node);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + width - scrolloff.d_x {
@@ -474,9 +474,9 @@ where
         self.print_info.write().scroll_vertically(d_y, &self.text.read());
     }
 
-    fn resize(&mut self, node: &EndNode<M>, options: &Config) {
+    fn resize(&mut self, node: &EndNode<M>) {
         for line in &mut self.text.write().lines {
-            line.parse_wrapping(options, node);
+            line.parse_wrapping(node);
         }
     }
 }
@@ -754,6 +754,8 @@ where
                         text.read().print(node, *print_info.read());
                     }
                 }
+
+                self.node_manager.finish_all_printing();
             }
         });
 

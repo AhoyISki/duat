@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::ui::{EndNode, Ui};
+use crate::ui::{EndNode, Ui, RawEndNode};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -50,8 +50,8 @@ impl Default for TabPlaces {
 
 impl TabPlaces {
     /// Returns the amount of spaces between a position and the next tab place.
-    pub fn get_tab_len(&self, x: usize, node: &EndNode<impl Ui>) -> usize {
-        let space_len = node.get_char_len(' ');
+    pub(crate) fn get_tab_len(&self, x: usize, printer: &RawEndNode<impl Ui>) -> usize {
+        let space_len = printer.get_char_len(' ');
         match self {
             TabPlaces::Regular(step) => (step - (x % step)) * space_len,
             TabPlaces::Varied(steps) => {

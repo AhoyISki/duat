@@ -1,4 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    rc::Rc,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
@@ -76,38 +79,38 @@ pub trait Label {
     fn height(&self) -> usize;
 }
 
-pub struct InnerMidNode<M>
+pub struct InnerMidNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
-    container: M::Container,
+    container: U::Container,
     class: String,
-    parent: Option<Box<MidNode<M>>>,
+    parent: Option<Box<MidNode<U>>>,
     child_order: ChildOrder,
-    children: (Node<M>, Node<M>),
+    children: (Node<U>, Node<U>),
     split: Split,
 }
 
-pub struct MidNode<M>
+pub struct MidNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
-    inner: Arc<RwLock<InnerMidNode<M>>>,
+    inner: Arc<RwLock<InnerMidNode<U>>>,
     config: Config,
 }
 
-impl<M> Clone for MidNode<M>
+impl<U> Clone for MidNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
     fn clone(&self) -> Self {
         MidNode { inner: self.inner.clone(), config: self.config.clone() }
     }
 }
 
-impl<M> MidNode<M>
+impl<U> MidNode<U>
 where
-    M: Ui,
+    U: Ui,
 {
     fn resize_second(&mut self, len: usize) {
         let node = self.inner.write().unwrap();
@@ -151,37 +154,99 @@ where
     }
 }
 
-pub struct InnerEndNode<M>
+pub struct InnerEndNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
-    label: M::Label,
+    label: U::Label,
     class: String,
-    parent: Option<Box<MidNode<M>>>,
+    parent: Option<Box<MidNode<U>>>,
     child_order: ChildOrder,
     form_stack: Vec<(Form, u16)>,
 }
 
-pub struct EndNode<M>
+pub struct EndNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
-    inner: Arc<RwLock<InnerEndNode<M>>>,
+    inner: Arc<RwLock<InnerEndNode<U>>>,
     config: Config,
+    raw_inner: Option<InnerEndNode<U>>,
 }
 
-impl<M> Clone for EndNode<M>
+impl<U> Clone for EndNode<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
     fn clone(&self) -> Self {
-        EndNode { inner: self.inner.clone(), config: self.config.clone() }
+        EndNode { inner: self.inner.clone(), config: self.config.clone(), raw_inner: None }
     }
 }
 
-impl<M> EndNode<M>
+impl<U> EndNode<U>
 where
-    M: Ui,
+    U: Ui,
+{
+    fn request_width(&self, width: usize) {
+        let mut node = self.inner.write().unwrap();
+        match (node.child_order, &mut node.parent) {
+            (ChildOrder::Second, Some(parent_node)) => {
+                let inner_node = parent_node.inner.read().unwrap();
+                if let Direction::Left | Direction::Right = inner_node.container.direction() {
+                    drop(inner_node);
+                    parent_node.resize_second(width);
+                }
+            }
+            // NOTE: I don't really know if I'm gonna do anything in here tbh.
+            _ => todo!(),
+        }
+    }
+
+    pub fn height(&self) -> usize {
+        let node = self.inner.read().unwrap();
+        node.label.height()
+    }
+
+    pub fn width(&self) -> usize {
+        let node = self.inner.read().unwrap();
+        node.label.width()
+    }
+
+    pub fn get_char_len(&self, ch: char) -> usize {
+        self.inner.read().unwrap().label.get_char_len(ch)
+    }
+
+    pub(crate) fn start_printing(&mut self) {
+        self.inner.write().unwrap().label.start_printing();
+    }
+
+    pub(crate) fn raw(&self) -> RawEndNode<U> {
+        RawEndNode {
+            config: &self.config,
+            inner: self.inner.write().unwrap(),
+        }
+    }
+
+    pub(crate) fn stop_printing(&mut self) {
+        self.inner.write().unwrap().label.stop_printing();
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+}
+
+pub(crate) struct RawEndNode<'a, U>
+where
+    U: Ui,
+{
+    pub(crate) config: &'a Config,
+    inner: RwLockWriteGuard<'a, InnerEndNode<U>>,
+}
+
+impl<'a, U> RawEndNode<'a, U>
+where
+    U: Ui,
 {
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
@@ -195,7 +260,7 @@ where
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-        for &(Form { style, is_final, .. }, _) in &self.inner.read().unwrap().form_stack {
+        for &(Form { style, is_final, .. }, _) in &self.inner.form_stack {
             let new_foreground = style.foreground_color;
             set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
 
@@ -221,95 +286,64 @@ where
     }
 
     pub fn push_form(&mut self, forms: &[Form], id: u16) {
-        let mut node = self.inner.write().unwrap();
-        node.form_stack.push((forms[id as usize], id));
+        self.inner.form_stack.push((forms[id as usize], id));
 
         let form = self.make_form();
 
-        node.label.set_form(form);
+        self.inner.label.set_form(form);
     }
 
     pub fn pop_form(&mut self, id: u16) {
-        let mut node = self.inner.write().unwrap();
-        if let Some((index, _)) = node.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == id) {
-            node.form_stack.remove(index);
+        if let Some((index, _)) =
+            self.inner.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == id)
+        {
+            self.inner.form_stack.remove(index);
 
             let form = self.make_form();
 
-            node.label.set_form(form);
-        }
-    }
-
-    fn request_width(&self, width: usize) {
-        let mut node = self.inner.write().unwrap();
-        match (node.child_order, &mut node.parent) {
-            (ChildOrder::Second, Some(parent_node)) => {
-                let inner_node = parent_node.inner.read().unwrap();
-                if let Direction::Left | Direction::Right = inner_node.container.direction() {
-                    drop(inner_node);
-                    parent_node.resize_second(width);
-                }
-            }
-            // NOTE: I don't really know if I'm gonna do anything in here tbh.
-            _ => todo!(),
+            self.inner.label.set_form(form);
         }
     }
 
     pub fn clear_form(&mut self) {
-        let mut node = self.inner.write().unwrap();
-        node.form_stack.clear();
+        self.inner.form_stack.clear();
     }
 
-    pub fn height(&self) -> usize {
-        let node = self.inner.read().unwrap();
-        node.label.height()
-    }
-
-    pub fn width(&self) -> usize {
-        let node = self.inner.read().unwrap();
-        node.label.width()
-    }
-
-    pub(crate) fn start_printing(&mut self) {
-        self.inner.write().unwrap().label.start_printing();
-    }
-
-    pub(crate) fn stop_printing(&mut self) {
-        self.inner.write().unwrap().label.stop_printing();
-    }
-
-	// TODO: Stop using `write()` a bazillion times over.
-    pub(crate) fn print(&mut self, ch: char) {
-        self.inner.write().unwrap().label.print(ch);
+    pub fn print(&mut self, ch: char) {
+        self.inner.label.print(ch);
     }
 
     pub(crate) fn next_line(&mut self) -> bool {
-        self.inner.write().unwrap().label.next_line()
+        self.inner.label.next_line()
     }
 
     pub(crate) fn place_primary_cursor(&mut self) {
-        self.inner.write().unwrap().label.place_primary_cursor();
+        self.inner.label.place_primary_cursor();
     }
 
     pub(crate) fn place_secondary_cursor(&mut self) {
-        self.inner.write().unwrap().label.place_secondary_cursor();
+        self.inner.label.place_secondary_cursor();
     }
 
     pub fn get_char_len(&self, ch: char) -> usize {
-        self.inner.read().unwrap().label.get_char_len(ch)
+        self.inner.label.get_char_len(ch)
     }
 
-    pub fn config(&self) -> &Config {
-        &self.config
+    pub fn height(&self) -> usize {
+        self.inner.label.height()
+    }
+
+    pub fn width(&self) -> usize {
+        self.inner.label.width()
     }
 }
 
-pub enum Node<M>
+pub enum Node<U>
 where
-    M: Ui + ?Sized,
+    U: Ui + ?Sized,
 {
-    MidNode(MidNode<M>),
-    EndNode(EndNode<M>),
+    MidNode(MidNode<U>),
+    EndNode(EndNode<U>),
 }
 
 #[derive(Clone, Copy)]
@@ -367,6 +401,8 @@ pub trait Ui {
     fn startup(&mut self);
 
     fn shutdown(&mut self);
+
+    fn finish_all_printing(&mut self);
 }
 
 pub struct NodeManager<U>(U)
@@ -393,6 +429,7 @@ where
                 label: l,
             })),
             config: config.unwrap_or(Config::default()),
+            raw_inner: None,
         })
     }
 
@@ -416,6 +453,7 @@ where
                 label,
             })),
             config: node.config.clone(),
+            raw_inner: None,
         };
 
         let mid_node = MidNode {
@@ -460,6 +498,7 @@ where
                 label,
             })),
             config: node.config.clone(),
+            raw_inner: None,
         };
 
         let mid_node = MidNode {
@@ -486,6 +525,10 @@ where
 
     pub(crate) fn shutdown(&mut self) {
         self.0.shutdown();
+    }
+
+    pub(crate) fn finish_all_printing(&mut self) {
+        self.0.finish_all_printing()
     }
 }
 

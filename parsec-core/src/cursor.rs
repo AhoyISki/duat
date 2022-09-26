@@ -165,7 +165,7 @@ impl TextCursor {
             target: pos,
             // This should be fine.
             anchor: None,
-            desired_x: line.get_distance_to_col(pos.col, node),
+            desired_x: line.get_distance_to_col_node(pos.col, node),
         }
     }
 
@@ -178,7 +178,7 @@ impl TextCursor {
         let line = &lines[self.target.line];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        (self.target.col, _) = line.get_col_at_distance(self.desired_x, node);
+        (self.target.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         self.target.byte = (self.target.byte as isize
@@ -223,7 +223,7 @@ impl TextCursor {
             + get_byte_distance(lines, old_target, self.target))
             as usize;
 
-        self.desired_x = line.get_distance_to_col(self.target.col, node) as usize;
+        self.desired_x = line.get_distance_to_col(self.target.col, &node.raw()) as usize;
     }
 
     /// Moves the cursor to a position in the file.
@@ -242,7 +242,7 @@ impl TextCursor {
             as usize;
 
         let line = lines.get(self.target.line).unwrap();
-        self.desired_x = line.get_distance_to_col(self.target.col, node);
+        self.desired_x = line.get_distance_to_col(self.target.col, &node.raw());
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
