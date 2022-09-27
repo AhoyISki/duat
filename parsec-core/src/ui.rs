@@ -221,10 +221,7 @@ where
     }
 
     pub(crate) fn raw(&self) -> RawEndNode<U> {
-        RawEndNode {
-            config: &self.config,
-            inner: self.inner.write().unwrap(),
-        }
+        RawEndNode { config: &self.config, inner: self.inner.write().unwrap() }
     }
 
     pub(crate) fn stop_printing(&mut self) {
@@ -417,18 +414,16 @@ where
         NodeManager(ui_manager)
     }
 
-    pub fn only_child(
-        &mut self, config: Option<Config>, class: Option<String>,
-    ) -> Option<EndNode<U>> {
+    pub fn only_child(&mut self, config: &Config, class: &str) -> Option<EndNode<U>> {
         self.0.only_label().map(|l| EndNode {
             inner: Arc::new(RwLock::new(InnerEndNode {
                 child_order: ChildOrder::First,
                 parent: None,
                 form_stack: Vec::new(),
-                class: class.unwrap_or(String::from("label")),
+                class: String::from(class),
                 label: l,
             })),
-            config: config.unwrap_or(Config::default()),
+            config: config.clone(),
             raw_inner: None,
         })
     }

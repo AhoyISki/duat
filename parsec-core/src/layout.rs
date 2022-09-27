@@ -1,5 +1,6 @@
 use std::{
     cmp::{max, min},
+    env::current_dir,
     fmt::Write,
     fs,
     path::PathBuf,
@@ -15,6 +16,7 @@ use crate::{
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
+    input::EditingScheme,
     saturating_add_signed,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
@@ -598,22 +600,22 @@ where
     status: StatusArea<U>,
     widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
     files: Vec<(FileWidget<U>, Option<MidNode<U>>)>,
-    master_node: Option<MidNode<U>>,
+    master_node: MidNode<U>,
     match_manager: MatchManager,
     prints: Vec<(RoState<Text>, EndNode<U>, RoState<PrintInfo>)>,
 }
 
 /// A form of organizing the areas on a window.
-pub trait Layout<M>
+pub trait Layout<U>
 where
-    M: Ui,
+    U: Ui,
 {
-    fn new_file(&mut self, path: &PathBuf);
+    fn open_file(&mut self, path: &PathBuf);
 
-    fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: Widget<M> + 'static,
-        C: Fn(EndNode<M>, &Self) -> P;
+        P: Widget<U> + 'static,
+        C: Fn(EndNode<U>, &Self) -> P;
 
     fn application_loop(&mut self);
 }
@@ -622,11 +624,9 @@ impl<U> OneStatusLayout<U>
 where
     U: Ui + 'static,
 {
-    pub fn new(
-        mut node_manager: NodeManager<U>, path: &PathBuf, match_manager: MatchManager,
-        config: Option<Config>,
-    ) -> Self {
-        let mut node = node_manager.only_child(config, Some(String::from("code"))).unwrap();
+    pub fn new(ui: U, path: &PathBuf, match_manager: MatchManager, config: Config) -> Self {
+        let mut node_manager = NodeManager::new(ui);
+        let mut node = node_manager.only_child(&config, "code").unwrap();
 
         let (master_node, child_node) =
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
@@ -638,7 +638,7 @@ where
             status,
             widgets: Vec::new(),
             files: Vec::new(),
-            master_node: Some(master_node),
+            master_node,
             match_manager,
             prints: Vec::new(),
         };
@@ -672,29 +672,31 @@ where
     }
 }
 
-impl<M> Layout<M> for OneStatusLayout<M>
+impl<U> Layout<U> for OneStatusLayout<U>
 where
-    M: Ui + 'static,
+    U: Ui + 'static,
 {
-    fn new_file(&mut self, path: &PathBuf) {
-        let master_node = &mut self.master_node.as_mut().unwrap();
-        let (master_node, child_node) =
-            self.node_manager.split_mid(master_node, Direction::Right, Split::Ratio(0.5), false);
+    fn open_file(&mut self, path: &PathBuf) {
+        let (master_node, child_node) = self.node_manager.split_mid(
+            &mut self.master_node,
+            Direction::Right,
+            Split::Ratio(0.5),
+            false,
+        );
 
         self.new_file_with_node(path, child_node);
-        self.master_node = Some(master_node);
+        self.master_node = master_node;
     }
 
-    fn push_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: Widget<M> + 'static,
-        C: Fn(EndNode<M>, &Self) -> P,
+        P: Widget<U> + 'static,
+        C: Fn(EndNode<U>, &Self) -> P,
     {
-        let master_node = &mut self.master_node.as_mut().unwrap();
         let (master_node, end_node) =
-            self.node_manager.split_mid(master_node, direction, split, false);
+            self.node_manager.split_mid(&mut self.master_node, direction, split, false);
 
-        self.master_node = Some(master_node);
+        self.master_node = master_node;
 
         let widget = constructor(end_node.clone(), &self);
 
@@ -704,62 +706,76 @@ where
     }
 
     fn application_loop(&mut self) {
-        let mut widgets_to_update = Vec::new();
-
         self.node_manager.startup();
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.
                 if event::poll(Duration::from_millis(10)).expect("crossterm") {
-                    // First, update all files simultaneously.
-                    thread::scope(|s_1| {
-                        for file in &mut self.files {
-                            s_1.spawn(|| file.0.update());
-                        }
-                    });
+                    update_files(&mut self.files);
 
-					if let Event::Key(key_event) = event::read().unwrap() {
-    					if let KeyCode::Esc = key_event.code {
-        					break;
-    					}
-					}
-
-                    // Second, check if any of the widgets need to be updated, given the newly
-                    // updated files.
-                    for (index, widget) in self.widgets.iter().enumerate() {
-                        // If the lock is unavailable, that means the widget is being updated.
-                        if let Ok(raw_widget) = widget.try_lock() {
-                            if raw_widget.needs_update() {
-                                widgets_to_update.push(index);
-                            }
+                    if let Event::Key(key_event) = event::read().unwrap() {
+                        if let KeyCode::Esc = key_event.code {
+                            break;
                         }
                     }
 
-                    // Third, update said widgets, without blocking the loop from continuing, thus
-                    // allowing a slow thread to process without blocking input and updates.
-                    for index in &widgets_to_update {
+                    let indices = widgets_to_update(&self.widgets);
+
+                    for index in &indices {
                         let widget = &self.widgets[*index];
                         s_0.spawn(|| {
                             widget.lock().unwrap().update();
                         });
                     }
-
-                    widgets_to_update.clear();
                 }
 
-                // This part should happen on every update, instantly catching up with widgets that
-                // just finished updating.
-                for (text, node, print_info) in &mut self.prints {
-                    if text.has_changed() {
-                        text.read().print(node, *print_info.read());
-                    }
-                }
+                print_as_needed(&mut self.prints);
 
                 self.node_manager.finish_all_printing();
             }
         });
 
         self.node_manager.shutdown();
+    }
+}
+
+fn update_files<U>(files: &mut Vec<(FileWidget<U>, Option<MidNode<U>>)>)
+where
+    U: Ui,
+{
+    thread::scope(|s_1| {
+        for file in files {
+            s_1.spawn(|| file.0.update());
+        }
+    });
+}
+
+fn widgets_to_update<U>(widgets: &Vec<Mutex<Box<dyn Widget<U>>>>) -> Vec<usize>
+where
+    U: Ui,
+{
+    let mut indices = Vec::new();
+
+    for (index, widget) in widgets.iter().enumerate() {
+        // If the lock is unavailable, that means the widget is being updated.
+        if let Ok(raw_widget) = widget.try_lock() {
+            if raw_widget.needs_update() {
+                indices.push(index);
+            }
+        }
+    }
+
+    indices
+}
+
+fn print_as_needed<U>(prints: &mut Vec<(RoState<Text>, EndNode<U>, RoState<PrintInfo>)>)
+where
+    U: Ui,
+{
+    for (text, node, print_info) in prints {
+        if text.has_changed() {
+            text.read().print(node, *print_info.read());
+        }
     }
 }
 
