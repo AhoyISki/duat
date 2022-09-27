@@ -140,10 +140,10 @@ pub struct TextCursor {
     // printing to the screen, and `current` is just a useful reminder of where the cursor was
     // the last the screen was printed.
     /// Current position of the cursor in the file.
-    current: TextPos,
+    prev: TextPos,
 
     /// Target position of the cursor in the file.
-    target: TextPos,
+    cur: TextPos,
 
     /// An anchor for a selection.
     anchor: Option<TextPos>,
@@ -161,8 +161,8 @@ impl TextCursor {
     pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
         let line = lines.get(pos.line).unwrap();
         TextCursor {
-            current: pos,
-            target: pos,
+            prev: pos,
+            cur: pos,
             // This should be fine.
             anchor: None,
             desired_x: line.get_distance_to_col_node(pos.col, node),
@@ -171,18 +171,18 @@ impl TextCursor {
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
     pub fn move_vertically(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        let old_target = self.target;
+        let old_target = self.cur;
 
-        let line = self.target.line;
-        self.target.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
-        let line = &lines[self.target.line];
+        let line = self.cur.line;
+        self.cur.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
+        let line = &lines[self.cur.line];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        (self.target.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
+        (self.cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.target.byte = (self.target.byte as isize
-            + get_byte_distance(lines, old_target, self.target))
+        self.cur.byte = (self.cur.byte as isize
+            + get_byte_distance(lines, old_target, self.cur))
             as usize;
     }
 
@@ -190,40 +190,40 @@ impl TextCursor {
     pub fn move_horizontally(
         &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
-        let old_target = self.target;
-        let mut col = self.target.col as i32 + count;
+        let old_target = self.cur;
+        let mut col = self.cur.col as i32 + count;
 
         if count >= 0 {
-            let mut line_iter = lines.iter().enumerate().skip(self.target.line);
+            let mut line_iter = lines.iter().enumerate().skip(self.cur.line);
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
-                self.target.line = index;
+                self.cur.line = index;
                 if col < line.char_count() as i32 {
                     break;
                 }
                 col -= line.char_count() as i32;
             }
         } else {
-            let mut line_iter = lines.iter().enumerate().take(self.target.line).rev();
+            let mut line_iter = lines.iter().enumerate().take(self.cur.line).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
                 if col >= 0 {
                     break;
                 }
                 col += line.char_count() as i32;
-                self.target.line = index;
+                self.cur.line = index;
             }
         }
 
-        let line = lines.get(self.target.line).unwrap();
-        self.target.col = col.clamp(0, line.text().len() as i32) as usize;
+        let line = lines.get(self.cur.line).unwrap();
+        self.cur.col = col.clamp(0, line.text().len() as i32) as usize;
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.target.byte = (self.target.byte as isize
-            + get_byte_distance(lines, old_target, self.target))
+        self.cur.byte = (self.cur.byte as isize
+            + get_byte_distance(lines, old_target, self.cur))
             as usize;
 
-        self.desired_x = line.get_distance_to_col(self.target.col, &node.raw()) as usize;
+        self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw()) as usize;
     }
 
     /// Moves the cursor to a position in the file.
@@ -231,25 +231,25 @@ impl TextCursor {
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        let old_target = self.target;
+        let old_target = self.cur;
 
-        self.target.line = pos.line.clamp(0, lines.len());
-        self.target.col = pos.col.clamp(0, lines.get(self.target.line).unwrap().text().len());
+        self.cur.line = pos.line.clamp(0, lines.len());
+        self.cur.col = pos.col.clamp(0, lines.get(self.cur.line).unwrap().text().len());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.target.byte = (self.target.byte as isize
-            + get_byte_distance(lines, old_target, self.target))
+        self.cur.byte = (self.cur.byte as isize
+            + get_byte_distance(lines, old_target, self.cur))
             as usize;
 
-        let line = lines.get(self.target.line).unwrap();
-        self.desired_x = line.get_distance_to_col(self.target.col, &node.raw());
+        let line = lines.get(self.cur.line).unwrap();
+        self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw());
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
-        self.anchor = Some(self.target);
+        self.anchor = Some(self.cur);
     }
 
     /// Unsets the anchor.
@@ -263,29 +263,29 @@ impl TextCursor {
     ///
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> TextRange {
-        let anchor = self.anchor.unwrap_or(self.target);
+        let anchor = self.anchor.unwrap_or(self.cur);
 
-        TextRange { start: min(self.target, anchor), end: max(self.target, anchor) }
+        TextRange { start: min(self.cur, anchor), end: max(self.cur, anchor) }
     }
 
     /// Updates the position of the cursor on the terminal.
     ///
     /// - This function does not take horizontal scrolling into account.
     pub fn update(&mut self) {
-        self.current = self.target;
+        self.prev = self.cur;
     }
 
     ////////////////////////////////
     // Getters
     ////////////////////////////////
     /// Returns the cursor's position on the file.
-    pub fn current(&self) -> TextPos {
-        self.current
+    pub fn prev(&self) -> TextPos {
+        self.prev
     }
 
     /// Returns the cursor's position on the screen.
-    pub fn target(&self) -> TextPos {
-        self.target
+    pub fn cur(&self) -> TextPos {
+        self.cur
     }
 
     /// Returns the cursor's anchor on the file.

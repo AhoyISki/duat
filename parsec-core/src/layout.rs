@@ -16,7 +16,7 @@ use crate::{
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
-    input::EditingScheme,
+    input::{EditingScheme, KeyRemapper},
     saturating_add_signed,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
@@ -236,7 +236,7 @@ where
         }
     }
 
-    fn scroll_down(&mut self, current: TextPos, target: TextPos, mut d_y: usize, height: usize) {
+    fn scroll_down(&mut self, target: TextPos, mut d_y: usize, height: usize) {
         let scrolloff = self.node.config().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.line + 1);
@@ -272,7 +272,6 @@ where
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
         let mut info = self.print_info.write();
         let scrolloff = self.node.config().scrolloff;
-        let tab_places = &self.node.config().tab_places;
 
         if let WrapMethod::NoWrap = self.node.config().wrap_method {
             let target_line = &self.text.read().lines[target.line];
@@ -292,33 +291,31 @@ where
     fn update_print_info(&mut self) {
         let cursors = self.cursors.read();
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let current = main_cursor.current();
-        let target = main_cursor.target();
+        let prev = main_cursor.prev();
+        let cur = main_cursor.cur();
 
         let text = self.text.read();
 
-        let line = &text.lines()[current.line];
-        let current_byte = line.get_line_byte_at(current.col);
-        let current_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
+        let line = &text.lines()[prev.line];
+        let current_byte = line.get_line_byte_at(prev.col);
+        let cur_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
 
-        let line = &text.lines()[target.line];
-        let target_byte = line.get_line_byte_at(target.col);
-        let target_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
+        let line = &text.lines()[cur.line];
+        let target_byte = line.get_line_byte_at(cur.col);
+        let prev_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
 
-        let d_y = target_wraps;
+        let d_y = prev_wraps;
 
         drop(text);
         drop(cursors);
 
         if let WrapMethod::NoWrap = self.node.config().wrap_method {
-            self.scroll_unwrapped(target, self.node.height());
-            self.scroll_horizontally(target, self.node.width());
-        } else if target.line < current.line
-            || (target.line == current.line && target_wraps < current_wraps)
-        {
-            self.scroll_up(target, d_y);
+            self.scroll_unwrapped(cur, self.node.height());
+            self.scroll_horizontally(cur, self.node.width());
+        } else if cur.line < prev.line || (cur.line == prev.line && prev_wraps < cur_wraps) {
+            self.scroll_up(cur, d_y);
         } else {
-            self.scroll_down(current, target, d_y, self.node.height());
+            self.scroll_down(cur, d_y, self.node.height());
         }
     }
 
@@ -327,9 +324,8 @@ where
         let cursors = self.cursors.read();
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let limit_line =
-            min(main_cursor.target().line + self.node.height(), text.lines().len() - 1);
-        let start = main_cursor.target().translate_to(text.lines(), limit_line, 0);
+        let limit_line = min(main_cursor.cur().line + self.node.height(), text.lines().len() - 1);
+        let start = main_cursor.cur().translate_to(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let range = TextRange {
             start,
@@ -341,7 +337,7 @@ where
         };
     }
 
-    fn edit(&mut self, cursor: TextCursor, edit: impl ToString) {
+    pub fn splice(&mut self, cursor: TextCursor, edit: impl ToString) {
         let edit = edit.to_string();
         let lines = edit.split_inclusive('\n').collect();
 
@@ -417,13 +413,13 @@ where
         self.cursors.write().extend(new_cursors);
     }
 
-    fn update_file(&mut self) {
+    fn update(&mut self) {
         self.update_print_info();
 
         let cursors = self.cursors.read();
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let current = main_cursor.current();
-        let target = main_cursor.target();
+        let current = main_cursor.prev();
+        let target = main_cursor.cur();
 
         let mut text = self.text.write();
         let char_tags = &mut text.lines.get_mut(current.line).unwrap().info.char_tags;
@@ -458,7 +454,9 @@ where
         &self.node
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        self.update();
+    }
 
     fn needs_update(&self) -> bool {
         false
@@ -483,7 +481,7 @@ where
     }
 }
 
-pub struct StatusArea<U>
+pub struct StatusWidget<U>
 where
     U: Ui,
 {
@@ -548,7 +546,7 @@ where
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().current().line;
+        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().prev().line;
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
@@ -597,7 +595,7 @@ where
     U: Ui,
 {
     node_manager: NodeManager<U>,
-    status: StatusArea<U>,
+    status: StatusWidget<U>,
     widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
     files: Vec<(FileWidget<U>, Option<MidNode<U>>)>,
     master_node: MidNode<U>,
@@ -617,7 +615,7 @@ where
         P: Widget<U> + 'static,
         C: Fn(EndNode<U>, &Self) -> P;
 
-    fn application_loop(&mut self);
+    fn application_loop(&mut self, key_remapper: &mut KeyRemapper<impl EditingScheme>);
 }
 
 impl<U> OneStatusLayout<U>
@@ -631,7 +629,7 @@ where
         let (master_node, child_node) =
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
 
-        let status = StatusArea { child_node, file_name: String::from(path.to_str().unwrap()) };
+        let status = StatusWidget { child_node, file_name: String::from(path.to_str().unwrap()) };
 
         let mut layout = OneStatusLayout {
             node_manager,
@@ -670,6 +668,10 @@ where
             self.files.push((file, Some(file_parent)));
         }
     }
+
+    fn active_widget(&mut self) -> &mut FileWidget<U> {
+        &mut self.files[0].0
+    }
 }
 
 impl<U> Layout<U> for OneStatusLayout<U>
@@ -705,19 +707,22 @@ where
         self.widgets.push(Mutex::new(Box::new(widget)));
     }
 
-    fn application_loop(&mut self) {
+    fn application_loop(&mut self, key_remapper: &mut KeyRemapper<impl EditingScheme>) {
         self.node_manager.startup();
+
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.
                 if event::poll(Duration::from_millis(10)).expect("crossterm") {
-                    update_files(&mut self.files);
-
                     if let Event::Key(key_event) = event::read().unwrap() {
                         if let KeyCode::Esc = key_event.code {
                             break;
+                        } else {
+                            key_remapper.send_key_to_file(key_event, &mut self.files[0].0);
                         }
                     }
+
+                    update_files(&mut self.files);
 
                     let indices = widgets_to_update(&self.widgets);
 
