@@ -217,7 +217,9 @@ where
     }
 
     pub(crate) fn start_printing(&mut self) {
-        self.inner.write().unwrap().label.start_printing();
+        let mut inner = self.inner.write().unwrap();
+        inner.label.start_printing();
+        drop(inner);
     }
 
     pub(crate) fn raw(&self) -> RawEndNode<U> {
@@ -225,7 +227,9 @@ where
     }
 
     pub(crate) fn stop_printing(&mut self) {
-        self.inner.write().unwrap().label.stop_printing();
+        let mut inner = self.inner.write().unwrap();
+        inner.label.stop_printing();
+        drop(inner);
     }
 
     pub fn config(&self) -> &Config {

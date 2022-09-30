@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyCode};
-use input::{EditingScheme, KeyRemapper};
+use input::{EditingScheme, FileRemapper};
 use layout::Layout;
 use ui::Ui;
 
@@ -21,7 +21,7 @@ where
     U: Ui,
 {
     layout: L,
-    key_remapper: KeyRemapper<E>,
+    key_remapper: FileRemapper<E>,
     // ↓ stupid ↓ //
     _phantom_stuff: (PhantomData<E>, PhantomData<U>)
 }
@@ -32,7 +32,7 @@ where
     E: EditingScheme,
     U: Ui,
 {
-    pub fn new(layout: L, key_remapper: KeyRemapper<E>) -> Self {
+    pub fn new(layout: L, key_remapper: FileRemapper<E>) -> Self {
         Application {
             layout,
             key_remapper,

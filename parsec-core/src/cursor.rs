@@ -131,7 +131,7 @@ impl Ord for TextPos {
 }
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TextCursor {
     // The `current` adn `target` positions pretty much exist solely for more versatile comparisons
     // of movement when printing to the screen.

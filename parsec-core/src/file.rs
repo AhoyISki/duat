@@ -369,6 +369,7 @@ impl Text {
                 break;
             }
         }
+
         drop(printer);
 
         node.stop_printing();

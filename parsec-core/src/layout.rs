@@ -16,7 +16,7 @@ use crate::{
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
-    input::{EditingScheme, KeyRemapper},
+    input::{EditingScheme, FileRemapper},
     saturating_add_signed,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
@@ -337,7 +337,7 @@ where
         };
     }
 
-    pub fn splice(&mut self, cursor: TextCursor, edit: impl ToString) {
+    pub fn splice(&mut self, cursor: &mut TextCursor, edit: impl ToString) {
         let edit = edit.to_string();
         let lines = edit.split_inclusive('\n').collect();
 
@@ -438,12 +438,24 @@ where
         self.match_scroll();
     }
 
-    fn printed_lines(&self) -> PrintedLines {
+    pub fn printed_lines(&self) -> PrintedLines {
         PrintedLines {
             file: RoState::from_rw(self.text.clone()),
             print_info: RoState::from_rw(self.print_info.clone()),
         }
     }
+
+   	pub fn cursor_list(&mut self) -> CursorList {
+       	CursorList {
+           	cursors: self.cursors.clone(),
+           	main_cursor: *self.main_cursor.read()
+       	}
+   	}
+}
+
+pub struct CursorList {
+    pub cursors: RwState<Vec<TextCursor>>,
+    pub main_cursor: usize,
 }
 
 impl<M> Widget<M> for FileWidget<M>
@@ -615,7 +627,7 @@ where
         P: Widget<U> + 'static,
         C: Fn(EndNode<U>, &Self) -> P;
 
-    fn application_loop(&mut self, key_remapper: &mut KeyRemapper<impl EditingScheme>);
+    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 }
 
 impl<U> OneStatusLayout<U>
@@ -707,14 +719,14 @@ where
         self.widgets.push(Mutex::new(Box::new(widget)));
     }
 
-    fn application_loop(&mut self, key_remapper: &mut KeyRemapper<impl EditingScheme>) {
+    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
         self.node_manager.startup();
-
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.
                 if event::poll(Duration::from_millis(10)).expect("crossterm") {
                     if let Event::Key(key_event) = event::read().unwrap() {
+                        // NOTE: This is very much temporary.
                         if let KeyCode::Esc = key_event.code {
                             break;
                         } else {
@@ -779,11 +791,14 @@ where
 {
     for (text, node, print_info) in prints {
         if text.has_changed() {
-            text.read().print(node, *print_info.read());
+            let (text, print_info) = (text.read(), print_info.read());
+            text.print(node, *print_info);
+            drop(text);
+            drop(print_info);
         }
     }
 }
 
 fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_line + node.height(), text.lines().len())
+    min(print_info.top_line + node.height(), text.lines().len() - 1)
 }
