@@ -37,7 +37,8 @@ impl EditingScheme for Editor {
                     let mut cursor_list = file.cursor_list();
                     let mut cursors = cursor_list.cursors.write();
                     cursors.iter_mut().for_each(|mut c| {
-                        file.splice(&mut c, ch)
+                        file.splice(&mut c, ch);
+                        c.move_hor(1, file);
                     });
                 }
                 _ => {}

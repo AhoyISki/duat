@@ -369,7 +369,7 @@ where
         let max_line = max_line(&text, &info, &self.node);
         for splice in &splices {
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to(splice.taken_end(), &text.lines, &self.node);
+                cursor.move_to_inner(splice.taken_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
             }
@@ -400,7 +400,7 @@ where
         let max_line = max_line(&text, &info, &self.node);
         for splice in &splices {
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to(splice.added_end(), &text.lines, &self.node);
+                cursor.move_to_inner(splice.added_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
             }
@@ -721,6 +721,7 @@ where
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
         self.node_manager.startup();
+
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.

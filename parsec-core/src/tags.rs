@@ -50,7 +50,7 @@ impl CharTag {
             CharTag::PushForm(form) => printer.push_form(forms, form.0),
             CharTag::PopForm(form) => printer.pop_form(form.0),
             CharTag::WrapppingChar => {
-                if !printer.next_line() {
+                if !printer.wrap_line() {
                     return false;
                 }
             }

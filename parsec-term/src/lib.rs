@@ -100,16 +100,31 @@ impl UiLabel for Label {
         if self.cursor.y == self.area.br.y - 1 {
             false
         } else {
-            // Print one more "newline" character with the current form.
-            self.stdout.queue(Print(' ')).expect("crossterm");
+            if self.cursor.x < self.area.br.x - 1 {
+                // Print one more "newline" character with the current form.
+                self.stdout.queue(Print(' ')).expect("crossterm");
 
-            self.clear_form();
+                self.clear_form();
 
-            // The rest of the line is featureless.
-            let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(2);
-            let padding = " ".repeat(padding_count);
-            self.stdout.queue(Print(padding)).expect("crossterm");
+                // The rest of the line is featureless.
+                let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(2);
+                let padding = " ".repeat(padding_count);
+                self.stdout.queue(Print(padding)).expect("crossterm");
+            }
 
+            self.cursor.x = self.area.tl.x;
+            self.cursor.y += 1;
+
+            self.stdout.queue(MoveTo(self.cursor.x, self.cursor.y)).expect("crossterm");
+
+            true
+        }
+    }
+
+    fn wrap_line(&mut self) -> bool {
+        if self.cursor.y == self.area.br.y - 1 {
+            false
+        } else {
             self.cursor.x = self.area.tl.x;
             self.cursor.y += 1;
 
@@ -168,6 +183,8 @@ impl UiLabel for Label {
         for _ in self.cursor.y..self.area.br.y {
             self.next_line();
         }
+
+        stdout().execute(RestorePosition).expect("crossterm");
     }
 }
 
@@ -258,7 +275,6 @@ impl ui::Ui for UiManager {
     }
 
     fn finish_all_printing(&mut self) {
-        stdout().execute(RestorePosition).expect("crossterm");
     }
 }
 

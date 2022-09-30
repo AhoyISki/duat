@@ -157,7 +157,9 @@ impl TextLine {
             !self.text.chars().any(|c| node.get_char_len(c) > 1 || c == '\t'),
         );
 
-        self.parse_wrapping(node);
+		if !matches!(node.config().wrap_method, WrapMethod::NoWrap) {
+            self.parse_wrapping(node);
+		}
     }
 
     pub fn parse_wrapping(&mut self, node: &EndNode<impl Ui>) {
@@ -173,13 +175,13 @@ impl TextLine {
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = node.width();
+            distance = node.width() - 1;
             while distance < self.text.len() {
                 self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
 
                 indent_wrap = indent;
 
-                distance += node.width() - indent_wrap;
+                distance += node.width() - 1 - indent_wrap;
             }
         } else {
             for (index, ch) in self.text.char_indices() {
@@ -419,8 +421,8 @@ impl Text {
         self.splice(cursor.range(), edit, self.lines.len() - 1);
     }
 
-    pub fn lines(&self) -> &[TextLine] {
-        self.lines.as_slice()
+    pub fn lines(&self) -> &Vec<TextLine> {
+        &self.lines
     }
 }
 

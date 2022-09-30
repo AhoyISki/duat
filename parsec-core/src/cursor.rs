@@ -4,8 +4,9 @@ use super::file::TextLine;
 use crate::{
     action::TextRange,
     config::{Config, TabPlaces},
+    layout::{FileWidget, Widget},
+    saturating_add_signed,
     ui::{EndNode, Ui},
-    saturating_add_signed
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -26,12 +27,20 @@ impl TextPos {
 
     /// Adds columns given `self.line == other.line`.
     pub fn col_add(&self, other: TextPos) -> TextPos {
-        if self.line == other.line { TextPos { line: self.line, ..(*self + other) } } else { *self }
+        if self.line == other.line {
+            TextPos { line: self.line, ..(*self + other) }
+        } else {
+            *self
+        }
     }
 
     /// Subtracts columns given `self.line == other.line`.
     pub fn col_sub(&self, other: TextPos) -> TextPos {
-        if self.line == other.line { TextPos { line: self.line, ..(*self - other) } } else { *self }
+        if self.line == other.line {
+            TextPos { line: self.line, ..(*self - other) }
+        } else {
+            *self
+        }
     }
 }
 
@@ -119,14 +128,22 @@ impl Ord for TextPos {
     where
         Self: Sized,
     {
-        if other > self { other } else { self }
+        if other > self {
+            other
+        } else {
+            self
+        }
     }
 
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
     {
-        if other < self { other } else { self }
+        if other < self {
+            other
+        } else {
+            self
+        }
     }
 }
 
@@ -169,8 +186,10 @@ impl TextCursor {
         }
     }
 
-    /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_vertically(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+    /// Internal vertical movement function.
+    pub(crate) fn move_ver_inner(
+        &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
+    ) {
         let old_target = self.cur;
 
         let line = self.cur.line;
@@ -181,13 +200,12 @@ impl TextCursor {
         (self.cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte = (self.cur.byte as isize
-            + get_byte_distance(lines, old_target, self.cur))
-            as usize;
+        self.cur.byte =
+            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
     }
 
-    /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_horizontally(
+    /// Internal horizontal movement function.
+    pub(crate) fn move_hor_inner(
         &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
         let old_target = self.cur;
@@ -219,30 +237,47 @@ impl TextCursor {
         self.cur.col = col.clamp(0, line.text().len() as i32) as usize;
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte = (self.cur.byte as isize
-            + get_byte_distance(lines, old_target, self.cur))
-            as usize;
+        self.cur.byte =
+            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
 
         self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw()) as usize;
     }
 
-    /// Moves the cursor to a position in the file.
-    ///
-    /// - If the position isn't valid, it will move to the "maximum" position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+    /// Internal absolute movement function.
+    pub(crate) fn move_to_inner(
+        &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
+    ) {
         let old_target = self.cur;
 
         self.cur.line = pos.line.clamp(0, lines.len());
         self.cur.col = pos.col.clamp(0, lines.get(self.cur.line).unwrap().text().len());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte = (self.cur.byte as isize
-            + get_byte_distance(lines, old_target, self.cur))
-            as usize;
+        self.cur.byte =
+            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
 
         let line = lines.get(self.cur.line).unwrap();
         self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw());
+    }
+
+    ////////// Public movement functions
+
+    /// Moves the cursor vertically on the file. May also cause horizontal movement.
+    pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
+        self.move_ver_inner(count, file.text().read().lines(), file.end_node());
+    }
+
+    /// Moves the cursor horizontally on the file. May also cause vertical movement.
+    pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
+        self.move_hor_inner(count, file.text().read().lines(), file.end_node());
+    }
+
+    /// Moves the cursor to a position in the file.
+    ///
+    /// - If the position isn't valid, it will move to the "maximum" position allowed.
+    /// - This command sets `desired_x`.
+    pub fn move_to(&mut self, pos: TextPos, file: &FileWidget<impl Ui>) {
+        self.move_to_inner(pos, file.text().read().lines(), file.end_node());
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.

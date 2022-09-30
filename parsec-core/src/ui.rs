@@ -61,6 +61,11 @@ pub trait Label {
     /// end.
     fn next_line(&mut self) -> bool;
 
+    /// Wraps to the next line. If that's not possible, returns false.
+    ///
+    /// Unlike `next_line()`, this function should not remove any text.
+    fn wrap_line(&mut self) -> bool;
+
     // TODO: Return a result.
     /// Requests a resize to the area, based on the direction of the parent.
     fn request_len(&mut self, width: usize);
@@ -316,6 +321,10 @@ where
 
     pub(crate) fn next_line(&mut self) -> bool {
         self.inner.label.next_line()
+    }
+
+    pub(crate) fn wrap_line(&mut self) -> bool {
+        self.inner.label.wrap_line()
     }
 
     pub(crate) fn place_primary_cursor(&mut self) {
