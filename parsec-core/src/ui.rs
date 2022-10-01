@@ -379,8 +379,8 @@ pub enum Direction {
 }
 
 pub trait Ui {
-    type Container: Container + Clone;
-    type Label: Label + Clone;
+    type Container: Container + Clone + Send;
+    type Label: Label + Clone + Send;
 
     /// Splits an area in two, and places each of the areas on a new parent area.
     ///

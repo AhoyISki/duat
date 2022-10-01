@@ -194,12 +194,11 @@ impl History {
             }
         };
 
-        let mut edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
-        // Insert a '\n' at the end of every line, skipping the last one.
-        edit.iter_mut().rev().skip(1).for_each(|l| l.push('\n'));
+        let edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
 
         let edited_lines: Vec<&str> = lines[edit_range.lines()].iter().map(|l| l.text()).collect();
 
+		// If the removed text is only one line long.
         let mut taken_text = if edited_lines.len() == 1 {
             let line = edited_lines.first().unwrap();
 
@@ -207,6 +206,7 @@ impl History {
             let last_byte = get_byte(line, edit_range.end.col);
 
             vec![&line[first_byte..last_byte]]
+        // Otherwise.
         } else {
             let first_line = edited_lines.first().unwrap();
             let first_byte = get_byte(first_line, edit_range.start.col);

@@ -408,7 +408,8 @@ impl Text {
     pub(crate) fn splice(&mut self, range: TextRange, edit: impl ToString, max_line: usize) {
         let edit_lines = edit.to_string().split_inclusive('\n').map(|t| String::from(t)).collect();
 
-        let old = self.lines[range.lines()].iter().map(|l| l.text()).collect();
+        let old: Vec<&str> = self.lines[range.lines()].iter().map(|l| l.text()).collect();
+        let old = if old.is_empty() { vec![""] } else { old };
 
         let new_lines = extend_edit(old, edit_lines, range).0;
         let new_lines: Vec<TextLine> = new_lines.iter().map(|l| TextLine::new(l.clone())).collect();

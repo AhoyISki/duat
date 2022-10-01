@@ -1,15 +1,13 @@
 use std::{
     cmp::{max, min},
-    env::current_dir,
     fmt::Write,
     fs,
     path::PathBuf,
-    sync::Mutex,
+    sync::{Mutex, MutexGuard},
     thread,
-    time::Duration,
 };
 
-use crossterm::event::{self, poll, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
     action::{History, TextRange},
@@ -24,11 +22,15 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
+    /// How many times the line at the top wraps around before being shown.
+    pub top_wraps: usize,
     /// The index of the line at the top of the screen.
     pub top_line: usize,
     /// The number of times the top line should wrap.
-    pub top_wraps: usize,
-    /// The leftmost col shown on the screen.
+    /// let widget = widget.lock().unwrap();
+    /// widget.update();
+    /// The leftmost col shown on the screen..unwrap();
+    /// printer_lock.lock()
     pub x_shift: usize,
 }
 
@@ -81,12 +83,14 @@ impl PrintInfo {
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait Widget<M>: Send
+pub trait Widget<U>: Send
 where
-    M: Ui,
+    U: Ui,
 {
     /// Returns the `ChildNode` associated with this area.
-    fn end_node(&self) -> &EndNode<M>;
+    fn end_node(&self) -> &EndNode<U>;
+
+    fn end_node_mut(&mut self) -> &mut EndNode<U>;
 
     fn update(&mut self);
 
@@ -103,7 +107,7 @@ where
     fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, node: &EndNode<M>) {}
+    fn resize(&mut self, node: &EndNode<U>) {}
 }
 
 /// An area where you can edit the text.
@@ -339,7 +343,7 @@ where
 
     pub fn splice(&mut self, cursor: &mut TextCursor, edit: impl ToString) {
         let edit = edit.to_string();
-        let lines = edit.split_inclusive('\n').collect();
+        let lines = if edit.is_empty() { vec![""] } else { edit.split_inclusive('\n').collect() };
 
         let mut text = self.text.write();
         let (edits, _) = self.history.add_change(&mut text.lines, lines, cursor.range());
@@ -445,12 +449,9 @@ where
         }
     }
 
-   	pub fn cursor_list(&mut self) -> CursorList {
-       	CursorList {
-           	cursors: self.cursors.clone(),
-           	main_cursor: *self.main_cursor.read()
-       	}
-   	}
+    pub fn cursor_list(&mut self) -> CursorList {
+        CursorList { cursors: self.cursors.clone(), main_cursor: *self.main_cursor.read() }
+    }
 }
 
 pub struct CursorList {
@@ -464,6 +465,10 @@ where
 {
     fn end_node(&self) -> &EndNode<M> {
         &self.node
+    }
+
+    fn end_node_mut(&mut self) -> &mut EndNode<M> {
+        &mut self.node
     }
 
     fn update(&mut self) {
@@ -600,6 +605,10 @@ where
     fn end_node(&self) -> &EndNode<M> {
         &self.node
     }
+
+    fn end_node_mut(&mut self) -> &mut EndNode<M> {
+        &mut self.node
+    }
 }
 
 pub struct OneStatusLayout<U>
@@ -608,11 +617,10 @@ where
 {
     node_manager: NodeManager<U>,
     status: StatusWidget<U>,
-    widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
-    files: Vec<(FileWidget<U>, Option<MidNode<U>>)>,
+    widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
+    files: Vec<(FileWidget<U>, Option<MidNode<U>>, WidgetPrinter<U>)>,
     master_node: MidNode<U>,
     match_manager: MatchManager,
-    prints: Vec<(RoState<Text>, EndNode<U>, RoState<PrintInfo>)>,
 }
 
 /// A form of organizing the areas on a window.
@@ -650,7 +658,6 @@ where
             files: Vec::new(),
             master_node,
             match_manager,
-            prints: Vec::new(),
         };
 
         layout.new_file_with_node(path, node);
@@ -661,23 +668,18 @@ where
     fn new_file_with_node(&mut self, path: &PathBuf, node: EndNode<U>) {
         let mut file =
             FileWidget::<U>::new(path.clone(), node.clone(), &Some(self.match_manager.clone()));
-
-        self.prints.push((file.text().clone(), node.clone(), file.print_info().clone()));
+        let file_printer = WidgetPrinter::new(&file);
 
         if matches!(node.config().line_numbers, LineNumbers::None) {
-            self.files.push((file, None));
+            self.files.push((file, None, file_printer));
         } else {
             let (line_numbers, file_parent) =
                 LineNumbersWidget::new(&mut file, &mut self.node_manager);
 
-            self.prints.push((
-                line_numbers.text(),
-                line_numbers.node.clone(),
-                RoState::new(PrintInfo::default()),
-            ));
-            self.widgets.push(Mutex::new(Box::new(line_numbers)));
+            let widget_printer = WidgetPrinter::new(&line_numbers);
+            self.widgets.push(Mutex::new((Box::new(line_numbers), widget_printer)));
 
-            self.files.push((file, Some(file_parent)));
+            self.files.push((file, Some(file_parent), file_printer));
         }
     }
 
@@ -713,43 +715,51 @@ where
         self.master_node = master_node;
 
         let widget = constructor(end_node.clone(), &self);
-
-        self.prints.push((widget.text().clone(), end_node, widget.print_info().clone()));
-
-        self.widgets.push(Mutex::new(Box::new(widget)));
+        let widget_printer = WidgetPrinter::new(&widget);
+        self.widgets.push(Mutex::new((Box::new(widget), widget_printer)));
     }
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
         self.node_manager.startup();
 
+        let printer = Mutex::new(true);
+
+        // Initial printing.
+        print_files(&mut self.files);
+        for mutex in &mut self.widgets {
+            let mut lock = mutex.lock().unwrap();
+            lock.0.update();
+            lock.1.print();
+        }
+
+        // The main loop.
         thread::scope(|s_0| {
             loop {
                 // TODO: Make this generalized.
-                if event::poll(Duration::from_millis(10)).expect("crossterm") {
-                    if let Event::Key(key_event) = event::read().unwrap() {
-                        // NOTE: This is very much temporary.
-                        if let KeyCode::Esc = key_event.code {
-                            break;
-                        } else {
-                            key_remapper.send_key_to_file(key_event, &mut self.files[0].0);
-                        }
-                    }
-
-                    update_files(&mut self.files);
-
-                    let indices = widgets_to_update(&self.widgets);
-
-                    for index in &indices {
-                        let widget = &self.widgets[*index];
-                        s_0.spawn(|| {
-                            widget.lock().unwrap().update();
-                        });
+                if let Event::Key(key_event) = event::read().unwrap() {
+                    // NOTE: This is very much temporary.
+                    if let KeyCode::Esc = key_event.code {
+                        break;
+                    } else {
+                        key_remapper.send_key_to_file(key_event, &mut self.files[0].0);
                     }
                 }
 
-                print_as_needed(&mut self.prints);
+                update_files(&mut self.files);
+                let lock = printer.lock().unwrap();
+                print_files(&mut self.files);
+                drop(lock);
 
-                self.node_manager.finish_all_printing();
+                let widget_indices = widgets_to_update(&self.widgets);
+                for index in &widget_indices {
+                    let mutex = &self.widgets[*index];
+                    s_0.spawn(|| {
+                        let mut lock = mutex.lock().unwrap();
+                        lock.0.update();
+                        let _lock = printer.lock().unwrap();
+                        lock.1.print();
+                    });
+                }
             }
         });
 
@@ -757,10 +767,9 @@ where
     }
 }
 
-fn update_files<U>(files: &mut Vec<(FileWidget<U>, Option<MidNode<U>>)>)
-where
-    U: Ui,
-{
+fn update_files(
+    files: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
+) {
     thread::scope(|s_1| {
         for file in files {
             s_1.spawn(|| file.0.update());
@@ -768,16 +777,25 @@ where
     });
 }
 
-fn widgets_to_update<U>(widgets: &Vec<Mutex<Box<dyn Widget<U>>>>) -> Vec<usize>
-where
-    U: Ui,
-{
+fn print_files(
+    files: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
+) {
+    for (_, _, widget_printer) in files {
+        if widget_printer.text.has_changed() {
+            widget_printer.print();
+        }
+    }
+}
+
+fn widgets_to_update(
+    widgets: &Vec<Mutex<(Box<dyn Widget<impl Ui>>, WidgetPrinter<impl Ui>)>>,
+) -> Vec<usize> {
     let mut indices = Vec::new();
 
     for (index, widget) in widgets.iter().enumerate() {
         // If the lock is unavailable, that means the widget is being updated.
-        if let Ok(raw_widget) = widget.try_lock() {
-            if raw_widget.needs_update() {
+        if let Ok(lock) = widget.try_lock() {
+            if lock.0.needs_update() {
                 indices.push(index);
             }
         }
@@ -786,20 +804,34 @@ where
     indices
 }
 
-fn print_as_needed<U>(prints: &mut Vec<(RoState<Text>, EndNode<U>, RoState<PrintInfo>)>)
+fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
+    min(print_info.top_line + node.height(), text.lines().len() - 1)
+}
+
+struct WidgetPrinter<U>
 where
     U: Ui,
 {
-    for (text, node, print_info) in prints {
-        if text.has_changed() {
-            let (text, print_info) = (text.read(), print_info.read());
-            text.print(node, *print_info);
-            drop(text);
-            drop(print_info);
-        }
-    }
+    end_node: EndNode<U>,
+    text: RoState<Text>,
+    print_info: RoState<PrintInfo>,
 }
 
-fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_line + node.height(), text.lines().len() - 1)
+unsafe impl<U> Send for WidgetPrinter<U> where U: Ui {}
+
+impl<U> WidgetPrinter<U>
+where
+    U: Ui,
+{
+    fn new(widget: &dyn Widget<U>) -> Self {
+        Self {
+            end_node: widget.end_node().clone(),
+            text: widget.text(),
+            print_info: widget.print_info(),
+        }
+    }
+
+    fn print(&mut self) {
+        self.text.read().print(&mut self.end_node, self.print_info.read().clone());
+    }
 }

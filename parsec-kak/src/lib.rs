@@ -30,19 +30,62 @@ impl EditingScheme for Editor {
     where
         U: parsec_core::ui::Ui,
     {
+        let mut cursor_list = file.cursor_list();
+        let mut cursors = cursor_list.cursors.write();
 
-        if let KeyCode::Char(ch) = key.code {
-            match self.cur_mode {
-                Mode::Insert => {
-                    let mut cursor_list = file.cursor_list();
-                    let mut cursors = cursor_list.cursors.write();
+        match self.cur_mode {
+            Mode::Insert => match key.code {
+                KeyCode::Char(ch) => {
                     cursors.iter_mut().for_each(|mut c| {
                         file.splice(&mut c, ch);
                         c.move_hor(1, file);
                     });
                 }
+                KeyCode::Enter => {
+                    cursors.iter_mut().for_each(|mut c| {
+                        file.splice(&mut c, '\n');
+                        c.move_hor(1, file);
+                    });
+                }
+                KeyCode::Backspace => {
+                    cursors.iter_mut().for_each(|mut c| {
+                        c.set_anchor();
+                        c.move_hor(-1, file);
+                        file.splice(&mut c, "");
+                        c.unset_anchor();
+                    });
+                }
+                KeyCode::Delete => {
+                    cursors.iter_mut().for_each(|mut c| {
+                        c.set_anchor();
+                        c.move_hor(1, file);
+                        file.splice(&mut c, "");
+                        c.unset_anchor();
+                    });
+                }
+                KeyCode::Left => {
+                    cursors.iter_mut().for_each(|c| {
+                        c.move_hor(-1, file);
+                    });
+                }
+                KeyCode::Right => {
+                    cursors.iter_mut().for_each(|c| {
+                        c.move_hor(1, file);
+                    });
+                }
+                KeyCode::Up => {
+                    cursors.iter_mut().for_each(|c| {
+                        c.move_ver(-1, file);
+                    });
+                }
+                KeyCode::Down => {
+                    cursors.iter_mut().for_each(|c| {
+                        c.move_ver(1, file);
+                    });
+                }
                 _ => {}
-            }
+            },
+            _ => {}
         }
     }
 
