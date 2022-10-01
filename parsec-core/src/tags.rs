@@ -9,12 +9,12 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     file::TextLine,
-    ui::{EndNode, Container, Label, Ui, RawEndNode},
+    ui::{RawEndNode, Ui},
 };
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
@@ -44,7 +44,7 @@ impl CharTag {
         &self, printer: &mut RawEndNode<M>, forms: &[Form], wrap_indent: usize,
     ) -> bool
     where
-        M: Ui
+        M: Ui,
     {
         match self {
             CharTag::PushForm(form) => printer.push_form(forms, form.0),
@@ -147,7 +147,16 @@ impl CharTags {
     where
         F: Fn((u32, CharTag)) -> bool,
     {
-        self.0.retain(|&(c, t)| do_retain((c, t)))
+        self.0.retain(|&t| do_retain(t))
+    }
+
+    pub fn remove_first<F>(&mut self, cmp: F)
+    where
+        F: Fn((u32, CharTag)) -> bool,
+    {
+        if let Some((index, _)) = self.0.iter().enumerate().find(|&(_, &t)| cmp(t)) {
+            self.0.remove(index);
+        }
     }
 }
 
@@ -160,7 +169,7 @@ pub struct Form {
     pub is_final: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FormId(u16);
 
 impl Form {
@@ -464,14 +473,22 @@ impl Ord for TagPos {
     where
         Self: Sized,
     {
-        if self > other { self } else { other }
+        if self > other {
+            self
+        } else {
+            other
+        }
     }
 
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
     {
-        if self < other { self } else { other }
+        if self < other {
+            self
+        } else {
+            other
+        }
     }
 }
 

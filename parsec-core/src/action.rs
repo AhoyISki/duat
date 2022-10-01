@@ -63,11 +63,11 @@ impl TextRange {
 #[derive(Debug, Clone, Copy)]
 pub struct Splice {
     /// The start of both texts.
-    start: TextPos,
+    pub(crate) start: TextPos,
     /// The end of the added text.
-    added_end: TextPos,
+    pub(crate) added_end: TextPos,
     /// The end of the taken text.
-    taken_end: TextPos,
+    pub(crate) taken_end: TextPos,
 }
 
 impl Splice {
@@ -168,7 +168,7 @@ impl History {
     /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
     pub fn add_change<T>(
         &mut self, lines: &mut Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
-    ) -> (Vec<String>, TextRange)
+    ) -> (Vec<String>, Splice)
     where
         T: ToString,
     {
@@ -198,7 +198,7 @@ impl History {
 
         let edited_lines: Vec<&str> = lines[edit_range.lines()].iter().map(|l| l.text()).collect();
 
-		// If the removed text is only one line long.
+        // If the removed text is only one line long.
         let mut taken_text = if edited_lines.len() == 1 {
             let line = edited_lines.first().unwrap();
 
@@ -308,24 +308,28 @@ impl History {
                     change.splice.added_end.line += added_range.end.line;
                 }
 
-                return (full_lines, added_range);
+                return (
+                    full_lines,
+                    Splice {
+                        start: added_range.start,
+                        taken_end: edit_range.end,
+                        added_end: added_range.end,
+                    },
+                );
             }
         }
         let taken_text: Vec<String> = taken_text.iter().map(|l| l.to_string()).collect();
-
-        let change = Change {
-            added_text: edit,
-            taken_text,
-            splice: Splice {
-                start: edit_range.start,
-                added_end: added_range.end,
-                taken_end: edit_range.end,
-            },
+        let splice = Splice {
+            start: edit_range.start,
+            added_end: added_range.end,
+            taken_end: edit_range.end,
         };
+
+        let change = Change { added_text: edit, taken_text, splice };
 
         moment.changes.push(change);
 
-        (full_lines, added_range)
+        (full_lines, splice)
     }
 
     /// Declares that the current moment is complete and moves to the next one.

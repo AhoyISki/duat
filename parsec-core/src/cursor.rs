@@ -2,8 +2,7 @@ use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
-    action::TextRange,
-    config::{Config, TabPlaces},
+    action::{Splice, TextRange},
     layout::{FileWidget, Widget},
     saturating_add_signed,
     ui::{EndNode, Ui},
@@ -19,8 +18,9 @@ pub struct TextPos {
 }
 
 impl TextPos {
-    pub fn translate_to(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
-        let mut new = TextPos { line, col: 0, ..self };
+    /// Creates a new cursor, based on this `TextPosition`, translated in lines and columns. 
+    pub fn calibrated_cursor(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
+        let mut new = TextPos { line, col, ..self };
         new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
         new
     }
@@ -40,6 +40,24 @@ impl TextPos {
             TextPos { line: self.line, ..(*self - other) }
         } else {
             *self
+        }
+    }
+
+	/// Correct a cursor's position, given a change in the file.
+	///
+	/// This should be used on every cursor, whenever any of them makes a change in the file.
+    pub fn fix_on_splice(&mut self, splice: Splice) {
+        let Splice { start, added_end, taken_end } = splice;
+        if *self > start {
+            // The column will only change if the `TextPos` is in the same line.
+            if self.line == taken_end.line {
+                self.col += added_end.col - taken_end.col;
+            }
+
+            self.byte += added_end.byte - taken_end.byte;
+            // The line of the cursor will increase if the edit has more lines than the original
+            // selection, and vice-versa.
+            self.line += added_end.line - taken_end.line;
         }
     }
 }
@@ -148,18 +166,14 @@ impl Ord for TextPos {
 }
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TextCursor {
-    // The `current` adn `target` positions pretty much exist solely for more versatile comparisons
+    // The `prev` and `cur` positions pretty much exist solely for more versatile comparisons
     // of movement when printing to the screen.
-    // Often, you'll see `old_target` being used as a variable instead of `current`. This is
-    // because the user may want to execute multiple movements in rapid succession without
-    // printing to the screen, and `current` is just a useful reminder of where the cursor was
-    // the last the screen was printed.
-    /// Current position of the cursor in the file.
-    prev: TextPos,
+    /// Previous position of the cursor in the file.
+    prev: Option<TextPos>,
 
-    /// Target position of the cursor in the file.
+    /// Current position of the cursor in the file.
     cur: TextPos,
 
     /// An anchor for a selection.
@@ -173,12 +187,18 @@ pub struct TextCursor {
     desired_x: usize,
 }
 
+impl Clone for TextCursor {
+	fn clone(&self) -> Self {
+    	TextCursor { prev: None, ..*self }
+	}
+}
+
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
     pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
         let line = lines.get(pos.line).unwrap();
         TextCursor {
-            prev: pos,
+            prev: None,
             cur: pos,
             // This should be fine.
             anchor: None,
@@ -260,6 +280,13 @@ impl TextCursor {
         self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw());
     }
 
+    pub fn calibrate(&mut self, splice: Splice) {
+        self.cur.fix_on_splice(splice);
+        if let Some(anchor) = &mut self.anchor {
+            anchor.fix_on_splice(splice);
+        }
+    }
+
     ////////// Public movement functions
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
@@ -307,7 +334,7 @@ impl TextCursor {
     ///
     /// - This function does not take horizontal scrolling into account.
     pub fn update(&mut self) {
-        self.prev = self.cur;
+        self.prev = Some(self.cur);
     }
 
     ////////////////////////////////
@@ -315,7 +342,7 @@ impl TextCursor {
     ////////////////////////////////
     /// Returns the cursor's position on the file.
     pub fn prev(&self) -> TextPos {
-        self.prev
+        self.prev.unwrap_or(self.cur)
     }
 
     /// Returns the cursor's position on the screen.

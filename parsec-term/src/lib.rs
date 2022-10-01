@@ -5,7 +5,7 @@ use std::{
 
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
-    style::{Print, ResetColor, SetStyle},
+    style::{Print, ResetColor, SetStyle, SetAttribute, Attribute},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
@@ -81,11 +81,12 @@ pub struct Label {
     area: Area,
     cursor: Coord,
     direction: Direction,
+    secodary_cursor: bool
 }
 
 impl Label {
     fn new(area: Area, direction: Direction) -> Self {
-        Label { stdout: stdout(), area, cursor: area.tl, direction }
+        Label { stdout: stdout(), area, cursor: area.tl, direction, secodary_cursor: false }
     }
 }
 
@@ -159,7 +160,8 @@ impl UiLabel for Label {
     }
 
     fn place_secondary_cursor(&mut self) {
-        todo!()
+        self.secodary_cursor = true;
+        self.stdout.queue(SetAttribute(Attribute::Reverse)).expect("crossterm");
     }
 
     fn print(&mut self, ch: char) {
@@ -167,6 +169,10 @@ impl UiLabel for Label {
         if self.cursor.x < self.area.br.x - len {
             self.cursor.x += len;
             self.stdout.queue(Print(ch)).expect("crossterm");
+            if self.secodary_cursor {
+                self.stdout.queue(SetAttribute(Attribute::NoReverse)).expect("crossterm");
+                self.secodary_cursor = false
+            }
         }
     }
 

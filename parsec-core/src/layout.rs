@@ -10,7 +10,7 @@ use std::{
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
-    action::{History, TextRange},
+    action::{History, Splice, TextRange},
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text, TextLine},
@@ -329,7 +329,7 @@ where
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
         let limit_line = min(main_cursor.cur().line + self.node.height(), text.lines().len() - 1);
-        let start = main_cursor.cur().translate_to(text.lines(), limit_line, 0);
+        let start = main_cursor.cur().calibrated_cursor(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let range = TextRange {
             start,
@@ -341,18 +341,25 @@ where
         };
     }
 
-    pub fn splice(&mut self, cursor: &mut TextCursor, edit: impl ToString) {
+    #[must_use = "By splicing the file, you will de-sync cursors that are further ahead. Use the splice to sync them back up."]
+    pub fn splice(&mut self, cursor: TextCursor, edit: impl ToString) -> Splice {
         let edit = edit.to_string();
-        let lines = if edit.is_empty() { vec![""] } else { edit.split_inclusive('\n').collect() };
+        let mut lines =
+            if edit.is_empty() { vec![""] } else { edit.split_inclusive('\n').collect() };
+        if edit.ends_with("\n") {
+            lines.push("");
+        }
 
         let mut text = self.text.write();
-        let (edits, _) = self.history.add_change(&mut text.lines, lines, cursor.range());
+        let (edits, splice) = self.history.add_change(&mut text.lines, lines, cursor.range());
 
         let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l.clone())).collect();
         text.lines.splice(cursor.range().lines(), edits);
 
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
         update_range(&mut text, cursor.range(), max_line, &self.node);
+
+        splice
     }
 
     /// Undoes the last moment in history.
@@ -419,25 +426,31 @@ where
 
     fn update(&mut self) {
         self.update_print_info();
-
-        let cursors = self.cursors.read();
-        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let current = main_cursor.prev();
-        let target = main_cursor.cur();
-
         let mut text = self.text.write();
-        let char_tags = &mut text.lines.get_mut(current.line).unwrap().info.char_tags;
-        char_tags.retain(|(_, t)| !matches!(t, CharTag::PrimaryCursor));
+        let cursors = self.cursors.read();
 
-        let line = &mut text.lines[target.line];
-        let byte = line.get_line_byte_at(target.col);
-        line.info.char_tags.insert((byte as u32, CharTag::PrimaryCursor));
+        for (index, cursor) in self.cursors.read().iter().enumerate() {
+            let prev = cursor.prev();
+            let cur = cursor.cur();
+
+            let tag = if index == *self.main_cursor.read() {
+                CharTag::PrimaryCursor
+            } else {
+                CharTag::SecondaryCursor
+            };
+
+            let char_tags = &mut text.lines.get_mut(prev.line).unwrap().info.char_tags;
+            char_tags.remove_first(|(n, t)| n as usize == prev.col && t == tag);
+
+            let line = &mut text.lines[cur.line];
+            let byte = line.get_line_byte_at(cur.col);
+            line.info.char_tags.insert((byte as u32, tag));
+        }
 
         // Updates the information for each cursor in the file.
+        drop(text);
         drop(cursors);
         self.cursors.write().iter_mut().for_each(|c| c.update());
-
-        drop(text);
 
         self.match_scroll();
     }
@@ -746,9 +759,9 @@ where
                 }
 
                 update_files(&mut self.files);
-                let lock = printer.lock().unwrap();
+                let printer_lock = printer.lock().unwrap();
                 print_files(&mut self.files);
-                drop(lock);
+                drop(printer_lock);
 
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
@@ -756,7 +769,7 @@ where
                     s_0.spawn(|| {
                         let mut lock = mutex.lock().unwrap();
                         lock.0.update();
-                        let _lock = printer.lock().unwrap();
+                        let _printer_lock = printer.lock().unwrap();
                         lock.1.print();
                     });
                 }
