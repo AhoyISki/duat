@@ -1,9 +1,9 @@
 use std::{cmp::min, ops::RangeInclusive};
 
 use crate::{
-    action::{extend_edit, get_byte, TextRange},
-    config::{Config, TabPlaces, WrapMethod},
-    cursor::{TextCursor, TextPos},
+    action::{get_byte, Change, TextRange},
+    config::WrapMethod,
+    cursor::TextPos,
     layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
     ui::{EndNode, RawEndNode, Ui},
@@ -157,9 +157,9 @@ impl TextLine {
             !self.text.chars().any(|c| node.get_char_len(c) > 1 || c == '\t'),
         );
 
-		if !matches!(node.config().wrap_method, WrapMethod::NoWrap) {
+        if !matches!(node.config().wrap_method, WrapMethod::NoWrap) {
             self.parse_wrapping(node);
-		}
+        }
     }
 
     pub fn parse_wrapping(&mut self, node: &EndNode<impl Ui>) {
@@ -405,21 +405,36 @@ impl Text {
         printed_lines
     }
 
-    pub(crate) fn splice(&mut self, range: TextRange, edit: impl ToString, max_line: usize) {
-        let edit_lines = edit.to_string().split_inclusive('\n').map(|t| String::from(t)).collect();
+    fn merge_text(&mut self, edit: &Vec<String>, range: TextRange) {
+        let lines = &mut self.lines;
 
-        let old: Vec<&str> = self.lines[range.lines()].iter().map(|l| l.text()).collect();
-        let old = if old.is_empty() { vec![""] } else { old };
+        if range.lines().count() == 1 && edit.len() == 1 {
+            let first_line = &mut lines[range.start.row];
+            first_line.text.replace_range(range.start.byte..range.end.byte, edit[0].as_str());
+        } else {
+            let first_line = &lines[range.start.row];
+            let last_line= &lines[range.end.row];
 
-        let new_lines = extend_edit(old, edit_lines, range).0;
-        let new_lines: Vec<TextLine> = new_lines.iter().map(|l| TextLine::new(l.clone())).collect();
+            let first_amend = &first_line.text[..range.start.byte];
+            let last_amend = &last_line.text[range.end.byte..];
 
-        self.lines.splice(range.lines(), new_lines);
+            let mut edit = edit.clone();
+
+            edit.first_mut().unwrap().insert_str(0, first_amend);
+            edit.last_mut().unwrap().push_str(last_amend);
+
+            let edit: Vec<TextLine> = edit.into_iter().map(|l| TextLine::new(l)).collect();
+
+            lines.splice(range.lines(), edit);
+        }
     }
 
-    /// Splices a given edit on the selection of a cursor.
-    pub fn splice_on_cursor(&mut self, cursor: &TextCursor, edit: impl ToString) {
-        self.splice(cursor.range(), edit, self.lines.len() - 1);
+    pub fn apply_change(&mut self, change: &Change) {
+        self.merge_text(&change.added_text, change.splice.taken_range());
+    }
+
+    pub fn undo_change(&mut self, change: &Change) {
+        self.merge_text(&change.taken_text, change.splice.added_range());
     }
 
     pub fn lines(&self) -> &Vec<TextLine> {
@@ -435,6 +450,11 @@ fn get_char_width(ch: char, col: usize, raw: &RawEndNode<impl Ui>) -> usize {
     }
 }
 
+/// Given a position (which is assumed to be on the line), will return the position at its start.
+fn get_line_start(pos: TextPos, line: &String) -> TextPos {
+    TextPos { byte: line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
+}
+
 pub(crate) fn update_range(
     text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl Ui>,
 ) {
@@ -443,18 +463,16 @@ pub(crate) fn update_range(
         let max_pos = range.end.calibrated_cursor(&text.lines, max_line, line.char_count());
 
         let start = TextPos {
-            line: range.start.line,
+            row: range.start.row,
             col: 0,
-            byte: range.start.byte
-                - get_byte(&text.lines[range.start.line].text(), range.start.col),
+            byte: range.start.byte - get_byte(&text.lines[range.start.row].text(), range.start.col),
         };
 
-        let len = text.lines[range.end.line].text().len();
+        let len = text.lines[range.end.row].text().len();
         let end = TextPos {
-            line: range.end.line,
-            col: text.lines[range.end.line].char_count(),
-            byte: range.end.byte - get_byte(&text.lines[range.end.line].text(), range.end.col)
-                + len,
+            row: range.end.row,
+            col: text.lines[range.end.row].char_count(),
+            byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) + len,
         };
 
         let range = TextRange { start, end };

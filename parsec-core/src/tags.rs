@@ -413,7 +413,7 @@ struct TagPos {
 
 impl TagPos {
     fn from_text(line: &TextLine, pos: TextPos) -> TagPos {
-        TagPos { line: pos.line, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
+        TagPos { line: pos.row, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
     }
 }
 
@@ -755,7 +755,7 @@ impl MatchManager {
     }
 
     pub fn match_scroll(&mut self, lines: &[TextLine], end: TextPos) -> Vec<(LineInfo, usize)> {
-        let end = TagPos::from_text(&lines[end.line], end);
+        let end = TagPos::from_text(&lines[end.row], end);
 
         if end > self.last_match.pos {
             let range = TagRange { start: self.last_match.pos, end };
@@ -769,10 +769,10 @@ impl MatchManager {
     pub fn match_range(
         &mut self, lines: &[TextLine], range: TextRange, max_pos: TextPos,
     ) -> Vec<(LineInfo, usize)> {
-        let max_pos = TagPos::from_text(&lines[max_pos.line], max_pos);
+        let max_pos = TagPos::from_text(&lines[max_pos.row], max_pos);
 
-        let start = TagPos::from_text(&lines[range.start.line], range.start);
-        let end = TagPos::from_text(&lines[range.end.line], range.end);
+        let start = TagPos::from_text(&lines[range.start.row], range.start);
+        let end = TagPos::from_text(&lines[range.end.row], range.end);
         let mut range = TagRange { start, end };
 
         let mut lines_iter = lines.iter().take(range.start.line).rev();

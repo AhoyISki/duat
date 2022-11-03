@@ -2,7 +2,7 @@ use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
-    action::{Splice, TextRange},
+    action::{Change, Splice, TextRange},
     layout::{FileWidget, Widget},
     saturating_add_signed,
     ui::{EndNode, Ui},
@@ -10,25 +10,31 @@ use crate::{
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextPos {
-    pub col: usize,
     pub byte: usize,
-    pub line: usize,
+    pub col: usize,
+    pub row: usize,
+}
+
+impl std::fmt::Debug for TextPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("col: {}, line: {}, byte: {}", self.col, self.row, self.byte))
+    }
 }
 
 impl TextPos {
-    /// Creates a new cursor, based on this `TextPosition`, translated in lines and columns. 
+    /// Creates a new cursor, based on this `TextPosition`, translated in lines and columns.
     pub fn calibrated_cursor(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
-        let mut new = TextPos { line, col, ..self };
+        let mut new = TextPos { row: line, col, ..self };
         new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
         new
     }
 
     /// Adds columns given `self.line == other.line`.
     pub fn col_add(&self, other: TextPos) -> TextPos {
-        if self.line == other.line {
-            TextPos { line: self.line, ..(*self + other) }
+        if self.row == other.row {
+            TextPos { row: self.row, ..(*self + other) }
         } else {
             *self
         }
@@ -36,28 +42,25 @@ impl TextPos {
 
     /// Subtracts columns given `self.line == other.line`.
     pub fn col_sub(&self, other: TextPos) -> TextPos {
-        if self.line == other.line {
-            TextPos { line: self.line, ..(*self - other) }
+        if self.row == other.row {
+            TextPos { row: self.row, ..(*self - other) }
         } else {
             *self
         }
     }
 
-	/// Correct a cursor's position, given a change in the file.
-	///
-	/// This should be used on every cursor, whenever any of them makes a change in the file.
-    pub fn fix_on_splice(&mut self, splice: Splice) {
+    pub fn calibrate(&mut self, splice: &Splice) {
         let Splice { start, added_end, taken_end } = splice;
-        if *self > start {
+        if *self > *start {
             // The column will only change if the `TextPos` is in the same line.
-            if self.line == taken_end.line {
+            if self.row == taken_end.row {
                 self.col += added_end.col - taken_end.col;
             }
 
             self.byte += added_end.byte - taken_end.byte;
             // The line of the cursor will increase if the edit has more lines than the original
             // selection, and vice-versa.
-            self.line += added_end.line - taken_end.line;
+            self.row += added_end.row - taken_end.row;
         }
     }
 }
@@ -66,7 +69,11 @@ impl std::ops::Add for TextPos {
     type Output = TextPos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line + rhs.line, byte: self.byte + rhs.byte, col: self.col + rhs.col }
+        TextPos {
+            row: self.row + rhs.row,
+            byte: self.byte + rhs.byte,
+            col: if self.row == rhs.row { self.col + rhs.col } else { self.col },
+        }
     }
 }
 
@@ -80,88 +87,17 @@ impl std::ops::Sub for TextPos {
     type Output = TextPos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos { line: self.line - rhs.line, byte: self.byte - rhs.byte, col: self.col - rhs.col }
+        TextPos {
+            row: self.row - rhs.row,
+            byte: self.byte - rhs.byte,
+            col: if self.row == rhs.row { self.col - rhs.col } else { self.col },
+        }
     }
 }
 
 impl std::ops::SubAssign for TextPos {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
-    }
-}
-
-// This is done because if the line of `self` is bigger than the line of `other`, it doesn't matter
-// what the column of `other` is, `self > other`, but if the line is the same, that's when columns
-// should be compared. `#[derive(PartialOrd, Ord)]` would just do a "both are bigger" comparison.
-impl std::cmp::PartialOrd for TextPos {
-    fn ge(&self, other: &Self) -> bool {
-        self.line > other.line || (self.line == other.line && self.col >= other.col)
-    }
-
-    fn gt(&self, other: &Self) -> bool {
-        self.line > other.line || (self.line == other.line && self.col > other.col)
-    }
-
-    fn le(&self, other: &Self) -> bool {
-        self.line < other.line || (self.line == other.line && self.col <= other.col)
-    }
-
-    fn lt(&self, other: &Self) -> bool {
-        self.line < other.line || (self.line == other.line && self.col < other.col)
-    }
-
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self > other {
-            Some(std::cmp::Ordering::Greater)
-        } else if self < other {
-            Some(std::cmp::Ordering::Less)
-        } else {
-            Some(std::cmp::Ordering::Equal)
-        }
-    }
-}
-
-// Same deal here, for some reason, `Impl Ord` doesn't seem to take my implementation of
-// `PartialOrd`, when considering how to implement `Ord` and just goes for the "both are bigger"
-// comparison.
-impl Ord for TextPos {
-    fn clamp(self, min: Self, max: Self) -> Self
-    where
-        Self: Sized,
-    {
-        if self < min {
-            min
-        } else if self > max {
-            max
-        } else {
-            self
-        }
-    }
-
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        unsafe { self.partial_cmp(other).unwrap_unchecked() }
-    }
-
-    fn max(self, other: Self) -> Self
-    where
-        Self: Sized,
-    {
-        if other > self {
-            other
-        } else {
-            self
-        }
-    }
-
-    fn min(self, other: Self) -> Self
-    where
-        Self: Sized,
-    {
-        if other < self {
-            other
-        } else {
-            self
-        }
     }
 }
 
@@ -179,6 +115,9 @@ pub struct TextCursor {
     /// An anchor for a selection.
     anchor: Option<TextPos>,
 
+    /// A change, temporarily associated to this cursor for faster access.
+    pub(crate) change: Option<Change>,
+
     /// Column that the cursor wants to be in.
     ///
     /// If the cursor moves to a line that is at least as wide as the desired_col,
@@ -188,20 +127,21 @@ pub struct TextCursor {
 }
 
 impl Clone for TextCursor {
-	fn clone(&self) -> Self {
-    	TextCursor { prev: None, ..*self }
-	}
+    fn clone(&self) -> Self {
+        TextCursor { prev: None, desired_x: self.cur.col, change: None, ..*self }
+    }
 }
 
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
     pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
-        let line = lines.get(pos.line).unwrap();
+        let line = lines.get(pos.row).unwrap();
         TextCursor {
             prev: None,
             cur: pos,
             // This should be fine.
             anchor: None,
+            change: None,
             desired_x: line.get_distance_to_col_node(pos.col, node),
         }
     }
@@ -211,80 +151,73 @@ impl TextCursor {
         &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
         let old_target = self.cur;
+        let cur = &mut self.cur;
 
-        let line = self.cur.line;
-        self.cur.line = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
-        let line = &lines[self.cur.line];
+        let line = cur.row;
+        cur.row = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
+        let line = &lines[cur.row];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        (self.cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
+        (cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte =
-            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
+        cur.byte = (cur.byte as isize + get_byte_distance(lines, old_target, *cur)) as usize;
     }
 
     /// Internal horizontal movement function.
     pub(crate) fn move_hor_inner(
         &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
-        let old_target = self.cur;
-        let mut col = self.cur.col as i32 + count;
+        let old_cur = self.cur;
+        let cur = &mut self.cur;
+        let mut col = old_cur.col as i32 + count;
 
         if count >= 0 {
-            let mut line_iter = lines.iter().enumerate().skip(self.cur.line);
+            let mut line_iter = lines.iter().enumerate().skip(old_cur.row);
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
-                self.cur.line = index;
+                cur.row = index;
                 if col < line.char_count() as i32 {
                     break;
                 }
                 col -= line.char_count() as i32;
             }
         } else {
-            let mut line_iter = lines.iter().enumerate().take(self.cur.line).rev();
+            let mut line_iter = lines.iter().enumerate().take(old_cur.row).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
                 if col >= 0 {
                     break;
                 }
                 col += line.char_count() as i32;
-                self.cur.line = index;
+                cur.row = index;
             }
         }
 
-        let line = lines.get(self.cur.line).unwrap();
-        self.cur.col = col.clamp(0, line.text().len() as i32) as usize;
+        let line = lines.get(cur.row).unwrap();
+        cur.col = col.clamp(0, line.text().len() as i32) as usize;
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte =
-            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
+        cur.byte = (cur.byte as isize + get_byte_distance(lines, old_cur, *cur)) as usize;
 
-        self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw()) as usize;
+        self.desired_x = line.get_distance_to_col(cur.col, &node.raw()) as usize;
     }
 
-    /// Internal absolute movement function.
+    /// Internal absolute movement function. Assumes that `pos` is not calibrated.
     pub(crate) fn move_to_inner(
         &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
         let old_target = self.cur;
+        let cur = &mut self.cur;
 
-        self.cur.line = pos.line.clamp(0, lines.len());
-        self.cur.col = pos.col.clamp(0, lines.get(self.cur.line).unwrap().text().len());
+        cur.row = pos.row.clamp(0, lines.len());
+        cur.col = pos.col.clamp(0, lines[pos.row].text().len());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        self.cur.byte =
-            (self.cur.byte as isize + get_byte_distance(lines, old_target, self.cur)) as usize;
+        cur.byte = (cur.byte as isize + get_byte_distance(lines, old_target, pos)) as usize;
 
-        let line = lines.get(self.cur.line).unwrap();
-        self.desired_x = line.get_distance_to_col(self.cur.col, &node.raw());
-    }
-
-    pub fn calibrate(&mut self, splice: Splice) {
-        self.cur.fix_on_splice(splice);
-        if let Some(anchor) = &mut self.anchor {
-            anchor.fix_on_splice(splice);
-        }
+        let line = lines.get(pos.row).unwrap();
+        self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
     }
 
     ////////// Public movement functions
@@ -354,6 +287,26 @@ impl TextCursor {
     pub fn anchor(&self) -> Option<TextPos> {
         self.anchor
     }
+
+	/// Calibrates a cursor's positions based on some splice.
+    pub(crate) fn calibrate(&mut self, cmp_splice: &Splice, lines: usize, bytes: usize) {
+        relative_add(&mut self.cur, cmp_splice, lines, bytes);
+        self.anchor.as_mut().map(|a| relative_add(a, cmp_splice, lines, bytes));
+        if let Some(change) = &mut self.change {
+            let splice = &mut change.splice;
+            for pos in [&mut splice.start, &mut splice.added_end, &mut splice.taken_end] {
+                relative_add(pos, cmp_splice, lines, bytes);
+            }
+        };
+    }
+}
+
+fn relative_add(pos: &mut TextPos, cmp_splice: &Splice, lines: usize, bytes: usize) {
+    pos.row += lines;
+    pos.byte += bytes;
+    if pos.row == cmp_splice.taken_end.row && pos.col > cmp_splice.taken_end.col {
+        pos.col += cmp_splice.taken_end.col;
+    }
 }
 
 // This function is just a much more efficient way of getting the byte in a position than having to
@@ -364,13 +317,13 @@ impl TextCursor {
 ///
 /// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
 pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) -> isize {
-    let mut distance = lines[target.line].get_line_byte_at(target.col) as isize;
-    distance -= lines[current.line].get_line_byte_at(current.col) as isize;
+    let mut distance = lines[target.row].get_line_byte_at(target.col) as isize;
+    distance -= lines[current.row].get_line_byte_at(current.col) as isize;
 
-    let (direction, range) = if target.line > current.line {
-        (1, current.line..target.line)
-    } else if target.line < current.line {
-        (-1, target.line..current.line)
+    let (direction, range) = if target.row > current.row {
+        (1, current.row..target.row)
+    } else if target.row < current.row {
+        (-1, target.row..current.row)
     } else {
         return distance;
     };

@@ -3,19 +3,19 @@ use std::{
     fmt::Write,
     fs,
     path::PathBuf,
-    sync::{Mutex, MutexGuard},
+    sync::Mutex,
     thread,
 };
 
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
-    action::{History, Splice, TextRange},
+    action::{Change, History, Splice, TextRange},
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
-    file::{update_range, Text, TextLine},
+    file::{update_range, Text},
     input::{EditingScheme, FileRemapper},
-    saturating_add_signed,
+    saturating_add_signed, split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
 };
@@ -201,24 +201,24 @@ where
         let info = &mut self.print_info.write();
         let scrolloff = self.node.config().scrolloff;
 
-        if target.line > info.top_line + height - scrolloff.d_y {
-            info.top_line += target.line + scrolloff.d_y - info.top_line - height;
-        } else if target.line < info.top_line + scrolloff.d_y && info.top_line != 0 {
-            info.top_line -= (info.top_line + scrolloff.d_y) - target.line;
+        if target.row > info.top_line + height - scrolloff.d_y {
+            info.top_line += target.row + scrolloff.d_y - info.top_line - height;
+        } else if target.row < info.top_line + scrolloff.d_y && info.top_line != 0 {
+            info.top_line -= (info.top_line + scrolloff.d_y) - target.row
         }
     }
 
     fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
         let scrolloff = self.node.config().scrolloff;
         let text = self.text.read();
-        let lines_iter = text.lines().iter().take(target.line);
+        let lines_iter = text.lines().iter().take(target.row);
         let info = &mut self.print_info.write();
 
         // If the target line is above the top line, no matter what, a new top line is needed.
-        let mut needs_new_top_line = target.line < info.top_line;
+        let mut needs_new_top_line = target.row < info.top_line;
 
         for (index, line) in lines_iter.enumerate().rev() {
-            if index != target.line {
+            if index != target.row {
                 d_y += 1 + line.wrap_iter().count();
             };
 
@@ -243,12 +243,12 @@ where
     fn scroll_down(&mut self, target: TextPos, mut d_y: usize, height: usize) {
         let scrolloff = self.node.config().scrolloff;
         let text = self.text.read();
-        let lines_iter = text.lines().iter().take(target.line + 1);
+        let lines_iter = text.lines().iter().take(target.row + 1);
         let mut info = self.print_info.write();
         let mut top_offset = 0;
 
         for (index, line) in lines_iter.enumerate().rev() {
-            if index != target.line {
+            if index != target.row {
                 d_y += 1 + line.wrap_iter().count();
             }
 
@@ -278,7 +278,7 @@ where
         let scrolloff = self.node.config().scrolloff;
 
         if let WrapMethod::NoWrap = self.node.config().wrap_method {
-            let target_line = &self.text.read().lines[target.line];
+            let target_line = &self.text.read().lines[target.row];
             let distance = target_line.get_distance_to_col_node(target.col, &self.node);
 
             // If the distance is greater, it means that the cursor is out of bounds.
@@ -300,11 +300,11 @@ where
 
         let text = self.text.read();
 
-        let line = &text.lines()[prev.line];
+        let line = &text.lines()[prev.row];
         let current_byte = line.get_line_byte_at(prev.col);
         let cur_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
 
-        let line = &text.lines()[cur.line];
+        let line = &text.lines()[cur.row];
         let target_byte = line.get_line_byte_at(cur.col);
         let prev_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
 
@@ -316,7 +316,7 @@ where
         if let WrapMethod::NoWrap = self.node.config().wrap_method {
             self.scroll_unwrapped(cur, self.node.height());
             self.scroll_horizontally(cur, self.node.width());
-        } else if cur.line < prev.line || (cur.line == prev.line && prev_wraps < cur_wraps) {
+        } else if cur.row < prev.row || (cur.row == prev.row && prev_wraps < cur_wraps) {
             self.scroll_up(cur, d_y);
         } else {
             self.scroll_down(cur, d_y, self.node.height());
@@ -328,7 +328,7 @@ where
         let cursors = self.cursors.read();
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let limit_line = min(main_cursor.cur().line + self.node.height(), text.lines().len() - 1);
+        let limit_line = min(main_cursor.cur().row + self.node.height(), text.lines().len() - 1);
         let start = main_cursor.cur().calibrated_cursor(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let range = TextRange {
@@ -341,51 +341,53 @@ where
         };
     }
 
-    #[must_use = "By splicing the file, you will de-sync cursors that are further ahead. Use the splice to sync them back up."]
-    pub fn splice(&mut self, cursor: TextCursor, edit: impl ToString) -> Splice {
-        let edit = edit.to_string();
-        let mut lines =
-            if edit.is_empty() { vec![""] } else { edit.split_inclusive('\n').collect() };
-        if edit.ends_with("\n") {
-            lines.push("");
-        }
-
+    pub fn edit(&mut self, cursor: &mut EditCursor, edit: impl ToString) {
+        let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
-        let (edits, splice) = self.history.add_change(&mut text.lines, lines, cursor.range());
+        let cursor = &mut cursor.0;
 
-        let edits: Vec<TextLine> = edits.iter().map(|l| TextLine::new(l.clone())).collect();
-        text.lines.splice(cursor.range().lines(), edits);
+        let cur_change = Change::new(&lines, cursor.range(), &text.lines);
 
+        text.apply_change(&cur_change);
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
         update_range(&mut text, cursor.range(), max_line, &self.node);
 
-        splice
+        let range = cursor.range();
+        if let Some(change) = &mut cursor.change {
+            if let Err(()) = change.try_merge(&lines, range) {
+                self.history.add_change(&change);
+                *change = cur_change;
+            }
+        }
     }
 
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
         let mut text = self.text.write();
 
-        let (splices, print_info) = match self.history.undo(&mut text.lines) {
-            Some((changes, print_info)) => (changes, print_info),
+        let moment = match self.history.move_backwards() {
+            Some(moment) => moment,
             None => return,
         };
         let mut info = self.print_info.write();
-        *info = print_info.unwrap_or(*info);
+        *info = moment.print_info.unwrap_or(*info);
 
         let mut cursors = self.cursors.write();
         let mut cursors_iter = cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
         let max_line = max_line(&text, &info, &self.node);
-        for splice in &splices {
+        for change in moment.changes.iter().rev() {
+            text.undo_change(&change);
+
+            let splice = change.splice;
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to_inner(splice.taken_end(), &text.lines, &self.node);
+                cursor.move_to_inner(splice.added_end(), &text.lines, &self.node);
             } else {
-                new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
+                new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
             }
 
-            let range = TextRange { start: splice.start(), end: splice.taken_end() };
+            let range = TextRange { start: splice.start(), end: splice.added_end() };
             update_range(&mut text, range, max_line, &self.node);
         }
 
@@ -393,23 +395,26 @@ where
         self.cursors.write().extend(new_cursors);
     }
 
-    /// Re-does the last moment in history.
+    /// Redoes the last moment in history.
     pub fn redo(&mut self) {
         let mut text = self.text.write();
 
-        let (splices, print_info) = match self.history.redo(&mut text.lines) {
-            Some((changes, print_info)) => (changes, print_info),
+        let moment = match self.history.move_backwards() {
+            Some(moment) => moment,
             None => return,
         };
         let mut info = self.print_info.write();
-        *info = print_info.unwrap_or(*info);
+        *info = moment.print_info.unwrap_or(*info);
 
         let mut cursors = self.cursors.write();
         let mut cursors_iter = cursors.iter_mut();
         let mut new_cursors = Vec::new();
 
         let max_line = max_line(&text, &info, &self.node);
-        for splice in &splices {
+        for change in &moment.changes {
+            text.apply_change(&change);
+
+            let splice = change.splice;
             if let Some(cursor) = cursors_iter.next() {
                 cursor.move_to_inner(splice.added_end(), &text.lines, &self.node);
             } else {
@@ -439,12 +444,14 @@ where
                 CharTag::SecondaryCursor
             };
 
-            let char_tags = &mut text.lines.get_mut(prev.line).unwrap().info.char_tags;
-            char_tags.remove_first(|(n, t)| n as usize == prev.col && t == tag);
+            if let Some(line) = text.lines.get_mut(prev.row) {
+                let char_tags = &mut line.info.char_tags;
+                char_tags.remove_first(|(n, t)| n as usize == prev.col && t == tag);
 
-            let line = &mut text.lines[cur.line];
-            let byte = line.get_line_byte_at(cur.col);
-            line.info.char_tags.insert((byte as u32, tag));
+                let line = &mut text.lines[cur.row];
+                let byte = line.get_line_byte_at(cur.col);
+                line.info.char_tags.insert((byte as u32, tag));
+            }
         }
 
         // Updates the information for each cursor in the file.
@@ -462,14 +469,104 @@ where
         }
     }
 
-    pub fn cursor_list(&mut self) -> CursorList {
-        CursorList { cursors: self.cursors.clone(), main_cursor: *self.main_cursor.read() }
+    pub fn cursor_list(&mut self) -> FileEditor {
+        FileEditor::new(self.cursors.clone(), *self.main_cursor.read())
     }
 }
 
-pub struct CursorList {
-    pub cursors: RwState<Vec<TextCursor>>,
-    pub main_cursor: usize,
+pub struct FileEditor {
+    cursors: RwState<Vec<TextCursor>>,
+    main_cursor: usize,
+}
+
+pub struct EditCursor<'a>(&'a mut TextCursor);
+pub struct MoveCursor<'a>(&'a mut TextCursor);
+
+impl FileEditor {
+    pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: usize) -> Self {
+        Self { cursors, main_cursor }
+    }
+
+    pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(EditCursor),
+    {
+        let mut cursors = self.cursors.write();
+        let mut added_lines = 0;
+        let mut added_bytes = 0;
+        let mut cmp_splice =
+            cursors[0].change.as_ref().map(|c| c.splice).unwrap_or(Splice::default());
+        cursors.iter_mut().for_each(|c| {
+            c.calibrate(&cmp_splice, added_lines, added_bytes);
+            let cursor = EditCursor(c);
+            f(cursor);
+            if let Some(splice) = c.change.as_ref().map(|c| c.splice) {
+                added_lines += splice.added_end.row - splice.taken_end.row;
+                added_bytes += splice.added_end.byte - splice.taken_end.byte;
+                cmp_splice = splice;
+            }
+        });
+    }
+
+    pub fn move_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(MoveCursor),
+    {
+        let mut cursors = self.cursors.write();
+        cursors.iter_mut().for_each(|c| {
+            let cursor = MoveCursor(c);
+            f(cursor)
+        });
+        // TODO: Smart resort algorithm.
+    }
+
+    pub fn on_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(&mut TextCursor),
+    {
+        let mut cursors = self.cursors.write();
+        let cursor = cursors.get_mut(index).expect("Invalid cursor index!");
+        f(cursor);
+        if let Some(splice) = cursor.change.as_ref().map(|a| a.splice) {
+            let added_lines = splice.added_end.row - splice.taken_end.row;
+            let added_bytes = splice.added_end.byte - splice.taken_end.byte;
+            cursors
+                .iter_mut()
+                .skip(index)
+                .for_each(|c| c.calibrate(&splice, added_lines, added_bytes));
+        }
+    }
+
+    pub fn on_main<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut TextCursor),
+    {
+        self.on_nth(f, self.main_cursor);
+    }
+
+    pub fn on_last<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut TextCursor),
+    {
+        let cursors = self.cursors.read();
+        if cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.on_nth(f, len - 1);
+        }
+    }
+
+    pub fn main_cursor(&self) -> usize {
+        self.main_cursor
+    }
+
+    pub fn clone_last(&mut self) -> TextCursor {
+        self.cursors.read().last().unwrap().clone()
+    }
+
+    pub fn push(&mut self, cursor: TextCursor) {
+        self.cursors.write().push(cursor);
+    }
 }
 
 impl<M> Widget<M> for FileWidget<M>
@@ -576,7 +673,7 @@ where
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().prev().line;
+        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().prev().row;
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
@@ -735,6 +832,7 @@ where
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
         self.node_manager.startup();
 
+        // This mutex is only used to prevent multiple printings at the same time.
         let printer = Mutex::new(true);
 
         // Initial printing.
@@ -765,12 +863,12 @@ where
 
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
-                    let mutex = &self.widgets[*index];
+                    let box_and_widget = &self.widgets[*index];
                     s_0.spawn(|| {
-                        let mut lock = mutex.lock().unwrap();
-                        lock.0.update();
+                        let mut box_and_widget = box_and_widget.lock().unwrap();
+                        box_and_widget.0.update();
                         let _printer_lock = printer.lock().unwrap();
-                        lock.1.print();
+                        box_and_widget.1.print();
                     });
                 }
             }

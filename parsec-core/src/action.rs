@@ -9,13 +9,14 @@
 //! works like this:
 //!
 //! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and
-//! one `PrintInfo`. `Change`s are "simple" splices that contain the original text, the text that
+//! one `PrintInfo`. `Change`s are splices that contain the original text, the text that
 //! was added, their respective ending positions in the file, and a starting position.
 //!
-//! Whenever you undo a `Moment`, all of its splices are reversed on the file, sequentially,
-//! and the file's `PrintInfo` is updated to the `Moment`'s `PrintInfo`. We change the `PrintInfo`
-//! in order to send the user back to the position he was in previously, as he can just look at the
-//! same place on the screen for the changes, which I think of as much less jarring.
+//! Whenever you undo a `Moment`, all of its splices are reversed on the file, in reverse order
+//! according to the starting position of each splice, and the file's `PrintInfo` is updated to the
+//! `Moment`'s `PrintInfo`. We change the `PrintInfo` in order to send the user back to the position
+//! he was in previously, as he can just look at the same place on the screen for the changes, which
+//! I think of as much less jarring.
 //!
 //! Undoing/redoing `Moment`s also has the effect of moving all `FileCursor`s below the splice's
 //! start to a new position, or creating a new `FileCursor` to take a change into effect. This has
@@ -34,11 +35,16 @@
 //!
 //! All this is to say that history management is an editor specific configuration. In vim, any
 //! cursor movement should create a new `Moment`, in kakoune, any insertion of text is considered a
-//! `Moment`, in most other text editors, a space, tab, or new line, is what creates a `Moment`.
-//! Which is why `parsec-core` does not define how new moments are created.
+//! `Moment`, in most other text editors, a space, tab, new line, or movement, is what creates a
+//! `Moment`, which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{cursor::TextPos, file::TextLine, layout::PrintInfo};
+use crate::{
+    cursor::TextPos,
+    file::TextLine,
+    layout::PrintInfo,
+    split_string_lines,
+};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -50,7 +56,7 @@ pub struct TextRange {
 impl TextRange {
     /// Returns a range with all the lines involved in the edit.
     pub fn lines(&self) -> RangeInclusive<usize> {
-        self.start.line..=self.end.line
+        self.start.row..=self.end.row
     }
 
     /// Returns true if the other range is contained within this one.
@@ -60,14 +66,14 @@ impl TextRange {
 }
 
 /// A range describing a splice operation;
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Splice {
     /// The start of both texts.
     pub(crate) start: TextPos,
-    /// The end of the added text.
-    pub(crate) added_end: TextPos,
     /// The end of the taken text.
     pub(crate) taken_end: TextPos,
+    /// The end of the added text.
+    pub(crate) added_end: TextPos,
 }
 
 impl Splice {
@@ -85,28 +91,64 @@ impl Splice {
     pub fn taken_end(&self) -> TextPos {
         self.taken_end
     }
+
+    pub fn added_range(&self) -> TextRange {
+        TextRange { start: self.start, end: self.added_end }
+    }
+
+    pub fn taken_range(&self) -> TextRange {
+        TextRange { start: self.start, end: self.taken_end }
+    }
+
+    /// Returns an opposite version of the `Splice`.
+    fn reverse(self) -> Splice {
+        Splice { start: self.start, added_end: self.taken_end, taken_end: self.added_end }
+    }
+
+    pub fn calibrate(&mut self, splice: &Splice) {
+        self.start.calibrate(splice);
+        self.taken_end.calibrate(splice);
+        self.added_end.calibrate(splice);
+    }
 }
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
-#[derive(Debug)]
-pub(crate) struct Change {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Change {
+    /// The splice involving the two texts.
+    pub splice: Splice,
+
     /// The text that was added in this change.
-    added_text: Vec<String>,
+    pub added_text: Vec<String>,
 
     /// The text that was replaced in this change.
-    taken_text: Vec<String>,
-
-    /// The splice involving the two texts.
-    splice: Splice,
+    pub taken_text: Vec<String>,
 }
 
 impl Change {
+    pub fn new(lines: &Vec<String>, range: TextRange, text: &Vec<TextLine>) -> Self {
+        let mut end = range.start;
+
+        end.row += lines.len() - 1;
+        end.byte += lines.len();
+        end.col = if lines.len() == 1 {
+            range.start.col + lines[0].chars().count()
+        } else {
+            lines[0].chars().count()
+        };
+
+        let taken_text = get_text_in_range(text, range);
+        let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
+
+        Change { added_text: lines.clone(), taken_text, splice }
+    }
+
     /// Applies the change to the given text.
-    fn apply(&self, lines: &mut Vec<TextLine>) {
+    pub fn apply(&self, lines: &mut Vec<TextLine>) {
         let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
 
         // The added lines where taken_range resides.
-        let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text()).collect();
+        let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text().to_string()).collect();
 
         let new = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
         let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
@@ -115,16 +157,37 @@ impl Change {
     }
 
     /// Undoes the change and returns the modified text.
-    fn undo(&self, lines: &mut Vec<TextLine>) {
+    pub fn undo(&self, lines: &mut Vec<TextLine>) {
         let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
 
         // The lines where `added_range` resides.
-        let undo_lines = lines[added_range.lines()].iter().map(|l| l.text()).collect();
+        let undo_lines = lines[added_range.lines()].iter().map(|l| l.text().to_string()).collect();
 
         let new = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
         let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
 
         lines.splice(added_range.lines(), new);
+    }
+
+    pub fn try_merge(&mut self, lines: &Vec<String>, range: TextRange) -> Result<(), ()> {
+        if self.splice.added_range().contains_range(range) {
+            merge_edit(&mut self.added_text, &lines, self.splice.start, range);
+
+            if range.end.row == self.splice.added_end.row {
+                let col_count = if range.start.row == range.end.row {
+                    range.end.col - range.start.col
+                } else {
+                    range.end.col
+                };
+                self.splice.added_end.col += lines.last().unwrap().chars().count() - col_count;
+            }
+            self.splice.added_end.row += lines.len() - range.lines().count();
+            self.splice.added_end.byte += lines.len() - (range.end.byte - range.start.byte);
+
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -135,9 +198,9 @@ impl Change {
 #[derive(Debug)]
 pub struct Moment {
     /// Where the file was printed at the time this moment happened.
-    print_info: Option<PrintInfo>,
+    pub(crate) print_info: Option<PrintInfo>,
     /// A list of actions, which may be changes, or simply selections of text.
-    changes: Vec<Change>,
+    pub(crate) changes: Vec<Change>,
 }
 
 /// The history of edits, contains all moments.
@@ -154,6 +217,7 @@ pub struct History {
 }
 
 impl History {
+    /// Returns a new instance of `History`.
     pub fn new() -> History {
         History {
             moments: vec![Moment { print_info: None, changes: Vec::new() }],
@@ -162,174 +226,36 @@ impl History {
         }
     }
 
-    /// Tries to "merge" the change with an already existing change. If that fails, pushes a
-    /// bew chage.
-    ///     
-    /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
-    pub fn add_change<T>(
-        &mut self, lines: &mut Vec<TextLine>, edit: Vec<T>, edit_range: TextRange,
-    ) -> (Vec<String>, Splice)
-    where
-        T: ToString,
-    {
-        // Cut off any actions that take place after the current one. We don't really want trees.
-        unsafe { self.moments.set_len(self.current_moment) };
-
-        // Moments cannot be expanded if you have undone actions.
-        let moment = if self.traveled_in_time {
+    /// Gets the current moment. Takes time travel into consideration.
+    fn current_moment(&mut self) -> &mut Moment {
+        if self.traveled_in_time {
             self.current_moment += 1;
             self.traveled_in_time = false;
 
             self.moments.push(Moment { changes: Vec::new(), print_info: None });
             self.moments.last_mut().unwrap()
         } else {
-            match self.moments.last_mut() {
-                Some(moment) => moment,
-                None => {
-                    self.current_moment += 1;
+            // This may look stupid, but it's the only way I got it working.
+            if self.moments.last_mut().is_none() {
+                self.current_moment += 1;
 
-                    self.moments.push(Moment { changes: Vec::new(), print_info: None });
-                    self.moments.last_mut().unwrap()
-                }
-            }
-        };
-
-        let edit: Vec<String> = edit.iter().map(|l| l.to_string()).collect();
-
-        let edited_lines: Vec<&str> = lines[edit_range.lines()].iter().map(|l| l.text()).collect();
-
-        // If the removed text is only one line long.
-        let mut taken_text = if edited_lines.len() == 1 {
-            let line = edited_lines.first().unwrap();
-
-            let first_byte = get_byte(line, edit_range.start.col);
-            let last_byte = get_byte(line, edit_range.end.col);
-
-            vec![&line[first_byte..last_byte]]
-        // Otherwise.
-        } else {
-            let first_line = edited_lines.first().unwrap();
-            let first_byte = get_byte(first_line, edit_range.start.col);
-
-            let last_line = edited_lines.last().unwrap();
-            let last_byte = get_byte(last_line, edit_range.end.col);
-
-            let mut taken_text = Vec::with_capacity(edited_lines.len());
-
-            taken_text.push(&first_line[first_byte..]);
-            taken_text.extend_from_slice(&edited_lines[1..(edited_lines.len() - 1)]);
-            taken_text.push(&last_line[..last_byte]);
-
-            taken_text
-        };
-
-        // Here, `full_lines` is simply the edit with the start of the of the first line in the
-        // old range, and the end of the last line in the old range. That way, we can simply splice
-        // it back on to the original `Vec<TextLine>`, with no further changes necessary.
-        let (full_lines, added_range) = extend_edit(edited_lines, edit.clone(), edit_range);
-
-        // There are two scenarios in which we can append an edit to an existing change:
-        // 1- The edit happens within the bounds of the change.
-        // 2- The edit happens exactly before the change.
-        //
-        // In practice, the only difference between the two is that the second one requires that we
-        // change `change.taken_text` and `change.splice_start`.
-        if let Some(change) = moment.changes.last_mut() {
-            let change_added_range =
-                TextRange { start: change.splice.start, end: change.splice.added_end };
-
-            if change_added_range.contains_range(edit_range)
-                || change.splice.start == edit_range.end
-            {
-                let old_splice_start = change.splice.start;
-
-                // If the edit happens exactly before the previous change, we need to add the taken
-                // text and move `change.start`.
-                if change.splice.start == edit_range.end {
-                    change.taken_text[0].insert_str(0, taken_text.pop().unwrap());
-                    let taken_text =
-                        taken_text.iter().map(|l| l.to_string()).collect::<Vec<String>>();
-
-                    change.taken_text.splice(0..0, taken_text);
-
-                    change.splice.start = edit_range.start;
-                }
-
-                // Since the old change doesn't necessarily start at the 0th line, we need to get
-                // the relative position of `edit_range`, in order to splice correctly.
-                // If the edit doesn't change the line at `change.splice.start`, its column does not
-                // matter when calculating `rel_edit_range`s position.
-                let mut start = edit_range.start.col_sub(change.splice.start);
-                let mut end = edit_range.end.col_sub(change.splice.start);
-
-                // More relative positioning.
-                start.line -= change.splice.start.line;
-                end.line -= change.splice.start.line;
-
-                let rel_edit_range = TextRange { start, end };
-
-                // If this is the case, the new splice start could be anywhere above the old one,
-                // And you can't really take lines from `change.added_text` with a negative index.
-                let rel_lines = if old_splice_start == edit_range.end {
-                    0..=0
-                    // If it is not the case, we know the edit range is contained in
-                    // `change.added_range`, and as such, we can splice regularly.
-                } else {
-                    rel_edit_range.lines()
-                };
-
-                let old_added_lines = &change.added_text[rel_lines.clone()];
-                let str_vec = old_added_lines.iter().map(|l| l.as_str()).collect();
-
-                // Here, `edit_lines` is the original `edit`, but filled in with the text from
-                // `str_vec`, the exact same way `extend_edit()` modifies a range in the file.
-                let (edit_lines, mut rel_added_range) = extend_edit(str_vec, edit, rel_edit_range);
-                change.added_text.splice(rel_lines, edit_lines);
-
-                // The absolute positions of `rel_added_range`.
-                // Since this is already a relative position, we add `change.splice.start.line` to
-                // make it absolute.
-                rel_added_range.start.line += change.splice.start.line;
-                rel_added_range.end.line += change.splice.start.line;
-
-                let start = rel_added_range.start.col_add(change.splice.start);
-                let end = rel_added_range.end.col_add(change.splice.start);
-                let added_range = TextRange { start, end };
-
-                // If this is the case, the column of `edit_range` is taken into account.
-                // Any text that is added, no matter how many lines it has, will inevitably have its
-                // end in the same line as `change.added_range`, which is why we don't check.
-                if change.splice.added_end.line == edit_range.end.line {
-                    change.splice.added_end -= edit_range.end;
-                    change.splice.added_end += added_range.end;
-                // The opposite is the case here.
-                } else {
-                    change.splice.added_end.line -= edit_range.end.line;
-                    change.splice.added_end.line += added_range.end.line;
-                }
-
-                return (
-                    full_lines,
-                    Splice {
-                        start: added_range.start,
-                        taken_end: edit_range.end,
-                        added_end: added_range.end,
-                    },
-                );
+                self.moments.push(Moment { changes: Vec::new(), print_info: None });
+                self.moments.last_mut().unwrap()
+            } else {
+                self.moments.last_mut().unwrap()
             }
         }
-        let taken_text: Vec<String> = taken_text.iter().map(|l| l.to_string()).collect();
-        let splice = Splice {
-            start: edit_range.start,
-            added_end: added_range.end,
-            taken_end: edit_range.end,
-        };
+    }
 
-        let change = Change { added_text: edit, taken_text, splice };
+    /// Tries to "merge" the change with an already existing change. If that fails, pushes a
+    /// bew chage.
+    ///     
+    /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
+    pub fn add_change(&mut self, change: &Change) {
+        // Cut off any actions that take place after the current one. We don't really want trees.
+        unsafe { self.moments.set_len(self.current_moment) };
 
-        moment.changes.push(change);
-
-        (full_lines, splice)
+        self.current_moment().changes.push(change.clone());
     }
 
     /// Declares that the current moment is complete and moves to the next one.
@@ -343,47 +269,38 @@ impl History {
         }
     }
 
-    /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn undo(&mut self, lines: &mut Vec<TextLine>) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
-        if self.current_moment == 0 {
-            return None;
-        }
-
-        // TODO: make this return an error for when we're at the first moment.
-        self.current_moment = self.current_moment.saturating_sub(1);
-        self.traveled_in_time = true;
-
-        let moment = &self.moments[self.current_moment];
-        let splices = moment.changes.iter().map(|c| c.splice).collect();
-
-        for change in moment.changes.iter().rev() {
-            change.undo(lines);
-        }
-
-        Some((splices, self.moments[self.current_moment].print_info))
-    }
-
-    // TODO: Return a custom Result instead.
-    /// Undoes the changes of the last moment and returns a vector containing range changes.
-    pub fn redo(&mut self, lines: &mut Vec<TextLine>) -> Option<(Vec<Splice>, Option<PrintInfo>)> {
-        // TODO: make this return an error for when we're at the last moment.
+	/// Moves forwards in the timeline.
+    pub fn move_forward(&mut self) -> Option<&Moment> {
         if self.current_moment == self.moments.len() {
             return None;
+        } else {
+            self.current_moment += 1;
+            self.traveled_in_time = true;
+
+            return Some(&self.moments[self.current_moment])
         }
-        self.traveled_in_time = true;
+    }
 
-        let moment = &self.moments[self.current_moment];
-        let mut splices = Vec::with_capacity(moment.changes.len());
+	/// Moves backwards in the timeline.
+    pub fn move_backwards(&mut self) -> Option<&Moment> {
+        if self.current_moment == 0 {
+            return None;
+        } else {
+            self.current_moment -= 1;
+            self.traveled_in_time = true;
 
-        for change in &moment.changes {
-            change.apply(lines);
-
-            splices.push(change.splice);
+            return Some(&self.moments[self.current_moment])
         }
+    }
 
-        self.current_moment += 1;
-
-        Some((splices, self.moments[self.current_moment - 1].print_info))
+    pub(crate) fn calibrate_changes(&mut self, splice: &Splice) {
+        for change in &mut self.current_moment().changes {
+            // In theory, this should prevent splices from calibrating based on themselves, which
+            // is not supposed to happe.
+            if change.splice.start > splice.start {
+                change.splice.calibrate(splice);
+            }
+        }
     }
 }
 
@@ -400,9 +317,9 @@ impl History {
 // ####%%%%%§##
 //
 // And your edit is complete.
-/// Returns an edit with the part of the original lines appended to it.
+/// Returns an edit with the leftover original lines appended to it.
 pub fn extend_edit(
-    old: Vec<&str>, mut edit: Vec<String>, range: TextRange,
+    old: Vec<String>, mut edit: Vec<String>, range: TextRange,
 ) -> (Vec<String>, TextRange) {
     let start = range.start;
 
@@ -429,9 +346,9 @@ pub fn extend_edit(
     let added_range = TextRange {
         start: range.start,
         end: if edit_len == 1 {
-            TextPos { line: start.line, byte, col: start.col + last_edit_len }
+            TextPos { row: start.row, byte, col: start.col + last_edit_len }
         } else {
-            TextPos { line: start.line + edit.len() - 1, byte, col: last_edit_len }
+            TextPos { row: start.row + edit.len() - 1, byte, col: last_edit_len }
         },
     };
 
@@ -442,4 +359,39 @@ pub fn extend_edit(
 /// Gets the byte where a character starts on a given string.
 pub fn get_byte(line: &str, col: usize) -> usize {
     line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
+}
+
+pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
+    let mut lines = Vec::with_capacity(range.lines().count());
+
+    lines.push(text[range.start.row].text()[range.start.col..].to_string());
+    for line in text.iter().take(range.end.row).skip(range.start.row + 1) {
+        lines.push(line.text().to_string());
+    }
+    lines.push(text[range.end.row + 1].text()[..range.end.col].to_string());
+
+    lines
+}
+
+fn merge_edit(orig: &mut Vec<String>, new: &Vec<String>, start: TextPos, range: TextRange) {
+    let splice_start = range.start - start;
+    let splice_end = range.end - start;
+
+    if range.lines().count() == 1 && new.len() == 1 {
+        let first_line = &mut orig[splice_start.row];
+        first_line.replace_range(splice_start.byte..splice_end.byte, new[0].as_str());
+    } else {
+        let first_line = &orig[range.start.row];
+        let last_line= &orig[range.end.row];
+
+        let first_amend = &first_line[..splice_start.byte];
+        let last_amend = &last_line[splice_end.byte..];
+
+        let mut edit = new.clone();
+
+        edit.first_mut().unwrap().insert_str(0, first_amend);
+        edit.last_mut().unwrap().push_str(last_amend);
+
+        orig.splice(range.lines(), edit);
+    }
 }

@@ -1,7 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use parsec_core::{
-    action::Splice, cursor::TextCursor, input::EditingScheme, layout::FileWidget, ui::Ui,
-};
+use parsec_core::input::EditingScheme;
 
 #[derive(Clone, PartialEq)]
 pub enum Mode {
@@ -33,77 +31,70 @@ impl EditingScheme for Editor {
         U: parsec_core::ui::Ui,
     {
         let mut cursor_list = file.cursor_list();
-        let mut cursors = cursor_list.cursors.write();
-        let mut splices = Vec::new();
 
         match self.cur_mode {
             Mode::Insert => match key {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if ch == &'z' =>
                 {
-                    drop(cursors);
                     file.undo();
                 }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if ch == &'y' =>
                 {
-                    drop(cursors);
                     file.redo();
                 }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if ch == &'s' =>
                 {
-                    let mut cursor = cursors.last().unwrap().clone();
+                    let mut cursor = cursor_list.clone_last();
                     cursor.move_ver(1, file);
-                    cursors.push(cursor);
+                    cursor_list.push(cursor);
                 }
                 KeyEvent { code: KeyCode::Char(ch), .. } => {
-                    cursors.iter_mut().for_each(|c| {
-                        correct_cursor(c, &splices);
-                        splices.push(file.splice(c.clone(), ch));
+                    cursor_list.on_each(|c, l| {
+                        file.edit(&c, ch, l);
                         c.move_hor(1, file);
                     });
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {
-                    cursors.iter_mut().for_each(|c| {
+                    cursor_list.on_each(|c, _| {
                         c.move_hor(1, file);
                     });
                 }
                 KeyEvent { code: KeyCode::Backspace, .. } => {
-                    cursors.iter_mut().for_each(|c| {
-                        correct_cursor(c, &splices);
+                    cursor_list.on_each(|c, l| {
                         c.set_anchor();
                         c.move_hor(-1, file);
-                        splices.push(file.splice(c.clone(), ""));
+                        file.edit(&c, "", l);
                         c.unset_anchor();
                     });
                 }
                 KeyEvent { code: KeyCode::Delete, .. } => {
-                    cursors.iter_mut().for_each(|c| {
-                        correct_cursor(c, &splices);
+                    cursor_list.on_each(|c, l| {
                         c.set_anchor();
                         c.move_hor(1, file);
-                        splices.push(file.splice(c.clone(), ""));
+                        file.edit(&c, "", l);
                         c.unset_anchor();
                     });
                 }
                 KeyEvent { code: KeyCode::Left, .. } => {
-                    cursors.iter_mut().for_each(|c| {
+                    cursor_list.on_each(|c, _| {
                         c.move_hor(-1, file);
                     });
                 }
                 KeyEvent { code: KeyCode::Right, .. } => {
-                    cursors.iter_mut().for_each(|c| {
+                    cursor_list.on_each(|c, _| {
                         c.move_hor(1, file);
                     });
                 }
                 KeyEvent { code: KeyCode::Up, .. } => {
-                    cursors.iter_mut().for_each(|c| {
+                    cursor_list.on_each(|c, _| {
                         c.move_ver(-1, file);
                     });
                 }
                 KeyEvent { code: KeyCode::Down, .. } => {
-                    cursors.iter_mut().for_each(|c| {
+                    cursor_list.on_each(|c, _| {
                         c.move_ver(1, file);
                     });
                 }
@@ -115,11 +106,5 @@ impl EditingScheme for Editor {
 
     fn send_remapped_keys(&self) -> bool {
         matches!(self.cur_mode, Mode::Insert)
-    }
-}
-
-fn correct_cursor(cursor: &mut TextCursor, splices: &Vec<Splice>) {
-    for splice in splices.iter() {
-        cursor.calibrate(*splice);
     }
 }

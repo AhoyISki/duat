@@ -45,6 +45,20 @@ where
 	}
 }
 
+/// Creates a vector of `&str`s from a `String`, making sure to keep at least one empty
+/// string at the end, in case of an empty, or `\n` terminated string.
+fn split_string_lines(string: &String) -> Vec<String> {
+    if string.is_empty() {
+        vec![String::from("")]
+    } else {
+        let mut lines: Vec<String> = string.split_inclusive('\n').map(|s| s.to_string()).collect();
+        if string.ends_with('\n') {
+            lines.push(String::from(""));
+        }
+        lines
+    }
+}
+
 // Useful for testing.
 pub static mut FOR_TEST: bool = false;
 
@@ -56,3 +70,5 @@ pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
         lhs.saturating_sub(rhs as usize)
     }
 }
+
+
