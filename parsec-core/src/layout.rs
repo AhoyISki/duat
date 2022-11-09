@@ -391,6 +391,7 @@ where
 
         drop(cursors);
         self.cursors.write().extend(new_cursors);
+        unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
     /// Redoes the last moment in history.
@@ -425,6 +426,7 @@ where
 
         drop(cursors);
         self.cursors.write().extend(new_cursors);
+        unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
     fn update(&mut self) {
