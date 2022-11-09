@@ -65,8 +65,8 @@ fn split_string_lines(string: &String) -> Vec<String> {
     }
 }
 
-pub fn get_byte_at_col(byte: usize, text: &String) -> usize {
-    text.char_indices().nth(byte).unwrap().0
+pub fn get_byte_at_col(col: usize, text: &String) -> usize {
+    text.char_indices().nth(col).unwrap().0
 }
 
 // Useful for testing.

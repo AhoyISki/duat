@@ -47,7 +47,8 @@ impl EditingScheme for Editor {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if ch == &'s' =>
                 {
-                    file_editor.on_last(|c| c.move_ver(1, &file));
+                    file_editor.clone_last();
+                    file_editor.move_last(|c| c.move_ver(1, &file));
                 }
                 KeyEvent { code: KeyCode::Char(ch), .. } => {
                     file_editor.edit_on_each_cursor(|mut c| {
@@ -75,26 +76,18 @@ impl EditingScheme for Editor {
                 //        c.unset_anchor();
                 //    });
                 //}
-                //KeyEvent { code: KeyCode::Left, .. } => {
-                //    cursor_list.on_each(|c, _| {
-                //        c.move_hor(-1, file);
-                //    });
-                //}
-                //KeyEvent { code: KeyCode::Right, .. } => {
-                //    cursor_list.on_each(|c, _| {
-                //        c.move_hor(1, file);
-                //    });
-                //}
-                //KeyEvent { code: KeyCode::Up, .. } => {
-                //    cursor_list.on_each(|c, _| {
-                //        c.move_ver(-1, file);
-                //    });
-                //}
-                //KeyEvent { code: KeyCode::Down, .. } => {
-                //    cursor_list.on_each(|c, _| {
-                //        c.move_ver(1, file);
-                //    });
-                //}
+                KeyEvent { code: KeyCode::Left, .. } => {
+                    file_editor.move_each_cursor(|mut c| c.move_hor(-1, &file));
+                }
+                KeyEvent { code: KeyCode::Right, .. } => {
+                    file_editor.move_each_cursor(|mut c| c.move_hor(1, &file));
+                }
+                KeyEvent { code: KeyCode::Up, .. } => {
+                    file_editor.move_each_cursor(|mut c| c.move_ver(-1, &file));
+                }
+                KeyEvent { code: KeyCode::Down, .. } => {
+                    file_editor.move_each_cursor(|mut c| c.move_ver(1, &file));
+                }
                 _ => {}
             },
             _ => {}

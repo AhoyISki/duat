@@ -3,7 +3,7 @@ use std::cmp::{max, min};
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
-    layout::{FileWidget, Widget},
+    layout::{FileWidget, Widget, SpliceAdder},
     saturating_add_signed,
     ui::{EndNode, Ui},
 };
@@ -220,26 +220,6 @@ impl TextCursor {
         self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
     }
 
-    ////////// Public movement functions
-
-    /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.move_ver_inner(count, file.text().read().lines(), file.end_node());
-    }
-
-    /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.move_hor_inner(count, file.text().read().lines(), file.end_node());
-    }
-
-    /// Moves the cursor to a position in the file.
-    ///
-    /// - If the position isn't valid, it will move to the "maximum" position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, file: &FileWidget<impl Ui>) {
-        self.move_to_inner(pos, file.text().read().lines(), file.end_node());
-    }
-
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
@@ -289,23 +269,23 @@ impl TextCursor {
     }
 
 	/// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate(&mut self, cmp_splice: &Splice, lines: usize, bytes: usize) {
-        relative_add(&mut self.cur, cmp_splice, lines, bytes);
-        self.anchor.as_mut().map(|a| relative_add(a, cmp_splice, lines, bytes));
+    pub(crate) fn calibrate(&mut self, splice_adder: &SpliceAdder) {
+        relative_add(&mut self.cur, splice_adder);
+        self.anchor.as_mut().map(|a| relative_add(a, splice_adder));
         if let Some(change) = &mut self.change {
             let splice = &mut change.splice;
             for pos in [&mut splice.start, &mut splice.added_end, &mut splice.taken_end] {
-                relative_add(pos, cmp_splice, lines, bytes);
+                relative_add(pos, &splice_adder);
             }
         };
     }
 }
 
-fn relative_add(pos: &mut TextPos, cmp_splice: &Splice, lines: usize, bytes: usize) {
-    pos.row += lines;
-    pos.byte += bytes;
-    if pos.row == cmp_splice.taken_end.row && pos.col > cmp_splice.taken_end.col {
-        pos.col += cmp_splice.taken_end.col;
+fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
+    pos.row += splice_adder.lines;
+    pos.byte += splice_adder.bytes;
+    if pos.row == splice_adder.last_line {
+        pos.col += splice_adder.cols;
     }
 }
 

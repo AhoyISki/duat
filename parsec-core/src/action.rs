@@ -39,12 +39,7 @@
 //! `Moment`, which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{
-    cursor::TextPos,
-    file::TextLine,
-    layout::PrintInfo,
-    split_string_lines, get_line_start, get_byte_at_col,
-};
+use crate::{cursor::TextPos, file::TextLine, get_byte_at_col, layout::PrintInfo};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -100,11 +95,6 @@ impl Splice {
         TextRange { start: self.start, end: self.taken_end }
     }
 
-    /// Returns an opposite version of the `Splice`.
-    fn reverse(self) -> Splice {
-        Splice { start: self.start, added_end: self.taken_end, taken_end: self.added_end }
-    }
-
     pub fn calibrate(&mut self, splice: &Splice) {
         self.start.calibrate(splice);
         self.taken_end.calibrate(splice);
@@ -136,6 +126,7 @@ impl Change {
         } else {
             lines[0].chars().count()
         };
+
 
         let taken_text = get_text_in_range(text, range);
         let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
@@ -269,7 +260,7 @@ impl History {
         }
     }
 
-	/// Moves forwards in the timeline.
+    /// Moves forwards in the timeline.
     pub fn move_forward(&mut self) -> Option<&Moment> {
         if self.current_moment == self.moments.len() {
             return None;
@@ -277,11 +268,11 @@ impl History {
             self.current_moment += 1;
             self.traveled_in_time = true;
 
-            return Some(&self.moments[self.current_moment])
+            return Some(&self.moments[self.current_moment - 1]);
         }
     }
 
-	/// Moves backwards in the timeline.
+    /// Moves backwards in the timeline.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
             return None;
@@ -289,7 +280,7 @@ impl History {
             self.current_moment -= 1;
             self.traveled_in_time = true;
 
-            return Some(&self.moments[self.current_moment])
+            return Some(&self.moments[self.current_moment]);
         }
     }
 

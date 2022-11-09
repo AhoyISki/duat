@@ -337,28 +337,25 @@ where
         };
     }
 
-    pub fn edit(&mut self, cursor: &mut EditCursor, edit: impl ToString) {
-        self.edit_raw(&mut cursor.0, edit);
-    }
-
-    pub fn edit_raw(&mut self, cursor: &mut TextCursor, edit: impl ToString) {
+    pub fn edit(&mut self, edit_cursor: &mut EditCursor, edit: impl ToString) {
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
 
-        let cur_change = Change::new(&lines, cursor.range(), &text.lines);
+        let cur_change = Change::new(&lines, edit_cursor.0.range(), &text.lines);
+        edit_cursor.1.calibrate(&cur_change.splice);
 
         text.apply_change(&cur_change);
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
-        update_range(&mut text, cursor.range(), max_line, &self.node);
+        update_range(&mut text, edit_cursor.0.range(), max_line, &self.node);
 
-        let range = cursor.range();
-        if let Some(change) = &mut cursor.change {
+        let range = edit_cursor.0.range();
+        if let Some(change) = &mut edit_cursor.0.change {
             if let Err(()) = change.try_merge(&lines, range) {
                 self.history.add_change(&change);
                 *change = cur_change;
             }
         } else {
-            cursor.change = Some(cur_change);
+            edit_cursor.0.change = Some(cur_change);
         }
     }
 
@@ -383,12 +380,12 @@ where
 
             let splice = change.splice;
             if let Some(cursor) = cursors_iter.next() {
-                cursor.move_to_inner(splice.added_end(), &text.lines, &self.node);
+                cursor.move_to_inner(splice.taken_end(), &text.lines, &self.node);
             } else {
-                new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
+                new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
             }
 
-            let range = TextRange { start: splice.start(), end: splice.added_end() };
+            let range = TextRange { start: splice.start(), end: splice.taken_end() };
             update_range(&mut text, range, max_line, &self.node);
         }
 
@@ -400,7 +397,7 @@ where
     pub fn redo(&mut self) {
         let mut text = self.text.write();
 
-        let moment = match self.history.move_backwards() {
+        let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return,
         };
@@ -480,8 +477,59 @@ pub struct FileEditor {
     main_cursor: usize,
 }
 
-pub struct EditCursor<'a>(&'a mut TextCursor);
+// NOTE: This is dependant on the list of cursors being sorted, if it is not, that is UB.
+/// A helper, for dealing with recalibration of cursors.
+#[derive(Default)]
+pub struct SpliceAdder {
+    pub last_line: usize,
+    pub lines: usize,
+    pub bytes: usize,
+    pub cols: usize,
+}
+
+impl SpliceAdder {
+    // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
+    /// Calibrates, given a splice.
+    fn calibrate(&mut self, splice: &Splice) {
+        self.lines += splice.added_end.row - splice.taken_end.row;
+        self.bytes += splice.added_end.byte - splice.taken_end.byte;
+        if self.last_line == splice.added_end.row {
+            if splice.added_range().lines().count() == 1 {
+                self.cols += splice.added_end.col - splice.taken_end.col;
+            } else {
+                self.cols = splice.added_end.col;
+            }
+        } else {
+            self.cols = 0;
+        }
+        self.last_line = splice.added_end.row;
+    }
+}
+
+pub struct EditCursor<'a>(&'a mut TextCursor, &'a mut SpliceAdder);
 pub struct MoveCursor<'a>(&'a mut TextCursor);
+
+impl<'a> MoveCursor<'a> {
+    ////////// Public movement functions
+
+    /// Moves the cursor vertically on the file. May also cause horizontal movement.
+    pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
+        self.0.move_ver_inner(count, file.text().read().lines(), file.end_node());
+    }
+
+    /// Moves the cursor horizontally on the file. May also cause vertical movement.
+    pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
+        self.0.move_hor_inner(count, file.text().read().lines(), file.end_node());
+    }
+
+    /// Moves the cursor to a position in the file.
+    ///
+    /// - If the position isn't valid, it will move to the "maximum" position allowed.
+    /// - This command sets `desired_x`.
+    pub fn move_to(&mut self, pos: TextPos, file: &FileWidget<impl Ui>) {
+        self.0.move_to_inner(pos, file.text().read().lines(), file.end_node());
+    }
+}
 
 impl FileEditor {
     pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: usize) -> Self {
@@ -493,20 +541,11 @@ impl FileEditor {
         F: FnMut(EditCursor),
     {
         let mut cursors = self.cursors.write();
-        let mut added_lines = 0;
-        let mut added_bytes = 0;
-        let mut adder = 0;
-        let mut cmp_splice =
-            cursors[0].change.as_ref().map(|c| c.splice).unwrap_or(Splice::default());
+        let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
-            c.calibrate(&cmp_splice, added_lines, added_bytes);
-            let cursor = EditCursor(c);
+            c.calibrate(&splice_adder);
+            let cursor = EditCursor(c, &mut splice_adder);
             f(cursor);
-            if let Some(splice) = c.change.as_ref().map(|c| c.splice) {
-                added_lines += splice.added_end.row - splice.taken_end.row;
-                added_bytes += splice.added_end.byte - splice.taken_end.byte;
-                cmp_splice = splice;
-            }
         });
     }
 
@@ -522,39 +561,66 @@ impl FileEditor {
         // TODO: Smart resort algorithm.
     }
 
-    pub fn on_nth<F>(&mut self, mut f: F, index: usize)
+    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
     where
-        F: FnMut(&mut TextCursor),
+        F: FnMut(&mut MoveCursor),
     {
         let mut cursors = self.cursors.write();
-        let cursor = cursors.get_mut(index).expect("Invalid cursor index!");
-        f(cursor);
-        if let Some(splice) = cursor.change.as_ref().map(|a| a.splice) {
-            let added_lines = splice.added_end.row - splice.taken_end.row;
-            let added_bytes = splice.added_end.byte - splice.taken_end.byte;
-            cursors
-                .iter_mut()
-                .skip(index)
-                .for_each(|c| c.calibrate(&splice, added_lines, added_bytes));
-        }
+        let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
+        f(&mut MoveCursor(&mut cursor));
     }
 
-    pub fn on_main<F>(&mut self, mut f: F)
+    pub fn move_main<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut TextCursor),
+        F: FnMut(&mut MoveCursor),
     {
-        self.on_nth(f, self.main_cursor);
+        self.move_nth(f, self.main_cursor);
     }
 
-    pub fn on_last<F>(&mut self, mut f: F)
+    pub fn move_last<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut TextCursor),
+        F: FnMut(&mut MoveCursor),
     {
         let cursors = self.cursors.read();
         if !cursors.is_empty() {
             let len = cursors.len();
             drop(cursors);
-            self.on_nth(f, len - 1);
+            self.move_nth(f, len - 1);
+        }
+    }
+
+    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(&mut EditCursor),
+    {
+        let mut cursors = self.cursors.write();
+        let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
+        let mut splice_adder = SpliceAdder::default();
+        let mut edit_cursor = EditCursor(&mut cursor, &mut splice_adder);
+        f(&mut edit_cursor);
+        if let Some(splice) = cursor.change.as_ref().map(|a| a.splice) {
+            let added_lines = splice.added_end.row - splice.taken_end.row;
+            let added_bytes = splice.added_end.byte - splice.taken_end.byte;
+            cursors.iter_mut().skip(index + 1).for_each(|c| c.calibrate(&splice_adder));
+        }
+    }
+
+    pub fn edit_on_main<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut EditCursor),
+    {
+        self.edit_on_nth(f, self.main_cursor);
+    }
+
+    pub fn edit_on_last<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut EditCursor),
+    {
+        let cursors = self.cursors.read();
+        if !cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.edit_on_nth(f, len - 1);
         }
     }
 
@@ -562,8 +628,10 @@ impl FileEditor {
         self.main_cursor
     }
 
-    pub fn clone_last(&mut self) -> TextCursor {
-        self.cursors.read().last().unwrap().clone()
+    pub fn clone_last(&mut self) {
+        let mut cursors = self.cursors.write();
+        let cursor = cursors.last().unwrap().clone();
+        cursors.push(cursor);
     }
 
     pub fn push(&mut self, cursor: TextCursor) {

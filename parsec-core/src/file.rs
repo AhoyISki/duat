@@ -407,6 +407,8 @@ impl Text {
         printed_lines
     }
 
+	// This is more efficient than using the `merge_edit()` function.
+	/// Merges `String`s with the body of text, given a range to replace.
     fn merge_text(&mut self, edit: &Vec<String>, range: TextRange) {
         let lines = &mut self.lines;
 
