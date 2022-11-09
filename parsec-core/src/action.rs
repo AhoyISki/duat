@@ -43,7 +43,7 @@ use crate::{
     cursor::TextPos,
     file::TextLine,
     layout::PrintInfo,
-    split_string_lines,
+    split_string_lines, get_line_start, get_byte_at_col,
 };
 
 /// A range of `chars` in the file, that is, not bytes.
@@ -130,7 +130,7 @@ impl Change {
         let mut end = range.start;
 
         end.row += lines.len() - 1;
-        end.byte += lines.len();
+        end.byte += lines.iter().map(|l| l.len()).sum::<usize>();
         end.col = if lines.len() == 1 {
             range.start.col + lines[0].chars().count()
         } else {
@@ -361,31 +361,38 @@ pub fn get_byte(line: &str, col: usize) -> usize {
     line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
 }
 
+/// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
+    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text());
+    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text());
 
-    lines.push(text[range.start.row].text()[range.start.col..].to_string());
-    for line in text.iter().take(range.end.row).skip(range.start.row + 1) {
-        lines.push(line.text().to_string());
+    if range.lines().count() == 1 {
+        lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
+    } else {
+        lines.push(text[range.start.row].text()[first_byte..].to_string());
+        for line in text.iter().take(range.end.row).skip(range.start.row + 1) {
+            lines.push(line.text().to_string());
+        }
+        lines.push(text[range.end.row + 1].text()[..last_byte].to_string());
     }
-    lines.push(text[range.end.row + 1].text()[..range.end.col].to_string());
 
     lines
 }
 
+/// Merges two `String`s into one, given a start and a range to cut off.
 fn merge_edit(orig: &mut Vec<String>, new: &Vec<String>, start: TextPos, range: TextRange) {
     let splice_start = range.start - start;
     let splice_end = range.end - start;
 
-    if range.lines().count() == 1 && new.len() == 1 {
-        let first_line = &mut orig[splice_start.row];
-        first_line.replace_range(splice_start.byte..splice_end.byte, new[0].as_str());
-    } else {
-        let first_line = &orig[range.start.row];
-        let last_line= &orig[range.end.row];
+    let first_byte = get_byte_at_col(splice_start.col, &orig[splice_start.row]);
+    let last_byte = get_byte_at_col(splice_end.col, &orig[splice_end.row]);
 
-        let first_amend = &first_line[..splice_start.byte];
-        let last_amend = &last_line[splice_end.byte..];
+    if range.lines().count() == 1 && new.len() == 1 {
+        orig[splice_start.row].replace_range(first_byte..last_byte, new[0].as_str());
+    } else {
+        let first_amend = &orig[splice_start.row][..first_byte];
+        let last_amend = &orig[splice_end.row][last_byte..];
 
         let mut edit = new.clone();
 

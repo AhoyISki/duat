@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyCode};
+use cursor::TextPos;
 use input::{EditingScheme, FileRemapper};
 use layout::Layout;
 use ui::Ui;
@@ -45,6 +46,11 @@ where
 	}
 }
 
+/// Given a position (which is assumed to be on the line), will return the position at its start.
+pub fn get_line_start(pos: TextPos, line: &String) -> TextPos {
+    TextPos { byte: pos.byte - line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
+}
+
 /// Creates a vector of `&str`s from a `String`, making sure to keep at least one empty
 /// string at the end, in case of an empty, or `\n` terminated string.
 fn split_string_lines(string: &String) -> Vec<String> {
@@ -57,6 +63,10 @@ fn split_string_lines(string: &String) -> Vec<String> {
         }
         lines
     }
+}
+
+pub fn get_byte_at_col(byte: usize, text: &String) -> usize {
+    text.char_indices().nth(byte).unwrap().0
 }
 
 // Useful for testing.

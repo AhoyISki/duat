@@ -1,12 +1,14 @@
 use std::{cmp::min, ops::RangeInclusive};
 
+use crossterm::event::KeyModifiers;
+
 use crate::{
     action::{get_byte, Change, TextRange},
     config::WrapMethod,
     cursor::TextPos,
     layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui},
+    ui::{EndNode, RawEndNode, Ui}, get_line_start, get_byte_at_col,
 };
 
 // TODO: move this to a more general file.
@@ -328,8 +330,8 @@ impl TextLine {
     ////////////////////////////////
     // Getters
     ////////////////////////////////
-    pub fn text(&self) -> &str {
-        &self.text.as_str()
+    pub fn text(&self) -> &String {
+        &self.text
     }
 }
 
@@ -409,14 +411,18 @@ impl Text {
         let lines = &mut self.lines;
 
         if range.lines().count() == 1 && edit.len() == 1 {
-            let first_line = &mut lines[range.start.row];
-            first_line.text.replace_range(range.start.byte..range.end.byte, edit[0].as_str());
+            let line = &mut lines[range.start.row];
+            let first_byte = get_byte_at_col(range.start.col, &line.text);
+            let last_byte = get_byte_at_col(range.end.col, &line.text);
+            line.text.replace_range(first_byte..last_byte, edit[0].as_str());
         } else {
             let first_line = &lines[range.start.row];
+            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text);
             let last_line= &lines[range.end.row];
+            let last_line_byte = get_byte_at_col(range.end.col, &last_line.text);
 
-            let first_amend = &first_line.text[..range.start.byte];
-            let last_amend = &last_line.text[range.end.byte..];
+            let first_amend = &first_line.text[..first_line_byte];
+            let last_amend = &last_line.text[last_line_byte..];
 
             let mut edit = edit.clone();
 
@@ -448,11 +454,6 @@ fn get_char_width(ch: char, col: usize, raw: &RawEndNode<impl Ui>) -> usize {
     } else {
         raw.get_char_len(ch)
     }
-}
-
-/// Given a position (which is assumed to be on the line), will return the position at its start.
-fn get_line_start(pos: TextPos, line: &String) -> TextPos {
-    TextPos { byte: line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
 }
 
 pub(crate) fn update_range(

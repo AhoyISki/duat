@@ -26,11 +26,7 @@ pub struct PrintInfo {
     pub top_wraps: usize,
     /// The index of the line at the top of the screen.
     pub top_line: usize,
-    /// The number of times the top line should wrap.
-    /// let widget = widget.lock().unwrap();
-    /// widget.update();
-    /// The leftmost col shown on the screen..unwrap();
-    /// printer_lock.lock()
+    /// How shifted the text is to the left.
     pub x_shift: usize,
 }
 
@@ -342,9 +338,12 @@ where
     }
 
     pub fn edit(&mut self, cursor: &mut EditCursor, edit: impl ToString) {
+        self.edit_raw(&mut cursor.0, edit);
+    }
+
+    pub fn edit_raw(&mut self, cursor: &mut TextCursor, edit: impl ToString) {
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
-        let cursor = &mut cursor.0;
 
         let cur_change = Change::new(&lines, cursor.range(), &text.lines);
 
@@ -358,6 +357,8 @@ where
                 self.history.add_change(&change);
                 *change = cur_change;
             }
+        } else {
+            cursor.change = Some(cur_change);
         }
     }
 
@@ -494,6 +495,7 @@ impl FileEditor {
         let mut cursors = self.cursors.write();
         let mut added_lines = 0;
         let mut added_bytes = 0;
+        let mut adder = 0;
         let mut cmp_splice =
             cursors[0].change.as_ref().map(|c| c.splice).unwrap_or(Splice::default());
         cursors.iter_mut().for_each(|c| {
@@ -549,7 +551,7 @@ impl FileEditor {
         F: FnMut(&mut TextCursor),
     {
         let cursors = self.cursors.read();
-        if cursors.is_empty() {
+        if !cursors.is_empty() {
             let len = cursors.len();
             drop(cursors);
             self.on_nth(f, len - 1);
