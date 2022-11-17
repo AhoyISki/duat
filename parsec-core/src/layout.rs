@@ -291,7 +291,9 @@ where
 
     fn update_print_info(&mut self) {
         let cursors = self.cursors.read();
-        let main_cursor = cursors.get(*self.main_cursor.read()).expect(format!("{}", *self.main_cursor.read()).as_str());
+        let main_cursor = cursors
+            .get(*self.main_cursor.read())
+            .expect(format!("{}", *self.main_cursor.read()).as_str());
         let prev = main_cursor.prev();
         let cur = main_cursor.cur();
 
@@ -400,7 +402,6 @@ where
 
         drop(cursors);
         self.cursors.write().extend(new_cursors);
-        if moment.changes.len() == 0 { panic!(); }
         unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
@@ -523,10 +524,10 @@ impl SpliceAdder {
     // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
     /// Calibrates, given a splice.
     fn calibrate(&mut self, splice: &Splice) {
-        self.lines += splice.added_end.row as isize - splice.taken_end.row as isize ;
+        self.lines += splice.added_end.row as isize - splice.taken_end.row as isize;
         self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
         let sum = splice.added_end.col as isize - splice.taken_end.col as isize;
-        if self.last_line == splice.start.row {
+        if self.last_line == splice.taken_end.row {
             self.cols += sum;
         } else {
             self.cols = sum;
