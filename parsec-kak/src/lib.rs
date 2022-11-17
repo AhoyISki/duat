@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use parsec_core::input::EditingScheme;
+use parsec_core::{input::EditingScheme, FOR_TEST};
 
 #[derive(Clone, PartialEq)]
 pub enum Mode {
@@ -30,25 +30,36 @@ impl EditingScheme for Editor {
     where
         U: parsec_core::ui::Ui,
     {
-        let mut file_editor = file.cursor_list();
+        let mut file_editor = file.file_editor();
 
         match self.cur_mode {
             Mode::Insert => match key {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
-                    if ch == &'z' =>
+                    if *ch == 'u' =>
+                {
+                    unsafe { FOR_TEST = !FOR_TEST }
+                }
+                KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
+                    if *ch == 'z' =>
                 {
                     file.undo();
                 }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
-                    if ch == &'y' =>
+                    if *ch == 'y' =>
                 {
                     file.redo();
                 }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
-                    if ch == &'s' =>
+                    if *ch == 's' =>
                 {
                     file_editor.clone_last();
                     file_editor.move_last(|c| c.move_ver(1, &file));
+                }
+                KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
+                    if *ch == 'a' =>
+                {
+                    file_editor.clone_last();
+                    file_editor.move_last(|c| c.move_hor(1, &file));
                 }
                 KeyEvent { code: KeyCode::Char(ch), .. } => {
                     file_editor.edit_on_each_cursor(|mut c| {

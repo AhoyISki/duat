@@ -3,10 +3,10 @@ use std::{cmp::min, ops::RangeInclusive};
 use crossterm::event::KeyModifiers;
 
 use crate::{
-    action::{get_byte, Change, TextRange},
+    action::{get_byte, Change, TextRange, Splice},
     config::WrapMethod,
     cursor::TextPos,
-    layout::PrintInfo,
+    layout::{PrintInfo, SpliceAdder},
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
     ui::{EndNode, RawEndNode, Ui}, get_line_start, get_byte_at_col,
 };
@@ -414,14 +414,14 @@ impl Text {
 
         if range.lines().count() == 1 && edit.len() == 1 {
             let line = &mut lines[range.start.row];
-            let first_byte = get_byte_at_col(range.start.col, &line.text);
-            let last_byte = get_byte_at_col(range.end.col, &line.text);
+            let first_byte = get_byte_at_col(range.start.col, &line.text).unwrap();
+            let last_byte = get_byte_at_col(range.end.col, &line.text).unwrap();
             line.text.replace_range(first_byte..last_byte, edit[0].as_str());
         } else {
             let first_line = &lines[range.start.row];
-            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text);
+            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).unwrap();
             let last_line= &lines[range.end.row];
-            let last_line_byte = get_byte_at_col(range.end.col, &last_line.text);
+            let last_line_byte = get_byte_at_col(range.end.col, &last_line.text).unwrap();
 
             let first_amend = &first_line.text[..first_line_byte];
             let last_amend = &last_line.text[last_line_byte..];
@@ -441,8 +441,8 @@ impl Text {
         self.merge_text(&change.added_text, change.splice.taken_range());
     }
 
-    pub fn undo_change(&mut self, change: &Change) {
-        self.merge_text(&change.taken_text, change.splice.added_range());
+    pub fn undo_change(&mut self, change: &Change, splice: &Splice) {
+        self.merge_text(&change.taken_text, splice.added_range());
     }
 
     pub fn lines(&self) -> &Vec<TextLine> {

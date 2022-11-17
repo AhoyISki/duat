@@ -39,7 +39,7 @@
 //! `Moment`, which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{cursor::TextPos, file::TextLine, get_byte_at_col, layout::PrintInfo};
+use crate::{cursor::{TextPos, relative_add}, file::TextLine, get_byte_at_col, layout::{PrintInfo, SpliceAdder}, FOR_TEST_2, FOR_TEST};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -100,6 +100,16 @@ impl Splice {
         self.taken_end.calibrate(splice);
         self.added_end.calibrate(splice);
     }
+
+    pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
+            relative_add(pos, &splice_adder);
+        }
+    }
+
+    pub fn reverse(&self) -> Splice {
+        Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
+    }
 }
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
@@ -124,7 +134,7 @@ impl Change {
         end.col = if lines.len() == 1 {
             range.start.col + lines[0].chars().count()
         } else {
-            lines[0].chars().count()
+            lines.last().unwrap().chars().count()
         };
 
 
@@ -173,7 +183,7 @@ impl Change {
                 self.splice.added_end.col += lines.last().unwrap().chars().count() - col_count;
             }
             self.splice.added_end.row += lines.len() - range.lines().count();
-            self.splice.added_end.byte += lines.len() - (range.end.byte - range.start.byte);
+            self.splice.added_end.byte += lines.iter().map(|l| l.len()).sum::<usize>();
 
             Ok(())
         } else {
@@ -186,7 +196,7 @@ impl Change {
 ///
 /// It also contains information about how to print the file, so that going back in time is less
 /// jaring.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Moment {
     /// Where the file was printed at the time this moment happened.
     pub(crate) print_info: Option<PrintInfo>,
@@ -211,31 +221,15 @@ impl History {
     /// Returns a new instance of `History`.
     pub fn new() -> History {
         History {
-            moments: vec![Moment { print_info: None, changes: Vec::new() }],
-            current_moment: 1,
+            moments: Vec::new(),
+            current_moment: 0,
             traveled_in_time: false,
         }
     }
 
     /// Gets the current moment. Takes time travel into consideration.
-    fn current_moment(&mut self) -> &mut Moment {
-        if self.traveled_in_time {
-            self.current_moment += 1;
-            self.traveled_in_time = false;
-
-            self.moments.push(Moment { changes: Vec::new(), print_info: None });
-            self.moments.last_mut().unwrap()
-        } else {
-            // This may look stupid, but it's the only way I got it working.
-            if self.moments.last_mut().is_none() {
-                self.current_moment += 1;
-
-                self.moments.push(Moment { changes: Vec::new(), print_info: None });
-                self.moments.last_mut().unwrap()
-            } else {
-                self.moments.last_mut().unwrap()
-            }
-        }
+    fn current_moment(&mut self) -> Option<&mut Moment> {
+        self.moments.get_mut(self.current_moment - 1)
     }
 
     /// Tries to "merge" the change with an already existing change. If that fails, pushes a
@@ -246,14 +240,17 @@ impl History {
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
-        self.current_moment().changes.push(change.clone());
+        if let Some(moment) = self.current_moment() {
+            moment.changes.push(change.clone());
+        }
     }
 
     /// Declares that the current moment is complete and moves to the next one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
-        if !self.moments.last().unwrap().changes.is_empty() {
-            self.moments.last_mut().unwrap().print_info = Some(print_info);
+        if self.current_moment().map_or(true, |m| !m.changes.is_empty()) {
+            unsafe { self.moments.set_len(self.current_moment); }
+            self.moments.last_mut().map(|m| m.print_info = Some(print_info));
 
             self.moments.push(Moment { print_info: None, changes: Vec::new() });
             self.current_moment += 1;
@@ -280,17 +277,8 @@ impl History {
             self.current_moment -= 1;
             self.traveled_in_time = true;
 
+            if unsafe { FOR_TEST } { panic!("{:#?}", self.moments) }
             return Some(&self.moments[self.current_moment]);
-        }
-    }
-
-    pub(crate) fn calibrate_changes(&mut self, splice: &Splice) {
-        for change in &mut self.current_moment().changes {
-            // In theory, this should prevent splices from calibrating based on themselves, which
-            // is not supposed to happe.
-            if change.splice.start > splice.start {
-                change.splice.calibrate(splice);
-            }
         }
     }
 }
@@ -355,8 +343,8 @@ pub fn get_byte(line: &str, col: usize) -> usize {
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
-    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text());
-    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text());
+    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
+    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
 
     if range.lines().count() == 1 {
         lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
@@ -373,17 +361,16 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
 
 /// Merges two `String`s into one, given a start and a range to cut off.
 fn merge_edit(orig: &mut Vec<String>, new: &Vec<String>, start: TextPos, range: TextRange) {
-    let splice_start = range.start - start;
-    let splice_end = range.end - start;
+    let range = TextRange { start: range.start - start, end: range.end - start };
 
-    let first_byte = get_byte_at_col(splice_start.col, &orig[splice_start.row]);
-    let last_byte = get_byte_at_col(splice_end.col, &orig[splice_end.row]);
+    let first_byte = get_byte_at_col(range.start.col, &orig[range.start.row]).unwrap();
+    let last_byte = get_byte_at_col(range.end.col, &orig[range.end.row]).unwrap();
 
     if range.lines().count() == 1 && new.len() == 1 {
-        orig[splice_start.row].replace_range(first_byte..last_byte, new[0].as_str());
+        orig[range.start.row].replace_range(first_byte..last_byte, new[0].as_str());
     } else {
-        let first_amend = &orig[splice_start.row][..first_byte];
-        let last_amend = &orig[splice_end.row][last_byte..];
+        let first_amend = &orig[range.start.row][..first_byte];
+        let last_amend = &orig[range.end.row][last_byte..];
 
         let mut edit = new.clone();
 

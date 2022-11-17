@@ -3,7 +3,7 @@ use std::cmp::{max, min};
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
-    layout::{FileWidget, Widget, SpliceAdder},
+    layout::SpliceAdder,
     saturating_add_signed,
     ui::{EndNode, Ui},
 };
@@ -273,19 +273,22 @@ impl TextCursor {
         relative_add(&mut self.cur, splice_adder);
         self.anchor.as_mut().map(|a| relative_add(a, splice_adder));
         if let Some(change) = &mut self.change {
-            let splice = &mut change.splice;
-            for pos in [&mut splice.start, &mut splice.added_end, &mut splice.taken_end] {
-                relative_add(pos, &splice_adder);
-            }
+            change.splice.calibrate_on_adder(splice_adder);
         };
+    }
+
+	/// Commits the change and empties it.
+    pub fn commit(&mut self) -> Option<Change> {
+        self.change.take()
     }
 }
 
-fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
-    pos.row += splice_adder.lines;
-    pos.byte += splice_adder.bytes;
+pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
+    pos.row = saturating_add_signed(pos.row, splice_adder.lines);
+    pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
     if pos.row == splice_adder.last_line {
-        pos.col += splice_adder.cols;
+        pos.col = saturating_add_signed(pos.col, splice_adder.cols);
+        //if pos.row == 4 { panic!("{:#?}, {}", pos, splice_adder.cols); }
     }
 }
 

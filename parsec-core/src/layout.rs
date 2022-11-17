@@ -10,7 +10,7 @@ use std::{
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
-    action::{Change, History, Splice, TextRange},
+    action::{Change, History, Moment, Splice, TextRange},
     config::{Config, LineNumbers, RoState, RwState, WrapMethod},
     cursor::{TextCursor, TextPos},
     file::{update_range, Text},
@@ -18,6 +18,7 @@ use crate::{
     saturating_add_signed, split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
+    FOR_TEST, FOR_TEST_2,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -290,7 +291,7 @@ where
 
     fn update_print_info(&mut self) {
         let cursors = self.cursors.read();
-        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
+        let main_cursor = cursors.get(*self.main_cursor.read()).expect(format!("{}", *self.main_cursor.read()).as_str());
         let prev = main_cursor.prev();
         let cur = main_cursor.cur();
 
@@ -361,12 +362,14 @@ where
 
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
+        self.commit_changes();
         let mut text = self.text.write();
 
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
             None => return,
         };
+
         let mut info = self.print_info.write();
         *info = moment.print_info.unwrap_or(*info);
 
@@ -375,11 +378,17 @@ where
         let mut new_cursors = Vec::new();
 
         let max_line = max_line(&text, &info, &self.node);
-        for change in moment.changes.iter().rev() {
-            text.undo_change(&change);
+        let mut splice_adder = SpliceAdder::default();
+        for change in &moment.changes {
+            let mut splice = change.splice;
+            splice.calibrate_on_adder(&splice_adder);
 
-            let splice = change.splice;
+            text.undo_change(&change, &splice);
+
+            splice_adder.calibrate(&splice.reverse());
+
             if let Some(cursor) = cursors_iter.next() {
+                cursor.change = None;
                 cursor.move_to_inner(splice.taken_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
@@ -391,17 +400,20 @@ where
 
         drop(cursors);
         self.cursors.write().extend(new_cursors);
+        if moment.changes.len() == 0 { panic!(); }
         unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
     /// Redoes the last moment in history.
     pub fn redo(&mut self) {
+        self.commit_changes();
         let mut text = self.text.write();
 
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return,
         };
+
         let mut info = self.print_info.write();
         *info = moment.print_info.unwrap_or(*info);
 
@@ -415,6 +427,7 @@ where
 
             let splice = change.splice;
             if let Some(cursor) = cursors_iter.next() {
+                cursor.change = None;
                 cursor.move_to_inner(splice.added_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
@@ -462,6 +475,23 @@ where
         self.match_scroll();
     }
 
+    fn commit_changes(&mut self) {
+        let mut cursors = self.cursors.write();
+        let print_info = *self.print_info.read();
+        let mut moment_created = false;
+        for cursor in cursors.iter_mut() {
+            if let Some(change) = cursor.commit() {
+                if !moment_created {
+                    self.history.new_moment(print_info);
+                    moment_created = true
+                }
+
+                self.history.add_change(&change);
+            }
+        }
+        drop(cursors);
+    }
+
     pub fn printed_lines(&self) -> PrintedLines {
         PrintedLines {
             file: RoState::from_rw(self.text.clone()),
@@ -469,7 +499,7 @@ where
         }
     }
 
-    pub fn cursor_list(&mut self) -> FileEditor {
+    pub fn file_editor(&mut self) -> FileEditor {
         FileEditor::new(self.cursors.clone(), *self.main_cursor.read())
     }
 }
@@ -484,25 +514,22 @@ pub struct FileEditor {
 #[derive(Default)]
 pub struct SpliceAdder {
     pub last_line: usize,
-    pub lines: usize,
-    pub bytes: usize,
-    pub cols: usize,
+    pub lines: isize,
+    pub bytes: isize,
+    pub cols: isize,
 }
 
 impl SpliceAdder {
     // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
     /// Calibrates, given a splice.
     fn calibrate(&mut self, splice: &Splice) {
-        self.lines += splice.added_end.row - splice.taken_end.row;
-        self.bytes += splice.added_end.byte - splice.taken_end.byte;
-        if self.last_line == splice.added_end.row {
-            if splice.added_range().lines().count() == 1 {
-                self.cols += splice.added_end.col - splice.taken_end.col;
-            } else {
-                self.cols = splice.added_end.col;
-            }
+        self.lines += splice.added_end.row as isize - splice.taken_end.row as isize ;
+        self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
+        let sum = splice.added_end.col as isize - splice.taken_end.col as isize;
+        if self.last_line == splice.start.row {
+            self.cols += sum;
         } else {
-            self.cols = 0;
+            self.cols = sum;
         }
         self.last_line = splice.added_end.row;
     }
@@ -544,10 +571,12 @@ impl FileEditor {
     {
         let mut cursors = self.cursors.write();
         let mut splice_adder = SpliceAdder::default();
+        let mut adder = 0;
         cursors.iter_mut().for_each(|c| {
             c.calibrate(&splice_adder);
             let cursor = EditCursor(c, &mut splice_adder);
             f(cursor);
+            adder += 1;
         });
     }
 
@@ -955,7 +984,7 @@ fn update_files(
 ) {
     thread::scope(|s_1| {
         for file in files {
-            s_1.spawn(|| file.0.update());
+            file.0.update();
         }
     });
 }

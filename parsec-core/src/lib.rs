@@ -65,19 +65,20 @@ fn split_string_lines(string: &String) -> Vec<String> {
     }
 }
 
-pub fn get_byte_at_col(col: usize, text: &String) -> usize {
-    text.char_indices().nth(col).unwrap().0
+pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
+    text.char_indices().nth(col).map(|c| c.0)
 }
 
 // Useful for testing.
 pub static mut FOR_TEST: bool = false;
+pub static mut FOR_TEST_2: bool = false;
 
 ////////// Ad-hoc functions until they eventually get stabilized.
 pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
     if rhs > 0 {
         lhs.saturating_add(rhs as usize)
     } else {
-        lhs.saturating_sub(rhs as usize)
+        lhs.saturating_sub(rhs.abs() as usize)
     }
 }
 
