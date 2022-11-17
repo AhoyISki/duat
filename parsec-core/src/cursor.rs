@@ -29,7 +29,7 @@ impl TextPos {
         let mut new = TextPos { row: line, col, ..self };
         new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
         new
-    }
+    }11
 
     /// Adds columns given `self.line == other.line`.
     pub fn col_add(&self, other: TextPos) -> TextPos {
@@ -168,7 +168,7 @@ impl TextCursor {
     pub(crate) fn move_hor_inner(
         &mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
-        let old_cur = self.cur;
+        let old_cur = self.cur;1
         let cur = &mut self.cur;
         let mut col = old_cur.col as i32 + count;
 
@@ -211,7 +211,7 @@ impl TextCursor {
         let cur = &mut self.cur;
 
         cur.row = pos.row.clamp(0, lines.len());
-        cur.col = pos.col.clamp(0, lines[pos.row].text().len());
+        cur.col = pos.col.clamp(0, lines[cur.row].text().len());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = (cur.byte as isize + get_byte_distance(lines, old_target, pos)) as usize;
@@ -297,7 +297,7 @@ pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
 // only 30.
 // NOTE: It could still be made more efficient.
 /// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
-///
+///1
 /// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
 pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) -> isize {
     let mut distance = lines[target.row].get_line_byte_at(target.col) as isize;
