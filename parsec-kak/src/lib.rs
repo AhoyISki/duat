@@ -71,14 +71,18 @@ impl EditingScheme for Editor {
                         file.edit(&mut c, '\n');
                     });
                 }
-                //KeyEvent { code: KeyCode::Backspace, .. } => {
-                //    cursor_list.on_each(|c, l| {
-                //        c.set_anchor();
-                //        c.move_hor(-1, file);
-                //        file.edit(&c, "", l);
-                //        c.unset_anchor();
-                //    });
-                //}
+                KeyEvent { code: KeyCode::Backspace, .. } => {
+                    file_editor.move_each_cursor(|mut c| {
+                        c.set_anchor();
+                        c.move_hor(-1, &file);
+                    });
+                    file_editor.edit_on_each_cursor(|mut c| {
+                        file.edit(&mut c, "");
+                    });
+                    file_editor.move_each_cursor(|mut c| {
+                        c.unset_anchor();
+                    });
+                }
                 //KeyEvent { code: KeyCode::Delete, .. } => {
                 //    cursor_list.on_each(|c, l| {
                 //        c.set_anchor();

@@ -39,7 +39,12 @@
 //! `Moment`, which is why `parsec-core` does not define how new moments are created.
 use std::ops::RangeInclusive;
 
-use crate::{cursor::{TextPos, relative_add}, file::TextLine, get_byte_at_col, layout::{PrintInfo, SpliceAdder}, FOR_TEST_2, FOR_TEST};
+use crate::{
+    cursor::{relative_add, TextPos, SpliceAdder},
+    file::TextLine,
+    get_byte_at_col,
+    layout::PrintInfo,
+};
 
 /// A range of `chars` in the file, that is, not bytes.
 #[derive(Debug, Clone, Copy)]
@@ -137,7 +142,6 @@ impl Change {
             lines.last().unwrap().chars().count()
         };
 
-
         let taken_text = get_text_in_range(text, range);
         let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
 
@@ -169,27 +173,6 @@ impl Change {
 
         lines.splice(added_range.lines(), new);
     }
-
-    pub fn try_merge(&mut self, lines: &Vec<String>, range: TextRange) -> Result<(), ()> {
-        if self.splice.added_range().contains_range(range) {
-            merge_edit(&mut self.added_text, &lines, self.splice.start, range);
-
-            if range.end.row == self.splice.added_end.row {
-                let col_count = if range.start.row == range.end.row {
-                    range.end.col - range.start.col
-                } else {
-                    range.end.col
-                };
-                self.splice.added_end.col += lines.last().unwrap().chars().count() - col_count;
-            }
-            self.splice.added_end.row += lines.len() - range.lines().count();
-            self.splice.added_end.byte += lines.iter().map(|l| l.len()).sum::<usize>();
-
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
 }
 
 /// A moment in history, which may contain changes, or may just contain selections.
@@ -220,11 +203,7 @@ pub struct History {
 impl History {
     /// Returns a new instance of `History`.
     pub fn new() -> History {
-        History {
-            moments: Vec::new(),
-            current_moment: 0,
-            traveled_in_time: false,
-        }
+        History { moments: Vec::new(), current_moment: 0, traveled_in_time: false }
     }
 
     /// Gets the current moment. Takes time travel into consideration.
@@ -249,7 +228,9 @@ impl History {
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
         if self.current_moment().map_or(true, |m| !m.changes.is_empty()) {
-            unsafe { self.moments.set_len(self.current_moment); }
+            unsafe {
+                self.moments.set_len(self.current_moment);
+            }
             self.moments.last_mut().map(|m| m.print_info = Some(print_info));
 
             self.moments.push(Moment { print_info: None, changes: Vec::new() });
@@ -272,13 +253,12 @@ impl History {
     /// Moves backwards in the timeline.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
-            return None;
+            None
         } else {
             self.current_moment -= 1;
             self.traveled_in_time = true;
 
-            if unsafe { FOR_TEST } { panic!("{:#?}", self.moments) }
-            return Some(&self.moments[self.current_moment]);
+            Some(&self.moments[self.current_moment])
         }
     }
 }
@@ -357,26 +337,4 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
     }
 
     lines
-}
-
-/// Merges two `String`s into one, given a start and a range to cut off.
-fn merge_edit(orig: &mut Vec<String>, new: &Vec<String>, start: TextPos, range: TextRange) {
-    let range = TextRange { start: range.start - start, end: range.end - start };
-
-    let first_byte = get_byte_at_col(range.start.col, &orig[range.start.row]).unwrap();
-    let last_byte = get_byte_at_col(range.end.col, &orig[range.end.row]).unwrap();
-
-    if range.lines().count() == 1 && new.len() == 1 {
-        orig[range.start.row].replace_range(first_byte..last_byte, new[0].as_str());
-    } else {
-        let first_amend = &orig[range.start.row][..first_byte];
-        let last_amend = &orig[range.end.row][last_byte..];
-
-        let mut edit = new.clone();
-
-        edit.first_mut().unwrap().insert_str(0, first_amend);
-        edit.last_mut().unwrap().push_str(last_amend);
-
-        orig.splice(range.lines(), edit);
-    }
 }

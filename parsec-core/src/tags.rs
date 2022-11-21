@@ -14,7 +14,7 @@ use crate::{
 
 // NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
@@ -105,7 +105,7 @@ impl std::fmt::Debug for CharTags {
                 CharTag::PopForm(form) => format!("{}PoF({})", b, form.0),
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::PrimaryCursor => format!("{}:Pc", b),
-                _ => todo!(),
+                _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()
             .join(", ");
