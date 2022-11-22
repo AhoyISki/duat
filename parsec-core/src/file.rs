@@ -352,6 +352,12 @@ impl Text {
         }
     }
 
+    pub fn update_lines(&mut self, node: &EndNode<impl Ui>) {
+        for line in &mut self.lines {
+            line.update_line_info(node);
+        }
+    }
+
     /// Prints the contents of a given area in a given `EndNode`.
     pub fn print(&self, node: &mut EndNode<impl Ui>, print_info: PrintInfo) {
         node.start_printing();

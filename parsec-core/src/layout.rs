@@ -183,14 +183,19 @@ where
         let cursor = TextCursor::new(TextPos::default(), read.lines(), &node);
         drop(read);
 
-        FileWidget {
+        let mut file_widget = FileWidget {
             text,
             print_info: RwState::new(PrintInfo::default()),
             main_cursor: RwState::new(0),
             cursors: RwState::new(vec![cursor]),
             node,
             history: History::new(),
-        }
+        };
+
+        let mut text = file_widget.text.write();
+        text.update_lines(&file_widget.node);
+        drop(text);
+        file_widget
     }
 
     fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
