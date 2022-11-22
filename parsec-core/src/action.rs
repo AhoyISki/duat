@@ -221,6 +221,9 @@ impl History {
 
         if let Some(moment) = self.current_moment() {
             moment.changes.push(change.clone());
+        } else {
+            self.new_moment(PrintInfo::default());
+            self.moments.last_mut().unwrap().changes.push(change.clone());
         }
     }
 
@@ -253,6 +256,7 @@ impl History {
     /// Moves backwards in the timeline.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
+            panic!("{:#?}", self);
             None
         } else {
             self.current_moment -= 1;

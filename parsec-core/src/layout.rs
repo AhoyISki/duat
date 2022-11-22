@@ -343,14 +343,14 @@ where
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
 
-        let cur_change = Change::new(&lines, edit_cursor.cursor_range(), &text.lines);
+        let mut cur_change = Change::new(&lines, edit_cursor.cursor_range(), &text.lines);
         edit_cursor.calibrate(&cur_change.splice);
 
         text.apply_change(&cur_change);
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
         update_range(&mut text, edit_cursor.cursor_range(), max_line, &self.node);
 
-        if let Some(change) = &edit_cursor.try_merge(&cur_change) {
+        if let Some(change) = &edit_cursor.try_merge(&mut cur_change) {
             self.history.add_change(&change);
         }
     }
@@ -472,15 +472,8 @@ where
 
     fn commit_changes(&mut self) {
         let mut cursors = self.cursors.write();
-        let print_info = *self.print_info.read();
-        let mut moment_created = false;
         for cursor in cursors.iter_mut() {
             if let Some(change) = cursor.commit() {
-                if !moment_created {
-                    self.history.new_moment(print_info);
-                    moment_created = true
-                }
-
                 self.history.add_change(&change);
             }
         }

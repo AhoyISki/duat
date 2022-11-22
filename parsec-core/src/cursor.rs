@@ -1,4 +1,7 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    ops::AddAssign,
+};
 
 use super::file::TextLine;
 use crate::{
@@ -257,7 +260,7 @@ impl TextCursor {
         };
     }
 
-    /// Commits the change and empties it.
+    /// Commits tnge and empties it.
     pub fn commit(&mut self) -> Option<Change> {
         self.change.take()
     }
@@ -278,36 +281,44 @@ impl<'a> EditCursor<'a> {
         self.1.calibrate(splice)
     }
 
-	/// Tries to merge the `TextCursor`'s associated `Change` with another one.
-	///
-	/// Returns `None` if `TextCursor` has no `Change`, and only returns `Some(_)` when the merger
-	/// was not successful, so that the old `Change` can be replaced and commited.
-    pub(crate) fn try_merge(&mut self, merge: &Change) -> Option<Change> {
-        if let Some(change) = &mut self.0.change {
-            let edit = &merge.added_text;
-            let splice = &mut change.splice;
-            let range = merge.splice.taken_range();
+    /// Tries to merge the `TextCursor`'s associated `Change` with another one.
+    ///
+    /// Returns `None` if `TextCursor` has no `Change`, and only returns `Some(_)` when the merger
+    /// was not successful, so that the old `Change` can be replaced and commited.
+    pub(crate) fn try_merge(&mut self, edit: &mut Change) -> Option<Change> {
+        if let Some(orig) = &mut self.0.change {
+            let orig_added = orig.splice.added_range();
+            let edit_taken = edit.splice.taken_range();
 
-            if splice.added_range().contains_range(range) {
-                merge_edit(&mut change.added_text, edit, splice.start, range);
+            if orig_added.contains_range(edit_taken) {
+                let splice = &mut orig.splice;
+                merge_edit(&mut orig.added_text, &edit.added_text, splice.start, edit_taken);
+                move_end(&edit.taken_text, &edit.added_text, &mut splice.added_end, edit_taken);
+            } else if edit_taken.contains_range(orig_added) {
+                let splice = &mut edit.splice;
+                merge_edit(&mut edit.taken_text, &orig.taken_text, splice.start, orig_added);
+                move_end(&orig.added_text, &orig.taken_text, &mut splice.taken_end, orig_added);
+                self.0.change = Some(edit.clone());
+            } else {
+                return self.0.change.replace(edit.clone());
+            };
 
-                if range.end.row == splice.added_end.row {
-                    let col_diff = if edit.len() == 1 {
-                        range.end.col - range.start.col
-                    } else {
-                        range.end.col
-                    };
-                    splice.added_end.col += edit.last().unwrap().chars().count() - col_diff;
-                }
-                change.splice.added_end.row += edit.len() - range.lines().count();
-                change.splice.added_end.byte += edit.iter().map(|l| l.len()).sum::<usize>();
-
-                return None;
-            }
+            return None;
         }
 
-        self.0.change.replace(merge.clone())
+        self.0.change.replace(edit.clone())
     }
+}
+
+fn move_end(taken: &Vec<String>, added: &Vec<String>, end: &mut TextPos, range: TextRange) {
+    if end.row == range.end.row {
+        let diff = if added.len() == 1 { range.end.col - range.start.col } else { range.end.col };
+        end.col += added.last().unwrap().chars().count() - diff;
+    }
+    end.row += added.len() - range.lines().count();
+    let edit_len = added.iter().map(|l| l.len()).sum::<usize>();
+    let orig_len = taken.iter().map(|l| l.len()).sum::<usize>();
+    end.byte += edit_len - orig_len;
 }
 
 pub struct MoveCursor<'a>(&'a mut TextCursor);
@@ -377,7 +388,6 @@ impl SpliceAdder {
     }
 }
 
-
 pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
     pos.row = saturating_add_signed(pos.row, splice_adder.lines);
     pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
@@ -411,19 +421,21 @@ pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) 
 }
 
 /// Merges two `String`s into one, given a start and a range to cut off.
-fn merge_edit(orig: &mut Vec<String>, new: &Vec<String>, start: TextPos, range: TextRange) {
+fn merge_edit(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range: TextRange) {
     let range = TextRange { start: range.start - start, end: range.end - start };
 
-    let first_byte = get_byte_at_col(range.start.col, &orig[range.start.row]).unwrap();
-    let last_byte = get_byte_at_col(range.end.col, &orig[range.end.row]).unwrap();
+	let first_line = &orig[range.start.row];
+    let first_byte = get_byte_at_col(range.start.col, first_line).unwrap_or(first_line.len());
+	let last_line = &orig[range.end.row];
+    let last_byte = get_byte_at_col(range.end.col, last_line).unwrap_or(last_line.len());
 
-    if range.lines().count() == 1 && new.len() == 1 {
-        orig[range.start.row].replace_range(first_byte..last_byte, new[0].as_str());
+    if range.lines().count() == 1 && edit.len() == 1 {
+        orig[range.start.row].replace_range(first_byte..last_byte, edit[0].as_str());
     } else {
         let first_amend = &orig[range.start.row][..first_byte];
         let last_amend = &orig[range.end.row][last_byte..];
 
-        let mut edit = new.clone();
+        let mut edit = edit.clone();
 
         edit.first_mut().unwrap().insert_str(0, first_amend);
         edit.last_mut().unwrap().push_str(last_amend);

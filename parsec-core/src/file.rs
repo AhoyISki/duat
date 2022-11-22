@@ -417,7 +417,7 @@ impl Text {
             line.text.replace_range(first_byte..last_byte, edit[0].as_str());
         } else {
             let first_line = &lines[range.start.row];
-            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).unwrap();
+            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).expect(format!("{:#?}", range).as_str());
             let last_line= &lines[range.end.row];
             let last_line_byte = get_byte_at_col(range.end.col, &last_line.text).unwrap();
 
