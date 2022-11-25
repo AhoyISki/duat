@@ -12,7 +12,7 @@ use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
     config::{Config, LineNumbers, RoState, RwState},
-    cursor::{TextCursor, MoveCursor, EditCursor, SpliceAdder},
+    cursor::{EditCursor, MoveCursor, SpliceAdder, TextCursor},
     file::Text,
     input::{EditingScheme, FileRemapper},
     saturating_add_signed,
@@ -20,7 +20,7 @@ use crate::{
     ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
 };
 
-use self::file_widget::{FileWidget, PrintedLines, PrintInfo};
+use self::file_widget::{FileWidget, PrintInfo, PrintedLines};
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
@@ -343,7 +343,7 @@ fn update_files(
 ) {
     thread::scope(|s_1| {
         for file in files {
-            file.0.update();
+            s_1.spawn(|| file.0.update());
         }
     });
 }
