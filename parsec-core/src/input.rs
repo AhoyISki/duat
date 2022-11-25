@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::{config::RoState, layout::FileWidget, ui::Ui};
+use crate::{layout::file_widget::FileWidget, ui::Ui};
 
 /// A widget that can receive and process input.
 pub trait KeyTakingWidget {

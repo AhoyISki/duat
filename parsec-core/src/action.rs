@@ -43,7 +43,7 @@ use crate::{
     cursor::{relative_add, TextPos, SpliceAdder},
     file::TextLine,
     get_byte_at_col,
-    layout::PrintInfo,
+    layout::file_widget::PrintInfo, log_info,
 };
 
 /// A range of `chars` in the file, that is, not bytes.
@@ -256,13 +256,20 @@ impl History {
     /// Moves backwards in the timeline.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
-            panic!("{:#?}", self);
             None
         } else {
             self.current_moment -= 1;
             self.traveled_in_time = true;
 
             Some(&self.moments[self.current_moment])
+        }
+    }
+
+    /// Sets the `PrintInfo` for the current `Moment`.
+    pub fn set_print_info(&mut self, print_info: PrintInfo) {
+        if let Some(moment) = self.current_moment() {
+            log_info(format_args!("{:#?}", print_info));
+            moment.print_info = Some(print_info);
         }
     }
 }
@@ -334,10 +341,10 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
         lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
     } else {
         lines.push(text[range.start.row].text()[first_byte..].to_string());
-        for line in text.iter().take(range.end.row).skip(range.start.row + 1) {
+        for line in text.iter().take(range.end.row - 1).skip(range.start.row + 1) {
             lines.push(line.text().to_string());
         }
-        lines.push(text[range.end.row + 1].text()[..last_byte].to_string());
+        lines.push(text.get(range.end.row).unwrap().text()[..last_byte].to_string());
     }
 
     lines

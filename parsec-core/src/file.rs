@@ -4,9 +4,8 @@ use crate::{
     action::{get_byte, Change, TextRange, Splice},
     config::WrapMethod,
     cursor::TextPos,
-    layout::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui}, get_byte_at_col,
+    ui::{EndNode, RawEndNode, Ui}, get_byte_at_col, layout::file_widget::PrintInfo,
 };
 
 // TODO: move this to a more general file.
@@ -467,7 +466,7 @@ pub(crate) fn update_range(
 ) {
     if let Some(match_manager) = &mut text.match_manager {
         let line = &text.lines[max_line];
-        let max_pos = range.end.calibrated_cursor(&text.lines, max_line, line.char_count());
+        let max_pos = range.end.translate(&text.lines, max_line, line.char_count());
 
         let start = TextPos {
             row: range.start.row,

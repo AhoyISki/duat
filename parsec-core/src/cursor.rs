@@ -1,13 +1,10 @@
-use std::{
-    cmp::{max, min},
-    ops::AddAssign,
-};
+use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
     get_byte_at_col,
-    layout::{FileWidget, Widget},
+    layout::{file_widget::FileWidget, Widget},
     saturating_add_signed,
     ui::{EndNode, Ui},
 };
@@ -16,9 +13,9 @@ use crate::{
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextPos {
-    pub byte: usize,
-    pub col: usize,
-    pub row: usize,
+    pub(crate) byte: usize,
+    pub(crate) col: usize,
+    pub(crate) row: usize,
 }
 
 impl std::fmt::Debug for TextPos {
@@ -28,9 +25,9 @@ impl std::fmt::Debug for TextPos {
 }
 
 impl TextPos {
-    /// Creates a new cursor, based on this `TextPosition`, translated in lines and columns.
-    pub fn calibrated_cursor(self, lines: &[TextLine], line: usize, col: usize) -> TextPos {
-        let mut new = TextPos { row: line, col, ..self };
+    /// Calculates a new `TextPos`, given a target position, in rows and columns.
+    pub fn translate(self, lines: &[TextLine], row: usize, col: usize) -> TextPos {
+        let mut new = TextPos { row, col, ..self };
         new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
         new
     }
@@ -163,7 +160,8 @@ impl TextCursor {
         (cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte = (cur.byte as isize + get_byte_distance(lines, old_target, *cur)) as usize;
+        cur.byte =
+            saturating_add_signed(cur.byte, get_byte_distance(lines, old_target, *cur));
     }
 
     /// Internal horizontal movement function.
@@ -172,7 +170,7 @@ impl TextCursor {
         let cur = &mut self.cur;
         let mut col = old_cur.col as i32 + count;
 
-        if count >= 0 {
+        if count >= 0 && cur.row < lines.len() - 1 {
             let mut line_iter = lines.iter().enumerate().skip(old_cur.row);
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
@@ -182,7 +180,7 @@ impl TextCursor {
                 }
                 col -= line.char_count() as i32;
             }
-        } else {
+        } else if count < 0 && cur.row > 0 {
             let mut line_iter = lines.iter().enumerate().take(old_cur.row).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
@@ -195,7 +193,7 @@ impl TextCursor {
         }
 
         let line = lines.get(cur.row).unwrap();
-        cur.col = col.clamp(0, line.text().len() as i32) as usize;
+        cur.col = col.clamp(0, (line.text().len() - 1) as i32) as usize;
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = (cur.byte as isize + get_byte_distance(lines, old_cur, *cur)) as usize;
@@ -207,12 +205,21 @@ impl TextCursor {
     pub(crate) fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
         let cur = &mut self.cur;
 
+        // TODO: Change this to `saturating_sub_signed` once that gets merged.
+        cur.byte = saturating_add_signed(cur.byte, get_byte_distance(lines, *cur, pos));
+
         cur.row = pos.row.clamp(0, lines.len());
         cur.col = pos.col.clamp(0, lines[cur.row].char_count());
 
-        // TODO: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte = (cur.byte as isize + get_byte_distance(lines, *cur, pos)) as usize;
+        let line = lines.get(pos.row).unwrap();
+        self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
+    }
 
+    /// Internal absolute movement function. Assumes that `pos` is a valid position.
+    pub(crate) fn move_to_calibrated(
+        &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
+    ) {
+        self.cur = pos;
         let line = lines.get(pos.row).unwrap();
         self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
     }
@@ -277,8 +284,17 @@ impl<'a> EditCursor<'a> {
         self.0.range()
     }
 
-    pub fn calibrate(&mut self, splice: &Splice) {
+    pub fn calibrate_adder(&mut self, splice: &Splice) {
         self.1.calibrate(splice)
+    }
+
+    pub fn calibrate_cursor(&mut self, splice: &Splice) {
+        self.0.cur.calibrate(splice);
+        for opt in [&mut self.0.anchor, &mut self.0.prev] {
+            if let Some(anchor) = opt {
+                anchor.calibrate(splice);
+            }
+        }
     }
 
     /// Tries to merge the `TextCursor`'s associated `Change` with another one.
@@ -308,17 +324,6 @@ impl<'a> EditCursor<'a> {
 
         self.0.change.replace(edit.clone())
     }
-}
-
-fn move_end(taken: &Vec<String>, added: &Vec<String>, end: &mut TextPos, range: TextRange) {
-    if end.row == range.end.row {
-        let diff = if added.len() == 1 { range.end.col - range.start.col } else { range.end.col };
-        end.col += added.last().unwrap().chars().count() - diff;
-    }
-    end.row += added.len() - range.lines().count();
-    let edit_len = added.iter().map(|l| l.len()).sum::<usize>();
-    let orig_len = taken.iter().map(|l| l.len()).sum::<usize>();
-    end.byte += edit_len - orig_len;
 }
 
 pub struct MoveCursor<'a>(&'a mut TextCursor);
@@ -403,14 +408,14 @@ pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
 /// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
 ///1
 /// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
-pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) -> isize {
-    let mut distance = lines[target.row].get_line_byte_at(target.col) as isize;
-    distance -= lines[current.row].get_line_byte_at(current.col) as isize;
+pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isize {
+    let mut distance = lines[cur.row].get_line_byte_at(cur.col) as isize;
+    distance -= lines[prev.row].get_line_byte_at(prev.col) as isize;
 
-    let (direction, range) = if target.row > current.row {
-        (1, current.row..target.row)
-    } else if target.row < current.row {
-        (-1, target.row..current.row)
+    let (direction, range) = if cur.row > prev.row {
+        (1, prev.row..cur.row)
+    } else if cur.row < prev.row {
+        (-1, cur.row..prev.row)
     } else {
         return distance;
     };
@@ -424,9 +429,9 @@ pub fn get_byte_distance(lines: &[TextLine], current: TextPos, target: TextPos) 
 fn merge_edit(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range: TextRange) {
     let range = TextRange { start: range.start - start, end: range.end - start };
 
-	let first_line = &orig[range.start.row];
+    let first_line = &orig[range.start.row];
     let first_byte = get_byte_at_col(range.start.col, first_line).unwrap_or(first_line.len());
-	let last_line = &orig[range.end.row];
+    let last_line = &orig[range.end.row];
     let last_byte = get_byte_at_col(range.end.col, last_line).unwrap_or(last_line.len());
 
     if range.lines().count() == 1 && edit.len() == 1 {
@@ -442,4 +447,15 @@ fn merge_edit(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range:
 
         orig.splice(range.lines(), edit);
     }
+}
+
+fn move_end(taken: &Vec<String>, added: &Vec<String>, end: &mut TextPos, range: TextRange) {
+    if end.row == range.end.row {
+        let diff = if added.len() == 1 { range.end.col - range.start.col } else { range.end.col };
+        end.col += added.last().unwrap().chars().count() - diff;
+    }
+    end.row += added.len() - range.lines().count();
+    let edit_len = added.iter().map(|l| l.len()).sum::<usize>();
+    let orig_len = taken.iter().map(|l| l.len()).sum::<usize>();
+    end.byte += edit_len - orig_len;
 }

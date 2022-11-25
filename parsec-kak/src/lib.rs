@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use parsec_core::{input::EditingScheme, FOR_TEST};
+use parsec_core::{input::EditingScheme, layout::file_widget::FileWidget, FOR_TEST};
 
 #[derive(Clone, PartialEq)]
 pub enum Mode {
@@ -26,7 +26,7 @@ impl EditingScheme for Editor {
         self.cur_mode.clone()
     }
 
-    fn process_key<U>(&mut self, key: &KeyEvent, file: &mut parsec_core::layout::FileWidget<U>)
+    fn process_key<U>(&mut self, key: &KeyEvent, file: &mut FileWidget<U>)
     where
         U: parsec_core::ui::Ui,
     {
@@ -36,9 +36,7 @@ impl EditingScheme for Editor {
             Mode::Insert => match key {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 'u' =>
-                {
-                    unsafe { FOR_TEST = !FOR_TEST }
-                }
+                unsafe { FOR_TEST = !FOR_TEST },
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 'z' =>
                 {
@@ -83,14 +81,19 @@ impl EditingScheme for Editor {
                         c.unset_anchor();
                     });
                 }
-                //KeyEvent { code: KeyCode::Delete, .. } => {
-                //    cursor_list.on_each(|c, l| {
-                //        c.set_anchor();
-                //        c.move_hor(1, file);
-                //        file.edit(&c, "", l);
-                //        c.unset_anchor();
-                //    });
-                //}
+                KeyEvent { code: KeyCode::Delete, .. } => {
+                    file_editor.move_each_cursor(|mut c| {
+                        c.set_anchor();
+                        c.move_hor(1, &file);
+                    });
+                    file_editor.edit_on_each_cursor(|mut c| {
+                        file.edit(&mut c, "");
+                    });
+                    file_editor.move_each_cursor(|mut c| {
+                        c.unset_anchor();
+                    });
+                }
+
                 KeyEvent { code: KeyCode::Left, .. } => {
                     file_editor.move_each_cursor(|mut c| c.move_hor(-1, &file));
                 }

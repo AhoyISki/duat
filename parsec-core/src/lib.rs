@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{marker::PhantomData, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyCode};
@@ -69,10 +70,6 @@ pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
     text.char_indices().nth(col).map(|c| c.0)
 }
 
-// Useful for testing.
-pub static mut FOR_TEST: bool = false;
-pub static mut FOR_TEST_2: bool = false;
-
 ////////// Ad-hoc functions until they eventually get stabilized.
 pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
     if rhs > 0 {
@@ -82,4 +79,12 @@ pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
     }
 }
 
+// Useful for testing.
+pub static mut FOR_TEST: bool = false;
+pub static mut FOR_TEST_2: bool = false;
 
+pub fn log_info(fmt: fmt::Arguments) {
+    use std::{fs, io::Write};
+    let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+    log.write_fmt(fmt).unwrap();
+}
