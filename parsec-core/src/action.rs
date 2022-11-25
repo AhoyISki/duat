@@ -43,7 +43,7 @@ use crate::{
     cursor::{relative_add, TextPos, SpliceAdder},
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, log_info,
+    layout::file_widget::PrintInfo,
 };
 
 /// A range of `chars` in the file, that is, not bytes.
@@ -194,16 +194,19 @@ pub struct History {
     moments: Vec<Moment>,
     /// The currently active moment.
     current_moment: usize,
-
-    // NOTE: Will almost definitely get rid of this.
-    /// Wether or not the user has undone/redone past actions.
-    traveled_in_time: bool,
 }
 
 impl History {
     /// Returns a new instance of `History`.
     pub fn new() -> History {
-        History { moments: Vec::new(), current_moment: 0, traveled_in_time: false }
+        History { moments: Vec::new(), current_moment: 0}
+    }
+
+	/// Starts a new `Moment` if the `History` is at it's very beginning.
+    pub fn start_if_needed(&mut self) {
+        if self.current_moment == 0 {
+            self.new_moment();
+        }
     }
 
     /// Gets the current moment. Takes time travel into consideration.
@@ -211,10 +214,7 @@ impl History {
         self.moments.get_mut(self.current_moment - 1)
     }
 
-    /// Tries to "merge" the change with an already existing change. If that fails, pushes a
-    /// bew chage.
-    ///     
-    /// Here, `edit_range` is the range in the text that will be replaced by the `edit`.
+    /// Adds a change to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
     pub fn add_change(&mut self, change: &Change) {
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
@@ -222,20 +222,18 @@ impl History {
         if let Some(moment) = self.current_moment() {
             moment.changes.push(change.clone());
         } else {
-            self.new_moment(PrintInfo::default());
+            self.new_moment();
             self.moments.last_mut().unwrap().changes.push(change.clone());
         }
     }
 
     /// Declares that the current moment is complete and moves to the next one.
-    pub fn new_moment(&mut self, print_info: PrintInfo) {
+    pub fn new_moment(&mut self) {
         // If the last moment in history is empty, we can keep using it.
         if self.current_moment().map_or(true, |m| !m.changes.is_empty()) {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }
-            self.moments.last_mut().map(|m| m.print_info = Some(print_info));
-
             self.moments.push(Moment { print_info: None, changes: Vec::new() });
             self.current_moment += 1;
         }
@@ -247,7 +245,6 @@ impl History {
             return None;
         } else {
             self.current_moment += 1;
-            self.traveled_in_time = true;
 
             return Some(&self.moments[self.current_moment - 1]);
         }
@@ -259,7 +256,6 @@ impl History {
             None
         } else {
             self.current_moment -= 1;
-            self.traveled_in_time = true;
 
             Some(&self.moments[self.current_moment])
         }
@@ -268,7 +264,6 @@ impl History {
     /// Sets the `PrintInfo` for the current `Moment`.
     pub fn set_print_info(&mut self, print_info: PrintInfo) {
         if let Some(moment) = self.current_moment() {
-            log_info(format_args!("{:#?}", print_info));
             moment.print_info = Some(print_info);
         }
     }
