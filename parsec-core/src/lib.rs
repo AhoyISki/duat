@@ -1,7 +1,6 @@
 use core::fmt;
-use std::{marker::PhantomData, thread, time::Duration};
+use std::marker::PhantomData;
 
-use crossterm::event::{self, Event, KeyCode};
 use cursor::TextPos;
 use input::{EditingScheme, FileRemapper};
 use layout::Layout;
@@ -25,7 +24,7 @@ where
     layout: L,
     key_remapper: FileRemapper<E>,
     // ↓ stupid ↓ //
-    _phantom_stuff: (PhantomData<E>, PhantomData<U>)
+    _phantom_stuff: (PhantomData<E>, PhantomData<U>),
 }
 
 impl<L, E, U> Application<L, E, U>
@@ -38,13 +37,11 @@ where
         Application {
             layout,
             key_remapper,
-            _phantom_stuff: (PhantomData::default(), PhantomData::default())
+            _phantom_stuff: (PhantomData::default(), PhantomData::default()),
         }
     }
 
-	pub fn application_loop(&mut self) {
-    	
-	}
+    pub fn application_loop(&mut self) {}
 }
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.
@@ -68,6 +65,10 @@ fn split_string_lines(string: &String) -> Vec<String> {
 
 pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
     text.char_indices().nth(col).map(|c| c.0)
+}
+
+pub fn empty_edit() -> Vec<String> {
+    vec![String::from("")]
 }
 
 ////////// Ad-hoc functions until they eventually get stabilized.

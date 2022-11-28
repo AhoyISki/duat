@@ -37,20 +37,61 @@
 //! cursor movement should create a new `Moment`, in kakoune, any insertion of text is considered a
 //! `Moment`, in most other text editors, a space, tab, new line, or movement, is what creates a
 //! `Moment`, which is why `parsec-core` does not define how new moments are created.
-use std::ops::RangeInclusive;
+use std::{
+    cmp::{max, min, Ordering},
+    ops::RangeInclusive,
+};
 
 use crate::{
-    cursor::{relative_add, TextPos, SpliceAdder},
+    cursor::{relative_add, SpliceAdder, TextPos},
     file::TextLine,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
 };
 
 /// A range of `chars` in the file, that is, not bytes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct TextRange {
     pub start: TextPos,
     pub end: TextPos,
+}
+
+impl PartialEq for TextRange {
+    fn eq(&self, other: &Self) -> bool {
+        self.intersects(other)
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !self.intersects(other)
+    }
+}
+
+impl PartialOrd for TextRange {
+    fn ge(&self, other: &Self) -> bool {
+        self.start >= other.end
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        self.start > other.end
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.start <= other.end
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        self.start < other.end
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.intersects(other) {
+            Some(Ordering::Equal)
+        } else if self > other {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Less)
+        }
+    }
 }
 
 impl TextRange {
@@ -62,6 +103,18 @@ impl TextRange {
     /// Returns true if the other range is contained within this one.
     pub fn contains_range(&self, other: TextRange) -> bool {
         self.start <= other.start && self.end >= other.end
+    }
+
+	/// Wether or not two `TextRange`s intersect eachother.
+    pub fn intersects(&self, other: &TextRange) -> bool {
+        self.start <= other.start && self.end >= other.start
+            || other.start <= self.start && other.end >= self.start
+    }
+
+	/// Fuse two ranges into one.
+    pub fn merge(&mut self, other: TextRange) {
+        self.start = min(self.start, other.start);
+        self.end = max(self.end, other.end);
     }
 }
 
@@ -147,32 +200,6 @@ impl Change {
 
         Change { added_text: lines.clone(), taken_text, splice }
     }
-
-    /// Applies the change to the given text.
-    pub fn apply(&self, lines: &mut Vec<TextLine>) {
-        let taken_range = TextRange { start: self.splice.start, end: self.splice.taken_end };
-
-        // The added lines where taken_range resides.
-        let edit_lines = lines[taken_range.lines()].iter().map(|l| l.text().to_string()).collect();
-
-        let new = extend_edit(edit_lines, self.added_text.clone(), taken_range).0;
-        let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
-
-        lines.splice(taken_range.lines(), new);
-    }
-
-    /// Undoes the change and returns the modified text.
-    pub fn undo(&self, lines: &mut Vec<TextLine>) {
-        let added_range = TextRange { start: self.splice.start, end: self.splice.added_end };
-
-        // The lines where `added_range` resides.
-        let undo_lines = lines[added_range.lines()].iter().map(|l| l.text().to_string()).collect();
-
-        let new = extend_edit(undo_lines, self.taken_text.clone(), added_range).0;
-        let new: Vec<TextLine> = new.iter().map(|l| TextLine::new(l.clone())).collect();
-
-        lines.splice(added_range.lines(), new);
-    }
 }
 
 /// A moment in history, which may contain changes, or may just contain selections.
@@ -199,10 +226,10 @@ pub struct History {
 impl History {
     /// Returns a new instance of `History`.
     pub fn new() -> History {
-        History { moments: Vec::new(), current_moment: 0}
+        History { moments: Vec::new(), current_moment: 0 }
     }
 
-	/// Starts a new `Moment` if the `History` is at it's very beginning.
+    /// Starts a new `Moment` if the `History` is at it's very beginning.
     pub fn start_if_needed(&mut self) {
         if self.current_moment == 0 {
             self.new_moment();
@@ -326,21 +353,3 @@ pub fn get_byte(line: &str, col: usize) -> usize {
     line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
 }
 
-/// Returns the text in the given range of `TextLine`s.
-pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
-    let mut lines = Vec::with_capacity(range.lines().count());
-    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
-    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
-
-    if range.lines().count() == 1 {
-        lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
-    } else {
-        lines.push(text[range.start.row].text()[first_byte..].to_string());
-        for line in text.iter().take(range.end.row - 1).skip(range.start.row + 1) {
-            lines.push(line.text().to_string());
-        }
-        lines.push(text.get(range.end.row).unwrap().text()[..last_byte].to_string());
-    }
-
-    lines
-}

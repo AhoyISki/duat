@@ -6,7 +6,7 @@ use crate::{
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
     saturating_add_signed,
-    ui::{EndNode, Ui},
+    ui::{EndNode, Ui}, empty_edit,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -160,8 +160,7 @@ impl TextCursor {
         (cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte =
-            saturating_add_signed(cur.byte, get_byte_distance(lines, old_target, *cur));
+        cur.byte = saturating_add_signed(cur.byte, get_byte_distance(lines, old_target, *cur));
     }
 
     /// Internal horizontal movement function.
@@ -267,9 +266,25 @@ impl TextCursor {
         };
     }
 
-    /// Commits tnge and empties it.
+    /// Commits the change and empties it.
     pub fn commit(&mut self) -> Option<Change> {
         self.change.take()
+    }
+
+    /// Merges the `TextCursor`s selection with another `TextRange`.
+    pub fn merge(&mut self, range: &TextRange) {
+        if let Some(anchor) = &mut self.anchor {
+            if self.cur > *anchor {
+                self.cur = max(self.cur, range.end);
+                *anchor = min(*anchor, range.start);
+            } else {
+                *anchor = max(*anchor, range.end);
+                self.cur = min(self.cur, range.start);
+            }
+        } else {
+            self.cur = max(self.cur, range.end);
+            self.anchor = Some(range.start);
+        }
     }
 }
 
@@ -303,18 +318,37 @@ impl<'a> EditCursor<'a> {
     /// was not successful, so that the old `Change` can be replaced and commited.
     pub(crate) fn try_merge(&mut self, edit: &mut Change) -> Option<Change> {
         if let Some(orig) = &mut self.0.change {
-            let orig_added = orig.splice.added_range();
-            let edit_taken = edit.splice.taken_range();
+            let orig_taken = orig.splice.taken_range();
+            let mut orig_added = orig.splice.added_range();
+            let mut edit_taken = edit.splice.taken_range();
 
-            if orig_added.contains_range(edit_taken) {
+            // Case where the original change is intercepted at the end, or the middle.
+            if edit_taken.start >= orig_added.start && orig_added.end >= edit_taken.start {
                 let splice = &mut orig.splice;
+                // If the change also includes part of the original file.
+                if edit_taken.end > orig_added.end {
+                    // Replace the text of "edit", that's part of "orig"'s added text, with nothing.
+                    let on_orig = TextRange { start: edit_taken.start, end: orig_added.end };
+                    let mut file_text = edit.taken_text.clone();
+                    merge_edit(&mut file_text, &empty_edit(), edit_taken.start, on_orig);
+
+                    // Append the remaining text to the end of "orig"'s taken text.
+                    let end_range = TextRange { start: orig_taken.end, end: orig_taken.end };
+                    merge_edit(&mut orig.taken_text, &file_text, splice.start, end_range);
+                    move_end(&empty_edit(), &file_text, &mut splice.taken_end, end_range);
+
+                    // Change what parts of "orig" are taken out by "edit".
+                    edit_taken.end = orig_added.end;
+                }
                 merge_edit(&mut orig.added_text, &edit.added_text, splice.start, edit_taken);
                 move_end(&edit.taken_text, &edit.added_text, &mut splice.added_end, edit_taken);
-            } else if edit_taken.contains_range(orig_added) {
+            // Case where the original change is intercepted at the beginning.
+            } else if orig_added.start >= edit_taken.start && edit_taken.end >= orig_added.start {
                 let splice = &mut edit.splice;
                 merge_edit(&mut edit.taken_text, &orig.taken_text, splice.start, orig_added);
                 move_end(&orig.added_text, &orig.taken_text, &mut splice.taken_end, orig_added);
                 self.0.change = Some(edit.clone());
+            // If the changes don't intercep at all, they cannot be merged.
             } else {
                 return self.0.change.replace(edit.clone());
             };
@@ -393,6 +427,7 @@ impl SpliceAdder {
     }
 }
 
+/// A simple function to add the values of a `SpliceAdder` correctly.
 pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
     pos.row = saturating_add_signed(pos.row, splice_adder.lines);
     pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
@@ -454,8 +489,27 @@ fn move_end(taken: &Vec<String>, added: &Vec<String>, end: &mut TextPos, range: 
         let diff = if added.len() == 1 { range.end.col - range.start.col } else { range.end.col };
         end.col += added.last().unwrap().chars().count() - diff;
     }
-    end.row += added.len() - range.lines().count();
+    end.row += added.len() - taken.len();
     let edit_len = added.iter().map(|l| l.len()).sum::<usize>();
     let orig_len = taken.iter().map(|l| l.len()).sum::<usize>();
     end.byte += edit_len - orig_len;
+}
+
+/// Returns the text in the given range of `TextLine`s.
+pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
+    let mut lines = Vec::with_capacity(range.lines().count());
+    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
+    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
+
+    if range.lines().count() == 1 {
+        lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
+    } else {
+        lines.push(text[range.start.row].text()[first_byte..].to_string());
+        for line in text.iter().take(range.end.row - 1).skip(range.start.row + 1) {
+            lines.push(line.text().to_string());
+        }
+        lines.push(text.get(range.end.row).unwrap().text()[..last_byte].to_string());
+    }
+
+    lines
 }
