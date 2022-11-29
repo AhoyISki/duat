@@ -67,6 +67,7 @@ pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
     text.char_indices().nth(col).map(|c| c.0)
 }
 
+/// An empty list of `String`s, representing an empty edit/file.
 pub fn empty_edit() -> Vec<String> {
     vec![String::from("")]
 }

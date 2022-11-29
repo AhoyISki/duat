@@ -43,13 +43,12 @@ use std::{
 };
 
 use crate::{
-    cursor::{relative_add, SpliceAdder, TextPos},
+    cursor::{relative_add, SpliceAdder, TextPos, get_text_in_range},
     file::TextLine,
-    get_byte_at_col,
     layout::file_widget::PrintInfo,
 };
 
-/// A range of `chars` in the file, that is, not bytes.
+/// A range in a file, containing rows, columns, and bytes (from the beginning);
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TextRange {
     pub start: TextPos,
@@ -107,14 +106,23 @@ impl TextRange {
 
 	/// Wether or not two `TextRange`s intersect eachother.
     pub fn intersects(&self, other: &TextRange) -> bool {
-        self.start <= other.start && self.end >= other.start
-            || other.start <= self.start && other.end >= self.start
+        self.start <= other.start && self.end > other.start
+            || other.start <= self.start && other.end > self.start
     }
 
 	/// Fuse two ranges into one.
     pub fn merge(&mut self, other: TextRange) {
         self.start = min(self.start, other.start);
         self.end = max(self.end, other.end);
+    }
+
+	/// Returns the amount of columns in the last line of the range.
+    pub fn last_col_diff(&self) -> usize {
+        if self.lines().count() == 1 {
+            self.end.col - self.start.col
+        } else {
+            self.end.col
+        }
     }
 }
 

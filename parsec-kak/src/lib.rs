@@ -59,6 +59,20 @@ impl EditingScheme for Editor {
                     file_editor.clone_last();
                     file_editor.move_last(|c| c.move_hor(1, &file));
                 }
+                KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
+                    if *ch == 't' =>
+                {
+                    file_editor.move_each_cursor(|mut c| {
+                        c.set_anchor();
+                        c.move_hor(5, &file);
+                    });
+                    file_editor.edit_on_each_cursor(|mut c| {
+                        file.edit(&mut c, "shit and fard");
+                    });
+                    file_editor.move_each_cursor(|mut c| {
+                        c.unset_anchor();
+                    });
+                }
                 KeyEvent { code: KeyCode::Char(ch), .. } => {
                     file_editor.edit_on_each_cursor(|mut c| {
                         file.edit(&mut c, ch);
@@ -71,8 +85,10 @@ impl EditingScheme for Editor {
                 }
                 KeyEvent { code: KeyCode::Backspace, .. } => {
                     file_editor.move_each_cursor(|mut c| {
-                        c.set_anchor();
-                        c.move_hor(-1, &file);
+                        if !c.anchor_is_set() {
+                            c.set_anchor();
+                            c.move_hor(-1, &file);
+                        }
                     });
                     file_editor.edit_on_each_cursor(|mut c| {
                         file.edit(&mut c, "");
