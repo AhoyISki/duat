@@ -12,7 +12,7 @@ use crate::{
     ui::{RawEndNode, Ui},
 };
 
-// NOTE: Unlike cursor and file positions, character tags are byte indexed, not character indexed.
+// NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CharTag {
@@ -48,7 +48,7 @@ impl CharTag {
     {
         match self {
             CharTag::PushForm(form) => printer.push_form(forms, form.0),
-            CharTag::PopForm(form) => printer.pop_form(form.0),
+            CharTag::PopForm(form) => printer.remove_form(form.0),
             CharTag::WrapppingChar => {
                 if !printer.wrap_line() {
                     return false;

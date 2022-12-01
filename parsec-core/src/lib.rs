@@ -15,6 +15,7 @@ pub mod layout;
 pub mod tags;
 pub mod ui;
 
+/// General struct for an application, that includes a `Ui`, `Layout`, and `EditingScheme`s.
 pub struct Application<L, E, U>
 where
     L: Layout<U>,
@@ -33,6 +34,7 @@ where
     E: EditingScheme,
     U: Ui,
 {
+    /// Returns a new instance of `Application`.
     pub fn new(layout: L, key_remapper: FileRemapper<E>) -> Self {
         Application {
             layout,
@@ -40,8 +42,6 @@ where
             _phantom_stuff: (PhantomData::default(), PhantomData::default()),
         }
     }
-
-    pub fn application_loop(&mut self) {}
 }
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.
@@ -63,6 +63,7 @@ fn split_string_lines(string: &String) -> Vec<String> {
     }
 }
 
+/// Gets the line-byte at a given col in a string.
 pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
     text.char_indices().nth(col).map(|c| c.0)
 }
@@ -81,11 +82,12 @@ pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
     }
 }
 
-// Useful for testing.
+//////////// Useful for testing.
 pub static mut FOR_TEST: bool = false;
 pub static mut FOR_TEST_2: bool = false;
 
-pub fn log_info(fmt: fmt::Arguments) {
+/// Internal function used to log information.
+pub(crate) fn log_info(fmt: fmt::Arguments) {
     use std::{fs, io::Write};
     let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
     log.write_fmt(fmt).unwrap();
