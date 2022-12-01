@@ -312,72 +312,15 @@ impl<'a> EditCursor<'a> {
         }
     }
 
-    /// Tries to merge the `TextCursor`'s associated `Change` with another one.
-    ///
-    /// Returns `None` if `TextCursor` has no `Change`, and only returns `Some(_)` when the merger
-    /// was not successful, so that the old `Change` can be replaced and commited.
-    pub(crate) fn try_merge(&mut self, edit: &mut Change) -> Option<Change> {
-        if let Some(orig) = &mut self.0.change {
-            let orig_taken = orig.splice.taken_range();
-            let edit_added = edit.splice.added_range();
-            let mut orig_added = orig.splice.added_range();
-            let mut edit_taken = edit.splice.taken_range();
+	pub fn try_merge(&mut self, mut change: Change) -> Option<Change> {
+    	if let Some(cursor_change) = &mut self.0.change {
+        	if let Ok(()) = change.try_merge(cursor_change) {
+            	return None;
+        	}
+    	}
 
-            // Case where the original change is intercepted at the end, or the middle.
-            if edit_taken.start >= orig_added.start && orig_added.end >= edit_taken.start {
-                let end = min(orig_added.end, edit_taken.end);
-                let intersect = TextRange { start: edit_taken.start, end };
-                let splice = &mut orig.splice;
-                // If the change also includes part of the original file.
-                if edit_taken.end > orig_added.end {
-                    // Remove the intersecting bit from "edit".
-                    let mut excl_to_edit = edit.taken_text.clone();
-                    splice_text(&mut excl_to_edit, &empty_edit(), edit_taken.start, intersect);
-
-                    // Append the remaining text to the end of "orig"'s taken text.
-                    let old_range = TextRange { start: orig_taken.end, end: orig_taken.end };
-                    splice_text(&mut orig.taken_text, &excl_to_edit, splice.start, old_range);
-
-					// Since "edit" is calibrated to the file, its ends can be reused.
-                    splice.taken_end = edit_taken.end;
-                    splice.added_end = edit_added.end;
-                } else {
-                    move_end(&mut splice.added_end, edit_taken, edit_added);
-                }
-                splice_text(&mut orig.added_text, &edit.added_text, splice.start, intersect);
-            // Case where the original change is intercepted at the beginning.
-            } else if orig_added.start >= edit_taken.start && edit_taken.end >= orig_added.start {
-                let end = min(orig_added.end, edit_taken.end);
-                let intersect = TextRange { start: orig_added.start, end };
-                let splice = &mut edit.splice;
-                // If the change also includes part of the original file.
-                if orig_added.end > edit_taken.end {
-                    // Remove the intersecting bit from "orig".
-                    let mut excl_to_orig = orig.added_text.clone();
-                    splice_text(&mut excl_to_orig, &empty_edit(), orig_added.start, intersect);
-
-                    // Append the remaining text to the end of "edit"'s added text.
-                    let end_range = TextRange { start: edit_added.end, end: edit_added.end };
-                    splice_text(&mut edit.added_text, &excl_to_orig, splice.start, end_range);
-
-					move_end(&mut orig_added.end, edit_taken, edit_added);
-					splice.taken_end = orig_taken.end;
-					splice.added_end = orig_added.end;
-                } else {
-                    move_end(&mut splice.taken_end, orig_added, orig_taken);
-                }
-                splice_text(&mut edit.taken_text, &orig.taken_text, splice.start, intersect);
-                self.0.change = Some(edit.clone());
-            // If the changes don't intercep at all, they cannot be merged.
-            } else {
-                return self.0.change.replace(edit.clone());
-            };
-
-            return None;
-        }
-
-        self.0.change.replace(edit.clone())
-    }
+    	self.0.change.replace(change)
+	}
 }
 
 pub struct MoveCursor<'a>(&'a mut TextCursor);
@@ -485,37 +428,6 @@ pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isi
     distance
 }
 
-/// Merges two `String`s into one, given a starting position of the original and a range to cut off.
-fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range: TextRange) {
-    let range = TextRange { start: range.start - start, end: range.end - start };
-
-    let first_line = &orig[range.start.row];
-    let first_byte = get_byte_at_col(range.start.col, first_line).unwrap_or(first_line.len());
-    let last_line = &orig[range.end.row];
-    let last_byte = get_byte_at_col(range.end.col, last_line).unwrap_or(last_line.len());
-
-    if range.lines().count() == 1 && edit.len() == 1 {
-        orig[range.start.row].replace_range(first_byte..last_byte, edit[0].as_str());
-    } else {
-        let first_amend = &orig[range.start.row][..first_byte];
-        let last_amend = &orig[range.end.row][last_byte..];
-
-        let mut edit = edit.clone();
-
-        edit.first_mut().unwrap().insert_str(0, first_amend);
-        edit.last_mut().unwrap().push_str(last_amend);
-
-        orig.splice(range.lines(), edit);
-    }
-}
-
-fn move_end(end: &mut TextPos, old_range: TextRange, new_range: TextRange) {
-    if end.row == old_range.end.row {
-        end.col += new_range.last_col_diff() - old_range.last_col_diff();
-    }
-    end.row += new_range.lines().count() - old_range.lines().count();
-    end.byte += new_range.end.byte - old_range.end.byte;
-}
 
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
@@ -535,3 +447,4 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
 
     lines
 }
+
