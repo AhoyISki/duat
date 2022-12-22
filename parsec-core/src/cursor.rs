@@ -3,9 +3,9 @@ use std::cmp::{max, min};
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
-    empty_edit, get_byte_at_col,
+    get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    saturating_add_signed,
+    log_info, saturating_add_signed,
     ui::{EndNode, Ui},
 };
 
@@ -16,12 +16,6 @@ pub struct TextPos {
     pub(crate) byte: usize,
     pub(crate) col: usize,
     pub(crate) row: usize,
-}
-
-impl std::fmt::Debug for TextPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("col: {}, line: {}, byte: {}", self.col, self.row, self.byte))
-    }
 }
 
 impl TextPos {
@@ -50,19 +44,33 @@ impl TextPos {
         }
     }
 
+    // NOTE: It assumes that the `TextPos` is not contained in `splice`.
+    /// Calibrates a `TextPos`, given a `Splice`.
     pub fn calibrate(&mut self, splice: &Splice) {
-        let Splice { start, added_end, taken_end } = splice;
-        if *self > *start {
-            // The column will only change if the `TextPos` is in the same line.
-            if self.row == taken_end.row {
-                self.col += added_end.col - taken_end.col;
-            }
-
-            self.byte += added_end.byte - taken_end.byte;
-            // The line of the cursor will increase if the edit has more lines than the original
-            // selection, and vice-versa.
-            self.row += added_end.row - taken_end.row;
+        let Splice { start: _, taken_end, added_end } = splice;
+        // The column will only change if the `TextPos` is in the same line.
+        if self.row == taken_end.row {
+            self.col += added_end.col - taken_end.col;
         }
+
+        self.row += added_end.row - taken_end.row;
+        self.byte += added_end.byte - taken_end.byte;
+    }
+
+    pub fn move_by_range(&mut self, splice: &Splice) {
+        log_info(format_args!("{:#?},\n {:#?}", splice, self));
+        if self.row == splice.added_end.row {
+            self.col += splice.taken_end.col - splice.start.col;
+        }
+
+        self.row += splice.taken_end.row - splice.start.row;
+        self.byte += splice.taken_end.byte - splice.start.byte;
+    }
+}
+
+impl std::fmt::Debug for TextPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("col: {}, line: {}, byte: {}", self.col, self.row, self.byte))
     }
 }
 
@@ -125,12 +133,6 @@ pub struct TextCursor {
     /// it will be placed in the desired_col. If the line is shorter, it will be
     /// placed in the last column of the line.
     desired_x: usize,
-}
-
-impl Clone for TextCursor {
-    fn clone(&self) -> Self {
-        TextCursor { prev: None, desired_x: self.cur.col, change: None, ..*self }
-    }
 }
 
 impl TextCursor {
@@ -288,44 +290,59 @@ impl TextCursor {
     }
 }
 
+impl Clone for TextCursor {
+    fn clone(&self) -> Self {
+        TextCursor { prev: None, desired_x: self.cur.col, change: None, ..*self }
+    }
+}
+
+/// A cursor that can edit text in its selection, but can't move the selection in any way.
 pub struct EditCursor<'a>(&'a mut TextCursor, &'a mut SpliceAdder);
 
 impl<'a> EditCursor<'a> {
+    /// Returns a new instance of `EditCursor`.
     pub fn new(cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder) -> Self {
         EditCursor(cursor, splice_adder)
     }
 
+    /// Returns the range of the `TextCursor`'s selection.
     pub fn cursor_range(&self) -> TextRange {
         self.0.range()
     }
 
+    /// Calibrate the inner adder with a `Splice`.
     pub fn calibrate_adder(&mut self, splice: &Splice) {
         self.1.calibrate(splice)
     }
 
+    /// Calibrate the cursor with a `Splice`.
     pub fn calibrate_cursor(&mut self, splice: &Splice) {
         self.0.cur.calibrate(splice);
         for opt in [&mut self.0.anchor, &mut self.0.prev] {
-            if let Some(anchor) = opt {
+            if let Some(anchor) = &mut opt.filter(|&pos| pos > splice.start) {
                 anchor.calibrate(splice);
             }
         }
     }
 
-	pub fn try_merge(&mut self, mut change: Change) -> Option<Change> {
-    	if let Some(cursor_change) = &mut self.0.change {
-        	if let Ok(()) = change.try_merge(cursor_change) {
-            	return None;
-        	}
-    	}
+    /// Try to merge a new `Change`. If not possible, replace the current `Change` with it.
+    pub fn merge_or_replace(&mut self, change: Change) -> Option<Change> {
+        if let Some(cursor_change) = &mut self.0.change {
+            if let Ok(()) = cursor_change.try_merge(&change) {
+                log_info(format_args!("{:#?}", cursor_change));
+                return None;
+            }
+        }
 
-    	self.0.change.replace(change)
-	}
+        self.0.change.replace(change)
+    }
 }
 
+/// A cursor that can move and alter the selection, but can't edit the file.
 pub struct MoveCursor<'a>(&'a mut TextCursor);
 
 impl<'a> MoveCursor<'a> {
+    /// Returns	a new instance of `MoveCursor`.
     pub fn new(cursor: &'a mut TextCursor) -> Self {
         MoveCursor(cursor)
     }
@@ -428,7 +445,6 @@ pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isi
     distance
 }
 
-
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
@@ -439,7 +455,7 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
         lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
     } else {
         lines.push(text[range.start.row].text()[first_byte..].to_string());
-        for line in text.iter().take(range.end.row - 1).skip(range.start.row + 1) {
+        for line in text.iter().take(range.end.row).skip(range.start.row + 1) {
             lines.push(line.text().to_string());
         }
         lines.push(text.get(range.end.row).unwrap().text()[..last_byte].to_string());
@@ -447,4 +463,3 @@ pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> 
 
     lines
 }
-

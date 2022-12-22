@@ -12,8 +12,8 @@
 //! one `PrintInfo`. `Change`s are splices that contain the original text, the text that
 //! was added, their respective ending positions in the file, and a starting position.
 //!
-//! Whenever you undo a `Moment`, all of its splices are reversed on the file, in reverse order
-//! according to the starting position of each splice, and the file's `PrintInfo` is updated to the
+//! Whenever you undo a `Moment`, all of its splices are reversed on the file, in an order defined
+//! by the starting position of each splice, and the file's `PrintInfo` is updated to the
 //! `Moment`'s `PrintInfo`. We change the `PrintInfo` in order to send the user back to the position
 //! he was in previously, as he can just look at the same place on the screen for the changes, which
 //! I think of as much less jarring.
@@ -48,6 +48,7 @@ use crate::{
     file::TextLine,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
+    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -58,20 +59,30 @@ pub struct TextRange {
 }
 
 impl TextRange {
+    /// Creates an empty `TextRange` from a single position.
+    pub fn empty_at(pos: TextPos) -> Self {
+        TextRange { start: pos, end: pos }
+    }
+    
     /// Returns a range with all the lines involved in the edit.
     pub fn lines(&self) -> RangeInclusive<usize> {
         self.start.row..=self.end.row
     }
 
     /// Returns true if the other range is contained within this one.
-    pub fn contains_range(&self, other: TextRange) -> bool {
+    pub fn contains(&self, other: &TextRange) -> bool {
         self.start <= other.start && self.end >= other.end
     }
 
     /// Wether or not two `TextRange`s intersect eachother.
     pub fn intersects(&self, other: &TextRange) -> bool {
-        self.start <= other.start && self.end > other.start
-            || other.start <= self.start && other.end > self.start
+        (other.start >= self.start && self.end > other.start)
+            || (self.start >= other.start && other.end > self.start)
+    }
+
+    /// Wether or not `self` intersects the starting position of `other`.
+    pub fn at_start(&self, other: &TextRange) -> bool {
+        self.start <= other.start && other.start <= self.end
     }
 
     /// Fuse two ranges into one.
@@ -89,14 +100,14 @@ impl TextRange {
         }
     }
 
-    /// Returns `Ordering::Equal` if the ranges intersect, otherwise, returns as expected.
+    /// Returns `Ordering::Equal` if `self.at_start(other)`, otherwise, returns as expected.
     pub fn cross_ord(&self, other: &TextRange) -> Ordering {
-        if self.intersects(other) {
+        if self.at_start(other) {
             Ordering::Equal
-        } else if other.start >= self.end {
-            Ordering::Less
-        } else {
+        } else if other.start > self.end {
             Ordering::Greater
+        } else {
+            Ordering::Less
         }
     }
 }
@@ -137,9 +148,11 @@ impl Splice {
     }
 
     pub fn calibrate(&mut self, splice: &Splice) {
-        self.start.calibrate(splice);
-        self.taken_end.calibrate(splice);
-        self.added_end.calibrate(splice);
+        for pos in [&mut self.start, &mut self.taken_end, &mut self.added_end] {
+            if *pos > splice.start {
+                pos.calibrate(splice);
+            }
+        }
     }
 
     pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
@@ -148,6 +161,7 @@ impl Splice {
         }
     }
 
+    /// Returns a reversed version of the `Splice`.
     pub fn reverse(&self) -> Splice {
         Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
     }
@@ -198,64 +212,72 @@ impl Change {
     ///
     /// Returns `None` if `TextCursor` has no `Change`, and only returns `Some(_)` when the merger
     /// was not successful, so that the old `Change` can be replaced and commited.
-    pub(crate) fn try_merge(&mut self, edit: &mut Change) -> Result<(), ()> {
-        let orig_taken = self.taken_range();
-        let edit_added = edit.added_range();
-        let mut orig_added = self.added_range();
-        let edit_taken = edit.taken_range();
-
-        // Case where the original change is intercepted at the end, or the middle.
-        if edit_taken.start >= orig_added.start && orig_added.end >= edit_taken.start {
-            let end = min(orig_added.end, edit_taken.end);
-            let intersect = TextRange { start: edit_taken.start, end };
-            let splice = &mut self.splice;
-            // If the change also includes part of the original file.
-            if edit_taken.end > orig_added.end {
-                // Remove the intersecting bit from "edit".
-                let mut excl_to_edit = edit.taken_text.clone();
-                splice_text(&mut excl_to_edit, &empty_edit(), edit_taken.start, intersect);
-
-                // Append the remaining text to the end of "orig"'s taken text.
-                let old_range = TextRange { start: orig_taken.end, end: orig_taken.end };
-                splice_text(&mut self.taken_text, &excl_to_edit, splice.start, old_range);
-
-                // Since "edit" is calibrated to the file, its ends can be reused.
-                splice.taken_end = edit_taken.end;
-                splice.added_end = edit_added.end;
-            } else {
-                move_end(&mut splice.added_end, edit_taken, edit_added);
-            }
-            splice_text(&mut self.added_text, &edit.added_text, splice.start, intersect);
-
-            Ok(())
-        // Case where the original change is intercepted at the beginning.
-        } else if orig_added.start >= edit_taken.start && edit_taken.end >= orig_added.start {
-            let end = min(orig_added.end, edit_taken.end);
-            let intersect = TextRange { start: orig_added.start, end };
-            let splice = &mut edit.splice;
-            // If the change also includes part of the original file.
-            if orig_added.end > edit_taken.end {
-                // Remove the intersecting bit from "orig".
-                let mut excl_to_orig = self.added_text.clone();
-                splice_text(&mut excl_to_orig, &empty_edit(), orig_added.start, intersect);
-
-                // Append the remaining text to the end of "edit"'s added text.
-                let end_range = TextRange { start: edit_added.end, end: edit_added.end };
-                splice_text(&mut edit.added_text, &excl_to_orig, splice.start, end_range);
-
-                move_end(&mut orig_added.end, edit_taken, edit_added);
-                splice.taken_end = orig_taken.end;
-                splice.added_end = orig_added.end;
-            } else {
-                move_end(&mut splice.taken_end, orig_added, orig_taken);
-            }
-            splice_text(&mut edit.taken_text, &self.taken_text, splice.start, intersect);
-            *self = edit.clone();
-
-            Ok(())
+    pub(crate) fn try_merge(&mut self, edit: &Change) -> Result<(), ()> {
+        if self.added_range().contains(&edit.taken_range()) {
+            self.merge_contained(edit);
+        } else if self.added_range().at_start(&edit.taken_range()) {
+            self.merge_on_end(edit);
+        } else if edit.taken_range().at_start(&self.added_range()) {
+            self.merge_on_start(edit);
         } else {
-            Err(())
+            return Err(());
         }
+
+        Ok(())
+    }
+
+    /// Merges a prior `edit`, assuming that it intersects the start of  `self`.
+    pub(crate) fn merge_on_start(&mut self, edit: &Change) {
+        let intersect = TextRange { start: self.splice.start, end: edit.splice.taken_end };
+        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
+
+        let mut edit_taken_text = edit.taken_text.clone();
+        let empty_range = TextRange::empty_at(self.splice.start);
+        splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
+        splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
+
+        self.splice.start = edit.splice.start;
+        self.splice.added_end.calibrate(&edit.splice);
+    }
+
+	/// Merges a new `edit`, assuming that it intersects the end of `self`.
+    pub(crate) fn merge_on_end(&mut self, edit: &Change) {
+        let intersect = TextRange { start: edit.splice.start, end: self.splice.added_end };
+        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
+
+        let mut edit_taken_text = edit.taken_text.clone();
+        let empty_range = TextRange::empty_at(self.splice.taken_end);
+        splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
+        splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
+
+        self.splice.added_end = edit.splice.added_end;
+        move_end(&mut self.splice.taken_end, &self.splice.added_end, &edit.splice);
+    }
+
+	/// Merges a new `edit`, assuming that it is completely contained within `self`.
+    pub(crate) fn merge_contained(&mut self, edit: &Change) {
+        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
+        self.splice.added_end.calibrate(&edit.splice);
+    }
+
+    /// Merges a prior `edit`, assuming that it is completely contained within `self`.
+    pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
+        splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
+        self.splice.taken_end.calibrate(&edit.splice.reverse());
+    }
+
+    /// Merges a prior `edit`, assuming that it intersects the start of `self`.
+    pub(crate) fn back_merge_on_start(&mut self, edit: &Change) {
+        let intersect = TextRange { start: self.splice.start, end: edit.splice.added_end };
+        splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, intersect);
+
+        let mut edit_added_text = edit.added_text.clone();
+        let empty_range = TextRange::empty_at(self.splice.start);
+        splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
+        splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
+
+        self.splice.start = edit.splice.start;
+        self.splice.taken_end.calibrate(&edit.splice.reverse());
     }
 }
 
@@ -274,44 +296,28 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
     pub fn merge_or_insert(&mut self, mut change: Change) {
-        let changes = &self.changes;
-        let mut to_remove = Vec::new();
-        match changes.binary_search_by(|cmp| change.taken_range().cross_ord(&cmp.taken_range())) {
-            Ok(index) => {
-                self.changes.remove(index);
+        let found_index = try_find_merge(&mut change, &mut self.changes);
+        let mut first_index = None;
 
-				// TODO: Use `let &&` chains after they get implemented.
-				// First, try to merge with subsequent `Change`s.
-                change.try_merge(&mut self.changes[index]).unwrap();
-                let mut change_iter = self.changes.iter_mut().enumerate().skip(index);
-                while let Some((index, cur_change)) = change_iter.next() {
-                    if let Ok(()) = change.try_merge(cur_change) {
-                        // `+ 1` because after you insert the change, all subsequent `Change`s will
-                        // be moved down the vector by 1.
-                        to_remove.push(index + 1);
-                    } else {
-                        break;
-                    }
-                }
-
-				// Then, try to merge with previous `Change`s.
-                let mut change_iter = self.changes.iter_mut().enumerate().take(index).rev();
-                while let Some((index, cur_change)) = change_iter.next() {
-                    if let Ok(()) = change.try_merge(cur_change) {
-                        to_remove.push(index);
-                    } else {
-                        break;
-                    }
-                }
-
-                self.changes.insert(index, change);
+        // Then, try to merge with previous `Change`s.
+        let mut change_iter = self.changes.iter().enumerate().take(found_index).rev();
+        while let Some((index, cur_change)) = change_iter.next() {
+            if change.taken_range().intersects(&cur_change.added_range()) {
+                first_index = Some(index);
+            } else {
+                break;
             }
-            Err(index) => self.changes.insert(index, change),
-        };
-
-        for index in to_remove {
-            self.changes.remove(index);
         }
+
+        if let Some(first_index) = first_index {
+            change.back_merge_on_start(&self.changes[first_index]);
+            for old_change in self.changes.iter().take(found_index).skip(first_index + 1) {
+                change.back_merge_contained(&old_change);
+            }
+            self.changes.splice(first_index..found_index, Vec::new());
+        }
+
+        self.changes.insert(first_index.unwrap_or(found_index), change);
     }
 }
 
@@ -343,7 +349,8 @@ impl History {
     }
 
     /// Adds a change to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
-    pub fn add_change(&mut self, mut change: Change) {
+    pub fn add_change(&mut self, change: Change) {
+        log_info(format_args!("{:#?}", self));
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
@@ -478,10 +485,25 @@ fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range
     }
 }
 
-fn move_end(end: &mut TextPos, old_range: TextRange, new_range: TextRange) {
-    if end.row == old_range.end.row {
-        end.col += new_range.last_col_diff() - old_range.last_col_diff();
+/// Returns an index for a `Change` merger, merging if it does.
+fn try_find_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
+    match changes.binary_search_by(|cmp| change.taken_range().cross_ord(&cmp.added_range())) {
+        Ok(index) => {
+            let mut cur_change = changes.remove(index);
+            cur_change.merge_on_start(&change);
+            *change = cur_change;
+
+            index
+        }
+        Err(index) => index,
     }
-    end.row += new_range.lines().count() - old_range.lines().count();
-    end.byte += new_range.end.byte - old_range.end.byte;
+}
+
+fn move_end(end: &mut TextPos, other: &TextPos, splice: &Splice) {
+    if other.row == splice.taken_end.row {
+        end.col += splice.taken_end.col - splice.start.col;
+    }
+
+    end.row += splice.taken_end.row - splice.start.row;
+    end.byte += splice.taken_end.byte - splice.start.byte;
 }

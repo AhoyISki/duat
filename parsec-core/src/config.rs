@@ -1,13 +1,17 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::ui::{EndNode, Ui, RawEndNode};
+use crate::ui::{Ui, RawEndNode};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
 pub enum WrapMethod {
+    /// Wrap at the end of the screen.
     Width,
+    /// Wrap at a given width.
     Capped(u16),
+    /// Wrap at the end of the screen, on word boundaries.
     Word,
+    /// Don't wrap at all.
     #[default]
     NoWrap,
 }
@@ -28,17 +32,23 @@ impl Default for ScrollOff {
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
 pub enum LineNumbers {
+    /// No line numbers.
     None,
     #[default]
+    /// Line numbers relative to the beginning of the file.
     Absolute,
+    /// Line numbers relative to the main cursor's line, including that line.
     Relative,
+    /// Relative line numbers on every line, except the main cursor's.
     Hybrid,
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.
 #[derive(Debug, Clone)]
 pub enum TabPlaces {
+    /// The same lenght for every tab.
     Regular(usize),
+    /// Varying lenghts for different tabs.
     Varied(Vec<usize>),
 }
 
@@ -80,9 +90,11 @@ pub struct Config {
     pub tabs_as_spaces: bool,
 }
 
+/// A read-write reference to information, and can tell readers if said information has changed.
 pub struct RwState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
 
 impl<T> RwState<T> {
+    /// Returns a new instance of `RwState`.
     pub fn new(data: T) -> Self {
         // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
         // `true` at least once, by copying the second value - 1.
@@ -111,10 +123,7 @@ impl<T> RwState<T> {
         self.0.write().unwrap()
     }
 
-    pub fn to_ro(&self) -> RoState<T> {
-        RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.1.read().unwrap() - 1))
-    }
-
+	/// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
         let last_version = self.1.read().unwrap();
         let mut current_version = self.2.write().unwrap();
@@ -131,16 +140,13 @@ impl<T> Clone for RwState<T> {
 	}
 }
 
+/// A read-only reference to information, and can tell readers if said information has changed.
 pub struct RoState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
 
 impl<T> RoState<T> {
-    
-    pub fn new(data: T) -> Self {
+	/// Returns a new instance of `RwState`.
+	pub fn new(data: T) -> Self {
         RoState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
-    }
-
-    pub fn from_rw(rw: RwState<T>) -> Self {
-        RoState(rw.0.clone(), rw.1.clone(), RwLock::new(*rw.1.read().unwrap() - 1))
     }
 
 	/// Reads the information.
@@ -171,6 +177,12 @@ impl<T> RoState<T> {
         } else {
             false
         }
+    }
+}
+
+impl<T> From<&RwState<T>> for RoState<T> {
+    fn from(state: &RwState<T>) -> Self {
+        RoState(state.0.clone(), state.1.clone(), RwLock::new(*state.1.read().unwrap() - 1))
     }
 }
 

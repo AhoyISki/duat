@@ -5,7 +5,7 @@ use crate::{
     config::WrapMethod,
     cursor::TextPos,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui}, get_byte_at_col, layout::file_widget::PrintInfo,
+    ui::{EndNode, RawEndNode, Ui}, get_byte_at_col, layout::file_widget::PrintInfo, log_info,
 };
 
 // TODO: move this to a more general file.
@@ -441,6 +441,7 @@ impl Text {
     }
 
     pub fn apply_change(&mut self, change: &Change) {
+        log_info(format_args!("{:#?}", change));
         self.merge_text(&change.added_text, change.splice.taken_range());
     }
 

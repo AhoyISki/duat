@@ -110,8 +110,8 @@ where
         let (parent_node, child_node) =
             node_manager.split_end(node, Direction::Left, Split::Static(split), true);
         let printed_lines = file_widget.printed_lines();
-        let main_cursor = file_widget.main_cursor.to_ro();
-        let cursors = file_widget.cursors.to_ro();
+        let main_cursor = RoState::from(&file_widget.main_cursor);
+        let cursors = RoState::from(&file_widget.cursors);
 
         let mut line_numbers = LineNumbersWidget {
             node: child_node,
@@ -169,7 +169,7 @@ where
     }
 
     fn text(&self) -> RoState<Text> {
-        self.text.to_ro()
+        RoState::from(&self.text)
     }
 
     fn end_node(&self) -> &EndNode<M> {
