@@ -64,7 +64,7 @@ impl EditingScheme for Editor {
                 {
                     file_editor.move_each_cursor(|mut c| {
                         c.set_anchor();
-                        c.move_ver(3, &file);
+                        c.move_hor(3, &file);
                     });
                     file_editor.edit_on_each_cursor(|mut c| {
                         file.edit(&mut c, "xd");

@@ -236,8 +236,7 @@ impl Change {
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        self.splice.start = edit.splice.start;
-        self.splice.added_end.calibrate(&edit.splice);
+        merge_on_splice(&mut self.splice, &edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it intersects the end of `self`.
@@ -248,22 +247,22 @@ impl Change {
         let mut edit_taken_text = edit.taken_text.clone();
         let empty_range = TextRange::empty_at(self.splice.taken_end);
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
+        log_info(format_args!("{:#?}", edit_taken_text));
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        self.splice.added_end = edit.splice.added_end;
-        move_end(&mut self.splice.taken_end, &self.splice.added_end, &edit.splice);
+        merge_on_splice(&mut self.splice, &edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
-        self.splice.added_end.calibrate(&edit.splice);
+        merge_on_splice(&mut self.splice, &edit.splice);
     }
 
     /// Merges a prior `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
-        self.splice.taken_end.calibrate(&edit.splice.reverse());
+        merge_on_splice(&mut self.splice, &edit.splice);
     }
 
     /// Merges a prior `edit`, assuming that it intersects the start of `self`.
@@ -276,8 +275,7 @@ impl Change {
         splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
 
-        self.splice.start = edit.splice.start;
-        self.splice.taken_end.calibrate(&edit.splice.reverse());
+        merge_on_splice(&mut self.splice, &edit.splice);
     }
 }
 
@@ -499,11 +497,21 @@ fn try_find_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
     }
 }
 
-fn move_end(end: &mut TextPos, other: &TextPos, splice: &Splice) {
-    if other.row == splice.taken_end.row {
-        end.col += splice.taken_end.col - splice.start.col;
+fn merge_on_splice(orig: &mut Splice, edit: &Splice) {
+    if orig.added_end.row == edit.taken_end.row {
+        orig.taken_end.col += edit.taken_end.col.saturating_sub(orig.added_end.col);
+        orig.taken_end.byte += edit.taken_end.byte.saturating_sub(orig.added_end.byte);
+    } else if edit.taken_end.row > orig.added_end.row {
+        orig.taken_end.col = edit.taken_end.col;
+        orig.taken_end.row += edit.taken_end.row - orig.added_end.row;
+        orig.taken_end.byte += edit.taken_end.byte - orig.added_end.byte;
     }
 
-    end.row += splice.taken_end.row - splice.start.row;
-    end.byte += splice.taken_end.byte - splice.start.byte;
+    if edit.taken_end > orig.added_end {
+        orig.added_end = edit.added_end;
+    } else {
+        orig.added_end.move_by_range(&edit.added_range());
+    }
+
+    orig.start = min(edit.start, orig.start);
 }

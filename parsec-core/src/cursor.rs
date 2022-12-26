@@ -57,14 +57,13 @@ impl TextPos {
         self.byte += added_end.byte - taken_end.byte;
     }
 
-    pub fn move_by_range(&mut self, splice: &Splice) {
-        log_info(format_args!("{:#?},\n {:#?}", splice, self));
-        if self.row == splice.added_end.row {
-            self.col += splice.taken_end.col - splice.start.col;
+    pub fn move_by_range(&mut self, range: &TextRange) {
+        if self.row == range.end.row {
+            self.col += range.end.col - range.start.col;
         }
 
-        self.row += splice.taken_end.row - splice.start.row;
-        self.byte += splice.taken_end.byte - splice.start.byte;
+        self.row += range.end.row - range.start.row;
+        self.byte += range.end.byte - range.start.byte;
     }
 }
 
