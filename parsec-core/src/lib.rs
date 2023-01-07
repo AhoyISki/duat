@@ -86,9 +86,14 @@ pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
 pub static mut FOR_TEST: bool = false;
 pub static mut FOR_TEST_2: bool = false;
 
-/// Internal function used to log information.
-pub(crate) fn log_info(fmt: fmt::Arguments) {
-    use std::{fs, io::Write};
-    let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-    log.write_fmt(fmt).unwrap();
+/// Internal macro used to log information.
+#[macro_export]
+macro_rules! log_info {
+    ($($text:tt)*) => {
+        {
+            use std::{fs, io::Write};
+            let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+            log.write_fmt(format_args!($($text)*)).unwrap();
+        }
+    }
 }

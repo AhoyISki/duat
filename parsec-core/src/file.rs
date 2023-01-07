@@ -1,11 +1,13 @@
 use std::{cmp::min, ops::RangeInclusive};
 
 use crate::{
-    action::{get_byte, Change, TextRange, Splice},
+    action::{get_byte, Change, Splice, TextRange},
     config::WrapMethod,
     cursor::TextPos,
+    get_byte_at_col,
+    layout::file_widget::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui}, get_byte_at_col, layout::file_widget::PrintInfo, log_info,
+    ui::{EndNode, RawEndNode, Ui},
 };
 
 // TODO: move this to a more general file.
@@ -410,8 +412,8 @@ impl Text {
         printed_lines
     }
 
-	// This is more efficient than using the `merge_edit()` function.
-	/// Merges `String`s with the body of text, given a range to replace.
+    // This is more efficient than using the `merge_edit()` function.
+    /// Merges `String`s with the body of text, given a range to replace.
     fn merge_text(&mut self, edit: &Vec<String>, range: TextRange) {
         let lines = &mut self.lines;
 
@@ -422,8 +424,8 @@ impl Text {
             line.text.replace_range(first_byte..last_byte, edit[0].as_str());
         } else {
             let first_line = &lines[range.start.row];
-            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).expect(format!("{:#?}", range).as_str());
-            let last_line= &lines[range.end.row];
+            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).unwrap();
+            let last_line = &lines[range.end.row];
             let last_line_byte = get_byte_at_col(range.end.col, &last_line.text).unwrap();
 
             let first_amend = &first_line.text[..first_line_byte];
@@ -441,7 +443,6 @@ impl Text {
     }
 
     pub fn apply_change(&mut self, change: &Change) {
-        log_info(format_args!("{:#?}", change));
         self.merge_text(&change.added_text, change.splice.taken_range());
     }
 

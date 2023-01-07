@@ -1,10 +1,5 @@
 //! Parsec's way of editing text.
 //!
-//! This module contains all the operations that deal with editing a file's contents. The edits
-//! happen by taking a range of lines from the original file and replacing it by a vector of lines,
-//! equivalent to the original set of lines with an edit applied to it. The vast majority of the
-//! time, this just involves taking one original line and placing one character on it (typing).
-//!
 //! This module also deals with the history system and undoing/redoing changes. The history system
 //! works like this:
 //!
@@ -43,12 +38,10 @@ use std::{
 };
 
 use crate::{
-    cursor::{get_text_in_range, relative_add, SpliceAdder, TextPos},
-    empty_edit,
+    cursor::{get_text_in_range, TextPos, SpliceAdder, relative_add, relative_back_add},
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo,
-    log_info,
+    layout::file_widget::PrintInfo, empty_edit,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -147,7 +140,7 @@ impl Splice {
         TextRange { start: self.start, end: self.taken_end }
     }
 
-    pub fn calibrate(&mut self, splice: &Splice) {
+    pub fn calibrate_on_splice(&mut self, splice: &Splice) {
         for pos in [&mut self.start, &mut self.taken_end, &mut self.added_end] {
             if *pos > splice.start {
                 pos.calibrate(splice);
@@ -161,9 +154,19 @@ impl Splice {
         }
     }
 
+    pub fn back_calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
+            relative_back_add(pos, &splice_adder);
+        }
+    }
+
     /// Returns a reversed version of the `Splice`.
     pub fn reverse(&self) -> Splice {
         Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
+    }
+
+    pub fn back_col_differential(&self) -> isize {
+        self.taken_end.col as isize - self.added_end.col as isize - self.start.col as isize
     }
 }
 
@@ -236,7 +239,7 @@ impl Change {
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        merge_on_splice(&mut self.splice, &edit.splice);
+        splice_on_splice(&mut self.splice, &edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it intersects the end of `self`.
@@ -247,22 +250,21 @@ impl Change {
         let mut edit_taken_text = edit.taken_text.clone();
         let empty_range = TextRange::empty_at(self.splice.taken_end);
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
-        log_info(format_args!("{:#?}", edit_taken_text));
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        merge_on_splice(&mut self.splice, &edit.splice);
+        splice_on_splice(&mut self.splice, &edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
-        merge_on_splice(&mut self.splice, &edit.splice);
+        splice_on_splice(&mut self.splice, &edit.splice);
     }
 
     /// Merges a prior `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
-        merge_on_splice(&mut self.splice, &edit.splice);
+        splice_on_splice(&mut self.splice, &edit.splice);
     }
 
     /// Merges a prior `edit`, assuming that it intersects the start of `self`.
@@ -275,7 +277,7 @@ impl Change {
         splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
 
-        merge_on_splice(&mut self.splice, &edit.splice);
+        splice_on_splice(&mut self.splice, &edit.splice);
     }
 }
 
@@ -348,7 +350,6 @@ impl History {
 
     /// Adds a change to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
     pub fn add_change(&mut self, change: Change) {
-        log_info(format_args!("{:#?}", self));
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
@@ -402,58 +403,6 @@ impl History {
     }
 }
 
-// Say you have text like this:
-//
-// ####$###########
-// ########
-// ###########§##
-//
-// And you want to replace the text at the positions $<=x<§ with %%%%%.
-// You can just take the first part of the first line, and the last part of the last line and
-// insert them on %%%%%. This way, you'll get:
-//
-// ####%%%%%§##
-//
-// And your edit is complete.
-/// Returns an edit with the leftover original lines appended to it.
-pub fn extend_edit(
-    old: Vec<String>, mut edit: Vec<String>, range: TextRange,
-) -> (Vec<String>, TextRange) {
-    let start = range.start;
-
-    let byte = start.byte + edit.iter().map(|l| l.len()).sum::<usize>();
-    let last_edit_len = edit.last().unwrap().chars().count();
-
-    // Where the byte of `range.start` is.
-    let first_line = old.first().unwrap();
-    let first_byte = get_byte(first_line, range.start.col);
-
-    // Inserting the beginning of the first original line into the edit.
-    let first_edit_line = edit.first_mut().unwrap();
-    first_edit_line.insert_str(0, &first_line[..first_byte]);
-
-    // Where the byte of `range.end` is.
-    let last_line = old.last().unwrap();
-    let last_byte = get_byte(last_line, range.end.col);
-
-    // Appending the end of the last original line into the edit.
-    let edit_len = edit.len();
-    let last_edit_line = edit.last_mut().unwrap();
-    last_edit_line.push_str(&last_line[last_byte..]);
-
-    let added_range = TextRange {
-        start: range.start,
-        end: if edit_len == 1 {
-            TextPos { row: start.row, byte, col: start.col + last_edit_len }
-        } else {
-            TextPos { row: start.row + edit.len() - 1, byte, col: last_edit_len }
-        },
-    };
-
-    // The modified edit is what should be placed in the original vector of lines.
-    (edit, added_range)
-}
-
 /// Gets the byte where a character starts on a given string.
 pub fn get_byte(line: &str, col: usize) -> usize {
     line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
@@ -497,7 +446,8 @@ fn try_find_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
     }
 }
 
-fn merge_on_splice(orig: &mut Splice, edit: &Splice) {
+/// Calibrates a `Splice` with another one.
+fn splice_on_splice(orig: &mut Splice, edit: &Splice) {
     if orig.added_end.row == edit.taken_end.row {
         orig.taken_end.col += edit.taken_end.col.saturating_sub(orig.added_end.col);
         orig.taken_end.byte += edit.taken_end.byte.saturating_sub(orig.added_end.byte);
@@ -510,7 +460,7 @@ fn merge_on_splice(orig: &mut Splice, edit: &Splice) {
     if edit.taken_end > orig.added_end {
         orig.added_end = edit.added_end;
     } else {
-        orig.added_end.move_by_range(&edit.added_range());
+        orig.added_end.calibrate(edit);
     }
 
     orig.start = min(edit.start, orig.start);

@@ -1,12 +1,12 @@
-use std::cmp::{max, min};
+use std::{cmp::{max, min}};
 
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    log_info, saturating_add_signed,
-    ui::{EndNode, Ui},
+    saturating_add_signed,
+    ui::{EndNode, Ui}, log_info, FOR_TEST,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -47,14 +47,16 @@ impl TextPos {
     // NOTE: It assumes that the `TextPos` is not contained in `splice`.
     /// Calibrates a `TextPos`, given a `Splice`.
     pub fn calibrate(&mut self, splice: &Splice) {
-        let Splice { start: _, taken_end, added_end } = splice;
-        // The column will only change if the `TextPos` is in the same line.
-        if self.row == taken_end.row {
-            self.col += added_end.col - taken_end.col;
-        }
+        let Splice { start, taken_end, added_end } = splice;
+        if *self > *start {
+            // The column will only change if the `TextPos` is in the same line.
+            if self.row == taken_end.row {
+                self.col += added_end.col - taken_end.col;
+            }
 
-        self.row += added_end.row - taken_end.row;
-        self.byte += added_end.byte - taken_end.byte;
+            self.row += added_end.row - taken_end.row;
+            self.byte += added_end.byte - taken_end.byte;
+        }
     }
 
     pub fn move_by_range(&mut self, range: &TextRange) {
@@ -259,12 +261,10 @@ impl TextCursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate(&mut self, splice_adder: &SpliceAdder) {
+    pub(crate) fn calibrate(&mut self, splice_adder: &mut SpliceAdder) {
         relative_add(&mut self.cur, splice_adder);
-        self.anchor.as_mut().map(|a| relative_add(a, splice_adder));
-        if let Some(change) = &mut self.change {
-            change.splice.calibrate_on_adder(splice_adder);
-        };
+        self.anchor.as_mut().map(|anchor| relative_add(anchor, splice_adder));
+        self.change.as_mut().map(|change| change.splice.calibrate_on_adder(splice_adder));
     }
 
     /// Commits the change and empties it.
@@ -328,7 +328,6 @@ impl<'a> EditCursor<'a> {
     pub fn merge_or_replace(&mut self, change: Change) -> Option<Change> {
         if let Some(cursor_change) = &mut self.0.change {
             if let Ok(()) = cursor_change.try_merge(&change) {
-                log_info(format_args!("{:#?}", cursor_change));
                 return None;
             }
         }
@@ -396,26 +395,39 @@ pub struct SpliceAdder {
 }
 
 impl SpliceAdder {
+	/// Resets the column change if the row has changed.
+    pub fn reset_cols(&mut self, range: &TextRange) {
+        if range.start.row > self.last_pos.row {
+            self.last_pos = range.start;
+            self.cols = 0;
+        }
+    }
+
     // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
     /// Calibrates, given a splice.
     pub(crate) fn calibrate(&mut self, splice: &Splice) {
         self.lines += splice.added_end.row as isize - splice.taken_end.row as isize;
         self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
-        let sum = splice.added_end.col as isize - splice.taken_end.col as isize;
-        if self.last_pos.row == splice.taken_end.row {
-            self.cols += sum;
-        } else {
-            self.cols = sum;
-        }
-        self.last_pos = splice.added_end;
+        self.cols += splice.added_end.col as isize - splice.taken_end.col as isize;
     }
 }
 
 /// A simple function to add the values of a `SpliceAdder` correctly.
 pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
+    if pos.row == splice_adder.last_pos.row {
+        log_info!("nope: {:#?}", splice_adder);
+        pos.col = saturating_add_signed(pos.col, splice_adder.cols);
+    }
+    pos.row = saturating_add_signed(pos.row, splice_adder.lines);
+    pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
+}
+
+/// A simple function to add the values of a `SpliceAdder` correctly.
+pub fn relative_back_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
     pos.row = saturating_add_signed(pos.row, splice_adder.lines);
     pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
     if pos.row == splice_adder.last_pos.row {
+        log_info!("nope: {:#?}", splice_adder);
         pos.col = saturating_add_signed(pos.col, splice_adder.cols);
     }
 }
