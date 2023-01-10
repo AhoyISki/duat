@@ -41,7 +41,7 @@ use crate::{
     cursor::{get_text_in_range, TextPos, SpliceAdder, relative_add},
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, empty_edit, log_info,
+    layout::file_widget::PrintInfo, empty_edit,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -192,8 +192,6 @@ impl Change {
 
         let taken_text = get_text_in_range(text, range);
         let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
-
-        log_info!("{:#?}", splice);
 
         Change { added_text: lines.clone(), taken_text, splice }
     }

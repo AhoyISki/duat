@@ -75,9 +75,11 @@ where
     where
         U: Ui,
     {
+        file.remove_cursor_tags();
         for key in &self.gives {
             editing_scheme.process_key(key, file);
         }
+        file.add_cursor_tags();
     }
 }
 
@@ -135,9 +137,11 @@ where
             if let Some(next_key) = remap.takes.get(self.current_sequence.len()) {
                 // Only continue if the sequence, with the newly pressed key, still matches.
                 if *next_key == key {
-                    // Send the remapped keys, like `jk` in `jk -> <Esc>`.
+                    // If the `editing_scheme` requires it, send the intermediary keys individually.
                     if self.editing_scheme.send_remapped_keys() {
+                        file.remove_cursor_tags();
                         self.editing_scheme.process_key(&key, file);
+                        file.add_cursor_tags();
                     }
 
                     // This means that the sequence has been fully completed.
@@ -157,7 +161,9 @@ where
 
 
         if should_check_new.is_empty() {
+            file.remove_cursor_tags();
             self.editing_scheme.process_key(&key, file);
+            file.add_cursor_tags();
         }
 
         self.should_check = should_check_new;

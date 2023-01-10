@@ -133,7 +133,7 @@ where
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().prev().row;
+        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().cur().row;
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());

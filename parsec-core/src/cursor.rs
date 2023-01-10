@@ -1,12 +1,13 @@
-use std::{cmp::{max, min}};
+use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
     action::{Change, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    saturating_add_signed,
-    ui::{EndNode, Ui}, log_info, FOR_TEST,
+    log_info, saturating_add_signed,
+    ui::{EndNode, Ui},
+    FOR_TEST,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -114,11 +115,6 @@ impl std::ops::SubAssign for TextPos {
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 #[derive(Debug)]
 pub struct TextCursor {
-    // The `prev` and `cur` positions pretty much exist solely for more versatile comparisons
-    // of movement when printing to the screen.
-    /// Previous position of the cursor in the file.
-    prev: Option<TextPos>,
-
     /// Current position of the cursor in the file.
     cur: TextPos,
 
@@ -141,7 +137,6 @@ impl TextCursor {
     pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
         let line = lines.get(pos.row).unwrap();
         TextCursor {
-            prev: None,
             cur: pos,
             // This should be fine.
             anchor: None,
@@ -235,21 +230,9 @@ impl TextCursor {
         TextRange { start: min(self.cur, anchor), end: max(self.cur, anchor) }
     }
 
-    /// Updates the position of the cursor on the terminal.
-    ///
-    /// - This function does not take horizontal scrolling into account.
-    pub fn update(&mut self) {
-        self.prev = Some(self.cur);
-    }
-
     ////////////////////////////////
     // Getters
     ////////////////////////////////
-    /// Returns the cursor's position on the file.
-    pub fn prev(&self) -> TextPos {
-        self.prev.unwrap_or(self.cur)
-    }
-
     /// Returns the cursor's position on the screen.
     pub fn cur(&self) -> TextPos {
         self.cur
@@ -265,7 +248,6 @@ impl TextCursor {
         relative_add(&mut self.cur, splice_adder);
         self.anchor.as_mut().map(|anchor| relative_add(anchor, splice_adder));
         self.change.as_mut().map(|change| change.splice.calibrate_on_adder(splice_adder));
-        
     }
 
     /// Commits the change and empties it.
@@ -292,7 +274,7 @@ impl TextCursor {
 
 impl Clone for TextCursor {
     fn clone(&self) -> Self {
-        TextCursor { prev: None, desired_x: self.cur.col, change: None, ..*self }
+        TextCursor { desired_x: self.cur.col, change: None, ..*self }
     }
 }
 
@@ -318,10 +300,8 @@ impl<'a> EditCursor<'a> {
     /// Calibrate the cursor with a `Splice`.
     pub fn calibrate_cursor(&mut self, splice: &Splice) {
         self.0.cur.calibrate(splice);
-        for opt in [&mut self.0.anchor, &mut self.0.prev] {
-            if let Some(anchor) = &mut opt.filter(|&pos| pos > splice.start) {
-                anchor.calibrate(splice);
-            }
+        if let Some(anchor) = &mut self.0.anchor.filter(|&pos| pos > splice.start) {
+            anchor.calibrate(splice);
         }
     }
 
@@ -396,7 +376,7 @@ pub struct SpliceAdder {
 }
 
 impl SpliceAdder {
-	/// Resets the column change if the row has changed.
+    /// Resets the column change if the row has changed.
     pub fn reset_cols(&mut self, range: &TextRange) {
         if range.start.row > self.last_row {
             self.cols = 0;
@@ -426,15 +406,15 @@ pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
 // NOTE: It could still be made more efficient.
 /// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
 ///1
-/// Returns positive if `target > current`, negative if `target < current`, 0 otherwise.
-pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isize {
-    let mut distance = lines[cur.row].get_line_byte_at(cur.col) as isize;
-    distance -= lines[prev.row].get_line_byte_at(prev.col) as isize;
+/// Returns positive if `new > old`, negative if `new < old`, 0 otherwise.
+pub fn get_byte_distance(lines: &[TextLine], old: TextPos, new: TextPos) -> isize {
+    let mut distance = lines[new.row].get_line_byte_at(new.col) as isize;
+    distance -= lines[old.row].get_line_byte_at(old.col) as isize;
 
-    let (direction, range) = if cur.row > prev.row {
-        (1, prev.row..cur.row)
-    } else if cur.row < prev.row {
-        (-1, cur.row..prev.row)
+    let (direction, range) = if new.row > old.row {
+        (1, old.row..new.row)
+    } else if new.row < old.row {
+        (-1, new.row..old.row)
     } else {
         return distance;
     };
@@ -447,7 +427,6 @@ pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isi
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
-    log_info!("{:#?}, {:#?}", text, range);
     let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
     let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
 
