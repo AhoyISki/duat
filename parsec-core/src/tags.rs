@@ -105,6 +105,7 @@ impl std::fmt::Debug for CharTags {
                 CharTag::PopForm(form) => format!("{}PoF({})", b, form.0),
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::PrimaryCursor => format!("{}:Pc", b),
+                CharTag::SecondaryCursor => format!("{}:Pc", b),
                 _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()

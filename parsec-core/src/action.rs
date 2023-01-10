@@ -38,10 +38,10 @@ use std::{
 };
 
 use crate::{
-    cursor::{get_text_in_range, TextPos, SpliceAdder, relative_add, relative_back_add},
+    cursor::{get_text_in_range, TextPos, SpliceAdder, relative_add},
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, empty_edit,
+    layout::file_widget::PrintInfo, empty_edit, log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -154,12 +154,6 @@ impl Splice {
         }
     }
 
-    pub fn back_calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
-        for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
-            relative_back_add(pos, &splice_adder);
-        }
-    }
-
     /// Returns a reversed version of the `Splice`.
     pub fn reverse(&self) -> Splice {
         Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
@@ -195,8 +189,11 @@ impl Change {
             lines.last().unwrap().chars().count()
         };
 
+
         let taken_text = get_text_in_range(text, range);
         let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
+
+        log_info!("{:#?}", splice);
 
         Change { added_text: lines.clone(), taken_text, splice }
     }

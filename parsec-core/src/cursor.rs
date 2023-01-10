@@ -261,10 +261,11 @@ impl TextCursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate(&mut self, splice_adder: &mut SpliceAdder) {
+    pub(crate) fn calibrate(&mut self, splice_adder: &SpliceAdder) {
         relative_add(&mut self.cur, splice_adder);
         self.anchor.as_mut().map(|anchor| relative_add(anchor, splice_adder));
         self.change.as_mut().map(|change| change.splice.calibrate_on_adder(splice_adder));
+        
     }
 
     /// Commits the change and empties it.
@@ -388,7 +389,7 @@ impl<'a> MoveCursor<'a> {
 /// A helper, for dealing with recalibration of cursors.
 #[derive(Default, Debug)]
 pub struct SpliceAdder {
-    pub last_pos: TextPos,
+    pub last_row: usize,
     pub lines: isize,
     pub bytes: isize,
     pub cols: isize,
@@ -397,10 +398,10 @@ pub struct SpliceAdder {
 impl SpliceAdder {
 	/// Resets the column change if the row has changed.
     pub fn reset_cols(&mut self, range: &TextRange) {
-        if range.start.row > self.last_pos.row {
-            self.last_pos = range.start;
+        if range.start.row > self.last_row {
             self.cols = 0;
         }
+        self.last_row = range.start.row;
     }
 
     // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
@@ -414,22 +415,9 @@ impl SpliceAdder {
 
 /// A simple function to add the values of a `SpliceAdder` correctly.
 pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
-    if pos.row == splice_adder.last_pos.row {
-        log_info!("nope: {:#?}", splice_adder);
-        pos.col = saturating_add_signed(pos.col, splice_adder.cols);
-    }
+    pos.col = saturating_add_signed(pos.col, splice_adder.cols);
     pos.row = saturating_add_signed(pos.row, splice_adder.lines);
     pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
-}
-
-/// A simple function to add the values of a `SpliceAdder` correctly.
-pub fn relative_back_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
-    pos.row = saturating_add_signed(pos.row, splice_adder.lines);
-    pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
-    if pos.row == splice_adder.last_pos.row {
-        log_info!("nope: {:#?}", splice_adder);
-        pos.col = saturating_add_signed(pos.col, splice_adder.cols);
-    }
 }
 
 // This function is just a much more efficient way of getting the byte in a position than having to
@@ -459,6 +447,7 @@ pub fn get_byte_distance(lines: &[TextLine], prev: TextPos, cur: TextPos) -> isi
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
+    log_info!("{:#?}, {:#?}", text, range);
     let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
     let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
 
