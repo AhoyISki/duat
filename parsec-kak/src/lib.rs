@@ -38,6 +38,11 @@ impl EditingScheme for Editor {
                     if *ch == 'd' =>
                 unsafe { FOR_TEST = !FOR_TEST },
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
+                    if *ch == 'n' =>
+                {
+                    file_editor.rotate_main_forward();
+                }
+                KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 'z' =>
                 {
                     file.undo();
@@ -112,7 +117,18 @@ impl EditingScheme for Editor {
                         c.unset_anchor();
                     });
                 }
-
+                KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
+                    file_editor.move_main(|c| c.move_hor(-1, &file));
+                }
+                KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
+                    file_editor.move_main(|c| c.move_hor(1, &file));
+                }
+                KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
+                    file_editor.move_main(|c| c.move_ver(-1, &file));
+                }
+                KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
+                    file_editor.move_main(|c| c.move_ver(1, &file));
+                }
                 KeyEvent { code: KeyCode::Left, .. } => {
                     file_editor.move_each_cursor(|mut c| c.move_hor(-1, &file));
                 }

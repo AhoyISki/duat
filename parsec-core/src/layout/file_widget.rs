@@ -113,13 +113,13 @@ impl PrintedLines {
 
 pub struct FileEditor {
     cursors: RwState<Vec<TextCursor>>,
-    main_cursor: usize,
+    main_cursor: RwState<usize>,
     moment: Moment
 }
 
 impl FileEditor {
     /// Returns a new instance of `FileEditor`.
-    pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: usize) -> Self {
+    pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: RwState<usize>) -> Self {
         Self { cursors, main_cursor, moment: Moment::default() }
     }
 
@@ -174,7 +174,7 @@ impl FileEditor {
         cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
 
         drop(cursors);
-        self.clear_intersections();
+        //self.clear_intersections();
     }
 
     /// Alters the nth cursor's selection.
@@ -186,16 +186,24 @@ impl FileEditor {
         let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
         f(&mut MoveCursor::new(&mut cursor));
 
+        let cursor = cursors.remove(index);
         let range = cursor.range();
         let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
             Ok(index) => index,
             Err(index) => index,
         };
-        let cursor = cursors.remove(index);
+        log_info!("\n{} {}\n", index, new_index);
         cursors.insert(new_index, cursor);
 
+        let mut main_cursor = self.main_cursor.write();
+        if index == *main_cursor {
+            *main_cursor = new_index;
+        }
+
+        log_info!("\n{:#?}\n", cursors);
+
         drop(cursors);
-        self.clear_intersections();
+        //self.clear_intersections();
     }
 
     /// Alters the main cursor's selection.
@@ -203,7 +211,9 @@ impl FileEditor {
     where
         F: FnMut(&mut MoveCursor),
     {
-        self.move_nth(f, self.main_cursor);
+
+        let main_cursor = *self.main_cursor.read();
+        self.move_nth(f, main_cursor);
     }
 
     /// Alters the last cursor's selection.
@@ -237,7 +247,8 @@ impl FileEditor {
     where
         F: FnMut(&mut EditCursor),
     {
-        self.edit_on_nth(f, self.main_cursor);
+        let main_cursor = *self.main_cursor.read();
+        self.edit_on_nth(f, main_cursor);
     }
 
     /// Edits on the last cursor's selection.
@@ -255,7 +266,16 @@ impl FileEditor {
 
     /// The main cursor index.
     pub fn main_cursor(&self) -> usize {
-        self.main_cursor
+        *self.main_cursor.read()
+    }
+
+    pub fn rotate_main_forward(&mut self) {
+        let mut main_cursor = self.main_cursor.write();
+        *main_cursor = if *main_cursor == self.cursors.read().len() - 1 {
+            0
+        } else {
+            *main_cursor + 1
+        }
     }
 
     pub fn clone_last(&mut self) {
@@ -677,7 +697,7 @@ where
 
     /// The object used to edit the file through cursors.
     pub fn file_editor(&mut self) -> FileEditor {
-        FileEditor::new(self.cursors.clone(), *self.main_cursor.read())
+        FileEditor::new(self.cursors.clone(), self.main_cursor.clone())
     }
 }
 

@@ -378,6 +378,7 @@ impl<'a> MoveCursor<'a> {
 /// A helper, for dealing with recalibration of cursors.
 #[derive(Default, Debug)]
 pub struct SpliceAdder {
+    /// Determines the last row, in which 
     pub last_row: usize,
     pub lines: isize,
     pub bytes: isize,
@@ -385,6 +386,13 @@ pub struct SpliceAdder {
 }
 
 impl SpliceAdder {
+    /// Returns a new instance of `SpliceAdder`, calibrated by a `Splice`.
+    pub fn new(splice: &Splice) -> Self {
+        let mut splice_adder = SpliceAdder::default();
+        splice_adder.calibrate(splice);
+        splice_adder
+    }
+
     /// Resets the column change if the row has changed.
     pub fn reset_cols(&mut self, start: &TextPos) {
         if start.row > self.last_row {

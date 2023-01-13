@@ -352,15 +352,14 @@ impl Moment {
             self.changes.splice(first_index..insertion_index, Vec::new());
         }
 
-        self.calibrate_after_index(&change.splice, insertion_index);
+		let mut splice_adder = SpliceAdder::new(&change.splice);
+		splice_adder.last_row = change.splice.taken_end.row;
+        self.calibrate_range(&splice_adder, insertion_index);
 
         self.changes.insert(first_merge_index.unwrap_or(insertion_index), change);
     }
 
-    fn calibrate_after_index(&mut self, splice: &Splice, insertion_index: usize) {
-        let mut splice_adder = SpliceAdder::default();
-        splice_adder.last_row = splice.taken_end().row;
-        splice_adder.calibrate(splice);
+    fn calibrate_range(&mut self, splice_adder: &SpliceAdder, insertion_index: usize) {
         for change in self.changes.iter_mut().skip(insertion_index) {
             change.splice.calibrate_on_adder(&splice_adder);
         }
@@ -368,6 +367,7 @@ impl Moment {
 
 	/// Same as `Moment::merge()`, but with a sorted list of `Change`s.
     pub fn merge_list(&mut self, mut changes: Vec<Change>) {
+        let mut insertion_index = try_find_merge(&mut changes[0], &mut self.changes);
         for change in &mut changes {
             
         }
