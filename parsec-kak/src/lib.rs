@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use parsec_core::{input::EditingScheme, layout::file_widget::FileWidget, FOR_TEST};
+use parsec_core::{input::EditingScheme, layout::file_widget::FileWidget, FOR_TEST, log_info};
 
 #[derive(Clone, PartialEq)]
 pub enum Mode {
@@ -35,7 +35,7 @@ impl EditingScheme for Editor {
         match self.cur_mode {
             Mode::Insert => match key {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
-                    if *ch == 'u' =>
+                    if *ch == 'd' =>
                 unsafe { FOR_TEST = !FOR_TEST },
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 'z' =>

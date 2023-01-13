@@ -419,17 +419,17 @@ impl Text {
 
         if range.lines().count() == 1 && edit.len() == 1 {
             let line = &mut lines[range.start.row];
-            let first_byte = get_byte_at_col(range.start.col, &line.text).unwrap();
-            let last_byte = get_byte_at_col(range.end.col, &line.text).unwrap();
+            let first_byte = get_byte_at_col(range.start.col, &line.text);
+            let last_byte = get_byte_at_col(range.end.col, &line.text);
             line.text.replace_range(first_byte..last_byte, edit[0].as_str());
         } else {
             let first_line = &lines[range.start.row];
-            let first_line_byte = get_byte_at_col(range.start.col, &first_line.text).unwrap();
+            let first_byte = get_byte_at_col(range.start.col, &first_line.text);
             let last_line = &lines[range.end.row];
-            let last_line_byte = get_byte_at_col(range.end.col, &last_line.text).unwrap();
+            let last_byte = get_byte_at_col(range.end.col, &last_line.text);
 
-            let first_amend = &first_line.text[..first_line_byte];
-            let last_amend = &last_line.text[last_line_byte..];
+            let first_amend = &first_line.text[..first_byte];
+            let last_amend = &last_line.text[last_byte..];
 
             let mut edit = edit.clone();
 

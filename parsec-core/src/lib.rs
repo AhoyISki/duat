@@ -64,8 +64,8 @@ fn split_string_lines(string: &String) -> Vec<String> {
 }
 
 /// Gets the line-byte at a given col in a string.
-pub fn get_byte_at_col(col: usize, text: &String) -> Option<usize> {
-    text.char_indices().nth(col).map(|c| c.0)
+pub fn get_byte_at_col(col: usize, text: &String) -> usize {
+    text.char_indices().nth(col).map(|c| c.0).unwrap_or(text.len())
 }
 
 /// An empty list of `String`s, representing an empty edit/file.

@@ -5,9 +5,8 @@ use crate::{
     action::{Change, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    log_info, saturating_add_signed,
+    saturating_add_signed,
     ui::{EndNode, Ui},
-    FOR_TEST,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -47,7 +46,7 @@ impl TextPos {
 
     // NOTE: It assumes that the `TextPos` is not contained in `splice`.
     /// Calibrates a `TextPos`, given a `Splice`.
-    pub fn calibrate(&mut self, splice: &Splice) {
+    pub fn calibrate_on_splice(&mut self, splice: &Splice) {
         let Splice { start, taken_end, added_end } = splice;
         if *self > *start {
             // The column will only change if the `TextPos` is in the same line.
@@ -58,6 +57,14 @@ impl TextPos {
             self.row += added_end.row - taken_end.row;
             self.byte += added_end.byte - taken_end.byte;
         }
+    }
+
+    pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        if self.row == splice_adder.last_row {
+            self.col = saturating_add_signed(self.col, splice_adder.cols);
+        }
+        self.row = saturating_add_signed(self.row, splice_adder.lines);
+        self.byte = saturating_add_signed(self.byte, splice_adder.bytes);
     }
 
     pub fn move_by_range(&mut self, range: &TextRange) {
@@ -116,7 +123,7 @@ impl std::ops::SubAssign for TextPos {
 #[derive(Debug)]
 pub struct TextCursor {
     /// Current position of the cursor in the file.
-    cur: TextPos,
+    caret: TextPos,
 
     /// An anchor for a selection.
     anchor: Option<TextPos>,
@@ -137,7 +144,7 @@ impl TextCursor {
     pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
         let line = lines.get(pos.row).unwrap();
         TextCursor {
-            cur: pos,
+            caret: pos,
             // This should be fine.
             anchor: None,
             change: None,
@@ -147,8 +154,8 @@ impl TextCursor {
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        let old_target = self.cur;
-        let cur = &mut self.cur;
+        let old_target = self.caret;
+        let cur = &mut self.caret;
 
         let line = cur.row;
         cur.row = (line as i32 + count).clamp(0, lines.len() as i32 - 1) as usize;
@@ -163,44 +170,44 @@ impl TextCursor {
 
     /// Internal horizontal movement function.
     pub(crate) fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        let old_cur = self.cur;
-        let cur = &mut self.cur;
-        let mut col = old_cur.col as i32 + count;
+        let old_caret = self.caret;
+        let caret = &mut self.caret;
+        let mut col = old_caret.col as i32 + count;
 
-        if count >= 0 && cur.row < lines.len() - 1 {
-            let mut line_iter = lines.iter().enumerate().skip(old_cur.row);
+        if count >= 0 && caret.row < lines.len() - 1 {
+            let mut line_iter = lines.iter().enumerate().skip(old_caret.row);
             // Subtract line lenghts until a column is within the line's bounds.
             while let Some((index, line)) = line_iter.next() {
-                cur.row = index;
+                caret.row = index;
                 if col < line.char_count() as i32 {
                     break;
                 }
                 col -= line.char_count() as i32;
             }
-        } else if count < 0 && cur.row > 0 {
-            let mut line_iter = lines.iter().enumerate().take(old_cur.row).rev();
+        } else if count < 0 && caret.row > 0 {
+            let mut line_iter = lines.iter().enumerate().take(old_caret.row).rev();
             // Add line lenghts until the column is positive or equal to 0, making it valid.
             while let Some((index, line)) = line_iter.next() {
                 if col >= 0 {
                     break;
                 }
                 col += line.char_count() as i32;
-                cur.row = index;
+                caret.row = index;
             }
         }
 
-        let line = lines.get(cur.row).unwrap();
-        cur.col = col.clamp(0, line.char_count() as i32) as usize;
+        let line = lines.get(caret.row).unwrap();
+        caret.col = col.clamp(0, line.char_count() as i32 - 1) as usize;
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte = (cur.byte as isize + get_byte_distance(lines, old_cur, *cur)) as usize;
+        caret.byte = caret.byte.saturating_add_signed(get_byte_distance(lines, old_caret, *caret));
 
-        self.desired_x = line.get_distance_to_col(cur.col, &node.raw()) as usize;
+        self.desired_x = line.get_distance_to_col(caret.col, &node.raw()) as usize;
     }
 
     /// Internal absolute movement function. Assumes that `pos` is not calibrated.
     pub(crate) fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        let cur = &mut self.cur;
+        let cur = &mut self.caret;
 
         // TODO: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = saturating_add_signed(cur.byte, get_byte_distance(lines, *cur, pos));
@@ -216,7 +223,7 @@ impl TextCursor {
     pub(crate) fn move_to_calibrated(
         &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
     ) {
-        self.cur = pos;
+        self.caret = pos;
         let line = lines.get(pos.row).unwrap();
         self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
     }
@@ -225,17 +232,17 @@ impl TextCursor {
     ///
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> TextRange {
-        let anchor = self.anchor.unwrap_or(self.cur);
+        let anchor = self.anchor.unwrap_or(self.caret);
 
-        TextRange { start: min(self.cur, anchor), end: max(self.cur, anchor) }
+        TextRange { start: min(self.caret, anchor), end: max(self.caret, anchor) }
     }
 
     ////////////////////////////////
     // Getters
     ////////////////////////////////
     /// Returns the cursor's position on the screen.
-    pub fn cur(&self) -> TextPos {
-        self.cur
+    pub fn caret(&self) -> TextPos {
+        self.caret
     }
 
     /// Returns the cursor's anchor on the file.
@@ -244,9 +251,9 @@ impl TextCursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate(&mut self, splice_adder: &SpliceAdder) {
-        relative_add(&mut self.cur, splice_adder);
-        self.anchor.as_mut().map(|anchor| relative_add(anchor, splice_adder));
+    pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        self.caret.calibrate_on_adder(splice_adder);
+        self.anchor.as_mut().map(|anchor| anchor.calibrate_on_adder(splice_adder));
         self.change.as_mut().map(|change| change.splice.calibrate_on_adder(splice_adder));
     }
 
@@ -258,15 +265,15 @@ impl TextCursor {
     /// Merges the `TextCursor`s selection with another `TextRange`.
     pub fn merge(&mut self, range: &TextRange) {
         if let Some(anchor) = &mut self.anchor {
-            if self.cur > *anchor {
-                self.cur = max(self.cur, range.end);
+            if self.caret > *anchor {
+                self.caret = max(self.caret, range.end);
                 *anchor = min(*anchor, range.start);
             } else {
                 *anchor = max(*anchor, range.end);
-                self.cur = min(self.cur, range.start);
+                self.caret = min(self.caret, range.start);
             }
         } else {
-            self.cur = max(self.cur, range.end);
+            self.caret = max(self.caret, range.end);
             self.anchor = Some(range.start);
         }
     }
@@ -274,11 +281,12 @@ impl TextCursor {
 
 impl Clone for TextCursor {
     fn clone(&self) -> Self {
-        TextCursor { desired_x: self.cur.col, change: None, ..*self }
+        TextCursor { desired_x: self.caret.col, change: None, ..*self }
     }
 }
 
 /// A cursor that can edit text in its selection, but can't move the selection in any way.
+#[derive(Debug)]
 pub struct EditCursor<'a>(&'a mut TextCursor, &'a mut SpliceAdder);
 
 impl<'a> EditCursor<'a> {
@@ -299,9 +307,9 @@ impl<'a> EditCursor<'a> {
 
     /// Calibrate the cursor with a `Splice`.
     pub fn calibrate_cursor(&mut self, splice: &Splice) {
-        self.0.cur.calibrate(splice);
+        self.0.caret.calibrate_on_splice(splice);
         if let Some(anchor) = &mut self.0.anchor.filter(|&pos| pos > splice.start) {
-            anchor.calibrate(splice);
+            anchor.calibrate_on_splice(splice);
         }
     }
 
@@ -318,6 +326,7 @@ impl<'a> EditCursor<'a> {
 }
 
 /// A cursor that can move and alter the selection, but can't edit the file.
+#[derive(Debug)]
 pub struct MoveCursor<'a>(&'a mut TextCursor);
 
 impl<'a> MoveCursor<'a> {
@@ -341,15 +350,15 @@ impl<'a> MoveCursor<'a> {
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: TextPos, file: &FileWidget<impl Ui>) {
-        self.0.move_to(pos, file.text().read().lines(), file.end_node());
+    pub fn move_to(&mut self, caret: TextPos, file: &FileWidget<impl Ui>) {
+        self.0.move_to(caret, file.text().read().lines(), file.end_node());
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
-        self.0.anchor = Some(self.0.cur());
+        self.0.anchor = Some(self.0.caret());
     }
 
     /// Unsets the anchor.
@@ -377,11 +386,10 @@ pub struct SpliceAdder {
 
 impl SpliceAdder {
     /// Resets the column change if the row has changed.
-    pub fn reset_cols(&mut self, range: &TextRange) {
-        if range.start.row > self.last_row {
+    pub fn reset_cols(&mut self, start: &TextPos) {
+        if start.row > self.last_row {
             self.cols = 0;
         }
-        self.last_row = range.start.row;
     }
 
     // NOTE: It depends on the `Splice`s own calibration by the previous state of `self`.
@@ -391,13 +399,6 @@ impl SpliceAdder {
         self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
         self.cols += splice.added_end.col as isize - splice.taken_end.col as isize;
     }
-}
-
-/// A simple function to add the values of a `SpliceAdder` correctly.
-pub fn relative_add(pos: &mut TextPos, splice_adder: &SpliceAdder) {
-    pos.col = saturating_add_signed(pos.col, splice_adder.cols);
-    pos.row = saturating_add_signed(pos.row, splice_adder.lines);
-    pos.byte = saturating_add_signed(pos.byte, splice_adder.bytes);
 }
 
 // This function is just a much more efficient way of getting the byte in a position than having to
@@ -427,8 +428,8 @@ pub fn get_byte_distance(lines: &[TextLine], old: TextPos, new: TextPos) -> isiz
 /// Returns the text in the given range of `TextLine`s.
 pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
-    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text()).unwrap();
-    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text()).unwrap();
+    let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text());
+    let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text());
 
     if range.lines().count() == 1 {
         lines.push(text[range.start.row].text()[first_byte..last_byte].to_string());
