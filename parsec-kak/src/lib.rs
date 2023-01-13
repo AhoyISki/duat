@@ -77,6 +77,9 @@ impl EditingScheme for Editor {
                     file_editor.edit_on_each_cursor(|mut c| {
                         file.edit(&mut c, ch);
                     });
+                    file_editor.move_each_cursor(|mut c| {
+                        c.move_hor(1, &file);
+                    });
                 }
                 KeyEvent { code: KeyCode::Enter, .. } => {
                     file_editor.edit_on_each_cursor(|mut c| {

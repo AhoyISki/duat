@@ -64,7 +64,7 @@ impl TextRange {
 
     /// Returns true if the other range is contained within this one.
     pub fn contains(&self, other: &TextRange) -> bool {
-        self.start <= other.start && self.end >= other.end
+        self.start < other.start && self.end > other.end
     }
 
     /// Wether or not two `TextRange`s intersect eachother.
@@ -171,7 +171,7 @@ impl Splice {
     }
 
 	/// Merges a new `Splice` into an old one.
-    pub fn merge_new(&mut self, splice: &Splice) {
+    pub fn merge(&mut self, splice: &Splice) {
         if self.added_end.row == splice.taken_end.row {
             self.taken_end.col += splice.taken_end.col.saturating_sub(self.added_end.col);
             self.taken_end.byte += splice.taken_end.byte.saturating_sub(self.added_end.byte);
@@ -181,7 +181,7 @@ impl Splice {
             self.taken_end.byte += splice.taken_end.byte - self.added_end.byte;
         }
 
-        if splice.taken_end > self.added_end {
+        if splice.taken_end >= self.added_end {
             self.added_end = splice.added_end;
         } else {
             self.added_end.calibrate_on_splice(splice);
@@ -235,6 +235,7 @@ impl Change {
 
     /// Tries to merge a `Change` with another one.
     pub(crate) fn try_merge(&mut self, edit: &Change) -> Result<(), ()> {
+        log_info!("\nself: {:#?},\nedit: {:#?}\n", self, edit);
         if self.added_range().contains(&edit.taken_range()) {
             self.merge_contained(edit);
         } else if self.added_range().at_start(&edit.taken_range()) {
@@ -244,6 +245,8 @@ impl Change {
         } else {
             return Err(());
         }
+
+        log_info!("\nnew: {:#?}\n", self);
 
         Ok(())
     }
@@ -258,7 +261,7 @@ impl Change {
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        self.splice.merge_new(&edit.splice);
+        self.splice.merge(&edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it intersects the end of `self`.
@@ -271,20 +274,20 @@ impl Change {
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
-        self.splice.merge_new(&edit.splice);
+        self.splice.merge(&edit.splice);
     }
 
 	/// Merges a new `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
-        self.splice.merge_new(&edit.splice);
+        self.splice.merge(&edit.splice);
     }
 
     /// Merges a prior `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
         let mut splice = edit.splice;
-        splice.merge_new(&self.splice);
+        splice.merge(&self.splice);
         self.splice = splice;
     }
 
@@ -299,7 +302,7 @@ impl Change {
         splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
 
         let mut splice = edit.splice;
-        splice.merge_new(&self.splice);
+        splice.merge(&self.splice);
         self.splice = splice;
     }
 }
@@ -319,8 +322,6 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
     pub fn merge(&mut self, mut change: Change) {
-        log_info!("\n{:#?}\n", change);
-        
         let insertion_index = try_find_merge(&mut change, &mut self.changes);
         let mut first_merge_index = None;
 
@@ -336,15 +337,18 @@ impl Moment {
 
         if let Some(mut first_index) = first_merge_index {
             let old_change = &self.changes[first_index];
+
             if old_change.splice.added_range().at_start(&change.splice.taken_range()) {
-                first_index += 1;
+                first_index = min(first_index + 1, self.changes.len() - 1);
             }
             for old_change in self.changes.iter().take(insertion_index).skip(first_index).rev() {
                 change.back_merge_contained(&old_change);
             }
+
             if old_change.splice.added_range().at_start(&change.splice.taken_range()) {
                 change.back_merge_on_start(&self.changes[first_index]);
             }
+
             self.changes.splice(first_index..insertion_index, Vec::new());
         }
 
