@@ -26,24 +26,6 @@ impl TextPos {
         new
     }
 
-    /// Adds columns given `self.line == other.line`.
-    pub fn col_add(&self, other: TextPos) -> TextPos {
-        if self.row == other.row {
-            TextPos { row: self.row, ..(*self + other) }
-        } else {
-            *self
-        }
-    }
-
-    /// Subtracts columns given `self.line == other.line`.
-    pub fn col_sub(&self, other: TextPos) -> TextPos {
-        if self.row == other.row {
-            TextPos { row: self.row, ..(*self - other) }
-        } else {
-            *self
-        }
-    }
-
     // NOTE: It assumes that the `TextPos` is not contained in `splice`.
     /// Calibrates a `TextPos`, given a `Splice`.
     pub fn calibrate_on_splice(&mut self, splice: &Splice) {
@@ -65,15 +47,6 @@ impl TextPos {
         }
         self.row = saturating_add_signed(self.row, splice_adder.lines);
         self.byte = saturating_add_signed(self.byte, splice_adder.bytes);
-    }
-
-    pub fn move_by_range(&mut self, range: &TextRange) {
-        if self.row == range.end.row {
-            self.col += range.end.col - range.start.col;
-        }
-
-        self.row += range.end.row - range.start.row;
-        self.byte += range.end.byte - range.start.byte;
     }
 }
 
@@ -129,7 +102,7 @@ pub struct TextCursor {
     anchor: Option<TextPos>,
 
     /// A change, temporarily associated to this cursor for faster access.
-    pub(crate) change: Option<Change>,
+    pub(crate) change: Option<usize>,
 
     /// Column that the cursor wants to be in.
     ///
@@ -254,12 +227,6 @@ impl TextCursor {
     pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
         self.caret.calibrate_on_adder(splice_adder);
         self.anchor.as_mut().map(|anchor| anchor.calibrate_on_adder(splice_adder));
-        self.change.as_mut().map(|change| change.splice.calibrate_on_adder(splice_adder));
-    }
-
-    /// Commits the change and empties it.
-    pub fn commit(&mut self) -> Option<Change> {
-        self.change.take()
     }
 
     /// Merges the `TextCursor`s selection with another `TextRange`.
@@ -287,41 +254,33 @@ impl Clone for TextCursor {
 
 /// A cursor that can edit text in its selection, but can't move the selection in any way.
 #[derive(Debug)]
-pub struct EditCursor<'a>(&'a mut TextCursor, &'a mut SpliceAdder);
+pub struct EditCursor<'a> {
+    cursor: &'a mut TextCursor,
+    splice_adder: &'a mut SpliceAdder,
+}
 
 impl<'a> EditCursor<'a> {
     /// Returns a new instance of `EditCursor`.
     pub fn new(cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder) -> Self {
-        EditCursor(cursor, splice_adder)
+        EditCursor { cursor, splice_adder }
     }
 
     /// Returns the range of the `TextCursor`'s selection.
     pub fn cursor_range(&self) -> TextRange {
-        self.0.range()
+        self.cursor.range()
     }
 
     /// Calibrate the inner adder with a `Splice`.
     pub fn calibrate_adder(&mut self, splice: &Splice) {
-        self.1.calibrate(splice)
+        self.splice_adder.calibrate(splice)
     }
 
     /// Calibrate the cursor with a `Splice`.
     pub fn calibrate_cursor(&mut self, splice: &Splice) {
-        self.0.caret.calibrate_on_splice(splice);
-        if let Some(anchor) = &mut self.0.anchor.filter(|&pos| pos > splice.start) {
+        self.cursor.caret.calibrate_on_splice(splice);
+        if let Some(anchor) = &mut self.cursor.anchor.filter(|&pos| pos > splice.start) {
             anchor.calibrate_on_splice(splice);
         }
-    }
-
-    /// Try to merge a new `Change`. If not possible, replace the current `Change` with it.
-    pub fn merge_or_replace(&mut self, change: Change) -> Option<Change> {
-        if let Some(cursor_change) = &mut self.0.change {
-            if let Ok(()) = cursor_change.try_merge(&change) {
-                return None;
-            }
-        }
-
-        self.0.change.replace(change)
     }
 }
 
@@ -378,11 +337,11 @@ impl<'a> MoveCursor<'a> {
 /// A helper, for dealing with recalibration of cursors.
 #[derive(Default, Debug)]
 pub struct SpliceAdder {
-    /// Determines the last row, in which 
-    pub last_row: usize,
     pub lines: isize,
     pub bytes: isize,
     pub cols: isize,
+    pub last_row: usize,
+    pub start: TextPos,
 }
 
 impl SpliceAdder {
@@ -406,6 +365,7 @@ impl SpliceAdder {
         self.lines += splice.added_end.row as isize - splice.taken_end.row as isize;
         self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
         self.cols += splice.added_end.col as isize - splice.taken_end.col as isize;
+        self.start = splice.start;
     }
 }
 

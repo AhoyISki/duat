@@ -531,15 +531,13 @@ where
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
 
-        let cur_change = Change::new(&lines, edit_cursor.cursor_range(), &text.lines);
-        edit_cursor.calibrate_adder(&cur_change.splice);
+        let change = Change::new(&lines, edit_cursor.cursor_range(), &text.lines);
+        edit_cursor.calibrate_adder(&change.splice);
 
-        text.apply_change(&cur_change);
+        text.apply_change(&change);
 
-        edit_cursor.calibrate_cursor(&cur_change.splice);
-        if let Some(change) = edit_cursor.merge_or_replace(cur_change) {
-            self.history.add_change(change);
-        }
+        edit_cursor.calibrate_cursor(&change.splice);
+        self.history.add_change(change);
 
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
         update_range(&mut text, edit_cursor.cursor_range(), max_line, &self.node);
@@ -548,7 +546,6 @@ where
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
         self.do_set_print_info = false;
-        self.commit_changes();
         let mut text = self.text.write();
 
         let moment = match self.history.move_backwards() {
@@ -596,7 +593,6 @@ where
     /// Redoes the last moment in history.
     pub fn redo(&mut self) {
         self.do_set_print_info = false;
-        self.commit_changes();
         let mut text = self.text.write();
 
         let moment = match self.history.move_forward() {
@@ -671,16 +667,6 @@ where
     /// Currently does nothing.
     fn update(&mut self) {
         self.match_scroll();
-    }
-
-    /// Adds all the cursor changes to the history.
-    fn commit_changes(&mut self) {
-        let mut cursors = self.cursors.write();
-        for cursor in cursors.iter_mut() {
-            if let Some(change) = cursor.change.take() {
-                self.history.add_change(change);
-            }
-        }
     }
 
     /// The list of all lines that are currently printed on the screen.

@@ -66,13 +66,13 @@ impl TextRange {
 
     /// Returns true if the other range is contained within this one.
     pub fn contains(&self, other: &TextRange) -> bool {
-        self.start < other.start && self.end > other.end
+        self.start <= other.start && self.end >= other.end
     }
 
     /// Wether or not two `TextRange`s intersect eachother.
     pub fn intersects(&self, other: &TextRange) -> bool {
         (other.start >= self.start && self.end > other.start)
-            || (self.start >= other.start && other.end > self.start)
+            || (other.end >= self.start && self.end > other.end)
     }
 
     /// Wether or not `self` intersects the starting position of `other`.
@@ -234,21 +234,6 @@ impl Change {
         self.splice.added_range()
     }
 
-    /// Tries to merge a `Change` with another one.
-    pub(crate) fn try_merge(&mut self, edit: &Change) -> Result<(), ()> {
-        if self.added_range().contains(&edit.taken_range()) {
-            self.merge_contained(edit);
-        } else if self.added_range().at_start(&edit.taken_range()) {
-            self.merge_on_end(edit);
-        } else if edit.taken_range().at_start(&self.added_range()) {
-            self.merge_on_start(edit);
-        } else {
-            return Err(());
-        }
-
-        Ok(())
-    }
-
     /// Merges a new `edit`, assuming that it intersects the start of `self`.
     pub(crate) fn merge_on_start(&mut self, edit: &Change) {
         let intersect = TextRange { start: self.splice.start, end: edit.splice.taken_end };
@@ -308,7 +293,7 @@ impl Change {
         let old_change = &changes[0];
 
         let start_offset = if old_change.splice.added_range().at_start(&self.splice.taken_range()) {
-            min(1, changes.len() - 1)
+            1
         } else {
             0
         };
@@ -336,7 +321,7 @@ pub struct Moment {
 
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
-    pub fn merge(&mut self, mut change: Change) {
+    pub fn add_change(&mut self, mut change: Change) {
         let mut splice_adder = SpliceAdder::new(&change.splice);
         splice_adder.last_row = change.splice.taken_end.row;
 
@@ -353,6 +338,7 @@ impl Moment {
         }
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
+        log_info!("\nresult: {:#?}", self.changes);
     }
 
     /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
@@ -400,11 +386,12 @@ impl History {
 
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
     pub fn add_change(&mut self, change: Change) {
+        log_info!("\nchange: {:#?}\n", change);
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
         if let Some(moment) = self.current_moment() {
-            moment.merge(change);
+            moment.add_change(change);
         } else {
             self.new_moment();
             self.moments.last_mut().unwrap().changes.push(change.clone());

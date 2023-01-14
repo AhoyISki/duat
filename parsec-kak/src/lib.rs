@@ -79,8 +79,15 @@ impl EditingScheme for Editor {
                     });
                 }
                 KeyEvent { code: KeyCode::Char(ch), .. } => {
+                    let mut index = 0;
+                    let main_cursor = file_editor.main_cursor();
                     file_editor.edit_on_each_cursor(|mut c| {
-                        file.edit(&mut c, ch);
+                        if index == main_cursor {
+                            file.edit(&mut c, ch.to_uppercase());
+                        } else {
+                            file.edit(&mut c, ch);
+                        }
+                        index += 1;
                     });
                     file_editor.move_each_cursor(|mut c| {
                         c.move_hor(1, &file);

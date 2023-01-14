@@ -7,7 +7,7 @@ use crate::{
     get_byte_at_col,
     layout::file_widget::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui},
+    ui::{EndNode, RawEndNode, Ui}, log_info,
 };
 
 // TODO: move this to a more general file.
