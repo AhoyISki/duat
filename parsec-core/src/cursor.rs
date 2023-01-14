@@ -2,10 +2,9 @@ use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
-    action::{Change, Splice, TextRange},
+    action::{Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    saturating_add_signed,
     ui::{EndNode, Ui},
 };
 
@@ -22,7 +21,7 @@ impl TextPos {
     /// Calculates a new `TextPos`, given a target position, in rows and columns.
     pub fn translate(self, lines: &[TextLine], row: usize, col: usize) -> TextPos {
         let mut new = TextPos { row, col, ..self };
-        new.byte = saturating_add_signed(new.byte, get_byte_distance(lines, self, new));
+        new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
         new
     }
 
@@ -43,10 +42,10 @@ impl TextPos {
 
     pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
         if self.row == splice_adder.last_row {
-            self.col = saturating_add_signed(self.col, splice_adder.cols);
+            self.col = self.col.saturating_add_signed(splice_adder.cols);
         }
-        self.row = saturating_add_signed(self.row, splice_adder.lines);
-        self.byte = saturating_add_signed(self.byte, splice_adder.bytes);
+        self.row = self.row.saturating_add_signed(splice_adder.lines);
+        self.byte = self.byte.saturating_add_signed(splice_adder.bytes);
     }
 }
 
@@ -138,7 +137,7 @@ impl TextCursor {
         (cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte = saturating_add_signed(cur.byte, get_byte_distance(lines, old_target, *cur));
+        cur.byte = cur.byte.saturating_add_signed(get_byte_distance(lines, old_target, *cur));
     }
 
     /// Internal horizontal movement function.
@@ -183,7 +182,7 @@ impl TextCursor {
         let cur = &mut self.caret;
 
         // TODO: Change this to `saturating_sub_signed` once that gets merged.
-        cur.byte = saturating_add_signed(cur.byte, get_byte_distance(lines, *cur, pos));
+        cur.byte = cur.byte.saturating_add_signed(get_byte_distance(lines, *cur, pos));
 
         cur.row = pos.row.clamp(0, lines.len());
         cur.col = pos.col.clamp(0, lines[cur.row].char_count());

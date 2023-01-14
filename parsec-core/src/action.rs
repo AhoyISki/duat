@@ -43,7 +43,6 @@ use crate::{
     file::TextLine,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
-    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -301,7 +300,7 @@ impl Change {
             self.back_merge_contained(&old_change);
         }
 
-        if old_change.splice.added_range().at_start(&self.splice.taken_range()) {
+        if start_offset == 1 {
             self.back_merge_on_start(&changes[0]);
         }
     }
@@ -338,7 +337,6 @@ impl Moment {
         }
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
-        log_info!("\nresult: {:#?}", self.changes);
     }
 
     /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
@@ -386,7 +384,6 @@ impl History {
 
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
     pub fn add_change(&mut self, change: Change) {
-        log_info!("\nchange: {:#?}\n", change);
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 

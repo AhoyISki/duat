@@ -8,8 +8,7 @@ use crate::{
     action::{Change, History, Moment, TextRange},
     config::{RoState, RwState, WrapMethod},
     cursor::{EditCursor, MoveCursor, SpliceAdder, TextCursor, TextPos},
-    file::{update_range, Text},
-    log_info, saturating_add_signed, split_string_lines,
+    file::{update_range, Text}, split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{EndNode, Label, Ui},
 };
@@ -73,7 +72,7 @@ impl PrintInfo {
             max_d = max(max_d, line_d);
         }
 
-        self.x_shift = min(saturating_add_signed(self.x_shift, d_x as isize), max_d);
+        self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
     }
 }
 
@@ -114,7 +113,7 @@ impl PrintedLines {
 pub struct FileEditor {
     cursors: RwState<Vec<TextCursor>>,
     main_cursor: RwState<usize>,
-    moment: Moment
+    moment: Moment,
 }
 
 impl FileEditor {
@@ -207,7 +206,6 @@ impl FileEditor {
     where
         F: FnMut(&mut MoveCursor),
     {
-
         let main_cursor = *self.main_cursor.read();
         self.move_nth(f, main_cursor);
     }
@@ -267,11 +265,8 @@ impl FileEditor {
 
     pub fn rotate_main_forward(&mut self) {
         let mut main_cursor = self.main_cursor.write();
-        *main_cursor = if *main_cursor == self.cursors.read().len() - 1 {
-            0
-        } else {
-            *main_cursor + 1
-        }
+        *main_cursor =
+            if *main_cursor == self.cursors.read().len() - 1 { 0 } else { *main_cursor + 1 }
     }
 
     pub fn clone_last(&mut self) {

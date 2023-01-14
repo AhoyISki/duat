@@ -1,4 +1,3 @@
-use core::fmt;
 use std::marker::PhantomData;
 
 use cursor::TextPos;
@@ -71,15 +70,6 @@ pub fn get_byte_at_col(col: usize, text: &String) -> usize {
 /// An empty list of `String`s, representing an empty edit/file.
 pub fn empty_edit() -> Vec<String> {
     vec![String::from("")]
-}
-
-////////// Ad-hoc functions until they eventually get stabilized.
-pub fn saturating_add_signed(lhs: usize, rhs: isize) -> usize {
-    if rhs > 0 {
-        lhs.saturating_add(rhs as usize)
-    } else {
-        lhs.saturating_sub(rhs.abs() as usize)
-    }
 }
 
 //////////// Useful for testing.
