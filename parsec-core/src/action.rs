@@ -42,7 +42,7 @@ use crate::{
     empty_edit,
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo,
+    layout::file_widget::PrintInfo, log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -321,6 +321,7 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
     pub fn add_change(&mut self, mut change: Change) {
+        log_info!("\nbefore: {:#?}\n", self.changes);
         let mut splice_adder = SpliceAdder::new(&change.splice);
         splice_adder.last_row = change.splice.taken_end.row;
 
@@ -337,6 +338,7 @@ impl Moment {
         }
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
+        log_info!("\nafter: {:#?}\n", self.changes);
     }
 
     /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.

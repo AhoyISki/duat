@@ -41,11 +41,11 @@ impl TextPos {
     }
 
     pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        self.row = self.row.saturating_add_signed(splice_adder.lines);
+        self.byte = self.byte.saturating_add_signed(splice_adder.bytes);
         if self.row == splice_adder.last_row {
             self.col = self.col.saturating_add_signed(splice_adder.cols);
         }
-        self.row = self.row.saturating_add_signed(splice_adder.lines);
-        self.byte = self.byte.saturating_add_signed(splice_adder.bytes);
     }
 }
 
@@ -255,7 +255,7 @@ impl Clone for TextCursor {
 #[derive(Debug)]
 pub struct EditCursor<'a> {
     cursor: &'a mut TextCursor,
-    splice_adder: &'a mut SpliceAdder,
+    pub splice_adder: &'a mut SpliceAdder,
 }
 
 impl<'a> EditCursor<'a> {
@@ -271,7 +271,7 @@ impl<'a> EditCursor<'a> {
 
     /// Calibrate the inner adder with a `Splice`.
     pub fn calibrate_adder(&mut self, splice: &Splice) {
-        self.splice_adder.calibrate(splice)
+        self.splice_adder.calibrate(splice);
     }
 
     /// Calibrate the cursor with a `Splice`.
@@ -344,13 +344,6 @@ pub struct SpliceAdder {
 }
 
 impl SpliceAdder {
-    /// Returns a new instance of `SpliceAdder`, calibrated by a `Splice`.
-    pub fn new(splice: &Splice) -> Self {
-        let mut splice_adder = SpliceAdder::default();
-        splice_adder.calibrate(splice);
-        splice_adder
-    }
-
     /// Resets the column change if the row has changed.
     pub fn reset_cols(&mut self, start: &TextPos) {
         if start.row > self.last_row {
@@ -364,7 +357,7 @@ impl SpliceAdder {
         self.lines += splice.added_end.row as isize - splice.taken_end.row as isize;
         self.bytes += splice.added_end.byte as isize - splice.taken_end.byte as isize;
         self.cols += splice.added_end.col as isize - splice.taken_end.col as isize;
-        self.start = splice.start;
+        self.last_row = splice.added_end.row;
     }
 }
 

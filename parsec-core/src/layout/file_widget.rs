@@ -10,7 +10,7 @@ use crate::{
     cursor::{EditCursor, MoveCursor, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text}, split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui},
+    ui::{EndNode, Label, Ui}, log_info,
 };
 
 use super::Widget;
@@ -151,9 +151,8 @@ impl FileEditor {
         let mut cursors = self.cursors.write();
         let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
-            splice_adder.reset_cols(&c.range().start);
-            splice_adder.last_row = c.range().start.row;
             c.calibrate_on_adder(&splice_adder);
+            splice_adder.reset_cols(&c.range().start);
             let cursor = EditCursor::new(c, &mut splice_adder);
             f(cursor);
         });
@@ -560,9 +559,7 @@ where
             let mut splice = change.splice;
 
             splice_adder.reset_cols(&splice.start);
-            let added_end_row = splice.added_end.row;
             splice.calibrate_on_adder(&splice_adder);
-            splice_adder.last_row = added_end_row;
 
             text.undo_change(&change, &splice);
 
