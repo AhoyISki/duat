@@ -34,7 +34,7 @@
 //! `Moment`, which is why `parsec-core` does not define how new moments are created.
 use std::{
     cmp::{max, min, Ordering},
-    ops::{RangeBounds, RangeInclusive},
+    ops::RangeInclusive,
 };
 
 use crate::{
@@ -42,7 +42,8 @@ use crate::{
     empty_edit,
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, log_info,
+    layout::file_widget::PrintInfo,
+    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -354,43 +355,7 @@ impl Moment {
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
     }
 
-    /// Same as `Moment::merge()`, but with a sorted list of `Change`s.
-    pub fn merge_list(&mut self, mut changes: Vec<Change>) {
-        let f = |cmp: &Change| cmp.added_range().at_end_ord(&changes[0].taken_range());
-        let mut last_insertion = match self.changes.binary_search_by(f) {
-            Ok(index) => index,
-            Err(index) => index,
-        };
-        let mut splice_adder = SpliceAdder::default();
-
-        for change in &mut changes {
-            log_info!("\nchanges: {:#?}\n", self.changes);
-            let calibration_splice = change.splice;
-            let merger_end = try_find_merge(change, &mut self.changes);
-
-            for change in &mut self.changes[last_insertion..merger_end] {
-                change.splice.calibrate_on_adder(&splice_adder);
-            }
-
-            let merger_start = self.find_first_merger(change, merger_end);
-
-            splice_adder.reset_cols(&calibration_splice.taken_end());
-            splice_adder.calibrate(&calibration_splice);
-            splice_adder.last_row = calibration_splice.taken_end.row;
-
-            if let Some(merger_start) = merger_start {
-                change.merge_list(&self.changes[merger_start..merger_end]);
-                self.changes.splice(merger_start..merger_end, Vec::new());
-            }
-
-			last_insertion = merger_start.unwrap_or(merger_end);
-            self.changes.insert(last_insertion, change.clone());
-            last_insertion += 1;
-            log_info!("\nchanges: {:#?}\n", self.changes);
-        }
-    }
-
-	/// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
+    /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
     pub fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
@@ -402,7 +367,7 @@ impl Moment {
             }
         }
 
-        return first_index
+        return first_index;
     }
 }
 
@@ -443,19 +408,6 @@ impl History {
         } else {
             self.new_moment();
             self.moments.last_mut().unwrap().changes.push(change.clone());
-        }
-    }
-
-    /// Adds `Change`s to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
-    pub fn add_changes(&mut self, changes: Vec<Change>) {
-        // Cut off any actions that take place after the current one. We don't really want trees.
-        unsafe { self.moments.set_len(self.current_moment) };
-
-        if let Some(moment) = self.current_moment() {
-            moment.merge_list(changes);
-        } else {
-            self.new_moment();
-            self.moments.last_mut().unwrap().merge_list(changes);
         }
     }
 
@@ -540,6 +492,16 @@ fn try_find_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
 
             index
         }
-        Err(index) => index,
+        Err(index) => {
+            if let Some(cur_change) = changes.get(index) {
+                if cur_change.added_range().contains(&change.taken_range()) {
+                    let mut cur_change = changes.remove(index);
+                    cur_change.merge_contained(&change);
+                    *change = cur_change;
+                }
+            }
+
+            index
+        }
     }
 }
