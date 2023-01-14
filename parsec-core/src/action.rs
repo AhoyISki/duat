@@ -321,9 +321,7 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
     pub fn add_change(&mut self, mut change: Change) {
-        log_info!("\nbefore: {:#?}\n", self.changes);
-        let mut splice_adder = SpliceAdder::new(&change.splice);
-        splice_adder.last_row = change.splice.taken_end.row;
+        let splice_adder = SpliceAdder::new(&change.splice);
 
         let insertion_index = try_find_merge(&mut change, &mut self.changes);
         let merger_index = self.find_first_merger(&change, insertion_index);
