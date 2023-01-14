@@ -1,7 +1,6 @@
 pub mod file_widget;
 
 use std::{
-    cmp::{max, min},
     fmt::Write,
     path::PathBuf,
     sync::Mutex,
@@ -12,12 +11,11 @@ use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
     config::{Config, LineNumbers, RoState, RwState},
-    cursor::{EditCursor, MoveCursor, SpliceAdder, TextCursor},
+    cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    saturating_add_signed,
     tags::MatchManager,
-    ui::{Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
+    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
 use self::file_widget::{FileWidget, PrintInfo, PrintedLines};

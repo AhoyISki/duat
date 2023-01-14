@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    io::{stdout, Stdout},
+    io::{stdout, Stdout}, backtrace::{self, Backtrace},
 };
 
 use crossterm::{
@@ -250,7 +250,8 @@ impl ui::Ui for UiManager {
                 .execute(MoveTo(0, 0))
                 .unwrap();
 
-            println!("{}", msg)
+            println!("{}", msg);
+            println!("BACKTRACE: {}", Backtrace::force_capture())
         }));
 
         let mut stdout = stdout();

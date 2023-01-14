@@ -192,15 +192,11 @@ impl FileEditor {
             Ok(index) => index,
             Err(index) => index,
         };
-        log_info!("\n{} {}\n", index, new_index);
         cursors.insert(new_index, cursor);
-
         let mut main_cursor = self.main_cursor.write();
         if index == *main_cursor {
             *main_cursor = new_index;
         }
-
-        log_info!("\n{:#?}\n", cursors);
 
         drop(cursors);
         //self.clear_intersections();
@@ -681,7 +677,7 @@ where
     fn commit_changes(&mut self) {
         let mut cursors = self.cursors.write();
         for cursor in cursors.iter_mut() {
-            if let Some(change) = cursor.commit() {
+            if let Some(change) = cursor.change.take() {
                 self.history.add_change(change);
             }
         }
