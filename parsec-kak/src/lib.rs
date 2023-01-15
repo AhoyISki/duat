@@ -35,8 +35,11 @@ impl EditingScheme for Editor {
         match self.cur_mode {
             Mode::Insert => match key {
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
-                    if *ch == 'd' =>
-                unsafe { FOR_TEST = !FOR_TEST },
+                    if *ch == 'd' => {
+                        file_editor.move_each_cursor(|mut c| {
+                            c.set_anchor();
+                        });
+                    }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 'n' =>
                 {
@@ -96,6 +99,9 @@ impl EditingScheme for Editor {
                 KeyEvent { code: KeyCode::Enter, .. } => {
                     file_editor.edit_on_each_cursor(|mut c| {
                         file.edit(&mut c, '\n');
+                    });
+                    file_editor.move_each_cursor(|mut c| {
+                        c.move_hor(1, &file);
                     });
                 }
                 KeyEvent { code: KeyCode::Backspace, .. } => {

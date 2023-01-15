@@ -149,6 +149,7 @@ impl FileEditor {
     where
         F: FnMut(Editor),
     {
+        self.clear_intersections();
         let mut cursors = self.cursors.write();
         let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
