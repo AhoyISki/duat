@@ -234,13 +234,13 @@ impl<'a> Iterator for MatchIter<'a> {
         match self {
             MatchIter::Regex((regs, range)) => {
                 let start = range.start;
-                let (line, byte, file_byte) = (start.line, start.byte, start.file_byte);
+                let (line, byte, file_byte) = (start.row, start.byte, start.file_byte);
 
                 regs.next().map(|r| {
                     let (file_start, file_end) = (file_byte + r.start(), file_byte + r.end());
                     TagRange {
-                        start: TagPos { line, byte: byte + r.start(), file_byte: file_start },
-                        end: TagPos { line, byte: byte + r.end(), file_byte: file_end },
+                        start: TagPos { row: line, byte: byte + r.start(), file_byte: file_start },
+                        end: TagPos { row: line, byte: byte + r.end(), file_byte: file_end },
                     }
                 })
             }
@@ -273,15 +273,15 @@ impl Pattern {
         let lines_iter = lines
             .iter()
             .enumerate()
-            .take(range.end.line + 1)
-            .skip(range.start.line)
+            .take(range.end.row + 1)
+            .skip(range.start.row)
             .map(|(n, l)| {
                 // If there's just one line, the range is truncated differently.
-                if range.start.line == range.end.line {
+                if range.start.row == range.end.row {
                     (n, &l.text().as_bytes()[range.start.byte..range.end.byte], range.start.byte)
-                } else if n == range.start.line {
+                } else if n == range.start.row {
                     (n, &l.text().as_bytes()[range.start.byte..], range.start.byte)
-                } else if n == range.end.line {
+                } else if n == range.end.row {
                     (n, &l.text().as_bytes()[..range.end.byte], 0)
                 } else {
                     (n, l.text().as_bytes(), 0)
@@ -293,8 +293,8 @@ impl Pattern {
                     n,
                     str::from_utf8(t).unwrap(),
                     TagRange {
-                        start: TagPos { line: n, byte: s, file_byte: *acc - t.len() },
-                        end: TagPos { line: n, byte: s + t.len(), file_byte: *acc },
+                        start: TagPos { row: n, byte: s, file_byte: *acc - t.len() },
+                        end: TagPos { row: n, byte: s + t.len(), file_byte: *acc },
                     },
                 ))
             });
@@ -399,13 +399,13 @@ pub struct FormPattern {
 }
 
 // The next two structs are useful in the context of syntax highlighting, since the line's byte is
-// useful for regex calculation, while the file's byte is useful for tree-sitter capture, while the
+// useful for regex calculation, while the file's byte is useful for tree-sitter capture, and the
 // column (char index) of the line is completely useless.
 /// A position indexed by its byte in relation to the line, instead of column.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 struct TagPos {
     /// The line in the file.
-    line: usize,
+    row: usize,
     /// The byte in relation to the line.
     byte: usize,
     /// The byte in relation to the beginning of the file.
@@ -414,7 +414,7 @@ struct TagPos {
 
 impl TagPos {
     fn from_text(line: &TextLine, pos: TextPos) -> TagPos {
-        TagPos { line: pos.row, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
+        TagPos { row: pos.row, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
     }
 }
 
@@ -502,7 +502,7 @@ struct TagRange {
 
 impl TagRange {
     fn lines(&self) -> RangeInclusive<usize> {
-        self.start.line..=self.end.line
+        self.start.row..=self.end.row
     }
 }
 
@@ -563,7 +563,7 @@ impl FormPattern {
         // The finalized list of multi-line ranges that weren't closed off.
         let mut new_last_match = LastMatch {
             patterns: Vec::new(),
-            pos: TagPos { line: last_end.line + 1, byte: 0, file_byte: last_end.file_byte + 1 },
+            pos: TagPos { row: last_end.row + 1, byte: 0, file_byte: last_end.file_byte + 1 },
         };
 
         for form_match in &self.form_matches {
@@ -590,15 +590,15 @@ impl FormPattern {
 
                 for range in ranges {
                     for line in range.lines() {
-                        let tags = &mut info[line - first_start.line].0.char_tags;
+                        let tags = &mut info[line - first_start.row].0.char_tags;
 
                         // The start is the starting byte in the first line, 0 otherwise.
-                        if line == range.start.line {
+                        if line == range.start.row {
                             if let Some(form) = form_match.form {
                                 tags.insert((range.start.byte as u32, CharTag::PushForm(form)));
                             }
                         } else {
-                            info[line - first_start.line].0.starting_id = form_match.id;
+                            info[line - first_start.row].0.starting_id = form_match.id;
 
                             // The form here works kind of like a "background" of sorts.
                             if let Some(form) = form_match.form {
@@ -607,20 +607,20 @@ impl FormPattern {
                         };
 
                         // Popping the form only really needs to be done at the end.
-                        if line == range.end.line {
+                        if line == range.end.row {
                             let end_line = &lines[line];
                             // This should guarantee that:
                             //   1: The match is ending without a proper end;
                             //   2: The match is ending at the end of a line;
                             if inner_count > 0 && range.end.byte == end_line.text().len() {
-                                info[line - first_start.line].0.ending_id = form_match.id;
+                                info[line - first_start.row].0.ending_id = form_match.id;
                             }
                             if let Some(form) = form_match.form {
                                 tags.insert((range.end.byte as u32, CharTag::PopForm(form)));
                             }
                         } else {
                             // On lines other than the last, the line ends with the id.
-                            info[line - first_start.line].0.ending_id = form_match.id;
+                            info[line - first_start.row].0.ending_id = form_match.id;
                         }
                     }
 
@@ -630,8 +630,8 @@ impl FormPattern {
                     // its range.
                     // Match subpatterns.
                     let mut ranges = TagRangeList(vec![range]);
-                    let range_start = range.start.line - first_start.line;
-                    let range_end = range.end.line - first_start.line;
+                    let range_start = range.start.row - first_start.row;
+                    let range_end = range.end.row - first_start.row;
                     let info = &mut info[range_start..=range_end];
 
                     let pattern_slice = if let Pattern::Bounds(_, _) = form_match.pattern {
@@ -676,7 +676,7 @@ impl FormPattern {
         let (start, end) = (range.start, range.end);
 
         let mut info: Vec<(LineInfo, usize)> =
-            (start.line..=end.line).map(|l| (LineInfo::default(), l)).collect();
+            (start.row..=end.row).map(|l| (LineInfo::default(), l)).collect();
 
         let mut ranges = TagRangeList(vec![range]);
 
@@ -750,7 +750,7 @@ impl MatchManager {
             last_id: 0,
             last_match: LastMatch {
                 patterns: Vec::new(),
-                pos: TagPos { line: 0, byte: 0, file_byte: 0 },
+                pos: TagPos { row: 0, byte: 0, file_byte: 0 },
             },
         }
     }
@@ -776,20 +776,20 @@ impl MatchManager {
         let end = TagPos::from_text(&lines[range.end.row], range.end);
         let mut range = TagRange { start, end };
 
-        let mut lines_iter = lines.iter().take(range.start.line).rev();
+        let mut lines_iter = lines.iter().take(range.start.row).rev();
         while let Some(line) = lines_iter.next() {
             if line.info.ending_id != 0 {
-                range.start.line -= 1;
+                range.start.row -= 1;
                 range.start.file_byte -= line.text().len();
             } else {
                 break;
             }
         }
 
-        let mut lines_iter = lines.iter().skip(range.end.line + 1);
+        let mut lines_iter = lines.iter().skip(range.end.row + 1);
         while let Some(line) = lines_iter.next() {
             if line.info.starting_id != 0 && range.end <= max_pos {
-                range.end.line += 1;
+                range.end.row += 1;
                 range.end.file_byte += line.text().len();
                 range.end.byte = line.text().len();
             } else {
@@ -803,11 +803,11 @@ impl MatchManager {
     fn generate_info(
         &mut self, lines: &[TextLine], range: TagRange, max_pos: TagPos,
     ) -> Vec<(LineInfo, usize)> {
-        let mut info = Vec::new();
-        (info, self.last_match) = self.default.color_text(lines, range, self.last_match.clone());
+        let (mut info, last_match) = self.default.color_text(lines, range, self.last_match.clone());
+        self.last_match = last_match;
 
-        if range.end.line < lines.len() - 1 {
-            if info.last().unwrap().0.ending_id != lines[range.end.line + 1].info.starting_id {
+        if range.end.row < lines.len() - 1 {
+            if info.last().unwrap().0.ending_id != lines[range.end.row + 1].info.starting_id {
                 if self.last_match.pos >= max_pos {
                     return info;
                 }

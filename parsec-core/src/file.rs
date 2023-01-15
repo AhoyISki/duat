@@ -468,7 +468,7 @@ pub(crate) fn update_range(
 ) {
     if let Some(match_manager) = &mut text.match_manager {
         let line = &text.lines[max_line];
-        let max_pos = range.end.translate(&text.lines, max_line, line.char_count());
+        let max_pos = range.start.translate(&text.lines, max_line, line.char_count());
 
         let start = TextPos {
             row: range.start.row,

@@ -152,7 +152,7 @@ impl FileEditor {
         let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
             c.calibrate_on_adder(&splice_adder);
-            splice_adder.reset_cols(&c.range().start);
+            splice_adder.reset_cols(&c.range().end);
             let cursor = EditCursor::new(c, &mut splice_adder);
             f(cursor);
         });
@@ -530,7 +530,7 @@ where
 
         text.apply_change(&change);
 
-        edit_cursor.calibrate_cursor(&change.splice);
+        edit_cursor.set_cursor_on_splice(&change.splice);
         self.history.add_change(change);
 
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
@@ -558,12 +558,13 @@ where
         for change in &moment.changes {
             let mut splice = change.splice;
 
-            splice_adder.reset_cols(&splice.start);
             splice.calibrate_on_adder(&splice_adder);
+            splice_adder.reset_cols(&splice.added_end);
+            log_info!("\nsplice: {:#?}, adder: {:#?}\n", splice, splice_adder);
 
             text.undo_change(&change, &splice);
 
-            splice_adder.calibrate(&change.splice.reverse());
+            splice_adder.calibrate(&splice.reverse());
 
             if let Some(cursor) = cursors_iter.next() {
                 cursor.change = None;

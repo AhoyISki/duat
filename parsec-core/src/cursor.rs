@@ -275,10 +275,16 @@ impl<'a> EditCursor<'a> {
     }
 
     /// Calibrate the cursor with a `Splice`.
-    pub fn calibrate_cursor(&mut self, splice: &Splice) {
-        self.cursor.caret.calibrate_on_splice(splice);
-        if let Some(anchor) = &mut self.cursor.anchor.filter(|&pos| pos > splice.start) {
-            anchor.calibrate_on_splice(splice);
+    pub fn set_cursor_on_splice(&mut self, splice: &Splice) {
+        let caret = &mut self.cursor.caret;
+        if let Some(anchor) = &mut self.cursor.anchor {
+            if anchor > caret {
+                *caret = splice.start;
+                *anchor = splice.added_end;
+            } else {
+                *anchor = splice.start;
+                *caret = splice.added_end;
+            }
         }
     }
 }
