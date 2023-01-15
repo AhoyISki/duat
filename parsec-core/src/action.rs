@@ -42,7 +42,8 @@ use crate::{
     empty_edit,
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, log_info,
+    layout::file_widget::PrintInfo,
+    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -63,15 +64,19 @@ impl TextRange {
         self.start.row..=self.end.row
     }
 
-    /// Returns true if the other range is contained within this one.
-    pub fn contains(&self, other: &TextRange) -> bool {
-        self.start <= other.start && self.end >= other.end
+    /// Returns true if `other` is contained within `self`.
+    pub fn contains<R>(&self, other: &R) -> bool
+    where
+        R: Into<TextRange> + Copy,
+    {
+        let range: TextRange = (*other).into();
+        self.start <= range.start && self.end >= range.end
     }
 
     /// Wether or not two `TextRange`s intersect eachother.
     pub fn intersects(&self, other: &TextRange) -> bool {
-        (other.start >= self.start && self.end > other.start)
-            || (other.end >= self.start && self.end > other.end)
+        (other.start >= self.start && self.end >= other.start)
+            || (other.end >= self.start && self.end >= other.end)
     }
 
     /// Wether or not `self` intersects the starting position of `other`.
@@ -114,6 +119,12 @@ impl TextRange {
         } else {
             Ordering::Greater
         }
+    }
+}
+
+impl From<TextPos> for TextRange {
+    fn from(value: TextPos) -> Self {
+        TextRange { start: value, end: value }
     }
 }
 
@@ -320,24 +331,32 @@ pub struct Moment {
 
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
-    pub fn add_change(&mut self, mut change: Change) {
-        log_info!("\nchange: {:#?}\n", change);
+    ///
+    /// * Returns
+    ///
+    /// - The index where the change was inserted;
+    /// - The number of changes that were added or subtracted during its insertion.
+    pub fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let splice_adder = SpliceAdder::new(&change.splice);
 
-        let insertion_index = try_find_merge(&mut change, &mut self.changes);
+        let insertion_index = assoc_index.unwrap_or(try_find_merge(&mut change, &mut self.changes));
         let merger_index = self.find_first_merger(&change, insertion_index);
 
         for change in &mut self.changes[insertion_index..] {
             change.splice.calibrate_on_adder(&splice_adder);
         }
 
-        if let Some(merger_index) = merger_index {
+        let (insertion_index, change_diff) = if let Some(merger_index) = merger_index {
             change.merge_list(&self.changes[merger_index..insertion_index]);
             self.changes.splice(merger_index..insertion_index, Vec::new());
-        }
+            (merger_index, merger_index as isize - insertion_index as isize)
+        } else {
+            (insertion_index, 1)
+        };
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
-        log_info!("\nafter: {:#?}\n", self.changes);
+
+        (insertion_index, change_diff)
     }
 
     /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
@@ -378,28 +397,35 @@ impl History {
         }
     }
 
-    /// Gets the current moment. Takes time travel into consideration.
-    fn current_moment(&mut self) -> Option<&mut Moment> {
+    /// Gets a mutable reference to the current `Moment`.
+    fn current_moment_mut(&mut self) -> Option<&mut Moment> {
         self.moments.get_mut(self.current_moment - 1)
     }
 
+    /// Gets a reference to the current `Moment`.
+    pub fn current_moment(&self) -> Option<&Moment> {
+        self.moments.get(self.current_moment - 1)
+    }
+
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
-    pub fn add_change(&mut self, change: Change) {
+    pub fn add_change(&mut self, change: Change, change_index: Option<usize>) -> (usize, isize) {
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
-        if let Some(moment) = self.current_moment() {
-            moment.add_change(change);
+        if let Some(moment) = self.current_moment_mut() {
+            moment.add_change(change, change_index)
         } else {
             self.new_moment();
             self.moments.last_mut().unwrap().changes.push(change.clone());
+
+            (0, 1)
         }
     }
 
     /// Declares that the current moment is complete and moves to the next one.
     pub fn new_moment(&mut self) {
         // If the last moment in history is empty, we can keep using it.
-        if self.current_moment().map_or(true, |m| !m.changes.is_empty()) {
+        if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }
@@ -432,7 +458,7 @@ impl History {
 
     /// Sets the `PrintInfo` for the current `Moment`.
     pub fn set_print_info(&mut self, print_info: PrintInfo) {
-        if let Some(moment) = self.current_moment() {
+        if let Some(moment) = self.current_moment_mut() {
             moment.print_info = Some(print_info);
         }
     }

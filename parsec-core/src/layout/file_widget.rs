@@ -7,7 +7,7 @@ use std::{
 use crate::{
     action::{Change, History, Moment, TextRange},
     config::{RoState, RwState, WrapMethod},
-    cursor::{EditCursor, MoveCursor, SpliceAdder, TextCursor, TextPos},
+    cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text}, split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{EndNode, Label, Ui}, log_info,
@@ -82,6 +82,7 @@ pub struct PrintedLines {
 }
 
 impl PrintedLines {
+    /// Given an `EndNode`, figures out what lines should be printed.
     pub fn lines(&self, child_node: &EndNode<impl Ui>) -> Vec<usize> {
         let height = child_node.height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
@@ -105,6 +106,7 @@ impl PrintedLines {
         printed_lines
     }
 
+	/// Wether or not the list of printed lines has changed.
     pub fn has_changed(&self) -> bool {
         self.file.has_changed() || self.print_info.has_changed()
     }
@@ -113,13 +115,12 @@ impl PrintedLines {
 pub struct FileEditor {
     cursors: RwState<Vec<TextCursor>>,
     main_cursor: RwState<usize>,
-    moment: Moment,
 }
 
 impl FileEditor {
     /// Returns a new instance of `FileEditor`.
     pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: RwState<usize>) -> Self {
-        Self { cursors, main_cursor, moment: Moment::default() }
+        Self { cursors, main_cursor }
     }
 
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
@@ -146,14 +147,15 @@ impl FileEditor {
     /// Edits on every cursor selection in the list.
     pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
     where
-        F: FnMut(EditCursor),
+        F: FnMut(Editor),
     {
         let mut cursors = self.cursors.write();
         let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
             c.calibrate_on_adder(&splice_adder);
+            log_info!("\ncursor: {:#?}", c);
             splice_adder.reset_cols(&c.range().end);
-            let cursor = EditCursor::new(c, &mut splice_adder);
+            let cursor = Editor::new(c, &mut splice_adder);
             f(cursor);
         });
     }
@@ -161,11 +163,11 @@ impl FileEditor {
     /// Alters every selection on the list.
     pub fn move_each_cursor<F>(&mut self, mut f: F)
     where
-        F: FnMut(MoveCursor),
+        F: FnMut(Mover),
     {
         let mut cursors = self.cursors.write();
         cursors.iter_mut().for_each(|c| {
-            let cursor = MoveCursor::new(c);
+            let cursor = Mover::new(c);
             f(cursor);
         });
 
@@ -178,11 +180,11 @@ impl FileEditor {
     /// Alters the nth cursor's selection.
     pub fn move_nth<F>(&mut self, mut f: F, index: usize)
     where
-        F: FnMut(&mut MoveCursor),
+        F: FnMut(&mut Mover),
     {
         let mut cursors = self.cursors.write();
         let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
-        f(&mut MoveCursor::new(&mut cursor));
+        f(&mut Mover::new(&mut cursor));
 
         let cursor = cursors.remove(index);
         let range = cursor.range();
@@ -203,7 +205,7 @@ impl FileEditor {
     /// Alters the main cursor's selection.
     pub fn move_main<F>(&mut self, f: F)
     where
-        F: FnMut(&mut MoveCursor),
+        F: FnMut(&mut Mover),
     {
         let main_cursor = *self.main_cursor.read();
         self.move_nth(f, main_cursor);
@@ -212,7 +214,7 @@ impl FileEditor {
     /// Alters the last cursor's selection.
     pub fn move_last<F>(&mut self, f: F)
     where
-        F: FnMut(&mut MoveCursor),
+        F: FnMut(&mut Mover),
     {
         let cursors = self.cursors.read();
         if !cursors.is_empty() {
@@ -225,12 +227,12 @@ impl FileEditor {
     /// Edits on the nth cursor's selection.
     pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
     where
-        F: FnMut(&mut EditCursor),
+        F: FnMut(&mut Editor),
     {
         let mut cursors = self.cursors.write();
         let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
         let mut splice_adder = SpliceAdder::default();
-        let mut edit_cursor = EditCursor::new(&mut cursor, &mut splice_adder);
+        let mut edit_cursor = Editor::new(&mut cursor, &mut splice_adder);
         f(&mut edit_cursor);
         cursors.iter_mut().skip(index + 1).for_each(|c| c.calibrate_on_adder(&mut splice_adder));
     }
@@ -238,7 +240,7 @@ impl FileEditor {
     /// Edits on the main cursor's selection.
     pub fn edit_on_main<F>(&mut self, f: F)
     where
-        F: FnMut(&mut EditCursor),
+        F: FnMut(&mut Editor),
     {
         let main_cursor = *self.main_cursor.read();
         self.edit_on_nth(f, main_cursor);
@@ -247,7 +249,7 @@ impl FileEditor {
     /// Edits on the last cursor's selection.
     pub fn edit_on_last<F>(&mut self, f: F)
     where
-        F: FnMut(&mut EditCursor),
+        F: FnMut(&mut Editor),
     {
         let cursors = self.cursors.read();
         if !cursors.is_empty() {
@@ -519,22 +521,25 @@ where
     }
 
     /// Edits the file with a cursor.
-    pub fn edit(&mut self, edit_cursor: &mut EditCursor, edit: impl ToString) {
+    pub fn edit(&mut self, editor: &mut Editor, edit: impl ToString) {
         self.history.start_if_needed();
         self.history.set_print_info(*self.print_info().read());
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
 
-        let change = Change::new(&lines, edit_cursor.cursor_range(), &text.lines);
-        edit_cursor.calibrate_adder(&change.splice);
+        let change = Change::new(&lines, editor.cursor.range(), &text.lines);
+        editor.splice_adder.calibrate(&change.splice);
 
         text.apply_change(&change);
 
-        edit_cursor.set_cursor_on_splice(&change.splice);
-        self.history.add_change(change);
+        editor.set_cursor_on_splice(&change.splice);
+        let change_index = editor.cursor.change_index;
+        let (insertion_index, change_diff) = self.history.add_change(change, change_index);
+        editor.cursor.change_index = Some(insertion_index);
+        editor.splice_adder.change_diff += change_diff;
 
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
-        update_range(&mut text, edit_cursor.cursor_range(), max_line, &self.node);
+        update_range(&mut text, editor.cursor.range(), max_line, &self.node);
     }
 
     /// Undoes the last moment in history.
@@ -560,14 +565,13 @@ where
 
             splice.calibrate_on_adder(&splice_adder);
             splice_adder.reset_cols(&splice.added_end);
-            log_info!("\nsplice: {:#?}, adder: {:#?}\n", splice, splice_adder);
 
             text.undo_change(&change, &splice);
 
             splice_adder.calibrate(&splice.reverse());
 
             if let Some(cursor) = cursors_iter.next() {
-                cursor.change = None;
+                cursor.change_index = None;
                 cursor.move_to_calibrated(splice.taken_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
@@ -605,7 +609,7 @@ where
 
             let splice = change.splice;
             if let Some(cursor) = cursors_iter.next() {
-                cursor.change = None;
+                cursor.change_index = None;
                 cursor.move_to_calibrated(splice.added_end(), &text.lines, &self.node);
             } else {
                 new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
@@ -673,6 +677,10 @@ where
     /// The object used to edit the file through cursors.
     pub fn file_editor(&mut self) -> FileEditor {
         FileEditor::new(self.cursors.clone(), self.main_cursor.clone())
+    }
+
+    pub fn history(&self) -> &History {
+        &self.history
     }
 }
 

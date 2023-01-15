@@ -2,7 +2,7 @@ use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
-    action::{Splice, TextRange},
+    action::{Splice, TextRange, Moment},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
     ui::{EndNode, Ui},
@@ -100,8 +100,8 @@ pub struct TextCursor {
     /// An anchor for a selection.
     anchor: Option<TextPos>,
 
-    /// A change, temporarily associated to this cursor for faster access.
-    pub(crate) change: Option<usize>,
+	/// The index to a `Change` in the current `Moment`, used for greater efficiency.
+    pub(crate) change_index: Option<usize>,
 
     /// Column that the cursor wants to be in.
     ///
@@ -119,7 +119,7 @@ impl TextCursor {
             caret: pos,
             // This should be fine.
             anchor: None,
-            change: None,
+            change_index: None,
             desired_x: line.get_distance_to_col_node(pos.col, node),
         }
     }
@@ -209,9 +209,6 @@ impl TextCursor {
         TextRange { start: min(self.caret, anchor), end: max(self.caret, anchor) }
     }
 
-    ////////////////////////////////
-    // Getters
-    ////////////////////////////////
     /// Returns the cursor's position on the screen.
     pub fn caret(&self) -> TextPos {
         self.caret
@@ -224,6 +221,7 @@ impl TextCursor {
 
     /// Calibrates a cursor's positions based on some splice.
     pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+        self.change_index.as_mut().map(|i| i.saturating_add_signed(splice_adder.change_diff));
         self.caret.calibrate_on_adder(splice_adder);
         self.anchor.as_mut().map(|anchor| anchor.calibrate_on_adder(splice_adder));
     }
@@ -243,35 +241,40 @@ impl TextCursor {
             self.anchor = Some(range.start);
         }
     }
+
+	/// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
+	///
+	/// If it is not, dissassociates itself with it.
+    pub fn change_range_check(&mut self, moment: &Moment) {
+        if let Some(assoc_change) = self.change_index {
+            if let Some(change) = moment.changes.get(assoc_change) {
+                if !change.added_range().intersects(&self.range()) {
+                    self.change_index = None;
+                }
+            } else {
+                self.change_index = None;
+            }
+        }
+    }
 }
 
 impl Clone for TextCursor {
     fn clone(&self) -> Self {
-        TextCursor { desired_x: self.caret.col, change: None, ..*self }
+        TextCursor { desired_x: self.caret.col, change_index: None, ..*self }
     }
 }
 
 /// A cursor that can edit text in its selection, but can't move the selection in any way.
 #[derive(Debug)]
-pub struct EditCursor<'a> {
-    cursor: &'a mut TextCursor,
+pub struct Editor<'a> {
+    pub cursor: &'a mut TextCursor,
     pub splice_adder: &'a mut SpliceAdder,
 }
 
-impl<'a> EditCursor<'a> {
+impl<'a> Editor<'a> {
     /// Returns a new instance of `EditCursor`.
     pub fn new(cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder) -> Self {
-        EditCursor { cursor, splice_adder }
-    }
-
-    /// Returns the range of the `TextCursor`'s selection.
-    pub fn cursor_range(&self) -> TextRange {
-        self.cursor.range()
-    }
-
-    /// Calibrate the inner adder with a `Splice`.
-    pub fn calibrate_adder(&mut self, splice: &Splice) {
-        self.splice_adder.calibrate(splice);
+        Editor { cursor, splice_adder }
     }
 
     /// Calibrate the cursor with a `Splice`.
@@ -291,23 +294,29 @@ impl<'a> EditCursor<'a> {
 
 /// A cursor that can move and alter the selection, but can't edit the file.
 #[derive(Debug)]
-pub struct MoveCursor<'a>(&'a mut TextCursor);
+pub struct Mover<'a>(&'a mut TextCursor);
 
-impl<'a> MoveCursor<'a> {
+impl<'a> Mover<'a> {
     /// Returns	a new instance of `MoveCursor`.
     pub fn new(cursor: &'a mut TextCursor) -> Self {
-        MoveCursor(cursor)
+        Mover(cursor)
     }
     ////////// Public movement functions
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
     pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
         self.0.move_ver(count, file.text().read().lines(), file.end_node());
+        if let Some(moment) = file.history().current_moment() {
+            self.0.change_range_check(moment)
+        }
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
         self.0.move_hor(count, file.text().read().lines(), file.end_node());
+        if let Some(moment) = file.history().current_moment() {
+            self.0.change_range_check(moment)
+        }
     }
 
     /// Moves the cursor to a position in the file.
@@ -316,6 +325,9 @@ impl<'a> MoveCursor<'a> {
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: TextPos, file: &FileWidget<impl Ui>) {
         self.0.move_to(caret, file.text().read().lines(), file.end_node());
+        if let Some(moment) = file.history().current_moment() {
+            self.0.change_range_check(moment)
+        }
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
@@ -346,7 +358,7 @@ pub struct SpliceAdder {
     pub bytes: isize,
     pub cols: isize,
     pub last_row: usize,
-    pub start: TextPos,
+    pub change_diff: isize,
 }
 
 impl SpliceAdder {
