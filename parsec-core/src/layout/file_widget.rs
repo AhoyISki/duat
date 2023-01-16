@@ -290,15 +290,15 @@ impl FileEditor {
 }
 
 /// The widget that is used to print and edit files.
-pub struct FileWidget<M>
+pub struct FileWidget<U>
 where
-    M: Ui,
+    U: Ui,
 {
     pub(crate) text: RwState<Text>,
     print_info: RwState<PrintInfo>,
     pub(crate) main_cursor: RwState<usize>,
     pub(crate) cursors: RwState<Vec<TextCursor>>,
-    pub(crate) node: EndNode<M>,
+    pub(crate) node: EndNode<U>,
     history: History,
     do_set_print_info: bool,
 }
@@ -540,13 +540,15 @@ where
         editor.splice_adder.calibrate(&change.splice);
 
         text.apply_change(&change);
+        drop(text);
 
-        editor.set_cursor_on_splice(&change.splice);
+        editor.set_cursor_on_splice(&change.splice, self);
         let change_index = editor.cursor.change_index;
         let (insertion_index, change_diff) = self.history.add_change(change, change_index);
         editor.cursor.change_index = Some(insertion_index);
         editor.splice_adder.change_diff += change_diff;
 
+        let mut text = self.text.write();
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
         update_range(&mut text, editor.cursor.range(), max_line, &self.node);
     }
@@ -687,7 +689,6 @@ where
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col) as u32;
                     line.info.char_tags.insert((byte, *tag));
-                    log_info!("\n{:#?}", line.info.char_tags);
                 }
             }
         }

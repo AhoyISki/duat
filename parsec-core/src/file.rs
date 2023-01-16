@@ -285,7 +285,6 @@ impl TextLine {
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
-                    log_info!("\nbyte: {}, tag: {:#?}", byte, tag);
                     current_char_tag = tags_iter.next();
 
                     // If this is the first printed character of `top_line`, we don't wrap.

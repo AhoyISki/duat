@@ -1,8 +1,11 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    fs::File,
+};
 
 use super::file::TextLine;
 use crate::{
-    action::{Splice, TextRange, Moment},
+    action::{Moment, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
     ui::{EndNode, Ui},
@@ -91,6 +94,13 @@ impl std::ops::SubAssign for TextPos {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Anchor {
+    Active(TextPos),
+    Inactive(TextPos),
+    None,
+}
+
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 #[derive(Debug)]
 pub struct TextCursor {
@@ -98,9 +108,9 @@ pub struct TextCursor {
     caret: TextPos,
 
     /// An anchor for a selection.
-    anchor: Option<TextPos>,
+    anchor: Anchor,
 
-	/// The index to a `Change` in the current `Moment`, used for greater efficiency.
+    /// The index to a `Change` in the current `Moment`, used for greater efficiency.
     pub(crate) change_index: Option<usize>,
 
     /// Column that the cursor wants to be in.
@@ -118,7 +128,7 @@ impl TextCursor {
         TextCursor {
             caret: pos,
             // This should be fine.
-            anchor: None,
+            anchor: Anchor::None,
             change_index: None,
             desired_x: line.get_distance_to_col_node(pos.col, node),
         }
@@ -204,7 +214,10 @@ impl TextCursor {
     ///
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> TextRange {
-        let anchor = self.anchor.unwrap_or(self.caret);
+        let anchor = match self.anchor {
+            Anchor::Active(anchor) => anchor,
+            _ => self.caret,
+        };
 
         TextRange { start: min(self.caret, anchor), end: max(self.caret, anchor) }
     }
@@ -214,21 +227,21 @@ impl TextCursor {
         self.caret
     }
 
-    /// Returns the cursor's anchor on the file.
-    pub fn anchor(&self) -> Option<TextPos> {
-        self.anchor
-    }
-
     /// Calibrates a cursor's positions based on some splice.
     pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
         self.change_index.as_mut().map(|i| i.saturating_add_signed(splice_adder.change_diff));
         self.caret.calibrate_on_adder(splice_adder);
-        self.anchor.as_mut().map(|anchor| anchor.calibrate_on_adder(splice_adder));
+        match &mut self.anchor {
+            Anchor::Active(anchor) | Anchor::Inactive(anchor) => {
+                anchor.calibrate_on_adder(splice_adder);
+            }
+            _ => {}
+        }
     }
 
     /// Merges the `TextCursor`s selection with another `TextRange`.
     pub fn merge(&mut self, range: &TextRange) {
-        if let Some(anchor) = &mut self.anchor {
+        if let Anchor::Active(anchor) | Anchor::Inactive(anchor) = &mut self.anchor {
             if self.caret > *anchor {
                 self.caret = max(self.caret, range.end);
                 *anchor = min(*anchor, range.start);
@@ -238,13 +251,13 @@ impl TextCursor {
             }
         } else {
             self.caret = max(self.caret, range.end);
-            self.anchor = Some(range.start);
+            self.anchor = Anchor::Active(range.start);
         }
     }
 
-	/// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
-	///
-	/// If it is not, dissassociates itself with it.
+    /// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
+    ///
+    /// If it is not, dissassociates itself with it.
     pub fn change_range_check(&mut self, moment: &Moment) {
         if let Some(assoc_change) = self.change_index {
             if let Some(change) = moment.changes.get(assoc_change) {
@@ -255,6 +268,20 @@ impl TextCursor {
                 self.change_index = None;
             }
         }
+    }
+
+    /// Sets the position of the anchor to be the same as the current cursor position in the file.
+    ///
+    /// The `anchor` and `current` act as a range of text on the file.
+    pub fn set_anchor(&mut self) {
+        self.anchor = Anchor::Active(self.caret)
+    }
+
+    /// Unsets the anchor.
+    ///
+    /// This is done so the cursor no longer has a valid selection.
+    pub fn unset_anchor(&mut self) {
+        self.anchor = Anchor::None;
     }
 }
 
@@ -278,15 +305,23 @@ impl<'a> Editor<'a> {
     }
 
     /// Calibrate the cursor with a `Splice`.
-    pub fn set_cursor_on_splice(&mut self, splice: &Splice) {
+    pub fn set_cursor_on_splice<U>(&mut self, splice: &Splice, file_widget: &FileWidget<U>)
+    where
+        U: Ui,
+    {
         let caret = &mut self.cursor.caret;
-        if let Some(anchor) = &mut self.cursor.anchor {
+        let end_node = file_widget.end_node();
+        let text = file_widget.text();
+        let text = text.read();
+        if let Anchor::Active(anchor) | Anchor::Inactive(anchor) = &mut self.cursor.anchor {
             if anchor > caret {
-                *caret = splice.start;
-                *anchor = splice.added_end;
+                self.cursor.move_to_calibrated(splice.added_end, &text.lines, end_node);
+                self.cursor.set_anchor();
+                self.cursor.move_to_calibrated(splice.start, &text.lines, end_node);
             } else {
-                *anchor = splice.start;
-                *caret = splice.added_end;
+                self.cursor.move_to_calibrated(splice.start, &text.lines, end_node);
+                self.cursor.set_anchor();
+                self.cursor.move_to_calibrated(splice.added_end, &text.lines, end_node);
             }
         }
     }
@@ -334,19 +369,30 @@ impl<'a> Mover<'a> {
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
-        self.0.anchor = Some(self.0.caret());
+        self.0.set_anchor()
+    }
+
+    pub fn toggle_anchor(&mut self) {
+        self.0.anchor = match &self.0.anchor {
+            Anchor::Active(anchor) => Anchor::Inactive(*anchor),
+            Anchor::Inactive(anchor) => Anchor::Active(*anchor),
+            Anchor::None => Anchor::None,
+        }
     }
 
     /// Unsets the anchor.
     ///
     /// This is done so the cursor no longer has a valid selection.
     pub fn unset_anchor(&mut self) {
-        self.0.anchor = None;
+        self.0.unset_anchor()
     }
 
     /// Wether or not the anchor is set.
     pub fn anchor_is_set(&mut self) -> bool {
-        self.0.anchor.is_some()
+        match self.0.anchor {
+            Anchor::Active(_) | Anchor::Inactive(_) => true,
+            Anchor::None => false,
+        }
     }
 }
 

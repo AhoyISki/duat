@@ -38,7 +38,6 @@ impl EditingScheme for Editor {
                     if *ch == 'd' => {
                         file_editor.move_each_cursor(|mut c| {
                             c.set_anchor();
-                            c.move_hor(3, &file);
                         });
                     }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }

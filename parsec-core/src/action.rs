@@ -42,7 +42,7 @@ use crate::{
     empty_edit,
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo,
+    layout::file_widget::PrintInfo, log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -336,9 +336,13 @@ impl Moment {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during its insertion.
     pub fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
+		log_info!("\nchange: {:#?}\n", change);
         let splice_adder = SpliceAdder::new(&change.splice);
 
-        let insertion_index = assoc_index.unwrap_or(try_find_merge(&mut change, &mut self.changes));
+        let insertion_index = match assoc_index {
+            Some(index) => index + 1,
+            None => try_find_merge(&mut change, &mut self.changes),
+        };
         let merger_index = self.find_first_merger(&change, insertion_index);
 
         for change in &mut self.changes[insertion_index..] {
