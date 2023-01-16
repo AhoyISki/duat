@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
-use crate::{config::Config, tags::Form};
+use crate::{config::Config, tags::Form, log_info};
 
 /// A `Label` or `Container` container, that holds exactly two in total.
 pub trait Container {
@@ -274,7 +274,7 @@ where
             foreground_color: Some(Color::Reset),
             background_color: Some(Color::Reset),
             underline_color: Some(Color::Reset),
-            attributes: Attributes::from(Attribute::Reset),
+            attributes: Attributes::default(),
         };
 
         let mut form = Form { style, is_final: false };
@@ -286,10 +286,10 @@ where
             set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
 
             let new_background = style.background_color;
-            set_var(&mut fg_done, &mut form.style.background_color, &new_background, is_final);
+            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
 
             let new_underline = style.underline_color;
-            set_var(&mut fg_done, &mut form.style.underline_color, &new_underline, is_final);
+            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
 
             if !attr_done {
                 form.style.attributes.extend(style.attributes);
@@ -307,8 +307,8 @@ where
     }
 
 	/// Adds another `Form` to the stack.
-    pub fn push_form(&mut self, forms: Form, id: u16) {
-        self.inner.form_stack.push((forms, id));
+    pub fn push_form(&mut self, form: Form, id: u16) {
+        self.inner.form_stack.push((form, id));
 
         let form = self.make_form();
 

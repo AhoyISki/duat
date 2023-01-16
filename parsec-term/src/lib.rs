@@ -5,12 +5,12 @@ use std::{
 
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
-    style::{Print, ResetColor, SetStyle, SetAttribute, Attribute},
+    style::{Print, ResetColor, SetStyle, SetAttribute, Attribute, ContentStyle, Stylize},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
     tags::Form,
-    ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
+    ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split}, log_info,
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -140,6 +140,7 @@ impl UiLabel for Label {
     }
 
     fn set_form(&mut self, form: Form) {
+        log_info!("\nmy form: {:#?}", form.style);
         self.stdout.queue(SetStyle(form.style)).expect("crossterm");
     }
 
@@ -191,6 +192,7 @@ impl UiLabel for Label {
         }
 
         stdout().execute(RestorePosition).expect("crossterm");
+        self.clear_form();
     }
 }
 
@@ -269,11 +271,11 @@ impl ui::Ui for UiManager {
         let mut stdout = stdout();
 
         stdout
-            .execute(terminal::EnableLineWrap)
-            .unwrap()
             .execute(ResetColor)
             .unwrap()
             .execute(terminal::Clear(terminal::ClearType::All))
+            .unwrap()
+            .execute(terminal::EnableLineWrap)
             .unwrap()
             .execute(MoveTo(0, 0))
             .unwrap();

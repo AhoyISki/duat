@@ -62,9 +62,9 @@ impl CharTag {
             CharTag::SecondaryCursor => printer.place_secondary_cursor(),
             CharTag::SelectionStart => {
                 let form = Form::new(ContentStyle::new().on_grey(), false);
-                printer.push_form(form, 0);
+                printer.push_form(form, 1);
             }
-            CharTag::SelectionEnd => printer.remove_form(0),
+            CharTag::SelectionEnd => printer.remove_form(1),
             _ => {}
         }
 
@@ -115,6 +115,8 @@ impl std::fmt::Debug for CharTags {
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::PrimaryCursor => format!("{}:Pc", b),
                 CharTag::SecondaryCursor => format!("{}:Pc", b),
+                CharTag::SelectionStart => format!("{}:Ss", b),
+                CharTag::SelectionEnd => format!("{}:Se", b),
                 _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()

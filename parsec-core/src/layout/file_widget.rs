@@ -646,13 +646,18 @@ where
                 CharTag::SecondaryCursor
             };
 
-            for (pos, tag) in [
-                (cursor.caret(), tag), (start, CharTag::SelectionStart),
+            let pos_list = [
+                (cursor.caret(), tag),
+                (start, CharTag::SelectionStart),
                 (end, CharTag::SelectionEnd),
-            ] {
+            ];
+
+            let no_selection = if start == end { 1 } else { 3 };
+
+            for (pos, tag) in pos_list.iter().take(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col);
-                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == tag);
+                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
                 }
             }
         }
@@ -670,13 +675,19 @@ where
                 CharTag::SecondaryCursor
             };
 
-            for (pos, tag) in [
-                (start, CharTag::SelectionStart), (end, CharTag::SelectionEnd),
+            let pos_list = [
                 (cursor.caret(), tag),
-            ] {
+                (start, CharTag::SelectionStart),
+                (end, CharTag::SelectionEnd),
+            ];
+
+            let no_selection = if start == end { 1 } else { 3 };
+
+            for (pos, tag) in pos_list.iter().take(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col) as u32;
-                    line.info.char_tags.insert((byte, tag));
+                    line.info.char_tags.insert((byte, *tag));
+                    log_info!("\n{:#?}", line.info.char_tags);
                 }
             }
         }
