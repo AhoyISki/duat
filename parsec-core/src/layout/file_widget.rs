@@ -549,8 +549,8 @@ where
         editor.splice_adder.change_diff += change_diff;
 
         let mut text = self.text.write();
-        let max_line = max_line(&text, &self.print_info.read(), &self.node);
-        update_range(&mut text, editor.cursor.range(), max_line, &self.node);
+        //let max_line = max_line(&text, &self.print_info.read(), &self.node);
+        //update_range(&mut text, editor.cursor.range(), max_line, &self.node);
     }
 
     /// Undoes the last moment in history.
@@ -567,8 +567,7 @@ where
         *info = moment.print_info.unwrap_or(*info);
 
         let mut cursors = self.cursors.write();
-        let mut cursors_iter = cursors.iter_mut();
-        let mut new_cursors = Vec::new();
+        cursors.clear();
 
         let mut splice_adder = SpliceAdder::default();
         for change in &moment.changes {
@@ -581,21 +580,12 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            if let Some(cursor) = cursors_iter.next() {
-                cursor.change_index = None;
-                cursor.move_to_calibrated(splice.taken_end(), &text.lines, &self.node);
-            } else {
-                new_cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
-            }
+			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
             let max_line = max_line(&text, &info, &self.node);
             update_range(&mut text, range, max_line, &self.node);
         }
-
-        drop(cursors);
-        self.cursors.write().extend(new_cursors);
-        unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
     /// Redoes the last moment in history.
@@ -612,28 +602,19 @@ where
         *info = moment.print_info.unwrap_or(*info);
 
         let mut cursors = self.cursors.write();
-        let mut cursors_iter = cursors.iter_mut();
-        let mut new_cursors = Vec::new();
+        cursors.clear();
 
         for change in &moment.changes {
             text.apply_change(&change);
 
             let splice = change.splice;
-            if let Some(cursor) = cursors_iter.next() {
-                cursor.change_index = None;
-                cursor.move_to_calibrated(splice.added_end(), &text.lines, &self.node);
-            } else {
-                new_cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
-            }
+
+			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
             let max_line = max_line(&text, &info, &self.node);
             update_range(&mut text, range, max_line, &self.node);
         }
-
-        drop(cursors);
-        self.cursors.write().extend(new_cursors);
-        unsafe { self.cursors.write().set_len(moment.changes.len()) };
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.

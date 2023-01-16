@@ -8,7 +8,7 @@ use crate::{
     action::{Moment, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    ui::{EndNode, Ui},
+    ui::{EndNode, Ui}, log_info,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -136,6 +136,7 @@ impl TextCursor {
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+        log_info!("\ncursor: {:#?}", self);
         let old_target = self.caret;
         let cur = &mut self.caret;
 

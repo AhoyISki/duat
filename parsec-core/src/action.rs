@@ -364,7 +364,6 @@ impl Moment {
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
 
-        log_info!("\nchange: {:#?},\nassoc_index: {:#?}", self.changes, assoc_index);
         (insertion_index, change_diff)
     }
 
