@@ -1,7 +1,7 @@
 use std::{ops::RangeInclusive, str};
 
 use bitflags::bitflags;
-use crossterm::style::ContentStyle;
+use crossterm::style::{ContentStyle, Stylize};
 use regex::Regex;
 use smallvec::SmallVec;
 
@@ -27,11 +27,15 @@ pub enum CharTag {
     WrapppingChar,
 
     // Partially implemented:
-    /// Wether the primary cursor is in this character or not.
+    /// Places the main cursor.
     PrimaryCursor,
+    /// Begins a selection in the file.
+    SelectionStart,
+    /// Ends a selection in the file.
+    SelectionEnd,
 
     // Not Implemented:
-    /// Wether a secondary cursor is in this character or not.
+    /// Places a secondary cursor.
     SecondaryCursor,
     /// Begins or ends a hoverable section in the file.
     HoverBound,
@@ -47,15 +51,20 @@ impl CharTag {
         M: Ui,
     {
         match self {
-            CharTag::PushForm(form) => printer.push_form(forms, form.0),
+            CharTag::PushForm(form) => printer.push_form(forms[form.0 as usize], form.0),
             CharTag::PopForm(form) => printer.remove_form(form.0),
             CharTag::WrapppingChar => {
-                if !printer.wrap_line() {
+                if printer.wrap_line().is_err() {
                     return false;
                 }
             }
             CharTag::PrimaryCursor => printer.place_primary_cursor(),
             CharTag::SecondaryCursor => printer.place_secondary_cursor(),
+            CharTag::SelectionStart => {
+                let form = Form::new(ContentStyle::new().on_grey(), false);
+                printer.push_form(form, 0);
+            }
+            CharTag::SelectionEnd => printer.remove_form(0),
             _ => {}
         }
 

@@ -54,16 +54,16 @@ pub trait Label {
     /// Prints a character at the current position and moves the printing position forward.
     fn print(&mut self, ch: char);
 
-    /// Moves to the next line. If that's not possible, returns false.
+    /// Moves to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
     ///
     /// This function should also make sure that there is no leftover text after the current line's
     /// end.
-    fn next_line(&mut self) -> bool;
+    fn next_line(&mut self) -> Result<(), ()>;
 
-    /// Wraps to the next line. If that's not possible, returns false.
+    /// Wraps to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
     ///
     /// Unlike `next_line()`, this function should not remove any text.
-    fn wrap_line(&mut self) -> bool;
+    fn wrap_line(&mut self) -> Result<(), ()>;
 
     // TODO: Return a result.
     /// Requests a resize to the area, based on the direction of the parent.
@@ -307,8 +307,8 @@ where
     }
 
 	/// Adds another `Form` to the stack.
-    pub fn push_form(&mut self, forms: &[Form], id: u16) {
-        self.inner.form_stack.push((forms[id as usize], id));
+    pub fn push_form(&mut self, forms: Form, id: u16) {
+        self.inner.form_stack.push((forms, id));
 
         let form = self.make_form();
 
@@ -339,12 +339,12 @@ where
     }
 
 	/// Places the cursor at the beginning of the next line.
-    pub(crate) fn next_line(&mut self) -> bool {
+    pub(crate) fn next_line(&mut self) -> Result<(), ()> {
         self.inner.label.next_line()
     }
 
 	/// Wraps to the next line, but keeps printing the same line.
-    pub(crate) fn wrap_line(&mut self) -> bool {
+    pub(crate) fn wrap_line(&mut self) -> Result<(), ()> {
         self.inner.label.wrap_line()
     }
 

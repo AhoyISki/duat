@@ -1,6 +1,7 @@
 use std::{
     cmp::{max, min},
     fs,
+    ops::BitXor,
     path::PathBuf,
 };
 
@@ -8,9 +9,10 @@ use crate::{
     action::{Change, History, Moment, TextRange},
     config::{RoState, RwState, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
-    file::{update_range, Text}, split_string_lines,
+    file::{update_range, Text},
+    log_info, split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui}, log_info,
+    ui::{EndNode, Label, Ui},
 };
 
 use super::Widget;
@@ -106,7 +108,7 @@ impl PrintedLines {
         printed_lines
     }
 
-	/// Wether or not the list of printed lines has changed.
+    /// Wether or not the list of printed lines has changed.
     pub fn has_changed(&self) -> bool {
         self.file.has_changed() || self.print_info.has_changed()
     }
@@ -115,12 +117,13 @@ impl PrintedLines {
 pub struct FileEditor {
     cursors: RwState<Vec<TextCursor>>,
     main_cursor: RwState<usize>,
+    clearing_needed: bool,
 }
 
 impl FileEditor {
     /// Returns a new instance of `FileEditor`.
     pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: RwState<usize>) -> Self {
-        Self { cursors, main_cursor }
+        Self { cursors, main_cursor, clearing_needed: false }
     }
 
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
@@ -130,7 +133,7 @@ impl FileEditor {
         let mut last_index = 0;
         let mut to_remove = Vec::new();
 
-        for (index, cursor) in cursors.iter_mut().skip(1).enumerate() {
+        for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
             if cursor.range().intersects(&last_range) {
                 cursor.merge(&last_range);
                 to_remove.push(last_index);
@@ -139,8 +142,8 @@ impl FileEditor {
             last_index = index;
         }
 
-        for index in to_remove {
-            cursors.remove(index);
+        for index in to_remove.iter().rev() {
+            cursors.remove(*index);
         }
     }
 
@@ -175,7 +178,7 @@ impl FileEditor {
         cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
 
         drop(cursors);
-        //self.clear_intersections();
+        self.clearing_needed = true;
     }
 
     /// Alters the nth cursor's selection.
@@ -200,7 +203,7 @@ impl FileEditor {
         }
 
         drop(cursors);
-        //self.clear_intersections();
+        self.clearing_needed = true;
     }
 
     /// Alters the main cursor's selection.
@@ -230,6 +233,11 @@ impl FileEditor {
     where
         F: FnMut(&mut Editor),
     {
+        if self.clearing_needed {
+            self.clear_intersections();
+            self.clearing_needed = false;
+        }
+
         let mut cursors = self.cursors.write();
         let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
         let mut splice_adder = SpliceAdder::default();
@@ -631,15 +639,21 @@ where
         let mut text = self.text.write();
 
         for (index, cursor) in self.cursors.read().iter().enumerate() {
+            let TextRange { start, end } = cursor.range();
             let tag = if index == *self.main_cursor.read() {
                 CharTag::PrimaryCursor
             } else {
                 CharTag::SecondaryCursor
             };
 
-            if let Some(line) = text.lines.get_mut(cursor.caret().row) {
-                let char_tags = &mut line.info.char_tags;
-                char_tags.remove_first(|(n, t)| n as usize == cursor.caret().col && t == tag);
+            for (pos, tag) in [
+                (cursor.caret(), tag), (start, CharTag::SelectionStart),
+                (end, CharTag::SelectionEnd),
+            ] {
+                if let Some(line) = text.lines.get_mut(pos.row) {
+                    let byte = line.get_line_byte_at(pos.col);
+                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == tag);
+                }
             }
         }
     }
@@ -649,15 +663,21 @@ where
         let mut text = self.text.write();
 
         for (index, cursor) in self.cursors.read().iter().enumerate() {
+            let TextRange { start, end } = cursor.range();
             let tag = if index == *self.main_cursor.read() {
                 CharTag::PrimaryCursor
             } else {
                 CharTag::SecondaryCursor
             };
 
-            if let Some(line) = text.lines.get_mut(cursor.caret().row) {
-                let char_tags = &mut line.info.char_tags;
-                char_tags.insert((cursor.caret().col as u32, tag));
+            for (pos, tag) in [
+                (start, CharTag::SelectionStart), (end, CharTag::SelectionEnd),
+                (cursor.caret(), tag),
+            ] {
+                if let Some(line) = text.lines.get_mut(pos.row) {
+                    let byte = line.get_line_byte_at(pos.col) as u32;
+                    line.info.char_tags.insert((byte, tag));
+                }
             }
         }
     }

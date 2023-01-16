@@ -319,11 +319,7 @@ impl TextLine {
         }
 
         printer.clear_form();
-        if !printer.next_line() {
-            false
-        } else {
-            true
-        }
+        printer.next_line().is_ok()
     }
 
     ////////////////////////////////

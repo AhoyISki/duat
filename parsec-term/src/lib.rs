@@ -97,9 +97,9 @@ impl Clone for Label {
 }
 
 impl UiLabel for Label {
-    fn next_line(&mut self) -> bool {
+    fn next_line(&mut self) -> Result<(), ()> {
         if self.cursor.y == self.area.br.y - 1 {
-            false
+            Err(())
         } else {
             if self.cursor.x < self.area.br.x - 1 {
                 // Print one more "newline" character with the current form.
@@ -118,20 +118,20 @@ impl UiLabel for Label {
 
             self.stdout.queue(MoveTo(self.cursor.x, self.cursor.y)).expect("crossterm");
 
-            true
+            Ok(())
         }
     }
 
-    fn wrap_line(&mut self) -> bool {
+    fn wrap_line(&mut self) -> Result<(), ()> {
         if self.cursor.y == self.area.br.y - 1 {
-            false
+            Err(())
         } else {
             self.cursor.x = self.area.tl.x;
             self.cursor.y += 1;
 
             self.stdout.queue(MoveTo(self.cursor.x, self.cursor.y)).expect("crossterm");
 
-            true
+            Ok(())
         }
     }
 
