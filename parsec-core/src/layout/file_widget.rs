@@ -10,7 +10,7 @@ use crate::{
     config::{RoState, RwState, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
-    log_info, split_string_lines,
+    split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{EndNode, Label, Ui},
 };
@@ -157,7 +157,6 @@ impl FileEditor {
         let mut splice_adder = SpliceAdder::default();
         cursors.iter_mut().for_each(|c| {
             c.calibrate_on_adder(&splice_adder);
-            log_info!("\ncursor: {:#?}", c);
             splice_adder.reset_cols(&c.range().end);
             let cursor = Editor::new(c, &mut splice_adder);
             f(cursor);
@@ -373,6 +372,7 @@ where
             do_set_print_info: true,
         };
 
+        file_widget.add_cursor_tags();
         let mut text = file_widget.text.write();
         text.update_lines(&file_widget.node);
         drop(text);
@@ -687,7 +687,6 @@ where
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col) as u32;
                     line.info.char_tags.insert((byte, *tag));
-                    log_info!("\n{:#?}", line.info.char_tags);
                 }
             }
         }

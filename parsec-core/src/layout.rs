@@ -348,9 +348,9 @@ fn update_files(
 }
 
 fn print_files(
-    files: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
+    printer: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
 ) {
-    for (_, _, widget_printer) in files {
+    for (file, _, widget_printer) in printer {
         if widget_printer.text.has_changed() {
             widget_printer.print();
         }

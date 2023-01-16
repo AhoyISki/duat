@@ -43,7 +43,6 @@ use crate::{
     file::TextLine,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
-    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);

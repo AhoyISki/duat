@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
 
-use crate::{config::Config, tags::Form, log_info};
+use crate::{config::Config, tags::Form};
 
 /// A `Label` or `Container` container, that holds exactly two in total.
 pub trait Container {

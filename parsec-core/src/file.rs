@@ -7,7 +7,7 @@ use crate::{
     get_byte_at_col,
     layout::file_widget::PrintInfo,
     tags::{CharTag, Form, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, RawEndNode, Ui}, log_info,
+    ui::{EndNode, RawEndNode, Ui},
 };
 
 // TODO: move this to a more general file.
@@ -285,7 +285,6 @@ impl TextLine {
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
-                    log_info!("\n{}", ch);
                     current_char_tag = tags_iter.next();
 
                     // If this is the first printed character of `top_line`, we don't wrap.
@@ -293,7 +292,6 @@ impl TextLine {
                         continue;
                     } else {
                         if !tag.trigger(printer, forms, wrap_indent) {
-                            log_info!("\nbyte: {}", byte);
                             printer.clear_form();
                             return false;
                         }
