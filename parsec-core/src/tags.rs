@@ -61,7 +61,7 @@ impl CharTag {
             CharTag::PrimaryCursor => printer.place_primary_cursor(),
             CharTag::SecondaryCursor => printer.place_secondary_cursor(),
             CharTag::SelectionStart => {
-                let form = Form::new(ContentStyle::new().on_grey(), false);
+                let form = Form::new(ContentStyle::new().on_dark_grey(), false);
                 printer.push_form(form, 1);
             }
             CharTag::SelectionEnd => printer.remove_form(1),

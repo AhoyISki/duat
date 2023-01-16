@@ -1,16 +1,18 @@
 use std::{
+    backtrace::{self, Backtrace},
     cmp::min,
-    io::{stdout, Stdout}, backtrace::{self, Backtrace},
+    io::{stdout, Stdout},
 };
 
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
-    style::{Print, ResetColor, SetStyle, SetAttribute, Attribute, ContentStyle, Stylize},
+    style::{Attribute, ContentStyle, Print, ResetColor, SetAttribute, SetStyle, Stylize},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
+    log_info,
     tags::Form,
-    ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split}, log_info,
+    ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -81,12 +83,20 @@ pub struct Label {
     area: Area,
     cursor: Coord,
     direction: Direction,
-    secodary_cursor: bool
+    secodary_cursor: bool,
+    last_style: ContentStyle,
 }
 
 impl Label {
     fn new(area: Area, direction: Direction) -> Self {
-        Label { stdout: stdout(), area, cursor: area.tl, direction, secodary_cursor: false }
+        Label {
+            stdout: stdout(),
+            area,
+            cursor: area.tl,
+            direction,
+            secodary_cursor: false,
+            last_style: ContentStyle::default(),
+        }
     }
 }
 
@@ -102,9 +112,6 @@ impl UiLabel for Label {
             Err(())
         } else {
             if self.cursor.x < self.area.br.x - 1 {
-                // Print one more "newline" character with the current form.
-                self.stdout.queue(Print(' ')).expect("crossterm");
-
                 self.clear_form();
 
                 // The rest of the line is featureless.
@@ -116,7 +123,11 @@ impl UiLabel for Label {
             self.cursor.x = self.area.tl.x;
             self.cursor.y += 1;
 
-            self.stdout.queue(MoveTo(self.cursor.x, self.cursor.y)).expect("crossterm");
+            self.stdout
+                .queue(MoveTo(self.cursor.x, self.cursor.y))
+                .expect("crossterm")
+                .queue(SetStyle(self.last_style))
+                .expect("crossterm");
 
             Ok(())
         }
@@ -140,8 +151,8 @@ impl UiLabel for Label {
     }
 
     fn set_form(&mut self, form: Form) {
-        log_info!("\nmy form: {:#?}", form.style);
-        self.stdout.queue(SetStyle(form.style)).expect("crossterm");
+        self.last_style = form.style;
+        self.stdout.queue(SetStyle(self.last_style)).expect("crossterm");
     }
 
     fn get_char_len(&self, ch: char) -> usize {
@@ -283,8 +294,7 @@ impl ui::Ui for UiManager {
         terminal::disable_raw_mode().unwrap();
     }
 
-    fn finish_all_printing(&mut self) {
-    }
+    fn finish_all_printing(&mut self) {}
 }
 
 fn parse_split(split: Split, area: Area, direction: Direction) -> u16 {

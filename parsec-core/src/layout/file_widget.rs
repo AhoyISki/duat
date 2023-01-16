@@ -12,7 +12,7 @@ use crate::{
     file::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui},
+    ui::{EndNode, Label, Ui}, log_info,
 };
 
 use super::Widget;
@@ -687,6 +687,7 @@ where
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col) as u32;
                     line.info.char_tags.insert((byte, *tag));
+                    log_info!("\n{:#?}", line.info.char_tags);
                 }
             }
         }
