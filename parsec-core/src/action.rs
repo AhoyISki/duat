@@ -42,7 +42,8 @@ use crate::{
     empty_edit,
     file::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, log_info,
+    layout::file_widget::PrintInfo,
+    log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -336,12 +337,16 @@ impl Moment {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during its insertion.
     pub fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
-		log_info!("\nchange: {:#?}\n", change);
         let splice_adder = SpliceAdder::new(&change.splice);
 
-        let insertion_index = match assoc_index {
-            Some(index) => index + 1,
-            None => try_find_merge(&mut change, &mut self.changes),
+        let insertion_index = if let Some(index) = assoc_index {
+            if self.changes[index].added_range().end == change.splice.start {
+                index + 1
+            } else {
+                index
+            }
+        } else {
+            binary_merge(&mut change, &mut self.changes)
         };
         let merger_index = self.find_first_merger(&change, insertion_index);
 
@@ -359,6 +364,7 @@ impl Moment {
 
         self.changes.insert(merger_index.unwrap_or(insertion_index), change);
 
+        log_info!("\nchange: {:#?},\nassoc_index: {:#?}", self.changes, assoc_index);
         (insertion_index, change_diff)
     }
 
@@ -497,8 +503,10 @@ fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range
 }
 
 /// Tries to merge a `Change` and returns the index where that is supposed to happen.
-fn try_find_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
-    match changes.binary_search_by(|cmp| cmp.added_range().at_end_ord(&change.taken_range())) {
+fn binary_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
+    match changes.binary_search_by(|cmp| {
+        cmp.added_range().at_end_ord(&change.taken_range())
+    }) {
         Ok(index) => {
             let mut cur_change = changes.remove(index);
             cur_change.merge_on_start(&change);
