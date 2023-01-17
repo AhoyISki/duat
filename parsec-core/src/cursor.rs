@@ -1,14 +1,12 @@
-use std::{
-    cmp::{max, min},
-    fs::File,
-};
+use std::cmp::{max, min};
 
 use super::file::TextLine;
 use crate::{
     action::{Moment, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    ui::{EndNode, Ui}, log_info,
+    log_info,
+    ui::{EndNode, Ui},
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -136,7 +134,6 @@ impl TextCursor {
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
-        log_info!("\ncursor: {:#?}", self);
         let old_target = self.caret;
         let cur = &mut self.caret;
 

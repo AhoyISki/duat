@@ -299,6 +299,7 @@ impl Change {
         self.splice = splice;
     }
 
+	/// Merges a list of sorted changes into one that overlaps all of them.
     fn merge_list(&mut self, changes: &[Change]) {
         let old_change = &changes[0];
 
@@ -343,10 +344,13 @@ impl Moment {
             if self.changes[index].added_range().end == change.splice.start {
                 index + 1
             } else {
+                end_or_inner_merge(&mut change, &mut self.changes, index);
                 index
             }
         } else {
-            binary_merge(&mut change, &mut self.changes)
+            let index = find_intersecting_end(&change, &self.changes);
+            end_or_inner_merge(&mut change, &mut self.changes, index);
+            index
         };
         let merger_index = self.find_first_merger(&change, insertion_index);
 
@@ -501,28 +505,25 @@ fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range
     }
 }
 
-/// Tries to merge a `Change` and returns the index where that is supposed to happen.
-fn binary_merge(change: &mut Change, changes: &mut Vec<Change>) -> usize {
-    match changes.binary_search_by(|cmp| {
-        cmp.added_range().at_end_ord(&change.taken_range())
-    }) {
-        Ok(index) => {
-            let mut cur_change = changes.remove(index);
-            cur_change.merge_on_start(&change);
-            *change = cur_change;
+/// Finds a  
+fn find_intersecting_end(change: &Change, changes: &Vec<Change>) -> usize {
+    match changes.binary_search_by(|cmp|  cmp.added_range().at_end_ord(&change.taken_range())) {
+        Ok(index) => index,
+        Err(index) => index,
+    }
+}
 
-            index
-        }
-        Err(index) => {
-            if let Some(cur_change) = changes.get(index) {
-                if cur_change.added_range().contains(&change.taken_range()) {
-                    let mut cur_change = changes.remove(index);
-                    cur_change.merge_contained(&change);
-                    *change = cur_change;
-                }
-            }
-
-            index
+/// Tries to merge a `Change` that is intersecting the end or is contained in another.
+fn end_or_inner_merge(new_change: &mut Change, changes: &mut Vec<Change>, index: usize) {
+    if let Some(old_change) = changes.get_mut(index) {
+        if new_change.taken_range().at_start(&old_change.added_range()) {
+            let mut old_change = changes.remove(index);
+            old_change.merge_on_start(&new_change);
+            *new_change = old_change;
+        } else if old_change.added_range().contains(&new_change.taken_range()) {
+            let mut old_change = changes.remove(index);
+            old_change.merge_contained(&new_change);
+            *new_change = old_change;
         }
     }
 }

@@ -169,6 +169,7 @@ impl FileEditor {
         F: FnMut(Mover),
     {
         let mut cursors = self.cursors.write();
+        log_info!("\n{:#?}", cursors);
         cursors.iter_mut().for_each(|c| {
             let cursor = Mover::new(c);
             f(cursor);
@@ -570,6 +571,7 @@ where
         cursors.clear();
 
         let mut splice_adder = SpliceAdder::default();
+        log_info!("{:#?}", moment.changes);
         for change in &moment.changes {
             let mut splice = change.splice;
 
@@ -580,11 +582,12 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
+            let cursor = TextCursor::new(splice.taken_end(), &text.lines, &self.node);
+			cursors.push(cursor);
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            let max_line = max_line(&text, &info, &self.node);
-            update_range(&mut text, range, max_line, &self.node);
+            //let max_line = max_line(&text, &info, &self.node);
+            //update_range(&mut text, range, max_line, &self.node);
         }
     }
 
@@ -612,8 +615,8 @@ where
 			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            let max_line = max_line(&text, &info, &self.node);
-            update_range(&mut text, range, max_line, &self.node);
+            //let max_line = max_line(&text, &info, &self.node);
+            //update_range(&mut text, range, max_line, &self.node);
         }
     }
 
@@ -677,7 +680,7 @@ where
 
     /// Currently does nothing.
     fn update(&mut self) {
-        self.match_scroll();
+        //self.match_scroll();
     }
 
     /// The list of all lines that are currently printed on the screen.
