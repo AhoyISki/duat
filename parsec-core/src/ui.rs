@@ -63,7 +63,7 @@ pub trait Label {
     /// Wraps to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
     ///
     /// Unlike `next_line()`, this function should not remove any text.
-    fn wrap_line(&mut self) -> Result<(), ()>;
+    fn wrap_line(&mut self, indent: usize) -> Result<(), ()>;
 
     // TODO: Return a result.
     /// Requests a resize to the area, based on the direction of the parent.
@@ -344,8 +344,8 @@ where
     }
 
 	/// Wraps to the next line, but keeps printing the same line.
-    pub(crate) fn wrap_line(&mut self) -> Result<(), ()> {
-        self.inner.label.wrap_line()
+    pub(crate) fn wrap_line(&mut self, indent: usize) -> Result<(), ()> {
+        self.inner.label.wrap_line(indent)
     }
 
 	/// Places the primary cursor/caret on screen.

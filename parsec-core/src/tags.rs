@@ -54,7 +54,7 @@ impl CharTag {
             CharTag::PushForm(form) => printer.push_form(forms[form.0 as usize], form.0),
             CharTag::PopForm(form) => printer.remove_form(form.0),
             CharTag::WrapppingChar => {
-                if printer.wrap_line().is_err() {
+                if printer.wrap_line(wrap_indent).is_err() {
                     return false;
                 }
             }

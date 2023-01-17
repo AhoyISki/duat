@@ -63,7 +63,7 @@ impl PrintInfo {
     }
 
     fn scroll_horizontally(
-        &mut self, mut d_x: i32, text: &Text, label: &impl Label, node: &EndNode<impl Ui>,
+        &mut self, d_x: i32, text: &Text, label: &impl Label, node: &EndNode<impl Ui>,
     ) {
         let mut max_d = 0;
 
@@ -510,7 +510,7 @@ where
     }
 
     /// Tbh, I don't remember what this is supposed to do, but it seems important.
-    fn match_scroll(&mut self) {
+    fn _match_scroll(&mut self) {
         let text = self.text.read();
         let cursors = self.cursors.read();
 
@@ -518,7 +518,7 @@ where
         let limit_line = min(main_cursor.caret().row + self.node.height(), text.lines().len() - 1);
         let start = main_cursor.caret().translate(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
-        let range = TextRange {
+        let _range = TextRange {
             start,
             end: TextPos {
                 byte: start.byte + target_line.text().len(),

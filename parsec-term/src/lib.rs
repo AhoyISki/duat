@@ -135,14 +135,20 @@ impl UiLabel for Label {
         }
     }
 
-    fn wrap_line(&mut self) -> Result<(), ()> {
+    fn wrap_line(&mut self, indent: usize) -> Result<(), ()> {
         if self.cursor.y == self.area.br.y - 2 {
             Err(())
         } else {
             self.cursor.x = self.area.tl.x;
             self.cursor.y += 1;
 
-            self.stdout.queue(MoveTo(self.cursor.x, self.cursor.y)).expect("crossterm");
+            self.stdout
+                .queue(MoveTo(self.cursor.x, self.cursor.y))
+                .expect("crossterm")
+                .queue(Print(" ".repeat(indent)))
+                .expect("crossterm");
+
+            self.cursor.x += indent as u16;
 
             Ok(())
         }
@@ -201,7 +207,7 @@ impl UiLabel for Label {
 
     fn stop_printing(&mut self) {
         for _ in self.cursor.y..(self.area.br.y - 3) {
-            self.next_line();
+            let _ = self.next_line();
         }
 
         self.clear_line();
