@@ -531,8 +531,7 @@ where
 
     /// Edits the file with a cursor.
     pub fn edit(&mut self, editor: &mut Editor, edit: impl ToString) {
-        self.history.start_if_needed();
-        self.history.set_print_info(*self.print_info().read());
+        //self.history.start_if_needed();
         let lines = split_string_lines(&edit.to_string());
         let mut text = self.text.write();
 
@@ -543,14 +542,15 @@ where
         drop(text);
 
         editor.set_cursor_on_splice(&change.splice, self);
-        let change_index = editor.cursor.change_index;
-        let (insertion_index, change_diff) = self.history.add_change(change, change_index);
-        editor.cursor.change_index = Some(insertion_index);
+        let assoc_index = editor.cursor.assoc_index;
+        let (insertion_index, change_diff) =
+            self.history.add_change(change, assoc_index, *self.print_info.read());
+        editor.cursor.assoc_index = Some(insertion_index);
         editor.splice_adder.change_diff += change_diff;
 
         let mut text = self.text.write();
         let max_line = max_line(&text, &self.print_info.read(), &self.node);
-        //update_range(&mut text, editor.cursor.range(), max_line, &self.node);
+        update_range(&mut text, editor.cursor.range(), max_line, &self.node);
     }
 
     /// Undoes the last moment in history.
@@ -564,7 +564,7 @@ where
         };
 
         let mut info = self.print_info.write();
-        *info = moment.print_info.unwrap_or(*info);
+        *info = moment.starting_print_info;
 
         let mut cursors = self.cursors.write();
         cursors.clear();
@@ -581,11 +581,11 @@ where
             splice_adder.calibrate(&splice.reverse());
 
             let cursor = TextCursor::new(splice.taken_end(), &text.lines, &self.node);
-			cursors.push(cursor);
+            cursors.push(cursor);
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
             let max_line = max_line(&text, &info, &self.node);
-            //update_range(&mut text, range, max_line, &self.node);
+            update_range(&mut text, range, max_line, &self.node);
         }
     }
 
@@ -600,7 +600,7 @@ where
         };
 
         let mut info = self.print_info.write();
-        *info = moment.print_info.unwrap_or(*info);
+        *info = moment.ending_print_info;
 
         let mut cursors = self.cursors.write();
         cursors.clear();
@@ -610,11 +610,11 @@ where
 
             let splice = change.splice;
 
-			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
+            cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
             let max_line = max_line(&text, &info, &self.node);
-            //update_range(&mut text, range, max_line, &self.node);
+            update_range(&mut text, range, max_line, &self.node);
         }
     }
 

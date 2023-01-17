@@ -298,7 +298,7 @@ impl Change {
         self.splice = splice;
     }
 
-	/// Merges a list of sorted changes into one that overlaps all of them.
+    /// Merges a list of sorted changes into one that overlaps all of them.
     fn merge_list(&mut self, changes: &[Change]) {
         let old_change = &changes[0];
 
@@ -323,8 +323,10 @@ impl Change {
 /// jaring.
 #[derive(Debug, Default)]
 pub struct Moment {
-    /// Where the file was printed at the time this moment happened.
-    pub(crate) print_info: Option<PrintInfo>,
+    /// Where the file was printed at the time this moment started.
+    pub(crate) starting_print_info: PrintInfo,
+    /// Where the file was printed at the time this moment ended.
+    pub(crate) ending_print_info: PrintInfo,
     /// A list of actions, which may be changes, or simply selections of text.
     pub(crate) changes: Vec<Change>,
 }
@@ -401,13 +403,6 @@ impl History {
         History { moments: Vec::new(), current_moment: 0 }
     }
 
-    /// Starts a new `Moment` if the `History` is at it's very beginning.
-    pub fn start_if_needed(&mut self) {
-        if self.current_moment == 0 {
-            self.new_moment();
-        }
-    }
-
     /// Gets a mutable reference to the current `Moment`.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
         self.moments.get_mut(self.current_moment - 1)
@@ -419,14 +414,17 @@ impl History {
     }
 
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
-    pub fn add_change(&mut self, change: Change, change_index: Option<usize>) -> (usize, isize) {
+    pub fn add_change(
+        &mut self, change: Change, assoc_index: Option<usize>, print_info: PrintInfo,
+    ) -> (usize, isize) {
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
         if let Some(moment) = self.current_moment_mut() {
-            moment.add_change(change, change_index)
+            moment.ending_print_info = print_info;
+            moment.add_change(change, assoc_index)
         } else {
-            self.new_moment();
+            self.new_moment(print_info);
             self.moments.last_mut().unwrap().changes.push(change.clone());
 
             (0, 1)
@@ -434,13 +432,17 @@ impl History {
     }
 
     /// Declares that the current moment is complete and moves to the next one.
-    pub fn new_moment(&mut self) {
+    pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
         if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }
-            self.moments.push(Moment { print_info: None, changes: Vec::new() });
+            self.moments.push(Moment {
+                starting_print_info: print_info,
+                ending_print_info: print_info,
+                changes: Vec::new(),
+            });
             self.current_moment += 1;
         }
     }
@@ -464,13 +466,6 @@ impl History {
             self.current_moment -= 1;
 
             Some(&self.moments[self.current_moment])
-        }
-    }
-
-    /// Sets the `PrintInfo` for the current `Moment`.
-    pub fn set_print_info(&mut self, print_info: PrintInfo) {
-        if let Some(moment) = self.current_moment_mut() {
-            moment.print_info = Some(print_info);
         }
     }
 }
@@ -506,7 +501,7 @@ fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range
 
 /// Finds a  
 fn find_intersecting_end(change: &Change, changes: &Vec<Change>) -> usize {
-    match changes.binary_search_by(|cmp|  cmp.added_range().at_end_ord(&change.taken_range())) {
+    match changes.binary_search_by(|cmp| cmp.added_range().at_end_ord(&change.taken_range())) {
         Ok(index) => index,
         Err(index) => index,
     }

@@ -108,7 +108,7 @@ pub struct TextCursor {
     anchor: Anchor,
 
     /// The index to a `Change` in the current `Moment`, used for greater efficiency.
-    pub(crate) change_index: Option<usize>,
+    pub(crate) assoc_index: Option<usize>,
 
     /// Column that the cursor wants to be in.
     ///
@@ -126,7 +126,7 @@ impl TextCursor {
             caret: pos,
             // This should be fine.
             anchor: Anchor::None,
-            change_index: None,
+            assoc_index: None,
             desired_x: line.get_distance_to_col_node(pos.col, node),
         }
     }
@@ -226,7 +226,7 @@ impl TextCursor {
 
     /// Calibrates a cursor's positions based on some splice.
     pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
-        self.change_index.as_mut().map(|i| i.saturating_add_signed(splice_adder.change_diff));
+        self.assoc_index.as_mut().map(|i| i.saturating_add_signed(splice_adder.change_diff));
         self.caret.calibrate_on_adder(splice_adder);
         match &mut self.anchor {
             Anchor::Active(anchor) | Anchor::Inactive(anchor) => {
@@ -256,13 +256,13 @@ impl TextCursor {
     ///
     /// If it is not, dissassociates itself with it.
     pub fn change_range_check(&mut self, moment: &Moment) {
-        if let Some(assoc_change) = self.change_index {
+        if let Some(assoc_change) = self.assoc_index {
             if let Some(change) = moment.changes.get(assoc_change) {
                 if !change.added_range().intersects(&self.range()) {
-                    self.change_index = None;
+                    self.assoc_index = None;
                 }
             } else {
-                self.change_index = None;
+                self.assoc_index = None;
             }
         }
     }
@@ -284,7 +284,7 @@ impl TextCursor {
 
 impl Clone for TextCursor {
     fn clone(&self) -> Self {
-        TextCursor { desired_x: self.caret.col, change_index: None, ..*self }
+        TextCursor { desired_x: self.caret.col, assoc_index: None, ..*self }
     }
 }
 

@@ -341,8 +341,7 @@ fn update_files(
 ) {
     thread::scope(|s_1| {
         for file in files {
-            //s_1.spawn(|| file.0.update());
-            file.0.update();
+            s_1.spawn(|| file.0.update());
         }
     });
 }
