@@ -12,7 +12,7 @@ use crate::{
     file::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui}, log_info,
+    ui::{EndNode, Label, Ui},
 };
 
 use super::Widget;
@@ -169,7 +169,6 @@ impl FileEditor {
         F: FnMut(Mover),
     {
         let mut cursors = self.cursors.write();
-        log_info!("\n{:#?}", cursors);
         cursors.iter_mut().for_each(|c| {
             let cursor = Mover::new(c);
             f(cursor);
@@ -550,7 +549,7 @@ where
         editor.splice_adder.change_diff += change_diff;
 
         let mut text = self.text.write();
-        //let max_line = max_line(&text, &self.print_info.read(), &self.node);
+        let max_line = max_line(&text, &self.print_info.read(), &self.node);
         //update_range(&mut text, editor.cursor.range(), max_line, &self.node);
     }
 
@@ -571,7 +570,6 @@ where
         cursors.clear();
 
         let mut splice_adder = SpliceAdder::default();
-        log_info!("{:#?}", moment.changes);
         for change in &moment.changes {
             let mut splice = change.splice;
 
@@ -586,7 +584,7 @@ where
 			cursors.push(cursor);
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            //let max_line = max_line(&text, &info, &self.node);
+            let max_line = max_line(&text, &info, &self.node);
             //update_range(&mut text, range, max_line, &self.node);
         }
     }
@@ -615,7 +613,7 @@ where
 			cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            //let max_line = max_line(&text, &info, &self.node);
+            let max_line = max_line(&text, &info, &self.node);
             //update_range(&mut text, range, max_line, &self.node);
         }
     }

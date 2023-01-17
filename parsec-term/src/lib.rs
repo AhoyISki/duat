@@ -1,16 +1,15 @@
 use std::{
-    backtrace::{self, Backtrace},
+    backtrace::Backtrace,
     cmp::min,
     io::{stdout, Stdout},
 };
 
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
-    style::{Attribute, ContentStyle, Print, ResetColor, SetAttribute, SetStyle, Stylize},
+    style::{Attribute, ContentStyle, Print, ResetColor, SetAttribute, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    log_info,
     tags::Form,
     ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
 };
@@ -98,6 +97,26 @@ impl Label {
             last_style: ContentStyle::default(),
         }
     }
+
+    fn clear_line(&mut self) {
+        if self.cursor.x < self.area.br.x {
+            self.clear_form();
+
+            // The rest of the line is featureless.
+            let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(1);
+            let padding = " ".repeat(padding_count);
+            self.stdout.queue(Print(padding)).expect("crossterm");
+        }
+
+        self.cursor.x = self.area.tl.x;
+        self.cursor.y += 1;
+
+        self.stdout
+            .queue(MoveTo(self.cursor.x, self.cursor.y))
+            .expect("crossterm")
+            .queue(SetStyle(self.last_style))
+            .expect("crossterm");
+    }
 }
 
 impl Clone for Label {
@@ -111,24 +130,7 @@ impl UiLabel for Label {
         if self.cursor.y == self.area.br.y - 1 {
             Err(())
         } else {
-            if self.cursor.x < self.area.br.x - 1 {
-                self.clear_form();
-
-                // The rest of the line is featureless.
-                let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(2);
-                let padding = " ".repeat(padding_count);
-                self.stdout.queue(Print(padding)).expect("crossterm");
-            }
-
-            self.cursor.x = self.area.tl.x;
-            self.cursor.y += 1;
-
-            self.stdout
-                .queue(MoveTo(self.cursor.x, self.cursor.y))
-                .expect("crossterm")
-                .queue(SetStyle(self.last_style))
-                .expect("crossterm");
-
+            self.clear_line();
             Ok(())
         }
     }
@@ -198,9 +200,11 @@ impl UiLabel for Label {
     }
 
     fn stop_printing(&mut self) {
-        for _ in self.cursor.y..self.area.br.y {
+        for _ in self.cursor.y..(self.area.br.y - 2) {
             self.next_line();
         }
+
+        self.clear_line();
 
         stdout().execute(RestorePosition).expect("crossterm");
         self.clear_form();

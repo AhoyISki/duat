@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use parsec_core::{input::EditingScheme, layout::file_widget::FileWidget, FOR_TEST, log_info};
+use parsec_core::{input::EditingScheme, layout::file_widget::FileWidget};
 
 #[derive(Clone, PartialEq)]
 pub enum Mode {
@@ -65,7 +65,7 @@ impl EditingScheme for Editor {
                     if *ch == 'a' =>
                 {
                     file_editor.clone_last();
-                    file_editor.move_last(|c| c.move_hor(1, &file));
+                    file_editor.move_last(|c| c.move_hor(2, &file));
                 }
                 KeyEvent { code: KeyCode::Char(ch), modifiers: KeyModifiers::CONTROL, .. }
                     if *ch == 't' =>

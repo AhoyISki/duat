@@ -5,7 +5,6 @@ use crate::{
     action::{Moment, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
-    log_info,
     ui::{EndNode, Ui},
 };
 
