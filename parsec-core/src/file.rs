@@ -2,7 +2,7 @@ use std::{cmp::min, ops::RangeInclusive};
 
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
-    config::WrapMethod,
+    config::{WrapMethod, ShowNewLine},
     cursor::TextPos,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
@@ -224,24 +224,23 @@ impl TextLine {
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
     pub(crate) fn print(
-        &self, printer: &mut RawEndNode<'_, impl Ui>, x_shift: usize, skip: usize, forms: &[Form],
+        &self, node: &mut RawEndNode<'_, impl Ui>, x_shift: usize, skip: usize, forms: &[Form],
     ) -> bool {
-        let indent = self.indent(printer);
-        let (skip, d_x) = if let WrapMethod::NoWrap = printer.config.wrap_method {
+        let (skip, d_x) = if let WrapMethod::NoWrap = node.config.wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance(x_shift, printer)
+            self.get_col_at_distance(x_shift, node)
         } else {
             (skip, 0)
         };
 
         let mut d_x = d_x as usize;
-        (0..d_x).for_each(|_| printer.print(' '));
+        (0..d_x).for_each(|_| node.print(' '));
 
         if let Some(first_wrap_col) = self.wrap_iter().next() {
-            if skip >= first_wrap_col as usize && printer.config.wrap_indent {
-                (0..self.indent(printer)).for_each(|_| printer.print(' '));
+            if skip >= first_wrap_col as usize && node.config.wrap_indent {
+                (0..self.indent(node)).for_each(|_| node.print(' '));
             }
         }
 
@@ -271,17 +270,20 @@ impl TextLine {
                 break;
             }
             if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
-                tag.1.trigger(printer, forms, 0);
+                tag.1.trigger(node, forms, 0);
             }
         }
 
-        let wrap_indent = if printer.config.wrap_indent { self.indent(printer) } else { 0 };
+        let wrap_indent = if node.config.wrap_indent { self.indent(node) } else { 0 };
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
-        let wrap_indent = if wrap_indent < printer.width() { wrap_indent } else { 0 };
+        let wrap_indent = if wrap_indent < node.width() { wrap_indent } else { 0 };
+
+        let mut last_was_whitespace = false;
+        let show_new_line = node.config.show_new_line;
 
         let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
         for (byte, ch) in text_iter {
-            let char_width = get_char_width(ch, d_x + x_shift, printer);
+            let char_width = get_char_width(ch, d_x + x_shift, node);
 
             while let Some(&(tag_byte, tag)) = current_char_tag {
                 if byte == tag_byte as usize {
@@ -291,7 +293,7 @@ impl TextLine {
                     if let (CharTag::WrapppingChar, true) = (tag, d_x == 0) {
                         continue;
                     } else {
-                        if !tag.trigger(printer, forms, wrap_indent) {
+                        if !tag.trigger(node, forms, wrap_indent) {
                             return false;
                         }
                     }
@@ -301,23 +303,32 @@ impl TextLine {
             }
 
             d_x += char_width;
-            if let WrapMethod::NoWrap = printer.config.wrap_method {
-                if d_x > printer.width() {
+            if let WrapMethod::NoWrap = node.config.wrap_method {
+                if d_x > node.width() {
                     break;
                 }
             }
 
             if ch == '\t' {
-                // `repeat()` would use string allocation (I think).
-                (0..char_width).for_each(|_| printer.print(' '));
+                (0..char_width).for_each(|_| node.print(' '));
             } else if ch == '\n' {
-                printer.print(' ');
+                let ch = match show_new_line {
+                    ShowNewLine::Never => ' ',
+                    ShowNewLine::Always(ch) => ch,
+                    ShowNewLine::AfterSpace(ch) => if last_was_whitespace { ch } else { ' ' }
+                };
+                node.print(ch);
             } else {
-                printer.print(ch);
+                if ch.is_whitespace() {
+                    last_was_whitespace = true;
+                } else {
+                    last_was_whitespace = false;
+                }
+                node.print(ch);
             }
         }
 
-        printer.next_line().is_ok()
+        node.next_line().is_ok()
     }
 
     ////////////////////////////////

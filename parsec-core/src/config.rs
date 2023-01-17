@@ -52,6 +52,18 @@ pub enum TabPlaces {
     Varied(Vec<usize>),
 }
 
+/// Wheter to show the new line or not.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum ShowNewLine {
+    #[default]
+    /// Never show new lines.
+    Never,
+    /// Show the given character on every new line.
+    Always(char),
+    /// Show the given character only when there is whitespace at end of the line.
+    AfterSpace(char),
+}
+
 impl Default for TabPlaces {
     fn default() -> Self {
         TabPlaces::Regular(4)
@@ -88,6 +100,8 @@ pub struct Config {
     pub wrap_indent: bool,
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
+    /// Wether (and how) to show new lines.
+    pub show_new_line: ShowNewLine
 }
 
 /// A read-write reference to information, and can tell readers if said information has changed.
