@@ -318,6 +318,7 @@ impl TextLine {
                     ShowNewLine::AfterSpace(ch) => if last_was_whitespace { ch } else { ' ' }
                 };
                 node.print(ch);
+                return node.next_line().is_ok();
             } else {
                 if ch.is_whitespace() {
                     last_was_whitespace = true;
@@ -328,7 +329,7 @@ impl TextLine {
             }
         }
 
-        node.next_line().is_ok()
+		true
     }
 
     ////////////////////////////////

@@ -175,7 +175,7 @@ where
     U: Ui,
 {
     node_manager: NodeManager<U>,
-    status: StatusWidget<U>,
+    status: (StatusWidget<U>, WidgetPrinter<U>),
     widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
     files: Vec<(FileWidget<U>, Option<MidNode<U>>, WidgetPrinter<U>)>,
     master_node: MidNode<U>,
@@ -209,10 +209,11 @@ where
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
 
         let status = StatusWidget::new(end_node, &mut node_manager);
+        let status_printer = WidgetPrinter::new(&status);
 
         let mut layout = OneStatusLayout {
             node_manager,
-            status,
+            status: (status, status_printer),
             widgets: Vec::new(),
             files: Vec::new(),
             master_node,
@@ -306,8 +307,10 @@ where
                 }
 
                 update_files(&mut self.files);
+				self.status.0.update();
                 let printer_lock = printer.lock().unwrap();
                 print_files(&mut self.files);
+				self.status.1.print();
                 drop(printer_lock);
 
                 let widget_indices = widgets_to_update(&self.widgets);

@@ -1,6 +1,6 @@
 use crate::{
     config::{RoState, RwState},
-    ui::{EndNode, NodeManager, Ui}, file::Text,
+    ui::{EndNode, NodeManager, Ui}, file::{Text, TextLine},
 };
 
 use super::{Widget};
@@ -51,6 +51,9 @@ where
     }
 
     fn update(&mut self) {
+        let mut text = self.text.write();
+        text.lines.clear();
+        text.lines.push(TextLine::new(String::from("my text here lmao")));
     }
 }
 
