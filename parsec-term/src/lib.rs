@@ -127,7 +127,7 @@ impl Clone for Label {
 
 impl UiLabel for Label {
     fn next_line(&mut self) -> Result<(), ()> {
-        if self.cursor.y == self.area.br.y - 1 {
+        if self.cursor.y == self.area.br.y - 2 {
             Err(())
         } else {
             self.clear_line();
@@ -136,7 +136,7 @@ impl UiLabel for Label {
     }
 
     fn wrap_line(&mut self) -> Result<(), ()> {
-        if self.cursor.y == self.area.br.y - 1 {
+        if self.cursor.y == self.area.br.y - 2 {
             Err(())
         } else {
             self.cursor.x = self.area.tl.x;
@@ -200,7 +200,7 @@ impl UiLabel for Label {
     }
 
     fn stop_printing(&mut self) {
-        for _ in self.cursor.y..(self.area.br.y - 2) {
+        for _ in self.cursor.y..(self.area.br.y - 3) {
             self.next_line();
         }
 

@@ -1,11 +1,7 @@
 pub mod file_widget;
+pub mod status_widget;
 
-use std::{
-    fmt::Write,
-    path::PathBuf,
-    sync::Mutex,
-    thread,
-};
+use std::{fmt::Write, path::PathBuf, sync::Mutex, thread};
 
 use crossterm::event::{self, Event, KeyCode};
 
@@ -18,7 +14,10 @@ use crate::{
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
-use self::file_widget::{FileWidget, PrintInfo, PrintedLines};
+use self::{
+    file_widget::{FileWidget, PrintInfo, PrintedLines},
+    status_widget::StatusWidget,
+};
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
@@ -38,8 +37,8 @@ where
     fn text(&self) -> RoState<Text>;
 
     /// Returns the printing information of the file.
-    fn print_info(&self) -> RoState<PrintInfo> {
-        RoState::new(PrintInfo::default())
+    fn print_info(&self) -> Option<RoState<PrintInfo>> {
+        None
     }
 
     /// Scrolls the text vertically by an amount.
@@ -66,14 +65,6 @@ where
     fn cursors(&mut self) -> (&mut Vec<TextCursor>, usize);
 }
 
-pub struct StatusWidget<U>
-where
-    U: Ui,
-{
-    file_name: String,
-    child_node: EndNode<U>,
-}
-
 pub struct LineNumbersWidget<U>
 where
     U: Ui,
@@ -94,7 +85,7 @@ where
     fn new(
         file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
     ) -> (Self, MidNode<U>) {
-        let mut split = 3;
+        let mut split = 2;
         let mut num_exp = 10;
         let text = file_widget.text.write();
 
@@ -201,7 +192,7 @@ where
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
         P: Widget<U> + 'static,
-        C: Fn(EndNode<U>, &Self) -> P;
+        C: Fn(EndNode<U>, &mut NodeManager<U>) -> P;
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 }
@@ -214,10 +205,10 @@ where
         let mut node_manager = NodeManager::new(ui);
         let mut node = node_manager.only_child(&config, "code").unwrap();
 
-        let (master_node, child_node) =
+        let (master_node, end_node) =
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
 
-        let status = StatusWidget { child_node, file_name: String::from(path.to_str().unwrap()) };
+        let status = StatusWidget::new(end_node, &mut node_manager);
 
         let mut layout = OneStatusLayout {
             node_manager,
@@ -275,14 +266,14 @@ where
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
         P: Widget<U> + 'static,
-        C: Fn(EndNode<U>, &Self) -> P,
+        C: Fn(EndNode<U>, &mut NodeManager<U>) -> P,
     {
         let (master_node, end_node) =
             self.node_manager.split_mid(&mut self.master_node, direction, split, false);
 
         self.master_node = master_node;
 
-        let widget = constructor(end_node.clone(), &self);
+        let widget = constructor(end_node.clone(), &mut self.node_manager);
         let widget_printer = WidgetPrinter::new(&widget);
         self.widgets.push(Mutex::new((Box::new(widget), widget_printer)));
     }
@@ -392,7 +383,7 @@ where
         Self {
             end_node: widget.end_node().clone(),
             text: widget.text(),
-            print_info: widget.print_info(),
+            print_info: widget.print_info().unwrap_or_else(|| RoState::new(PrintInfo::default())),
         }
     }
 

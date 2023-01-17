@@ -1,12 +1,11 @@
 use std::{
     cmp::{max, min},
     fs,
-    ops::BitXor,
     path::PathBuf,
 };
 
 use crate::{
-    action::{Change, History, Moment, TextRange},
+    action::{Change, History, TextRange},
     config::{RoState, RwState, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
@@ -334,8 +333,8 @@ where
         RoState::from(&self.text)
     }
 
-    fn print_info(&self) -> RoState<PrintInfo> {
-        RoState::from(&self.print_info)
+    fn print_info(&self) -> Option<RoState<PrintInfo>> {
+        Some(RoState::from(&self.print_info))
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {

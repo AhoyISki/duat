@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::ui::{Ui, RawEndNode};
+use crate::ui::{RawEndNode, Ui};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -101,11 +101,13 @@ pub struct Config {
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
-    pub show_new_line: ShowNewLine
+    pub show_new_line: ShowNewLine,
 }
 
 /// A read-write reference to information, and can tell readers if said information has changed.
-pub struct RwState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
+pub struct RwState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>)
+where
+    T: ?Sized;
 
 impl<T> RwState<T> {
     /// Returns a new instance of `RwState`.
@@ -115,9 +117,9 @@ impl<T> RwState<T> {
         RwState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
     }
 
-	/// Reads the information.
-	///
-	/// Also makes it so that `has_changed()` returns false.
+    /// Reads the information.
+    ///
+    /// Also makes it so that `has_changed()` returns false.
     pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_version = self.1.read().unwrap();
         let mut current_version = self.2.write().unwrap();
@@ -125,19 +127,19 @@ impl<T> RwState<T> {
         if *updated_version > *current_version {
             *current_version = *updated_version;
         }
-        
+
         self.0.read().unwrap()
     }
 
-	/// Returns a writeable reference to the state.
-	///
-	/// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
+    /// Returns a writeable reference to the state.
+    ///
+    /// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
     pub fn write(&mut self) -> RwLockWriteGuard<T> {
         *self.1.write().unwrap() += 1;
         self.0.write().unwrap()
     }
 
-	/// Wether or not it has changed since it was last read.
+    /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
         let last_version = self.1.read().unwrap();
         let mut current_version = self.2.write().unwrap();
@@ -149,23 +151,25 @@ impl<T> RwState<T> {
 }
 
 impl<T> Clone for RwState<T> {
-	fn clone(&self) -> Self {
-    	RwState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap() - 1))
-	}
+    fn clone(&self) -> Self {
+        RwState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap() - 1))
+    }
 }
 
 /// A read-only reference to information, and can tell readers if said information has changed.
-pub struct RoState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>);
+pub struct RoState<T>(Arc<RwLock<T>>, Arc<RwLock<usize>>, RwLock<usize>)
+where
+    T: ?Sized;
 
 impl<T> RoState<T> {
-	/// Returns a new instance of `RwState`.
-	pub fn new(data: T) -> Self {
+    /// Returns a new instance of `RwState`.
+    pub fn new(data: T) -> Self {
         RoState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
     }
 
-	/// Reads the information.
-	///
-	/// Also makes it so that `has_changed()` returns false.
+    /// Reads the information.
+    ///
+    /// Also makes it so that `has_changed()` returns false.
     pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_version = self.1.read().unwrap();
         let mut current_version = self.2.write().unwrap();
@@ -173,13 +177,13 @@ impl<T> RoState<T> {
         if *updated_version > *current_version {
             *current_version = *updated_version;
         }
-        
+
         self.0.read().unwrap()
     }
 
-	/// Checks if the state within has changed.
-	///
-	/// If you have called `has_changed()` or `read()`, without any changes, it will return false.
+    /// Checks if the state within has changed.
+    ///
+    /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
     pub fn has_changed(&self) -> bool {
         let updated_version = self.1.read().unwrap();
         let mut current_version = self.2.write().unwrap();
@@ -202,7 +206,7 @@ impl<T> From<&RwState<T>> for RoState<T> {
 
 // NOTE: Each `RoState` of a given state will have its own internal update counter.
 impl<T> Clone for RoState<T> {
-	fn clone(&self) -> Self {
-    	RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap()))
-	}
+    fn clone(&self) -> Self {
+        RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap()))
+    }
 }
