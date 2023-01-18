@@ -49,6 +49,12 @@ impl TextPos {
     }
 }
 
+impl std::fmt::Display for TextPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.col, self.row))
+    }
+}
+
 impl std::fmt::Debug for TextPos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("col: {}, line: {}, byte: {}", self.col, self.row, self.byte))

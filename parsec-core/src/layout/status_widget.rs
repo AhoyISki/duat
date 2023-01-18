@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::{
     config::{RoState, RwState},
     file::{Text, TextLine},
@@ -72,8 +70,8 @@ where
 {
     end_node: EndNode<U>,
     text: RwState<Text>,
+    string: String,
     printables: Vec<Box<dyn StateToString>>,
-    text_function: Box<dyn Fn(&Vec<Box<dyn StateToString>>) -> String>,
 }
 
 impl<U> StatusWidget<U>
@@ -82,40 +80,36 @@ where
 {
     pub(super) fn new(end_node: EndNode<U>, _node_manager: &mut NodeManager<U>) -> Self {
         StatusWidget {
-            printables: Vec::new(),
             end_node,
             text: RwState::new(Text::default()),
-            text_function: Box::new(|_| String::from("")),
+            string: String::new(),
+            printables: Vec::new(),
         }
     }
 
-    pub fn push<T, F>(&mut self, state: &RoState<T>, f: F) -> usize
+    pub fn push<T, F>(&mut self, state: &RoState<T>, f: F)
     where
         T: 'static,
         F: Fn(&T) -> String + 'static,
     {
         let new_state = StringState::new(state.clone(), f);
         self.printables.push(Box::new(new_state));
-        self.printables.len() - 1
     }
 
-    pub fn push_indexed<T, F>(
-        &mut self, state: &RoState<Vec<Box<T>>>, f: F, index: &RoState<usize>,
-    ) -> usize
+    pub fn push_indexed<T, F>(&mut self, state: &RoState<Vec<Box<T>>>, f: F, index: &RoState<usize>)
     where
         T: 'static,
         F: Fn(&Vec<Box<T>>, usize) -> String + 'static,
     {
         let new_state = StringStateIndexed::new(state.clone(), f, index.clone());
         self.printables.push(Box::new(new_state));
-        self.printables.len() - 1
     }
 
-    pub fn set_function<F>(&mut self, f: F)
+    pub fn set_string<T>(&mut self, text: T)
     where
-        F: Fn(&Vec<Box<dyn StateToString>>) -> String + 'static,
+        T: ToString,
     {
-        self.text_function = Box::new(f);
+        self.string = text.to_string();
     }
 }
 
@@ -144,8 +138,55 @@ where
     fn update(&mut self) {
         let mut text = self.text.write();
         text.lines.clear();
-        text.lines.push(TextLine::new((self.text_function)(&self.printables)));
+        let mut final_string = self.string.clone();
+
+        for (index, (pos, _)) in self.string.match_indices("{}").enumerate() {
+            final_string.replace_range(pos..=(pos + 1), &self.printables[index].to_string())
+        }
+
+        text.lines.push(TextLine::new(final_string));
     }
 }
 
 unsafe impl<U> Send for StatusWidget<U> where U: Ui {}
+
+#[macro_export]
+macro_rules! form_status {
+    (@ignore $ignored:expr) => {};
+
+    (@get_obj (|$obj:ident| $internals:expr)) => {
+        &$obj
+    };
+    (@get_obj $obj:ident) => {
+        &$obj
+    };
+
+    (@get_fun (|$obj:ident| $internals:expr)) => {
+        |$obj| { $internals.to_string() }
+    };
+    (@get_fun $obj:ident) => {
+        |$obj| { $obj.to_string() }
+    };
+
+    ($status:expr => $text:expr, $($to_string:tt),*) => {
+        $(
+            $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
+        ),*
+        let mut index = 0;
+        $status.set_string($text);
+    };
+
+}
+
+#[macro_export]
+macro_rules! tester {
+    (@closure |$ident:ident| $expr:expr) => {
+        stringify!(|$ident| $expr)
+    };
+    (@closure $ident:ident) => {
+        panic!(stringify!(tester!(@closure $expr)));
+    };
+    ($expr:tt) => {
+        panic!(stringify!(tester!(@closure $expr)));
+    }
+}
