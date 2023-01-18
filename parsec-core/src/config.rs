@@ -1,4 +1,7 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    any::Any,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 
 use crate::ui::{RawEndNode, Ui};
 
@@ -166,7 +169,12 @@ impl<T> RoState<T> {
     pub fn new(data: T) -> Self {
         RoState(Arc::new(RwLock::new(data)), Arc::new(RwLock::new(1)), RwLock::new(1))
     }
+}
 
+impl<T> RoState<T>
+where
+    T: ?Sized,
+{
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
@@ -205,7 +213,10 @@ impl<T> From<&RwState<T>> for RoState<T> {
 }
 
 // NOTE: Each `RoState` of a given state will have its own internal update counter.
-impl<T> Clone for RoState<T> {
+impl<T> Clone for RoState<T>
+where
+    T: ?Sized,
+{
     fn clone(&self) -> Self {
         RoState(self.0.clone(), self.1.clone(), RwLock::new(*self.2.read().unwrap()))
     }

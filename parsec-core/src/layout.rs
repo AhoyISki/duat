@@ -72,7 +72,7 @@ where
     node: EndNode<U>,
     printed_lines: PrintedLines,
     main_cursor: RoState<usize>,
-    cursors: RoState<Vec<TextCursor>>,
+    cursors: RoState<Vec<Box<TextCursor>>>,
     text: RwState<Text>,
 }
 
@@ -175,7 +175,8 @@ where
     U: Ui,
 {
     node_manager: NodeManager<U>,
-    status: (StatusWidget<U>, WidgetPrinter<U>),
+    pub status: StatusWidget<U>,
+    status_printer: WidgetPrinter<U>,
     widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
     files: Vec<(FileWidget<U>, Option<MidNode<U>>, WidgetPrinter<U>)>,
     master_node: MidNode<U>,
@@ -195,6 +196,8 @@ where
         C: Fn(EndNode<U>, &mut NodeManager<U>) -> P;
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
+
+    fn files(&self) -> Vec<&FileWidget<U>>;
 }
 
 impl<U> OneStatusLayout<U>
@@ -213,7 +216,8 @@ where
 
         let mut layout = OneStatusLayout {
             node_manager,
-            status: (status, status_printer),
+            status,
+            status_printer,
             widgets: Vec::new(),
             files: Vec::new(),
             master_node,
@@ -307,10 +311,10 @@ where
                 }
 
                 update_files(&mut self.files);
-				self.status.0.update();
+				self.status.update();
                 let printer_lock = printer.lock().unwrap();
                 print_files(&mut self.files);
-				self.status.1.print();
+				self.status_printer.print();
                 drop(printer_lock);
 
                 let widget_indices = widgets_to_update(&self.widgets);
@@ -327,6 +331,10 @@ where
         });
 
         self.node_manager.shutdown();
+    }
+
+    fn files(&self) -> Vec<&FileWidget<U>> {
+        self.files.iter().map(|(f, ..)| f).collect()
     }
 }
 
