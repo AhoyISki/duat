@@ -290,6 +290,8 @@ where
         let printer = Mutex::new(true);
 
         // Initial printing.
+		self.status.update();
+		self.status_printer.print();
         print_files(&mut self.files);
         for mutex in &mut self.widgets {
             let mut lock = mutex.lock().unwrap();
