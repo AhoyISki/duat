@@ -121,11 +121,22 @@ where
         self.printables.push(Box::new(new_state));
     }
 
+    pub fn push_file_var<F>(&mut self, function: F)
+    where
+        F: Fn(&FileWidget<U>) -> String + 'static,
+    {
+        self.file_printables.push(Box::new(function));
+    }
+
     pub fn set_string<T>(&mut self, text: T)
     where
         T: ToString,
     {
         self.string = text.to_string();
+    }
+
+    pub fn set_file(&mut self, file: &RwData<FileWidget<U>>) {
+        self.file = Some(RoData::from(file));
     }
 }
 
@@ -194,6 +205,9 @@ macro_rules! form_status {
         $status:expr => $text:expr, global_vars: $($to_string:tt),*;
         file: $file:expr, file_vars: $($file_to_string:tt),*
     ) => {
+        $(
+            $status.push_file_var($file_to_string)
+        );*
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
         );*

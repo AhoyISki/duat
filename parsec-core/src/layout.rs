@@ -82,6 +82,7 @@ impl<U> LineNumbersWidget<U>
 where
     U: Ui,
 {
+    /// Returns a new instance of `LineNumbersWidget`.
     fn new(
         file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
     ) -> (Self, MidNode<U>) {
@@ -116,9 +117,9 @@ where
     }
 }
 
-impl<M> Widget<M> for LineNumbersWidget<M>
+impl<U> Widget<U> for LineNumbersWidget<U>
 where
-    M: Ui,
+    U: Ui,
 {
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node());
@@ -161,11 +162,11 @@ where
         RoData::from(&self.text)
     }
 
-    fn end_node(&self) -> &EndNode<M> {
+    fn end_node(&self) -> &EndNode<U> {
         &self.node
     }
 
-    fn end_node_mut(&mut self) -> &mut EndNode<M> {
+    fn end_node_mut(&mut self) -> &mut EndNode<U> {
         &mut self.node
     }
 }
@@ -176,9 +177,8 @@ where
 {
     node_manager: NodeManager<U>,
     pub status: StatusWidget<U>,
-    status_printer: WidgetPrinter<U>,
-    widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
-    files: Vec<(RwData<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>)>,
+    widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
+    files: Vec<(RwData<FileWidget<U>>, Option<MidNode<U>>)>,
     master_node: MidNode<U>,
     match_manager: MatchManager,
 }
@@ -188,15 +188,19 @@ pub trait Layout<U>
 where
     U: Ui,
 {
+    /// Opens a new file in a new `FileWidget`.
     fn open_file(&mut self, path: &PathBuf);
 
+    /// Pushes a node to an edge of the screen, with all the files in the center.
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
         P: Widget<U> + 'static,
         C: Fn(EndNode<U>, &mut NodeManager<U>) -> P;
 
+    /// The main application function.
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 
+    /// Returns a list of files, valid for this moment.
     fn files(&self) -> Vec<RoData<FileWidget<U>>>;
 }
 
@@ -204,6 +208,7 @@ impl<U> OneStatusLayout<U>
 where
     U: Ui + 'static,
 {
+    /// Returns a new instance of `OneStatusLayout`.
     pub fn new(ui: U, path: &PathBuf, match_manager: MatchManager, config: Config) -> Self {
         let mut node_manager = NodeManager::new(ui);
         let mut node = node_manager.only_child(&config, "code").unwrap();
@@ -212,12 +217,10 @@ where
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
 
         let status = StatusWidget::new(end_node, &mut node_manager);
-        let status_printer = WidgetPrinter::new(&status);
 
         let mut layout = OneStatusLayout {
             node_manager,
             status,
-            status_printer,
             widgets: Vec::new(),
             files: Vec::new(),
             master_node,
@@ -229,21 +232,20 @@ where
         layout
     }
 
+    /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, node: EndNode<U>) {
         let mut file =
             FileWidget::<U>::new(path.clone(), node.clone(), &Some(self.match_manager.clone()));
-        let file_printer = WidgetPrinter::new(&file);
 
         if matches!(node.config().line_numbers, LineNumbers::None) {
-            self.files.push((RwData::new(file), None, file_printer));
+            self.files.push((RwData::new(file), None));
         } else {
             let (line_numbers, file_parent) =
                 LineNumbersWidget::new(&mut file, &mut self.node_manager);
 
-            let widget_printer = WidgetPrinter::new(&line_numbers);
-            self.widgets.push(Mutex::new((Box::new(line_numbers), widget_printer)));
+            self.widgets.push(Mutex::new(Box::new(line_numbers)));
 
-            self.files.push((RwData::new(file), Some(file_parent), file_printer));
+            self.files.push((RwData::new(file), Some(file_parent)));
         }
     }
 
@@ -252,7 +254,7 @@ where
     }
 }
 
-type FilePrinter<U> = (RwData<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>);
+type FilePrinter<U> = (RwData<FileWidget<U>>, Option<MidNode<U>>);
 
 impl<U> Layout<U> for OneStatusLayout<U>
 where
@@ -281,8 +283,8 @@ where
         self.master_node = master_node;
 
         let widget = constructor(end_node.clone(), &mut self.node_manager);
-        let widget_printer = WidgetPrinter::new(&widget);
-        self.widgets.push(Mutex::new((Box::new(widget), widget_printer)));
+
+        self.widgets.push(Mutex::new(Box::new(widget)));
     }
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
@@ -293,13 +295,12 @@ where
 
         // Initial printing.
         self.status.update();
-        self.status_printer.print();
 
         print_files(&mut self.files);
-        for mutex in &mut self.widgets {
-            let mut lock = mutex.lock().unwrap();
-            lock.0.update();
-            lock.1.print();
+        for widget in &mut self.widgets {
+            let mut widget = widget.lock().unwrap();
+            widget.update();
+            print_widget(Box::as_mut(&mut widget));
         }
 
         // The main loop.
@@ -318,18 +319,18 @@ where
                 update_files(&mut self.files);
                 self.status.update();
                 let printer_lock = printer.lock().unwrap();
+                print_widget(&mut self.status);
                 print_files(&mut self.files);
-                self.status_printer.print();
                 drop(printer_lock);
 
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
-                    let box_and_widget = &self.widgets[*index];
+                    let widget = &self.widgets[*index];
                     s_0.spawn(|| {
-                        let mut box_and_widget = box_and_widget.lock().unwrap();
-                        box_and_widget.0.update();
+                        let mut widget = widget.lock().unwrap();
+                        widget.update();
                         let _printer_lock = printer.lock().unwrap();
-                        box_and_widget.1.print();
+                        print_widget(Box::as_mut(&mut widget));
                     });
                 }
             }
@@ -343,6 +344,7 @@ where
     }
 }
 
+/// Updates all files in different threads.
 fn update_files<U>(files: &mut Vec<FilePrinter<U>>)
 where
     U: Ui,
@@ -354,26 +356,29 @@ where
     });
 }
 
+/// Prints all the files.
 fn print_files<U>(printer: &mut Vec<FilePrinter<U>>)
 where
     U: Ui,
 {
-    for (_, _, widget_printer) in printer {
-        if widget_printer.text.has_changed() {
-            widget_printer.print();
-        }
+    for (file_widget, _) in printer.iter_mut() {
+        let mut file_widget = file_widget.write();
+        let print_info = file_widget.print_info().map(|p| *p.read()).unwrap_or_default();
+        file_widget.text().read().print(file_widget.end_node_mut(), print_info);
     }
 }
 
-fn widgets_to_update(
-    widgets: &Vec<Mutex<(Box<dyn Widget<impl Ui>>, WidgetPrinter<impl Ui>)>>,
-) -> Vec<usize> {
+/// List of widgets that need to be updated.
+fn widgets_to_update<U>(widgets: &Vec<Mutex<Box<dyn Widget<U>>>>) -> Vec<usize>
+where
+    U: Ui,
+{
     let mut indices = Vec::new();
 
     for (index, widget) in widgets.iter().enumerate() {
         // If the lock is unavailable, that means the widget is being updated.
         if let Ok(lock) = widget.try_lock() {
-            if lock.0.needs_update() {
+            if lock.needs_update() {
                 indices.push(index);
             }
         }
@@ -382,30 +387,11 @@ fn widgets_to_update(
     indices
 }
 
-struct WidgetPrinter<U>
+fn print_widget<W, U>(widget: &mut W)
 where
+    W: Widget<U> + ?Sized,
     U: Ui,
 {
-    end_node: EndNode<U>,
-    text: RoData<Text>,
-    print_info: RoData<PrintInfo>,
-}
-
-unsafe impl<U> Send for WidgetPrinter<U> where U: Ui {}
-
-impl<U> WidgetPrinter<U>
-where
-    U: Ui,
-{
-    fn new(widget: &dyn Widget<U>) -> Self {
-        Self {
-            end_node: widget.end_node().clone(),
-            text: widget.text(),
-            print_info: widget.print_info().unwrap_or_else(|| RoData::new(PrintInfo::default())),
-        }
-    }
-
-    fn print(&mut self) {
-        self.text.read().print(&mut self.end_node, self.print_info.read().clone());
-    }
+    let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
+    widget.text().read().print(widget.end_node_mut(), print_info);
 }

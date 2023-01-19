@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
 use crate::ui::{RawEndNode, Ui};
 
@@ -125,7 +125,12 @@ impl<T> RwData<T> {
             last_read_state: RwLock::new(1),
         }
     }
+}
 
+impl<T> RwData<T>
+where
+    T: ?Sized,
+{
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
@@ -138,6 +143,18 @@ impl<T> RwData<T> {
         }
 
         self.data.read().unwrap()
+    }
+
+    /// Tries to read the data immediately and returns a `Result`.
+    pub fn try_read(&self) -> Result<RwLockReadGuard<T>, TryLockError<RwLockReadGuard<T>>> {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut last_read_state = self.last_read_state.write().unwrap();
+
+        if *updated_version > *last_read_state {
+            *last_read_state = *updated_version;
+        }
+
+        self.data.try_read()
     }
 
     /// Returns a writeable reference to the state.
@@ -168,6 +185,8 @@ impl<T> Clone for RwData<T> {
         }
     }
 }
+
+unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 
 /// A read-only reference to information.
 pub struct RoData<T>
