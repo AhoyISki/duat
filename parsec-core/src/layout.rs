@@ -72,7 +72,7 @@ where
     node: EndNode<U>,
     printed_lines: PrintedLines,
     main_cursor: RoState<usize>,
-    cursors: RoState<Vec<Box<TextCursor>>>,
+    cursors: RoState<Vec<TextCursor>>,
     text: RwState<Text>,
 }
 
@@ -178,7 +178,7 @@ where
     pub status: StatusWidget<U>,
     status_printer: WidgetPrinter<U>,
     widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
-    files: Vec<(FileWidget<U>, Option<MidNode<U>>, WidgetPrinter<U>)>,
+    files: Vec<(RwState<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>)>,
     master_node: MidNode<U>,
     match_manager: MatchManager,
 }
@@ -197,7 +197,7 @@ where
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 
-    fn files(&self) -> Vec<&FileWidget<U>>;
+    fn files(&self) -> Vec<RoState<FileWidget<U>>>;
 }
 
 impl<U> OneStatusLayout<U>
@@ -235,7 +235,7 @@ where
         let file_printer = WidgetPrinter::new(&file);
 
         if matches!(node.config().line_numbers, LineNumbers::None) {
-            self.files.push((file, None, file_printer));
+            self.files.push((RwState::new(file), None, file_printer));
         } else {
             let (line_numbers, file_parent) =
                 LineNumbersWidget::new(&mut file, &mut self.node_manager);
@@ -243,14 +243,16 @@ where
             let widget_printer = WidgetPrinter::new(&line_numbers);
             self.widgets.push(Mutex::new((Box::new(line_numbers), widget_printer)));
 
-            self.files.push((file, Some(file_parent), file_printer));
+            self.files.push((RwState::new(file), Some(file_parent), file_printer));
         }
     }
 
-    fn active_widget(&mut self) -> &mut FileWidget<U> {
-        &mut self.files[0].0
+    fn active_file(&mut self) -> RwState<FileWidget<U>> {
+        self.files[0].0.clone()
     }
 }
+
+type FilePrinter<U> = (RwState<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>);
 
 impl<U> Layout<U> for OneStatusLayout<U>
 where
@@ -290,8 +292,9 @@ where
         let printer = Mutex::new(true);
 
         // Initial printing.
-		self.status.update();
-		self.status_printer.print();
+        self.status.update();
+        self.status_printer.print();
+
         print_files(&mut self.files);
         for mutex in &mut self.widgets {
             let mut lock = mutex.lock().unwrap();
@@ -308,15 +311,15 @@ where
                     if let KeyCode::Esc = key_event.code {
                         break;
                     } else {
-                        key_remapper.send_key_to_file(key_event, &mut self.files[0].0);
+                        key_remapper.send_key_to_file(key_event, &mut self.files[0].0.write());
                     }
                 }
 
                 update_files(&mut self.files);
-				self.status.update();
+                self.status.update();
                 let printer_lock = printer.lock().unwrap();
                 print_files(&mut self.files);
-				self.status_printer.print();
+                self.status_printer.print();
                 drop(printer_lock);
 
                 let widget_indices = widgets_to_update(&self.widgets);
@@ -335,25 +338,27 @@ where
         self.node_manager.shutdown();
     }
 
-    fn files(&self) -> Vec<&FileWidget<U>> {
-        self.files.iter().map(|(f, ..)| f).collect()
+    fn files(&self) -> Vec<RoState<FileWidget<U>>> {
+        self.files.iter().map(|(f, ..)| RoState::from(f)).collect()
     }
 }
 
-fn update_files(
-    files: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
-) {
+fn update_files<U>(files: &mut Vec<FilePrinter<U>>)
+where
+    U: Ui,
+{
     thread::scope(|s_1| {
         for file in files {
-            s_1.spawn(|| file.0.update());
+            s_1.spawn(|| file.0.write().update());
         }
     });
 }
 
-fn print_files(
-    printer: &mut Vec<(FileWidget<impl Ui>, Option<MidNode<impl Ui>>, WidgetPrinter<impl Ui>)>,
-) {
-    for (file, _, widget_printer) in printer {
+fn print_files<U>(printer: &mut Vec<FilePrinter<U>>)
+where
+    U: Ui,
+{
+    for (_, _, widget_printer) in printer {
         if widget_printer.text.has_changed() {
             widget_printer.print();
         }

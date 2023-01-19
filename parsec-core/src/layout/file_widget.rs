@@ -114,14 +114,14 @@ impl PrintedLines {
 }
 
 pub struct FileEditor {
-    cursors: RwState<Vec<Box<TextCursor>>>,
+    cursors: RwState<Vec<TextCursor>>,
     main_cursor: RwState<usize>,
     clearing_needed: bool,
 }
 
 impl FileEditor {
     /// Returns a new instance of `FileEditor`.
-    pub fn new(cursors: RwState<Vec<Box<TextCursor>>>, main_cursor: RwState<usize>) -> Self {
+    pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: RwState<usize>) -> Self {
         Self { cursors, main_cursor, clearing_needed: false }
     }
 
@@ -284,7 +284,7 @@ impl FileEditor {
     }
 
     pub fn push(&mut self, cursor: TextCursor) {
-        self.cursors.write().push(Box::new(cursor));
+        self.cursors.write().push(cursor);
     }
 }
 
@@ -297,7 +297,7 @@ where
     print_info: RwState<PrintInfo>,
     pub(crate) main_cursor: RwState<usize>,
     // The `Box` here is used in order to comply with `RoState` printability.
-    pub(crate) cursors: RwState<Vec<Box<TextCursor>>>,
+    pub(crate) cursors: RwState<Vec<TextCursor>>,
     pub(crate) node: EndNode<U>,
     history: History,
     do_set_print_info: bool,
@@ -366,7 +366,7 @@ where
             text,
             print_info: RwState::new(PrintInfo::default()),
             main_cursor: RwState::new(0),
-            cursors: RwState::new(vec![Box::new(cursor)]),
+            cursors: RwState::new(vec![cursor]),
             node,
             history: History::new(),
             do_set_print_info: true,
@@ -580,7 +580,7 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            cursors.push(Box::new(TextCursor::new(splice.taken_end(), &text.lines, &self.node)));
+            cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
             let max_line = max_line(&text, &info, &self.node);
@@ -609,7 +609,7 @@ where
 
             let splice = change.splice;
 
-            cursors.push(Box::new(TextCursor::new(splice.added_end(), &text.lines, &self.node)));
+            cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
             let max_line = max_line(&text, &info, &self.node);
@@ -697,7 +697,7 @@ where
         &self.history
     }
 
-    pub fn cursors(&self) -> RoState<Vec<Box<TextCursor>>> {
+    pub fn cursors(&self) -> RoState<Vec<TextCursor>> {
         (&self.cursors).into()
     }
 }

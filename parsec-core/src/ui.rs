@@ -410,8 +410,8 @@ pub enum Direction {
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
 pub trait Ui {
-    type Container: Container + Clone + Send;
-    type Label: Label + Clone + Send;
+    type Container: Container + Clone + Send + Sync;
+    type Label: Label + Clone + Send + Sync;
 
     /// Splits an area in two, and places each of the areas on a new parent area.
     ///

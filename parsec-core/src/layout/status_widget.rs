@@ -39,25 +39,25 @@ where
 
 struct StringStateIndexed<T, F>
 where
-    F: Fn(&Vec<Box<T>>, usize) -> String,
+    F: Fn(&Vec<T>, usize) -> String,
 {
-    state: RoState<Vec<Box<T>>>,
+    state: RoState<Vec<T>>,
     to_string: Box<F>,
     index: RoState<usize>,
 }
 
 impl<T, F> StringStateIndexed<T, F>
 where
-    F: Fn(&Vec<Box<T>>, usize) -> String,
+    F: Fn(&Vec<T>, usize) -> String,
 {
-    fn new(state: RoState<Vec<Box<T>>>, to_string: F, index: RoState<usize>) -> Self {
+    fn new(state: RoState<Vec<T>>, to_string: F, index: RoState<usize>) -> Self {
         Self { state, to_string: Box::new(to_string), index }
     }
 }
 
 impl<T, F> StateToString for StringStateIndexed<T, F>
 where
-    F: Fn(&Vec<Box<T>>, usize) -> String,
+    F: Fn(&Vec<T>, usize) -> String,
 {
     fn to_string(&self) -> String {
         (self.to_string)(&self.state.read(), *self.index.read())
@@ -171,22 +171,9 @@ macro_rules! form_status {
     ($status:expr => $text:expr, $($to_string:tt),*) => {
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
-        ),*
+        );*
         let mut index = 0;
         $status.set_string($text);
     };
 
-}
-
-#[macro_export]
-macro_rules! tester {
-    (@closure |$ident:ident| $expr:expr) => {
-        stringify!(|$ident| $expr)
-    };
-    (@closure $ident:ident) => {
-        panic!(stringify!(tester!(@closure $expr)));
-    };
-    ($expr:tt) => {
-        panic!(stringify!(tester!(@closure $expr)));
-    }
 }
