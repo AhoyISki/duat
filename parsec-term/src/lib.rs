@@ -139,8 +139,7 @@ impl UiLabel for Label {
         if self.cursor.y == self.area.br.y - 2 {
             Err(())
         } else {
-            self.cursor.x = self.area.tl.x;
-            self.cursor.y += 1;
+            self.clear_line();
 
             self.stdout
                 .queue(MoveTo(self.cursor.x, self.cursor.y))
@@ -206,7 +205,7 @@ impl UiLabel for Label {
     }
 
     fn stop_printing(&mut self) {
-        for _ in self.cursor.y..(self.area.br.y - 3) {
+        for _ in self.cursor.y..(self.area.br.y - 2) {
             let _ = self.next_line();
         }
 
