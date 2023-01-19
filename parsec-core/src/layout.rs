@@ -6,7 +6,7 @@ use std::{fmt::Write, path::PathBuf, sync::Mutex, thread};
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
-    config::{Config, LineNumbers, RoState, RwState},
+    config::{Config, LineNumbers, RoData, RwData},
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
@@ -34,10 +34,10 @@ where
 
     fn needs_update(&self) -> bool;
 
-    fn text(&self) -> RoState<Text>;
+    fn text(&self) -> RoData<Text>;
 
     /// Returns the printing information of the file.
-    fn print_info(&self) -> Option<RoState<PrintInfo>> {
+    fn print_info(&self) -> Option<RoData<PrintInfo>> {
         None
     }
 
@@ -71,9 +71,9 @@ where
 {
     node: EndNode<U>,
     printed_lines: PrintedLines,
-    main_cursor: RoState<usize>,
-    cursors: RoState<Vec<TextCursor>>,
-    text: RwState<Text>,
+    main_cursor: RoData<usize>,
+    cursors: RoData<Vec<TextCursor>>,
+    text: RwData<Text>,
 }
 
 unsafe impl<U> Send for LineNumbersWidget<U> where U: Ui {}
@@ -99,15 +99,15 @@ where
         let (parent_node, child_node) =
             node_manager.split_end(node, Direction::Left, Split::Static(split), true);
         let printed_lines = file_widget.printed_lines();
-        let main_cursor = RoState::from(&file_widget.main_cursor);
-        let cursors = RoState::from(&file_widget.cursors);
+        let main_cursor = RoData::from(&file_widget.main_cursor);
+        let cursors = RoData::from(&file_widget.cursors);
 
         let mut line_numbers = LineNumbersWidget {
             node: child_node,
             printed_lines,
             main_cursor,
             cursors,
-            text: RwState::new(Text::default()),
+            text: RwData::new(Text::default()),
         };
 
         line_numbers.update();
@@ -157,8 +157,8 @@ where
         self.printed_lines.has_changed()
     }
 
-    fn text(&self) -> RoState<Text> {
-        RoState::from(&self.text)
+    fn text(&self) -> RoData<Text> {
+        RoData::from(&self.text)
     }
 
     fn end_node(&self) -> &EndNode<M> {
@@ -178,7 +178,7 @@ where
     pub status: StatusWidget<U>,
     status_printer: WidgetPrinter<U>,
     widgets: Vec<Mutex<(Box<dyn Widget<U>>, WidgetPrinter<U>)>>,
-    files: Vec<(RwState<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>)>,
+    files: Vec<(RwData<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>)>,
     master_node: MidNode<U>,
     match_manager: MatchManager,
 }
@@ -197,7 +197,7 @@ where
 
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 
-    fn files(&self) -> Vec<RoState<FileWidget<U>>>;
+    fn files(&self) -> Vec<RoData<FileWidget<U>>>;
 }
 
 impl<U> OneStatusLayout<U>
@@ -235,7 +235,7 @@ where
         let file_printer = WidgetPrinter::new(&file);
 
         if matches!(node.config().line_numbers, LineNumbers::None) {
-            self.files.push((RwState::new(file), None, file_printer));
+            self.files.push((RwData::new(file), None, file_printer));
         } else {
             let (line_numbers, file_parent) =
                 LineNumbersWidget::new(&mut file, &mut self.node_manager);
@@ -243,16 +243,16 @@ where
             let widget_printer = WidgetPrinter::new(&line_numbers);
             self.widgets.push(Mutex::new((Box::new(line_numbers), widget_printer)));
 
-            self.files.push((RwState::new(file), Some(file_parent), file_printer));
+            self.files.push((RwData::new(file), Some(file_parent), file_printer));
         }
     }
 
-    fn active_file(&mut self) -> RwState<FileWidget<U>> {
+    fn active_file(&mut self) -> RwData<FileWidget<U>> {
         self.files[0].0.clone()
     }
 }
 
-type FilePrinter<U> = (RwState<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>);
+type FilePrinter<U> = (RwData<FileWidget<U>>, Option<MidNode<U>>, WidgetPrinter<U>);
 
 impl<U> Layout<U> for OneStatusLayout<U>
 where
@@ -338,8 +338,8 @@ where
         self.node_manager.shutdown();
     }
 
-    fn files(&self) -> Vec<RoState<FileWidget<U>>> {
-        self.files.iter().map(|(f, ..)| RoState::from(f)).collect()
+    fn files(&self) -> Vec<RoData<FileWidget<U>>> {
+        self.files.iter().map(|(f, ..)| RoData::from(f)).collect()
     }
 }
 
@@ -387,8 +387,8 @@ where
     U: Ui,
 {
     end_node: EndNode<U>,
-    text: RoState<Text>,
-    print_info: RoState<PrintInfo>,
+    text: RoData<Text>,
+    print_info: RoData<PrintInfo>,
 }
 
 unsafe impl<U> Send for WidgetPrinter<U> where U: Ui {}
@@ -401,7 +401,7 @@ where
         Self {
             end_node: widget.end_node().clone(),
             text: widget.text(),
-            print_info: widget.print_info().unwrap_or_else(|| RoState::new(PrintInfo::default())),
+            print_info: widget.print_info().unwrap_or_else(|| RoData::new(PrintInfo::default())),
         }
     }
 

@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{layout::file_widget::FileWidget, ui::Ui};
@@ -95,7 +93,7 @@ where
     /// How these characters should modify the file.
     editing_scheme: E,
     /// A list of sequences that have been at least partially matched with `current_sequence`.
-    should_check: BTreeSet<usize>,
+    should_check: Vec<usize>,
 }
 
 impl<E> FileRemapper<E>
@@ -107,7 +105,7 @@ where
             remaps: Vec::new(),
             current_sequence: Vec::new(),
             editing_scheme,
-            should_check: BTreeSet::new(),
+            should_check: Vec::new(),
         }
     }
 
@@ -129,7 +127,7 @@ where
 
         let remaps = self.remaps.iter().enumerate().filter(|(i, _)| found_or_empty(*i));
 
-        let mut should_check_new = BTreeSet::new();
+        let mut should_check_new = Vec::new();
         let mode = self.editing_scheme.cur_mode();
 
         for (index, remap) in remaps.filter(|(_, r)| r.mode == mode) {
@@ -153,7 +151,7 @@ where
                     } else {
                         // Keep this sequence in mind while continuing to match more keys.
                         self.current_sequence.push(key);
-                        should_check_new.insert(index);
+                        should_check_new.push(index);
                     }
                 }
             }

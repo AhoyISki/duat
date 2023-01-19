@@ -1,8 +1,4 @@
-use std::{
-    any::Any,
-    marker::PhantomData,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::ui::{RawEndNode, Ui};
 
@@ -109,7 +105,7 @@ pub struct Config {
 }
 
 /// A read-write reference to information, and can tell readers if said information has changed.
-pub struct RwState<T>
+pub struct RwData<T>
 where
     T: ?Sized,
 {
@@ -118,12 +114,12 @@ where
     last_read_state: RwLock<usize>,
 }
 
-impl<T> RwState<T> {
+impl<T> RwData<T> {
     /// Returns a new instance of `RwState`.
     pub fn new(data: T) -> Self {
         // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
         // `true` at least once, by copying the second value - 1.
-        RwState {
+        RwData {
             data: Arc::new(RwLock::new(data)),
             updated_state: Arc::new(RwLock::new(1)),
             last_read_state: RwLock::new(1),
@@ -163,9 +159,9 @@ impl<T> RwState<T> {
     }
 }
 
-impl<T> Clone for RwState<T> {
+impl<T> Clone for RwData<T> {
     fn clone(&self) -> Self {
-        RwState {
+        RwData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
             last_read_state: RwLock::new(*self.updated_state.read().unwrap() - 1),
@@ -174,7 +170,7 @@ impl<T> Clone for RwState<T> {
 }
 
 /// A read-only reference to information.
-pub struct RoState<T>
+pub struct RoData<T>
 where
     T: ?Sized,
 {
@@ -183,10 +179,10 @@ where
     last_read_state: RwLock<usize>,
 }
 
-impl<T> RoState<T> {
+impl<T> RoData<T> {
     /// Returns a new instance of `RoState`.
     pub fn new(data: T) -> Self {
-        RoState {
+        RoData {
             data: Arc::new(RwLock::new(data)),
             updated_state: Arc::new(RwLock::new(1)),
             last_read_state: RwLock::new(1),
@@ -194,7 +190,7 @@ impl<T> RoState<T> {
     }
 }
 
-impl<T> RoState<T>
+impl<T> RoData<T>
 where
     T: ?Sized,
 {
@@ -229,9 +225,9 @@ where
     }
 }
 
-impl<T> From<&RwState<T>> for RoState<T> {
-    fn from(state: &RwState<T>) -> Self {
-        RoState {
+impl<T> From<&RwData<T>> for RoData<T> {
+    fn from(state: &RwData<T>) -> Self {
+        RoData {
             data: state.data.clone(),
             updated_state: state.updated_state.clone(),
             last_read_state: RwLock::new(*state.updated_state.read().unwrap() - 1),
@@ -240,12 +236,12 @@ impl<T> From<&RwState<T>> for RoState<T> {
 }
 
 // NOTE: Each `RoState` of a given state will have its own internal update counter.
-impl<T> Clone for RoState<T>
+impl<T> Clone for RoData<T>
 where
     T: ?Sized,
 {
     fn clone(&self) -> Self {
-        RoState {
+        RoData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
             last_read_state: RwLock::new(*self.last_read_state.read().unwrap()),

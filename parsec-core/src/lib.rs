@@ -1,9 +1,4 @@
-use std::marker::PhantomData;
-
 use cursor::TextPos;
-use input::{EditingScheme, FileRemapper};
-use layout::Layout;
-use ui::Ui;
 
 pub mod action;
 pub mod config;
@@ -13,35 +8,6 @@ pub mod input;
 pub mod layout;
 pub mod tags;
 pub mod ui;
-
-/// General struct for an application, that includes a `Ui`, `Layout`, and `EditingScheme`s.
-pub struct Application<L, E, U>
-where
-    L: Layout<U>,
-    E: EditingScheme,
-    U: Ui,
-{
-    layout: L,
-    key_remapper: FileRemapper<E>,
-    // ↓ stupid ↓ //
-    _phantom_stuff: (PhantomData<E>, PhantomData<U>),
-}
-
-impl<L, E, U> Application<L, E, U>
-where
-    L: Layout<U>,
-    E: EditingScheme,
-    U: Ui,
-{
-    /// Returns a new instance of `Application`.
-    pub fn new(layout: L, key_remapper: FileRemapper<E>) -> Self {
-        Application {
-            layout,
-            key_remapper,
-            _phantom_stuff: (PhantomData::default(), PhantomData::default()),
-        }
-    }
-}
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.
 pub fn get_line_start(pos: TextPos, line: &String) -> TextPos {

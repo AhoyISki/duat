@@ -1,66 +1,78 @@
 use crate::{
-    config::{RoState, RwState},
+    config::{RoData, RwData},
     file::{Text, TextLine},
     ui::{EndNode, NodeManager, Ui},
 };
 
-use super::Widget;
+use super::{file_widget::FileWidget, Widget};
 
-pub trait StateToString {
+pub trait DataToString {
+    /// Converts the data to a `String`, usually through an embedded function.
     fn to_string(&self) -> String;
+
+    /// Wether or not the data has changed since last read.
+    fn has_changed(&self) -> bool;
 }
 
-struct StringState<T, F>
+struct DataString<T, F>
 where
     F: Fn(&T) -> String,
 {
-    state: RoState<T>,
+    data: RoData<T>,
     to_string: Box<F>,
 }
 
-impl<T, F> StringState<T, F>
+impl<T, F> DataString<T, F>
 where
     F: Fn(&T) -> String,
 {
     /// Returns a new instance of `StringState`.
-    fn new(state: RoState<T>, to_string: F) -> Self {
-        StringState { state, to_string: Box::new(to_string) }
+    fn new(state: RoData<T>, to_string: F) -> Self {
+        DataString { data: state, to_string: Box::new(to_string) }
     }
 }
 
-impl<T, F> StateToString for StringState<T, F>
+impl<T, F> DataToString for DataString<T, F>
 where
     F: Fn(&T) -> String,
 {
     fn to_string(&self) -> String {
-        (self.to_string)(&self.state.read())
+        (self.to_string)(&self.data.read())
+    }
+
+    fn has_changed(&self) -> bool {
+        self.data.has_changed()
     }
 }
 
-struct StringStateIndexed<T, F>
+struct DataStringIndexed<T, F>
 where
     F: Fn(&Vec<T>, usize) -> String,
 {
-    state: RoState<Vec<T>>,
+    data: RoData<Vec<T>>,
     to_string: Box<F>,
-    index: RoState<usize>,
+    index: RoData<usize>,
 }
 
-impl<T, F> StringStateIndexed<T, F>
+impl<T, F> DataStringIndexed<T, F>
 where
     F: Fn(&Vec<T>, usize) -> String,
 {
-    fn new(state: RoState<Vec<T>>, to_string: F, index: RoState<usize>) -> Self {
-        Self { state, to_string: Box::new(to_string), index }
+    fn new(state: RoData<Vec<T>>, to_string: F, index: RoData<usize>) -> Self {
+        Self { data: state, to_string: Box::new(to_string), index }
     }
 }
 
-impl<T, F> StateToString for StringStateIndexed<T, F>
+impl<T, F> DataToString for DataStringIndexed<T, F>
 where
     F: Fn(&Vec<T>, usize) -> String,
 {
     fn to_string(&self) -> String {
-        (self.to_string)(&self.state.read(), *self.index.read())
+        (self.to_string)(&self.data.read(), *self.index.read())
+    }
+
+    fn has_changed(&self) -> bool {
+        self.data.has_changed()
     }
 }
 
@@ -69,9 +81,11 @@ where
     U: Ui,
 {
     end_node: EndNode<U>,
-    text: RwState<Text>,
+    text: RwData<Text>,
     string: String,
-    printables: Vec<Box<dyn StateToString>>,
+    printables: Vec<Box<dyn DataToString>>,
+    file: Option<RoData<FileWidget<U>>>,
+    file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
 }
 
 impl<U> StatusWidget<U>
@@ -81,27 +95,29 @@ where
     pub(super) fn new(end_node: EndNode<U>, _node_manager: &mut NodeManager<U>) -> Self {
         StatusWidget {
             end_node,
-            text: RwState::new(Text::default()),
+            text: RwData::new(Text::default()),
             string: String::new(),
             printables: Vec::new(),
+            file: None,
+            file_printables: Vec::new(),
         }
     }
 
-    pub fn push<T, F>(&mut self, state: &RoState<T>, f: F)
+    pub fn push<T, F>(&mut self, state: &RoData<T>, f: F)
     where
         T: 'static,
         F: Fn(&T) -> String + 'static,
     {
-        let new_state = StringState::new(state.clone(), f);
+        let new_state = DataString::new(state.clone(), f);
         self.printables.push(Box::new(new_state));
     }
 
-    pub fn push_indexed<T, F>(&mut self, state: &RoState<Vec<Box<T>>>, f: F, index: &RoState<usize>)
+    pub fn push_indexed<T, F>(&mut self, state: &RoData<Vec<Box<T>>>, f: F, index: &RoData<usize>)
     where
         T: 'static,
         F: Fn(&Vec<Box<T>>, usize) -> String + 'static,
     {
-        let new_state = StringStateIndexed::new(state.clone(), f, index.clone());
+        let new_state = DataStringIndexed::new(state.clone(), f, index.clone());
         self.printables.push(Box::new(new_state));
     }
 
@@ -126,13 +142,13 @@ where
     }
 
     fn needs_update(&self) -> bool {
-        true
+        self.printables.iter().any(|p| p.has_changed())
     }
 
     fn resize(&mut self, node: &EndNode<U>) {}
 
-    fn text(&self) -> RoState<crate::file::Text> {
-        (&self.text).into()
+    fn text(&self) -> RoData<crate::file::Text> {
+        RoData::from(&self.text)
     }
 
     fn update(&mut self) {
@@ -142,6 +158,12 @@ where
 
         for (index, (pos, _)) in self.string.match_indices("{}").enumerate() {
             final_string.replace_range(pos..=(pos + 1), &self.printables[index].to_string())
+        }
+        if let Some(file) = &self.file {
+            let file = file.read();
+            for (index, (pos, _)) in self.string.match_indices("()").enumerate() {
+                final_string.replace_range(pos..=(pos + 1), &(&self.file_printables[index])(&file))
+            }
         }
 
         text.lines.push(TextLine::new(final_string));
@@ -168,12 +190,19 @@ macro_rules! form_status {
         |$obj| { $obj.to_string() }
     };
 
-    ($status:expr => $text:expr, $($to_string:tt),*) => {
+    (
+        $status:expr => $text:expr, global_vars: $($to_string:tt),*;
+        file: $file:expr, file_vars: $($file_to_string:tt),*
+    ) => {
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
         );*
-        let mut index = 0;
         $status.set_string($text);
     };
-
+    ($status:expr => $text:expr, global: $($to_string:tt),*) => {
+        $(
+            $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
+        );*
+        $status.set_string($text);
+    };
 }

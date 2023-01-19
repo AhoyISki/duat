@@ -25,13 +25,13 @@ impl UiManager {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Coord {
     x: u16,
     y: u16,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Area {
     tl: Coord,
     br: Coord,
@@ -41,7 +41,7 @@ impl Area {
     fn total() -> Self {
         let size = terminal::size().expect("crossterm");
 
-        Area { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16 + 1, y: size.1 as u16 + 1 } }
+        Area { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
     }
 
     fn height(&self) -> usize {
@@ -127,7 +127,7 @@ impl Clone for Label {
 
 impl UiLabel for Label {
     fn next_line(&mut self) -> Result<(), ()> {
-        if self.cursor.y == self.area.br.y - 2 {
+        if self.cursor.y == self.area.br.y - 1 {
             Err(())
         } else {
             self.clear_line();
@@ -136,7 +136,7 @@ impl UiLabel for Label {
     }
 
     fn wrap_line(&mut self, indent: usize) -> Result<(), ()> {
-        if self.cursor.y == self.area.br.y - 2 {
+        if self.cursor.y == self.area.br.y - 1 {
             Err(())
         } else {
             self.clear_line();
@@ -205,7 +205,7 @@ impl UiLabel for Label {
     }
 
     fn stop_printing(&mut self) {
-        for _ in self.cursor.y..(self.area.br.y - 2) {
+        for _ in self.cursor.y..(self.area.br.y.saturating_sub(2)) {
             let _ = self.next_line();
         }
 

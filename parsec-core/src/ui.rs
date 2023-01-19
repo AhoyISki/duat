@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
-use crossterm::style::{Attribute, Attributes, Color, ContentStyle};
+use crossterm::style::{Attributes, Color, ContentStyle};
 
 use crate::{config::Config, tags::Form};
 

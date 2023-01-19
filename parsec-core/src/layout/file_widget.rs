@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     action::{Change, History, TextRange},
-    config::{RoState, RwState, WrapMethod},
+    config::{RoData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
     split_string_lines,
@@ -78,8 +78,8 @@ impl PrintInfo {
 }
 
 pub struct PrintedLines {
-    file: RoState<Text>,
-    print_info: RoState<PrintInfo>,
+    file: RoData<Text>,
+    print_info: RoData<PrintInfo>,
 }
 
 impl PrintedLines {
@@ -114,14 +114,14 @@ impl PrintedLines {
 }
 
 pub struct FileEditor {
-    cursors: RwState<Vec<TextCursor>>,
-    main_cursor: RwState<usize>,
+    cursors: RwData<Vec<TextCursor>>,
+    main_cursor: RwData<usize>,
     clearing_needed: bool,
 }
 
 impl FileEditor {
     /// Returns a new instance of `FileEditor`.
-    pub fn new(cursors: RwState<Vec<TextCursor>>, main_cursor: RwState<usize>) -> Self {
+    pub fn new(cursors: RwData<Vec<TextCursor>>, main_cursor: RwData<usize>) -> Self {
         Self { cursors, main_cursor, clearing_needed: false }
     }
 
@@ -293,11 +293,11 @@ pub struct FileWidget<U>
 where
     U: Ui,
 {
-    pub(crate) text: RwState<Text>,
-    print_info: RwState<PrintInfo>,
-    pub(crate) main_cursor: RwState<usize>,
+    pub(crate) text: RwData<Text>,
+    print_info: RwData<PrintInfo>,
+    pub(crate) main_cursor: RwData<usize>,
     // The `Box` here is used in order to comply with `RoState` printability.
-    pub(crate) cursors: RwState<Vec<TextCursor>>,
+    pub(crate) cursors: RwData<Vec<TextCursor>>,
     pub(crate) node: EndNode<U>,
     history: History,
     do_set_print_info: bool,
@@ -330,12 +330,12 @@ where
         false
     }
 
-    fn text(&self) -> RoState<Text> {
-        RoState::from(&self.text)
+    fn text(&self) -> RoData<Text> {
+        RoData::from(&self.text)
     }
 
-    fn print_info(&self) -> Option<RoState<PrintInfo>> {
-        Some(RoState::from(&self.print_info))
+    fn print_info(&self) -> Option<RoData<PrintInfo>> {
+        Some(RoData::from(&self.print_info))
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {
@@ -357,16 +357,16 @@ where
     pub fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
-        let text = RwState::new(Text::new(file_contents, match_manager.clone()));
+        let text = RwData::new(Text::new(file_contents, match_manager.clone()));
         let read = text.read();
         let cursor = TextCursor::new(TextPos::default(), read.lines(), &node);
         drop(read);
 
         let mut file_widget = FileWidget {
             text,
-            print_info: RwState::new(PrintInfo::default()),
-            main_cursor: RwState::new(0),
-            cursors: RwState::new(vec![cursor]),
+            print_info: RwData::new(PrintInfo::default()),
+            main_cursor: RwData::new(0),
+            cursors: RwData::new(vec![cursor]),
             node,
             history: History::new(),
             do_set_print_info: true,
@@ -683,8 +683,8 @@ where
     /// The list of all lines that are currently printed on the screen.
     pub fn printed_lines(&self) -> PrintedLines {
         PrintedLines {
-            file: RoState::from(&self.text),
-            print_info: RoState::from(&self.print_info),
+            file: RoData::from(&self.text),
+            print_info: RoData::from(&self.print_info),
         }
     }
 
@@ -697,7 +697,7 @@ where
         &self.history
     }
 
-    pub fn cursors(&self) -> RoState<Vec<TextCursor>> {
+    pub fn cursors(&self) -> RoData<Vec<TextCursor>> {
         (&self.cursors).into()
     }
 }
