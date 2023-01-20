@@ -14,7 +14,6 @@ use crate::{action::TextRange, cursor::TextPos, file::TextLine, ui::Label};
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CharTag {
-    // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
     /// Appends a form to the stack.
     PushForm(u16),
@@ -24,17 +23,21 @@ pub enum CharTag {
     /// Wraps *before* printing the character, not after.
     WrapppingChar,
 
-    // Partially implemented:
     /// Places the main cursor.
-    PrimaryCursor,
-    /// Begins a selection in the file.
-    SelectionStart,
-    /// Ends a selection in the file.
-    SelectionEnd,
+    MainCursor,
+    /// Begins a main selection in the file.
+    MainSelectionStart,
+    /// Ends a main selection in the file.
+    MainSelectionEnd,
 
-    // Not Implemented:
     /// Places a secondary cursor.
     SecondaryCursor,
+    /// Begins a secondary selection in the file.
+    SecondarySelectionStart,
+    /// Ends a secondary selection in the file.
+    SecondarySelectionEnd,
+
+    // Not Implemented:
     /// Begins or ends a hoverable section in the file.
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
@@ -115,17 +118,28 @@ impl CharTag {
                 label.set_form(form_former.push_form(palette.get(*id as usize), *id));
             }
             CharTag::PopForm(id) => label.set_form(form_former.remove_form(*id)),
+
             CharTag::WrapppingChar => {
                 if label.wrap_line(wrap_indent).is_err() {
                     return false;
                 }
             }
-            CharTag::PrimaryCursor => label.place_primary_cursor(palette.main_cursor),
-            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursors),
-            CharTag::SelectionStart => {
+
+            CharTag::MainCursor => label.place_primary_cursor(palette.main_cursor),
+            CharTag::MainSelectionStart => {
                 label.set_form(form_former.push_form(palette.main_selection, MAIN_SELECTION_ID));
             }
-            CharTag::SelectionEnd => label.set_form(form_former.remove_form(MAIN_SELECTION_ID)),
+            CharTag::MainSelectionEnd => label.set_form(form_former.remove_form(MAIN_SELECTION_ID)),
+
+            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursors),
+            CharTag::SecondarySelectionStart => {
+                label.set_form(
+                    form_former.push_form(palette.secondary_selection, SECONDARY_SELECTION_ID),
+                );
+            }
+            CharTag::SecondarySelectionEnd => {
+                label.set_form(form_former.remove_form(SECONDARY_SELECTION_ID))
+            }
             _ => {}
         }
 
@@ -174,10 +188,10 @@ impl std::fmt::Debug for CharTags {
                 CharTag::PushForm(id) => format!("{}:PuF({})", b, id),
                 CharTag::PopForm(id) => format!("{}PoF({})", b, id),
                 CharTag::WrapppingChar => format!("{}:Wc", b),
-                CharTag::PrimaryCursor => format!("{}:Pc", b),
+                CharTag::MainCursor => format!("{}:Pc", b),
                 CharTag::SecondaryCursor => format!("{}:Pc", b),
-                CharTag::SelectionStart => format!("{}:Ss", b),
-                CharTag::SelectionEnd => format!("{}:Se", b),
+                CharTag::MainSelectionStart => format!("{}:Ss", b),
+                CharTag::MainSelectionEnd => format!("{}:Se", b),
                 _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()
@@ -275,8 +289,6 @@ impl CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-const MAIN_CURSOR_ID: u16 = 0;
-const SECONDARY_CURSOR_ID: u16 = 1;
 const MAIN_SELECTION_ID: u16 = 2;
 const SECONDARY_SELECTION_ID: u16 = 3;
 const LINE_NUMBERS_ID: u16 = 4;
@@ -288,7 +300,7 @@ pub struct FormPalette {
     pub main_cursor: CursorStyle,
     pub secondary_cursors: CursorStyle,
     pub main_selection: Form,
-    pub secondary_selections: Form,
+    pub secondary_selection: Form,
     pub line_numbers: Form,
     pub main_line_number: Form,
     pub extra_forms: ExtraForms,
@@ -306,7 +318,7 @@ impl Default for FormPalette {
             main_cursor: cursor_form,
             secondary_cursors: cursor_form,
             main_selection: Form::new(ContentStyle::new().on_dark_grey(), false),
-            secondary_selections: Form::new(ContentStyle::new().on_dark_grey(), false),
+            secondary_selection: Form::new(ContentStyle::new().on_dark_grey(), false),
             extra_forms: ExtraForms::default(),
         }
     }

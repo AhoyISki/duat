@@ -1,4 +1,5 @@
 use std::{
+    char,
     cmp::{max, min},
     fs,
     io::{self, Read},
@@ -596,17 +597,17 @@ where
 
         for (index, cursor) in self.cursors.read().iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let tag = if index == *self.main_cursor.read() {
-                CharTag::PrimaryCursor
+            let (caret_tag, start_tag, end_tag) = if index == *self.main_cursor.read() {
+                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
             } else {
-                CharTag::SecondaryCursor
+                (
+                    CharTag::SecondaryCursor,
+                    CharTag::SecondarySelectionStart,
+                    CharTag::SecondarySelectionEnd,
+                )
             };
 
-            let pos_list = [
-                (cursor.caret(), tag),
-                (start, CharTag::SelectionStart),
-                (end, CharTag::SelectionEnd),
-            ];
+            let pos_list = [(cursor.caret(), caret_tag), (start, start_tag), (end, end_tag)];
 
             let no_selection = if start == end { 1 } else { 3 };
 
@@ -626,15 +627,15 @@ where
         for (index, cursor) in self.cursors.read().iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let tag = if index == *self.main_cursor.read() {
-                CharTag::PrimaryCursor
+                CharTag::MainCursor
             } else {
                 CharTag::SecondaryCursor
             };
 
             let pos_list = [
                 (cursor.caret(), tag),
-                (start, CharTag::SelectionStart),
-                (end, CharTag::SelectionEnd),
+                (start, CharTag::MainSelectionStart),
+                (end, CharTag::MainSelectionEnd),
             ];
 
             let no_selection = if start == end { 1 } else { 3 };
