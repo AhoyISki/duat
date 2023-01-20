@@ -267,3 +267,62 @@ where
         }
     }
 }
+
+pub struct RtData<T, U>
+where
+    T: ?Sized,
+{
+    data: Arc<RwLock<T>>,
+    function: Box<dyn Fn(&T) -> U>,
+    updated_state: Arc<RwLock<usize>>,
+    last_read_state: RwLock<usize>,
+}
+
+impl<T, U> RtData<T, U>
+where
+{
+    /// Returns a new instance of `RoState`.
+    pub fn new(rw_data: &RwData<T>, function: Box<dyn Fn(&T) -> U>) -> Self {
+        RtData {
+            data: rw_data.data.clone(),
+            function,
+            updated_state: Arc::new(RwLock::new(1)),
+            last_read_state: RwLock::new(1),
+        }
+    }
+}
+
+impl<T, U> RtData<T, U>
+where
+    T: ?Sized,
+{
+    /// Reads the information.
+    ///
+    /// Also makes it so that `has_changed()` returns false.
+    pub fn read(&self) -> U {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut last_read_state = self.last_read_state.write().unwrap();
+
+        if *updated_version > *last_read_state {
+            *last_read_state = *updated_version;
+        }
+
+        (self.function)(&self.data.read().unwrap())
+    }
+
+    /// Checks if the state within has changed.
+    ///
+    /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
+    pub fn has_changed(&self) -> bool {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut current_version = self.last_read_state.write().unwrap();
+
+        if *updated_version > *current_version {
+            *current_version = *updated_version;
+
+            true
+        } else {
+            false
+        }
+    }
+}

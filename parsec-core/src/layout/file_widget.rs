@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     action::{Change, History, TextRange},
-    config::{RoData, RwData, WrapMethod},
+    config::{RoData, RtData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
     split_string_lines,
@@ -303,58 +303,12 @@ where
     do_set_print_info: bool,
 }
 
-unsafe impl<M> Send for FileWidget<M> where M: Ui {}
-
-impl<M> Widget<M> for FileWidget<M>
+impl<U> FileWidget<U>
 where
-    M: Ui,
-{
-    fn end_node(&self) -> &EndNode<M> {
-        &self.node
-    }
-
-    fn end_node_mut(&mut self) -> &mut EndNode<M> {
-        &mut self.node
-    }
-
-    fn update(&mut self) {
-        if self.do_set_print_info {
-            self.update_print_info();
-        } else {
-            self.do_set_print_info = true;
-        }
-        self.update();
-    }
-
-    fn needs_update(&self) -> bool {
-        false
-    }
-
-    fn text(&self) -> RoData<Text> {
-        RoData::from(&self.text)
-    }
-
-    fn print_info(&self) -> Option<RoData<PrintInfo>> {
-        Some(RoData::from(&self.print_info))
-    }
-
-    fn scroll_vertically(&mut self, d_y: i32) {
-        self.print_info.write().scroll_vertically(d_y, &self.text.read());
-    }
-
-    fn resize(&mut self, node: &EndNode<M>) {
-        for line in &mut self.text.write().lines {
-            line.parse_wrapping(node);
-        }
-    }
-}
-
-impl<M> FileWidget<M>
-where
-    M: Ui,
+    U: Ui,
 {
     /// Returns a new instance of `FileWidget`.
-    pub fn new(path: PathBuf, node: EndNode<M>, match_manager: &Option<MatchManager>) -> Self {
+    pub fn new(path: PathBuf, node: EndNode<U>, match_manager: &Option<MatchManager>) -> Self {
         // TODO: Sanitize the path further.
         let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
         let text = RwData::new(Text::new(file_contents, match_manager.clone()));
@@ -682,10 +636,7 @@ where
 
     /// The list of all lines that are currently printed on the screen.
     pub fn printed_lines(&self) -> PrintedLines {
-        PrintedLines {
-            file: RoData::from(&self.text),
-            print_info: RoData::from(&self.print_info),
-        }
+        PrintedLines { file: RoData::from(&self.text), print_info: RoData::from(&self.print_info) }
     }
 
     /// The object used to edit the file through cursors.
@@ -697,10 +648,61 @@ where
         &self.history
     }
 
+    /// The list of `TextCursor`s on the file.
     pub fn cursors(&self) -> RoData<Vec<TextCursor>> {
         (&self.cursors).into()
     }
+
+    pub fn main_cursor(&self) -> TextCursor {
+        *self.cursors.read().get(*self.main_cursor.read()).unwrap()
+    }
 }
+
+impl<M> Widget<M> for FileWidget<M>
+where
+    M: Ui,
+{
+    fn end_node(&self) -> &EndNode<M> {
+        &self.node
+    }
+
+    fn end_node_mut(&mut self) -> &mut EndNode<M> {
+        &mut self.node
+    }
+
+    fn update(&mut self) {
+        if self.do_set_print_info {
+            self.update_print_info();
+        } else {
+            self.do_set_print_info = true;
+        }
+        self.update();
+    }
+
+    fn needs_update(&self) -> bool {
+        false
+    }
+
+    fn text(&self) -> RoData<Text> {
+        RoData::from(&self.text)
+    }
+
+    fn print_info(&self) -> Option<RoData<PrintInfo>> {
+        Some(RoData::from(&self.print_info))
+    }
+
+    fn scroll_vertically(&mut self, d_y: i32) {
+        self.print_info.write().scroll_vertically(d_y, &self.text.read());
+    }
+
+    fn resize(&mut self, node: &EndNode<M>) {
+        for line in &mut self.text.write().lines {
+            line.parse_wrapping(node);
+        }
+    }
+}
+
+unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 
 // NOTE: Will definitely break once folding becomes a thing.
 /// The last line that could possibly be printed.

@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::{cmp::{max, min}, fmt::Display};
 
 use super::file::TextLine;
 use crate::{
@@ -105,7 +105,7 @@ enum Anchor {
 }
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
-#[derive(Debug)]
+#[derive(Debug, Copy)]
 pub struct TextCursor {
     /// Current position of the cursor in the file.
     caret: TextPos,
@@ -285,6 +285,19 @@ impl TextCursor {
     /// This is done so the cursor no longer has a valid selection.
     pub fn unset_anchor(&mut self) {
         self.anchor = Anchor::None;
+    }
+
+    pub fn anchor(&self) -> TextPos {
+        match self.anchor {
+            Anchor::Active(anchor) | Anchor::Inactive(anchor) => anchor,
+            Anchor::None => self.caret
+        }
+    }
+}
+
+impl Display for TextCursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.caret.row, self.caret.col))
     }
 }
 

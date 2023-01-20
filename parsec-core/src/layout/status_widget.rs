@@ -169,18 +169,26 @@ where
         let mut byte_diff = 0;
 
         for (index, (mut pos, _)) in self.string.match_indices("{}").enumerate() {
-            let replacement = &self.printables[index].to_string();
-            pos = pos.saturating_add_signed(byte_diff);
-            byte_diff += replacement.len() as isize - 2 as isize;
-            final_string.replace_range(pos..=(pos + 1), replacement)
+            if let Some(replacement) = &self.printables.get(index) {
+                let replacement = &replacement.to_string();
+                pos = pos.saturating_add_signed(byte_diff);
+                byte_diff += replacement.len() as isize - 2 as isize;
+                final_string.replace_range(pos..=(pos + 1), replacement)
+            } else {
+                panic!("There are not enough global_vars! One global_var per \"{{}}\"");
+            }
         }
         if let Some(file) = &self.file {
             let file = file.read();
             for (index, (mut pos, _)) in self.string.match_indices("()").enumerate() {
-                let replacement = &self.file_printables[index](&file);
-                pos = pos.saturating_add_signed(byte_diff);
-                byte_diff += replacement.len() as isize - 2 as isize;
-                final_string.replace_range(pos..=(pos + 1), replacement)
+                if let Some(replacement) = &self.file_printables.get(index) {
+                    let replacement = &(replacement)(&file);
+                    pos = pos.saturating_add_signed(byte_diff);
+                    byte_diff += replacement.len() as isize - 2 as isize;
+                    final_string.replace_range(pos..=(pos + 1), replacement)
+                } else {
+                    panic!("There are not enough file_vars! One file_var per \"()\"");
+                }
             }
         }
 
@@ -202,7 +210,7 @@ macro_rules! form_status {
     };
 
     (@get_fun (|$obj:ident| $internals:expr)) => {
-        |$obj| { $internals.to_string() }
+        |$obj| { $internals.read().to_string() }
     };
     (@get_fun $obj:ident) => {
         |$obj| { $obj.to_string() }
@@ -224,7 +232,15 @@ macro_rules! form_status {
         );*
         $status.set_string($text);
     };
-    ($status:expr => $text:expr, global: $($to_string:tt),*) => {
+
+    ($status:expr => $text:expr; file_vars: $($file_to_string:tt),*) => {
+        $(
+            $status.push_file_var(form_status!(@file_fun $file_to_string));
+        );*
+        $status.set_string($text);
+    };
+
+    ($status:expr => $text:expr; global_vars: $($to_string:tt),*) => {
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
         );*
