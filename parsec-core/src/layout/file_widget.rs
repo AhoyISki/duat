@@ -1,10 +1,8 @@
 use std::{
     cmp::{max, min},
     fs,
-    path::PathBuf, io::{self, Read}, os::unix::prelude::FileExt,
+    path::{PathBuf, Path}, io::{self, Read}, os::unix::prelude::FileExt,
 };
-
-use sanitize_filename::sanitize;
 
 use crate::{
     action::{Change, History, TextRange},
@@ -98,10 +96,10 @@ impl PrintedLines {
             printed_lines.push(print_info.top_line);
         }
 
-        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
+        while let (Some((index, line)), true) = (lines_iter.next(), d_y <= height) {
             let old_d_y = d_y;
             d_y = min(d_y + 1 + line.wrap_iter().count(), height);
-            for _ in old_d_y..d_y {
+            for _ in old_d_y..=d_y {
                 printed_lines.push(index);
             }
         }
@@ -416,7 +414,7 @@ where
         }
     }
 
-    /// Scrolls the file horizontally, usually when no folding is being used.
+    /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
         let mut info = self.print_info.write();
         let scrolloff = self.node.config().scrolloff;
@@ -657,14 +655,24 @@ where
         (&self.cursors).into()
     }
 
+	////////// Status line convenience functions:
+	/// The main cursor of the file.
     pub fn main_cursor(&self) -> TextCursor {
         *self.cursors.read().get(*self.main_cursor.read()).unwrap()
     }
 
+	/// The file's name.
     pub fn name(&self) -> String {
         self.name.read().clone()
     }
 
+    pub fn full_path(&self) -> String {
+        let mut path = std::env::current_dir().unwrap();
+        path.push(Path::new(&self.name.read().as_str()));
+        path.to_string_lossy().to_string() 
+    }
+
+	/// The lenght of the file, in lines.
     pub fn len(&self) -> usize {
         self.text.read().lines().len()
     }

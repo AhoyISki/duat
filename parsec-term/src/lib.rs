@@ -44,11 +44,11 @@ impl Area {
     }
 
     fn height(&self) -> usize {
-        (self.br.y - self.tl.y) as usize
+        (self.br.y - self.tl.y - 1) as usize
     }
 
     fn width(&self) -> usize {
-        (self.br.x - self.tl.x) as usize
+        (self.br.x - self.tl.x - 1) as usize
     }
 }
 
