@@ -8,12 +8,7 @@ use crossterm::{
 use regex::Regex;
 use smallvec::SmallVec;
 
-use crate::{
-    action::TextRange,
-    cursor::TextPos,
-    file::TextLine,
-    ui::{EndNode, Label, Ui},
-};
+use crate::{action::TextRange, cursor::TextPos, file::TextLine, ui::Label};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -128,12 +123,9 @@ impl CharTag {
             CharTag::PrimaryCursor => label.place_primary_cursor(),
             CharTag::SecondaryCursor => label.place_secondary_cursor(),
             CharTag::SelectionStart => {
-                let (form, id) = palette.main_selection;
-                label.set_form(form_former.push_form(form, id));
+                label.set_form(form_former.push_form(palette.main_selection, MAIN_SELECTION_ID));
             }
-            CharTag::SelectionEnd => {
-                label.set_form(form_former.remove_form(palette.main_selection.1))
-            }
+            CharTag::SelectionEnd => label.set_form(form_former.remove_form(MAIN_SELECTION_ID)),
             _ => {}
         }
 
@@ -280,16 +272,26 @@ impl CursorStyle {
     }
 }
 
+#[derive(Default, Clone)]
+pub struct ExtraForms(Vec<(String, Form)>);
+
+const MAIN_CURSOR_ID: u16 = 0;
+const SECONDARY_CURSOR_ID: u16 = 1;
+const MAIN_SELECTION_ID: u16 = 2;
+const SECONDARY_SELECTION_ID: u16 = 3;
+const LINE_NUMBERS_ID: u16 = 4;
+const MAIN_LINE_NUMBER_ID: u16 = 5;
+
 /// An expandable palette of forms to be used when rendering.
 #[derive(Clone)]
 pub struct FormPalette {
-    pub main_cursor: (CursorStyle, u16),
-    pub secondary_cursors: (CursorStyle, u16),
-    pub main_selection: (Form, u16),
-    pub secondary_selections: (Form, u16),
-    pub line_numbers: (Form, u16),
-    pub main_line_number: (Form, u16),
-    extra_forms: Vec<(String, Form)>,
+    pub main_cursor: CursorStyle,
+    pub secondary_cursors: CursorStyle,
+    pub main_selection: Form,
+    pub secondary_selections: Form,
+    pub line_numbers: Form,
+    pub main_line_number: Form,
+    pub extra_forms: ExtraForms,
 }
 
 impl Default for FormPalette {
@@ -299,13 +301,13 @@ impl Default for FormPalette {
             Form::new(ContentStyle::new().reverse(), false),
         );
         Self {
-            line_numbers: (Form::default(), 0),
-            main_line_number: (Form::default(), 1),
-            main_cursor: (cursor_form, 2),
-            secondary_cursors: (cursor_form, 3),
-            main_selection: (Form::new(ContentStyle::new().on_dark_grey(), false), 4),
-            secondary_selections: (Form::new(ContentStyle::new().on_dark_grey(), false), 5),
-            extra_forms: Vec::new(),
+            line_numbers: Form::default(),
+            main_line_number: Form::default(),
+            main_cursor: cursor_form,
+            secondary_cursors: cursor_form,
+            main_selection: Form::new(ContentStyle::new().on_dark_grey(), false),
+            secondary_selections: Form::new(ContentStyle::new().on_dark_grey(), false),
+            extra_forms: ExtraForms::default(),
         }
     }
 }
@@ -317,8 +319,8 @@ impl FormPalette {
         S: ToString,
     {
         let name = name.to_string();
-        if let None = self.extra_forms.iter().find(|(cmp, _)| *cmp == name) {
-            self.extra_forms.push((name.to_string(), form));
+        if let None = self.extra_forms.0.iter().find(|(cmp, _)| *cmp == name) {
+            self.extra_forms.0.push((name.to_string(), form));
         } else {
             panic!("The form {} is already in use!", name);
         }
@@ -332,6 +334,7 @@ impl FormPalette {
     {
         let name = name.to_string();
         self.extra_forms
+            .0
             .iter()
             .enumerate()
             .find(|(_, (cmp, _))| *cmp == name)
@@ -340,7 +343,7 @@ impl FormPalette {
 
     /// Returns a form, given an index.
     pub fn get(&self, index: usize) -> Form {
-        self.extra_forms.get(index).map(|(_, form)| *form).expect("The id is not valid!")
+        self.extra_forms.0.get(index).map(|(_, form)| *form).expect("The id is not valid!")
     }
 }
 
@@ -749,8 +752,8 @@ impl FormPattern {
 
                         // The start is the starting byte in the first line, 0 otherwise.
                         if line == range.start.row {
-                            if let Some(form) = form_match.form {
-                                tags.insert((range.start.byte as u32, CharTag::PushForm(form)));
+                            if let Some(id) = form_match.form {
+                                tags.insert((range.start.byte as u32, CharTag::PushForm(id)));
                             }
                         } else {
                             info[line - first_start.row].0.starting_id = form_match.id;
@@ -874,9 +877,6 @@ struct LastMatch {
 /// The object responsible for matching `TextLine`s on `Text`.
 #[derive(Clone)]
 pub struct MatchManager {
-    /// The forms for syntax highlighting.
-    palette: FormPalette,
-
     // NOTE: This exists pretty much only for performance reasons. If you splice text that has no
     // pattern bounds in it, then you don't need to update the syntax highlighting of other lines,
     // (at least, not for that reason).
@@ -899,7 +899,6 @@ impl MatchManager {
     /// Returns a new instance of `TagManager`
     pub fn new() -> MatchManager {
         MatchManager {
-            palette: FormPalette::default(),
             bounded_forms: Vec::new(),
             default: FormPattern::default(),
             last_id: 0,
@@ -1038,10 +1037,6 @@ impl MatchManager {
         found_form_pattern.form_matches.push(form_pattern);
 
         self.last_id
-    }
-
-    pub fn palette(&self) -> &FormPalette {
-        &self.palette
     }
 }
 
