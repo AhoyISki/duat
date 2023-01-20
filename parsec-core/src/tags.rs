@@ -1,7 +1,10 @@
 use std::{ops::RangeInclusive, str};
 
 use bitflags::bitflags;
-use crossterm::style::{ContentStyle, Stylize};
+use crossterm::{
+    cursor::SetCursorStyle,
+    style::{Attributes, Color, ContentStyle, Stylize},
+};
 use regex::Regex;
 use smallvec::SmallVec;
 
@@ -9,7 +12,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     file::TextLine,
-    ui::{RawEndNode, Ui},
+    ui::{EndNode, Label, Ui},
 };
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
@@ -19,9 +22,9 @@ pub enum CharTag {
     // NOTE: Terribly concocted scenarios could partially break forms identifiers.
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(FormId),
+    PushForm(u16),
     /// Removes a form from the stack. It won't always be the last one.
-    PopForm(FormId),
+    PopForm(u16),
 
     /// Wraps *before* printing the character, not after.
     WrapppingChar,
@@ -43,28 +46,94 @@ pub enum CharTag {
     PermanentConceal { index: u16 },
 }
 
+pub(crate) struct FormFormer {
+    forms: Vec<(Form, u16)>,
+}
+
+impl FormFormer {
+    pub(crate) fn new() -> Self {
+        Self { forms: Vec::new() }
+    }
+
+    fn push_form(&mut self, form: Form, id: u16) -> Form {
+        self.forms.push((form, id));
+
+        self.make_form()
+    }
+
+    fn remove_form(&mut self, id: u16) -> Form {
+        if let Some((index, _)) = self.forms.iter().enumerate().rfind(|(_, &(_, i))| i == id) {
+            self.forms.remove(index);
+
+            self.make_form()
+        } else {
+            panic!("The id {} has yet to be pushed.", id);
+        }
+    }
+
+    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
+    pub fn make_form(&self) -> Form {
+        let style = ContentStyle {
+            foreground_color: Some(Color::Reset),
+            background_color: Some(Color::Reset),
+            underline_color: Some(Color::Reset),
+            attributes: Attributes::default(),
+        };
+
+        let mut form = Form { style, is_final: false };
+
+        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
+
+        for &(Form { style, is_final }, _) in &self.forms {
+            let new_foreground = style.foreground_color;
+            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
+
+            let new_background = style.background_color;
+            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
+
+            let new_underline = style.underline_color;
+            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
+
+            if !attr_done {
+                form.style.attributes.extend(style.attributes);
+                if is_final {
+                    attr_done = true
+                }
+            }
+
+            if fg_done && bg_done && ul_done && attr_done {
+                break;
+            }
+        }
+
+        form
+    }
+}
+
 impl CharTag {
-    pub(crate) fn trigger<M>(
-        &self, printer: &mut RawEndNode<M>, forms: &[Form], wrap_indent: usize,
-    ) -> bool
-    where
-        M: Ui,
-    {
+    pub(crate) fn trigger(
+        &self, label: &mut impl Label, palette: &FormPalette, wrap_indent: usize,
+        form_former: &mut FormFormer,
+    ) -> bool {
         match self {
-            CharTag::PushForm(form) => printer.push_form(forms[form.0 as usize], form.0),
-            CharTag::PopForm(form) => printer.remove_form(form.0),
+            CharTag::PushForm(id) => {
+                label.set_form(form_former.push_form(palette.get(*id as usize), *id));
+            }
+            CharTag::PopForm(id) => label.set_form(form_former.remove_form(*id)),
             CharTag::WrapppingChar => {
-                if printer.wrap_line(wrap_indent).is_err() {
+                if label.wrap_line(wrap_indent).is_err() {
                     return false;
                 }
             }
-            CharTag::PrimaryCursor => printer.place_primary_cursor(),
-            CharTag::SecondaryCursor => printer.place_secondary_cursor(),
+            CharTag::PrimaryCursor => label.place_primary_cursor(),
+            CharTag::SecondaryCursor => label.place_secondary_cursor(),
             CharTag::SelectionStart => {
-                let form = Form::new(ContentStyle::new().on_dark_grey(), false);
-                printer.push_form(form, 1);
+                let (form, id) = palette.main_selection;
+                label.set_form(form_former.push_form(form, id));
             }
-            CharTag::SelectionEnd => printer.remove_form(1),
+            CharTag::SelectionEnd => {
+                label.set_form(form_former.remove_form(palette.main_selection.1))
+            }
             _ => {}
         }
 
@@ -110,8 +179,8 @@ impl std::fmt::Debug for CharTags {
             .0
             .iter()
             .map(|(b, t)| match t {
-                CharTag::PushForm(form) => format!("{}:PuF({})", b, form.0),
-                CharTag::PopForm(form) => format!("{}PoF({})", b, form.0),
+                CharTag::PushForm(id) => format!("{}:PuF({})", b, id),
+                CharTag::PopForm(id) => format!("{}PoF({})", b, id),
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::PrimaryCursor => format!("{}:Pc", b),
                 CharTag::SecondaryCursor => format!("{}:Pc", b),
@@ -172,25 +241,6 @@ impl CharTags {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-/// A style for text.
-pub struct Form {
-    /// The `Form`'s colors and attributes.
-    pub style: ContentStyle,
-    /// Wether or not the `Form`s colors and attributes should override any that come after.
-    pub is_final: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FormId(u16);
-
-impl Form {
-    /// Creates a new instance of `Form`.
-    pub fn new(style: ContentStyle, is_final: bool) -> Form {
-        Form { style, is_final }
-    }
-}
-
 /// A matcher primarily for syntax highlighting.
 #[derive(Clone, Debug)]
 pub enum Matcher {
@@ -198,6 +248,100 @@ pub enum Matcher {
     Regex(Regex),
     /// A tree-sitter capture.
     TsCapture(usize),
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+/// A style for text.
+pub struct Form {
+    pub style: ContentStyle,
+    /// Wether or not the `Form`s colors and attributes should override any that come after.
+    pub is_final: bool,
+}
+
+impl Form {
+    pub fn new(style: ContentStyle, is_final: bool) -> Self {
+        Self { style, is_final }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct CursorStyle {
+    /// An optional member when using application specific cursors.
+    caret: Option<SetCursorStyle>,
+    // NOTE: This is obligatory as a fallback for when the application can't render the
+    // cursor with `caret`.
+    /// To render the cursor as a form, not as an actual cursor.
+    form: Form,
+}
+
+impl CursorStyle {
+    pub fn new(caret: Option<SetCursorStyle>, form: Form) -> Self {
+        Self { caret, form }
+    }
+}
+
+/// An expandable palette of forms to be used when rendering.
+#[derive(Clone)]
+pub struct FormPalette {
+    pub main_cursor: (CursorStyle, u16),
+    pub secondary_cursors: (CursorStyle, u16),
+    pub main_selection: (Form, u16),
+    pub secondary_selections: (Form, u16),
+    pub line_numbers: (Form, u16),
+    pub main_line_number: (Form, u16),
+    extra_forms: Vec<(String, Form)>,
+}
+
+impl Default for FormPalette {
+    fn default() -> Self {
+        let cursor_form = CursorStyle::new(
+            Some(SetCursorStyle::DefaultUserShape),
+            Form::new(ContentStyle::new().reverse(), false),
+        );
+        Self {
+            line_numbers: (Form::default(), 0),
+            main_line_number: (Form::default(), 1),
+            main_cursor: (cursor_form, 2),
+            secondary_cursors: (cursor_form, 3),
+            main_selection: (Form::new(ContentStyle::new().on_dark_grey(), false), 4),
+            secondary_selections: (Form::new(ContentStyle::new().on_dark_grey(), false), 5),
+            extra_forms: Vec::new(),
+        }
+    }
+}
+
+impl FormPalette {
+    /// Adds a new named `Form` to the list of user added `Form`s.
+    pub fn add_form<S>(&mut self, name: S, form: Form)
+    where
+        S: ToString,
+    {
+        let name = name.to_string();
+        if let None = self.extra_forms.iter().find(|(cmp, _)| *cmp == name) {
+            self.extra_forms.push((name.to_string(), form));
+        } else {
+            panic!("The form {} is already in use!", name);
+        }
+    }
+
+    // TODO: Extend this with the default forms.
+    /// Returns the `Form` associated to a given name with the index for efficient access.
+    pub fn get_from_name<S>(&self, name: S) -> Option<(Form, usize)>
+    where
+        S: ToString,
+    {
+        let name = name.to_string();
+        self.extra_forms
+            .iter()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+            .map(|(index, &(_, form))| (form, index))
+    }
+
+    /// Returns a form, given an index.
+    pub fn get(&self, index: usize) -> Form {
+        self.extra_forms.get(index).map(|(_, form)| *form).expect("The id is not valid!")
+    }
 }
 
 impl PartialEq for Matcher {
@@ -398,7 +542,7 @@ impl Pattern {
 #[derive(Debug, Default, Clone)]
 pub struct FormPattern {
     /// The index of the form assossiated with this pattern.
-    form: Option<FormId>,
+    form: Option<u16>,
     /// What defines what the range will be.
     pattern: Pattern,
     /// Patterns that can match inside of the original match range.
@@ -728,10 +872,10 @@ struct LastMatch {
 }
 
 /// The object responsible for matching `TextLine`s on `Text`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MatchManager {
     /// The forms for syntax highlighting.
-    forms: Vec<Form>,
+    palette: FormPalette,
 
     // NOTE: This exists pretty much only for performance reasons. If you splice text that has no
     // pattern bounds in it, then you don't need to update the syntax highlighting of other lines,
@@ -755,7 +899,7 @@ impl MatchManager {
     /// Returns a new instance of `TagManager`
     pub fn new() -> MatchManager {
         MatchManager {
-            forms: Vec::new(),
+            palette: FormPalette::default(),
             bounded_forms: Vec::new(),
             default: FormPattern::default(),
             last_id: 0,
@@ -841,7 +985,7 @@ impl MatchManager {
     ///
     /// Returns an id, for the purpose of subpattern matching.
     pub fn push_word(
-        &mut self, matcher: Matcher, form_index: Option<FormId>, is_exclusive: bool, id: u16,
+        &mut self, matcher: Matcher, form_index: Option<u16>, is_exclusive: bool, id: u16,
     ) -> u16 {
         self.last_id += 1;
 
@@ -867,7 +1011,7 @@ impl MatchManager {
     ///
     /// Returns a mutable reference for the purpose of placing subpatterns in the form pattern.
     pub fn push_bounds(
-        &mut self, bounds: [Matcher; 2], form_index: Option<FormId>, is_exclusive: bool, id: u16,
+        &mut self, bounds: [Matcher; 2], form_index: Option<u16>, is_exclusive: bool, id: u16,
     ) -> u16 {
         // Move out of array and get rid of it without copying.
         let [start, end] = bounds;
@@ -896,12 +1040,20 @@ impl MatchManager {
         self.last_id
     }
 
-    /// Pushes a new form onto the list.
-    pub fn push_form(&mut self, style: ContentStyle, is_final: bool) {
-        self.forms.push(Form { style, is_final });
+    pub fn palette(&self) -> &FormPalette {
+        &self.palette
     }
+}
 
-    pub fn forms(&self) -> &[Form] {
-        self.forms.as_ref()
+/// Internal method used only to shorten code in `make_form()`.
+fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
+where
+    T: Clone,
+{
+    if let (Some(new_var), false) = (maybe_new, &is_set) {
+        *var = Some(new_var.clone());
+        if is_final {
+            *is_set = true
+        };
     }
 }

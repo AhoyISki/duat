@@ -1,7 +1,9 @@
 use std::{
     cmp::{max, min},
     fs,
-    path::{PathBuf, Path}, io::{self, Read}, os::unix::prelude::FileExt,
+    io::{self, Read},
+    os::unix::prelude::FileExt,
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -62,14 +64,17 @@ impl PrintInfo {
         }
     }
 
-    fn scroll_horizontally(
-        &mut self, d_x: i32, text: &Text, label: &impl Label, node: &EndNode<impl Ui>,
-    ) {
+    fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text, node: &EndNode<U>)
+    where
+        U: Ui,
+    {
         let mut max_d = 0;
+        let label = node.label.read();
+        let config = node.config().read();
 
         for index in text.printed_lines(label.height(), self) {
             let line = &text.lines()[index];
-            let line_d = line.get_distance_to_col_node(line.char_count(), node);
+            let line_d = line.get_distance_to_col_node::<U>(line.char_count(), &label, &config);
             max_d = max(max_d, line_d);
         }
 
@@ -85,10 +90,11 @@ pub struct PrintedLines {
 impl PrintedLines {
     /// Given an `EndNode`, figures out what lines should be printed.
     pub fn lines(&self, child_node: &EndNode<impl Ui>) -> Vec<usize> {
-        let height = child_node.height();
+        let label = child_node.label.read();
+        let height = label.height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
-        let mut printed_lines = Vec::with_capacity(child_node.height());
+        let mut printed_lines = Vec::with_capacity(label.height());
 
         let top_line = lines_iter.nth(print_info.top_line).unwrap().1;
         let mut d_y = min(height, 1 + top_line.wrap_iter().count() - print_info.top_wraps);
@@ -299,7 +305,7 @@ where
     pub(crate) main_cursor: RwData<usize>,
     // The `Box` here is used in order to comply with `RoState` printability.
     pub(crate) cursors: RwData<Vec<TextCursor>>,
-    pub(crate) node: EndNode<U>,
+    pub(crate) node: RwData<EndNode<U>>,
     history: History,
     do_set_print_info: bool,
 }
@@ -309,12 +315,14 @@ where
     U: Ui,
 {
     /// Returns a new instance of `FileWidget`.
-    pub fn new(path: &PathBuf, node: EndNode<U>, match_manager: &Option<MatchManager>) -> Self {
+    pub fn new(
+        path: &PathBuf, node: RwData<EndNode<U>>, match_manager: &Option<MatchManager>,
+    ) -> Self {
         // TODO: Allow the creation of a new file.
         let file_contents = fs::read_to_string(path).expect("Failed to read the file.");
         let text = RwData::new(Text::new(file_contents, match_manager.clone()));
         let read = text.read();
-        let cursor = TextCursor::new(TextPos::default(), read.lines(), &node);
+        let cursor = TextCursor::new(TextPos::default(), read.lines(), &node.read());
         drop(read);
 
         let mut file_widget = FileWidget {
@@ -330,7 +338,7 @@ where
 
         file_widget.add_cursor_tags();
         let mut text = file_widget.text.write();
-        text.update_lines(&file_widget.node);
+        text.update_lines(&file_widget.node.read());
         drop(text);
         file_widget
     }
@@ -338,7 +346,7 @@ where
     /// Scrolls up or down, assuming that the lines cannot wrap.
     fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
         let info = &mut self.print_info.write();
-        let scrolloff = self.node.config().scrolloff;
+        let scrolloff = self.node.read().config().read().scrolloff;
 
         if target.row > info.top_line + height - scrolloff.d_y {
             info.top_line += target.row + scrolloff.d_y - info.top_line - height;
@@ -349,7 +357,7 @@ where
 
     /// Scrolls up, assuming that the lines can wrap.
     fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
-        let scrolloff = self.node.config().scrolloff;
+        let scrolloff = self.node.read().config().read().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.row);
         let info = &mut self.print_info.write();
@@ -382,7 +390,7 @@ where
 
     /// Scrolls down, assuming that the lines can wrap.
     fn scroll_down(&mut self, target: TextPos, mut d_y: usize, height: usize) {
-        let scrolloff = self.node.config().scrolloff;
+        let scrolloff = self.node.read().config().read().scrolloff;
         let text = self.text.read();
         let lines_iter = text.lines().iter().take(target.row + 1);
         let mut info = self.print_info.write();
@@ -417,25 +425,32 @@ where
     /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
         let mut info = self.print_info.write();
-        let scrolloff = self.node.config().scrolloff;
+        let node = self.node.read();
+        let config = node.config().read();
+        let label = node.label.read();
 
-        if let WrapMethod::NoWrap = self.node.config().wrap_method {
+        if let WrapMethod::NoWrap = config.wrap_method {
             let target_line = &self.text.read().lines[target.row];
-            let distance = target_line.get_distance_to_col_node(target.col, &self.node);
+            let distance = target_line.get_distance_to_col_node::<U>(target.col, &label, &config);
 
             // If the distance is greater, it means that the cursor is out of bounds.
-            if distance > info.x_shift + width - scrolloff.d_x {
+            if distance > info.x_shift + width - config.scrolloff.d_x {
                 // Shift by the amount required to keep the cursor in bounds.
-                info.x_shift = distance + scrolloff.d_x - width;
+                info.x_shift = distance + config.scrolloff.d_x - width;
             // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
-            } else if distance < info.x_shift + scrolloff.d_x {
-                info.x_shift = distance.saturating_sub(scrolloff.d_x);
+            } else if distance < info.x_shift + config.scrolloff.d_x {
+                info.x_shift = distance.saturating_sub(config.scrolloff.d_x);
             }
         }
     }
 
     /// Updates the print info.
     fn update_print_info(&mut self) {
+        let node = self.node.read();
+        let wrap_method = node.config().read().wrap_method;
+        let (height, width) = (node.label.read().height(), node.label.read().width());
+        drop(node);
+
         let cursors = self.cursors.read();
         let main_cursor = &cursors.get(*self.main_cursor.read()).unwrap();
         let old = self.print_info.read().last_main;
@@ -454,13 +469,13 @@ where
         drop(text);
         drop(cursors);
 
-        if let WrapMethod::NoWrap = self.node.config().wrap_method {
-            self.scroll_unwrapped(new, self.node.height());
-            self.scroll_horizontally(new, self.node.width());
+        if let WrapMethod::NoWrap = wrap_method {
+            self.scroll_unwrapped(new, height);
+            self.scroll_horizontally(new, width);
         } else if new.row < old.row || (new.row == old.row && old_wraps < cur_wraps) {
             self.scroll_up(new, old_wraps);
         } else {
-            self.scroll_down(new, old_wraps, self.node.height());
+            self.scroll_down(new, old_wraps, height);
         }
 
         self.print_info.write().last_main = new;
@@ -468,11 +483,13 @@ where
 
     /// Tbh, I don't remember what this is supposed to do, but it seems important.
     fn _match_scroll(&mut self) {
+        let node = self.node.read();
+        let label = node.label.read();
         let text = self.text.read();
         let cursors = self.cursors.read();
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let limit_line = min(main_cursor.caret().row + self.node.height(), text.lines().len() - 1);
+        let limit_line = min(main_cursor.caret().row + label.height(), text.lines().len() - 1);
         let start = main_cursor.caret().translate(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let _range = TextRange {
@@ -505,8 +522,8 @@ where
         editor.splice_adder.change_diff += change_diff;
 
         let mut text = self.text.write();
-        let max_line = max_line(&text, &self.print_info.read(), &self.node);
-        update_range(&mut text, editor.cursor.range(), max_line, &self.node);
+        let max_line = max_line(&text, &self.print_info.read(), &self.node.read());
+        update_range(&mut text, editor.cursor.range(), max_line, &self.node.read());
     }
 
     /// Undoes the last moment in history.
@@ -536,11 +553,11 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node));
+            cursors.push(TextCursor::new(splice.taken_end(), &text.lines, &self.node.read()));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            let max_line = max_line(&text, &info, &self.node);
-            update_range(&mut text, range, max_line, &self.node);
+            let max_line = max_line(&text, &info, &self.node.read());
+            update_range(&mut text, range, max_line, &self.node.read());
         }
     }
 
@@ -565,11 +582,11 @@ where
 
             let splice = change.splice;
 
-            cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node));
+            cursors.push(TextCursor::new(splice.added_end(), &text.lines, &self.node.read()));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            let max_line = max_line(&text, &info, &self.node);
-            update_range(&mut text, range, max_line, &self.node);
+            let max_line = max_line(&text, &info, &self.node.read());
+            update_range(&mut text, range, max_line, &self.node.read());
         }
     }
 
@@ -655,13 +672,13 @@ where
         (&self.cursors).into()
     }
 
-	////////// Status line convenience functions:
-	/// The main cursor of the file.
+    ////////// Status line convenience functions:
+    /// The main cursor of the file.
     pub fn main_cursor(&self) -> TextCursor {
         *self.cursors.read().get(*self.main_cursor.read()).unwrap()
     }
 
-	/// The file's name.
+    /// The file's name.
     pub fn name(&self) -> String {
         self.name.read().clone()
     }
@@ -669,24 +686,24 @@ where
     pub fn full_path(&self) -> String {
         let mut path = std::env::current_dir().unwrap();
         path.push(Path::new(&self.name.read().as_str()));
-        path.to_string_lossy().to_string() 
+        path.to_string_lossy().to_string()
     }
 
-	/// The lenght of the file, in lines.
+    /// The lenght of the file, in lines.
     pub fn len(&self) -> usize {
         self.text.read().lines().len()
     }
 }
 
-impl<M> Widget<M> for FileWidget<M>
+impl<U> Widget<U> for FileWidget<U>
 where
-    M: Ui,
+    U: Ui,
 {
-    fn end_node(&self) -> &EndNode<M> {
+    fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.node
     }
 
-    fn end_node_mut(&mut self) -> &mut EndNode<M> {
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
         &mut self.node
     }
 
@@ -715,9 +732,9 @@ where
         self.print_info.write().scroll_vertically(d_y, &self.text.read());
     }
 
-    fn resize(&mut self, node: &EndNode<M>) {
+    fn resize(&mut self, node: &EndNode<U>) {
         for line in &mut self.text.write().lines {
-            line.parse_wrapping(node);
+            line.parse_wrapping::<U>(&node.label.read(), &node.config().read());
         }
     }
 }
@@ -727,5 +744,5 @@ unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 // NOTE: Will definitely break once folding becomes a thing.
 /// The last line that could possibly be printed.
 fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_line + node.height(), text.lines().len() - 1)
+    min(print_info.top_line + node.label.read().height(), text.lines().len() - 1)
 }

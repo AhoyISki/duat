@@ -80,7 +80,7 @@ pub struct StatusWidget<U>
 where
     U: Ui,
 {
-    end_node: EndNode<U>,
+    end_node: RwData<EndNode<U>>,
     text: RwData<Text>,
     string: String,
     printables: Vec<Box<dyn DataToString>>,
@@ -92,7 +92,7 @@ impl<U> StatusWidget<U>
 where
     U: Ui,
 {
-    pub(super) fn new(end_node: EndNode<U>, _node_manager: &mut NodeManager<U>) -> Self {
+    pub(super) fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
         StatusWidget {
             end_node,
             text: RwData::new(Text::default()),
@@ -144,11 +144,11 @@ impl<U> Widget<U> for StatusWidget<U>
 where
     U: Ui,
 {
-    fn end_node(&self) -> &EndNode<U> {
+    fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }
 
-    fn end_node_mut(&mut self) -> &mut EndNode<U> {
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
         &mut self.end_node
     }
 

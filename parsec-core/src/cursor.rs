@@ -1,4 +1,7 @@
-use std::{cmp::{max, min}, fmt::Display};
+use std::{
+    cmp::{max, min},
+    fmt::Display,
+};
 
 use super::file::TextLine;
 use crate::{
@@ -126,19 +129,27 @@ pub struct TextCursor {
 
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new(pos: TextPos, lines: &[TextLine], node: &EndNode<impl Ui>) -> TextCursor {
+    pub fn new<U>(pos: TextPos, lines: &[TextLine], node: &EndNode<U>) -> TextCursor
+    where
+        U: Ui,
+    {
+        let label = node.label.read();
+        let config = node.config().read();
         let line = lines.get(pos.row).unwrap();
         TextCursor {
             caret: pos,
             // This should be fine.
             anchor: Anchor::None,
             assoc_index: None,
-            desired_x: line.get_distance_to_col_node(pos.col, node),
+            desired_x: line.get_distance_to_col_node::<U>(pos.col, &label, &config),
         }
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+    pub(crate) fn move_ver<U>(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<U>)
+    where
+        U: Ui,
+    {
         let old_target = self.caret;
         let cur = &mut self.caret;
 
@@ -147,14 +158,19 @@ impl TextCursor {
         let line = &lines[cur.row];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        (cur.col, _) = line.get_col_at_distance(self.desired_x, &node.raw());
+        let label = node.label.read();
+        let config = node.config().read();
+        (cur.col, _) = line.get_col_at_distance::<U>(self.desired_x, &label, &config);
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = cur.byte.saturating_add_signed(get_byte_distance(lines, old_target, *cur));
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+    pub(crate) fn move_hor<U>(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<U>)
+    where
+        U: Ui,
+    {
         let old_caret = self.caret;
         let caret = &mut self.caret;
         let mut col = old_caret.col as i32 + count;
@@ -187,11 +203,16 @@ impl TextCursor {
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         caret.byte = caret.byte.saturating_add_signed(get_byte_distance(lines, old_caret, *caret));
 
-        self.desired_x = line.get_distance_to_col(caret.col, &node.raw()) as usize;
+        let label = node.label.read();
+        let config = node.config().read();
+        self.desired_x = line.get_distance_to_col::<U>(caret.col, &label, &config) as usize;
     }
 
     /// Internal absolute movement function. Assumes that `pos` is not calibrated.
-    pub(crate) fn move_to(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>) {
+    pub(crate) fn move_to<U>(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<U>)
+    where
+        U: Ui,
+    {
         let cur = &mut self.caret;
 
         // TODO: Change this to `saturating_sub_signed` once that gets merged.
@@ -201,16 +222,22 @@ impl TextCursor {
         cur.col = pos.col.clamp(0, lines[cur.row].char_count());
 
         let line = lines.get(pos.row).unwrap();
-        self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
+
+        let label = node.label.read();
+        let config = node.config().read();
+        self.desired_x = line.get_distance_to_col::<U>(pos.col, &label, &config);
     }
 
     /// Internal absolute movement function. Assumes that `pos` is a valid position.
-    pub(crate) fn move_to_calibrated(
-        &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<impl Ui>,
-    ) {
+    pub(crate) fn move_to_calibrated<U>(
+        &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<U>,
+    ) where U: Ui{
         self.caret = pos;
         let line = lines.get(pos.row).unwrap();
-        self.desired_x = line.get_distance_to_col(pos.col, &node.raw());
+
+        let label = node.label.read();
+        let config = node.config().read();
+        self.desired_x = line.get_distance_to_col::<U>(pos.col, &label, &config);
     }
 
     /// Returns the range between `target` and `anchor`.
@@ -290,7 +317,7 @@ impl TextCursor {
     pub fn anchor(&self) -> TextPos {
         match self.anchor {
             Anchor::Active(anchor) | Anchor::Inactive(anchor) => anchor,
-            Anchor::None => self.caret
+            Anchor::None => self.caret,
         }
     }
 }
@@ -326,7 +353,7 @@ impl<'a> Editor<'a> {
         U: Ui,
     {
         let caret = &mut self.cursor.caret;
-        let end_node = file_widget.end_node();
+        let end_node = &file_widget.end_node().read();
         let text = file_widget.text();
         let text = text.read();
         if let Anchor::Active(anchor) | Anchor::Inactive(anchor) = &mut self.cursor.anchor {
@@ -356,7 +383,7 @@ impl<'a> Mover<'a> {
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
     pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_ver(count, file.text().read().lines(), file.end_node());
+        self.0.move_ver(count, file.text().read().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }
@@ -364,7 +391,7 @@ impl<'a> Mover<'a> {
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_hor(count, file.text().read().lines(), file.end_node());
+        self.0.move_hor(count, file.text().read().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }
@@ -375,7 +402,7 @@ impl<'a> Mover<'a> {
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: TextPos, file: &FileWidget<impl Ui>) {
-        self.0.move_to(caret, file.text().read().lines(), file.end_node());
+        self.0.move_to(caret, file.text().read().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }

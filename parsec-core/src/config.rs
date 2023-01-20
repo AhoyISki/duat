@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
-use crate::ui::{RawEndNode, Ui};
+use crate::ui::{EndNode, Ui, Label};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -72,7 +72,10 @@ impl Default for TabPlaces {
 
 impl TabPlaces {
     /// Returns the amount of spaces between a position and the next tab place.
-    pub(crate) fn get_tab_len(&self, x: usize, printer: &RawEndNode<impl Ui>) -> usize {
+    pub(crate) fn get_tab_len<L>(&self, x: usize, printer: &L) -> usize
+    where
+        L: Label,
+    {
         let space_len = printer.get_char_len(' ');
         match self {
             TabPlaces::Regular(step) => (step - (x % step)) * space_len,
@@ -278,9 +281,7 @@ where
     last_read_state: RwLock<usize>,
 }
 
-impl<T, U> RtData<T, U>
-where
-{
+impl<T, U> RtData<T, U> {
     /// Returns a new instance of `RoState`.
     pub fn new(rw_data: &RwData<T>, function: Box<dyn Fn(&T) -> U>) -> Self {
         RtData {

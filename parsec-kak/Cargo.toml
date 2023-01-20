@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 parsec-core = { version = "*", path = "../parsec-core" }
-crossterm = "*"
+crossterm = { path = "../../crossterm/" }

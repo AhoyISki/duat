@@ -10,7 +10,7 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    tags::MatchManager,
+    tags::{MatchManager, FormPalette},
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
@@ -26,9 +26,9 @@ where
     U: Ui,
 {
     /// Returns the `ChildNode` associated with this area.
-    fn end_node(&self) -> &EndNode<U>;
+    fn end_node(&self) -> &RwData<EndNode<U>>;
 
-    fn end_node_mut(&mut self) -> &mut EndNode<U>;
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>>;
 
     fn update(&mut self);
 
@@ -69,7 +69,7 @@ pub struct LineNumbersWidget<U>
 where
     U: Ui,
 {
-    node: EndNode<U>,
+    node: RwData<EndNode<U>>,
     printed_lines: PrintedLines,
     main_cursor: RoData<usize>,
     cursors: RoData<Vec<TextCursor>>,
@@ -85,7 +85,7 @@ where
     /// Returns a new instance of `LineNumbersWidget`.
     fn new(
         file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
-    ) -> (Self, MidNode<U>) {
+    ) -> (Self, RwData<MidNode<U>>) {
         let mut split = 2;
         let mut num_exp = 10;
         let text = file_widget.text.write();
@@ -122,13 +122,13 @@ where
     U: Ui,
 {
     fn update(&mut self) {
-        let lines = self.printed_lines.lines(&self.end_node());
+        let lines = self.printed_lines.lines(&self.end_node().read());
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
 
-        match self.node.config().line_numbers {
+        match self.node.read().config().read().line_numbers {
             LineNumbers::Absolute => {
                 lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
             }
@@ -162,11 +162,11 @@ where
         RoData::from(&self.text)
     }
 
-    fn end_node(&self) -> &EndNode<U> {
+    fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.node
     }
 
-    fn end_node_mut(&mut self) -> &mut EndNode<U> {
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
         &mut self.node
     }
 }
@@ -178,8 +178,8 @@ where
     node_manager: NodeManager<U>,
     pub status: StatusWidget<U>,
     widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
-    files: Vec<(RwData<FileWidget<U>>, Option<MidNode<U>>)>,
-    master_node: MidNode<U>,
+    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
+    master_node: RwData<MidNode<U>>,
     match_manager: MatchManager,
 }
 
@@ -195,7 +195,7 @@ where
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
         P: Widget<U> + 'static,
-        C: Fn(EndNode<U>, &mut NodeManager<U>) -> P;
+        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> P;
 
     /// The main application function.
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
@@ -209,10 +209,10 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(ui: U, match_manager: MatchManager, config: Config) -> Self {
+    pub fn new(ui: U, match_manager: MatchManager, config: Config, palette: FormPalette) -> Self {
         let paths: Vec<PathBuf> = env::args().map(|p| PathBuf::from(p)).collect();
         let mut node_manager = NodeManager::new(ui);
-        let mut node = node_manager.only_child(&config, "code").unwrap();
+        let mut node = node_manager.only_child(config, palette, "code").unwrap();
 
         let (master_node, end_node) =
             node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
@@ -235,11 +235,11 @@ where
     }
 
     /// Creates or opens a new file in a given node.
-    fn new_file_with_node(&mut self, path: &PathBuf, node: EndNode<U>) {
+    fn new_file_with_node(&mut self, path: &PathBuf, node: RwData<EndNode<U>>) {
         let mut file =
             FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
 
-        if matches!(node.config().line_numbers, LineNumbers::None) {
+        if matches!(node.read().config().read().line_numbers, LineNumbers::None) {
             self.files.push((RwData::new(file), None));
         } else {
             let (line_numbers, file_parent) =
@@ -260,8 +260,6 @@ where
     }
 }
 
-type FilePrinter<U> = (RwData<FileWidget<U>>, Option<MidNode<U>>);
-
 impl<U> Layout<U> for OneStatusLayout<U>
 where
     U: Ui + 'static,
@@ -281,7 +279,7 @@ where
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
         P: Widget<U> + 'static,
-        C: Fn(EndNode<U>, &mut NodeManager<U>) -> P,
+        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> P,
     {
         let (master_node, end_node) =
             self.node_manager.split_mid(&mut self.master_node, direction, split, false);
@@ -351,7 +349,7 @@ where
 }
 
 /// Updates all files in different threads.
-fn update_files<U>(files: &mut Vec<FilePrinter<U>>)
+fn update_files<U>(files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
 where
     U: Ui,
 {
@@ -363,14 +361,14 @@ where
 }
 
 /// Prints all the files.
-fn print_files<U>(printer: &mut Vec<FilePrinter<U>>)
+fn print_files<U>(printer: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
 where
     U: Ui,
 {
     for (file_widget, _) in printer.iter_mut() {
         let mut file_widget = file_widget.write();
         let print_info = file_widget.print_info().map(|p| *p.read()).unwrap_or_default();
-        file_widget.text().read().print(file_widget.end_node_mut(), print_info);
+        file_widget.text().read().print(&mut file_widget.end_node_mut().write(), print_info);
     }
 }
 
@@ -399,5 +397,5 @@ where
     U: Ui,
 {
     let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
-    widget.text().read().print(widget.end_node_mut(), print_info);
+    widget.text().read().print(&mut widget.end_node_mut().write(), print_info);
 }

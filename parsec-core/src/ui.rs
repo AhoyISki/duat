@@ -2,7 +2,10 @@ use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use crossterm::style::{Attributes, Color, ContentStyle};
 
-use crate::{config::Config, tags::Form};
+use crate::{
+    config::{Config, RwData, RoData},
+    tags::{Form, FormPalette},
+};
 
 /// A `Label` or `Container` container, that holds exactly two in total.
 pub trait Container {
@@ -83,35 +86,20 @@ pub trait Label {
     fn height(&self) -> usize;
 }
 
-/// Exists only to keep these things inside an `Arc`.
-pub struct InnerMidNode<U>
-where
-    U: Ui + ?Sized,
-{
-    container: U::Container,
-    class: String,
-    parent: Option<Box<MidNode<U>>>,
-    child_order: ChildOrder,
-    children: (Node<U>, Node<U>),
-    split: Split,
-}
-
 /// A node that contains other nodes.
+#[derive(Clone)]
 pub struct MidNode<U>
 where
     U: Ui + ?Sized,
 {
-    inner: Arc<RwLock<InnerMidNode<U>>>,
-    config: Config,
-}
-
-impl<U> Clone for MidNode<U>
-where
-    U: Ui + ?Sized,
-{
-    fn clone(&self) -> Self {
-        MidNode { inner: self.inner.clone(), config: self.config.clone() }
-    }
+    container: RwData<U::Container>,
+    class: RwData<String>,
+    parent: Option<RwData<MidNode<U>>>,
+    child_order: ChildOrder,
+    children: (Node<U>, Node<U>),
+    split: Split,
+    config: RwData<Config>,
+    palette: RwData<FormPalette>,
 }
 
 impl<U> MidNode<U>
@@ -120,24 +108,20 @@ where
 {
     /// Resizes the second child node, in the direction that it was placed.
     fn resize_second(&mut self, len: usize) {
-        let node = self.inner.write().unwrap();
+        let mut container = self.container.write();
 
-        match node.split {
+        match self.split {
             Split::Locked(_) => panic!("Don't try to resize a locked length area!"),
             Split::Static(_) => {
-                let self_len = match node.container.direction() {
-                    Direction::Left | Direction::Right => {
-                        self.inner.read().unwrap().container.width()
-                    }
-                    _ => self.inner.read().unwrap().container.height(),
+                let self_len = match container.direction() {
+                    Direction::Left | Direction::Right => container.width(),
+                    _ => container.height(),
                 };
 
                 if len < self_len {
-                    match &node.children.1 {
-                        Node::MidNode(node) => {
-                            node.inner.write().unwrap().container.request_len(len)
-                        }
-                        Node::EndNode(node) => node.inner.write().unwrap().label.request_len(len),
+                    match &mut self.children.1 {
+                        Node::MidNode(_) => container.request_len(len),
+                        Node::EndNode(node) => node.write().label.write().request_len(len),
                     }
                 }
             }
@@ -145,33 +129,20 @@ where
         }
     }
 
-	/// Requests a new width for itself, going up the tree.
-    fn request_width(&self, width: usize) {
-        let mut node = self.inner.write().unwrap();
-        match (node.child_order, &mut node.parent) {
-            (ChildOrder::Second, Some(parent_node)) => {
-                let inner_node = parent_node.inner.read().unwrap();
-                if let Direction::Left | Direction::Right = inner_node.container.direction() {
-                    drop(inner_node);
-                    parent_node.resize_second(width);
+    /// Requests a new width for itself, going up the tree.
+    fn request_width(&mut self, width: usize) {
+        match (self.child_order, &mut self.parent) {
+            (ChildOrder::Second, Some(node)) => {
+                let mut node = node.write();
+                let direction = node.container.read().direction();
+                if let Direction::Left | Direction::Right = direction {
+                    node.resize_second(width);
                 }
             }
             // NOTE: I don't really know if I'm gonna do anything in here tbh.
             _ => todo!(),
         }
     }
-}
-
-/// Exists only to keep these things inside an `Arc`.
-pub struct InnerEndNode<U>
-where
-    U: Ui + ?Sized,
-{
-    label: U::Label,
-    class: String,
-    parent: Option<Box<MidNode<U>>>,
-    child_order: ChildOrder,
-    form_stack: Vec<(Form, u16)>,
 }
 
 /// Node that contains a `Label`.
@@ -179,23 +150,33 @@ pub struct EndNode<U>
 where
     U: Ui + ?Sized,
 {
-    inner: Arc<RwLock<InnerEndNode<U>>>,
-    config: Config,
+    pub(crate) label: RwData<U::Label>,
+    class: RwData<String>,
+    parent: Option<RwData<MidNode<U>>>,
+    child_order: ChildOrder,
+    pub(crate) config: RwData<Config>,
+    pub(crate) palette: RwData<FormPalette>,
+    applied_forms: Vec<(Form, u16)>,
 }
 
 impl<U> EndNode<U>
 where
     U: Ui,
 {
+
+    /// Completely clears the stack of `Form`s.
+    pub fn clear_form(&mut self) {
+        self.applied_forms.clear();
+    }
+
     /// Tries to request a new width for the label.
-    fn request_width(&self, width: usize) {
-        let mut node = self.inner.write().unwrap();
-        match (node.child_order, &mut node.parent) {
-            (ChildOrder::Second, Some(parent_node)) => {
-                let inner_node = parent_node.inner.read().unwrap();
-                if let Direction::Left | Direction::Right = inner_node.container.direction() {
-                    drop(inner_node);
-                    parent_node.resize_second(width);
+    fn request_width(&mut self, width: usize) {
+        match (self.child_order, &mut self.parent) {
+            (ChildOrder::Second, Some(node)) => {
+                let mut node = node.write();
+                let direction = node.container.read().direction();
+                if let Direction::Left | Direction::Right = direction {
+                    node.resize_second(width);
                 }
             }
             // NOTE: I don't really know if I'm gonna do anything in here tbh.
@@ -203,185 +184,24 @@ where
         }
     }
 
-	/// Gets the visual height of the `Label`, in arbitrary units (cells, pixels, etc). 
-    pub fn height(&self) -> usize {
-        let node = self.inner.read().unwrap();
-        node.label.height()
-    }
-
-	/// Gets the visual width of the `Label`, in arbitrary units (cells, pixels, etc). 
-    pub fn width(&self) -> usize {
-        let node = self.inner.read().unwrap();
-        node.label.width()
-    }
-
-	/// Gets the visual lenght of a character, in arbitrary units (cells, pixels, etc).
-    pub fn get_char_len(&self, ch: char) -> usize {
-        self.inner.read().unwrap().label.get_char_len(ch)
-    }
-
-	/// Triggers the preliminary functions that need to take place before printing.
-    pub(crate) fn start_printing(&mut self) {
-        let mut inner = self.inner.write().unwrap();
-        inner.label.start_printing();
-        drop(inner);
-    }
-
-	/// Returns a `RawEndNode`, a more versatile object for interaction with `InnerEndNode`.
-    pub(crate) fn raw(&self) -> RawEndNode<U> {
-        RawEndNode { config: &self.config, inner: self.inner.write().unwrap() }
-    }
-
-	/// Triggers the finishing functions that need to take place after printing.
-    pub(crate) fn stop_printing(&mut self) {
-        let mut inner = self.inner.write().unwrap();
-        inner.label.stop_printing();
-        drop(inner);
-    }
-
-	/// Returns a reference to the `Config` of the node.
-    pub fn config(&self) -> &Config {
+    /// Returns a reference to the `Config` of the node.
+    pub fn config(&self) -> &RwData<Config> {
         &self.config
     }
-}
 
-impl<U> Clone for EndNode<U>
-where
-    U: Ui + ?Sized,
-{
-    fn clone(&self) -> Self {
-        EndNode { inner: self.inner.clone(), config: self.config.clone() }
-    }
-}
-
-
-/// Convenient reference for an `EndNode`, used internally.
-pub(crate) struct RawEndNode<'a, U>
-where
-    U: Ui,
-{
-    pub(crate) config: &'a Config,
-    inner: RwLockWriteGuard<'a, InnerEndNode<U>>,
-}
-
-impl<'a, U> RawEndNode<'a, U>
-where
-    U: Ui,
-{
-    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
-    pub fn make_form(&self) -> Form {
-        let style = ContentStyle {
-            foreground_color: Some(Color::Reset),
-            background_color: Some(Color::Reset),
-            underline_color: Some(Color::Reset),
-            attributes: Attributes::default(),
-        };
-
-        let mut form = Form { style, is_final: false };
-
-        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
-
-        for &(Form { style, is_final, .. }, _) in &self.inner.form_stack {
-            let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
-
-            let new_background = style.background_color;
-            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
-
-            let new_underline = style.underline_color;
-            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
-
-            if !attr_done {
-                form.style.attributes.extend(style.attributes);
-                if is_final {
-                    attr_done = true
-                }
-            }
-
-            if fg_done && bg_done && ul_done && attr_done {
-                break;
-            }
-        }
-
-        form
-    }
-
-	/// Adds another `Form` to the stack.
-    pub fn push_form(&mut self, form: Form, id: u16) {
-        self.inner.form_stack.push((form, id));
-
-        let form = self.make_form();
-
-        self.inner.label.set_form(form);
-    }
-
-	/// Removes a `Form` from the stack with the given id.
-    pub fn remove_form(&mut self, id: u16) {
-        if let Some((index, _)) =
-            self.inner.form_stack.iter().enumerate().rfind(|(_, &(_, i))| i == id)
-        {
-            self.inner.form_stack.remove(index);
-
-            let form = self.make_form();
-
-            self.inner.label.set_form(form);
-        }
-    }
-
-	/// Completely clears the stack of `Form`s.
-    pub fn clear_form(&mut self) {
-        self.inner.form_stack.clear();
-    }
-
-	/// Prints a character to the screen.
-    pub fn print(&mut self, ch: char) {
-        self.inner.label.print(ch);
-    }
-
-	/// Places the cursor at the beginning of the next line.
-    pub(crate) fn next_line(&mut self) -> Result<(), ()> {
-        self.inner.label.next_line()
-    }
-
-	/// Wraps to the next line, but keeps printing the same line.
-    pub(crate) fn wrap_line(&mut self, indent: usize) -> Result<(), ()> {
-        self.inner.label.wrap_line(indent)
-    }
-
-	/// Places the primary cursor/caret on screen.
-    pub(crate) fn place_primary_cursor(&mut self) {
-        self.inner.label.place_primary_cursor();
-    }
-
-	// On terminals, this is not be possible, that's why I separated these 2 functions.
-	/// Places secondary cursors/carets on screen.
-    pub(crate) fn place_secondary_cursor(&mut self) {
-        self.inner.label.place_secondary_cursor();
-    }
-
-	/// Gets the visual height of the `Label`, in arbitrary units (cells, pixels, etc). 
-    pub fn height(&self) -> usize {
-        self.inner.label.height()
-    }
-
-	/// Gets the visual width of the `Label`, in arbitrary units (cells, pixels, etc). 
-    pub fn width(&self) -> usize {
-        self.inner.label.width()
-    }
-
-	/// Gets the visual lenght of a character, in arbitrary units (cells, pixels, etc).
-    pub fn get_char_len(&self, ch: char) -> usize {
-        self.inner.label.get_char_len(ch)
+    pub fn palette(&self) -> &RwData<FormPalette> {
+        &self.palette
     }
 }
 
 /// Container for middle and end nodes.
+#[derive(Clone)]
 pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
-    MidNode(MidNode<U>),
-    EndNode(EndNode<U>),
+    MidNode(RwData<MidNode<U>>),
+    EndNode(RwData<EndNode<U>>),
 }
 
 /// The order in which a specific node was placed (chronological, not spatial).
@@ -433,7 +253,7 @@ pub trait Ui {
         &mut self, label: &mut Self::Label, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label);
 
-	/// Splits a container in two, and places each of the areas on a new parent area.
+    /// Splits a container in two, and places each of the areas on a new parent area.
     ///
     /// # Returns
     ///
@@ -453,16 +273,16 @@ pub trait Ui {
         &mut self, container: &mut Self::Container, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label);
 
-	/// Returns `Some(_)` only if the node tree contains a single `Label`, and no `Container`s.
+    /// Returns `Some(_)` only if the node tree contains a single `Label`, and no `Container`s.
     fn only_label(&mut self) -> Option<Self::Label>;
 
-	/// Functions to trigger when the program begins.
+    /// Functions to trigger when the program begins.
     fn startup(&mut self);
 
-	/// Functions to trigger when the program ends.
+    /// Functions to trigger when the program ends.
     fn shutdown(&mut self);
 
-	/// Functions to trigger once every `Label` has been printed.
+    /// Functions to trigger once every `Label` has been printed.
     fn finish_all_printing(&mut self);
 }
 
@@ -480,57 +300,54 @@ where
         NodeManager(ui_manager)
     }
 
-	/// Returns an `EndNode` only if it is the only node in the `Ui`.
-    pub fn only_child(&mut self, config: &Config, class: &str) -> Option<EndNode<U>> {
-        self.0.only_label().map(|l| EndNode {
-            inner: Arc::new(RwLock::new(InnerEndNode {
-                child_order: ChildOrder::First,
-                parent: None,
-                form_stack: Vec::new(),
-                class: String::from(class),
-                label: l,
-            })),
-            config: config.clone(),
-        })
+    /// Returns an `EndNode` only if it is the only node in the `Ui`.
+    pub fn only_child(
+        &mut self, config: Config, palette: FormPalette, class: &str,
+    ) -> Option<RwData<EndNode<U>>> {
+        self.0.only_label().map(|l| RwData::new(EndNode {
+            label: RwData::new(l),
+            class: RwData::new(String::from(class)),
+            parent: None,
+            child_order: ChildOrder::First,
+            config: RwData::new(config),
+            palette: RwData::new(palette),
+          	applied_forms: Vec::new(),
+        }))
     }
 
     // TODO: Move this to an owning struct.
     /// Splits a given `EndNode` into two, with a new parent `MidNode`, and a new child `EndNode`.
     pub fn split_end(
-        &mut self, node: &mut EndNode<U>, direction: Direction, split: Split, glued: bool,
-    ) -> (MidNode<U>, EndNode<U>) {
-        let mut inner = node.inner.write().unwrap();
-        let (container, label) = self.0.split_label(&mut inner.label, direction, split, glued);
-        drop(inner);
+        &mut self, node: &mut RwData<EndNode<U>>, direction: Direction, split: Split, glued: bool,
+    ) -> (RwData<MidNode<U>>, RwData<EndNode<U>>) {
+        let cloned_node = node.clone();
+        let mut raw_node = node.write();
+        let (container, label) =
+            self.0.split_label(&mut raw_node.label.write(), direction, split, glued);
 
-        let inner = node.inner.read().unwrap();
+        let mut end_node = RwData::new(EndNode {
+            label: RwData::new(label),
+            class: raw_node.class.clone(),
+            parent: None,
+            child_order: ChildOrder::Second,
+            config: raw_node.config.clone(),
+            palette: raw_node.palette.clone(),
+            applied_forms: Vec::new()
+        });
 
-        let end_node = EndNode {
-            inner: Arc::new(RwLock::new(InnerEndNode {
-                child_order: ChildOrder::Second,
-                parent: None,
-                form_stack: Vec::new(),
-                class: inner.class.clone(),
-                label,
-            })),
-            config: node.config.clone(),
-        };
+        let mid_node = RwData::new(MidNode {
+            container: RwData::new(container),
+            class: raw_node.class.clone(),
+            parent: raw_node.parent.clone(),
+            child_order: raw_node.child_order,
+            children: (Node::EndNode(cloned_node.clone()), Node::EndNode(cloned_node)),
+            split,
+            config: raw_node.config.clone(),
+            palette: raw_node.palette.clone()
+        });
 
-        let mid_node = MidNode {
-            inner: Arc::new(RwLock::new(InnerMidNode {
-                child_order: inner.child_order,
-                children: (Node::EndNode(node.clone()), Node::EndNode(end_node.clone())),
-                split,
-                parent: inner.parent.clone(),
-                class: inner.class.clone(),
-                container,
-            })),
-            config: node.config.clone(),
-        };
-        drop(inner);
-
-        node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
-        end_node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
+        raw_node.parent = Some(mid_node.clone());
+        end_node.write().parent = Some(mid_node.clone());
 
         (mid_node, end_node)
     }
@@ -538,71 +355,53 @@ where
     // TODO: Fix split, if necessary.
     /// Splits a given `MidNode` into two, with a new parent `MidNode`, and a new child `EndNode`.
     pub fn split_mid(
-        &mut self, node: &mut MidNode<U>, direction: Direction, split: Split, glued: bool,
-    ) -> (MidNode<U>, EndNode<U>) {
-        let (container, label) = self.0.split_container(
-            &mut node.inner.write().unwrap().container,
-            direction,
+        &mut self, node: &mut RwData<MidNode<U>>, direction: Direction, split: Split, glued: bool,
+    ) -> (RwData<MidNode<U>>, RwData<EndNode<U>>) {
+        let (container, label) =
+            self.0.split_container(&mut node.write().container.write(), direction, split, glued);
+
+		let cloned_node = node.clone();
+        let mut raw_node = node.write();
+        let mut end_node = RwData::new(EndNode {
+            label: RwData::new(label),
+            class: raw_node.class.clone(),
+            parent: None,
+            child_order: ChildOrder::Second,
+            config: raw_node.config.clone(),
+            palette: raw_node.palette.clone(),
+            applied_forms: Vec::new()
+        });
+
+        let mid_node = RwData::new(MidNode {
+            child_order: raw_node.child_order,
+            children: (Node::MidNode(cloned_node), Node::EndNode(end_node.clone())),
             split,
-            glued,
-        );
+            parent: raw_node.parent.clone(),
+            class: raw_node.class.clone(),
+            container: RwData::new(container),
+            config: raw_node.config.clone(),
+            palette: raw_node.palette.clone()
+        });
 
-        let inner_node = node.inner.read().unwrap();
-
-        let end_node = EndNode {
-            inner: Arc::new(RwLock::new(InnerEndNode {
-                child_order: ChildOrder::Second,
-                parent: None,
-                form_stack: Vec::new(),
-                class: inner_node.class.clone(),
-                label,
-            })),
-            config: node.config.clone(),
-        };
-
-        let mid_node = MidNode {
-            inner: Arc::new(RwLock::new(InnerMidNode {
-                child_order: inner_node.child_order,
-                children: (Node::MidNode(node.clone()), Node::EndNode(end_node.clone())),
-                split,
-                parent: inner_node.parent.clone(),
-                class: inner_node.class.clone(),
-                container,
-            })),
-            config: node.config.clone(),
-        };
-
-        node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
-        end_node.inner.write().unwrap().parent = Some(Box::new(mid_node.clone()));
+        raw_node.parent = Some(mid_node.clone());
+        end_node.write().parent = Some(mid_node.clone());
 
         (mid_node, end_node)
     }
 
-	/// Triggers the functions to use when the program starts.
+    /// Triggers the functions to use when the program starts.
     pub(crate) fn startup(&mut self) {
         self.0.startup();
     }
 
-	/// Triggers the functions to use when the program ends.
+    /// Triggers the functions to use when the program ends.
     pub(crate) fn shutdown(&mut self) {
         self.0.shutdown();
     }
 
-	/// Triggers the functions to once every `Label` has been printed.
+    /// Triggers the functions to once every `Label` has been printed.
     pub(crate) fn finish_all_printing(&mut self) {
         self.0.finish_all_printing()
     }
 }
 
-/// Internal method used only to shorten code in `make_form()`.
-fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
-where
-    T: Clone,
-{
-    if let (Some(new_var), false) = (maybe_new, &is_set) {
-        *var = Some(new_var.clone());
-        if is_final {
-            *is_set = true
-        };
-    }
-}

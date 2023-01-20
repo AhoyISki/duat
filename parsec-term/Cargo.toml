@@ -9,7 +9,7 @@ edition = "2021"
 dirs = "*"
 unicode-width = "*"
 
-crossterm = "*"
+crossterm = { path = "../../crossterm/" }
 parsec-core = { version = "*", path = "../parsec-core/" }
 
 [features]

@@ -10,7 +10,7 @@ edition = "2021"
 unicode-segmentation = "*"
 
 # Style handling
-crossterm = "*"
+crossterm = { path = "../../crossterm/" }
 
 # Utility
 bitflags = "*"
