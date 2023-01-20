@@ -228,6 +228,7 @@ where
         };
 
         layout.new_file_with_node(path, node);
+        layout.status.set_file(layout.active_file());
 
         layout
     }
@@ -249,8 +250,12 @@ where
         }
     }
 
-    fn active_file(&mut self) -> RwData<FileWidget<U>> {
+    fn active_file_mut(&mut self) -> RwData<FileWidget<U>> {
         self.files[0].0.clone()
+    }
+
+    fn active_file(&self) -> RoData<FileWidget<U>> {
+        RoData::from(&self.files[0].0)
     }
 }
 
@@ -295,7 +300,7 @@ where
 
         // Initial printing.
         self.status.update();
-
+		print_widget(&mut self.status);
         print_files(&mut self.files);
         for widget in &mut self.widgets {
             let mut widget = widget.lock().unwrap();

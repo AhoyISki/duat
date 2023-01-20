@@ -135,8 +135,8 @@ where
         self.string = text.to_string();
     }
 
-    pub fn set_file(&mut self, file: &RwData<FileWidget<U>>) {
-        self.file = Some(RoData::from(file));
+    pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
+        self.file = Some(file);
     }
 }
 
@@ -166,14 +166,21 @@ where
         let mut text = self.text.write();
         text.lines.clear();
         let mut final_string = self.string.clone();
+        let mut byte_diff = 0;
 
-        for (index, (pos, _)) in self.string.match_indices("{}").enumerate() {
-            final_string.replace_range(pos..=(pos + 1), &self.printables[index].to_string())
+        for (index, (mut pos, _)) in self.string.match_indices("{}").enumerate() {
+            let replacement = &self.printables[index].to_string();
+            pos = pos.saturating_add_signed(byte_diff);
+            byte_diff += replacement.len() as isize - 2 as isize;
+            final_string.replace_range(pos..=(pos + 1), replacement)
         }
         if let Some(file) = &self.file {
             let file = file.read();
-            for (index, (pos, _)) in self.string.match_indices("()").enumerate() {
-                final_string.replace_range(pos..=(pos + 1), &(&self.file_printables[index])(&file))
+            for (index, (mut pos, _)) in self.string.match_indices("()").enumerate() {
+                let replacement = &self.file_printables[index](&file);
+                pos = pos.saturating_add_signed(byte_diff);
+                byte_diff += replacement.len() as isize - 2 as isize;
+                final_string.replace_range(pos..=(pos + 1), replacement)
             }
         }
 
@@ -201,12 +208,16 @@ macro_rules! form_status {
         |$obj| { $obj.to_string() }
     };
 
+    (@file_fun (|$obj:ident| $internals:expr)) => {
+        |$obj| { $internals.to_string() }
+    };
+
     (
-        $status:expr => $text:expr, global_vars: $($to_string:tt),*;
-        file: $file:expr, file_vars: $($file_to_string:tt),*
+        $status:expr => $text:expr; global_vars: $($to_string:tt),*;
+        file_vars: $($file_to_string:tt),*
     ) => {
         $(
-            $status.push_file_var($file_to_string)
+            $status.push_file_var(form_status!(@file_fun $file_to_string));
         );*
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
