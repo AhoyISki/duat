@@ -247,3 +247,11 @@ macro_rules! form_status {
         $status.set_string($text);
     };
 }
+
+/// A convenience macro to join any number of variables that can be turned into `String`s.
+#[macro_export]
+macro_rules! join {
+    ($($var:expr),*) => {
+        [$($var.to_string()),*].join("")
+    }
+}

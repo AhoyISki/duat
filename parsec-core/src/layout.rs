@@ -228,7 +228,7 @@ where
             match_manager,
         };
 
-        layout.new_file_with_node(&paths[0], node);
+        layout.new_file_with_node(&paths[1], node);
         layout.status.set_file(layout.active_file());
 
         layout

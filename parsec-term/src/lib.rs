@@ -1,5 +1,4 @@
 use std::{
-    backtrace::Backtrace,
     cmp::min,
     io::{stdout, Stdout},
 };
@@ -273,7 +272,6 @@ impl ui::Ui for UiManager {
                 .unwrap();
 
             println!("{}", msg);
-            println!("BACKTRACE: {}", Backtrace::force_capture())
         }));
 
         let mut stdout = stdout();

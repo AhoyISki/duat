@@ -295,6 +295,7 @@ pub struct FileWidget<U>
 where
     U: Ui,
 {
+    name: RwData<String>,
     pub(crate) text: RwData<Text>,
     print_info: RwData<PrintInfo>,
     pub(crate) main_cursor: RwData<usize>,
@@ -311,6 +312,7 @@ where
 {
     /// Returns a new instance of `FileWidget`.
     pub fn new(path: &PathBuf, node: EndNode<U>, match_manager: &Option<MatchManager>) -> Self {
+        // TODO: Allow the creation of a new file.
         let file_contents = fs::read_to_string(path).expect("Failed to read the file.");
         let text = RwData::new(Text::new(file_contents, match_manager.clone()));
         let read = text.read();
@@ -318,6 +320,7 @@ where
         drop(read);
 
         let mut file_widget = FileWidget {
+            name: RwData::new(path.file_name().unwrap().to_string_lossy().to_string()),
             text,
             print_info: RwData::new(PrintInfo::default()),
             main_cursor: RwData::new(0),
@@ -656,6 +659,14 @@ where
 
     pub fn main_cursor(&self) -> TextCursor {
         *self.cursors.read().get(*self.main_cursor.read()).unwrap()
+    }
+
+    pub fn name(&self) -> String {
+        self.name.read().clone()
+    }
+
+    pub fn len(&self) -> usize {
+        self.text.read().lines().len()
     }
 }
 
