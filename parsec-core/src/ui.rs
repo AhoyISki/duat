@@ -4,7 +4,7 @@ use crossterm::style::{Attributes, Color, ContentStyle};
 
 use crate::{
     config::{Config, RwData, RoData},
-    tags::{Form, FormPalette},
+    tags::{Form, FormPalette, CursorStyle},
 };
 
 /// A `Label` or `Container` container, that holds exactly two in total.
@@ -35,11 +35,11 @@ pub trait Label {
 
     // TODO: Give it a default form.
     /// Places the primary cursor on the current printing position.
-    fn place_primary_cursor(&mut self);
+    fn place_primary_cursor(&mut self, style: CursorStyle);
 
     // TODO: Give it a default form.
     /// Places the secondary cursor on the current printing position.
-    fn place_secondary_cursor(&mut self);
+    fn place_secondary_cursor(&mut self, style: CursorStyle);
 
     //////////////////// Printing
     /// Tell the area that printing has begun.

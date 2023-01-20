@@ -9,7 +9,7 @@ use crossterm::{
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    tags::Form,
+    tags::{Form, CursorStyle},
     ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
 };
 use unicode_width::UnicodeWidthChar;
@@ -38,7 +38,7 @@ struct Area {
 
 impl Area {
     fn total() -> Self {
-        let size = terminal::size().expect("crossterm");
+        let size = terminal::size().unwrap();
 
         Area { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
     }
@@ -81,7 +81,7 @@ pub struct Label {
     area: Area,
     cursor: Coord,
     direction: Direction,
-    secodary_cursor: bool,
+    style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
 }
 
@@ -92,7 +92,7 @@ impl Label {
             area,
             cursor: area.tl,
             direction,
-            secodary_cursor: false,
+            style_before_cursor: None,
             last_style: ContentStyle::default(),
         }
     }
@@ -104,7 +104,7 @@ impl Label {
             // The rest of the line is featureless.
             let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(1);
             let padding = " ".repeat(padding_count);
-            self.stdout.queue(Print(padding)).expect("crossterm");
+            self.stdout.queue(Print(padding)).unwrap();
         }
 
         self.cursor.x = self.area.tl.x;
@@ -112,9 +112,9 @@ impl Label {
 
         self.stdout
             .queue(MoveTo(self.cursor.x, self.cursor.y))
-            .expect("crossterm")
+            .unwrap()
             .queue(SetStyle(self.last_style))
-            .expect("crossterm");
+            .unwrap();
     }
 }
 
@@ -142,9 +142,9 @@ impl UiLabel for Label {
 
             self.stdout
                 .queue(MoveTo(self.cursor.x, self.cursor.y))
-                .expect("crossterm")
+                .unwrap()
                 .queue(Print(" ".repeat(indent)))
-                .expect("crossterm");
+                .unwrap();
 
             self.cursor.x += indent as u16;
 
@@ -153,12 +153,12 @@ impl UiLabel for Label {
     }
 
     fn clear_form(&mut self) {
-        self.stdout.queue(ResetColor).expect("crossterm");
+        self.stdout.queue(ResetColor).unwrap();
     }
 
     fn set_form(&mut self, form: Form) {
         self.last_style = form.style;
-        self.stdout.queue(SetStyle(self.last_style)).expect("crossterm");
+        self.stdout.queue(SetStyle(self.last_style)).unwrap();
     }
 
     fn get_char_len(&self, ch: char) -> usize {
@@ -173,23 +173,29 @@ impl UiLabel for Label {
         self.area.height()
     }
 
-    fn place_primary_cursor(&mut self) {
-        self.stdout.queue(SavePosition).expect("crossterm");
+    fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
+        if let Some(caret) = cursor_style.caret {
+            self.stdout.queue(caret).unwrap();
+            self.stdout.queue(SavePosition).unwrap();
+        } else {
+            self.style_before_cursor = Some(self.last_style);
+            self.stdout.queue(SetStyle(cursor_style.form.style)).unwrap();
+        }
     }
 
-    fn place_secondary_cursor(&mut self) {
-        self.secodary_cursor = true;
-        self.stdout.queue(SetAttribute(Attribute::Reverse)).expect("crossterm");
+    fn place_secondary_cursor(&mut self, cursor_style: CursorStyle) {
+        self.style_before_cursor = Some(self.last_style);
+        self.stdout.queue(SetStyle(cursor_style.form.style)).unwrap();
     }
 
     fn print(&mut self, ch: char) {
         let len = self.get_char_len(ch) as u16;
         if self.cursor.x < self.area.br.x - len {
             self.cursor.x += len;
-            self.stdout.queue(Print(ch)).expect("crossterm");
-            if self.secodary_cursor {
-                self.stdout.queue(SetAttribute(Attribute::NoReverse)).expect("crossterm");
-                self.secodary_cursor = false
+            self.stdout.queue(Print(ch)).unwrap();
+            if let Some(style) = self.style_before_cursor.take() {
+                self.stdout.queue(ResetColor).unwrap();
+                self.stdout.queue(SetStyle(style)).unwrap();
             }
         }
     }
@@ -200,7 +206,7 @@ impl UiLabel for Label {
 
     fn start_printing(&mut self) {
         self.cursor = self.area.tl;
-        self.stdout.queue(MoveTo(self.area.tl.x, self.area.tl.y)).expect("crossterm");
+        self.stdout.queue(MoveTo(self.area.tl.x, self.area.tl.y)).unwrap();
     }
 
     fn stop_printing(&mut self) {
@@ -210,7 +216,7 @@ impl UiLabel for Label {
 
         self.clear_line();
 
-        stdout().execute(RestorePosition).expect("crossterm");
+        stdout().execute(RestorePosition).unwrap();
         self.clear_form();
     }
 }

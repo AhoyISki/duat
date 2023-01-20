@@ -120,8 +120,8 @@ impl CharTag {
                     return false;
                 }
             }
-            CharTag::PrimaryCursor => label.place_primary_cursor(),
-            CharTag::SecondaryCursor => label.place_secondary_cursor(),
+            CharTag::PrimaryCursor => label.place_primary_cursor(palette.main_cursor),
+            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursors),
             CharTag::SelectionStart => {
                 label.set_form(form_former.push_form(palette.main_selection, MAIN_SELECTION_ID));
             }
@@ -259,11 +259,11 @@ impl Form {
 #[derive(Clone, Copy)]
 pub struct CursorStyle {
     /// An optional member when using application specific cursors.
-    caret: Option<SetCursorStyle>,
+    pub caret: Option<SetCursorStyle>,
     // NOTE: This is obligatory as a fallback for when the application can't render the
     // cursor with `caret`.
     /// To render the cursor as a form, not as an actual cursor.
-    form: Form,
+    pub form: Form,
 }
 
 impl CursorStyle {
