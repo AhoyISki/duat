@@ -1,8 +1,10 @@
 use std::{
     cmp::{max, min},
     fs,
-    path::PathBuf,
+    path::PathBuf, io::{self, Read}, os::unix::prelude::FileExt,
 };
+
+use sanitize_filename::sanitize;
 
 use crate::{
     action::{Change, History, TextRange},
@@ -308,9 +310,8 @@ where
     U: Ui,
 {
     /// Returns a new instance of `FileWidget`.
-    pub fn new(path: PathBuf, node: EndNode<U>, match_manager: &Option<MatchManager>) -> Self {
-        // TODO: Sanitize the path further.
-        let file_contents = fs::read_to_string(path).unwrap_or("".to_string());
+    pub fn new(path: &PathBuf, node: EndNode<U>, match_manager: &Option<MatchManager>) -> Self {
+        let file_contents = fs::read_to_string(path).expect("Failed to read the file.");
         let text = RwData::new(Text::new(file_contents, match_manager.clone()));
         let read = text.read();
         let cursor = TextCursor::new(TextPos::default(), read.lines(), &node);

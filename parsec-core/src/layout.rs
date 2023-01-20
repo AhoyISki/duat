@@ -1,7 +1,7 @@
 pub mod file_widget;
 pub mod status_widget;
 
-use std::{fmt::Write, path::PathBuf, sync::Mutex, thread};
+use std::{fmt::Write, path::PathBuf, sync::Mutex, thread, env};
 
 use crossterm::event::{self, Event, KeyCode};
 
@@ -209,7 +209,8 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(ui: U, path: &PathBuf, match_manager: MatchManager, config: Config) -> Self {
+    pub fn new(ui: U, match_manager: MatchManager, config: Config) -> Self {
+        let paths: Vec<PathBuf> = env::args().map(|p| PathBuf::from(p)).collect();
         let mut node_manager = NodeManager::new(ui);
         let mut node = node_manager.only_child(&config, "code").unwrap();
 
@@ -227,7 +228,7 @@ where
             match_manager,
         };
 
-        layout.new_file_with_node(path, node);
+        layout.new_file_with_node(&paths[0], node);
         layout.status.set_file(layout.active_file());
 
         layout
@@ -236,7 +237,7 @@ where
     /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, node: EndNode<U>) {
         let mut file =
-            FileWidget::<U>::new(path.clone(), node.clone(), &Some(self.match_manager.clone()));
+            FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
 
         if matches!(node.config().line_numbers, LineNumbers::None) {
             self.files.push((RwData::new(file), None));
