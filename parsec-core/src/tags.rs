@@ -289,10 +289,10 @@ impl CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-const MAIN_SELECTION_ID: u16 = 2;
-const SECONDARY_SELECTION_ID: u16 = 3;
-const LINE_NUMBERS_ID: u16 = 4;
-const MAIN_LINE_NUMBER_ID: u16 = 5;
+const MAIN_SELECTION_ID: u16 = 0;
+const SECONDARY_SELECTION_ID: u16 = 1;
+const LINE_NUMBERS_ID: u16 = 2;
+const MAIN_LINE_NUMBER_ID: u16 = 3;
 
 /// An expandable palette of forms to be used when rendering.
 #[derive(Clone)]

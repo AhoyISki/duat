@@ -103,9 +103,9 @@ impl PrintedLines {
             printed_lines.push(print_info.top_line);
         }
 
-        while let (Some((index, line)), true) = (lines_iter.next(), d_y <= height) {
+        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
             let old_d_y = d_y;
-            d_y = min(d_y + 1 + line.wrap_iter().count(), height);
+            d_y = min(d_y + line.wrap_iter().count(), height);
             for _ in old_d_y..=d_y {
                 printed_lines.push(index);
             }
@@ -607,11 +607,11 @@ where
                 )
             };
 
-            let pos_list = [(cursor.caret(), caret_tag), (start, start_tag), (end, end_tag)];
+            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
-            let no_selection = if start == end { 1 } else { 3 };
+            let no_selection = if start == end { 2 } else { 0 };
 
-            for (pos, tag) in pos_list.iter().take(no_selection) {
+            for (pos, tag) in pos_list.iter().skip(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col);
                     line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
@@ -626,21 +626,21 @@ where
 
         for (index, cursor) in self.cursors.read().iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let tag = if index == *self.main_cursor.read() {
-                CharTag::MainCursor
+            let (caret_tag, start_tag, end_tag) = if index == *self.main_cursor.read() {
+                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
             } else {
-                CharTag::SecondaryCursor
+                (
+                    CharTag::SecondaryCursor,
+                    CharTag::SecondarySelectionStart,
+                    CharTag::SecondarySelectionEnd,
+                )
             };
 
-            let pos_list = [
-                (cursor.caret(), tag),
-                (start, CharTag::MainSelectionStart),
-                (end, CharTag::MainSelectionEnd),
-            ];
+            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
-            let no_selection = if start == end { 1 } else { 3 };
+            let no_selection = if start == end { 2 } else { 0 };
 
-            for (pos, tag) in pos_list.iter().take(no_selection) {
+            for (pos, tag) in pos_list.iter().skip(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col) as u32;
                     line.info.char_tags.insert((byte, *tag));
@@ -651,6 +651,9 @@ where
 
     /// Currently does nothing.
     fn update(&mut self) {
+        let mut node = self.node.write();
+        let mut text = self.text.write();
+        text.update_lines(&mut node);
         //self.match_scroll();
     }
 

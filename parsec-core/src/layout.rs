@@ -300,6 +300,7 @@ where
         // Initial printing.
         self.status.update();
 		print_widget(&mut self.status);
+		update_files(&mut self.files);
         print_files(&mut self.files);
         for widget in &mut self.widgets {
             let mut widget = widget.lock().unwrap();

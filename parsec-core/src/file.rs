@@ -1,6 +1,4 @@
-use std::{cmp::min, ffi::c_longlong, ops::RangeInclusive};
-
-use crossterm::style::{Attributes, Color, ContentStyle};
+use std::{cmp::min, ops::RangeInclusive};
 
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
@@ -8,7 +6,7 @@ use crate::{
     cursor::TextPos,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
-    tags::{CharTag, Form, FormFormer, FormPalette, LineFlags, LineInfo, MatchManager},
+    tags::{CharTag, FormFormer, FormPalette, LineFlags, LineInfo, MatchManager},
     ui::{EndNode, Label, Ui},
 };
 
@@ -249,7 +247,7 @@ impl TextLine {
     #[inline]
     pub(crate) fn print<U>(
         &self, label: &mut U::Label, config: &Config, palette: &FormPalette, x_shift: usize,
-        skip: usize,
+        skip: usize, form_former: &mut FormFormer,
     ) -> bool
     where
         U: Ui,
@@ -272,8 +270,6 @@ impl TextLine {
             }
         }
 
-        let mut form_former = FormFormer::new();
-
         // Iterate through the tags before the first unskipped character.
         let mut tags_iter = self.info.char_tags.vec().iter();
         let mut current_char_tag = None;
@@ -283,7 +279,7 @@ impl TextLine {
                 break;
             }
             if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
-                tag.1.trigger(label, &palette, 0, &mut form_former);
+                tag.1.trigger(label, &palette, 0, form_former);
             }
         }
 
@@ -306,7 +302,7 @@ impl TextLine {
                     if let (CharTag::WrapppingChar, true) = (tag, d_x == 0) {
                         continue;
                     } else {
-                        if !tag.trigger(label, &palette, wrap_indent, &mut form_former) {
+                        if !tag.trigger(label, &palette, wrap_indent, form_former) {
                             return false;
                         }
                     }
@@ -396,14 +392,29 @@ impl Text {
         label.start_printing();
 
         // Print the `top_line`.
+        let mut form_former = FormFormer::new();
         let top_line = &self.lines[print_info.top_line];
         let top_wraps = print_info.top_wraps;
         let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
-        top_line.print::<U>(&mut label, &config, &palette, print_info.x_shift, skip as usize);
+        top_line.print::<U>(
+            &mut label,
+            &config,
+            &palette,
+            print_info.x_shift,
+            skip as usize,
+            &mut form_former,
+        );
 
         // Prints other lines until it can't anymore.
         for line in self.lines.iter().skip(print_info.top_line + 1) {
-            if !line.print::<U>(&mut label, &config, &palette, print_info.x_shift, 0) {
+            if !line.print::<U>(
+                &mut label,
+                &config,
+                &palette,
+                print_info.x_shift,
+                0,
+                &mut form_former,
+            ) {
                 break;
             }
         }

@@ -4,12 +4,12 @@ use std::{
 };
 
 use crossterm::{
-    cursor::{MoveTo, RestorePosition, SavePosition},
+    cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle, Show},
     style::{Attribute, ContentStyle, Print, ResetColor, SetAttribute, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    tags::{Form, CursorStyle},
+    tags::{CursorStyle, Form},
     ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
 };
 use unicode_width::UnicodeWidthChar;
@@ -48,7 +48,7 @@ impl Area {
     }
 
     fn width(&self) -> usize {
-        (self.br.x - self.tl.x - 1) as usize
+        (self.br.x - self.tl.x) as usize
     }
 }
 
@@ -175,11 +175,14 @@ impl UiLabel for Label {
 
     fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
         if let Some(caret) = cursor_style.caret {
-            self.stdout.queue(caret).unwrap();
-            self.stdout.queue(SavePosition).unwrap();
+            self.stdout.queue(caret).unwrap().queue(SavePosition).unwrap();
         } else {
             self.style_before_cursor = Some(self.last_style);
-            self.stdout.queue(SetStyle(cursor_style.form.style)).unwrap();
+            self.stdout
+                .queue(cursor::Hide)
+                .unwrap()
+                .queue(SetStyle(cursor_style.form.style))
+                .unwrap();
         }
     }
 
@@ -295,13 +298,17 @@ impl ui::Ui for UiManager {
         let mut stdout = stdout();
 
         stdout
-            .execute(ResetColor)
+            .queue(ResetColor)
             .unwrap()
-            .execute(terminal::Clear(terminal::ClearType::All))
+            .queue(terminal::Clear(terminal::ClearType::All))
             .unwrap()
-            .execute(terminal::EnableLineWrap)
+            .queue(terminal::EnableLineWrap)
             .unwrap()
-            .execute(MoveTo(0, 0))
+            .queue(MoveTo(0, 0))
+            .unwrap()
+            .queue(SetCursorStyle::DefaultUserShape)
+            .unwrap()
+            .execute(cursor::Show)
             .unwrap();
 
         terminal::disable_raw_mode().unwrap();
