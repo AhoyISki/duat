@@ -198,7 +198,7 @@ impl TextLine {
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = label.width() - 1;
+            distance = label.width();
             while distance < self.text.len() {
                 self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
 

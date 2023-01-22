@@ -193,7 +193,7 @@ impl UiLabel for Label {
 
     fn print(&mut self, ch: char) {
         let len = self.get_char_len(ch) as u16;
-        if self.cursor.x < self.area.br.x - len {
+        if self.cursor.x <= self.area.br.x - len {
             self.cursor.x += len;
             self.stdout.queue(Print(ch)).unwrap();
             if let Some(style) = self.style_before_cursor.take() {

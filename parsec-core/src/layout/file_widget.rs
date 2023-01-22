@@ -654,6 +654,9 @@ where
         let mut node = self.node.write();
         let mut text = self.text.write();
         text.update_lines(&mut node);
+        drop(node);
+        drop(text);
+        self.add_cursor_tags();
         //self.match_scroll();
     }
 

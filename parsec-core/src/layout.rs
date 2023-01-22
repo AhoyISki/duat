@@ -86,7 +86,7 @@ where
     fn new(
         file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
     ) -> (Self, RwData<MidNode<U>>) {
-        let mut split = 2;
+        let mut split = 1;
         let mut num_exp = 10;
         let text = file_widget.text.write();
 

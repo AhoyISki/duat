@@ -77,7 +77,6 @@ where
         for key in &self.gives {
             editing_scheme.process_key(key, file);
         }
-        file.add_cursor_tags();
     }
 }
 
@@ -139,7 +138,6 @@ where
                     if self.editing_scheme.send_remapped_keys() {
                         file.remove_cursor_tags();
                         self.editing_scheme.process_key(&key, file);
-                        file.add_cursor_tags();
                     }
 
                     // This means that the sequence has been fully completed.
@@ -161,7 +159,6 @@ where
         if should_check_new.is_empty() {
             file.remove_cursor_tags();
             self.editing_scheme.process_key(&key, file);
-            file.add_cursor_tags();
         }
 
         self.should_check = should_check_new;
