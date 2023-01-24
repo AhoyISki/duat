@@ -9,7 +9,7 @@ use crate::{
     config::{RoData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
-    split_string_lines,
+    log_info, split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
@@ -314,6 +314,7 @@ where
     pub(crate) node: RwData<EndNode<U>>,
     history: History,
     do_set_print_info: bool,
+    do_add_cursor_tags: bool,
 }
 
 impl<U> FileWidget<U>
@@ -340,12 +341,13 @@ where
             node,
             history: History::new(),
             do_set_print_info: true,
+            do_add_cursor_tags: false
         };
 
-        file_widget.add_cursor_tags();
         let mut text = file_widget.text.write();
         text.update_lines(&file_widget.node.read());
         drop(text);
+        file_widget.add_cursor_tags();
         file_widget
     }
 
@@ -620,10 +622,14 @@ where
             for (pos, tag) in pos_list.iter().skip(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col);
-                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
+                    line.info.char_tags.remove_first(|(n, t)| {
+                        n as usize == byte && t == *tag
+                    });
                 }
             }
         }
+
+        self.do_add_cursor_tags = true;
     }
 
     /// Adds the tags for all the cursors, used after they are expected to have moved.
@@ -662,7 +668,6 @@ where
         text.update_lines(&mut node);
         drop(node);
         drop(text);
-        self.add_cursor_tags();
         //self.match_scroll();
     }
 
@@ -734,11 +739,15 @@ where
         } else {
             self.do_set_print_info = true;
         }
+        if self.do_add_cursor_tags {
+            self.add_cursor_tags();
+            self.do_add_cursor_tags = false
+        }
         self.update();
     }
 
     fn needs_update(&self) -> bool {
-        self.text().has_changed() || self.print_info.has_changed() || self.cursors.has_changed()
+        true
     }
 
     fn text(&self) -> RoData<Text> {

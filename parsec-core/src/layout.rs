@@ -16,7 +16,6 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    log_info,
     tags::{FormPalette, MatchManager},
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
@@ -247,7 +246,7 @@ where
 
         let status = StatusWidget::new(end_node, &mut node_manager);
 
-        let mut layout = OneStatusLayout {
+        let layout = OneStatusLayout {
             node_manager,
             status,
             widgets: Vec::new(),
@@ -282,7 +281,7 @@ where
         self.files[0].0.clone()
     }
 
-    fn active_file(&self) -> RoData<FileWidget<U>> {
+    pub fn active_file(&self) -> RoData<FileWidget<U>> {
         RoData::from(&self.files[0].0)
     }
 }
@@ -415,10 +414,7 @@ where
 {
     for (file_widget, _) in printer.iter_mut() {
         let mut file_widget = file_widget.write();
-        if file_widget.needs_update() {
-            file_widget.update();
-            log_info!("\nfrom print_files: {:?}", file_widget.text.read().lines.len());
-        }
+        file_widget.update();
         let print_info = file_widget.print_info().map(|p| *p.read()).unwrap_or_default();
         file_widget.text().read().print(&mut file_widget.end_node_mut().write(), print_info);
     }

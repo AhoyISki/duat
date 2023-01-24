@@ -12,7 +12,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     file::TextLine,
-    ui::{Area, Label},
+    ui::{Area, Label}, log_info,
 };
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
@@ -252,6 +252,7 @@ impl CharTags {
     {
         if let Some((index, _)) = self.0.iter().enumerate().find(|&(_, &t)| cmp(t)) {
             self.0.remove(index);
+            log_info!("\n{:#?}", self.0);
         }
     }
 }
