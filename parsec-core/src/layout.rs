@@ -11,7 +11,7 @@ use crate::{
     file::Text,
     input::{EditingScheme, FileRemapper},
     tags::{FormPalette, MatchManager},
-    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
+    ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui, Label},
 };
 
 use self::{
@@ -84,23 +84,25 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        mut node: RwData<EndNode<U>>, node_manager: &mut NodeManager<U>,
+        file_widget: RwData<FileWidget<U>>,
     ) -> Box<dyn Widget<U>> {
-        //let mut split = 2;
-        //let mut num_exp = 10;
-        //let text = file_widget.text.write();
-
-        //while text.lines().len() > num_exp {
-        //    num_exp *= 10;
-        //    split += 1;
-        //}
-        //drop(text);
-
-        //let node = &mut file_widget.node;
         let file_widget = file_widget.read();
+
+        let mut split = 2;
+        let mut num_exp = 10;
+        let text = file_widget.text.read();
+
+        while text.lines().len() > num_exp {
+            num_exp *= 10;
+            split += 1;
+        }
+        drop(text);
+
         let printed_lines = file_widget.printed_lines();
         let main_cursor = RoData::from(&file_widget.main_cursor);
         let cursors = RoData::from(&file_widget.cursors);
+
 
         let mut line_numbers = LineNumbersWidget {
             node,
@@ -110,7 +112,12 @@ where
             text: RwData::new(Text::default()),
         };
 
+        let mut node = line_numbers.node.write();
+        node.request_width(split);
+        drop(node);
+
         line_numbers.update();
+
         Box::new(line_numbers)
     }
 }

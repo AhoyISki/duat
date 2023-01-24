@@ -1,20 +1,17 @@
 use std::{
-    char,
     cmp::{max, min},
     fs,
-    io::{self, Read},
-    os::unix::prelude::FileExt,
     path::{Path, PathBuf},
 };
 
 use crate::{
     action::{Change, History, TextRange},
-    config::{RoData, RtData, RwData, WrapMethod},
+    config::{RoData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui},
+    ui::{EndNode, Label, Ui, Area},
 };
 
 use super::Widget;
@@ -73,7 +70,7 @@ impl PrintInfo {
         let label = node.label.read();
         let config = node.config().read();
 
-        for index in text.printed_lines(label.height(), self) {
+        for index in text.printed_lines(label.area().height(), self) {
             let line = &text.lines()[index];
             let line_d = line.get_distance_to_col_node::<U>(line.char_count(), &label, &config);
             max_d = max(max_d, line_d);
@@ -92,10 +89,10 @@ impl PrintedLines {
     /// Given an `EndNode`, figures out what lines should be printed.
     pub fn lines(&self, child_node: &EndNode<impl Ui>) -> Vec<usize> {
         let label = child_node.label.read();
-        let height = label.height();
+        let height = label.area().height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
-        let mut printed_lines = Vec::with_capacity(label.height());
+        let mut printed_lines = Vec::with_capacity(label.area().height());
 
         let top_line = lines_iter.nth(print_info.top_line).unwrap().1;
         let mut d_y = min(height, 1 + top_line.wrap_iter().count() - print_info.top_wraps);
@@ -449,7 +446,7 @@ where
     fn update_print_info(&mut self) {
         let node = self.node.read();
         let wrap_method = node.config().read().wrap_method;
-        let (height, width) = (node.label.read().height(), node.label.read().width());
+        let (height, width) = (node.label.read().area().height(), node.label.read().area().width());
         drop(node);
 
         let cursors = self.cursors.read();
@@ -490,7 +487,8 @@ where
         let cursors = self.cursors.read();
 
         let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let limit_line = min(main_cursor.caret().row + label.height(), text.lines().len() - 1);
+        let limit_line =
+            min(main_cursor.caret().row + label.area().height(), text.lines().len() - 1);
         let start = main_cursor.caret().translate(text.lines(), limit_line, 0);
         let target_line = &text.lines()[limit_line];
         let _range = TextRange {
@@ -751,5 +749,5 @@ unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 // NOTE: Will definitely break once folding becomes a thing.
 /// The last line that could possibly be printed.
 fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_line + node.label.read().height(), text.lines().len() - 1)
+    min(print_info.top_line + node.label.read().area().height(), text.lines().len() - 1)
 }

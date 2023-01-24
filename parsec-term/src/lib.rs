@@ -4,13 +4,13 @@ use std::{
 };
 
 use crossterm::{
-    cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle, Show},
-    style::{Attribute, ContentStyle, Print, ResetColor, SetAttribute, SetStyle},
+    cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle},
+    style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
     tags::{CursorStyle, Form},
-    ui::{self, Container as UiContainer, Direction, Label as UiLabel, Split},
+    ui::{self, Container, Direction, Label, Split, Area},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -31,63 +31,98 @@ struct Coord {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Area {
+pub struct TermArea {
     tl: Coord,
     br: Coord,
 }
 
-impl Area {
-    fn total() -> Self {
-        let size = terminal::size().unwrap();
-
-        Area { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
+impl Area for TermArea {
+    fn width(&self) -> usize {
+        (self.br.x - self.tl.x) as usize
     }
 
     fn height(&self) -> usize {
         (self.br.y - self.tl.y - 1) as usize
     }
 
-    fn width(&self) -> usize {
-        (self.br.x - self.tl.x) as usize
+    fn request_width_left(&mut self, width: usize, other: &mut TermArea) -> Result<(), ()> {
+        if width < (self.width() + other.width()) {
+            self.br.x = self.tl.x + width as u16;
+            other.tl.x = self.br.x;
+            Ok(())
+        } else {
+            Err(())
+        }
     }
+
+    fn request_width_right(&mut self, width: usize, other: &mut TermArea) -> Result<(), ()> {
+        if width < (self.width() + other.width()) {
+            self.tl.x = self.br.x - width as u16;
+            other.br.x = self.tl.x;
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn request_height_top(&mut self, height: usize, other: &mut TermArea) -> Result<(), ()> {
+        if height < (self.height() + other.height()) {
+            self.br.y = self.tl.y + height as u16;
+            other.tl.y = self.br.y;
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn request_height_bottom(&mut self, height: usize, other: &mut TermArea) -> Result<(), ()> {
+        if height < (self.height() + other.height()) {
+            self.tl.y = self.br.y - height as u16;
+            other.br.y = self.tl.y;
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl TermArea {
+    fn total() -> Self {
+        let size = terminal::size().unwrap();
+
+        TermArea { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
+    }
+
 }
 
 #[derive(Clone)]
-pub struct Container {
-    area: Area,
+pub struct TermContainer {
+    area: TermArea,
     direction: Direction,
 }
 
-impl UiContainer for Container {
-    fn direction(&self) -> Direction {
-        self.direction
+impl Container<TermArea> for TermContainer {
+    fn area(&self) -> &TermArea {
+        &self.area
     }
 
-    fn height(&self) -> usize {
-        self.area.height()
-    }
-
-    fn width(&self) -> usize {
-        self.area.width()
-    }
-
-    fn request_len(&mut self, width: usize) {
-        todo!()
+    fn area_mut(&mut self) -> &mut TermArea {
+        &mut self.area
     }
 }
 
-pub struct Label {
+pub struct TermLabel {
     stdout: Stdout,
-    area: Area,
+    area: TermArea,
     cursor: Coord,
     direction: Direction,
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
 }
 
-impl Label {
-    fn new(area: Area, direction: Direction) -> Self {
-        Label {
+impl TermLabel {
+    fn new(area: TermArea, direction: Direction) -> Self {
+        TermLabel {
             stdout: stdout(),
             area,
             cursor: area.tl,
@@ -118,13 +153,21 @@ impl Label {
     }
 }
 
-impl Clone for Label {
+impl Clone for TermLabel {
     fn clone(&self) -> Self {
-        Label { stdout: stdout(), ..*self }
+        TermLabel { stdout: stdout(), ..*self }
     }
 }
 
-impl UiLabel for Label {
+impl Label<TermArea> for TermLabel {
+    fn area(&self) -> &TermArea {
+        &self.area
+    }
+
+    fn area_mut(&mut self) -> &mut TermArea {
+        &mut self.area
+    }
+
     fn next_line(&mut self) -> Result<(), ()> {
         if self.cursor.y == self.area.br.y - 1 {
             Err(())
@@ -165,14 +208,6 @@ impl UiLabel for Label {
         UnicodeWidthChar::width(ch).unwrap_or(0)
     }
 
-    fn width(&self) -> usize {
-        self.area.width()
-    }
-
-    fn height(&self) -> usize {
-        self.area.height()
-    }
-
     fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
         if let Some(caret) = cursor_style.caret {
             self.stdout.queue(caret).unwrap().queue(SavePosition).unwrap();
@@ -203,10 +238,6 @@ impl UiLabel for Label {
         }
     }
 
-    fn request_len(&mut self, width: usize) {
-        todo!()
-    }
-
     fn start_printing(&mut self) {
         self.cursor = self.area.tl;
         self.stdout.queue(MoveTo(self.area.tl.x, self.area.tl.y)).unwrap();
@@ -225,8 +256,9 @@ impl UiLabel for Label {
 }
 
 impl ui::Ui for UiManager {
-    type Container = Container;
-    type Label = Label;
+    type Area = TermArea;
+    type Container = TermContainer;
+    type Label = TermLabel;
 
     fn split_container(
         &mut self, container: &mut Self::Container, direction: Direction, split: Split, glued: bool,
@@ -236,7 +268,7 @@ impl ui::Ui for UiManager {
 
         let area = split_by(len, &mut container.area, direction);
 
-        let new_label = Label::new(area, direction);
+        let new_label = TermLabel::new(area, direction);
 
         (parent_container, new_label)
     }
@@ -245,11 +277,11 @@ impl ui::Ui for UiManager {
         &mut self, label: &mut Self::Label, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label) {
         let len = parse_split(split, label.area, direction);
-        let parent_container = Container { area: label.area, direction: label.direction };
+        let parent_container = TermContainer { area: label.area, direction: label.direction };
 
         let area = split_by(len, &mut label.area, direction);
 
-        let new_label = Label::new(area, direction);
+        let new_label = TermLabel::new(area, direction);
 
         (parent_container, new_label)
     }
@@ -257,7 +289,7 @@ impl ui::Ui for UiManager {
     fn only_label(&mut self) -> Option<Self::Label> {
         if self.initial {
             self.initial = false;
-            Some(Label::new(Area::total(), Direction::Left))
+            Some(TermLabel::new(TermArea::total(), Direction::Left))
         } else {
             None
         }
@@ -317,7 +349,7 @@ impl ui::Ui for UiManager {
     fn finish_all_printing(&mut self) {}
 }
 
-fn parse_split(split: Split, area: Area, direction: Direction) -> u16 {
+fn parse_split(split: Split, area: TermArea, direction: Direction) -> u16 {
     let current_len = match direction {
         Direction::Left | Direction::Right => area.width(),
         Direction::Top | Direction::Bottom => area.height(),
@@ -329,27 +361,27 @@ fn parse_split(split: Split, area: Area, direction: Direction) -> u16 {
     }
 }
 
-fn split_by(len: u16, area: &mut Area, direction: Direction) -> Area {
+fn split_by(len: u16, area: &mut TermArea, direction: Direction) -> TermArea {
     match direction {
         Direction::Left => {
             let old_tl = area.tl;
             area.tl.x += len;
-            Area { tl: old_tl, br: Coord { x: area.tl.x, y: area.br.y } }
+            TermArea { tl: old_tl, br: Coord { x: area.tl.x, y: area.br.y } }
         }
         Direction::Right => {
             let old_br = area.br;
             area.br.x -= len;
-            Area { tl: Coord { x: area.br.x, y: area.tl.y }, br: old_br }
+            TermArea { tl: Coord { x: area.br.x, y: area.tl.y }, br: old_br }
         }
         Direction::Top => {
             let old_tl = area.tl;
             area.tl.y += len;
-            Area { tl: old_tl, br: Coord { x: area.br.x, y: area.tl.y } }
+            TermArea { tl: old_tl, br: Coord { x: area.br.x, y: area.tl.y } }
         }
         Direction::Bottom => {
             let old_br = area.br;
             area.br.y -= len;
-            Area { tl: Coord { x: area.tl.x, y: area.br.y }, br: old_br }
+            TermArea { tl: Coord { x: area.tl.x, y: area.br.y }, br: old_br }
         }
     }
 }

@@ -7,7 +7,7 @@ use crate::{
     get_byte_at_col,
     layout::file_widget::PrintInfo,
     tags::{CharTag, FormFormer, FormPalette, LineFlags, LineInfo, MatchManager},
-    ui::{EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui},
 };
 
 // TODO: move this to a more general file.
@@ -30,7 +30,11 @@ impl TextLine {
     }
 
     /// Returns the line's indentation.
-    fn indent(&self, label: &impl Label, config: &Config) -> usize {
+    fn indent<L, A>(&self, label: &L, config: &Config) -> usize
+    where
+        L: Label<A>,
+        A: Area,
+    {
         let mut indent_sum = 0;
 
         for ch in self.text.chars() {
@@ -45,7 +49,11 @@ impl TextLine {
     }
 
     /// Returns the line's indentation.
-    pub fn indetation(&self, label: &impl Label, config: &Config) -> usize {
+    pub fn indetation<L, A>(&self, label: &L, config: &Config) -> usize
+    where
+        L: Label<A>,
+        A: Area,
+    {
         let mut indent_sum = 0;
 
         for ch in self.text.chars() {
@@ -187,7 +195,7 @@ impl TextLine {
         U: Ui,
     {
         let indent = if config.wrap_indent { self.indetation(label, config) } else { 0 };
-        let indent = if indent < label.width() { indent } else { 0 };
+        let indent = if indent < label.area().width() { indent } else { 0 };
 
         // Clear all `WrapppingChar`s from `char_tags`.
         self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
@@ -198,19 +206,19 @@ impl TextLine {
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = label.width();
+            distance = label.area().width();
             while distance < self.text.len() {
                 self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
 
                 indent_wrap = indent;
 
-                distance += label.width() - 1 - indent_wrap;
+                distance += label.area().width() - 1 - indent_wrap;
             }
         } else {
             for (index, ch) in self.text.char_indices() {
                 distance += get_char_len(ch, distance, label, config);
 
-                if distance > label.width() - indent_wrap {
+                if distance > label.area().width() - indent_wrap {
                     distance = get_char_len(ch, distance, label, config);
 
                     self.info.char_tags.insert((index as u32, CharTag::WrapppingChar));
@@ -285,7 +293,7 @@ impl TextLine {
 
         let wrap_indent = if config.wrap_indent { self.indent(label, config) } else { 0 };
         // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
-        let wrap_indent = if wrap_indent < label.width() { wrap_indent } else { 0 };
+        let wrap_indent = if wrap_indent < label.area_mut().width() { wrap_indent } else { 0 };
 
         let mut last_was_whitespace = false;
         let show_new_line = config.show_new_line;
@@ -313,7 +321,7 @@ impl TextLine {
 
             d_x += char_width;
             if let WrapMethod::NoWrap = config.wrap_method {
-                if d_x > label.width() {
+                if d_x > label.area_mut().width() {
                     break;
                 }
             }
@@ -493,9 +501,10 @@ impl Text {
     }
 }
 
-fn get_char_len<L>(ch: char, col: usize, label: &L, config: &Config) -> usize
+fn get_char_len<L, A>(ch: char, col: usize, label: &L, config: &Config) -> usize
 where
-    L: Label,
+    L: Label<A>,
+    A: Area,
 {
     if ch == '\t' {
         config.tab_places.get_tab_len(col, label)

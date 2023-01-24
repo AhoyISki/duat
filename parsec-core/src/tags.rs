@@ -8,7 +8,12 @@ use crossterm::{
 use regex::Regex;
 use smallvec::SmallVec;
 
-use crate::{action::TextRange, cursor::TextPos, file::TextLine, ui::Label};
+use crate::{
+    action::TextRange,
+    cursor::TextPos,
+    file::TextLine,
+    ui::{Area, Label},
+};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -109,10 +114,14 @@ impl FormFormer {
 }
 
 impl CharTag {
-    pub(crate) fn trigger(
-        &self, label: &mut impl Label, palette: &FormPalette, wrap_indent: usize,
+    pub(crate) fn trigger<L, A>(
+        &self, label: &mut L, palette: &FormPalette, wrap_indent: usize,
         form_former: &mut FormFormer,
-    ) -> bool {
+    ) -> bool
+    where
+        L: Label<A>,
+        A: Area,
+    {
         match self {
             CharTag::PushForm(id) => {
                 label.set_form(form_former.push_form(palette.get(*id as usize), *id));

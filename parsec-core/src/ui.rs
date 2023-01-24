@@ -1,30 +1,53 @@
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
-
-use crossterm::style::{Attributes, Color, ContentStyle};
+use std::clone;
 
 use crate::{
-    config::{Config, RwData, RoData},
-    tags::{Form, FormPalette, CursorStyle},
+    config::{Config, RwData},
+    tags::{CursorStyle, Form, FormPalette},
 };
 
-/// A `Label` or `Container` container, that holds exactly two in total.
-pub trait Container {
-    // TODO: Return a result.
-    /// Requests a resize to the area, based on the direction of the parent.
-    fn request_len(&mut self, width: usize);
-
+pub trait Area {
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
     /// Gets the height of the area.
     fn height(&self) -> usize;
 
-    /// The direction where the second area was placed on the first.
-    fn direction(&self) -> Direction;
+    /// Requests that the width be changed, and consequently changes the width of `other`.
+    fn request_width_left(&mut self, width: usize, other: &mut Self) -> Result<(), ()>;
+
+    /// Requests that the width be changed, and consequently changes the width of `other`.
+    fn request_width_right(&mut self, width: usize, other: &mut Self) -> Result<(), ()>;
+
+    /// Requests that the height be changed, and consequently changes the height of `other`.
+    fn request_height_top(&mut self, height: usize, other: &mut Self) -> Result<(), ()>;
+
+    /// Requests that the height be changed, and consequently changes the height of `other`.
+    fn request_height_bottom(&mut self, height: usize, other: &mut Self) -> Result<(), ()>;
+}
+
+/// A `Label` or `Container` container, that holds exactly two in total.
+pub trait Container<A>
+where
+    A: Area,
+{
+    /// Returns a mutable reference to the area of `self`.
+    fn area_mut(&mut self) -> &mut A;
+
+    /// Returns a reference to the area of `self`.
+    fn area(&self) -> &A;
 }
 
 /// A label that prints text to screen. Any area that prints will be a `Label` in the `Ui`.
-pub trait Label {
+pub trait Label<A>
+where
+    A: Area,
+{
+    /// Returns a mutable reference to the area of `self`.
+    fn area_mut(&mut self) -> &mut A;
+
+    /// Returns a reference to the area of `self`.
+    fn area(&self) -> &A;
+
     //////////////////// Forms
     /// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
@@ -68,22 +91,12 @@ pub trait Label {
     /// Unlike `next_line()`, this function should not remove any text.
     fn wrap_line(&mut self, indent: usize) -> Result<(), ()>;
 
-    // TODO: Return a result.
-    /// Requests a resize to the area, based on the direction of the parent.
-    fn request_len(&mut self, width: usize);
-
     //////////////////// Getters
     /// Gets the length of a character.
     ///
     /// In a terminal, this would be in "cells", but in a variable width GUI, it could be in
     /// pixels, or em. It really depends on the implementation.
     fn get_char_len(&self, ch: char) -> usize;
-
-    /// Gets the width of the area.
-    fn width(&self) -> usize;
-
-    /// Gets the height of the area.
-    fn height(&self) -> usize;
 }
 
 /// A node that contains other nodes.
@@ -94,8 +107,9 @@ where
 {
     container: RwData<U::Container>,
     class: RwData<String>,
+    direction: Direction,
     parent: Option<RwData<MidNode<U>>>,
-    child_order: ChildOrder,
+    sibling: Option<Node<U>>,
     children: (Node<U>, Node<U>),
     split: Split,
     config: RwData<Config>,
@@ -106,41 +120,31 @@ impl<U> MidNode<U>
 where
     U: Ui,
 {
-    /// Resizes the second child node, in the direction that it was placed.
-    fn resize_second(&mut self, len: usize) {
-        let mut container = self.container.write();
-
-        match self.split {
-            Split::Locked(_) => panic!("Don't try to resize a locked length area!"),
-            Split::Static(_) => {
-                let self_len = match container.direction() {
-                    Direction::Left | Direction::Right => container.width(),
-                    _ => container.height(),
-                };
-
-                if len < self_len {
-                    match &mut self.children.1 {
-                        Node::MidNode(_) => container.request_len(len),
-                        Node::EndNode(node) => node.write().label.write().request_len(len),
-                    }
-                }
+    /// Requests a new width for itself, going up the tree.
+    pub fn request_width(&mut self, width: usize) {
+        if let Some(node) = &mut self.sibling {
+            if let Err(()) = request_width::<U, U::Area>(
+                self.container.write().area_mut(),
+                width,
+                node,
+                self.direction,
+            ) {
+                todo!();
             }
-            Split::Ratio(_) => todo!(),
         }
     }
 
     /// Requests a new width for itself, going up the tree.
-    fn request_width(&mut self, width: usize) {
-        match (self.child_order, &mut self.parent) {
-            (ChildOrder::Second, Some(node)) => {
-                let mut node = node.write();
-                let direction = node.container.read().direction();
-                if let Direction::Left | Direction::Right = direction {
-                    node.resize_second(width);
-                }
+    pub fn request_height(&mut self, height: usize) {
+        if let Some(node) = &mut self.sibling {
+            if let Err(()) = request_height::<U, U::Area>(
+                self.container.write().area_mut(),
+                height,
+                node,
+                self.direction,
+            ) {
+                todo!();
             }
-            // NOTE: I don't really know if I'm gonna do anything in here tbh.
-            _ => todo!(),
         }
     }
 }
@@ -153,7 +157,8 @@ where
     pub(crate) label: RwData<U::Label>,
     class: RwData<String>,
     parent: Option<RwData<MidNode<U>>>,
-    child_order: ChildOrder,
+    sibling: Option<Node<U>>,
+    direction: Direction,
     pub(crate) config: RwData<Config>,
     pub(crate) palette: RwData<FormPalette>,
     applied_forms: Vec<(Form, u16)>,
@@ -163,24 +168,36 @@ impl<U> EndNode<U>
 where
     U: Ui,
 {
-
     /// Completely clears the stack of `Form`s.
     pub fn clear_form(&mut self) {
         self.applied_forms.clear();
     }
 
-    /// Tries to request a new width for the label.
-    fn request_width(&mut self, width: usize) {
-        match (self.child_order, &mut self.parent) {
-            (ChildOrder::Second, Some(node)) => {
-                let mut node = node.write();
-                let direction = node.container.read().direction();
-                if let Direction::Left | Direction::Right = direction {
-                    node.resize_second(width);
-                }
+    /// Requests a new width for itself, going up the tree.
+    pub fn request_width(&mut self, width: usize) {
+        if let Some(node) = &mut self.sibling {
+            if let Err(()) = request_width::<U, U::Area>(
+                self.label.write().area_mut(),
+                width,
+                node,
+                self.direction,
+            ) {
+                todo!();
             }
-            // NOTE: I don't really know if I'm gonna do anything in here tbh.
-            _ => todo!(),
+        }
+    }
+
+    /// Requests a new width for itself, going up the tree.
+    pub fn request_height(&mut self, height: usize) {
+        if let Some(node) = &mut self.sibling {
+            if let Err(()) = request_height::<U, U::Area>(
+                self.label.write().area_mut(),
+                height,
+                node,
+                self.direction,
+            ) {
+                todo!();
+            }
         }
     }
 
@@ -195,13 +212,24 @@ where
 }
 
 /// Container for middle and end nodes.
-#[derive(Clone)]
 pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
     MidNode(RwData<MidNode<U>>),
     EndNode(RwData<EndNode<U>>),
+}
+
+impl<U> Clone for Node<U>
+where
+    U: Ui + ?Sized,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Node::MidNode(data) => Node::MidNode(data.clone()),
+            Node::EndNode(data) => Node::EndNode(data.clone()),
+        }
+    }
 }
 
 /// The order in which a specific node was placed (chronological, not spatial).
@@ -228,10 +256,22 @@ pub enum Direction {
     Left,
 }
 
+impl Direction {
+    pub fn opposite(&self) -> Direction {
+        match self {
+            Direction::Top => Direction::Bottom,
+            Direction::Bottom => Direction::Top,
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+        }
+    }
+}
+
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
 pub trait Ui {
-    type Container: Container + Clone + Send + Sync;
-    type Label: Label + Clone + Send + Sync;
+    type Area: Area;
+    type Container: Container<<Self as Ui>::Area> + Clone + Send + Sync;
+    type Label: Label<<Self as Ui>::Area> + Clone + Send + Sync;
 
     /// Splits an area in two, and places each of the areas on a new parent area.
     ///
@@ -304,15 +344,18 @@ where
     pub fn only_child(
         &mut self, config: Config, palette: FormPalette, class: &str,
     ) -> Option<RwData<EndNode<U>>> {
-        self.0.only_label().map(|l| RwData::new(EndNode {
-            label: RwData::new(l),
-            class: RwData::new(String::from(class)),
-            parent: None,
-            child_order: ChildOrder::First,
-            config: RwData::new(config),
-            palette: RwData::new(palette),
-          	applied_forms: Vec::new(),
-        }))
+        self.0.only_label().map(|l| {
+            RwData::new(EndNode {
+                label: RwData::new(l),
+                class: RwData::new(String::from(class)),
+                parent: None,
+                sibling: None,
+                direction: Direction::Top,
+                config: RwData::new(config),
+                palette: RwData::new(palette),
+                applied_forms: Vec::new(),
+            })
+        })
     }
 
     // TODO: Move this to an owning struct.
@@ -329,24 +372,27 @@ where
             label: RwData::new(label),
             class: raw_node.class.clone(),
             parent: None,
-            child_order: ChildOrder::Second,
+            sibling: Some(Node::EndNode(cloned_node.clone())),
+            direction,
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
-            applied_forms: Vec::new()
+            applied_forms: Vec::new(),
         });
 
         let mid_node = RwData::new(MidNode {
             container: RwData::new(container),
             class: raw_node.class.clone(),
+            direction: raw_node.direction,
             parent: raw_node.parent.clone(),
-            child_order: raw_node.child_order,
             children: (Node::EndNode(cloned_node.clone()), Node::EndNode(cloned_node)),
+            sibling: raw_node.sibling.clone(),
             split,
             config: raw_node.config.clone(),
-            palette: raw_node.palette.clone()
+            palette: raw_node.palette.clone(),
         });
 
         raw_node.parent = Some(mid_node.clone());
+        raw_node.direction = direction.opposite();
         end_node.write().parent = Some(mid_node.clone());
 
         (mid_node, end_node)
@@ -360,30 +406,33 @@ where
         let (container, label) =
             self.0.split_container(&mut node.write().container.write(), direction, split, glued);
 
-		let cloned_node = node.clone();
+        let cloned_node = node.clone();
         let mut raw_node = node.write();
         let mut end_node = RwData::new(EndNode {
             label: RwData::new(label),
             class: raw_node.class.clone(),
             parent: None,
-            child_order: ChildOrder::Second,
+            sibling: Some(Node::MidNode(cloned_node.clone())),
+            direction,
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
-            applied_forms: Vec::new()
+            applied_forms: Vec::new(),
         });
 
         let mid_node = RwData::new(MidNode {
-            child_order: raw_node.child_order,
-            children: (Node::MidNode(cloned_node), Node::EndNode(end_node.clone())),
-            split,
-            parent: raw_node.parent.clone(),
-            class: raw_node.class.clone(),
             container: RwData::new(container),
+            class: raw_node.class.clone(),
+            parent: raw_node.parent.clone(),
+            sibling: raw_node.sibling.clone(),
+            children: (Node::MidNode(cloned_node.clone()), Node::EndNode(end_node.clone())),
+            direction: raw_node.direction,
+            split,
             config: raw_node.config.clone(),
-            palette: raw_node.palette.clone()
+            palette: raw_node.palette.clone(),
         });
 
         raw_node.parent = Some(mid_node.clone());
+        raw_node.direction = direction.opposite();
         end_node.write().parent = Some(mid_node.clone());
 
         (mid_node, end_node)
@@ -405,3 +454,58 @@ where
     }
 }
 
+fn request_width<U, A>(
+    area: &mut U::Area, width: usize, node: &mut Node<U>, direction: Direction,
+) -> Result<(), ()>
+where
+    U: Ui,
+{
+    match node {
+        Node::MidNode(node) => {
+            let mut node = node.write();
+            let mut container = node.container.write();
+            match direction {
+                Direction::Left => area.request_width_left(width, container.area_mut()),
+                Direction::Right => area.request_width_right(width, container.area_mut()),
+                _ => Err(()),
+            }
+        }
+        Node::EndNode(node) => {
+            let mut node = node.write();
+            let mut label = node.label.write();
+            match direction {
+                Direction::Left => area.request_width_left(width, label.area_mut()),
+                Direction::Right => area.request_width_right(width, label.area_mut()),
+                _ => Err(()),
+            }
+        }
+    }
+}
+
+fn request_height<U, A>(
+    area: &mut U::Area, height: usize, node: &mut Node<U>, direction: Direction,
+) -> Result<(), ()>
+where
+    U: Ui,
+{
+    match node {
+        Node::MidNode(node) => {
+            let mut node = node.write();
+            let mut container = node.container.write();
+            match direction {
+                Direction::Top => area.request_height_top(height, container.area_mut()),
+                Direction::Bottom => area.request_height_bottom(height, container.area_mut()),
+                _ => Err(()),
+            }
+        }
+        Node::EndNode(node) => {
+            let mut node = node.write();
+            let mut label = node.label.write();
+            match direction {
+                Direction::Top => area.request_height_top(height, label.area_mut()),
+                Direction::Bottom => area.request_height_bottom(height, label.area_mut()),
+                _ => Err(()),
+            }
+        }
+    }
+}
