@@ -89,20 +89,9 @@ where
     ) -> Box<dyn Widget<U>> {
         let file_widget = file_widget.read();
 
-        let mut split = 2;
-        let mut num_exp = 10;
-        let text = file_widget.text.read();
-
-        while text.lines().len() > num_exp {
-            num_exp *= 10;
-            split += 1;
-        }
-        drop(text);
-
         let printed_lines = file_widget.printed_lines();
         let main_cursor = RoData::from(&file_widget.main_cursor);
         let cursors = RoData::from(&file_widget.cursors);
-
 
         let mut line_numbers = LineNumbersWidget {
             node,
@@ -112,28 +101,43 @@ where
             text: RwData::new(Text::default()),
         };
 
-        let mut node = line_numbers.node.write();
-        node.request_width(split);
-        drop(node);
+		let width = line_numbers.calculate_width();
+        line_numbers.node.write().request_width(width);
 
         line_numbers.update();
 
         Box::new(line_numbers)
     }
+
+    fn calculate_width(&self) -> usize {
+        let mut width = 2;
+        let mut num_exp = 10;
+        let text = self.text.read();
+
+        while text.lines().len() > num_exp {
+            num_exp *= 10;
+            width += 1;
+        }
+        drop(text);
+        width
+    }
 }
 
 impl<U> Widget<U> for LineNumbersWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn update(&mut self) {
+        let width = self.calculate_width();
+        self.node.write().request_width(width);
+
         let lines = self.printed_lines.lines(&self.end_node().read());
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
         let node = self.node.read();
         let config = node.config().read();
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
-        let mut line_numbers = String::with_capacity(4 * lines.len());
+        let mut line_numbers = String::with_capacity(width * lines.len());
 
         match config.line_numbers {
             LineNumbers::Absolute => {
@@ -294,6 +298,8 @@ where
             self.new_file_with_node(path, end_node);
             self.master_node = master_node;
         };
+
+        self.status.set_file(RoData::from(&self.files.last().unwrap().0));
     }
 
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)

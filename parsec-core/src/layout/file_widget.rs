@@ -698,6 +698,10 @@ where
     pub fn len(&self) -> usize {
         self.text.read().lines().len()
     }
+
+    pub fn node(&self) -> &RwData<EndNode<U>> {
+        &self.node
+    }
 }
 
 impl<U> Widget<U> for FileWidget<U>

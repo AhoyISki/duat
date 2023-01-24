@@ -178,6 +178,7 @@ where
                 panic!("There are not enough global_vars! One global_var per \"{{}}\"");
             }
         }
+
         if let Some(file) = &self.file {
             let file = file.read();
             for (index, (mut pos, _)) in self.string.match_indices("()").enumerate() {

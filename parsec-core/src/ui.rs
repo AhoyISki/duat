@@ -209,6 +209,10 @@ where
     pub fn palette(&self) -> &RwData<FormPalette> {
         &self.palette
     }
+
+    pub fn label(&self) -> &RwData<U::Label> {
+        &self.label
+    }
 }
 
 /// Container for middle and end nodes.

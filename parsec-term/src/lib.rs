@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    io::{stdout, Stdout},
+    io::{stdout, Stdout}, fmt::{Display, Write},
 };
 
 use crossterm::{
@@ -30,10 +30,22 @@ struct Coord {
     y: u16,
 }
 
+impl Display for Coord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.y, self.x))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TermArea {
     tl: Coord,
     br: Coord,
+}
+
+impl Display for TermArea {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("({})({})", self.tl, self.br))
+    }
 }
 
 impl Area for TermArea {
