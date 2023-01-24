@@ -1,7 +1,13 @@
 pub mod file_widget;
 pub mod status_widget;
 
-use std::{env, fmt::Write, path::PathBuf, sync::Mutex, thread};
+use std::{
+    fmt::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 use crossterm::event::{self, Event, KeyCode};
 
@@ -10,8 +16,9 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
+    log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui, Label},
+    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
 use self::{
@@ -70,7 +77,7 @@ where
     U: Ui,
 {
     node: RwData<EndNode<U>>,
-    printed_lines: PrintedLines,
+    printed_lines: PrintedLines<U>,
     main_cursor: RoData<usize>,
     cursors: RoData<Vec<TextCursor>>,
     text: RwData<Text>,
@@ -101,7 +108,7 @@ where
             text: RwData::new(Text::default()),
         };
 
-		let width = line_numbers.calculate_width();
+        let width = line_numbers.calculate_width();
         line_numbers.node.write().request_width(width);
 
         line_numbers.update();
@@ -112,13 +119,12 @@ where
     fn calculate_width(&self) -> usize {
         let mut width = 2;
         let mut num_exp = 10;
-        let text = self.text.read();
+        let len = self.printed_lines.lines().len();
 
-        while text.lines().len() > num_exp {
+        while len > num_exp {
             num_exp *= 10;
             width += 1;
         }
-        drop(text);
         width
     }
 }
@@ -131,7 +137,7 @@ where
         let width = self.calculate_width();
         self.node.write().request_width(width);
 
-        let lines = self.printed_lines.lines(&self.end_node().read());
+        let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
         let node = self.node.read();
         let config = node.config().read();
@@ -332,7 +338,6 @@ where
         // Initial printing.
         self.status.update();
         print_widget(&mut self.status);
-        update_files(&mut self.files);
         print_files(&mut self.files);
         for widget in &mut self.widgets {
             let mut widget = widget.lock().unwrap();
@@ -340,25 +345,44 @@ where
             print_widget(Box::as_mut(&mut widget));
         }
 
+        let widgets_resized = Arc::new(Mutex::new(false));
+        let widgets_resized_check = Arc::clone(&widgets_resized);
+        let mut iteration = 0;
+
         // The main loop.
         thread::scope(|s_0| {
             loop {
-                // TODO: Make this generalized.
-                if let Event::Key(key_event) = event::read().unwrap() {
-                    // NOTE: This is very much temporary.
-                    if let KeyCode::Esc = key_event.code {
-                        break;
-                    } else {
-                        key_remapper.send_key_to_file(key_event, &mut self.files[0].0.write());
+                match event_or_resize(&widgets_resized_check) {
+                    Ok(event) => {
+                        match event {
+                            Event::Key(key_event) => {
+                                // NOTE: Temporary.
+                                if let KeyCode::Esc = key_event.code {
+                                    break;
+                                } else {
+                                    key_remapper
+                                        .send_key_to_file(key_event, &mut self.files[0].0.write());
+                                }
+                            }
+                            Event::FocusGained => {
+                                continue;
+                            }
+                            _ => (),
+                        }
+                    }
+                    Err(resized) => {
+                        if !resized {
+                            continue;
+                        }
                     }
                 }
 
-                update_files(&mut self.files);
                 self.status.update();
                 let printer_lock = printer.lock().unwrap();
                 print_widget(&mut self.status);
                 print_files(&mut self.files);
                 drop(printer_lock);
+                iteration = 0;
 
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
@@ -366,6 +390,9 @@ where
                     s_0.spawn(|| {
                         let mut widget = widget.lock().unwrap();
                         widget.update();
+                        let mut widgets_resized = widgets_resized.lock().unwrap();
+                        *widgets_resized |= widget.end_node_mut().write().size_changed();
+                        drop(widgets_resized);
                         let _printer_lock = printer.lock().unwrap();
                         print_widget(Box::as_mut(&mut widget));
                     });
@@ -381,18 +408,6 @@ where
     }
 }
 
-/// Updates all files in different threads.
-fn update_files<U>(files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
-where
-    U: Ui,
-{
-    thread::scope(|s_1| {
-        for file in files {
-            s_1.spawn(|| file.0.write().update());
-        }
-    });
-}
-
 /// Prints all the files.
 fn print_files<U>(printer: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
 where
@@ -400,6 +415,10 @@ where
 {
     for (file_widget, _) in printer.iter_mut() {
         let mut file_widget = file_widget.write();
+        if file_widget.needs_update() {
+            file_widget.update();
+            log_info!("\nfrom print_files: {:?}", file_widget.text.read().lines.len());
+        }
         let print_info = file_widget.print_info().map(|p| *p.read()).unwrap_or_default();
         file_widget.text().read().print(&mut file_widget.end_node_mut().write(), print_info);
     }
@@ -431,4 +450,20 @@ where
 {
     let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
     widget.text().read().print(&mut widget.end_node_mut().write(), print_info);
+}
+
+fn event_or_resize(widgets_resized: &Arc<Mutex<bool>>) -> Result<Event, bool> {
+    if event::poll(Duration::from_millis(0)).unwrap() {
+        let event = Ok(event::read().unwrap());
+        return event;
+    } else {
+        if let Ok(mut result) = widgets_resized.try_lock() {
+            if *result {
+                *result = false;
+                return Err(true);
+            }
+        }
+    }
+
+    Err(false)
 }

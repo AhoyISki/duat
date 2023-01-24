@@ -152,16 +152,6 @@ where
         &mut self.end_node
     }
 
-    fn needs_update(&self) -> bool {
-        self.printables.iter().any(|p| p.has_changed())
-    }
-
-    fn resize(&mut self, node: &EndNode<U>) {}
-
-    fn text(&self) -> RoData<crate::file::Text> {
-        RoData::from(&self.text)
-    }
-
     fn update(&mut self) {
         let mut text = self.text.write();
         text.lines.clear();
@@ -195,6 +185,16 @@ where
 
         text.lines.push(TextLine::new(final_string));
     }
+
+    fn needs_update(&self) -> bool {
+        self.printables.iter().any(|p| p.has_changed())
+    }
+
+    fn text(&self) -> RoData<crate::file::Text> {
+        RoData::from(&self.text)
+    }
+
+    fn resize(&mut self, node: &EndNode<U>) {}
 }
 
 unsafe impl<U> Send for StatusWidget<U> where U: Ui {}

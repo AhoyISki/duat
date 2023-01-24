@@ -5,7 +5,7 @@ use crate::{
     tags::{CursorStyle, Form, FormPalette},
 };
 
-pub trait Area {
+pub trait Area: PartialEq + Eq + Clone + Copy {
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
@@ -105,6 +105,7 @@ pub struct MidNode<U>
 where
     U: Ui + ?Sized,
 {
+    old_area: U::Area,
     container: RwData<U::Container>,
     class: RwData<String>,
     direction: Direction,
@@ -147,6 +148,13 @@ where
             }
         }
     }
+
+	/// Wether or not the size has changed since last checking.
+    pub fn size_changed(&mut self) -> bool {
+        let has_changed = *self.container.read().area() != self.old_area;
+        self.old_area = *self.container.read().area();
+        has_changed
+    }
 }
 
 /// Node that contains a `Label`.
@@ -154,6 +162,7 @@ pub struct EndNode<U>
 where
     U: Ui + ?Sized,
 {
+    old_area: U::Area,
     pub(crate) label: RwData<U::Label>,
     class: RwData<String>,
     parent: Option<RwData<MidNode<U>>>,
@@ -212,6 +221,13 @@ where
 
     pub fn label(&self) -> &RwData<U::Label> {
         &self.label
+    }
+
+	/// Wether or not the size has changed since last checking.
+    pub fn size_changed(&mut self) -> bool {
+        let has_changed = *self.label.read().area() != self.old_area;
+        self.old_area = *self.label.read().area();
+        has_changed
     }
 }
 
@@ -350,6 +366,7 @@ where
     ) -> Option<RwData<EndNode<U>>> {
         self.0.only_label().map(|l| {
             RwData::new(EndNode {
+                old_area: *l.area(),
                 label: RwData::new(l),
                 class: RwData::new(String::from(class)),
                 parent: None,
@@ -357,7 +374,7 @@ where
                 direction: Direction::Top,
                 config: RwData::new(config),
                 palette: RwData::new(palette),
-                applied_forms: Vec::new(),
+                applied_forms: Vec::new()
             })
         })
     }
@@ -373,6 +390,7 @@ where
             self.0.split_label(&mut raw_node.label.write(), direction, split, glued);
 
         let mut end_node = RwData::new(EndNode {
+            old_area: *label.area(),
             label: RwData::new(label),
             class: raw_node.class.clone(),
             parent: None,
@@ -380,19 +398,20 @@ where
             direction,
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
-            applied_forms: Vec::new(),
+            applied_forms: Vec::new()
         });
 
         let mid_node = RwData::new(MidNode {
+            old_area: *container.area(),
             container: RwData::new(container),
             class: raw_node.class.clone(),
             direction: raw_node.direction,
             parent: raw_node.parent.clone(),
-            children: (Node::EndNode(cloned_node.clone()), Node::EndNode(cloned_node)),
             sibling: raw_node.sibling.clone(),
+            children: (Node::EndNode(cloned_node.clone()), Node::EndNode(cloned_node)),
             split,
             config: raw_node.config.clone(),
-            palette: raw_node.palette.clone(),
+            palette: raw_node.palette.clone()
         });
 
         raw_node.parent = Some(mid_node.clone());
@@ -413,6 +432,7 @@ where
         let cloned_node = node.clone();
         let mut raw_node = node.write();
         let mut end_node = RwData::new(EndNode {
+            old_area: *label.area(),
             label: RwData::new(label),
             class: raw_node.class.clone(),
             parent: None,
@@ -420,19 +440,20 @@ where
             direction,
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
-            applied_forms: Vec::new(),
+            applied_forms: Vec::new()
         });
 
         let mid_node = RwData::new(MidNode {
+            old_area: *container.area(),
             container: RwData::new(container),
             class: raw_node.class.clone(),
+            direction: raw_node.direction,
             parent: raw_node.parent.clone(),
             sibling: raw_node.sibling.clone(),
             children: (Node::MidNode(cloned_node.clone()), Node::EndNode(end_node.clone())),
-            direction: raw_node.direction,
             split,
             config: raw_node.config.clone(),
-            palette: raw_node.palette.clone(),
+            palette: raw_node.palette.clone()
         });
 
         raw_node.parent = Some(mid_node.clone());

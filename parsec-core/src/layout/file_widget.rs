@@ -11,7 +11,7 @@ use crate::{
     file::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{EndNode, Label, Ui, Area},
+    ui::{Area, EndNode, Label, Ui},
 };
 
 use super::Widget;
@@ -80,15 +80,23 @@ impl PrintInfo {
     }
 }
 
-pub struct PrintedLines {
+pub struct PrintedLines<U>
+where
+    U: Ui,
+{
     file: RoData<Text>,
     print_info: RoData<PrintInfo>,
+    end_node: RoData<EndNode<U>>,
 }
 
-impl PrintedLines {
+impl<U> PrintedLines<U>
+where
+    U: Ui,
+{
     /// Given an `EndNode`, figures out what lines should be printed.
-    pub fn lines(&self, child_node: &EndNode<impl Ui>) -> Vec<usize> {
-        let label = child_node.label.read();
+    pub fn lines(&self) -> Vec<usize> {
+        let end_node = self.end_node.read();
+        let label = end_node.label.read();
         let height = label.area().height();
         let (text, print_info) = (self.file.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
@@ -659,8 +667,12 @@ where
     }
 
     /// The list of all lines that are currently printed on the screen.
-    pub fn printed_lines(&self) -> PrintedLines {
-        PrintedLines { file: RoData::from(&self.text), print_info: RoData::from(&self.print_info) }
+    pub fn printed_lines(&self) -> PrintedLines<U> {
+        PrintedLines {
+            file: RoData::from(&self.text),
+            print_info: RoData::from(&self.print_info),
+            end_node: RoData::from(self.node()),
+        }
     }
 
     /// The object used to edit the file through cursors.
@@ -726,7 +738,7 @@ where
     }
 
     fn needs_update(&self) -> bool {
-        false
+        self.text().has_changed() || self.print_info.has_changed() || self.cursors.has_changed()
     }
 
     fn text(&self) -> RoData<Text> {

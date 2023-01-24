@@ -24,7 +24,7 @@ impl UiManager {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Coord {
     x: u16,
     y: u16,
@@ -36,7 +36,7 @@ impl Display for Coord {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TermArea {
     tl: Coord,
     br: Coord,
@@ -149,7 +149,7 @@ impl TermLabel {
             self.clear_form();
 
             // The rest of the line is featureless.
-            let padding_count = ((self.area.br.x - self.cursor.x) as usize).saturating_sub(1);
+            let padding_count = (self.area.br.x - self.cursor.x) as usize;
             let padding = " ".repeat(padding_count);
             self.stdout.queue(Print(padding)).unwrap();
         }

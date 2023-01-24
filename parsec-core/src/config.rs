@@ -173,7 +173,7 @@ where
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
         let last_version = self.updated_state.read().unwrap();
-        let mut current_version = self.updated_state.write().unwrap();
+        let mut current_version = self.last_read_state.write().unwrap();
         let has_changed = *last_version > *current_version;
         *current_version = *last_version;
 
