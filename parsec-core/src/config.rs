@@ -91,6 +91,7 @@ impl TabPlaces {
 /// Some standard parsec options.
 #[derive(Default, Debug, Clone)]
 pub struct Config {
+    pub line_numbers_separator: Option<&'static str>,
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.

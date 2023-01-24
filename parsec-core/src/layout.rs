@@ -1,7 +1,7 @@
 pub mod file_widget;
 pub mod status_widget;
 
-use std::{fmt::Write, path::PathBuf, sync::Mutex, thread, env};
+use std::{env, fmt::Write, path::PathBuf, sync::Mutex, thread};
 
 use crossterm::event::{self, Event, KeyCode};
 
@@ -10,7 +10,7 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    tags::{MatchManager, FormPalette},
+    tags::{FormPalette, MatchManager},
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
@@ -80,31 +80,30 @@ unsafe impl<U> Send for LineNumbersWidget<U> where U: Ui {}
 
 impl<U> LineNumbersWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     /// Returns a new instance of `LineNumbersWidget`.
-    fn new(
-        file_widget: &mut FileWidget<U>, node_manager: &mut NodeManager<U>,
-    ) -> (Self, RwData<MidNode<U>>) {
-        let mut split = 1;
-        let mut num_exp = 10;
-        let text = file_widget.text.write();
+    pub fn new(
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+    ) -> Box<dyn Widget<U>> {
+        //let mut split = 2;
+        //let mut num_exp = 10;
+        //let text = file_widget.text.write();
 
-        while text.lines().len() > num_exp {
-            num_exp *= 10;
-            split += 1;
-        }
-        drop(text);
+        //while text.lines().len() > num_exp {
+        //    num_exp *= 10;
+        //    split += 1;
+        //}
+        //drop(text);
 
-        let node = &mut file_widget.node;
-        let (parent_node, child_node) =
-            node_manager.split_end(node, Direction::Left, Split::Static(split), true);
+        //let node = &mut file_widget.node;
+        let file_widget = file_widget.read();
         let printed_lines = file_widget.printed_lines();
         let main_cursor = RoData::from(&file_widget.main_cursor);
         let cursors = RoData::from(&file_widget.cursors);
 
         let mut line_numbers = LineNumbersWidget {
-            node: child_node,
+            node,
             printed_lines,
             main_cursor,
             cursors,
@@ -112,8 +111,7 @@ where
         };
 
         line_numbers.update();
-
-        (line_numbers, parent_node)
+        Box::new(line_numbers)
     }
 }
 
@@ -124,11 +122,13 @@ where
     fn update(&mut self) {
         let lines = self.printed_lines.lines(&self.end_node().read());
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
+        let node = self.node.read();
+        let config = node.config().read();
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(4 * lines.len());
 
-        match self.node.read().config().read().line_numbers {
+        match config.line_numbers {
             LineNumbers::Absolute => {
                 lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
             }
@@ -171,6 +171,9 @@ where
     }
 }
 
+pub type WidgetFormer<U> =
+    dyn Fn(RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>) -> Box<dyn Widget<U>>;
+
 pub struct OneStatusLayout<U>
 where
     U: Ui,
@@ -179,7 +182,9 @@ where
     pub status: StatusWidget<U>,
     widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
     files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
+    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
     master_node: RwData<MidNode<U>>,
+    empty_file: Option<RwData<EndNode<U>>>,
     match_manager: MatchManager,
 }
 
@@ -197,6 +202,11 @@ where
         P: Widget<U> + 'static,
         C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> P;
 
+    /// Pushes a node to the edge of every future `FileWidget`.
+    fn push_node_to_file(
+        &mut self, constructor: Box<WidgetFormer<U>>, direction: Direction, split: Split,
+    );
+
     /// The main application function.
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
 
@@ -209,13 +219,14 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(ui: U, match_manager: MatchManager, config: Config, palette: FormPalette) -> Self {
-        let paths: Vec<PathBuf> = env::args().map(|p| PathBuf::from(p)).collect();
+    pub fn new(
+        ui: U, match_manager: MatchManager, config: Config, palette: FormPalette,
+        direction: Direction, split: Split,
+    ) -> Self {
         let mut node_manager = NodeManager::new(ui);
         let mut node = node_manager.only_child(config, palette, "code").unwrap();
 
-        let (master_node, end_node) =
-            node_manager.split_end(&mut node, Direction::Bottom, Split::Static(1), false);
+        let (master_node, end_node) = node_manager.split_end(&mut node, direction, split, false);
 
         let status = StatusWidget::new(end_node, &mut node_manager);
 
@@ -224,31 +235,30 @@ where
             status,
             widgets: Vec::new(),
             files: Vec::new(),
+            future_file_widgets: Vec::new(),
             master_node,
+            empty_file: Some(node),
             match_manager,
         };
-
-        layout.new_file_with_node(&paths[1], node);
-        layout.status.set_file(layout.active_file());
 
         layout
     }
 
     /// Creates or opens a new file in a given node.
-    fn new_file_with_node(&mut self, path: &PathBuf, node: RwData<EndNode<U>>) {
-        let mut file =
-            FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
+    fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
+        let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
+        let (file, mut file_parent) = (RwData::new(file), None);
 
-        if matches!(node.read().config().read().line_numbers, LineNumbers::None) {
-            self.files.push((RwData::new(file), None));
-        } else {
-            let (line_numbers, file_parent) =
-                LineNumbersWidget::new(&mut file, &mut self.node_manager);
+        for (constructor, direction, split) in &self.future_file_widgets {
+            let (mid_node, end_node) =
+                self.node_manager.split_end(&mut node, *direction, *split, false);
 
-            self.widgets.push(Mutex::new(Box::new(line_numbers)));
-
-            self.files.push((RwData::new(file), Some(file_parent)));
+            let widget = constructor(end_node, &mut self.node_manager, file.clone());
+            self.widgets.push(Mutex::new(widget));
+            file_parent = Some(mid_node);
         }
+
+        self.files.push((file, file_parent));
     }
 
     fn active_file_mut(&mut self) -> RwData<FileWidget<U>> {
@@ -265,15 +275,18 @@ where
     U: Ui + 'static,
 {
     fn open_file(&mut self, path: &PathBuf) {
-        let (master_node, child_node) = self.node_manager.split_mid(
-            &mut self.master_node,
-            Direction::Right,
-            Split::Ratio(0.5),
-            false,
-        );
-
-        self.new_file_with_node(path, child_node);
-        self.master_node = master_node;
+        if let Some(node) = self.empty_file.take() {
+            self.new_file_with_node(path, node);
+        } else {
+            let (master_node, end_node) = self.node_manager.split_mid(
+                &mut self.master_node,
+                Direction::Right,
+                Split::Ratio(0.5),
+                false,
+            );
+            self.new_file_with_node(path, end_node);
+            self.master_node = master_node;
+        };
     }
 
     fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
@@ -291,6 +304,12 @@ where
         self.widgets.push(Mutex::new(Box::new(widget)));
     }
 
+    fn push_node_to_file(
+        &mut self, constructor: Box<WidgetFormer<U>>, direction: Direction, split: Split,
+    ) {
+        self.future_file_widgets.push((Box::new(constructor), direction, split));
+    }
+
     fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
         self.node_manager.startup();
 
@@ -299,8 +318,8 @@ where
 
         // Initial printing.
         self.status.update();
-		print_widget(&mut self.status);
-		update_files(&mut self.files);
+        print_widget(&mut self.status);
+        update_files(&mut self.files);
         print_files(&mut self.files);
         for widget in &mut self.widgets {
             let mut widget = widget.lock().unwrap();
