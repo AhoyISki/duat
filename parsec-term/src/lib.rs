@@ -1,6 +1,7 @@
 use std::{
     cmp::min,
-    io::{stdout, Stdout}, fmt::{Display, Write},
+    fmt::{Display, Write},
+    io::{stdout, Stdout},
 };
 
 use crossterm::{
@@ -9,8 +10,9 @@ use crossterm::{
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
+    log_info,
     tags::{CursorStyle, Form},
-    ui::{self, Container, Direction, Label, Split, Area},
+    ui::{self, Area, Container, Direction, Label, Split},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -57,40 +59,52 @@ impl Area for TermArea {
         (self.br.y - self.tl.y - 1) as usize
     }
 
-    fn request_width_left(&mut self, width: usize, other: &mut TermArea) -> Result<(), ()> {
-        if width < (self.width() + other.width()) {
+    fn request_width_left(
+        &mut self, width: usize, total: usize, other: &mut TermArea,
+    ) -> Result<(), ()> {
+        if width < total {
             self.br.x = self.tl.x + width as u16;
             other.tl.x = self.br.x;
+            other.br.x = other.tl.x + (total - width) as u16;
             Ok(())
         } else {
             Err(())
         }
     }
 
-    fn request_width_right(&mut self, width: usize, other: &mut TermArea) -> Result<(), ()> {
-        if width < (self.width() + other.width()) {
+    fn request_width_right(
+        &mut self, width: usize, total: usize, other: &mut TermArea,
+    ) -> Result<(), ()> {
+        if width < total {
             self.tl.x = self.br.x - width as u16;
             other.br.x = self.tl.x;
+            other.tl.x = (other.br.x + width as u16) - total as u16;
             Ok(())
         } else {
             Err(())
         }
     }
 
-    fn request_height_top(&mut self, height: usize, other: &mut TermArea) -> Result<(), ()> {
-        if height < (self.height() + other.height()) {
+    fn request_height_top(
+        &mut self, height: usize, total: usize, other: &mut TermArea,
+    ) -> Result<(), ()> {
+        if height < total {
             self.br.y = self.tl.y + height as u16;
             other.tl.y = self.br.y;
+            other.br.y = other.tl.x + (total - height) as u16;
             Ok(())
         } else {
             Err(())
         }
     }
 
-    fn request_height_bottom(&mut self, height: usize, other: &mut TermArea) -> Result<(), ()> {
-        if height < (self.height() + other.height()) {
+    fn request_height_bottom(
+        &mut self, height: usize, total: usize, other: &mut TermArea,
+    ) -> Result<(), ()> {
+        if height < total {
             self.tl.y = self.br.y - height as u16;
             other.br.y = self.tl.y;
+            other.tl.y = (other.br.x + height as u16) - total as u16;
             Ok(())
         } else {
             Err(())
@@ -104,7 +118,6 @@ impl TermArea {
 
         TermArea { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
     }
-
 }
 
 #[derive(Clone)]
@@ -275,7 +288,7 @@ impl ui::Ui for UiManager {
     fn split_container(
         &mut self, container: &mut Self::Container, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label) {
-        let len = parse_split(split, container.area, direction);
+        let len = get_split_len(split, container.area, direction);
         let parent_container = container.clone();
 
         let area = split_by(len, &mut container.area, direction);
@@ -288,10 +301,12 @@ impl ui::Ui for UiManager {
     fn split_label(
         &mut self, label: &mut Self::Label, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label) {
-        let len = parse_split(split, label.area, direction);
+        log_info!("\nprev: {}", label.area);
+        let len = get_split_len(split, label.area, direction);
         let parent_container = TermContainer { area: label.area, direction: label.direction };
 
         let area = split_by(len, &mut label.area, direction);
+        log_info!("\nnow: {}", area);
 
         let new_label = TermLabel::new(area, direction);
 
@@ -361,7 +376,7 @@ impl ui::Ui for UiManager {
     fn finish_all_printing(&mut self) {}
 }
 
-fn parse_split(split: Split, area: TermArea, direction: Direction) -> u16 {
+fn get_split_len(split: Split, area: TermArea, direction: Direction) -> u16 {
     let current_len = match direction {
         Direction::Left | Direction::Right => area.width(),
         Direction::Top | Direction::Bottom => area.height(),

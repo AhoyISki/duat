@@ -16,8 +16,9 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
+    log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
+    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
 };
 
 use self::{
@@ -108,7 +109,9 @@ where
         };
 
         let width = line_numbers.calculate_width();
-        line_numbers.node.write().request_width(width);
+        if width != line_numbers.node.read().label.read().area().width() {
+            line_numbers.node.write().request_width(width);
+        }
 
         line_numbers.update();
 
@@ -134,7 +137,9 @@ where
 {
     fn update(&mut self) {
         let width = self.calculate_width();
-        self.node.write().request_width(width);
+        if width != self.node.read().label.read().area().width() {
+            self.node.write().request_width(width);
+        }
 
         let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
@@ -266,10 +271,17 @@ where
         let (file, mut file_parent) = (RwData::new(file), None);
 
         for (constructor, direction, split) in &self.future_file_widgets {
-            let (mid_node, end_node) =
-                self.node_manager.split_end(&mut node, *direction, *split, false);
+            let (mid_node, end_node) = match &mut file_parent {
+                None => self.node_manager.split_end(&mut node, *direction, *split, false),
+                Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
+            };
 
             let widget = constructor(end_node, &mut self.node_manager, file.clone());
+            log_info!(
+                "\n{}, {}\n",
+                mid_node.read().children.0.area().width(),
+                mid_node.read().children.0.area().width()
+            );
             self.widgets.push(Mutex::new(widget));
             file_parent = Some(mid_node);
         }
