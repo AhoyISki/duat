@@ -2,6 +2,7 @@ pub mod file_widget;
 pub mod status_widget;
 
 use std::{
+    f64::INFINITY,
     fmt::Write,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -16,8 +17,9 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
+    log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui}, log_info,
+    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
 };
 
 use self::{
@@ -90,8 +92,7 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>,
-        file_widget: RwData<FileWidget<U>>,
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
     ) -> Box<dyn Widget<U>> {
         let file_widget = file_widget.read();
 
@@ -136,9 +137,7 @@ where
 {
     fn update(&mut self) {
         let width = self.calculate_width();
-        if width != self.node.read().label.read().area().width() {
-            self.node.write().request_width(width);
-        }
+        self.node.write().request_width(width);
 
         let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
@@ -266,7 +265,7 @@ where
 
     /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
-        log_info!("\nnew file!\n");
+        log_info!("\n\nnew file!\n");
         let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
         let (file, mut file_parent) = (RwData::new(file), None);
 
@@ -345,36 +344,49 @@ where
         self.status.update();
         print_widget(&mut self.status);
         print_files(&mut self.files);
-        for widget in &mut self.widgets {
+        for widget in &self.widgets {
             let mut widget = widget.lock().unwrap();
             widget.update();
             print_widget(Box::as_mut(&mut widget));
         }
 
-        let widgets_resized = Arc::new(Mutex::new(true));
-        let widgets_resized_check = Arc::clone(&widgets_resized);
+        let resize_requested = Mutex::new(true);
         let mut iteration = 0;
 
         // The main loop.
         thread::scope(|s_0| {
             loop {
-                match event_or_resize(&widgets_resized_check) {
-                    Ok(event) => {
-                        if let Event::Key(key_event) = event {
-                            // NOTE: Temporary.
-                            if let KeyCode::Esc = key_event.code {
-                                break;
-                            } else {
-                                key_remapper
-                                    .send_key_to_file(key_event, &mut self.files[0].0.write());
+                if let Ok(mut resize_requested) = resize_requested.try_lock() {
+                    if *resize_requested {
+                        *resize_requested = false;
+                        drop(resize_requested);
+                        for widget in self.widgets.iter() {
+                            if let Ok(mut widget) = widget.lock() {
+                                widget.end_node_mut().write().try_set_size();
                             }
                         }
+                        let _printer_lock = printer.lock().unwrap();
+                        for widget in &self.widgets {
+                            if let Ok(mut widget) = widget.lock() {
+                                print_widget(Box::as_mut(&mut widget));
+                            }
+                        }
+                        print_files(&mut self.files);
                     }
-                    Err(resized) => {
-                        if !resized {
-                            continue;
+                }
+
+                if let Ok(true) = event::poll(Duration::from_micros(100)) {
+                    if let Event::Key(key_event) = event::read().unwrap() {
+                        // NOTE: Temporary.
+                        if let KeyCode::Esc = key_event.code {
+                            break;
+                        } else {
+                            key_remapper
+                                .send_key_to_file(key_event, &mut self.files[0].0.write());
                         }
                     }
+                } else {
+                    continue;
                 }
 
                 self.status.update();
@@ -387,15 +399,18 @@ where
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
                     let widget = &self.widgets[*index];
-                    //s_0.spawn(|| {
+                    s_0.spawn(|| {
                         let mut widget = widget.lock().unwrap();
                         widget.update();
-                        let mut widgets_resized = widgets_resized.lock().unwrap();
-                        *widgets_resized |= widget.end_node_mut().write().size_changed();
-                        drop(widgets_resized);
-                        let _printer_lock = printer.lock().unwrap();
-                        print_widget(Box::as_mut(&mut widget));
-                    //});
+                        let widget_resized = widget.end_node().read().resize_requested();
+                        let mut resize_requested = resize_requested.lock().unwrap();
+                        *resize_requested |= widget_resized;
+                        if !widget_resized {
+                            drop(resize_requested);
+                            let _printer_lock = printer.lock().unwrap();
+                            print_widget(Box::as_mut(&mut widget));
+                        }
+                    });
                 }
             }
         });
@@ -447,20 +462,4 @@ where
 {
     let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
     widget.text().read().print(&mut widget.end_node_mut().write(), print_info);
-}
-
-fn event_or_resize(widgets_resized: &Arc<Mutex<bool>>) -> Result<Event, bool> {
-    if event::poll(Duration::from_micros(100)).unwrap() {
-        let event = Ok(event::read().unwrap());
-        return event;
-    } else {
-        if let Ok(mut result) = widgets_resized.try_lock() {
-            if *result {
-                *result = false;
-                return Err(true);
-            }
-        }
-    }
-
-    Err(false)
 }

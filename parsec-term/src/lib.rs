@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    fmt::{Display, Write},
+    fmt::Display,
     io::{stdout, Stdout},
 };
 
@@ -66,7 +66,9 @@ impl Area for TermArea {
             Direction::Top | Direction::Bottom => self.height(),
         };
 
-        if len > max_len { return Err(()) };
+        if len > max_len {
+            return Err(());
+        };
 
         let mut new_second = *self;
         *first = split_by(len as u16, &mut new_second, first_dir);
