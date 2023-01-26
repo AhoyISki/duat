@@ -1,29 +1,22 @@
 pub mod file_widget;
 pub mod status_widget;
+pub mod line_numbers_widget;
 
-use std::{
-    f64::INFINITY,
-    fmt::Write,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
-    config::{Config, LineNumbers, RoData, RwData},
+    config::{Config, RoData, RwData},
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui}, FOR_TEST,
+    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 
 use self::{
-    file_widget::{FileWidget, PrintInfo, PrintedLines},
+    file_widget::{FileWidget, PrintInfo},
     status_widget::StatusWidget,
 };
 
@@ -71,131 +64,6 @@ where
     /// * A list of cursors. This includes cursors that shouldn't be printed on screen.
     /// * The index of the main cursor. Most of the time, this will be 0.
     fn cursors(&mut self) -> (&mut Vec<TextCursor>, usize);
-}
-
-pub struct LineNumbersWidget<U>
-where
-    U: Ui,
-{
-    node: RwData<EndNode<U>>,
-    printed_lines: PrintedLines<U>,
-    main_cursor: RoData<usize>,
-    cursors: RoData<Vec<TextCursor>>,
-    text: RwData<Text>,
-}
-
-unsafe impl<U> Send for LineNumbersWidget<U> where U: Ui {}
-
-impl<U> LineNumbersWidget<U>
-where
-    U: Ui + 'static,
-{
-    /// Returns a new instance of `LineNumbersWidget`.
-    pub fn new(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Box<dyn Widget<U>> {
-        let file_widget = file_widget.read();
-
-        let printed_lines = file_widget.printed_lines();
-        let main_cursor = RoData::from(&file_widget.main_cursor);
-        let cursors = RoData::from(&file_widget.cursors);
-
-        let mut line_numbers = LineNumbersWidget {
-            node,
-            printed_lines,
-            main_cursor,
-            cursors,
-            text: RwData::new(Text::default()),
-        };
-
-        let width = line_numbers.calculate_width();
-        if width != line_numbers.node.read().label.read().area().width() {
-            line_numbers.node.write().request_width(width);
-        }
-
-        line_numbers.update();
-
-        Box::new(line_numbers)
-    }
-
-    fn calculate_width(&self) -> usize {
-        let mut width = 1;
-        let mut num_exp = 10;
-        let len = self.printed_lines.text().read().lines().len();
-
-        while len > num_exp {
-            num_exp *= 10;
-            width += 1;
-        }
-        width
-    }
-}
-
-impl<U> Widget<U> for LineNumbersWidget<U>
-where
-    U: Ui + 'static,
-{
-    fn update(&mut self) {
-        if unsafe { FOR_TEST == 3 } {
-            unsafe { FOR_TEST += 1 };
-            thread::sleep(Duration::from_millis(1000));
-        } else if unsafe { FOR_TEST < 3 } {
-            unsafe { FOR_TEST += 1 };
-        } else {
-            unsafe { FOR_TEST -= 1 };
-        }
-        let width = self.calculate_width();
-        self.node.write().request_width(width);
-
-        let lines = self.printed_lines.lines();
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
-        let node = self.node.read();
-        let config = node.config().read();
-
-        // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
-        let mut line_numbers = String::with_capacity(width * lines.len());
-
-        match config.line_numbers {
-            LineNumbers::Absolute => {
-                lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
-            }
-            LineNumbers::Relative => {
-                lines.iter().for_each(|&n| {
-                    write!(&mut line_numbers, "{}\n", usize::abs_diff(n, main_line)).unwrap()
-                });
-            }
-            LineNumbers::Hybrid => {
-                lines.iter().for_each(|&n| {
-                    write!(
-                        &mut line_numbers,
-                        "{}\n",
-                        if n != main_line { usize::abs_diff(n, main_line) } else { n }
-                    )
-                    .unwrap()
-                });
-            }
-            LineNumbers::None => panic!("How the hell did you get here?"),
-        }
-
-        let mut text = self.text.write();
-        *text = Text::new(line_numbers, None);
-    }
-
-    fn needs_update(&self) -> bool {
-        self.printed_lines.has_changed()
-    }
-
-    fn text(&self) -> RoData<Text> {
-        RoData::from(&self.text)
-    }
-
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.node
-    }
 }
 
 pub type WidgetFormer<U> =
@@ -273,7 +141,6 @@ where
 
     /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
-        log_info!("\n\nnew file!\n");
         let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
         let (file, mut file_parent) = (RwData::new(file), None);
 
@@ -389,8 +256,7 @@ where
                         if let KeyCode::Esc = key_event.code {
                             break;
                         } else {
-                            key_remapper
-                                .send_key_to_file(key_event, &mut self.files[0].0.write());
+                            key_remapper.send_key_to_file(key_event, &mut self.files[0].0.write());
                         }
                     }
                 } else {

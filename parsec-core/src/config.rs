@@ -29,20 +29,6 @@ impl Default for ScrollOff {
     }
 }
 
-/// How to show the line numbers on screen.
-#[derive(Default, Debug, Copy, Clone)]
-pub enum LineNumbers {
-    /// No line numbers.
-    None,
-    #[default]
-    /// Line numbers relative to the beginning of the file.
-    Absolute,
-    /// Line numbers relative to the main cursor's line, including that line.
-    Relative,
-    /// Relative line numbers on every line, except the main cursor's.
-    Hybrid,
-}
-
 /// Where the tabs are placed on screen, can be regular or varied.
 #[derive(Debug, Clone)]
 pub enum TabPlaces {
@@ -97,8 +83,6 @@ pub struct Config {
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.
     pub scrolloff: ScrollOff,
-    /// How to show the line numbers.
-    pub line_numbers: LineNumbers,
     /// How to indent.
     pub tab_places: TabPlaces,
     /// Wether to indent wrapped lines or not.
