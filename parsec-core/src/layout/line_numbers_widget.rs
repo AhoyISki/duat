@@ -10,7 +10,10 @@ use super::{
     Widget,
 };
 
-use std::{cmp::max, fmt::{Write, Alignment}};
+use std::{
+    cmp::max,
+    fmt::{Alignment, Write},
+};
 
 pub struct LineNumbersWidget<U>
 where
@@ -22,7 +25,7 @@ where
     cursors: RoData<Vec<TextCursor>>,
     text: RwData<Text>,
     min_width: usize,
-    line_numbers_config: LineNumbersConfig
+    line_numbers_config: LineNumbersConfig,
 }
 
 unsafe impl<U> Send for LineNumbersWidget<U> where U: Ui {}
@@ -34,6 +37,7 @@ where
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
         node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        line_numbers_config: LineNumbersConfig,
     ) -> Box<dyn Widget<U>> {
         let file_widget = file_widget.read();
 
@@ -49,7 +53,7 @@ where
             cursors,
             text: RwData::new(Text::default()),
             min_width,
-            line_numbers_config: LineNumbersConfig::default()
+            line_numbers_config,
         };
 
         let width = line_numbers.calculate_width();
@@ -83,29 +87,26 @@ where
 
         let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
-        let node = self.node.read();
 
         // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
         let mut line_numbers = String::with_capacity(width * lines.len());
 
-        match self.line_numbers_config.numbering {
-            Numbering::Absolute => {
-                lines.iter().for_each(|&n| write!(&mut line_numbers, "{}\n", n).unwrap());
-            }
-            Numbering::Relative => {
-                lines.iter().for_each(|&n| {
-                    write!(&mut line_numbers, "{}\n", usize::abs_diff(n, main_line)).unwrap()
-                });
-            }
-            Numbering::Hybrid => {
-                lines.iter().for_each(|&n| {
-                    write!(
-                        &mut line_numbers,
-                        "{}\n",
-                        if n != main_line { usize::abs_diff(n, main_line) } else { n }
-                    )
-                    .unwrap()
-                });
+        for line in lines.iter() {
+            let number = match self.line_numbers_config.numbering {
+                Numbering::Absolute => *line,
+                Numbering::Relative => usize::abs_diff(*line, main_line),
+                Numbering::Hybrid => {
+                    if *line != main_line {
+                        usize::abs_diff(*line, main_line)
+                    } else {
+                        *line
+                    }
+                }
+            };
+            match self.line_numbers_config.alignment {
+                Alignment::Left => write!(&mut line_numbers, "{:<width$}\n", number).unwrap(),
+                Alignment::Right => write!(&mut line_numbers, "{:>width$}\n", number).unwrap(),
+                Alignment::Center => write!(&mut line_numbers, "{:^width$}\n", number).unwrap(),
             }
         }
 
@@ -144,15 +145,12 @@ pub enum Numbering {
 
 #[derive(Clone, Copy)]
 pub struct LineNumbersConfig {
-    numbering: Numbering,
-    alignment: Alignment,
+    pub numbering: Numbering,
+    pub alignment: Alignment,
 }
 
 impl Default for LineNumbersConfig {
-	fn default() -> Self {
-    	Self {
-        	alignment: Alignment::Left,
-        	numbering: Numbering::default()
-    	}
-	}
+    fn default() -> Self {
+        Self { alignment: Alignment::Left, numbering: Numbering::default() }
+    }
 }
