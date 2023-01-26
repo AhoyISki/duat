@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use crate::{
     config::{Config, RwData},
-    log_info,
     tags::{CursorStyle, Form, FormPalette},
 };
 
@@ -13,31 +12,10 @@ pub trait Area: PartialEq + Eq + Clone + Copy {
     /// Gets the height of the area.
     fn height(&self) -> usize;
 
-    /// Requests that the width be changed, and consequently changes the width of `other`.
-    fn request_width_left(
-        &mut self, width: usize, total: usize, other: &mut Self,
+    /// Resizes the children so they fit inside `self` properly.
+    fn resize_children(
+        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Direction,
     ) -> Result<(), ()>;
-
-    /// Requests that the width be changed, and consequently changes the width of `other`.
-    fn request_width_right(
-        &mut self, width: usize, total: usize, other: &mut Self,
-    ) -> Result<(), ()>;
-
-    /// Requests that the height be changed, and consequently changes the height of `other`.
-    fn request_height_top(
-        &mut self, height: usize, total: usize, other: &mut Self,
-    ) -> Result<(), ()>;
-
-    /// Requests that the height be changed, and consequently changes the height of `other`.
-    fn request_height_bottom(
-        &mut self, height: usize, total: usize, other: &mut Self,
-    ) -> Result<(), ()>;
-}
-
-trait Resizable {
-    fn request_width(&mut self, width: usize);
-
-    fn request_height(&mut self, width: usize);
 }
 
 /// A `Label` or `Container` container, that holds exactly two in total.
@@ -138,79 +116,76 @@ where
     U: Ui,
 {
     /// Requests a new width for itself, going up the tree.
-    pub fn request_width(&mut self, width: usize) {
-        if let Some(sibling) = &mut self.sibling {
+    pub fn request_width(&mut self, width: usize) -> Result<(), ()> {
+        let parent = self.parent.as_ref().expect("You can't resize a parentless node!");
+        let parent = parent.read();
+        let container = parent.container.read();
+        let parent_area = container.area();
+
+        if let Direction::Left | Direction::Right = self.direction {
             let mut container = self.container.write();
-            let area = container.area_mut();
-            let mut sibling_area = sibling.area();
-            let total_width = if let Some(parent) = &self.parent {
-                let parent = parent.read();
-                let container = parent.container.read();
-                container.area().width()
-            } else {
-                area.width()
-            };
-            // This probably means that the area is not big enough to acomodate such a change.
-            if let Err(()) =
-                request_width::<U>(area, &mut sibling_area, width, total_width, self.direction)
-            {
-                todo!();
-            }
-            sibling.set_area(sibling_area);
+            let self_area = container.area_mut();
 
-            drop(container);
-            if let Err(()) = self.resize_childrens_width() {
-                unimplemented!();
-            }
-        }
-    }
+            let sibling = self.sibling.as_mut().unwrap();
+            let sibling_area = &mut sibling.area();
+            parent_area.resize_children(container.area_mut(), sibling_area, width, self.direction)?;
+            sibling.set_area(*sibling_area);
 
-    fn resize_childrens_width(&mut self) -> Result<(), ()> {
-        let total_width = self.container.read().area().width();
-
-        let (first, second) = (&mut self.children.0.area(), &mut self.children.1.area());
-        log_info!("\nbefore: {}, {}", first, second);
-        let first_direction = self.children.0.direction();
-        if let Direction::Left | Direction::Right = first_direction {
-            match self.split {
-                Split::Locked(width) | Split::Static(width) => {
-                    let width = total_width - width;
-                    request_width::<U>(first, second, width, total_width, first_direction)?;
-                }
-                Split::Ratio(ratio) => {
-                    let width = (total_width as f32 * ratio).floor() as usize;
-                    request_width::<U>(first, second, width, total_width, first_direction)?;
-                }
-            }
+            sibling.resize_children_if_mid_node()?;
         } else {
-            if let Some(sibling) = &mut self.sibling {
-                let mut sibling_area = sibling.area();
-                let width = total_width;
-                let total_width = total_width + sibling_area.width();
-                request_width::<U>(first, &mut sibling_area, width, total_width, self.direction)?;
-                request_width::<U>(second, &mut sibling_area, width, total_width, self.direction)?;
-                sibling.set_area(sibling_area);
-            } else {
-                panic!("Something's wrong, I can feel it.");
-            }
+            todo!()
         }
-        log_info!("\nafter: {}, {}", first, second);
-        self.children.0.set_area(*first);
-        self.children.1.set_area(*second);
+        drop(container);
+        drop(parent);
+        self.resize_children()?;
 
         Ok(())
     }
 
     /// Requests a new width for itself, going up the tree.
-    pub fn request_height(&mut self, height: usize) {
-        if let Some(node) = &mut self.sibling {
-            let mut widget = self.container.write();
-            let area = widget.area_mut();
-            let total_height = area.height();
-            if let Err(()) = request_height::<U>(area, node, height, total_height, self.direction) {
-                todo!();
-            }
+    pub fn request_height(&mut self, height: usize) -> Result<(), ()> {
+        let parent = self.parent.as_ref().expect("You can't resize a parentless node!");
+        let parent = parent.read();
+        let container = parent.container.read();
+        let parent_area = container.area();
+
+        if let Direction::Top | Direction::Bottom = self.direction {
+            let mut container = self.container.write();
+            let self_area = container.area_mut();
+
+            let sibling = self.sibling.as_mut().unwrap();
+            let sibling_area = &mut sibling.area();
+            parent_area.resize_children(self_area, sibling_area, height, self.direction)?;
+            sibling.set_area(*sibling_area);
+
+            sibling.resize_children_if_mid_node()?;
+        } else {
+            todo!()
         }
+        drop(container);
+        drop(parent);
+        self.resize_children()?;
+
+        Ok(())
+    }
+
+    pub fn resize_children(&mut self) -> Result<(), ()> {
+        let container = self.container.read();
+        let self_area = container.area();
+
+        let first_area = &mut self.children.0.area();
+        let second_area = &mut self.children.1.area();
+        let first_direction = self.children.0.direction();
+        let width = self.split.get_first_len(self_area.width());
+
+        self_area.resize_children(first_area, second_area, width, first_direction)?;
+        self.children.0.set_area(*first_area);
+        self.children.1.set_area(*second_area);
+
+        self.children.0.resize_children_if_mid_node()?;
+        self.children.1.resize_children_if_mid_node()?;
+
+        Ok(())
     }
 
     /// Wether or not the size has changed since last checking.
@@ -235,6 +210,8 @@ where
     pub(crate) config: RwData<Config>,
     pub(crate) palette: RwData<FormPalette>,
     applied_forms: Vec<(Form, u16)>,
+    requested_width: Option<usize>,
+    requested_height: Option<usize>,
 }
 
 impl<U> EndNode<U>
@@ -247,37 +224,51 @@ where
     }
 
     /// Requests a new width for itself, going up the tree.
-    pub fn request_width(&mut self, width: usize) {
-        if let Some(sibling) = &mut self.sibling {
-            let mut sibling_area = sibling.area();
+    pub fn request_width(&mut self, width: usize) -> Result<(), ()> {
+        let parent = self.parent.as_ref().expect("You can't resize a parentless node!");
+        let parent = parent.read();
+        let container = parent.container.read();
+        let parent_area = container.area();
+
+        if let Direction::Left | Direction::Right = self.direction {
             let mut label = self.label.write();
-            let area = label.area_mut();
-            let total_width = sibling_area.width() + area.width();
-            match request_width::<U>(area, &mut sibling_area, width, total_width, self.direction) {
-                Ok(()) => {
-                    sibling.set_area(sibling_area);
-                    if let Node::MidNode(sibling) = sibling {
-                        sibling.write().resize_childrens_width().unwrap();
-                    }
-                }
-                Err(()) => {
-                    todo!();
-                }
-            }
+            let self_area = label.area_mut();
+
+            let sibling = self.sibling.as_mut().unwrap();
+            let sibling_area = &mut sibling.area();
+            parent_area.resize_children(label.area_mut(), sibling_area, width, self.direction)?;
+            sibling.set_area(*sibling_area);
+
+            sibling.resize_children_if_mid_node()?;
+        } else {
+            todo!()
         }
+
+        Ok(())
     }
 
     /// Requests a new width for itself, going up the tree.
-    pub fn request_height(&mut self, height: usize) {
-        if let Some(node) = &mut self.sibling {
+    pub fn request_height(&mut self, height: usize) -> Result<(), ()>{
+        let parent = self.parent.as_ref().expect("You can't resize a parentless node!");
+        let parent = parent.read();
+        let container = parent.container.read();
+        let parent_area = container.area();
+
+        if let Direction::Top | Direction::Bottom = self.direction {
             let mut label = self.label.write();
-            let area = label.area_mut();
-            if let Err(()) =
-                request_height::<U>(area, node, height, area.height(), self.direction)
-            {
-                todo!();
-            }
+            let self_area = label.area_mut();
+
+            let sibling = self.sibling.as_mut().unwrap();
+            let sibling_area = &mut sibling.area();
+            parent_area.resize_children(label.area_mut(), sibling_area, height, self.direction)?;
+            sibling.set_area(*sibling_area);
+
+            sibling.resize_children_if_mid_node()?;
+        } else {
+            todo!()
         }
+
+        Ok(())
     }
 
     /// Returns a reference to the `Config` of the node.
@@ -352,29 +343,11 @@ where
         }
     }
 
-    fn request_width(&mut self, width: usize) {
-        match self {
-            Node::MidNode(node) => {
-                let mut node = node.write();
-                node.request_width(width)
-            }
-            Node::EndNode(node) => {
-                let mut node = node.write();
-                node.request_width(width)
-            }
-        }
-    }
-
-    fn request_height(&mut self, height: usize) {
-        match self {
-            Node::MidNode(node) => {
-                let mut node = node.write();
-                node.request_height(height)
-            }
-            Node::EndNode(node) => {
-                let mut node = node.write();
-                node.request_height(height)
-            }
+    fn resize_children_if_mid_node(&mut self) -> Result<(), ()> {
+        if let Node::MidNode(mid_node) = self {
+            mid_node.write().resize_children()
+        } else {
+            Ok(())
         }
     }
 }
@@ -399,8 +372,17 @@ pub enum Split {
     Ratio(f32),
 }
 
+impl Split {
+    fn get_first_len(&self, total: usize) -> usize {
+        match self {
+            Split::Locked(len) | Split::Static(len) => total - len,
+            Split::Ratio(ratio) => (total as f32 * ratio).floor() as usize,
+        }
+    }
+}
+
 /// The direction in which a secondary node was placed in relation to the first one.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Top,
     Right,
@@ -507,6 +489,8 @@ where
                 config: RwData::new(config),
                 palette: RwData::new(palette),
                 applied_forms: Vec::new(),
+                requested_width: None,
+                requested_height: None,
             })
         })
     }
@@ -531,6 +515,8 @@ where
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
             applied_forms: Vec::new(),
+            requested_width: None,
+            requested_height: None,
         });
 
         let mid_node = RwData::new(MidNode {
@@ -559,14 +545,8 @@ where
     pub fn split_mid(
         &mut self, node: &mut RwData<MidNode<U>>, direction: Direction, split: Split, glued: bool,
     ) -> (RwData<MidNode<U>>, RwData<EndNode<U>>) {
-        let raw_node = node.write();
-        log_info!("\nprev: {}", raw_node.container.read().area());
-        drop(raw_node);
         let (container, label) =
             self.0.split_container(&mut node.write().container.write(), direction, split, glued);
-        let raw_node = node.write();
-        log_info!("\nprev: {}", raw_node.container.read().area());
-        drop(raw_node);
 
         let cloned_node = node.clone();
         let mut raw_node = node.write();
@@ -580,6 +560,8 @@ where
             config: raw_node.config.clone(),
             palette: raw_node.palette.clone(),
             applied_forms: Vec::new(),
+            requested_width: None,
+            requested_height: None,
         });
 
         let mid_node = RwData::new(MidNode {
@@ -598,7 +580,7 @@ where
         raw_node.parent = Some(mid_node.clone());
         raw_node.direction = direction.opposite();
         raw_node.sibling = Some(Node::EndNode(end_node.clone()));
-        raw_node.resize_childrens_width().unwrap();
+        raw_node.resize_children().unwrap();
 
         end_node.write().parent = Some(mid_node.clone());
 
@@ -618,48 +600,5 @@ where
     /// Triggers the functions to once every `Label` has been printed.
     pub(crate) fn finish_all_printing(&mut self) {
         self.0.finish_all_printing()
-    }
-}
-
-fn request_width<U>(
-    first: &mut U::Area, second: &mut U::Area, width: usize, total: usize, direction: Direction,
-) -> Result<(), ()>
-where
-    U: Ui,
-{
-    match direction {
-        Direction::Left => first.request_width_left(width, total, second),
-        Direction::Right => first.request_width_right(width, total, second),
-        _ => Err(()),
-    }
-}
-
-fn request_height<U>(
-    area: &mut U::Area, node: &mut Node<U>, height: usize, total: usize, direction: Direction,
-) -> Result<(), ()>
-where
-    U: Ui,
-{
-    match node {
-        Node::MidNode(mid_node) => {
-            let mut mid_node = mid_node.write();
-            let mut container = mid_node.container.write();
-            match direction {
-                Direction::Top => area.request_height_top(height, total, container.area_mut()),
-                Direction::Bottom => {
-                    area.request_height_bottom(height, total, container.area_mut())
-                }
-                _ => Err(()),
-            }
-        }
-        Node::EndNode(node) => {
-            let mut node = node.write();
-            let mut label = node.label.write();
-            match direction {
-                Direction::Top => area.request_height_top(height, total, label.area_mut()),
-                Direction::Bottom => area.request_height_bottom(height, total, label.area_mut()),
-                _ => Err(()),
-            }
-        }
     }
 }

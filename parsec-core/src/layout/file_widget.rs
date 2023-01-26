@@ -9,9 +9,9 @@ use crate::{
     config::{RoData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     file::{update_range, Text},
-    log_info, split_string_lines,
+    split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui}, FOR_TEST,
 };
 
 use super::Widget;
@@ -84,7 +84,7 @@ pub struct PrintedLines<U>
 where
     U: Ui,
 {
-    file: RoData<Text>,
+    text: RoData<Text>,
     print_info: RoData<PrintInfo>,
     end_node: RoData<EndNode<U>>,
 }
@@ -98,7 +98,7 @@ where
         let end_node = self.end_node.read();
         let label = end_node.label.read();
         let height = label.area().height();
-        let (text, print_info) = (self.file.read(), self.print_info.read());
+        let (text, print_info) = (self.text.read(), self.print_info.read());
         let mut lines_iter = text.lines().iter().enumerate();
         let mut printed_lines = Vec::with_capacity(label.area().height());
 
@@ -121,7 +121,11 @@ where
 
     /// Wether or not the list of printed lines has changed.
     pub fn has_changed(&self) -> bool {
-        self.file.has_changed() || self.print_info.has_changed()
+        self.text.has_changed() || self.print_info.has_changed()
+    }
+
+    pub fn text(&self) -> &RoData<Text> {
+        &self.text
     }
 }
 
@@ -341,7 +345,7 @@ where
             node,
             history: History::new(),
             do_set_print_info: true,
-            do_add_cursor_tags: false
+            do_add_cursor_tags: false,
         };
 
         let mut text = file_widget.text.write();
@@ -622,9 +626,7 @@ where
             for (pos, tag) in pos_list.iter().skip(no_selection) {
                 if let Some(line) = text.lines.get_mut(pos.row) {
                     let byte = line.get_line_byte_at(pos.col);
-                    line.info.char_tags.remove_first(|(n, t)| {
-                        n as usize == byte && t == *tag
-                    });
+                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
                 }
             }
         }
@@ -663,9 +665,10 @@ where
 
     /// Currently does nothing.
     fn update(&mut self) {
+        unsafe { FOR_TEST = 0 };
         let mut node = self.node.write();
         let mut text = self.text.write();
-        text.update_lines(&mut node);
+        text.update_lines_test(&mut node);
         drop(node);
         drop(text);
         //self.match_scroll();
@@ -674,7 +677,7 @@ where
     /// The list of all lines that are currently printed on the screen.
     pub fn printed_lines(&self) -> PrintedLines<U> {
         PrintedLines {
-            file: RoData::from(&self.text),
+            text: RoData::from(&self.text),
             print_info: RoData::from(&self.print_info),
             end_node: RoData::from(self.node()),
         }

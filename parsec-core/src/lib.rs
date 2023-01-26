@@ -39,8 +39,7 @@ pub fn empty_edit() -> Vec<String> {
 }
 
 //////////// Useful for testing.
-pub static mut FOR_TEST: bool = false;
-pub static mut FOR_TEST_2: bool = false;
+pub static mut FOR_TEST: usize = 0;
 
 /// Internal macro used to log information.
 #[macro_export]

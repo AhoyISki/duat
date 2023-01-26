@@ -10,7 +10,6 @@ use crossterm::{
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    log_info,
     tags::{CursorStyle, Form},
     ui::{self, Area, Container, Direction, Label, Split},
 };
@@ -59,56 +58,21 @@ impl Area for TermArea {
         (self.br.y - self.tl.y - 1) as usize
     }
 
-    fn request_width_left(
-        &mut self, width: usize, total: usize, other: &mut TermArea,
+    fn resize_children(
+        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Direction,
     ) -> Result<(), ()> {
-        if width < total {
-            self.br.x = self.tl.x + width as u16;
-            other.tl.x = self.br.x;
-            other.br.x = other.tl.x + (total - width) as u16;
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
+        let max_len = match first_dir {
+            Direction::Left | Direction::Right => self.width(),
+            Direction::Top | Direction::Bottom => self.height(),
+        };
 
-    fn request_width_right(
-        &mut self, width: usize, total: usize, other: &mut TermArea,
-    ) -> Result<(), ()> {
-        if width < total {
-            self.tl.x = self.br.x - width as u16;
-            other.br.x = self.tl.x;
-            other.tl.x = (other.br.x + width as u16) - total as u16;
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
+        if len > max_len { return Err(()) };
 
-    fn request_height_top(
-        &mut self, height: usize, total: usize, other: &mut TermArea,
-    ) -> Result<(), ()> {
-        if height < total {
-            self.br.y = self.tl.y + height as u16;
-            other.tl.y = self.br.y;
-            other.br.y = other.tl.x + (total - height) as u16;
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
+        let mut new_second = *self;
+        *first = split_by(len as u16, &mut new_second, first_dir);
+        *second = new_second;
 
-    fn request_height_bottom(
-        &mut self, height: usize, total: usize, other: &mut TermArea,
-    ) -> Result<(), ()> {
-        if height < total {
-            self.tl.y = self.br.y - height as u16;
-            other.br.y = self.tl.y;
-            other.tl.y = (other.br.x + height as u16) - total as u16;
-            Ok(())
-        } else {
-            Err(())
-        }
+        Ok(())
     }
 }
 
@@ -301,12 +265,10 @@ impl ui::Ui for UiManager {
     fn split_label(
         &mut self, label: &mut Self::Label, direction: Direction, split: Split, glued: bool,
     ) -> (Self::Container, Self::Label) {
-        log_info!("\nprev: {}", label.area);
         let len = get_split_len(split, label.area, direction);
         let parent_container = TermContainer { area: label.area, direction: label.direction };
 
         let area = split_by(len, &mut label.area, direction);
-        log_info!("\nnow: {}", area);
 
         let new_label = TermLabel::new(area, direction);
 

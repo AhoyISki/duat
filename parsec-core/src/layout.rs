@@ -16,9 +16,8 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
+    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui}, log_info,
 };
 
 use self::{
@@ -91,7 +90,7 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        mut node: RwData<EndNode<U>>, node_manager: &mut NodeManager<U>,
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>,
         file_widget: RwData<FileWidget<U>>,
     ) -> Box<dyn Widget<U>> {
         let file_widget = file_widget.read();
@@ -119,9 +118,9 @@ where
     }
 
     fn calculate_width(&self) -> usize {
-        let mut width = 2;
+        let mut width = 1;
         let mut num_exp = 10;
-        let len = self.printed_lines.lines().len();
+        let len = self.printed_lines.text().read().lines().len();
 
         while len > num_exp {
             num_exp *= 10;
@@ -267,6 +266,7 @@ where
 
     /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
+        log_info!("\nnew file!\n");
         let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
         let (file, mut file_parent) = (RwData::new(file), None);
 
@@ -277,11 +277,6 @@ where
             };
 
             let widget = constructor(end_node, &mut self.node_manager, file.clone());
-            log_info!(
-                "\n{}, {}\n",
-                mid_node.read().children.0.area().width(),
-                mid_node.read().children.0.area().width()
-            );
             self.widgets.push(Mutex::new(widget));
             file_parent = Some(mid_node);
         }
@@ -356,7 +351,7 @@ where
             print_widget(Box::as_mut(&mut widget));
         }
 
-        let widgets_resized = Arc::new(Mutex::new(false));
+        let widgets_resized = Arc::new(Mutex::new(true));
         let widgets_resized_check = Arc::clone(&widgets_resized);
         let mut iteration = 0;
 
@@ -365,20 +360,14 @@ where
             loop {
                 match event_or_resize(&widgets_resized_check) {
                     Ok(event) => {
-                        match event {
-                            Event::Key(key_event) => {
-                                // NOTE: Temporary.
-                                if let KeyCode::Esc = key_event.code {
-                                    break;
-                                } else {
-                                    key_remapper
-                                        .send_key_to_file(key_event, &mut self.files[0].0.write());
-                                }
+                        if let Event::Key(key_event) = event {
+                            // NOTE: Temporary.
+                            if let KeyCode::Esc = key_event.code {
+                                break;
+                            } else {
+                                key_remapper
+                                    .send_key_to_file(key_event, &mut self.files[0].0.write());
                             }
-                            Event::FocusGained => {
-                                continue;
-                            }
-                            _ => (),
                         }
                     }
                     Err(resized) => {
@@ -398,7 +387,7 @@ where
                 let widget_indices = widgets_to_update(&self.widgets);
                 for index in &widget_indices {
                     let widget = &self.widgets[*index];
-                    s_0.spawn(|| {
+                    //s_0.spawn(|| {
                         let mut widget = widget.lock().unwrap();
                         widget.update();
                         let mut widgets_resized = widgets_resized.lock().unwrap();
@@ -406,7 +395,7 @@ where
                         drop(widgets_resized);
                         let _printer_lock = printer.lock().unwrap();
                         print_widget(Box::as_mut(&mut widget));
-                    });
+                    //});
                 }
             }
         });
@@ -461,7 +450,7 @@ where
 }
 
 fn event_or_resize(widgets_resized: &Arc<Mutex<bool>>) -> Result<Event, bool> {
-    if event::poll(Duration::from_millis(0)).unwrap() {
+    if event::poll(Duration::from_micros(100)).unwrap() {
         let event = Ok(event::read().unwrap());
         return event;
     } else {
