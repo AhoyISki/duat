@@ -11,7 +11,7 @@ use crate::{
     file::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
-    ui::{Area, EndNode, Label, Ui}, FOR_TEST,
+    ui::{Area, EndNode, Label, Ui},
 };
 
 use super::Widget;
@@ -665,7 +665,6 @@ where
 
     /// Currently does nothing.
     fn update(&mut self) {
-        unsafe { FOR_TEST = 0 };
         let mut node = self.node.write();
         let mut text = self.text.write();
         text.update_lines_test(&mut node);

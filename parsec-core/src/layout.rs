@@ -19,7 +19,7 @@ use crate::{
     input::{EditingScheme, FileRemapper},
     log_info,
     tags::{FormPalette, MatchManager},
-    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui},
+    ui::{Area, Direction, EndNode, Label, MidNode, NodeManager, Split, Ui}, FOR_TEST,
 };
 
 use self::{
@@ -136,6 +136,14 @@ where
     U: Ui + 'static,
 {
     fn update(&mut self) {
+        if unsafe { FOR_TEST == 3 } {
+            unsafe { FOR_TEST += 1 };
+            thread::sleep(Duration::from_millis(1000));
+        } else if unsafe { FOR_TEST < 3 } {
+            unsafe { FOR_TEST += 1 };
+        } else {
+            unsafe { FOR_TEST -= 1 };
+        }
         let width = self.calculate_width();
         self.node.write().request_width(width);
 
@@ -361,13 +369,13 @@ where
                         *resize_requested = false;
                         drop(resize_requested);
                         for widget in self.widgets.iter() {
-                            if let Ok(mut widget) = widget.lock() {
+                            if let Ok(mut widget) = widget.try_lock() {
                                 widget.end_node_mut().write().try_set_size();
                             }
                         }
                         let _printer_lock = printer.lock().unwrap();
                         for widget in &self.widgets {
-                            if let Ok(mut widget) = widget.lock() {
+                            if let Ok(mut widget) = widget.try_lock() {
                                 print_widget(Box::as_mut(&mut widget));
                             }
                         }
