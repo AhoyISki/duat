@@ -1,7 +1,7 @@
 use crate::{
     config::{RoData, RwData},
-    file::{Text, TextLine},
-    ui::{EndNode, NodeManager, Ui},
+    file::{Text, TextLine, TextLineBuilder},
+    ui::{EndNode, NodeManager, Ui}, tags::form::FormPalette,
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -82,6 +82,7 @@ where
 {
     end_node: RwData<EndNode<U>>,
     text: RwData<Text>,
+    text_line_builder: TextLineBuilder,
     string: String,
     printables: Vec<Box<dyn DataToString>>,
     file: Option<RoData<FileWidget<U>>>,
@@ -96,6 +97,7 @@ where
         StatusWidget {
             end_node,
             text: RwData::new(Text::default()),
+            text_line_builder: TextLineBuilder::default(),
             string: String::new(),
             printables: Vec::new(),
             file: None,
@@ -132,7 +134,11 @@ where
     where
         T: ToString,
     {
-        self.string = text.to_string();
+        let end_node= self.end_node.read();
+        let palette = end_node.palette().read();
+        let mut text = text.to_string();
+        self.text_line_builder = TextLineBuilder::format_and_create(&mut text, &palette);
+        self.string = text;
     }
 
     pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
@@ -183,7 +189,7 @@ where
             }
         }
 
-        text.lines.push(TextLine::new(final_string));
+        text.lines.push(self.text_line_builder.form_text_line(final_string));
     }
 
     fn needs_update(&self) -> bool {

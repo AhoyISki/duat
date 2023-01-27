@@ -6,7 +6,7 @@ use crate::{
     cursor::TextPos,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
-    tags::{CharTag, FormFormer, FormPalette, LineFlags, LineInfo, MatchManager},
+    tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
 
@@ -28,6 +28,7 @@ impl TextLine {
 
         TextLine { text, info }
     }
+
 
     /// Returns the line's indentation.
     fn indent<L, A>(&self, label: &L, config: &Config) -> usize
@@ -236,7 +237,6 @@ impl TextLine {
                 indent_wrap = indent;
 
                 distance += area.width() - 1 - indent_wrap;
-
             }
         } else {
             for (index, ch) in self.text.char_indices() {
@@ -385,6 +385,61 @@ impl TextLine {
     pub fn text(&self) -> &String {
         &self.text
     }
+}
+
+#[derive(Default)]
+pub struct TextLineBuilder {
+    forms: Vec<u16>
+}
+
+impl TextLineBuilder {
+    /// Returns a new instance of `TextLineBuilder`, and removes every form inside a bracket pair.
+	pub fn format_and_create(text: &mut String, palette: &FormPalette) -> Self {
+    	let mut form_indices = Vec::new();
+    	let mut formless_text = text.clone();
+
+		let mut last_start = None;
+    	for (start, _) in text.match_indices('[').chain([(text.len(), "[")]) {
+        	if let Some(mut last_start) = last_start {
+            	if let Some(mut last_end) = text[(last_start + 1)..start].find(']') {
+                	last_end += last_start;
+                	last_start += 1;
+                	let (_, form_index) = palette.get_from_name(&text[last_start..=last_end]);
+                	form_indices.push(form_index);
+                	let removed_len = text.len() - formless_text.len();
+                	last_start -= removed_len;
+                	last_end -= removed_len;
+                	formless_text.replace_range(last_start..=last_end, "");
+            	}
+        	}
+
+        	last_start = Some(start);
+    	}
+
+    	*text = formless_text;
+
+    	TextLineBuilder { forms: form_indices }
+	}
+
+	/// Takes in a string with empty bracket pairs and places forms according to their positions.
+	pub fn form_text_line(&self, text: impl ToString) -> TextLine {
+    	let text = text.to_string();
+        let mut formless_text = text.to_string();
+        let mut info = LineInfo::default();
+        let mut removed_len = 0;
+
+        for (index, (start, _)) in text.match_indices("[]").enumerate() {
+            let start = start - removed_len;
+            formless_text.replace_range(start..=(start + 1), "");
+            info.char_tags.insert((start as u32, CharTag::PushForm(self.forms[index])));
+            if index > 0 {
+                info.char_tags.insert((start as u32, CharTag::PopForm(self.forms[index - 1])));
+            }
+            removed_len += 2;
+        }
+
+        TextLine { text: formless_text, info }
+	}
 }
 
 /// The text in a given area.

@@ -50,6 +50,21 @@ impl TextPos {
             self.col = self.col.saturating_add_signed(splice_adder.cols);
         }
     }
+
+	/// The byte (relative to the beginning of the file) of this `TextPos`.
+    pub fn byte(&self) -> usize {
+        self.byte
+    }
+
+	/// The column of this `TextPos`.
+    pub fn col(&self) -> usize {
+        self.col
+    }
+
+	/// The row of this `TextPos`.
+    pub fn row(&self) -> usize {
+        self.row
+    }
 }
 
 impl std::fmt::Display for TextPos {
@@ -319,6 +334,21 @@ impl TextCursor {
             Anchor::Active(anchor) | Anchor::Inactive(anchor) => anchor,
             Anchor::None => self.caret,
         }
+    }
+
+	/// The byte (relative to the beginning of the file) of the caret.
+    pub fn byte(&self) -> usize {
+        self.caret.byte
+    }
+
+	/// The column of the caret.
+    pub fn col(&self) -> usize {
+        self.caret.col
+    }
+
+	/// The row of the caret.
+    pub fn row(&self) -> usize {
+        self.caret.row
     }
 }
 

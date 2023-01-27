@@ -10,7 +10,7 @@ use crossterm::{
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    tags::{CursorStyle, Form},
+    tags::{form::CursorStyle, form::Form},
     ui::{self, Area, Container, Direction, Label, Split},
 };
 use unicode_width::UnicodeWidthChar;

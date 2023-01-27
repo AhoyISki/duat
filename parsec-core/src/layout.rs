@@ -11,7 +11,7 @@ use crate::{
     cursor::TextCursor,
     file::Text,
     input::{EditingScheme, FileRemapper},
-    tags::{FormPalette, MatchManager},
+    tags::{form::FormPalette, MatchManager},
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
 };
 

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     config::{Config, RwData},
-    tags::{CursorStyle, Form, FormPalette},
+    tags::form::{CursorStyle, Form, FormPalette},
 };
 
 pub trait Area: PartialEq + Eq + Clone + Copy {

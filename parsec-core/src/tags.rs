@@ -1,10 +1,8 @@
+pub mod form;
+
 use std::{ops::RangeInclusive, str};
 
 use bitflags::bitflags;
-use crossterm::{
-    cursor::SetCursorStyle,
-    style::{Attributes, Color, ContentStyle, Stylize},
-};
 use regex::Regex;
 use smallvec::SmallVec;
 
@@ -14,6 +12,8 @@ use crate::{
     file::TextLine,
     ui::{Area, Label},
 };
+
+use self::form::{FormFormer, FormPalette};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -49,70 +49,6 @@ pub enum CharTag {
     PermanentConceal { index: u16 },
 }
 
-pub(crate) struct FormFormer {
-    forms: Vec<(Form, u16)>,
-}
-
-impl FormFormer {
-    pub(crate) fn new() -> Self {
-        Self { forms: Vec::new() }
-    }
-
-    fn push_form(&mut self, form: Form, id: u16) -> Form {
-        self.forms.push((form, id));
-
-        self.make_form()
-    }
-
-    fn remove_form(&mut self, id: u16) -> Form {
-        if let Some((index, _)) = self.forms.iter().enumerate().rfind(|(_, &(_, i))| i == id) {
-            self.forms.remove(index);
-
-            self.make_form()
-        } else {
-            panic!("The id {} has yet to be pushed.", id);
-        }
-    }
-
-    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
-    pub fn make_form(&self) -> Form {
-        let style = ContentStyle {
-            foreground_color: Some(Color::Reset),
-            background_color: Some(Color::Reset),
-            underline_color: Some(Color::Reset),
-            attributes: Attributes::default(),
-        };
-
-        let mut form = Form { style, is_final: false };
-
-        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
-
-        for &(Form { style, is_final }, _) in &self.forms {
-            let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
-
-            let new_background = style.background_color;
-            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
-
-            let new_underline = style.underline_color;
-            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
-
-            if !attr_done {
-                form.style.attributes.extend(style.attributes);
-                if is_final {
-                    attr_done = true
-                }
-            }
-
-            if fg_done && bg_done && ul_done && attr_done {
-                break;
-            }
-        }
-
-        form
-    }
-}
-
 impl CharTag {
     pub(crate) fn trigger<L, A>(
         &self, label: &mut L, palette: &FormPalette, wrap_indent: usize,
@@ -124,7 +60,7 @@ impl CharTag {
     {
         match self {
             CharTag::PushForm(id) => {
-                label.set_form(form_former.push_form(palette.get(*id as usize), *id));
+                label.set_form(form_former.push_form(palette.get(*id)));
             }
             CharTag::PopForm(id) => label.set_form(form_former.remove_form(*id)),
 
@@ -136,15 +72,13 @@ impl CharTag {
 
             CharTag::MainCursor => label.place_primary_cursor(palette.main_cursor),
             CharTag::MainSelectionStart => {
-                label.set_form(form_former.push_form(palette.main_selection, MAIN_SELECTION_ID));
+                label.set_form(form_former.push_form(palette.get(MAIN_SELECTION_ID)));
             }
             CharTag::MainSelectionEnd => label.set_form(form_former.remove_form(MAIN_SELECTION_ID)),
 
-            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursors),
+            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursor),
             CharTag::SecondarySelectionStart => {
-                label.set_form(
-                    form_former.push_form(palette.secondary_selection, SECONDARY_SELECTION_ID),
-                );
+                label.set_form(form_former.push_form(palette.get(SECONDARY_SELECTION_ID)));
             }
             CharTag::SecondarySelectionEnd => {
                 label.set_form(form_former.remove_form(SECONDARY_SELECTION_ID))
@@ -265,108 +199,10 @@ pub enum Matcher {
     TsCapture(usize),
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-/// A style for text.
-pub struct Form {
-    pub style: ContentStyle,
-    /// Wether or not the `Form`s colors and attributes should override any that come after.
-    pub is_final: bool,
-}
-
-impl Form {
-    pub fn new(style: ContentStyle, is_final: bool) -> Self {
-        Self { style, is_final }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct CursorStyle {
-    /// An optional member when using application specific cursors.
-    pub caret: Option<SetCursorStyle>,
-    // NOTE: This is obligatory as a fallback for when the application can't render the
-    // cursor with `caret`.
-    /// To render the cursor as a form, not as an actual cursor.
-    pub form: Form,
-}
-
-impl CursorStyle {
-    pub fn new(caret: Option<SetCursorStyle>, form: Form) -> Self {
-        Self { caret, form }
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct ExtraForms(Vec<(String, Form)>);
-
 const MAIN_SELECTION_ID: u16 = 0;
 const SECONDARY_SELECTION_ID: u16 = 1;
 const LINE_NUMBERS_ID: u16 = 2;
 const MAIN_LINE_NUMBER_ID: u16 = 3;
-
-/// An expandable palette of forms to be used when rendering.
-#[derive(Clone)]
-pub struct FormPalette {
-    pub main_cursor: CursorStyle,
-    pub secondary_cursors: CursorStyle,
-    pub main_selection: Form,
-    pub secondary_selection: Form,
-    pub line_numbers: Form,
-    pub main_line_number: Form,
-    pub extra_forms: ExtraForms,
-}
-
-impl Default for FormPalette {
-    fn default() -> Self {
-        let cursor_form = CursorStyle::new(
-            Some(SetCursorStyle::DefaultUserShape),
-            Form::new(ContentStyle::new().reverse(), false),
-        );
-        Self {
-            line_numbers: Form::default(),
-            main_line_number: Form::default(),
-            main_cursor: cursor_form,
-            secondary_cursors: cursor_form,
-            main_selection: Form::new(ContentStyle::new().on_dark_grey(), false),
-            secondary_selection: Form::new(ContentStyle::new().on_dark_grey(), false),
-            extra_forms: ExtraForms::default(),
-        }
-    }
-}
-
-impl FormPalette {
-    /// Adds a new named `Form` to the list of user added `Form`s.
-    pub fn add_form<S>(&mut self, name: S, form: Form)
-    where
-        S: ToString,
-    {
-        let name = name.to_string();
-        if let None = self.extra_forms.0.iter().find(|(cmp, _)| *cmp == name) {
-            self.extra_forms.0.push((name.to_string(), form));
-        } else {
-            panic!("The form {} is already in use!", name);
-        }
-    }
-
-    // TODO: Extend this with the default forms.
-    /// Returns the `Form` associated to a given name with the index for efficient access.
-    pub fn get_from_name<S>(&self, name: S) -> Option<(Form, usize)>
-    where
-        S: ToString,
-    {
-        let name = name.to_string();
-        self.extra_forms
-            .0
-            .iter()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-            .map(|(index, &(_, form))| (form, index))
-    }
-
-    /// Returns a form, given an index.
-    pub fn get(&self, index: usize) -> Form {
-        self.extra_forms.0.get(index).map(|(_, form)| *form).expect("The id is not valid!")
-    }
-}
 
 impl PartialEq for Matcher {
     fn ne(&self, other: &Self) -> bool {
@@ -1058,18 +894,5 @@ impl MatchManager {
         found_form_pattern.form_matches.push(form_pattern);
 
         self.last_id
-    }
-}
-
-/// Internal method used only to shorten code in `make_form()`.
-fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
-where
-    T: Clone,
-{
-    if let (Some(new_var), false) = (maybe_new, &is_set) {
-        *var = Some(new_var.clone());
-        if is_final {
-            *is_set = true
-        };
     }
 }
