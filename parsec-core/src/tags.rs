@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use crate::{
     action::TextRange,
     cursor::TextPos,
-    file::TextLine,
+    text::TextLine,
     ui::{Area, Label},
 };
 

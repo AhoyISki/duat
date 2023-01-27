@@ -3,11 +3,11 @@ use std::{
     fmt::Display,
 };
 
-use super::file::TextLine;
 use crate::{
     action::{Moment, Splice, TextRange},
     get_byte_at_col,
     layout::{file_widget::FileWidget, Widget},
+    text::TextLine,
     ui::{EndNode, Ui},
 };
 
@@ -51,17 +51,17 @@ impl TextPos {
         }
     }
 
-	/// The byte (relative to the beginning of the file) of this `TextPos`.
+    /// The byte (relative to the beginning of the file) of this `TextPos`.
     pub fn byte(&self) -> usize {
         self.byte
     }
 
-	/// The column of this `TextPos`.
+    /// The column of this `TextPos`.
     pub fn col(&self) -> usize {
         self.col
     }
 
-	/// The row of this `TextPos`.
+    /// The row of this `TextPos`.
     pub fn row(&self) -> usize {
         self.row
     }
@@ -246,7 +246,9 @@ impl TextCursor {
     /// Internal absolute movement function. Assumes that `pos` is a valid position.
     pub(crate) fn move_to_calibrated<U>(
         &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<U>,
-    ) where U: Ui{
+    ) where
+        U: Ui,
+    {
         self.caret = pos;
         let line = lines.get(pos.row).unwrap();
 
@@ -336,17 +338,17 @@ impl TextCursor {
         }
     }
 
-	/// The byte (relative to the beginning of the file) of the caret.
+    /// The byte (relative to the beginning of the file) of the caret.
     pub fn byte(&self) -> usize {
         self.caret.byte
     }
 
-	/// The column of the caret.
+    /// The column of the caret.
     pub fn col(&self) -> usize {
         self.caret.col
     }
 
-	/// The row of the caret.
+    /// The row of the caret.
     pub fn row(&self) -> usize {
         self.caret.row
     }

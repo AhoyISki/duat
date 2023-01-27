@@ -9,7 +9,7 @@ use crossterm::event::{self, Event, KeyCode};
 use crate::{
     config::{Config, RoData, RwData},
     cursor::TextCursor,
-    file::Text,
+    text::Text,
     input::{EditingScheme, FileRemapper},
     tags::{form::FormPalette, MatchManager},
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},

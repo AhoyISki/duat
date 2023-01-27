@@ -100,11 +100,11 @@ impl FormFormer {
     }
 }
 
-pub(crate) const DEFAULT_ID: u16 = 0;
-pub(crate) const LINE_NUMBERS_ID: u16 = 1;
-pub(crate) const MAIN_LINE_NUMBER_ID: u16 = 2;
-pub(crate) const MAIN_SELECTION_ID: u16 = 3;
-pub(crate) const SECONDARY_SELECTION_ID: u16 = 4;
+pub const DEFAULT_ID: u16 = 0;
+pub const LINE_NUMBERS_ID: u16 = 1;
+pub const MAIN_LINE_NUMBER_ID: u16 = 2;
+pub const MAIN_SELECTION_ID: u16 = 3;
+pub const SECONDARY_SELECTION_ID: u16 = 4;
 
 /// The list of forms to be used when rendering.
 #[derive(Clone)]

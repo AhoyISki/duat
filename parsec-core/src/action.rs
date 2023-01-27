@@ -40,7 +40,7 @@ use std::{
 use crate::{
     cursor::{get_text_in_range, SpliceAdder, TextPos},
     empty_edit,
-    file::TextLine,
+    text::TextLine,
     get_byte_at_col,
     layout::file_widget::PrintInfo,
 };

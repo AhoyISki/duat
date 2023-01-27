@@ -1,7 +1,7 @@
 use crate::{
     config::{RoData, RwData},
     cursor::TextCursor,
-    file::{Text, TextLineBuilder},
+    text::{Text, TextLineBuilder},
     ui::{Area, EndNode, Label, NodeManager, Ui}, tags::form::{LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID, DEFAULT_ID},
 };
 

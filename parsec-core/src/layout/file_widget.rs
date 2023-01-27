@@ -8,7 +8,7 @@ use crate::{
     action::{Change, History, TextRange},
     config::{RoData, RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
-    file::{update_range, Text},
+    text::{update_range, Text},
     split_string_lines,
     tags::{CharTag, MatchManager},
     ui::{Area, EndNode, Label, Ui},
@@ -694,6 +694,11 @@ where
     /// The list of `TextCursor`s on the file.
     pub fn cursors(&self) -> RoData<Vec<TextCursor>> {
         (&self.cursors).into()
+    }
+
+	/// The main cursor of the file (in `RoData` form).
+    pub fn main_cursor_ref(&self) -> RoData<usize> {
+        (&self.main_cursor).into()
     }
 
     ////////// Status line convenience functions:

@@ -10,8 +10,18 @@ use crossterm::{
     terminal, ExecutableCommand, QueueableCommand,
 };
 use parsec_core::{
-    tags::{form::CursorStyle, form::Form},
-    ui::{self, Area, Container, Direction, Label, Split},
+    config::{RoData, RwData},
+    cursor::TextCursor,
+    layout::{
+        file_widget::{FileWidget, PrintedLines},
+        Widget,
+    },
+    tags::{
+        form::CursorStyle,
+        form::{Form, DEFAULT_ID},
+    },
+    text::{Text, TextLine, TextLineBuilder},
+    ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -374,5 +384,219 @@ fn split_by(len: u16, area: &mut TermArea, direction: Direction) -> TermArea {
             area.br.y -= len;
             TermArea { tl: Coord { x: area.tl.x, y: area.br.y }, br: old_br }
         }
+    }
+}
+
+pub enum SeparatorChar {
+    Uniform(char),
+    DifferentOnMain(char, char),
+    ThreeWay(char, char, char),
+}
+
+impl Default for SeparatorChar {
+    fn default() -> Self {
+        SeparatorChar::Uniform('│')
+    }
+}
+
+impl SeparatorChar {
+    fn get_char(&self, line_number: usize, main_line: usize) -> char {
+        match self {
+            SeparatorChar::Uniform(ch) => *ch,
+            SeparatorChar::DifferentOnMain(other_ch, main_ch) => {
+                if line_number == main_line {
+                    *main_ch
+                } else {
+                    *other_ch
+                }
+            }
+            SeparatorChar::ThreeWay(lower_ch, main_ch, higher_ch) => {
+                if line_number < main_line {
+                    *lower_ch
+                } else if line_number > main_line {
+                    *higher_ch
+                } else {
+                    *main_ch
+                }
+            }
+        }
+    }
+}
+
+pub enum SeparatorForm {
+    Uniform(TextLineBuilder),
+    DifferentOnMain(TextLineBuilder, TextLineBuilder),
+    ThreeWay(TextLineBuilder, TextLineBuilder, TextLineBuilder),
+}
+
+impl Default for SeparatorForm {
+    fn default() -> Self {
+        SeparatorForm::Uniform(TextLineBuilder::from([DEFAULT_ID, DEFAULT_ID]))
+    }
+}
+
+impl SeparatorForm {
+    pub fn uniform<U>(node: &RwData<EndNode<U>>, name: impl ToString) -> Self
+    where
+        U: Ui,
+    {
+        let node = node.read();
+        let palette = node.palette().read();
+        let (_, id) = palette.get_from_name(name);
+
+        SeparatorForm::Uniform(TextLineBuilder::from([id, DEFAULT_ID]))
+    }
+
+    pub fn different_on_main<U, S>(node: &RwData<EndNode<U>>, main_name: S, other_name: S) -> Self
+    where
+        U: Ui,
+        S: ToString,
+    {
+        let node = node.read();
+        let palette = node.palette().read();
+        let (_, main_id) = palette.get_from_name(main_name);
+        let (_, other_id) = palette.get_from_name(other_name);
+
+        SeparatorForm::DifferentOnMain(
+            TextLineBuilder::from([main_id, DEFAULT_ID]),
+            TextLineBuilder::from([other_id, DEFAULT_ID]),
+        )
+    }
+
+    pub fn three_way<U, S>(
+        node: &RwData<EndNode<U>>, main_name: S, lower_name: S, higher_name: S,
+    ) -> Self
+    where
+        U: Ui,
+        S: ToString,
+    {
+        let node = node.read();
+        let palette = node.palette().read();
+        let (_, main_id) = palette.get_from_name(main_name);
+        let (_, lower_id) = palette.get_from_name(lower_name);
+        let (_, higher_id) = palette.get_from_name(higher_name);
+
+        SeparatorForm::ThreeWay(
+            TextLineBuilder::from([main_id, DEFAULT_ID]),
+            TextLineBuilder::from([lower_id, DEFAULT_ID]),
+            TextLineBuilder::from([higher_id, DEFAULT_ID]),
+        )
+    }
+
+    fn form_text_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
+        match self {
+            SeparatorForm::Uniform(builder) => builder.form_text_line(text),
+            SeparatorForm::DifferentOnMain(other_builder, main_builder) => {
+                if line_number == main_line {
+                    main_builder.form_text_line(text)
+                } else {
+                    other_builder.form_text_line(text)
+                }
+            }
+            SeparatorForm::ThreeWay(lower_builder, main_builder, higher_builder) => {
+                if line_number < main_line {
+                    lower_builder.form_text_line(text)
+                } else if line_number > main_line {
+                    higher_builder.form_text_line(text)
+                } else {
+                    main_builder.form_text_line(text)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct VerticalRuleConfig {
+    separator_char: SeparatorChar,
+    separator_form: SeparatorForm,
+    print_on_empty: bool,
+}
+
+pub struct VerticalRule<U>
+where
+    U: Ui,
+{
+    node: RwData<EndNode<U>>,
+    printed_lines: PrintedLines<U>,
+    main_cursor: RoData<usize>,
+    cursors: RoData<Vec<TextCursor>>,
+    text: RwData<Text>,
+    vertical_rule_config: VerticalRuleConfig,
+}
+
+impl<U> VerticalRule<U>
+where
+    U: Ui + 'static,
+{
+    pub fn new(
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        vertical_rule_config: VerticalRuleConfig,
+    ) -> Box<dyn Widget<U>> {
+        let file_widget = file_widget.read();
+
+        let printed_lines = file_widget.printed_lines();
+        let main_cursor = file_widget.main_cursor_ref();
+        let cursors = file_widget.cursors();
+
+        Box::new(VerticalRule {
+            node,
+            printed_lines,
+            main_cursor,
+            cursors,
+            text: RwData::new(Text::default()),
+            vertical_rule_config,
+        })
+    }
+}
+
+unsafe impl<U> Send for VerticalRule<U> where U: Ui {}
+
+impl<U> Widget<U> for VerticalRule<U>
+where
+    U: Ui + 'static,
+{
+    fn end_node(&self) -> &RwData<EndNode<U>> {
+        &self.node
+    }
+
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
+        &mut self.node
+    }
+
+    fn update(&mut self) {
+        let node = self.node.read();
+        let label = node.label().read();
+        let area = label.area();
+        let mut text = self.text.write();
+        text.lines.clear();
+
+        let mut iterations = self.printed_lines.lines();
+        if self.vertical_rule_config.print_on_empty {
+            let element_beyond = *iterations.last().unwrap();
+            iterations.extend_from_slice(
+                vec![element_beyond; area.height().saturating_sub(iterations.len())].as_slice(),
+            );
+        }
+
+        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row();
+
+        for number in iterations {
+            let ch = self.vertical_rule_config.separator_char.get_char(number, main_line);
+
+            let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
+            let line =
+                self.vertical_rule_config.separator_form.form_text_line(number, main_line, line);
+
+            text.lines.push(line);
+        }
+    }
+
+    fn needs_update(&self) -> bool {
+        self.printed_lines.has_changed() || self.cursors.has_changed()
+    }
+
+    fn text(&self) -> RoData<Text> {
+        (&self.text).into()
     }
 }

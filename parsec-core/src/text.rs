@@ -451,7 +451,7 @@ impl<const N: usize> From<[u16; N]> for TextLineBuilder {
 /// The text in a given area.
 #[derive(Default)]
 pub struct Text {
-    pub(crate) lines: Vec<TextLine>,
+    pub lines: Vec<TextLine>,
     replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
     pub(crate) match_manager: Option<MatchManager>,
 }

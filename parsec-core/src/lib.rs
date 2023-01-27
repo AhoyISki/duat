@@ -3,7 +3,7 @@ use cursor::TextPos;
 pub mod action;
 pub mod config;
 pub mod cursor;
-mod text;
+pub mod text;
 pub mod input;
 pub mod layout;
 pub mod tags;

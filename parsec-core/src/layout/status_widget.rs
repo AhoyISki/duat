@@ -1,6 +1,6 @@
 use crate::{
     config::{RoData, RwData},
-    file::{Text, TextLine, TextLineBuilder},
+    text::{Text, TextLine, TextLineBuilder},
     ui::{EndNode, NodeManager, Ui}, tags::form::FormPalette,
 };
 
@@ -196,7 +196,7 @@ where
         self.printables.iter().any(|p| p.has_changed())
     }
 
-    fn text(&self) -> RoData<crate::file::Text> {
+    fn text(&self) -> RoData<Text> {
         RoData::from(&self.text)
     }
 
