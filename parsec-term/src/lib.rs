@@ -192,7 +192,7 @@ impl Label<TermArea> for TermLabel {
 
     fn set_form(&mut self, form: Form) {
         self.last_style = form.style;
-        self.stdout.queue(SetStyle(self.last_style)).unwrap();
+        self.stdout.queue(ResetColor).unwrap().queue(SetStyle(self.last_style)).unwrap();
     }
 
     fn get_char_len(&self, ch: char) -> usize {

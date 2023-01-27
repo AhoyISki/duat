@@ -2,7 +2,7 @@ use crate::{
     config::{RoData, RwData},
     cursor::TextCursor,
     file::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, NodeManager, Ui}, tags::form::{LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
+    ui::{Area, EndNode, Label, NodeManager, Ui}, tags::form::{LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID, DEFAULT_ID},
 };
 
 use super::{
@@ -54,8 +54,8 @@ where
             main_cursor,
             cursors,
             text: RwData::new(Text::default()),
-            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID]),
-            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID]),
+            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
+            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
             min_width,
             line_numbers_config,
         };
