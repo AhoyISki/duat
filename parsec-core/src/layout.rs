@@ -1,6 +1,6 @@
 pub mod file_widget;
-pub mod status_widget;
-pub mod line_numbers_widget;
+pub mod status_line;
+pub mod line_numbers;
 
 use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
@@ -17,7 +17,7 @@ use crate::{
 
 use self::{
     file_widget::{FileWidget, PrintInfo},
-    status_widget::StatusWidget,
+    status_line::StatusLine,
 };
 
 // TODO: Maybe set up the ability to print images as well.
@@ -26,15 +26,19 @@ pub trait Widget<U>: Send
 where
     U: Ui,
 {
-    /// Returns the `ChildNode` associated with this area.
+    /// Returns the `EndNode` associated with this area.
     fn end_node(&self) -> &RwData<EndNode<U>>;
 
+    /// Returns a mutable reference to the `EndNode` associated with this area.
     fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>>;
 
+	/// Updates the widget.
     fn update(&mut self);
 
+	/// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
 
+	/// The text that this widget prints out.
     fn text(&self) -> RoData<Text>;
 
     /// Returns the printing information of the file.
@@ -74,7 +78,7 @@ where
     U: Ui,
 {
     node_manager: NodeManager<U>,
-    pub status: StatusWidget<U>,
+    pub status: StatusLine<U>,
     widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
     files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
     future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
@@ -123,7 +127,7 @@ where
 
         let (master_node, end_node) = node_manager.split_end(&mut node, direction, split, false);
 
-        let status = StatusWidget::new(end_node, &mut node_manager);
+        let status = StatusLine::new(end_node, &mut node_manager);
 
         let layout = OneStatusLayout {
             node_manager,

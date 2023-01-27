@@ -1,7 +1,7 @@
 use crate::{
     config::{RoData, RwData},
-    text::{Text, TextLine, TextLineBuilder},
-    ui::{EndNode, NodeManager, Ui}, tags::form::FormPalette,
+    text::{Text, TextLineBuilder},
+    ui::{EndNode, NodeManager, Ui},
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -76,7 +76,7 @@ where
     }
 }
 
-pub struct StatusWidget<U>
+pub struct StatusLine<U>
 where
     U: Ui,
 {
@@ -89,12 +89,12 @@ where
     file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
 }
 
-impl<U> StatusWidget<U>
+impl<U> StatusLine<U>
 where
     U: Ui,
 {
     pub(super) fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
-        StatusWidget {
+        StatusLine {
             end_node,
             text: RwData::new(Text::default()),
             text_line_builder: TextLineBuilder::default(),
@@ -146,7 +146,7 @@ where
     }
 }
 
-impl<U> Widget<U> for StatusWidget<U>
+impl<U> Widget<U> for StatusLine<U>
 where
     U: Ui,
 {
@@ -203,7 +203,7 @@ where
     fn resize(&mut self, node: &EndNode<U>) {}
 }
 
-unsafe impl<U> Send for StatusWidget<U> where U: Ui {}
+unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 
 #[macro_export]
 macro_rules! form_status {

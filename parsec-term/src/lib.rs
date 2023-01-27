@@ -508,9 +508,9 @@ impl SeparatorForm {
 
 #[derive(Default)]
 pub struct VerticalRuleConfig {
-    separator_char: SeparatorChar,
-    separator_form: SeparatorForm,
-    print_on_empty: bool,
+    pub separator_char: SeparatorChar,
+    pub separator_form: SeparatorForm,
+    pub print_on_empty: bool,
 }
 
 pub struct VerticalRule<U>
@@ -529,6 +529,7 @@ impl<U> VerticalRule<U>
 where
     U: Ui + 'static,
 {
+    /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
     pub fn new(
         node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         vertical_rule_config: VerticalRuleConfig,
@@ -546,6 +547,26 @@ where
             cursors,
             text: RwData::new(Text::default()),
             vertical_rule_config,
+        })
+    }
+
+    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
+    pub fn default(
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+    ) -> Box<dyn Widget<U>> {
+        let file_widget = file_widget.read();
+
+        let printed_lines = file_widget.printed_lines();
+        let main_cursor = file_widget.main_cursor_ref();
+        let cursors = file_widget.cursors();
+
+        Box::new(VerticalRule {
+            node,
+            printed_lines,
+            main_cursor,
+            cursors,
+            text: RwData::new(Text::default()),
+            vertical_rule_config: VerticalRuleConfig::default(),
         })
     }
 }
@@ -573,7 +594,7 @@ where
 
         let mut iterations = self.printed_lines.lines();
         if self.vertical_rule_config.print_on_empty {
-            let element_beyond = *iterations.last().unwrap();
+            let element_beyond = *iterations.last().unwrap() + 1;
             iterations.extend_from_slice(
                 vec![element_beyond; area.height().saturating_sub(iterations.len())].as_slice(),
             );

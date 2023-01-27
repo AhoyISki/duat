@@ -15,7 +15,7 @@ use std::{
     fmt::{Alignment, Write},
 };
 
-pub struct LineNumbersWidget<U>
+pub struct LineNumbers<U>
 where
     U: Ui,
 {
@@ -30,9 +30,9 @@ where
     line_numbers_config: LineNumbersConfig,
 }
 
-unsafe impl<U> Send for LineNumbersWidget<U> where U: Ui {}
+unsafe impl<U> Send for LineNumbers<U> where U: Ui {}
 
-impl<U> LineNumbersWidget<U>
+impl<U> LineNumbers<U>
 where
     U: Ui + 'static,
 {
@@ -48,7 +48,7 @@ where
         let cursors = RoData::from(&file_widget.cursors);
         let min_width = node.read().label.read().area().width();
 
-        let mut line_numbers = LineNumbersWidget {
+        let mut line_numbers = LineNumbers {
             node,
             printed_lines,
             main_cursor,
@@ -68,6 +68,36 @@ where
         Box::new(line_numbers)
     }
 
+	pub fn default(
+        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+	) -> Box<dyn Widget<U>> {
+        let file_widget = file_widget.read();
+
+        let printed_lines = file_widget.printed_lines();
+        let main_cursor = RoData::from(&file_widget.main_cursor);
+        let cursors = RoData::from(&file_widget.cursors);
+        let min_width = node.read().label.read().area().width();
+
+        let mut line_numbers = LineNumbers {
+            node,
+            printed_lines,
+            main_cursor,
+            cursors,
+            text: RwData::new(Text::default()),
+            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
+            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
+            min_width,
+            line_numbers_config: LineNumbersConfig::default(),
+        };
+
+        let width = line_numbers.calculate_width();
+        line_numbers.node.write().request_width(width);
+
+        line_numbers.update();
+
+        Box::new(line_numbers)
+	}
+
     fn calculate_width(&self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
@@ -81,7 +111,7 @@ where
     }
 }
 
-impl<U> Widget<U> for LineNumbersWidget<U>
+impl<U> Widget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
 {
