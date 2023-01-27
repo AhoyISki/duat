@@ -13,7 +13,7 @@ use crate::{
     ui::{Area, Label},
 };
 
-use self::form::{FormFormer, FormPalette};
+use self::form::{FormFormer, FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -198,11 +198,6 @@ pub enum Matcher {
     /// A tree-sitter capture.
     TsCapture(usize),
 }
-
-const MAIN_SELECTION_ID: u16 = 0;
-const SECONDARY_SELECTION_ID: u16 = 1;
-const LINE_NUMBERS_ID: u16 = 2;
-const MAIN_LINE_NUMBER_ID: u16 = 3;
 
 impl PartialEq for Matcher {
     fn ne(&self, other: &Self) -> bool {

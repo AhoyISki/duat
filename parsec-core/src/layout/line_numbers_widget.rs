@@ -1,8 +1,8 @@
 use crate::{
     config::{RoData, RwData},
     cursor::TextCursor,
-    file::Text,
-    ui::{Area, EndNode, Label, NodeManager, Ui},
+    file::{Text, TextLineBuilder},
+    ui::{Area, EndNode, Label, NodeManager, Ui}, tags::form::{LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
 };
 
 use super::{
@@ -24,6 +24,8 @@ where
     main_cursor: RoData<usize>,
     cursors: RoData<Vec<TextCursor>>,
     text: RwData<Text>,
+    main_line_builder: TextLineBuilder,
+    other_line_builder: TextLineBuilder,
     min_width: usize,
     line_numbers_config: LineNumbersConfig,
 }
@@ -52,6 +54,8 @@ where
             main_cursor,
             cursors,
             text: RwData::new(Text::default()),
+            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID]),
+            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID]),
             min_width,
             line_numbers_config,
         };
@@ -88,10 +92,11 @@ where
         let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
 
-        // 3 is probably the average length of the numbers, in digits, plus 1 for each "\n".
-        let mut line_numbers = String::with_capacity(width * lines.len());
+		let mut text = self.text.write();
+		text.lines.clear();
 
         for line in lines.iter() {
+            let mut line_number = String::with_capacity(width + 5);
             let number = match self.line_numbers_config.numbering {
                 Numbering::Absolute => *line,
                 Numbering::Relative => usize::abs_diff(*line, main_line),
@@ -104,14 +109,16 @@ where
                 }
             };
             match self.line_numbers_config.alignment {
-                Alignment::Left => write!(&mut line_numbers, "{:<width$}\n", number).unwrap(),
-                Alignment::Right => write!(&mut line_numbers, "{:>width$}\n", number).unwrap(),
-                Alignment::Center => write!(&mut line_numbers, "{:^width$}\n", number).unwrap(),
+                Alignment::Left => write!(&mut line_number, "[]{:<width$}[]\n", number).unwrap(),
+                Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
+                Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
             }
+			if *line == main_line {
+    			text.lines.push(self.main_line_builder.form_text_line(line_number));
+			} else {
+    			text.lines.push(self.other_line_builder.form_text_line(line_number));
+			}
         }
-
-        let mut text = self.text.write();
-        *text = Text::new(line_numbers, None);
     }
 
     fn needs_update(&self) -> bool {

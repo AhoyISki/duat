@@ -442,6 +442,12 @@ impl TextLineBuilder {
 	}
 }
 
+impl<const N: usize> From<[u16; N]> for TextLineBuilder {
+    fn from(value: [u16; N]) -> Self {
+        Self { forms: Vec::from(value) }
+    }
+}
+
 /// The text in a given area.
 #[derive(Default)]
 pub struct Text {
