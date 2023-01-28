@@ -440,6 +440,17 @@ impl TextLineBuilder {
 
         TextLine { text: formless_text, info }
 	}
+
+	/// Makes it so this `TextLineBuilder` 
+	pub fn extend(&mut self, text: &mut String, palette: &FormPalette) {
+    	let builder = TextLineBuilder::format_and_create(text, palette);
+    	self.forms.extend_from_slice(&builder.forms);
+	}
+
+	/// Returns the amount of forms inserted into `TextLine`s.
+	pub fn form_count(&self) -> usize {
+    	self.forms.len()
+	}
 }
 
 impl<const N: usize> From<[u16; N]> for TextLineBuilder {

@@ -1,7 +1,7 @@
 use crate::{
     config::{RoData, RwData},
     text::{Text, TextLineBuilder},
-    ui::{EndNode, NodeManager, Ui},
+    ui::{EndNode, NodeManager, Ui, Label, Area},
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -82,8 +82,10 @@ where
 {
     end_node: RwData<EndNode<U>>,
     text: RwData<Text>,
+    left_text: String,
+    center_text: String,
+    right_text: String,
     text_line_builder: TextLineBuilder,
-    string: String,
     printables: Vec<Box<dyn DataToString>>,
     file: Option<RoData<FileWidget<U>>>,
     file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
@@ -97,8 +99,10 @@ where
         StatusLine {
             end_node,
             text: RwData::new(Text::default()),
+            left_text: String::new(),
+            center_text: String::new(),
+            right_text: String::new(),
             text_line_builder: TextLineBuilder::default(),
-            string: String::new(),
             printables: Vec::new(),
             file: None,
             file_printables: Vec::new(),
@@ -130,15 +134,37 @@ where
         self.file_printables.push(Box::new(function));
     }
 
-    pub fn set_string<T>(&mut self, text: T)
+    pub fn set_left_text<T>(&mut self, text: T)
     where
         T: ToString,
     {
-        let end_node= self.end_node.read();
+        let end_node = self.end_node.read();
         let palette = end_node.palette().read();
         let mut text = text.to_string();
         self.text_line_builder = TextLineBuilder::format_and_create(&mut text, &palette);
-        self.string = text;
+        self.left_text = text;
+    }
+
+    pub fn set_center_text<T>(&mut self, text: T)
+    where
+        T: ToString,
+    {
+        let end_node = self.end_node.read();
+        let palette = end_node.palette().read();
+        let mut text = text.to_string();
+        self.text_line_builder.extend(&mut text, &palette);
+        self.center_text = text;
+    }
+
+    pub fn set_right_text<T>(&mut self, text: T)
+    where
+        T: ToString,
+    {
+        let end_node = self.end_node.read();
+        let palette = end_node.palette().read();
+        let mut text = text.to_string();
+        self.text_line_builder.extend(&mut text, &palette);
+        self.right_text = text;
     }
 
     pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
@@ -159,37 +185,20 @@ where
     }
 
     fn update(&mut self) {
+        let print_diff = &mut 0;
+        let file_diff = &mut 0;
+
+        let left = format_into_status(&self.left_text, &self, print_diff, file_diff);
+        let center = format_into_status(&self.center_text, &self, print_diff, file_diff);
+        let right = format_into_status(&self.right_text, &self, print_diff, file_diff);
+        let width = self.end_node.read().label.read().area().width();
+        let form_count = self.text_line_builder.form_count();
+
+        let status = normalize_status(left, center, right, width, form_count);
+
         let mut text = self.text.write();
         text.lines.clear();
-        let mut final_string = self.string.clone();
-        let mut byte_diff = 0;
-
-        for (index, (mut pos, _)) in self.string.match_indices("{}").enumerate() {
-            if let Some(replacement) = &self.printables.get(index) {
-                let replacement = &replacement.to_string();
-                pos = pos.saturating_add_signed(byte_diff);
-                byte_diff += replacement.len() as isize - 2 as isize;
-                final_string.replace_range(pos..=(pos + 1), replacement)
-            } else {
-                panic!("There are not enough global_vars! One global_var per \"{{}}\"");
-            }
-        }
-
-        if let Some(file) = &self.file {
-            let file = file.read();
-            for (index, (mut pos, _)) in self.string.match_indices("()").enumerate() {
-                if let Some(replacement) = &self.file_printables.get(index) {
-                    let replacement = &(replacement)(&file);
-                    pos = pos.saturating_add_signed(byte_diff);
-                    byte_diff += replacement.len() as isize - 2 as isize;
-                    final_string.replace_range(pos..=(pos + 1), replacement)
-                } else {
-                    panic!("There are not enough file_vars! One file_var per \"()\"");
-                }
-            }
-        }
-
-        text.lines.push(self.text_line_builder.form_text_line(final_string));
+        text.lines.push(self.text_line_builder.form_text_line(status));
     }
 
     fn needs_update(&self) -> bool {
@@ -204,6 +213,77 @@ where
 }
 
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
+
+fn format_into_status<U>(
+    text: &String, status: &StatusLine<U>, print_diff: &mut usize, file_diff: &mut usize,
+) -> String
+where
+    U: Ui,
+{
+    let mut final_text = text.clone();
+
+    let (first_print_diff, first_file_diff) = (*print_diff, *file_diff);
+
+    for (index, (mut pos, _)) in text.match_indices("{}").enumerate() {
+        if let Some(replacement) = status.printables.get(index + first_print_diff) {
+            let replacement = &replacement.to_string();
+            let diff = final_text.len() as isize - text.len() as isize;
+            pos = pos.saturating_add_signed(diff);
+            final_text.replace_range(pos..=(pos + 1), replacement);
+
+            *print_diff += 1;
+        } else {
+            panic!("There are not enough global_vars! One global_var per \"{{}}\"");
+        }
+    }
+
+    if let Some(file) = &status.file {
+        let file = file.read();
+        for (index, (mut pos, _)) in text.match_indices("()").enumerate() {
+            if let Some(replacement) = &status.file_printables.get(index + first_file_diff) {
+                let replacement = &(replacement)(&file);
+                let diff = final_text.len() as isize - text.len() as isize;
+                pos = pos.saturating_add_signed(diff);
+                final_text.replace_range(pos..=(pos + 1), replacement);
+
+                *file_diff += 1;
+            } else {
+                panic!("There are not enough file_vars! One file_var per \"()\"");
+            }
+        }
+    }
+
+    final_text
+}
+
+fn normalize_status(
+    left: String, center: String, right: String, width: usize, form_count: usize,
+) -> String {
+    let left_forms = left.matches("[]").count();
+    let right_forms = right.matches("[]").count();
+    let total_len = left.len() + center.len() + right.len();
+    let mod_width = width + 2 * form_count;
+
+    if total_len - 2 * form_count <= width {
+        let center_dist = (mod_width - center.len()) / 2;
+        let center_dist = if left.len() + right_forms > center_dist {
+            left.len()
+        } else if right.len() + left_forms > center_dist {
+            2 * center_dist - right.len()
+        } else {
+            center_dist + left_forms - right_forms
+        };
+
+        let mut status = " ".repeat(mod_width);
+        status.replace_range(0..left.len(), left.as_str());
+        status.replace_range(center_dist..(center_dist + center.len()), center.as_str());
+        status.replace_range((mod_width - right.len())..mod_width, right.as_str());
+
+        status
+    } else {
+        todo!();
+    }
+}
 
 #[macro_export]
 macro_rules! form_status {
@@ -227,9 +307,13 @@ macro_rules! form_status {
         |$obj| { $internals.to_string() }
     };
 
+    (@tt_to_string: $text:expr) => {
+        $text
+    };
+
     (
-        $status:expr => $text:expr; global_vars: $($to_string:tt),*;
-        file_vars: $($file_to_string:tt),*
+        $status:expr => { left: $left:expr, center: $center:expr, right: $right:expr,
+        file_vars: [$($file_to_string:tt),*], global_vars: [$($to_string:tt),*]}
     ) => {
         $(
             $status.push_file_var(form_status!(@file_fun $file_to_string));
@@ -237,21 +321,10 @@ macro_rules! form_status {
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
         );*
-        $status.set_string($text);
-    };
 
-    ($status:expr => $text:expr; file_vars: $($file_to_string:tt),*) => {
-        $(
-            $status.push_file_var(form_status!(@file_fun $file_to_string));
-        );*
-        $status.set_string($text);
-    };
-
-    ($status:expr => $text:expr; global_vars: $($to_string:tt),*) => {
-        $(
-            $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
-        );*
-        $status.set_string($text);
+		$status.set_left_text($left);
+		$status.set_center_text($center);
+		$status.set_right_text($right);
     };
 }
 
