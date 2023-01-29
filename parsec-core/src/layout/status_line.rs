@@ -195,8 +195,12 @@ where
         let right = format_into_status(&self.right_text, &self, print_diff, file_diff);
         let width = self.end_node.read().label.read().area().width();
         let form_count = self.text_line_builder.form_count();
+        let end_node = self.end_node().read();
+        let label = end_node.label.read();
 
-        let status = normalize_status(left, center, right, width, form_count);
+        let status = normalize_status::<U>(left, center, right, width, form_count, &label);
+        drop(label);
+        drop(end_node);
 
         let mut text = self.text.write();
         text.lines.clear();
@@ -260,9 +264,16 @@ where
 
 // TODO: Unicodeify.
 // TODO: Handle now atomic widths.
-fn normalize_status(
-    left: String, center: String, right: String, width: usize, form_count: usize,
-) -> String {
+fn normalize_status<U>(
+    left: String, center: String, right: String, width: usize, form_count: usize, label: &U::Label,
+) -> String
+where
+    U: Ui,
+{
+    let left_len: usize = left.chars().map(|ch| label.get_char_len(ch)).sum();
+    let center_len: usize = center.chars().map(|ch| label.get_char_len(ch)).sum();
+    let right_len: usize = right.chars().map(|ch| label.get_char_len(ch)).sum();
+
     let left_forms: String = left.matches("[]").collect();
     let right_forms: String = right.matches("[]").collect();
     let center_forms: String = center.matches("[]").collect();
@@ -275,44 +286,46 @@ fn normalize_status(
     let mut status = " ".repeat(mod_width);
 
     // Print left, right, and center.
-    if left.len() + center.len() + right.len() <= mod_width {
-        let center_dist = (mod_width - center.len()) / 2;
-        let center_dist = if left.len() + right_form_count > center_dist {
-            left.len()
-        } else if right.len() + left_form_count > center_dist {
-            2 * center_dist - right.len()
+    if left_len + center_len + right_len <= mod_width {
+        let center_dist = (mod_width - center_len) / 2;
+        let center_dist = if left_len + right_form_count - left_form_count > center_dist {
+            left_len
+        } else if right_len + left_form_count - right_form_count > center_dist {
+            2 * center_dist - right_len
         } else {
             center_dist + left_form_count - right_form_count
         };
 
-        status.replace_range(0..left.len(), left.as_str());
-        status.replace_range(center_dist..(center_dist + center.len()), center.as_str());
-        status.replace_range((mod_width - right.len()).., right.as_str());
+        status.replace_range((mod_width - right_len).., right.as_str());
+        status.replace_range(center_dist..(center_dist + center_len), center.as_str());
+        status.replace_range(0..left_len, left.as_str());
 
     // Print just the left and right parts.
-    } else if left.len() + right.len() <= mod_width {
-        status.replace_range(0..left.len(), left.as_str());
+    } else if left_len + right_len <= mod_width {
         // We need to print the center, even while not printing the central part, in order to sync
         // correctly with the `TextLineBuilder`.
-        status.replace_range(left.len()..(left.len() + center_forms.len()), center_forms.as_str());
-        status.replace_range((mod_width - right.len()).., right.as_str());
+        status.replace_range((mod_width - right_len).., right.as_str());
+        status.replace_range(left_len..(left_len + center_forms.len()), center_forms.as_str());
+        status.replace_range(0..left_len, left.as_str());
 
     // Print as much of the right part as possible, cutting off from the left.
     } else {
         let mut adder = 0;
-        let (cutoff_byte, _) = right
+        let (split_byte, _) = right
             .char_indices()
             .rev()
             .take_while(|&(_, ch)| {
                 if ch != '[' && ch != ']' {
-                    adder += 1
+                    adder += label.get_char_len(ch);
                 };
                 adder <= width
             })
             .last()
             .unwrap();
 
-        let cut_right_forms: String = right[..cutoff_byte].matches("[]").collect();
+        let cut_right_forms: String = right[..split_byte].matches("[]").collect();
+
+        let printed_len: usize = right[split_byte..].chars().map(|ch| label.get_char_len(ch)).sum();
 
         let center_end = left_forms.len() + center_forms.len();
         let cut_right_end = center_end + cut_right_forms.len();
@@ -320,7 +333,7 @@ fn normalize_status(
         status.replace_range(0..left_forms.len(), left_forms.as_str());
         status.replace_range(left_forms.len()..center_end, center_forms.as_str());
         status.replace_range(center_end..cut_right_end, cut_right_forms.as_str());
-        status.replace_range((mod_width + cutoff_byte - right.len()).., &right[cutoff_byte..]);
+        status.replace_range((mod_width - printed_len).., &right[split_byte..]);
     }
 
     status
