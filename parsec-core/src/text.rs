@@ -191,28 +191,6 @@ impl TextLine {
         }
     }
 
-    // TODO: Eventually will include syntax highlighting, hover info, etc.
-    /// Updates the information for a line in the file.
-    ///
-    /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info_test<U>(&mut self, node: &EndNode<U>)
-    where
-        U: Ui,
-    {
-        let label = node.label.read();
-        let config = node.config().read();
-
-        self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
-        self.info.line_flags.set(
-            LineFlags::PURE_1_COL,
-            !self.text.chars().any(|c| label.get_char_len(c) > 1 || c == '\t'),
-        );
-
-        if !matches!(config.wrap_method, WrapMethod::NoWrap) {
-            self.parse_wrapping::<U>(&label, &config);
-        }
-    }
-
     pub fn parse_wrapping<U>(&mut self, label: &<U>::Label, config: &Config)
     where
         U: Ui,
@@ -236,7 +214,7 @@ impl TextLine {
 
                 indent_wrap = indent;
 
-                distance += area.width() - 1 - indent_wrap;
+                distance += area.width() - indent_wrap;
             }
         } else {
             for (index, ch) in self.text.char_indices() {
@@ -481,12 +459,6 @@ impl Text {
     pub fn update_lines(&mut self, node: &EndNode<impl Ui>) {
         for line in &mut self.lines {
             line.update_line_info(node);
-        }
-    }
-
-    pub fn update_lines_test(&mut self, node: &EndNode<impl Ui>) {
-        for line in &mut self.lines {
-            line.update_line_info_test(node);
         }
     }
 

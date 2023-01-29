@@ -667,7 +667,7 @@ where
     fn update(&mut self) {
         let mut node = self.node.write();
         let mut text = self.text.write();
-        text.update_lines_test(&mut node);
+        text.update_lines(&mut node);
         drop(node);
         drop(text);
         //self.match_scroll();
@@ -746,11 +746,11 @@ where
         } else {
             self.do_set_print_info = true;
         }
+        self.update();
         if self.do_add_cursor_tags {
             self.add_cursor_tags();
             self.do_add_cursor_tags = false
         }
-        self.update();
     }
 
     fn needs_update(&self) -> bool {
