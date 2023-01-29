@@ -1,7 +1,9 @@
+use std::cmp::min;
+
 use crate::{
     config::{RoData, RwData},
     text::{Text, TextLineBuilder},
-    ui::{EndNode, NodeManager, Ui, Label, Area},
+    ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -256,33 +258,72 @@ where
     final_text
 }
 
+// TODO: Unicodeify.
+// TODO: Handle now atomic widths.
 fn normalize_status(
     left: String, center: String, right: String, width: usize, form_count: usize,
 ) -> String {
-    let left_forms = left.matches("[]").count();
-    let right_forms = right.matches("[]").count();
-    let total_len = left.len() + center.len() + right.len();
+    let left_forms: String = left.matches("[]").collect();
+    let right_forms: String = right.matches("[]").collect();
+    let center_forms: String = center.matches("[]").collect();
+
+    let left_form_count = left_forms.len() / 2;
+    let right_form_count = right_forms.len() / 2;
+
     let mod_width = width + 2 * form_count;
 
-    if total_len - 2 * form_count <= width {
+    let mut status = " ".repeat(mod_width);
+
+    // Print left, right, and center.
+    if left.len() + center.len() + right.len() <= mod_width {
         let center_dist = (mod_width - center.len()) / 2;
-        let center_dist = if left.len() + right_forms > center_dist {
+        let center_dist = if left.len() + right_form_count > center_dist {
             left.len()
-        } else if right.len() + left_forms > center_dist {
+        } else if right.len() + left_form_count > center_dist {
             2 * center_dist - right.len()
         } else {
-            center_dist + left_forms - right_forms
+            center_dist + left_form_count - right_form_count
         };
 
-        let mut status = " ".repeat(mod_width);
         status.replace_range(0..left.len(), left.as_str());
         status.replace_range(center_dist..(center_dist + center.len()), center.as_str());
-        status.replace_range((mod_width - right.len())..mod_width, right.as_str());
+        status.replace_range((mod_width - right.len()).., right.as_str());
 
-        status
+    // Print just the left and right parts.
+    } else if left.len() + right.len() <= mod_width {
+        status.replace_range(0..left.len(), left.as_str());
+        // We need to print the center, even while not printing the central part, in order to sync
+        // correctly with the `TextLineBuilder`.
+        status.replace_range(left.len()..(left.len() + center_forms.len()), center_forms.as_str());
+        status.replace_range((mod_width - right.len()).., right.as_str());
+
+    // Print as much of the right part as possible, cutting off from the left.
     } else {
-        todo!();
+        let mut adder = 0;
+        let (cutoff_byte, _) = right
+            .char_indices()
+            .rev()
+            .take_while(|&(_, ch)| {
+                if ch != '[' && ch != ']' {
+                    adder += 1
+                };
+                adder <= width
+            })
+            .last()
+            .unwrap();
+
+        let cut_right_forms: String = right[..cutoff_byte].matches("[]").collect();
+
+        let center_end = left_forms.len() + center_forms.len();
+        let cut_right_end = center_end + cut_right_forms.len();
+
+        status.replace_range(0..left_forms.len(), left_forms.as_str());
+        status.replace_range(left_forms.len()..center_end, center_forms.as_str());
+        status.replace_range(center_end..cut_right_end, cut_right_forms.as_str());
+        status.replace_range((mod_width + cutoff_byte - right.len()).., &right[cutoff_byte..]);
     }
+
+    status
 }
 
 #[macro_export]
