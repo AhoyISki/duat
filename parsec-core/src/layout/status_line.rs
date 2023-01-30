@@ -346,15 +346,15 @@ macro_rules! form_status {
     (@get_obj (|$obj:ident| $internals:expr)) => {
         &$obj
     };
-    (@get_obj $obj:ident) => {
+    (@get_obj $obj:expr) => {
         &$obj
     };
 
     (@get_fun (|$obj:ident| $internals:expr)) => {
         |$obj| { $internals.read().to_string() }
     };
-    (@get_fun $obj:ident) => {
-        |$obj| { $obj.to_string() }
+    (@get_fun $obj:expr) => {
+        |data| { data.to_string() }
     };
 
     (@file_fun (|$obj:ident| $internals:expr)) => {

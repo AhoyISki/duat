@@ -1,11 +1,13 @@
+use std::fmt::Display;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     input::InputScheme,
     layout::file_widget::{FileEditor, FileWidget},
-    ui::{Direction, Ui},
+    ui::{Direction, Ui}, config::{RwData, RoData},
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
     Insert,
     Normal,
@@ -13,13 +15,24 @@ pub enum Mode {
     View,
 }
 
+impl Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Insert => f.write_fmt(format_args!("insert")),
+            Mode::Normal => f.write_fmt(format_args!("normal")),
+            Mode::Goto => f.write_fmt(format_args!("goto")),
+            Mode::View => f.write_fmt(format_args!("view")),
+        }
+    }
+}
+
 pub struct Editor {
-    cur_mode: Mode,
+    cur_mode: RwData<Mode>,
 }
 
 impl Editor {
     pub fn new() -> Self {
-        Editor { cur_mode: Mode::Insert }
+        Editor { cur_mode: RwData::new(Mode::Normal) }
     }
 
     fn match_insert<U>(
@@ -121,7 +134,7 @@ impl Editor {
             }
             KeyEvent { code: KeyCode::Tab, .. } => {
                 file.new_moment();
-                self.cur_mode = Mode::Normal;
+                *self.cur_mode.write() = Mode::Normal;
             }
             _ => {}
         }
@@ -165,16 +178,16 @@ impl Editor {
             ////////// Insertion keys.
             KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'i' => {
                 file_editor.move_each_cursor(|mut cursor| cursor.set_caret_on_start());
-                self.cur_mode = Mode::Insert;
+                *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'a' => {
                 file_editor.move_each_cursor(|mut cursor| cursor.set_caret_on_end());
-                self.cur_mode = Mode::Insert;
+                *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'c' => {
                 file_editor.edit_on_each_cursor(|mut cursor| file.replace(&mut cursor, ""));
                 file_editor.move_each_cursor(|mut cursor| cursor.unset_anchor());
-                self.cur_mode = Mode::Insert;
+                *self.cur_mode.write() = Mode::Insert;
             }
 
             ////////// History manipulation.
@@ -182,6 +195,10 @@ impl Editor {
             KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'U' => file.redo(),
             _ => {}
         }
+    }
+
+    pub fn cur_mode(&self) -> RoData<Mode> {
+        RoData::from(&self.cur_mode)
     }
 }
 
@@ -192,7 +209,8 @@ impl InputScheme for Editor {
     {
         let mut file_editor = file.file_editor();
 
-        match self.cur_mode {
+		let cur_mode = *self.cur_mode.read();
+        match cur_mode {
             Mode::Insert => self.match_insert(key, file_editor, file),
             Mode::Normal => self.match_normal(key, file_editor, file),
             _ => {}
@@ -200,7 +218,7 @@ impl InputScheme for Editor {
     }
 
     fn send_remapped_keys(&self) -> bool {
-        matches!(self.cur_mode, Mode::Insert)
+        matches!(*self.cur_mode.read(), Mode::Insert)
     }
 }
 
