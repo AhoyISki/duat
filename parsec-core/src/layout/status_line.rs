@@ -1,9 +1,7 @@
-use std::cmp::min;
-
 use crate::{
     config::{RoData, RwData},
     text::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, NodeManager, Ui},
+    ui::{Area, EndNode, Label, NodeManager, Ui}, log_info,
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -221,42 +219,40 @@ where
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 
 fn format_into_status<U>(
-    text: &String, status: &StatusLine<U>, print_diff: &mut usize, file_diff: &mut usize,
+    text: &String, status: &StatusLine<U>, global_index: &mut usize, file_index: &mut usize,
 ) -> String
 where
     U: Ui,
 {
     let mut final_text = text.clone();
 
-    let (first_print_diff, first_file_diff) = (*print_diff, *file_diff);
+    let mut vars: Vec<(usize, &str)> = text.match_indices("{}").collect();
+    vars.extend(text.match_indices("()"));
+    vars.sort_by_key(|&(pos, _)| pos);
 
-    for (index, (mut pos, _)) in text.match_indices("{}").enumerate() {
-        if let Some(replacement) = status.printables.get(index + first_print_diff) {
-            let replacement = &replacement.to_string();
-            let diff = final_text.len() as isize - text.len() as isize;
-            pos = pos.saturating_add_signed(diff);
-            final_text.replace_range(pos..=(pos + 1), replacement);
-
-            *print_diff += 1;
-        } else {
-            panic!("There are not enough global_vars! One global_var per \"{{}}\"");
-        }
-    }
-
-    if let Some(file) = &status.file {
-        let file = file.read();
-        for (index, (mut pos, _)) in text.match_indices("()").enumerate() {
-            if let Some(replacement) = &status.file_printables.get(index + first_file_diff) {
-                let replacement = &(replacement)(&file);
-                let diff = final_text.len() as isize - text.len() as isize;
-                pos = pos.saturating_add_signed(diff);
-                final_text.replace_range(pos..=(pos + 1), replacement);
-
-                *file_diff += 1;
+    let file = &status.file.as_ref().map(|file| file.read());
+    for (mut pos, var) in vars {
+        let replacement = if var == "{}" {
+            if let Some(replacement) = status.printables.get(*global_index) {
+                *global_index += 1;
+                replacement.to_string()
+            } else {
+                panic!("There are not enough global_vars! One global_var per \"{{}}\"");
+            }
+        } else if let Some(file) = file {
+            if let Some(replacement) = &status.file_printables.get(*file_index) {
+                *file_index += 1;
+                (replacement)(&file)
             } else {
                 panic!("There are not enough file_vars! One file_var per \"()\"");
             }
-        }
+        // Case for when this is a file_var, but no files are open.
+        } else {
+            String::from("")
+        };
+
+        pos = pos.saturating_add_signed(final_text.len() as isize - text.len() as isize);
+        final_text.replace_range(pos..=(pos + 1), replacement.as_str());
     }
 
     final_text

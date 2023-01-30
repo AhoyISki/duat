@@ -711,11 +711,15 @@ where
         FileEditor::new(self.cursors.clone(), self.main_cursor.clone())
     }
 
+	// TODO: Move the history to a general placement, taking in all the files.
+	/// The history associated with this file.
     pub fn history(&self) -> &History {
         &self.history
     }
 
+	/// Ends the current moment and starts a new one.
     pub fn new_moment(&mut self) {
+        self.cursors.write().iter_mut().for_each(|cursor| cursor.assoc_index = None);
         self.history.new_moment(*self.print_info.read());
     }
 
