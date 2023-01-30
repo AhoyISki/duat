@@ -42,7 +42,7 @@ use crate::{
     empty_edit,
     text::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo,
+    layout::file_widget::PrintInfo, log_info,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -445,6 +445,7 @@ impl History {
             });
             self.current_moment += 1;
         }
+        log_info!("{}", self.current_moment);
     }
 
     /// Moves forwards in the timeline.
@@ -452,9 +453,12 @@ impl History {
         if self.current_moment == self.moments.len() {
             return None;
         } else {
-            self.current_moment += 1;
-
-            return Some(&self.moments[self.current_moment - 1]);
+            if (&self.moments[self.current_moment + 1]).changes.is_empty() {
+                None
+            } else {
+                self.current_moment += 1;
+                Some(&self.moments[self.current_moment])
+            }
         }
     }
 
@@ -465,7 +469,12 @@ impl History {
         } else {
             self.current_moment -= 1;
 
-            Some(&self.moments[self.current_moment])
+            if (&self.moments[self.current_moment]).changes.is_empty() {
+                self.move_backwards()
+            } else {
+                Some(&self.moments[self.current_moment])
+            }
+
         }
     }
 }

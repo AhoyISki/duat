@@ -1,8 +1,7 @@
 use std::{
     cmp::{max, min},
     fs,
-    path::{Path, PathBuf},
-};
+    path::{Path, PathBuf}};
 
 use crate::{
     action::{Change, History, TextRange},
@@ -72,7 +71,7 @@ impl PrintInfo {
 
         for index in text.printed_lines(label.area().height(), self) {
             let line = &text.lines()[index];
-            let line_d = line.get_distance_to_col_node::<U>(line.char_count(), &label, &config);
+            let line_d = line.get_distance_to_col::<U>(line.char_count(), &label, &config);
             max_d = max(max_d, line_d);
         }
 
@@ -302,6 +301,10 @@ impl FileEditor {
     pub fn push(&mut self, cursor: TextCursor) {
         self.cursors.write().push(cursor);
     }
+
+    pub fn cursors_len(&self) -> usize {
+        self.cursors.read().len()
+    }
 }
 
 /// The widget that is used to print and edit files.
@@ -443,7 +446,7 @@ where
 
         if let WrapMethod::NoWrap = config.wrap_method {
             let target_line = &self.text.read().lines[target.row];
-            let distance = target_line.get_distance_to_col_node::<U>(target.col, &label, &config);
+            let distance = target_line.get_distance_to_col::<U>(target.col, &label, &config);
 
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > info.x_shift + width - config.scrolloff.d_x {
@@ -515,19 +518,40 @@ where
         };
     }
 
-    /// Edits the file with a cursor.
-    pub fn edit(&mut self, editor: &mut Editor, edit: impl ToString) {
-        //self.history.start_if_needed();
+	/// Replaces the entire selection of the `TextCursor` with new text.
+    pub fn replace(&mut self, editor: &mut Editor, edit: impl ToString) {
+        let text = self.text.read();
         let lines = split_string_lines(&edit.to_string());
-        let mut text = self.text.write();
-
         let change = Change::new(&lines, editor.cursor.range(), &text.lines);
+        let splice = change.splice;
+        drop(text);
+
+        self.edit(editor, change);
+
+        editor.set_cursor_on_splice(&splice, self);
+    }
+
+	/// Inserts new text directly behind the caret.
+    pub fn insert(&mut self, editor: &mut Editor, edit: impl ToString) {
+        let text = self.text.read();
+        let lines = split_string_lines(&edit.to_string());
+        let change = Change::new(&lines, TextRange::from(editor.cursor.caret()), &text.lines);
+        drop(text);
+
+        self.edit(editor, change);
+
+        editor.calibrate_end_anchor();
+    }
+
+    /// Edits the file with a cursor.
+    fn edit(&mut self, editor: &mut Editor, change: Change) {
+        let added_range = change.added_range();
+        let mut text = self.text.write();
         editor.splice_adder.calibrate(&change.splice);
 
         text.apply_change(&change);
         drop(text);
 
-        editor.set_cursor_on_splice(&change.splice, self);
         let assoc_index = editor.cursor.assoc_index;
         let (insertion_index, change_diff) =
             self.history.add_change(change, assoc_index, *self.print_info.read());
@@ -536,7 +560,7 @@ where
 
         let mut text = self.text.write();
         let max_line = max_line(&text, &self.print_info.read(), &self.node.read());
-        update_range(&mut text, editor.cursor.range(), max_line, &self.node.read());
+        update_range(&mut text, added_range, max_line, &self.node.read());
     }
 
     /// Undoes the last moment in history.
@@ -689,6 +713,10 @@ where
 
     pub fn history(&self) -> &History {
         &self.history
+    }
+
+    pub fn new_moment(&mut self) {
+        self.history.new_moment(*self.print_info.read());
     }
 
     /// The list of `TextCursor`s on the file.

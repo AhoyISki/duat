@@ -9,7 +9,7 @@ use crossterm::event::{self, Event, KeyCode};
 use crate::{
     config::{Config, RoData, RwData},
     cursor::TextCursor,
-    input::{EditingScheme, FileRemapper},
+    input::{InputScheme, FileRemapper},
     tags::{form::FormPalette, MatchManager},
     text::Text,
     ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui, Node},
@@ -111,7 +111,7 @@ where
     );
 
     /// The main application function.
-    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>);
+    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl InputScheme>);
 
     /// Returns a list of files, valid for this moment.
     fn files(&self) -> Vec<RoData<FileWidget<U>>>;
@@ -244,7 +244,7 @@ where
         self.future_file_widgets.push((Box::new(constructor), direction, split));
     }
 
-    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl EditingScheme>) {
+    fn application_loop(&mut self, key_remapper: &mut FileRemapper<impl InputScheme>) {
         self.node_manager.startup();
 
         // This mutex is only used to prevent multiple printings at the same time.

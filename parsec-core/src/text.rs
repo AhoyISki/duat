@@ -101,30 +101,6 @@ impl TextLine {
         width
     }
 
-    /// Returns the visual distance to a certain column.
-    pub fn get_distance_to_col_node<U>(
-        &self, col: usize, label: &U::Label, config: &Config,
-    ) -> usize
-    where
-        U: Ui,
-    {
-        let mut width = 0;
-
-        if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
-            width = col
-        } else {
-            for ch in self.text.chars().take(col) {
-                width += if ch == '\t' {
-                    config.tab_places.get_tab_len(width, label)
-                } else {
-                    label.get_char_len(ch)
-                };
-            }
-        }
-
-        width
-    }
-
     /// Returns the column and byte found at visual distance from 0. Also returns any leftovers.
     ///
     /// The leftover number is positive if the width of the characters is greater (happens if the
