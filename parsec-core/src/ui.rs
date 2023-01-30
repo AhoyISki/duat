@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     config::{Config, RwData},
-    tags::form::{CursorStyle, Form, FormPalette},
+    tags::form::{CursorStyle, Form, FormPalette}, FOR_TEST, log_info,
 };
 
 pub trait Area: PartialEq + Eq + Clone + Copy {
@@ -184,7 +184,9 @@ where
         let self_area = container.area();
 
         let first_area = &mut self.children.0.area();
+        if unsafe { FOR_TEST == 1 } { log_info!("\nfirst_area: {}", first_area) }
         let second_area = &mut self.children.1.area();
+        if unsafe { FOR_TEST == 1 } { log_info!("\nsecond_area: {}", second_area) }
         let second_direction = self.children.1.direction();
         let width = self.split.get_second_len(self_area.width());
 
@@ -413,7 +415,7 @@ impl Split {
 }
 
 /// The direction in which a secondary node was placed in relation to the first one.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Top,
     Right,
@@ -566,9 +568,20 @@ where
             is_second: raw_node.is_second,
         });
 
-        raw_node.parent = Some(mid_node.clone());
+        let old_parent = raw_node.parent.replace(mid_node.clone());
         raw_node.direction = direction.opposite();
         raw_node.sibling = Some(Node::EndNode(end_node.clone()));
+
+		drop(raw_node);
+        if let Some(mut parent) = old_parent {
+            let mut parent = parent.write();
+            if mid_node.read().is_second {
+                parent.children.1 = Node::MidNode(mid_node.clone());
+            } else {
+                parent.children.0 = Node::MidNode(mid_node.clone());
+            }
+        }
+
         end_node.write().parent = Some(mid_node.clone());
 
         (mid_node, end_node)
@@ -614,10 +627,20 @@ where
             is_second: raw_node.is_second,
         });
 
-        raw_node.parent = Some(mid_node.clone());
+        let old_parent = raw_node.parent.replace(mid_node.clone());
         raw_node.direction = direction.opposite();
         raw_node.sibling = Some(Node::EndNode(end_node.clone()));
         raw_node.resize_children().unwrap();
+
+		drop(raw_node);
+        if let Some(mut parent) = old_parent {
+            let mut parent = parent.write();
+            if mid_node.read().is_second {
+                parent.children.1 = Node::MidNode(mid_node.clone());
+            } else {
+                parent.children.0 = Node::MidNode(mid_node.clone());
+            }
+        }
 
         end_node.write().parent = Some(mid_node.clone());
 

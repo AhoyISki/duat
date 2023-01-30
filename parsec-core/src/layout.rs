@@ -1,6 +1,6 @@
 pub mod file_widget;
-pub mod status_line;
 pub mod line_numbers;
+pub mod status_line;
 
 use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
@@ -9,10 +9,11 @@ use crossterm::event::{self, Event, KeyCode};
 use crate::{
     config::{Config, RoData, RwData},
     cursor::TextCursor,
-    text::Text,
     input::{EditingScheme, FileRemapper},
     tags::{form::FormPalette, MatchManager},
-    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui},
+    text::Text,
+    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui, Node},
+    FOR_TEST, log_info,
 };
 
 use self::{
@@ -32,13 +33,13 @@ where
     /// Returns a mutable reference to the `EndNode` associated with this area.
     fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>>;
 
-	/// Updates the widget.
+    /// Updates the widget.
     fn update(&mut self);
 
-	/// Wether or not the widget needs to be updated.
+    /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
 
-	/// The text that this widget prints out.
+    /// The text that this widget prints out.
     fn text(&self) -> RoData<Text>;
 
     /// Returns the printing information of the file.
@@ -83,7 +84,7 @@ where
     files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
     future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
     master_node: RwData<MidNode<U>>,
-    empty_file: Option<RwData<EndNode<U>>>,
+    all_files_parent: Node<U>,
     match_manager: MatchManager,
 }
 
@@ -92,6 +93,9 @@ pub trait Layout<U>
 where
     U: Ui,
 {
+    /// Opens the initial list of files passed on as arguments.
+    fn open_arg_files(&mut self);
+
     /// Opens a new file in a new `FileWidget`.
     fn open_file(&mut self, path: &PathBuf);
 
@@ -136,7 +140,7 @@ where
             files: Vec::new(),
             future_file_widgets: Vec::new(),
             master_node,
-            empty_file: Some(node),
+            all_files_parent: Node::EndNode(node),
             match_manager,
         };
 
@@ -175,19 +179,46 @@ impl<U> Layout<U> for OneStatusLayout<U>
 where
     U: Ui + 'static,
 {
+    fn open_arg_files(&mut self) {
+        for file in std::env::args().skip(1) {
+            self.open_file(&PathBuf::from(file))
+        }
+        unsafe { FOR_TEST = 1 };
+        self.master_node.write().resize_children().unwrap();
+    }
+
     fn open_file(&mut self, path: &PathBuf) {
-        if let Some(node) = self.empty_file.take() {
-            self.new_file_with_node(path, node);
-        } else {
-            let (master_node, end_node) = self.node_manager.split_mid(
-                &mut self.master_node,
-                Direction::Right,
-                Split::Ratio(0.5),
-                false,
-            );
-            self.new_file_with_node(path, end_node);
-            self.master_node = master_node;
-        };
+        match &self.all_files_parent {
+            // If it is an `EndNode`, no file has been opened, or a file was opened without any
+            // widgets attached.
+            Node::EndNode(node) => {
+                if let Some(file) = self.files.get_mut(0) {
+                    let (all_files_parent, end_node) = self.node_manager.split_end(
+                        &mut file.0.write().node,
+                        Direction::Right,
+                        Split::Static(50),
+                        false,
+                    );
+                    self.new_file_with_node(path, end_node);
+                    self.all_files_parent = Node::MidNode(all_files_parent);
+                } else {
+                    self.new_file_with_node(path, node.clone());
+                    if let Some(node) = &self.files.last().as_ref().unwrap().1 {
+                        self.all_files_parent = Node::MidNode(node.clone());
+                    }
+                }
+            }
+            Node::MidNode(node) => {
+                let (all_files_parent, end_node) = self.node_manager.split_mid(
+                    &mut node.clone(),
+                    Direction::Right,
+                    Split::Static(50),
+                    false,
+                );
+                self.new_file_with_node(path, end_node);
+                self.all_files_parent = Node::MidNode(all_files_parent);
+            }
+        }
 
         self.status.set_file(RoData::from(&self.files.last().unwrap().0));
     }
