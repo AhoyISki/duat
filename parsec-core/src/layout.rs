@@ -1,6 +1,7 @@
 pub mod file_widget;
 pub mod line_numbers;
 pub mod status_line;
+pub mod command_line;
 
 use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
@@ -54,42 +55,11 @@ where
     fn resize(&mut self, node: &EndNode<U>) {}
 }
 
-/// An area where you can edit the text.
-pub trait EditArea<M>: Widget<M>
-where
-    M: Ui,
-{
-    /// Returns a mutable reference to the text.
-    fn mut_text(&mut self) -> &mut Text;
-
-    /// Gets the cursors on the area.
-    ///
-    /// # Returns
-    ///
-    /// * A list of cursors. This includes cursors that shouldn't be printed on screen.
-    /// * The index of the main cursor. Most of the time, this will be 0.
-    fn cursors(&mut self) -> (&mut Vec<TextCursor>, usize);
-}
-
 pub type WidgetFormer<U> =
     dyn Fn(RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>) -> Box<dyn Widget<U>>;
 
-pub struct OneStatusLayout<U>
-where
-    U: Ui,
-{
-    node_manager: NodeManager<U>,
-    pub status: StatusLine<U>,
-    widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
-    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
-    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
-    master_node: RwData<MidNode<U>>,
-    all_files_parent: Node<U>,
-    match_manager: MatchManager,
-}
-
 /// A form of organizing the areas on a window.
-pub trait Layout<U>
+pub trait Session<U>
 where
     U: Ui,
 {
@@ -117,7 +87,21 @@ where
     fn files(&self) -> Vec<RoData<FileWidget<U>>>;
 }
 
-impl<U> OneStatusLayout<U>
+pub struct OneStatusSession<U>
+where
+    U: Ui,
+{
+    node_manager: NodeManager<U>,
+    pub status: StatusLine<U>,
+    widgets: Vec<Mutex<Box<dyn Widget<U>>>>,
+    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
+    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
+    master_node: RwData<MidNode<U>>,
+    all_files_parent: Node<U>,
+    match_manager: MatchManager,
+}
+
+impl<U> OneStatusSession<U>
 where
     U: Ui + 'static,
 {
@@ -133,7 +117,7 @@ where
 
         let status = StatusLine::new(end_node, &mut node_manager);
 
-        let layout = OneStatusLayout {
+        let session = OneStatusSession {
             node_manager,
             status,
             widgets: Vec::new(),
@@ -144,7 +128,7 @@ where
             match_manager,
         };
 
-        layout
+        session
     }
 
     /// Creates or opens a new file in a given node.
@@ -175,7 +159,7 @@ where
     }
 }
 
-impl<U> Layout<U> for OneStatusLayout<U>
+impl<U> Session<U> for OneStatusSession<U>
 where
     U: Ui + 'static,
 {
