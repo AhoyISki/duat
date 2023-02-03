@@ -2,6 +2,14 @@ use std::{any::Any, error::Error, fmt::Display};
 
 use crate::config::RwData;
 
+pub trait Commander {
+    fn try_exec(
+        &mut self, cmd: &String, flags: &[String], args: &[String],
+    ) -> Result<Option<String>, CommandError>;
+
+    fn callers(&self) -> &[String];
+}
+
 /// A command that doesn't returns a `String` as a result.
 ///
 /// The command takes in two vectors of `String`s, the first one is the "flags" passed on to the
@@ -25,6 +33,8 @@ where
     function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
     /// A list of `String`s that act as callers for this `Command`.
     callers: Vec<String>,
+    /// The object that will be affected by `self.function`.
+    commandable: RwData<C>,
 }
 
 impl<C> Command<C>
@@ -33,62 +43,53 @@ where
 {
     pub fn new(
         function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
-        callers: Vec<String>,
+        callers: Vec<String>, commandable: RwData<C>,
     ) -> Self {
-        Self { function, callers }
+        Self { function, callers, commandable }
     }
 }
 
-pub struct CommandList<C>
+impl<C> Commander for Command<C>
 where
     C: ?Sized,
 {
-    commands: Vec<Command<C>>,
-    commandable: RwData<C>,
-}
-
-impl<C> CommandList<C>
-where
-    C: ?Sized,
-{
-    /// Returns a new instance of `CommandList`.
-    pub fn new(commands: Vec<Command<C>>, commandable: RwData<C>) -> Self {
-        CommandList { commands, commandable }
-    }
-
-    /// Tries to execute a given command.
-    pub(crate) fn try_exec(
+    fn try_exec(
         &mut self, cmd: &String, flags: &[String], args: &[String],
     ) -> Result<Option<String>, CommandError> {
-        for command in &mut self.commands {
-            if command.callers.contains(&cmd) {
-                return (command.function)(&mut self.commandable.write(), flags, args)
-                    .map_err(|err| CommandError::Failed(cmd.clone()));
-            }
+        if self.callers.contains(&cmd) {
+            return (self.function)(&mut self.commandable.write(), flags, args)
+                .map_err(|err| CommandError::Failed(err));
+        } else {
+            return Err(CommandError::NotFound(cmd.clone()));
         }
+    }
 
-        Err(CommandError::NotFound(cmd.clone()))
+    fn callers(&self) -> &[String] {
+        &self.callers
     }
 }
 
 /// A list of `CommandList`s, that can execute commands on any of them.
 #[derive(Default)]
-pub struct CommandListList {
-    lists: Vec<Box<CommandList<dyn Any>>>,
+pub struct CommandList {
+    commands: Vec<Box<dyn Commander>>,
 }
 
-impl CommandListList {
+impl CommandList {
     /// Returns a new instance of `CommandListList`.
-    pub fn new(command_list: CommandList<dyn Any>) -> Self {
-        CommandListList { lists: vec![Box::new(command_list)] }
+    pub fn new<C>(command: Box<C>) -> Self
+    where
+        C: Commander + 'static,
+    {
+        CommandList { commands: vec![command] }
     }
 
     /// Tries to execute a given command on any of its lists.
     pub(crate) fn try_exec(
         &mut self, cmd: String, flags: Vec<String>, args: Vec<String>,
     ) -> Result<Option<String>, CommandError> {
-        for command_list in &mut self.lists {
-            let result = command_list.try_exec(&cmd, flags.as_slice(), args.as_slice());
+        for command in &mut self.commands {
+            let result = command.try_exec(&cmd, flags.as_slice(), args.as_slice());
             let Err(CommandError::NotFound(_)) = result else {
                 return result;
             };
@@ -98,20 +99,16 @@ impl CommandListList {
     }
 
     /// Tries to add a new `CommandList`. Returns an error if any of its commands already exists.
-    pub(crate) fn try_add(
-        &mut self, command_list: CommandList<dyn Any>,
-    ) -> Result<(), CommandError> {
-        let mut new_callers = command_list.commands.iter().map(|cmd| &cmd.callers).flatten();
+    pub(crate) fn try_add(&mut self, command: Box<dyn Commander>) -> Result<(), CommandError> {
+        let mut new_callers = command.callers().iter();
 
-        for caller in
-            self.lists.iter().map(|list| &list.commands).flatten().map(|cmd| &cmd.callers).flatten()
-        {
+        for caller in self.commands.iter().map(|cmd| cmd.callers()).flatten() {
             if new_callers.any(|new_caller| new_caller == caller) {
                 return Err(CommandError::AlreadyExists(caller.clone()));
             }
         }
 
-        self.lists.push(Box::new(command_list));
+        self.commands.push(command);
 
         Ok(())
     }

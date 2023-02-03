@@ -17,7 +17,7 @@ use crate::{
 };
 
 use self::{
-    command_line::{Command, CommandList, CommandListList},
+    command_line::{Command, CommandList},
     file_widget::{FileWidget, PrintInfo},
     status_line::StatusLine,
 };
@@ -55,7 +55,7 @@ where
     fn resize(&mut self, node: &EndNode<U>) {}
 
     /// If the `Widget` implements `Commandable`. Should return `Some(widget)`
-    fn command_list(&mut self) -> Option<CommandList<dyn Widget<U>>> {
+    fn command_list(&mut self) -> Option<CommandList> {
         None
     }
 }
@@ -104,8 +104,8 @@ where
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
-    global_commands: CommandListList,
-    should_quit: bool,
+    session_control: RwData<SessionControl>,
+    global_commands: CommandList,
 }
 
 impl<U> OneStatusSession<U>
@@ -124,6 +124,12 @@ where
 
         let status = StatusLine::new(end_node, &mut node_manager);
 
+        let session_control = RwData::new(SessionControl::default());
+        let mut command_list = CommandList::default();
+        for command in session_commands::<U>(session_control.clone()) {
+            command_list.try_add(Box::new(command));
+        }
+
         let session = OneStatusSession {
             node_manager,
             status,
@@ -133,8 +139,8 @@ where
             master_node,
             all_files_parent: Node::EndNode(node),
             match_manager,
-            global_commands: CommandListList::default(),
-            should_quit: false,
+            session_control: RwData::new(SessionControl::default()),
+            global_commands: command_list,
         };
 
         session
@@ -331,33 +337,7 @@ pub struct SessionControl {
     files_to_open: Option<Vec<PathBuf>>,
 }
 
-impl SessionControl {
-    pub fn commands<U>(&mut self) -> Vec<Command<Self>>
-    where
-        U: Ui,
-    {
-        let quit_callers = vec![String::from("quit"), String::from("q")];
-        let quit_command = Command::new(
-            Box::new(|session: &mut SessionControl, _, _| {
-                session.should_quit = true;
-                Ok(None)
-            }),
-            quit_callers,
-        );
-
-        let open_file_callers = vec![String::from("edit"), String::from("e")];
-        let open_file_command = Command::new(
-            Box::new(|session: &mut SessionControl, _, files| {
-                session.files_to_open =
-                    Some(files.into_iter().map(|file| PathBuf::from(file)).collect());
-                Ok(None)
-            }),
-            open_file_callers,
-        );
-
-        vec![quit_command, open_file_command]
-    }
-}
+impl SessionControl {}
 
 /// Prints all the files.
 fn print_files<U>(printer: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
@@ -398,4 +378,32 @@ where
 {
     let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
     widget.text().read().print(&mut widget.end_node_mut().write(), print_info);
+}
+
+pub fn session_commands<U>(session: RwData<SessionControl>) -> Vec<Command<SessionControl>>
+where
+    U: Ui,
+{
+    let quit_callers = vec![String::from("quit"), String::from("q")];
+    let quit_command = Command::new(
+        Box::new(|session: &mut SessionControl, _, _| {
+            session.should_quit = true;
+            Ok(None)
+        }),
+        quit_callers,
+        session.clone(),
+    );
+
+    let open_file_callers = vec![String::from("edit"), String::from("e")];
+    let open_file_command = Command::new(
+        Box::new(|session: &mut SessionControl, _, files| {
+            session.files_to_open =
+                Some(files.into_iter().map(|file| PathBuf::from(file)).collect());
+            Ok(None)
+        }),
+        open_file_callers,
+        session.clone(),
+    );
+
+    vec![quit_command, open_file_command]
 }
