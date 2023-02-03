@@ -19,6 +19,7 @@ imports_layout = "Mixed"
 indent_style = "Block"
 merge_derives = true
 newline_style = "Auto"
+overflow_delimited_expr = true
 reorder_impl_items = true
 short_array_element_width_threshold = 10
 single_line_if_else_max_width = 99

@@ -1,7 +1,7 @@
+pub mod command_line;
 pub mod file_widget;
 pub mod line_numbers;
 pub mod status_line;
-pub mod command_line;
 
 use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
@@ -9,15 +9,15 @@ use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
     config::{Config, RoData, RwData},
-    cursor::TextCursor,
-    input::{InputScheme, FileRemapper},
+    input::{FileRemapper, InputScheme},
     tags::{form::FormPalette, MatchManager},
     text::Text,
-    ui::{Direction, EndNode, MidNode, NodeManager, Split, Ui, Node},
-    FOR_TEST, log_info,
+    ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui},
+    FOR_TEST,
 };
 
 use self::{
+    command_line::{Command, CommandList, CommandListList},
     file_widget::{FileWidget, PrintInfo},
     status_line::StatusLine,
 };
@@ -53,6 +53,11 @@ where
 
     /// Adapts a given text to a new size for its given area.
     fn resize(&mut self, node: &EndNode<U>) {}
+
+    /// If the `Widget` implements `Commandable`. Should return `Some(widget)`
+    fn command_list(&mut self) -> Option<CommandList<dyn Widget<U>>> {
+        None
+    }
 }
 
 pub type WidgetFormer<U> =
@@ -70,10 +75,10 @@ where
     fn open_file(&mut self, path: &PathBuf);
 
     /// Pushes a node to an edge of the screen, with all the files in the center.
-    fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    fn push_node_to_edge<N, C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: Widget<U> + 'static,
-        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> P;
+        N: Widget<U> + 'static,
+        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> N;
 
     /// Pushes a node to the edge of every future `FileWidget`.
     fn push_node_to_file(
@@ -99,6 +104,8 @@ where
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
+    global_commands: CommandListList,
+    should_quit: bool,
 }
 
 impl<U> OneStatusSession<U>
@@ -126,6 +133,8 @@ where
             master_node,
             all_files_parent: Node::EndNode(node),
             match_manager,
+            global_commands: CommandListList::default(),
+            should_quit: false,
         };
 
         session
@@ -313,6 +322,40 @@ where
 
     fn files(&self) -> Vec<RoData<FileWidget<U>>> {
         self.files.iter().map(|(f, ..)| RoData::from(f)).collect()
+    }
+}
+
+#[derive(Default)]
+pub struct SessionControl {
+    should_quit: bool,
+    files_to_open: Option<Vec<PathBuf>>,
+}
+
+impl SessionControl {
+    pub fn commands<U>(&mut self) -> Vec<Command<Self>>
+    where
+        U: Ui,
+    {
+        let quit_callers = vec![String::from("quit"), String::from("q")];
+        let quit_command = Command::new(
+            Box::new(|session: &mut SessionControl, _, _| {
+                session.should_quit = true;
+                Ok(None)
+            }),
+            quit_callers,
+        );
+
+        let open_file_callers = vec![String::from("edit"), String::from("e")];
+        let open_file_command = Command::new(
+            Box::new(|session: &mut SessionControl, _, files| {
+                session.files_to_open =
+                    Some(files.into_iter().map(|file| PathBuf::from(file)).collect());
+                Ok(None)
+            }),
+            open_file_callers,
+        );
+
+        vec![quit_command, open_file_command]
     }
 }
 
