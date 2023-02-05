@@ -47,6 +47,8 @@ where
         None
     }
 
+    fn print(&mut self);
+
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, d_y: i32) {}
 
@@ -191,7 +193,7 @@ where
             Node::EndNode(node) => {
                 if let Some(file) = self.files.get_mut(0) {
                     let (all_files_parent, end_node) = self.node_manager.split_end(
-                        &mut file.0.write().node,
+                        &mut file.0.write().end_node_mut(),
                         Direction::Right,
                         Split::Static(50),
                         false,
@@ -249,12 +251,12 @@ where
 
         // Initial printing.
         self.status.update();
-        print_widget(&mut self.status);
+        self.status.print();
         print_files(&mut self.files);
         for widget in &self.widgets {
             let mut widget = widget.lock().unwrap();
             widget.update();
-            print_widget(Box::as_mut(&mut widget));
+            widget.print();
         }
 
         let resize_requested = Mutex::new(true);
@@ -275,7 +277,7 @@ where
                         let _printer_lock = printer.lock().unwrap();
                         for widget in &self.widgets {
                             if let Ok(mut widget) = widget.try_lock() {
-                                print_widget(Box::as_mut(&mut widget));
+                                widget.print();
                             }
                         }
                         print_files(&mut self.files);
@@ -297,7 +299,7 @@ where
 
                 self.status.update();
                 let printer_lock = printer.lock().unwrap();
-                print_widget(&mut self.status);
+                self.status.print();
                 print_files(&mut self.files);
                 drop(printer_lock);
                 iteration = 0;
@@ -314,7 +316,7 @@ where
                         if !widget_resized {
                             drop(resize_requested);
                             let _printer_lock = printer.lock().unwrap();
-                            print_widget(Box::as_mut(&mut widget));
+                            widget.print();
                         }
                     });
                 }
@@ -336,8 +338,6 @@ pub struct SessionControl {
     go_to_command_line: bool
 }
 
-impl SessionControl {}
-
 /// Prints all the files.
 fn print_files<U>(printer: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
 where
@@ -346,8 +346,7 @@ where
     for (file_widget, _) in printer.iter_mut() {
         let mut file_widget = file_widget.write();
         file_widget.update();
-        let print_info = file_widget.print_info().map(|p| *p.read()).unwrap_or_default();
-        file_widget.text().read().print(&mut file_widget.end_node_mut().write(), print_info);
+        file_widget.print();
     }
 }
 
@@ -368,15 +367,6 @@ where
     }
 
     indices
-}
-
-fn print_widget<W, U>(widget: &mut W)
-where
-    W: Widget<U> + ?Sized,
-    U: Ui,
-{
-    let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
-    widget.text().print(&mut widget.end_node_mut().write(), print_info);
 }
 
 pub fn session_commands<U>(session: RwData<SessionControl>) -> Vec<Command<SessionControl>>

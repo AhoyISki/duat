@@ -4,7 +4,7 @@ use crate::{
     ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{file_widget::FileWidget, Widget};
+use super::{file_widget::{FileWidget, PrintInfo}, Widget};
 
 pub trait DataToString {
     /// Converts the data to a `String`, usually through an embedded function.
@@ -81,7 +81,7 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
-    text: RwData<Text>,
+    text: Text,
     left_text: String,
     center_text: String,
     right_text: String,
@@ -98,7 +98,7 @@ where
     pub(super) fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
         StatusLine {
             end_node,
-            text: RwData::new(Text::default()),
+            text: Text::default(),
             left_text: String::new(),
             center_text: String::new(),
             right_text: String::new(),
@@ -200,9 +200,8 @@ where
         drop(label);
         drop(end_node);
 
-        let mut text = self.text.write();
-        text.lines.clear();
-        text.lines.push(self.text_line_builder.form_text_line(status));
+        self.text.lines.clear();
+        self.text.lines.push(self.text_line_builder.form_text_line(status));
     }
 
     fn needs_update(&self) -> bool {
@@ -211,6 +210,10 @@ where
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn print(&mut self) {
+        self.text.print(&mut self.end_node.write(), PrintInfo::default());
     }
 
     fn resize(&mut self, node: &EndNode<U>) {}

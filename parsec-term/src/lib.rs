@@ -12,16 +12,13 @@ use crossterm::{
 use parsec_core::{
     config::{RoData, RwData},
     cursor::TextCursor,
-    widgets::{
-        file_widget::{FileWidget, PrintedLines},
-        Widget,
-    },
     tags::{
         form::CursorStyle,
         form::{Form, DEFAULT_ID},
     },
     text::{Text, TextLine, TextLineBuilder},
     ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
+    widgets::{file_widget::{FileWidget, PrintInfo}, Widget},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -483,7 +480,7 @@ impl SeparatorForm {
         )
     }
 
-    fn form_text_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
+    fn form_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
         match self {
             SeparatorForm::Uniform(builder) => builder.form_text_line(text),
             SeparatorForm::DifferentOnMain(other_builder, main_builder) => {
@@ -517,11 +514,9 @@ pub struct VerticalRule<U>
 where
     U: Ui,
 {
-    node: RwData<EndNode<U>>,
-    printed_lines: PrintedLines<U>,
-    main_cursor: RoData<usize>,
-    cursors: RoData<Vec<TextCursor>>,
-    text: RwData<Text>,
+    end_node: RwData<EndNode<U>>,
+    file: RoData<FileWidget<U>>,
+    text: Text,
     vertical_rule_config: VerticalRuleConfig,
 }
 
@@ -531,41 +526,24 @@ where
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
     pub fn new(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         vertical_rule_config: VerticalRuleConfig,
     ) -> Box<dyn Widget<U>> {
-        let file_widget = file_widget.read();
+        let file = RoData::from(&file_widget);
 
-        let printed_lines = file_widget.printed_lines();
-        let main_cursor = file_widget.main_cursor_ref();
-        let cursors = file_widget.cursors();
-
-        Box::new(VerticalRule {
-            node,
-            printed_lines,
-            main_cursor,
-            cursors,
-            text: RwData::new(Text::default()),
-            vertical_rule_config,
-        })
+        Box::new(VerticalRule { end_node, file, text: Text::default(), vertical_rule_config })
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(
         node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
     ) -> Box<dyn Widget<U>> {
-        let file_widget = file_widget.read();
-
-        let printed_lines = file_widget.printed_lines();
-        let main_cursor = file_widget.main_cursor_ref();
-        let cursors = file_widget.cursors();
+        let file = RoData::from(&file_widget);
 
         Box::new(VerticalRule {
-            node,
-            printed_lines,
-            main_cursor,
-            cursors,
-            text: RwData::new(Text::default()),
+            end_node: node,
+            file,
+            text: Text::default(),
             vertical_rule_config: VerticalRuleConfig::default(),
         })
     }
@@ -578,21 +556,22 @@ where
     U: Ui + 'static,
 {
     fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.node
+        &self.end_node
     }
 
     fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.node
+        &mut self.end_node
     }
 
     fn update(&mut self) {
-        let node = self.node.read();
+        let file = self.file.read();
+        let node = self.end_node.read();
         let label = node.label().read();
         let area = label.area();
-        let mut text = self.text.write();
-        text.lines.clear();
 
-        let mut iterations = self.printed_lines.lines();
+        self.text.lines.clear();
+
+        let mut iterations = file.printed_lines();
         if self.vertical_rule_config.print_on_empty {
             let element_beyond = *iterations.last().unwrap() + 1;
             iterations.extend_from_slice(
@@ -600,24 +579,27 @@ where
             );
         }
 
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row();
+        let main_line = file.main_cursor().row();
 
         for number in iterations {
             let ch = self.vertical_rule_config.separator_char.get_char(number, main_line);
 
             let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
-            let line =
-                self.vertical_rule_config.separator_form.form_text_line(number, main_line, line);
+            let line = self.vertical_rule_config.separator_form.form_line(number, main_line, line);
 
-            text.lines.push(line);
+            self.text.lines.push(line);
         }
     }
 
     fn needs_update(&self) -> bool {
-        self.printed_lines.has_changed() || self.cursors.has_changed()
+        self.file.has_changed()
     }
 
-    fn text(&self) -> RoData<Text> {
-        (&self.text).into()
+    fn text(&self) -> &Text {
+        &self.text
+    }
+
+    fn print(&mut self) {
+        self.text.print(&mut self.end_node.write(), PrintInfo::default());
     }
 }

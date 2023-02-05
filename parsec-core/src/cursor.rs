@@ -369,7 +369,6 @@ impl<'a> Editor<'a> {
         let caret = &mut self.cursor.caret;
         let end_node = &file_widget.end_node().read();
         let text = file_widget.text();
-        let text = text.read();
         if let Some(anchor) = &mut self.cursor.anchor {
             if anchor > caret {
                 self.cursor.move_to_calibrated(splice.added_end, &text.lines, end_node);
@@ -410,7 +409,7 @@ impl<'a> Mover<'a> {
 
     /// Moves the cursor vertically on the file. May also cause horizontal movement.
     pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_ver(count, file.text().read().lines(), &file.end_node().read());
+        self.0.move_ver(count, file.text().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }
@@ -418,7 +417,7 @@ impl<'a> Mover<'a> {
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_hor(count, file.text().read().lines(), &file.end_node().read());
+        self.0.move_hor(count, file.text().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }
@@ -429,7 +428,7 @@ impl<'a> Mover<'a> {
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: TextPos, file: &FileWidget<impl Ui>) {
-        self.0.move_to(caret, file.text().read().lines(), &file.end_node().read());
+        self.0.move_to(caret, file.text().lines(), &file.end_node().read());
         if let Some(moment) = file.history().current_moment() {
             self.0.change_range_check(moment)
         }

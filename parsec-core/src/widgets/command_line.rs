@@ -6,7 +6,7 @@ use crate::{
     ui::{EndNode, Ui},
 };
 
-use super::Widget;
+use super::{Widget, file_widget::PrintInfo};
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -132,7 +132,7 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
-    text: RwData<Text>,
+    text: Text,
     command_list: RwData<CommandList>
 }
 
@@ -157,7 +157,11 @@ where
     }
 
     fn text(&self) -> &Text {
-        todo!()
+        &self.text
+    }
+
+    fn print(&mut self) {
+        self.text.print(&mut self.end_node.write(), PrintInfo::default());
     }
 }
 

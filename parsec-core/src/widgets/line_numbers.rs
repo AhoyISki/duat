@@ -1,14 +1,11 @@
 use crate::{
     config::{RoData, RwData},
-    cursor::TextCursor,
+    tags::form::{DEFAULT_ID, LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
     text::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, NodeManager, Ui}, tags::form::{LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID, DEFAULT_ID},
+    ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{
-    file_widget::{FileWidget, PrintedLines},
-    Widget,
-};
+use super::{file_widget::{FileWidget, PrintInfo}, Widget};
 
 use std::{
     cmp::max,
@@ -19,10 +16,8 @@ pub struct LineNumbers<U>
 where
     U: Ui,
 {
-    node: RwData<EndNode<U>>,
-    printed_lines: PrintedLines<U>,
-    main_cursor: RoData<usize>,
-    cursors: RoData<Vec<TextCursor>>,
+    end_node: RwData<EndNode<U>>,
+    file: RoData<FileWidget<U>>,
     text: Text,
     main_line_builder: TextLineBuilder,
     other_line_builder: TextLineBuilder,
@@ -38,21 +33,16 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         line_numbers_config: LineNumbersConfig,
     ) -> Box<dyn Widget<U>> {
-        let file_widget = file_widget.read();
+        let file = RoData::from(&file_widget);
 
-        let printed_lines = file_widget.printed_lines();
-        let main_cursor = RoData::from(&file_widget.main_cursor);
-        let cursors = RoData::from(&file_widget.cursors);
-        let min_width = node.read().label.read().area().width();
+        let min_width = end_node.read().label.read().area().width();
 
         let mut line_numbers = LineNumbers {
-            node,
-            printed_lines,
-            main_cursor,
-            cursors,
+            end_node,
+            file,
             text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
@@ -61,28 +51,22 @@ where
         };
 
         let width = line_numbers.calculate_width();
-        line_numbers.node.write().request_width(width);
+        line_numbers.end_node.write().request_width(width);
 
         line_numbers.update();
 
         Box::new(line_numbers)
     }
 
-	pub fn default(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-	) -> Box<dyn Widget<U>> {
-        let file_widget = file_widget.read();
-
-        let printed_lines = file_widget.printed_lines();
-        let main_cursor = RoData::from(&file_widget.main_cursor);
-        let cursors = RoData::from(&file_widget.cursors);
-        let min_width = node.read().label.read().area().width();
+    pub fn default(
+        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+    ) -> Box<dyn Widget<U>> {
+        let file = RoData::from(&file_widget);
+        let min_width = end_node.read().label.read().area().width();
 
         let mut line_numbers = LineNumbers {
-            node,
-            printed_lines,
-            main_cursor,
-            cursors,
+            end_node,
+            file,
             text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
@@ -91,17 +75,17 @@ where
         };
 
         let width = line_numbers.calculate_width();
-        line_numbers.node.write().request_width(width);
+        line_numbers.end_node.write().request_width(width);
 
         line_numbers.update();
 
         Box::new(line_numbers)
-	}
+    }
 
     fn calculate_width(&self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
-        let len = self.printed_lines.text().read().lines().len();
+        let len = self.file.read().text().lines().len();
 
         while len > num_exp {
             num_exp *= 10;
@@ -116,21 +100,22 @@ where
     U: Ui + 'static,
 {
     fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.node
+        &self.end_node
     }
 
     fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.node
+        &mut self.end_node
     }
 
     fn update(&mut self) {
+        let file = self.file.read();
         let width = self.calculate_width();
-        self.node.write().request_width(width);
+        self.end_node.write().request_width(width);
 
-        let lines = self.printed_lines.lines();
-        let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
+        let lines = file.printed_lines();
+        let main_line = file.main_cursor().row();
 
-		self.text.lines.clear();
+        self.text.lines.clear();
 
         for line in lines.iter() {
             let mut line_number = String::with_capacity(width + 5);
@@ -150,20 +135,24 @@ where
                 Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
                 Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
             }
-			if *line == main_line {
-    			self.text.lines.push(self.main_line_builder.form_text_line(line_number));
-			} else {
-    			self.text.lines.push(self.other_line_builder.form_text_line(line_number));
-			}
+            if *line == main_line {
+                self.text.lines.push(self.main_line_builder.form_text_line(line_number));
+            } else {
+                self.text.lines.push(self.other_line_builder.form_text_line(line_number));
+            }
         }
     }
 
     fn needs_update(&self) -> bool {
-        self.printed_lines.has_changed()
+        self.file.has_changed()
     }
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn print(&mut self) {
+        self.text.print(&mut self.end_node.write(), PrintInfo::default());
     }
 }
 
