@@ -5,10 +5,10 @@ use std::{
 };
 
 use crate::{
-    action::{Change, History, TextRange},
+    action::{History, TextRange},
     config::{RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
-    split_string_lines,
+    max_line,
     tags::{CharTag, MatchManager},
     text::{update_range, Text},
     ui::{Area, EndNode, Label, Ui},
@@ -80,198 +80,19 @@ impl PrintInfo {
     }
 }
 
-pub struct FileEditor {
-    cursors: RwData<Vec<TextCursor>>,
-    main_cursor: RwData<usize>,
-    clearing_needed: bool,
-}
-
-impl FileEditor {
-    /// Returns a new instance of `FileEditor`.
-    pub fn new(cursors: RwData<Vec<TextCursor>>, main_cursor: RwData<usize>) -> Self {
-        Self { cursors, main_cursor, clearing_needed: false }
-    }
-
-    /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
-    fn clear_intersections(&mut self) {
-        let mut cursors = self.cursors.write();
-        let mut last_range = cursors[0].range();
-        let mut last_index = 0;
-        let mut to_remove = Vec::new();
-
-        for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
-            if cursor.range().intersects(&last_range) {
-                cursor.merge(&last_range);
-                to_remove.push(last_index);
-            }
-            last_range = cursor.range();
-            last_index = index;
-        }
-
-        for index in to_remove.iter().rev() {
-            cursors.remove(*index);
-        }
-    }
-
-    /// Edits on every cursor selection in the list.
-    pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
-    where
-        F: FnMut(Editor),
-    {
-        self.clear_intersections();
-        let mut cursors = self.cursors.write();
-        let mut splice_adder = SpliceAdder::default();
-        cursors.iter_mut().for_each(|c| {
-            c.calibrate_on_adder(&splice_adder);
-            splice_adder.reset_cols(&c.range().end);
-            let cursor = Editor::new(c, &mut splice_adder);
-            f(cursor);
-        });
-    }
-
-    /// Alters every selection on the list.
-    pub fn move_each_cursor<F>(&mut self, mut f: F)
-    where
-        F: FnMut(Mover),
-    {
-        let mut cursors = self.cursors.write();
-        cursors.iter_mut().for_each(|c| {
-            let cursor = Mover::new(c);
-            f(cursor);
-        });
-
-        cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
-
-        drop(cursors);
-        self.clearing_needed = true;
-    }
-
-    /// Alters the nth cursor's selection.
-    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Mover),
-    {
-        let mut cursors = self.cursors.write();
-        let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
-        f(&mut Mover::new(&mut cursor));
-
-        let cursor = cursors.remove(index);
-        let range = cursor.range();
-        let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
-            Ok(index) => index,
-            Err(index) => index,
-        };
-        cursors.insert(new_index, cursor);
-        let mut main_cursor = self.main_cursor.write();
-        if index == *main_cursor {
-            *main_cursor = new_index;
-        }
-
-        drop(cursors);
-        self.clearing_needed = true;
-    }
-
-    /// Alters the main cursor's selection.
-    pub fn move_main<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover),
-    {
-        let main_cursor = *self.main_cursor.read();
-        self.move_nth(f, main_cursor);
-    }
-
-    /// Alters the last cursor's selection.
-    pub fn move_last<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover),
-    {
-        let cursors = self.cursors.read();
-        if !cursors.is_empty() {
-            let len = cursors.len();
-            drop(cursors);
-            self.move_nth(f, len - 1);
-        }
-    }
-
-    /// Edits on the nth cursor's selection.
-    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Editor),
-    {
-        if self.clearing_needed {
-            self.clear_intersections();
-            self.clearing_needed = false;
-        }
-
-        let mut cursors = self.cursors.write();
-        let mut cursor = cursors.get_mut(index).expect("Invalid cursor index!");
-        let mut splice_adder = SpliceAdder::default();
-        let mut edit_cursor = Editor::new(&mut cursor, &mut splice_adder);
-        f(&mut edit_cursor);
-        cursors.iter_mut().skip(index + 1).for_each(|c| c.calibrate_on_adder(&mut splice_adder));
-    }
-
-    /// Edits on the main cursor's selection.
-    pub fn edit_on_main<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Editor),
-    {
-        let main_cursor = *self.main_cursor.read();
-        self.edit_on_nth(f, main_cursor);
-    }
-
-    /// Edits on the last cursor's selection.
-    pub fn edit_on_last<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Editor),
-    {
-        let cursors = self.cursors.read();
-        if !cursors.is_empty() {
-            let len = cursors.len();
-            drop(cursors);
-            self.edit_on_nth(f, len - 1);
-        }
-    }
-
-    /// The main cursor index.
-    pub fn main_cursor(&self) -> usize {
-        *self.main_cursor.read()
-    }
-
-    pub fn rotate_main_forward(&mut self) {
-        let mut main_cursor = self.main_cursor.write();
-        *main_cursor =
-            if *main_cursor == self.cursors.read().len() - 1 { 0 } else { *main_cursor + 1 }
-    }
-
-    pub fn clone_last(&mut self) {
-        let mut cursors = self.cursors.write();
-        let cursor = cursors.last().unwrap().clone();
-        cursors.push(cursor);
-    }
-
-    pub fn push(&mut self, cursor: TextCursor) {
-        self.cursors.write().push(cursor);
-    }
-
-    pub fn cursors_len(&self) -> usize {
-        self.cursors.read().len()
-    }
-}
-
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
 where
     U: Ui,
 {
+    pub(crate) end_node: RwData<EndNode<U>>,
     name: RwData<String>,
-    text: Text,
+    pub(crate) text: Text,
     print_info: PrintInfo,
     pub(crate) main_cursor: RwData<usize>,
     // The `Box` here is used in order to comply with `RoState` printability.
-    pub(crate) cursors: RwData<Vec<TextCursor>>,
-    pub(crate) end_node: RwData<EndNode<U>>,
-    history: History,
+    pub(crate) cursors: Vec<TextCursor>,
+    pub(crate) history: History,
     do_set_print_info: bool,
     do_add_cursor_tags: bool,
 }
@@ -294,7 +115,7 @@ where
             text,
             print_info: PrintInfo::default(),
             main_cursor: RwData::new(0),
-            cursors: RwData::new(vec![cursor]),
+            cursors: vec![cursor],
             end_node: node,
             history: History::new(),
             do_set_print_info: true,
@@ -312,7 +133,8 @@ where
         let scrolloff = self.end_node.read().config().read().scrolloff;
 
         if target.row > info.top_row + height - scrolloff.d_y {
-            self.print_info.top_row += target.row + scrolloff.d_y - self.print_info.top_row - height;
+            self.print_info.top_row +=
+                target.row + scrolloff.d_y - self.print_info.top_row - height;
         } else if target.row < info.top_row + scrolloff.d_y && info.top_row != 0 {
             info.top_row -= (info.top_row + scrolloff.d_y) - target.row
         }
@@ -410,8 +232,7 @@ where
         let (height, width) = (node.label.read().area().height(), node.label.read().area().width());
         drop(node);
 
-        let cursors = self.cursors.read();
-        let main_cursor = &cursors.get(*self.main_cursor.read()).unwrap();
+        let main_cursor = self.main_cursor();
         let old = self.print_info.last_main;
         let new = main_cursor.caret();
 
@@ -422,8 +243,6 @@ where
         let line = &self.text.lines()[new.row];
         let target_byte = line.get_line_byte_at(new.col);
         let old_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
-
-        drop(cursors);
 
         if let WrapMethod::NoWrap = wrap_method {
             self.scroll_unwrapped(new, height);
@@ -441,13 +260,12 @@ where
     fn _match_scroll(&mut self) {
         let node = self.end_node.read();
         let label = node.label.read();
-        let cursors = self.cursors.read();
 
-        let main_cursor = cursors.get(*self.main_cursor.read()).unwrap();
-        let limit_line =
+        let main_cursor = self.main_cursor();
+        let limit_row =
             min(main_cursor.caret().row + label.area().height(), self.text.lines().len() - 1);
-        let start = main_cursor.caret().translate(self.text.lines(), limit_line, 0);
-        let target_line = &self.text.lines()[limit_line];
+        let start = main_cursor.caret().translate(self.text.lines(), limit_row, 0);
+        let target_line = &self.text.lines()[limit_row];
         let _range = TextRange {
             start,
             end: TextPos {
@@ -456,44 +274,6 @@ where
                 ..start
             },
         };
-    }
-
-    /// Replaces the entire selection of the `TextCursor` with new text.
-    pub fn replace(&mut self, editor: &mut Editor, edit: impl ToString) {
-        let lines = split_string_lines(&edit.to_string());
-        let change = Change::new(&lines, editor.cursor.range(), &self.text.lines);
-        let splice = change.splice;
-
-        self.edit(editor, change);
-
-        editor.set_cursor_on_splice(&splice, self);
-    }
-
-    /// Inserts new text directly behind the caret.
-    pub fn insert(&mut self, editor: &mut Editor, edit: impl ToString) {
-        let lines = split_string_lines(&edit.to_string());
-        let change = Change::new(&lines, TextRange::from(editor.cursor.caret()), &self.text.lines);
-
-        self.edit(editor, change);
-
-        editor.calibrate_end_anchor();
-    }
-
-    /// Edits the file with a cursor.
-    fn edit(&mut self, editor: &mut Editor, change: Change) {
-        let added_range = change.added_range();
-        editor.splice_adder.calibrate(&change.splice);
-
-        self.text.apply_change(&change);
-
-        let assoc_index = editor.cursor.assoc_index;
-        let (insertion_index, change_diff) =
-            self.history.add_change(change, assoc_index, self.print_info);
-        editor.cursor.assoc_index = Some(insertion_index);
-        editor.splice_adder.change_diff += change_diff;
-
-        let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
-        update_range(&mut self.text, added_range, max_line, &self.end_node.read());
     }
 
     /// Undoes the last moment in history.
@@ -509,8 +289,7 @@ where
 
         self.print_info = moment.starting_print_info;
 
-        let mut cursors = self.cursors.write();
-        cursors.clear();
+        self.cursors.clear();
 
         let mut splice_adder = SpliceAdder::default();
         for change in &moment.changes {
@@ -523,7 +302,7 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, &end_node));
+            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, &end_node));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
             let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -544,15 +323,14 @@ where
 
         self.print_info = moment.ending_print_info;
 
-        let mut cursors = self.cursors.write();
-        cursors.clear();
+        self.cursors.clear();
 
         for change in &moment.changes {
             self.text.apply_change(&change);
 
             let splice = change.splice;
 
-            cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
+            self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
             let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -562,7 +340,7 @@ where
 
     /// Removes the tags for all the cursors, used before they are expected to move.
     pub(crate) fn remove_cursor_tags(&mut self) {
-        for (index, cursor) in self.cursors.read().iter().enumerate() {
+        for (index, cursor) in self.cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == *self.main_cursor.read() {
                 (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
@@ -591,7 +369,7 @@ where
 
     /// Adds the tags for all the cursors, used after they are expected to have moved.
     pub(crate) fn add_cursor_tags(&mut self) {
-        for (index, cursor) in self.cursors.read().iter().enumerate() {
+        for (index, cursor) in self.cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == *self.main_cursor.read() {
                 (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
@@ -641,11 +419,6 @@ where
         printed_lines
     }
 
-    /// The object used to edit the file through cursors.
-    pub fn file_editor(&mut self) -> FileEditor {
-        FileEditor::new(self.cursors.clone(), self.main_cursor.clone())
-    }
-
     // TODO: Move the history to a general placement, taking in all the files.
     /// The history associated with this file.
     pub fn history(&self) -> &History {
@@ -654,19 +427,19 @@ where
 
     /// Ends the current moment and starts a new one.
     pub fn new_moment(&mut self) {
-        self.cursors.write().iter_mut().for_each(|cursor| cursor.assoc_index = None);
+        self.cursors.iter_mut().for_each(|cursor| cursor.assoc_index = None);
         self.history.new_moment(self.print_info);
     }
 
     /// The list of `TextCursor`s on the file.
     pub fn cursors(&self) -> Vec<TextCursor> {
-        self.cursors.read().clone()
+        self.cursors.clone()
     }
 
     ////////// Status line convenience functions:
     /// The main cursor of the file.
     pub fn main_cursor(&self) -> TextCursor {
-        *self.cursors.read().get(*self.main_cursor.read()).unwrap()
+        *self.cursors.get(*self.main_cursor.read()).unwrap()
     }
 
     /// The file's name.
@@ -687,6 +460,10 @@ where
 
     pub fn node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
+    }
+
+    pub fn print_info(&self) -> PrintInfo {
+        self.print_info
     }
 }
 
@@ -745,8 +522,225 @@ where
 
 unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 
-// NOTE: Will definitely break once folding becomes a thing.
-/// The last line that could possibly be printed.
-fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_row + node.label.read().area().height(), text.lines().len() - 1)
+pub struct FileEditor<'a, U>
+where
+    U: Ui,
+{
+    clearing_needed: bool,
+    file: &'a mut FileWidget<U>,
+}
+
+impl<'a, U> FileEditor<'a, U>
+where
+    U: Ui,
+{
+    /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
+    fn clear_intersections(&mut self) {
+        let cursors = &mut self.file.cursors;
+        let mut last_range = cursors[0].range();
+        let mut last_index = 0;
+        let mut to_remove = Vec::new();
+
+        for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
+            if cursor.range().intersects(&last_range) {
+                cursor.merge(&last_range);
+                to_remove.push(last_index);
+            }
+            last_range = cursor.range();
+            last_index = index;
+        }
+
+        for index in to_remove.iter().rev() {
+            cursors.remove(*index);
+        }
+    }
+
+    /// Edits on every cursor selection in the list.
+    pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        self.clear_intersections();
+        let mut splice_adder = SpliceAdder::default();
+        for index in 0..self.file.cursors.len() {
+            let end_node = self.file.end_node.read();
+            let mut editor = Editor::new(
+                &mut self.file.cursors[index],
+                &mut splice_adder,
+                &mut self.file.text,
+                &mut self.file.history,
+                &end_node,
+                self.file.print_info,
+            );
+            editor.calibrate_on_adder();
+            editor.reset_cols();
+            f(editor);
+        }
+    }
+
+    /// Alters every selection on the list.
+    pub fn move_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        for index in 0..self.file.cursors.len() {
+            let end_node = self.file.end_node.read();
+            let mover = Mover::new(
+                &mut self.file.cursors[index],
+                &self.file.text,
+                &end_node,
+                self.file.history.current_moment(),
+            );
+            f(mover);
+        }
+
+        self.file.cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
+        self.clearing_needed = true;
+    }
+
+    /// Alters the nth cursor's selection.
+    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let end_node = self.file.end_node.read();
+        let mover = Mover::new(
+            &mut self.file.cursors[index],
+            &self.file.text,
+            &end_node,
+            self.file.history.current_moment(),
+        );
+        f(mover);
+
+        let cursors = &mut self.file.cursors;
+        let cursor = cursors.remove(index);
+        let range = cursor.range();
+        let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
+            Ok(index) => index,
+            Err(index) => index,
+        };
+        cursors.insert(new_index, cursor);
+        let mut main_cursor = self.file.main_cursor.write();
+        if index == *main_cursor {
+            *main_cursor = new_index;
+        }
+
+        drop(cursors);
+        self.clearing_needed = true;
+    }
+
+    /// Alters the main cursor's selection.
+    pub fn move_main<F>(&mut self, f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let main_cursor = *self.file.main_cursor.read();
+        self.move_nth(f, main_cursor);
+    }
+
+    /// Alters the last cursor's selection.
+    pub fn move_last<F>(&mut self, f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let cursors = &self.file.cursors;
+        if !cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.move_nth(f, len - 1);
+        }
+    }
+
+    /// Edits on the nth cursor's selection.
+    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(Editor<U>),
+    {
+        if self.clearing_needed {
+            self.clear_intersections();
+            self.clearing_needed = false;
+        }
+
+        let mut splice_adder = SpliceAdder::default();
+        let end_node = self.file.end_node.read();
+        let mut editor = Editor::new(
+            &mut self.file.cursors[index],
+            &mut splice_adder,
+            &mut self.file.text,
+            &mut self.file.history,
+            &end_node,
+            self.file.print_info,
+        );
+        f(editor);
+        for cursor in self.file.cursors.iter_mut().skip(index + 1) {
+            cursor.calibrate_on_adder(&mut splice_adder);
+        }
+    }
+
+    /// Edits on the main cursor's selection.
+    pub fn edit_on_main<F>(&mut self, f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        let main_cursor = *self.file.main_cursor.read();
+        self.edit_on_nth(f, main_cursor);
+    }
+
+    /// Edits on the last cursor's selection.
+    pub fn edit_on_last<F>(&mut self, f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        let cursors = &self.file.cursors;
+        if !cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.edit_on_nth(f, len - 1);
+        }
+    }
+
+    /// The main cursor index.
+    pub fn main_cursor(&self) -> usize {
+        *self.file.main_cursor.read()
+    }
+
+    pub fn rotate_main_forward(&mut self) {
+        let mut main_cursor = self.file.main_cursor.write();
+        *main_cursor =
+            if *main_cursor == self.file.cursors.len() - 1 { 0 } else { *main_cursor + 1 }
+    }
+
+    pub fn clone_last(&mut self) {
+        let cursor = self.file.cursors.last().unwrap().clone();
+        self.file.cursors.push(cursor);
+    }
+
+    pub fn push(&mut self, cursor: TextCursor) {
+        self.file.cursors.push(cursor);
+    }
+
+    pub fn cursors_len(&self) -> usize {
+        self.file.cursors.len()
+    }
+
+	pub fn new_moment(&mut self) {
+    	self.file.new_moment();
+	}
+
+	pub fn undo(&mut self) {
+    	self.file.undo();
+	}
+
+	pub fn redo(&mut self) {
+    	self.file.redo();
+	}
+}
+
+impl<'a, U> From<&'a mut FileWidget<U>> for FileEditor<'a, U>
+where
+    U: Ui,
+{
+    fn from(value: &'a mut FileWidget<U>) -> Self {
+        FileEditor { file: value, clearing_needed: false }
+    }
 }

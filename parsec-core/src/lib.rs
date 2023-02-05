@@ -1,4 +1,9 @@
+use std::cmp::min;
+
 use cursor::TextPos;
+use text::Text;
+use ui::{EndNode, Ui, Label, Area};
+use widgets::file_widget::PrintInfo;
 
 pub mod action;
 pub mod config;
@@ -36,6 +41,12 @@ pub fn get_byte_at_col(col: usize, text: &String) -> usize {
 /// An empty list of `String`s, representing an empty edit/file.
 pub fn empty_edit() -> Vec<String> {
     vec![String::from("")]
+}
+
+// NOTE: Will definitely break once folding becomes a thing.
+/// The last line that could possibly be printed.
+pub fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
+    min(print_info.top_row + node.label.read().area().height(), text.lines().len() - 1)
 }
 
 //////////// Useful for testing.

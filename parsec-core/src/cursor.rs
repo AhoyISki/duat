@@ -4,11 +4,14 @@ use std::{
 };
 
 use crate::{
-    action::{Moment, Splice, TextRange},
-    get_byte_at_col,
-    widgets::{file_widget::FileWidget, Widget},
-    text::TextLine,
-    ui::{EndNode, Ui},
+    action::{Change, History, Moment, Splice, TextRange},
+    get_byte_at_col, max_line, split_string_lines,
+    text::{update_range, Text, TextLine},
+    ui::{Area, EndNode, Label, Ui},
+    widgets::{
+        file_widget::{FileWidget, PrintInfo},
+        Widget,
+    },
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -302,6 +305,10 @@ impl TextCursor {
         }
     }
 
+    pub(crate) fn place_anchor(&mut self, pos: TextPos) {
+        self.anchor = Some(pos);
+    }
+
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
@@ -349,35 +356,40 @@ impl Clone for TextCursor {
 }
 
 /// A cursor that can edit text in its selection, but can't move the selection in any way.
-#[derive(Debug)]
-pub struct Editor<'a> {
-    pub cursor: &'a mut TextCursor,
-    pub splice_adder: &'a mut SpliceAdder,
+pub struct Editor<'a, U>
+where
+    U: Ui,
+{
+    cursor: &'a mut TextCursor,
+    splice_adder: &'a mut SpliceAdder,
+    text: &'a mut Text,
+    history: &'a mut History,
+    end_node: &'a EndNode<U>,
+    print_info: PrintInfo,
 }
 
-impl<'a> Editor<'a> {
-    /// Returns a new instance of `EditCursor`.
-    pub fn new(cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder) -> Self {
-        Editor { cursor, splice_adder }
+impl<'a, U> Editor<'a, U>
+where
+    U: Ui,
+{
+    /// Returns a new instance of `Editor`.
+    pub fn new(
+        cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text,
+        history: &'a mut History, end_node: &'a EndNode<U>, print_info: PrintInfo,
+    ) -> Self {
+        Self { cursor, splice_adder, text, history, end_node, print_info }
     }
 
     /// Calibrate the cursor with a `Splice`.
-    pub fn set_cursor_on_splice<U>(&mut self, splice: &Splice, file_widget: &FileWidget<U>)
-    where
-        U: Ui,
-    {
-        let caret = &mut self.cursor.caret;
-        let end_node = &file_widget.end_node().read();
-        let text = file_widget.text();
-        if let Some(anchor) = &mut self.cursor.anchor {
+    pub fn set_cursor_on_splice(&mut self, splice: &Splice) {
+        let caret = self.cursor.caret();
+        if let Some(anchor) = self.cursor.anchor() {
             if anchor > caret {
-                self.cursor.move_to_calibrated(splice.added_end, &text.lines, end_node);
-                self.cursor.set_anchor();
-                self.cursor.move_to_calibrated(splice.start, &text.lines, end_node);
+                self.cursor.place_anchor(splice.added_end);
+                self.cursor.move_to_calibrated(splice.start, &self.text.lines, self.end_node);
             } else {
-                self.cursor.move_to_calibrated(splice.start, &text.lines, end_node);
-                self.cursor.set_anchor();
-                self.cursor.move_to_calibrated(splice.added_end, &text.lines, end_node);
+                self.cursor.place_anchor(splice.start);
+                self.cursor.move_to_calibrated(splice.added_end, &self.text.lines, self.end_node);
             }
         }
     }
@@ -388,38 +400,99 @@ impl<'a> Editor<'a> {
     }
 
     pub(crate) fn calibrate_end_anchor(&mut self) {
-        if let Some(anchor) = self.cursor.anchor.as_mut() {
-            if anchor > &mut self.cursor.caret {
+        if let Some(mut anchor) = self.cursor.anchor() {
+            if anchor > self.cursor.caret() {
                 anchor.calibrate_on_adder(&self.splice_adder);
+                self.cursor.place_anchor(anchor);
             }
         }
+    }
+
+    pub(crate) fn calibrate_on_adder(&mut self) {
+        self.cursor.calibrate_on_adder(&self.splice_adder);
+    }
+
+    pub(crate) fn reset_cols(&mut self) {
+        self.splice_adder.reset_cols(&self.cursor.range().end);
+    }
+
+    /// Replaces the entire selection of the `TextCursor` with new text.
+    pub fn replace(&mut self, edit: impl ToString) {
+        let lines = split_string_lines(&edit.to_string());
+        let change = Change::new(&lines, self.cursor.range(), &self.text.lines);
+        let splice = change.splice;
+
+        self.edit(change);
+
+        self.set_cursor_on_splice(&splice);
+    }
+
+    /// Inserts new text directly behind the caret.
+    pub fn insert(&mut self, edit: impl ToString) {
+        let lines = split_string_lines(&edit.to_string());
+        let change = Change::new(&lines, TextRange::from(self.cursor.caret()), &self.text.lines);
+
+        self.edit(change);
+
+        self.calibrate_end_anchor();
+    }
+
+    /// Edits the file with a cursor.
+    fn edit(&mut self, change: Change) {
+        let added_range = change.added_range();
+        self.splice_adder.calibrate(&change.splice);
+
+        self.text.apply_change(&change);
+
+        let assoc_index = self.cursor.assoc_index;
+        let (insertion_index, change_diff) =
+            self.history.add_change(change, assoc_index, self.print_info);
+        self.cursor.assoc_index = Some(insertion_index);
+        self.splice_adder.change_diff += change_diff;
+
+        let max_line = max_line(&self.text, &self.print_info, self.end_node);
+        update_range(&mut self.text, added_range, max_line, self.end_node);
     }
 }
 
 /// A cursor that can move and alter the selection, but can't edit the file.
-#[derive(Debug)]
-pub struct Mover<'a>(&'a mut TextCursor);
+pub struct Mover<'a, U>
+where
+    U: Ui,
+{
+    cursor: &'a mut TextCursor,
+    text: &'a Text,
+    end_node: &'a EndNode<U>,
+    current_moment: Option<&'a Moment>,
+}
 
-impl<'a> Mover<'a> {
-    /// Returns	a new instance of `MoveCursor`.
-    pub fn new(cursor: &'a mut TextCursor) -> Self {
-        Mover(cursor)
+impl<'a, U> Mover<'a, U>
+where
+    U: Ui,
+{
+    /// Returns a new instance of `Mover`.
+    pub fn new(
+        cursor: &'a mut TextCursor, text: &'a Text, end_node: &'a EndNode<U>,
+        current_moment: Option<&'a Moment>,
+    ) -> Self {
+        Self { cursor, text, end_node, current_moment }
     }
+
     ////////// Public movement functions
 
-    /// Moves the cursor vertically on the file. May also cause horizontal movement.
-    pub fn move_ver(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_ver(count, file.text().lines(), &file.end_node().read());
-        if let Some(moment) = file.history().current_moment() {
-            self.0.change_range_check(moment)
+    /// Moves the cursor vertically on the file. May also cause vertical movement.
+    pub fn move_ver(&mut self, count: i32) {
+        self.cursor.move_ver(count, self.text.lines(), self.end_node);
+        if let Some(moment) = self.current_moment {
+            self.cursor.change_range_check(moment)
         }
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
-    pub fn move_hor(&mut self, count: i32, file: &FileWidget<impl Ui>) {
-        self.0.move_hor(count, file.text().lines(), &file.end_node().read());
-        if let Some(moment) = file.history().current_moment() {
-            self.0.change_range_check(moment)
+    pub fn move_hor(&mut self, count: i32) {
+        self.cursor.move_hor(count, self.text.lines(), self.end_node);
+        if let Some(moment) = self.current_moment {
+            self.cursor.change_range_check(moment)
         }
     }
 
@@ -427,67 +500,67 @@ impl<'a> Mover<'a> {
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, caret: TextPos, file: &FileWidget<impl Ui>) {
-        self.0.move_to(caret, file.text().lines(), &file.end_node().read());
-        if let Some(moment) = file.history().current_moment() {
-            self.0.change_range_check(moment)
+    pub fn move_to(&mut self, caret: TextPos) {
+        self.cursor.move_to(caret, self.text.lines(), self.end_node);
+        if let Some(moment) = self.current_moment {
+            self.cursor.change_range_check(moment)
         }
     }
 
     /// Returns the anchor of the `TextCursor`.
     pub fn anchor(&self) -> Option<TextPos> {
-        self.0.anchor
+        self.cursor.anchor
     }
 
     /// Returns the anchor of the `TextCursor`.
     pub fn caret(&self) -> TextPos {
-        self.0.caret
+        self.cursor.caret
     }
 
     /// Returns and takes the anchor of the `TextCursor`.
     pub fn take_anchor(&mut self) -> Option<TextPos> {
-        self.0.anchor.take()
+        self.cursor.anchor.take()
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
-        self.0.set_anchor()
+        self.cursor.set_anchor()
     }
 
     /// Unsets the anchor.
     ///
     /// This is done so the cursor no longer has a valid selection.
     pub fn unset_anchor(&mut self) {
-        self.0.unset_anchor()
+        self.cursor.unset_anchor()
     }
 
     /// Wether or not the anchor is set.
     pub fn anchor_is_set(&mut self) -> bool {
-        self.0.anchor.is_some()
+        self.cursor.anchor.is_some()
     }
 
     /// Switches the caret and anchor of the `TextCursor`.
     pub fn switch_ends(&mut self) {
-        if let Some(anchor) = self.0.anchor {
-            self.0.anchor = Some(self.0.caret);
-            self.0.caret = anchor;
+        if let Some(anchor) = self.cursor.anchor {
+            self.cursor.anchor = Some(self.cursor.caret);
+            self.cursor.caret = anchor;
         }
     }
 
-	/// Places the caret at the beginning of the selection.
+    /// Places the caret at the beginning of the selection.
     pub fn set_caret_on_start(&mut self) {
-        let range = self.0.range();
-        self.0.caret = range.start;
-        self.0.anchor.as_mut().map(|anchor| *anchor = range.end);
+        let range = self.cursor.range();
+        self.cursor.caret = range.start;
+        self.cursor.anchor.as_mut().map(|anchor| *anchor = range.end);
     }
 
-	/// Places the caret at the end of the selection.
+    /// Places the caret at the end of the selection.
     pub fn set_caret_on_end(&mut self) {
-        let range = self.0.range();
-        self.0.caret = range.end;
-        self.0.anchor.as_mut().map(|anchor| *anchor = range.start);
+        let range = self.cursor.range();
+        self.cursor.caret = range.end;
+        self.cursor.anchor.as_mut().map(|anchor| *anchor = range.start);
     }
 }
 
