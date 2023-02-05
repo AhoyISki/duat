@@ -5,7 +5,7 @@ use crate::{
     config::{Config, ShowNewLine, WrapMethod},
     cursor::TextPos,
     get_byte_at_col,
-    layout::file_widget::PrintInfo,
+    widgets::file_widget::PrintInfo,
     tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };

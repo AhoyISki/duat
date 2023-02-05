@@ -12,7 +12,7 @@ use crossterm::{
 use parsec_core::{
     config::{RoData, RwData},
     cursor::TextCursor,
-    layout::{
+    widgets::{
         file_widget::{FileWidget, PrintedLines},
         Widget,
     },

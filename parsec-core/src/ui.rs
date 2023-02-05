@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     config::{Config, RwData},
-    tags::form::{CursorStyle, Form, FormPalette}, FOR_TEST, log_info,
+    tags::form::{CursorStyle, Form, FormPalette},
 };
 
 pub trait Area: PartialEq + Eq + Clone + Copy {
@@ -184,9 +184,7 @@ where
         let self_area = container.area();
 
         let first_area = &mut self.children.0.area();
-        if unsafe { FOR_TEST == 1 } { log_info!("\nfirst_area: {}", first_area) }
         let second_area = &mut self.children.1.area();
-        if unsafe { FOR_TEST == 1 } { log_info!("\nsecond_area: {}", second_area) }
         let second_direction = self.children.1.direction();
         let width = self.split.get_second_len(self_area.width());
 

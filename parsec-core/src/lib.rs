@@ -5,7 +5,7 @@ pub mod config;
 pub mod cursor;
 pub mod text;
 pub mod input;
-pub mod layout;
+pub mod widgets;
 pub mod tags;
 pub mod ui;
 

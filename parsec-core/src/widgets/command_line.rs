@@ -1,8 +1,19 @@
-use std::{any::Any, error::Error, fmt::Display};
+use std::{error::Error, fmt::Display};
 
-use crate::config::RwData;
+use crate::{
+    config::RwData,
+    text::Text,
+    ui::{EndNode, Ui},
+};
 
-pub trait Commander {
+use super::Widget;
+
+/// The sole purpose of this module is to prevent any external implementations of `Commander`.
+mod private {
+    pub trait Commander {}
+}
+
+pub trait Commander: private::Commander {
     fn try_exec(
         &mut self, cmd: &String, flags: &[String], args: &[String],
     ) -> Result<Option<String>, CommandError>;
@@ -48,6 +59,8 @@ where
         Self { function, callers, commandable }
     }
 }
+
+impl<C> private::Commander for Command<C> where C: ?Sized {}
 
 impl<C> Commander for Command<C>
 where
@@ -113,6 +126,42 @@ impl CommandList {
         Ok(())
     }
 }
+
+pub struct CommandLine<U>
+where
+    U: Ui,
+{
+    end_node: RwData<EndNode<U>>,
+    text: RwData<Text>,
+    command_list: RwData<CommandList>
+}
+
+impl<U> Widget<U> for CommandLine<U>
+where
+    U: Ui,
+{
+    fn end_node(&self) -> &RwData<EndNode<U>> {
+        &self.end_node
+    }
+
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
+        &mut self.end_node
+    }
+
+    fn update(&mut self) {
+        todo!()
+    }
+
+    fn needs_update(&self) -> bool {
+        todo!()
+    }
+
+    fn text(&self) -> &Text {
+        todo!()
+    }
+}
+
+unsafe impl<U> Send for CommandLine<U> where U: Ui {}
 
 #[derive(Debug)]
 pub enum CommandError {

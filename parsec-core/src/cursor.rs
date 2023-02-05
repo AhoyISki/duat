@@ -6,7 +6,7 @@ use std::{
 use crate::{
     action::{Moment, Splice, TextRange},
     get_byte_at_col,
-    layout::{file_widget::FileWidget, Widget},
+    widgets::{file_widget::FileWidget, Widget},
     text::TextLine,
     ui::{EndNode, Ui},
 };

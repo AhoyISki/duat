@@ -23,7 +23,7 @@ where
     printed_lines: PrintedLines<U>,
     main_cursor: RoData<usize>,
     cursors: RoData<Vec<TextCursor>>,
-    text: RwData<Text>,
+    text: Text,
     main_line_builder: TextLineBuilder,
     other_line_builder: TextLineBuilder,
     min_width: usize,
@@ -53,7 +53,7 @@ where
             printed_lines,
             main_cursor,
             cursors,
-            text: RwData::new(Text::default()),
+            text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
             min_width,
@@ -83,7 +83,7 @@ where
             printed_lines,
             main_cursor,
             cursors,
-            text: RwData::new(Text::default()),
+            text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
             min_width,
@@ -115,6 +115,14 @@ impl<U> Widget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
 {
+    fn end_node(&self) -> &RwData<EndNode<U>> {
+        &self.node
+    }
+
+    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
+        &mut self.node
+    }
+
     fn update(&mut self) {
         let width = self.calculate_width();
         self.node.write().request_width(width);
@@ -122,8 +130,7 @@ where
         let lines = self.printed_lines.lines();
         let main_line = self.cursors.read().get(*self.main_cursor.read()).unwrap().caret().row;
 
-		let mut text = self.text.write();
-		text.lines.clear();
+		self.text.lines.clear();
 
         for line in lines.iter() {
             let mut line_number = String::with_capacity(width + 5);
@@ -144,9 +151,9 @@ where
                 Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
             }
 			if *line == main_line {
-    			text.lines.push(self.main_line_builder.form_text_line(line_number));
+    			self.text.lines.push(self.main_line_builder.form_text_line(line_number));
 			} else {
-    			text.lines.push(self.other_line_builder.form_text_line(line_number));
+    			self.text.lines.push(self.other_line_builder.form_text_line(line_number));
 			}
         }
     }
@@ -155,16 +162,8 @@ where
         self.printed_lines.has_changed()
     }
 
-    fn text(&self) -> RoData<Text> {
-        RoData::from(&self.text)
-    }
-
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.node
+    fn text(&self) -> &Text {
+        &self.text
     }
 }
 

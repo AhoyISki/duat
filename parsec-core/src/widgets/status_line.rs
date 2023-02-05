@@ -1,7 +1,7 @@
 use crate::{
     config::{RoData, RwData},
     text::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, NodeManager, Ui}, log_info,
+    ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
 use super::{file_widget::FileWidget, Widget};
@@ -209,8 +209,8 @@ where
         self.printables.iter().any(|p| p.has_changed())
     }
 
-    fn text(&self) -> RoData<Text> {
-        RoData::from(&self.text)
+    fn text(&self) -> &Text {
+        &self.text
     }
 
     fn resize(&mut self, node: &EndNode<U>) {}

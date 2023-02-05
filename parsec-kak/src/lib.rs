@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     input::InputScheme,
-    layout::file_widget::{FileEditor, FileWidget},
+    widgets::file_widget::{FileEditor, FileWidget},
     ui::{Direction, Ui}, config::{RwData, RoData},
 };
 
@@ -36,7 +36,7 @@ impl Editor {
     }
 
     fn match_insert<U>(
-        &mut self, key: &KeyEvent, mut file_editor: parsec_core::layout::file_widget::FileEditor,
+        &mut self, key: &KeyEvent, mut file_editor: parsec_core::widgets::file_widget::FileEditor,
         file: &mut FileWidget<U>,
     ) where
         U: Ui,
@@ -141,7 +141,7 @@ impl Editor {
     }
 
     fn match_normal<U>(
-        &mut self, key: &KeyEvent, mut file_editor: parsec_core::layout::file_widget::FileEditor,
+        &mut self, key: &KeyEvent, mut file_editor: parsec_core::widgets::file_widget::FileEditor,
         file: &mut FileWidget<U>,
     ) where
         U: Ui,

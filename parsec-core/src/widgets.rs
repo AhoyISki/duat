@@ -13,7 +13,6 @@ use crate::{
     tags::{form::FormPalette, MatchManager},
     text::Text,
     ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui},
-    FOR_TEST,
 };
 
 use self::{
@@ -41,7 +40,7 @@ where
     fn needs_update(&self) -> bool;
 
     /// The text that this widget prints out.
-    fn text(&self) -> RoData<Text>;
+    fn text(&self) -> &Text;
 
     /// Returns the printing information of the file.
     fn print_info(&self) -> Option<RoData<PrintInfo>> {
@@ -182,7 +181,6 @@ where
         for file in std::env::args().skip(1) {
             self.open_file(&PathBuf::from(file))
         }
-        unsafe { FOR_TEST = 1 };
         self.master_node.write().resize_children().unwrap();
     }
 
@@ -335,6 +333,7 @@ where
 pub struct SessionControl {
     should_quit: bool,
     files_to_open: Option<Vec<PathBuf>>,
+    go_to_command_line: bool
 }
 
 impl SessionControl {}
@@ -377,7 +376,7 @@ where
     U: Ui,
 {
     let print_info = widget.print_info().map(|p| *p.read()).unwrap_or_default();
-    widget.text().read().print(&mut widget.end_node_mut().write(), print_info);
+    widget.text().print(&mut widget.end_node_mut().write(), print_info);
 }
 
 pub fn session_commands<U>(session: RwData<SessionControl>) -> Vec<Command<SessionControl>>

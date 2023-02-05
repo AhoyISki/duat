@@ -42,7 +42,7 @@ use crate::{
     empty_edit,
     text::TextLine,
     get_byte_at_col,
-    layout::file_widget::PrintInfo, log_info,
+    widgets::file_widget::PrintInfo,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -445,7 +445,6 @@ impl History {
             });
             self.current_moment += 1;
         }
-        log_info!("{}", self.current_moment);
     }
 
     /// Moves forwards in the timeline.
@@ -463,7 +462,7 @@ impl History {
     }
 
     /// Moves backwards in the timeline.
-    pub fn move_backwards(&mut self) -> Option<&Moment> {
+        pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
             None
         } else {

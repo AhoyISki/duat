@@ -687,16 +687,6 @@ where
         }
     }
 
-    /// Currently does nothing.
-    fn update(&mut self) {
-        let mut node = self.node.write();
-        let mut text = self.text.write();
-        text.update_lines(&mut node);
-        drop(node);
-        drop(text);
-        //self.match_scroll();
-    }
-
     /// The list of all lines that are currently printed on the screen.
     pub fn printed_lines(&self) -> PrintedLines<U> {
         PrintedLines {
@@ -758,27 +748,29 @@ where
     pub fn node(&self) -> &RwData<EndNode<U>> {
         &self.node
     }
-}
 
-impl<U> Widget<U> for FileWidget<U>
-where
-    U: Ui,
-{
-    fn end_node(&self) -> &RwData<EndNode<U>> {
+    pub fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.node
     }
 
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
+    pub fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
         &mut self.node
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         if self.do_set_print_info {
             self.update_print_info();
         } else {
             self.do_set_print_info = true;
         }
-        self.update();
+
+        let mut node = self.node.write();
+        let mut text = self.text.write();
+        text.update_lines(&mut node);
+        drop(node);
+        drop(text);
+        //self.match_scroll();
+
         if self.do_add_cursor_tags {
             self.add_cursor_tags();
             self.do_add_cursor_tags = false
@@ -789,11 +781,11 @@ where
         true
     }
 
-    fn text(&self) -> RoData<Text> {
+    pub fn text(&self) -> RoData<Text> {
         RoData::from(&self.text)
     }
 
-    fn print_info(&self) -> Option<RoData<PrintInfo>> {
+    pub fn print_info(&self) -> Option<RoData<PrintInfo>> {
         Some(RoData::from(&self.print_info))
     }
 
