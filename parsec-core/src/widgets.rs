@@ -42,11 +42,6 @@ where
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
 
-    /// Returns the printing information of the file.
-    fn print_info(&self) -> Option<RoData<PrintInfo>> {
-        None
-    }
-
     fn print(&mut self);
 
     /// Scrolls the text vertically by an amount.

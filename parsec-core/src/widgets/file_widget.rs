@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     action::{Change, History, TextRange},
-    config::{RoData, RwData, WrapMethod},
+    config::{RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     split_string_lines,
     tags::{CharTag, MatchManager},
@@ -20,10 +20,10 @@ use super::Widget;
 /// Information about how to print the file on the `Label`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
-    /// How many times the line at the top wraps around before being shown.
+    /// How many times the row at the top wraps around before being shown.
     pub top_wraps: usize,
-    /// The index of the line at the top of the screen.
-    pub top_line: usize,
+    /// The index of the row at the top of the screen.
+    pub top_row: usize,
     /// How shifted the text is to the left.
     pub x_shift: usize,
     /// The last position of the main cursor.
@@ -34,7 +34,7 @@ impl PrintInfo {
     /// Scrolls the `PrintInfo` vertically by a given amount, on a given file.
     fn scroll_vertically(&mut self, mut d_y: i32, text: &Text) {
         if d_y > 0 {
-            let mut lines_iter = text.lines().iter().skip(self.top_line);
+            let mut lines_iter = text.lines().iter().skip(self.top_row);
 
             while let Some(line) = lines_iter.next() {
                 let wrap_count = line.wrap_iter().count();
@@ -42,12 +42,12 @@ impl PrintInfo {
                     self.top_wraps = d_y as usize;
                     break;
                 } else {
-                    self.top_line += 1;
+                    self.top_row += 1;
                     d_y -= (wrap_count + 1) as i32;
                 }
             }
         } else if d_y < 0 {
-            let mut lines_iter = text.lines().iter().take(self.top_line).rev();
+            let mut lines_iter = text.lines().iter().take(self.top_row).rev();
 
             while let Some(line) = lines_iter.next() {
                 let wrap_count = line.wrap_iter().count();
@@ -55,7 +55,7 @@ impl PrintInfo {
                     self.top_wraps = -d_y as usize;
                     break;
                 } else {
-                    self.top_line -= 1;
+                    self.top_row -= 1;
                     d_y += (wrap_count + 1) as i32;
                 }
             }
@@ -266,7 +266,7 @@ where
 {
     name: RwData<String>,
     text: Text,
-    print_info: RwData<PrintInfo>,
+    print_info: PrintInfo,
     pub(crate) main_cursor: RwData<usize>,
     // The `Box` here is used in order to comply with `RoState` printability.
     pub(crate) cursors: RwData<Vec<TextCursor>>,
@@ -292,7 +292,7 @@ where
         let mut file_widget = FileWidget {
             name: RwData::new(path.file_name().unwrap().to_string_lossy().to_string()),
             text,
-            print_info: RwData::new(PrintInfo::default()),
+            print_info: PrintInfo::default(),
             main_cursor: RwData::new(0),
             cursors: RwData::new(vec![cursor]),
             end_node: node,
@@ -308,13 +308,13 @@ where
 
     /// Scrolls up or down, assuming that the lines cannot wrap.
     fn scroll_unwrapped(&mut self, target: TextPos, height: usize) {
-        let info = &mut self.print_info.write();
+        let info = &mut self.print_info;
         let scrolloff = self.end_node.read().config().read().scrolloff;
 
-        if target.row > info.top_line + height - scrolloff.d_y {
-            info.top_line += target.row + scrolloff.d_y - info.top_line - height;
-        } else if target.row < info.top_line + scrolloff.d_y && info.top_line != 0 {
-            info.top_line -= (info.top_line + scrolloff.d_y) - target.row
+        if target.row > info.top_row + height - scrolloff.d_y {
+            self.print_info.top_row += target.row + scrolloff.d_y - self.print_info.top_row - height;
+        } else if target.row < info.top_row + scrolloff.d_y && info.top_row != 0 {
+            info.top_row -= (info.top_row + scrolloff.d_y) - target.row
         }
     }
 
@@ -322,17 +322,17 @@ where
     fn scroll_up(&mut self, target: TextPos, mut d_y: usize) {
         let scrolloff = self.end_node.read().config().read().scrolloff;
         let lines_iter = self.text.lines().iter().take(target.row);
-        let info = &mut self.print_info.write();
+        let info = &mut self.print_info;
 
         // If the target line is above the top line, no matter what, a new top line is needed.
-        let mut needs_new_top_line = target.row < info.top_line;
+        let mut needs_new_top_line = target.row < info.top_row;
 
         for (index, line) in lines_iter.enumerate().rev() {
             if index != target.row {
                 d_y += 1 + line.wrap_iter().count();
             };
 
-            if index == info.top_line {
+            if index == info.top_row {
                 // This means we ran into the top line too early, and must scroll up.
                 if d_y < scrolloff.d_y + info.top_wraps {
                     needs_new_top_line = true;
@@ -343,7 +343,7 @@ where
             }
 
             if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
-                info.top_line = index;
+                info.top_row = index;
                 info.top_wraps = d_y.saturating_sub(scrolloff.d_y);
                 break;
             }
@@ -354,7 +354,6 @@ where
     fn scroll_down(&mut self, target: TextPos, mut d_y: usize, height: usize) {
         let scrolloff = self.end_node.read().config().read().scrolloff;
         let lines_iter = self.text.lines().iter().take(target.row + 1);
-        let mut info = self.print_info.write();
         let mut top_offset = 0;
 
         for (index, line) in lines_iter.enumerate().rev() {
@@ -362,22 +361,22 @@ where
                 d_y += 1 + line.wrap_iter().count();
             }
 
-            if index == info.top_line {
-                top_offset = info.top_wraps
+            if index == self.print_info.top_row {
+                top_offset = self.print_info.top_wraps
             };
 
             if d_y >= height + top_offset - scrolloff.d_y {
-                info.top_line = index;
+                self.print_info.top_row = index;
                 // If this equals 0, that means the distance has matched up perfectly,
                 // i.e. the distance between the new `info.top_line` is exactly what's
                 // needed for the full height. If it's greater than 0, `info.top_wraps`
                 // needs to adjust where the line actually begins to match up.
-                info.top_wraps = d_y + scrolloff.d_y - height;
+                self.print_info.top_wraps = d_y + scrolloff.d_y - height;
                 break;
             }
 
             // If this happens first, we're in the middle of the screen, and don't need to scroll.
-            if index == info.top_line {
+            if index == self.print_info.top_row {
                 break;
             }
         }
@@ -385,7 +384,6 @@ where
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn scroll_horizontally(&mut self, target: TextPos, width: usize) {
-        let mut info = self.print_info.write();
         let node = self.end_node.read();
         let config = node.config().read();
         let label = node.label.read();
@@ -395,12 +393,12 @@ where
             let distance = target_line.get_distance_to_col::<U>(target.col, &label, &config);
 
             // If the distance is greater, it means that the cursor is out of bounds.
-            if distance > info.x_shift + width - config.scrolloff.d_x {
+            if distance > self.print_info.x_shift + width - config.scrolloff.d_x {
                 // Shift by the amount required to keep the cursor in bounds.
-                info.x_shift = distance + config.scrolloff.d_x - width;
+                self.print_info.x_shift = distance + config.scrolloff.d_x - width;
             // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
-            } else if distance < info.x_shift + config.scrolloff.d_x {
-                info.x_shift = distance.saturating_sub(config.scrolloff.d_x);
+            } else if distance < self.print_info.x_shift + config.scrolloff.d_x {
+                self.print_info.x_shift = distance.saturating_sub(config.scrolloff.d_x);
             }
         }
     }
@@ -414,7 +412,7 @@ where
 
         let cursors = self.cursors.read();
         let main_cursor = &cursors.get(*self.main_cursor.read()).unwrap();
-        let old = self.print_info.read().last_main;
+        let old = self.print_info.last_main;
         let new = main_cursor.caret();
 
         let line = &self.text.lines()[min(old.row, self.text.lines().len() - 1)];
@@ -436,7 +434,7 @@ where
             self.scroll_down(new, old_wraps, height);
         }
 
-        self.print_info.write().last_main = new;
+        self.print_info.last_main = new;
     }
 
     /// Tbh, I don't remember what this is supposed to do, but it seems important.
@@ -490,11 +488,11 @@ where
 
         let assoc_index = editor.cursor.assoc_index;
         let (insertion_index, change_diff) =
-            self.history.add_change(change, assoc_index, *self.print_info.read());
+            self.history.add_change(change, assoc_index, self.print_info);
         editor.cursor.assoc_index = Some(insertion_index);
         editor.splice_adder.change_diff += change_diff;
 
-        let max_line = max_line(&self.text, &self.print_info.read(), &self.end_node.read());
+        let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
         update_range(&mut self.text, added_range, max_line, &self.end_node.read());
     }
 
@@ -509,8 +507,7 @@ where
             None => return,
         };
 
-        let mut info = self.print_info.write();
-        *info = moment.starting_print_info;
+        self.print_info = moment.starting_print_info;
 
         let mut cursors = self.cursors.write();
         cursors.clear();
@@ -529,7 +526,7 @@ where
             cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, &end_node));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            let max_line = max_line(&self.text, &info, &self.end_node.read());
+            let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
             update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
     }
@@ -545,8 +542,7 @@ where
             None => return,
         };
 
-        let mut info = self.print_info.write();
-        *info = moment.ending_print_info;
+        self.print_info = moment.ending_print_info;
 
         let mut cursors = self.cursors.write();
         cursors.clear();
@@ -559,7 +555,7 @@ where
             cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            let max_line = max_line(&self.text, &info, &self.end_node.read());
+            let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
             update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
     }
@@ -625,14 +621,13 @@ where
         let end_node = self.end_node.read();
         let label = end_node.label.read();
         let height = label.area().height();
-        let print_info = self.print_info.read();
         let mut lines_iter = self.text.lines().iter().enumerate();
         let mut printed_lines = Vec::with_capacity(label.area().height());
 
-        let top_line = lines_iter.nth(print_info.top_line).unwrap().1;
-        let mut d_y = min(height, 1 + top_line.wrap_iter().count() - print_info.top_wraps);
+        let top_line = lines_iter.nth(self.print_info.top_row).unwrap().1;
+        let mut d_y = min(height, 1 + top_line.wrap_iter().count() - self.print_info.top_wraps);
         for _ in 0..d_y {
-            printed_lines.push(print_info.top_line);
+            printed_lines.push(self.print_info.top_row);
         }
 
         while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
@@ -660,7 +655,7 @@ where
     /// Ends the current moment and starts a new one.
     pub fn new_moment(&mut self) {
         self.cursors.write().iter_mut().for_each(|cursor| cursor.assoc_index = None);
-        self.history.new_moment(*self.print_info.read());
+        self.history.new_moment(self.print_info);
     }
 
     /// The list of `TextCursor`s on the file.
@@ -733,16 +728,12 @@ where
         &self.text
     }
 
-    fn print_info(&self) -> Option<RoData<PrintInfo>> {
-        Some(RoData::from(&self.print_info))
-    }
-
     fn print(&mut self) {
-        self.text.print(&mut self.end_node.write(), *self.print_info.read());
+        self.text.print(&mut self.end_node.write(), self.print_info);
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {
-        self.print_info.write().scroll_vertically(d_y, &self.text);
+        self.print_info.scroll_vertically(d_y, &self.text);
     }
 
     fn resize(&mut self, node: &EndNode<U>) {
@@ -757,5 +748,5 @@ unsafe impl<M> Send for FileWidget<M> where M: Ui {}
 // NOTE: Will definitely break once folding becomes a thing.
 /// The last line that could possibly be printed.
 fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
-    min(print_info.top_line + node.label.read().area().height(), text.lines().len() - 1)
+    min(print_info.top_row + node.label.read().area().height(), text.lines().len() - 1)
 }

@@ -451,7 +451,7 @@ impl Text {
 
         // Print the `top_line`.
         let mut form_former = FormFormer::new();
-        let top_line = &self.lines[print_info.top_line];
+        let top_line = &self.lines[print_info.top_row];
         let top_wraps = print_info.top_wraps;
         let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
         top_line.print::<U>(
@@ -464,7 +464,7 @@ impl Text {
         );
 
         // Prints other lines until it can't anymore.
-        for line in self.lines.iter().skip(print_info.top_line + 1) {
+        for line in self.lines.iter().skip(print_info.top_row + 1) {
             if !line.print::<U>(
                 &mut label,
                 &config,
@@ -490,7 +490,7 @@ impl Text {
         let mut lines_iter = self.lines.iter().enumerate();
 
         // List the top line.
-        let top_line = lines_iter.nth(print_info.top_line).unwrap();
+        let top_line = lines_iter.nth(print_info.top_row).unwrap();
         let mut d_y = 1 + top_line.1.wrap_iter().count();
         for _ in 0..min(d_y - print_info.top_wraps, height) {
             printed_lines.push(top_line.0);
