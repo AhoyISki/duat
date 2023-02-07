@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     action::{Change, History, Moment, Splice, TextRange},
+    config::RwData,
     get_byte_at_col, max_line, split_string_lines,
     text::{update_range, Text, TextLine},
     ui::{Area, EndNode, Label, Ui},
@@ -361,11 +362,11 @@ where
     U: Ui,
 {
     cursor: &'a mut TextCursor,
-    splice_adder: &'a mut SpliceAdder,
     text: &'a mut Text,
-    history: &'a mut History,
-    end_node: &'a EndNode<U>,
-    print_info: PrintInfo,
+    end_node: &'a RwData<EndNode<U>>,
+    print_info: Option<PrintInfo>,
+    history: Option<&'a mut History>,
+    splice_adder: &'a mut SpliceAdder,
 }
 
 impl<'a, U> Editor<'a, U>
@@ -375,7 +376,8 @@ where
     /// Returns a new instance of `Editor`.
     pub fn new(
         cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text,
-        history: &'a mut History, end_node: &'a EndNode<U>, print_info: PrintInfo,
+        end_node: &'a RwData<EndNode<U>>, history: Option<&'a mut History>,
+        print_info: Option<PrintInfo>,
     ) -> Self {
         Self { cursor, splice_adder, text, history, end_node, print_info }
     }
@@ -384,12 +386,13 @@ where
     pub fn set_cursor_on_splice(&mut self, splice: &Splice) {
         let caret = self.cursor.caret();
         if let Some(anchor) = self.cursor.anchor() {
+            let end_node = self.end_node.read();
             if anchor > caret {
                 self.cursor.place_anchor(splice.added_end);
-                self.cursor.move_to_calibrated(splice.start, &self.text.lines, self.end_node);
+                self.cursor.move_to_calibrated(splice.start, &self.text.lines, &end_node);
             } else {
                 self.cursor.place_anchor(splice.start);
-                self.cursor.move_to_calibrated(splice.added_end, &self.text.lines, self.end_node);
+                self.cursor.move_to_calibrated(splice.added_end, &self.text.lines, &end_node);
             }
         }
     }
@@ -444,14 +447,17 @@ where
 
         self.text.apply_change(&change);
 
-        let assoc_index = self.cursor.assoc_index;
-        let (insertion_index, change_diff) =
-            self.history.add_change(change, assoc_index, self.print_info);
-        self.cursor.assoc_index = Some(insertion_index);
-        self.splice_adder.change_diff += change_diff;
+        if let Some(history) = &mut self.history {
+            let assoc_index = self.cursor.assoc_index;
+            let (insertion_index, change_diff) =
+                history.add_change(change, assoc_index, self.print_info.unwrap_or_default());
+            self.cursor.assoc_index = Some(insertion_index);
+            self.splice_adder.change_diff += change_diff;
+        }
 
-        let max_line = max_line(&self.text, &self.print_info, self.end_node);
-        update_range(&mut self.text, added_range, max_line, self.end_node);
+        let end_node = self.end_node.read();
+        let max_line = max_line(&self.text, &self.print_info.unwrap_or_default(), &end_node);
+        update_range(&mut self.text, added_range, max_line, &end_node);
     }
 }
 
@@ -462,7 +468,7 @@ where
 {
     cursor: &'a mut TextCursor,
     text: &'a Text,
-    end_node: &'a EndNode<U>,
+    end_node: &'a RwData<EndNode<U>>,
     current_moment: Option<&'a Moment>,
 }
 
@@ -472,7 +478,7 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut TextCursor, text: &'a Text, end_node: &'a EndNode<U>,
+        cursor: &'a mut TextCursor, text: &'a Text, end_node: &'a RwData<EndNode<U>>,
         current_moment: Option<&'a Moment>,
     ) -> Self {
         Self { cursor, text, end_node, current_moment }
@@ -482,7 +488,7 @@ where
 
     /// Moves the cursor vertically on the file. May also cause vertical movement.
     pub fn move_ver(&mut self, count: i32) {
-        self.cursor.move_ver(count, self.text.lines(), self.end_node);
+        self.cursor.move_ver(count, self.text.lines(), &self.end_node.read());
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }
@@ -490,7 +496,7 @@ where
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: i32) {
-        self.cursor.move_hor(count, self.text.lines(), self.end_node);
+        self.cursor.move_hor(count, self.text.lines(), &self.end_node.read());
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }
@@ -501,7 +507,7 @@ where
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: TextPos) {
-        self.cursor.move_to(caret, self.text.lines(), self.end_node);
+        self.cursor.move_to(caret, self.text.lines(), &self.end_node.read());
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }

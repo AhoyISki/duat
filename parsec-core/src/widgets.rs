@@ -3,12 +3,13 @@ pub mod file_widget;
 pub mod line_numbers;
 pub mod status_line;
 
-use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
+use std::{path::PathBuf, sync::Mutex, thread, time::Duration, marker::PhantomData};
 
 use crossterm::event::{self, Event, KeyCode};
 
 use crate::{
     config::{Config, RoData, RwData},
+    cursor::{Editor, Mover, TextCursor, SpliceAdder},
     input::{FileRemapper, InputScheme},
     tags::{form::FormPalette, MatchManager},
     text::Text,
@@ -17,7 +18,7 @@ use crate::{
 
 use self::{
     command_line::{Command, CommandList},
-    file_widget::{FileWidget, PrintInfo},
+    file_widget::FileWidget,
     status_line::StatusLine,
 };
 
@@ -330,7 +331,7 @@ where
 pub struct SessionControl {
     should_quit: bool,
     files_to_open: Option<Vec<PathBuf>>,
-    go_to_command_line: bool
+    go_to_command_line: bool,
 }
 
 /// Prints all the files.
@@ -390,4 +391,239 @@ where
     );
 
     vec![quit_command, open_file_command]
+}
+
+pub trait EditableWidget<U> where U: Ui {
+    fn editor<'a>(&'a mut self, index: usize, splice_adder: &'a mut SpliceAdder) -> Editor<U>;
+
+    fn mover(&mut self, index: usize) -> Mover<U>;
+
+    fn cursors(&self) -> &[TextCursor];
+
+    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
+        None
+    }
+
+    fn main_cursor_index(&self) -> usize;
+
+    fn mut_main_cursor_index(&mut self) -> Option<&mut usize> {
+        None
+    }
+
+    fn new_moment(&mut self) {
+        panic!("This implementation of Editable does not have a History of its own.")
+    }
+
+    fn undo(&mut self) {
+        panic!("This implementation of Editable does not have a History of its own.")
+    }
+
+    fn redo(&mut self) {
+        panic!("This implementation of Editable does not have a History of its own.")
+    }
+}
+
+pub struct WidgetActor<'a, U, E>
+where
+    U: Ui,
+    E: EditableWidget<U>,
+{
+    clearing_needed: bool,
+    editable: &'a mut E,
+    _ghost: PhantomData<U>,
+}
+
+impl<'a, U, E> WidgetActor<'a, U, E>
+where
+    U: Ui,
+    E: EditableWidget<U>,
+{
+    /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
+    fn clear_intersections(&mut self) {
+        let Some(cursors) = self.editable.mut_cursors() else {
+            return
+        };
+
+        let mut last_range = cursors[0].range();
+        let mut last_index = 0;
+        let mut to_remove = Vec::new();
+
+        for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
+            if cursor.range().intersects(&last_range) {
+                cursor.merge(&last_range);
+                to_remove.push(last_index);
+            }
+            last_range = cursor.range();
+            last_index = index;
+        }
+
+        for index in to_remove.iter().rev() {
+            cursors.remove(*index);
+        }
+    }
+
+    /// Edits on every cursor selection in the list.
+    pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        self.clear_intersections();
+        let mut splice_adder = SpliceAdder::default();
+        for index in 0..self.editable.cursors().len() {
+            let mut editor = self.editable.editor(index, &mut splice_adder);
+            editor.calibrate_on_adder();
+            editor.reset_cols();
+            f(editor);
+        }
+    }
+
+    /// Alters every selection on the list.
+    pub fn move_each_cursor<F>(&mut self, mut f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        for index in 0..self.editable.cursors().len() {
+            let mover = self.editable.mover(index);
+            f(mover);
+        }
+
+        // TODO: Figure out a better way to sort.
+        self.editable
+            .mut_cursors()
+            .map(|cursors| cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range())));
+        self.clearing_needed = true;
+    }
+
+    /// Alters the nth cursor's selection.
+    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let mover = self.editable.mover(index);
+        f(mover);
+
+        let Some(cursors) = self.editable.mut_cursors() else {
+            return;
+        };
+        let cursor = cursors.remove(index);
+        let range = cursor.range();
+        let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
+            Ok(index) => index,
+            Err(index) => index,
+        };
+        cursors.insert(new_index, cursor);
+        drop(cursors);
+
+        if let Some(main_cursor) = self.editable.mut_main_cursor_index() {
+            if index == *main_cursor {
+                *main_cursor = new_index;
+            }
+        }
+
+        self.clearing_needed = true;
+    }
+
+    /// Alters the main cursor's selection.
+    pub fn move_main<F>(&mut self, f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let main_cursor = self.editable.main_cursor_index();
+        self.move_nth(f, main_cursor);
+    }
+
+    /// Alters the last cursor's selection.
+    pub fn move_last<F>(&mut self, f: F)
+    where
+        F: FnMut(Mover<U>),
+    {
+        let cursors = &self.editable.cursors();
+        if !cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.move_nth(f, len - 1);
+        }
+    }
+
+    /// Edits on the nth cursor's selection.
+    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(Editor<U>),
+    {
+        if self.clearing_needed {
+            self.clear_intersections();
+            self.clearing_needed = false;
+        }
+
+        let mut splice_adder = SpliceAdder::default();
+        let editor = self.editable.editor(index, &mut splice_adder);
+        f(editor);
+        if let Some(cursors) = self.editable.mut_cursors() {
+            for cursor in cursors.iter_mut().skip(index + 1) {
+                cursor.calibrate_on_adder(&mut splice_adder);
+            }
+        }
+    }
+
+    /// Edits on the main cursor's selection.
+    pub fn edit_on_main<F>(&mut self, f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        let main_cursor = self.editable.main_cursor_index();
+        self.edit_on_nth(f, main_cursor);
+    }
+
+    /// Edits on the last cursor's selection.
+    pub fn edit_on_last<F>(&mut self, f: F)
+    where
+        F: FnMut(Editor<U>),
+    {
+        let cursors = &self.editable.cursors();
+        if !cursors.is_empty() {
+            let len = cursors.len();
+            drop(cursors);
+            self.edit_on_nth(f, len - 1);
+        }
+    }
+
+    /// The main cursor index.
+    pub fn main_cursor_index(&self) -> usize {
+        self.editable.main_cursor_index()
+    }
+
+    pub fn rotate_main_forward(&mut self) {
+        let cursors_len = self.editable.cursors().len();
+        let Some(cursor) = self.editable.mut_main_cursor_index() else {
+            return;
+        };
+
+        *cursor = if *cursor == cursors_len - 1 { 0 } else { *cursor + 1 }
+    }
+
+    pub fn cursors_len(&self) -> usize {
+        self.editable.cursors().len()
+    }
+
+    pub fn new_moment(&mut self) {
+        self.editable.new_moment();
+    }
+
+    pub fn undo(&mut self) {
+        self.editable.undo();
+    }
+
+    pub fn redo(&mut self) {
+        self.editable.redo();
+    }
+}
+
+impl<'a, U, E> From<&'a mut E> for WidgetActor<'a, U, E>
+where
+    U: Ui,
+    E: EditableWidget<U>,
+{
+    fn from(value: &'a mut E) -> Self {
+        WidgetActor { editable: value, clearing_needed: false, _ghost: PhantomData::default() }
+    }
 }

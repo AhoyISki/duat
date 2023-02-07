@@ -5,7 +5,11 @@ use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
     ui::{Direction, Ui},
-    widgets::file_widget::{FileEditor, FileWidget},
+    widgets::{
+        file_widget::FileWidget,
+        WidgetActor,
+        EditableWidget,
+    },
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -14,6 +18,7 @@ pub enum Mode {
     Normal,
     Goto,
     View,
+    Command,
 }
 
 impl Display for Mode {
@@ -23,6 +28,7 @@ impl Display for Mode {
             Mode::Normal => f.write_fmt(format_args!("normal")),
             Mode::Goto => f.write_fmt(format_args!("goto")),
             Mode::View => f.write_fmt(format_args!("view")),
+            Mode::Command => f.write_fmt(format_args!("command")),
         }
     }
 }
@@ -32,47 +38,50 @@ pub struct Editor {
 }
 
 impl Editor {
+    /// Returns a new instance of `parsec-kak::Editor`.
     pub fn new() -> Self {
         Editor { cur_mode: RwData::new(Mode::Normal) }
     }
 
-    fn match_insert<U>(&mut self, key: &KeyEvent, mut file_editor: FileEditor<U>)
+    /// The default mappings for the insert mode.
+    fn match_insert<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
     where
         U: Ui,
+        E: EditableWidget<U>,
     {
         match key {
             KeyEvent { code: KeyCode::Char(ch), .. } => {
-                file_editor.edit_on_each_cursor(|mut editor| {
+                editable_actor.edit_on_each_cursor(|mut editor| {
                     editor.insert(ch);
                 });
-                file_editor.move_each_cursor(|mut mover| {
+                editable_actor.move_each_cursor(|mut mover| {
                     mover.move_hor(1);
                 });
             }
             KeyEvent { code: KeyCode::Enter, .. } => {
-                file_editor.edit_on_each_cursor(|mut editor| {
+                editable_actor.edit_on_each_cursor(|mut editor| {
                     editor.insert('\n');
                 });
-                file_editor.move_each_cursor(|mut mover| {
+                editable_actor.move_each_cursor(|mut mover| {
                     mover.move_hor(1);
                 });
             }
             KeyEvent { code: KeyCode::Backspace, .. } => {
-                let mut anchors = Vec::with_capacity(file_editor.cursors_len());
-                file_editor.move_each_cursor(|mut mover| {
+                let mut anchors = Vec::with_capacity(editable_actor.cursors_len());
+                editable_actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                file_editor.edit_on_each_cursor(|mut editor| {
+                editable_actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
                     if let Some(Some((anchor, true))) = anchors.next() {
                         editor.calibrate_pos(anchor);
                     }
                 });
-                file_editor.move_each_cursor(|mut mover| {
+                editable_actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -83,21 +92,21 @@ impl Editor {
                 });
             }
             KeyEvent { code: KeyCode::Delete, .. } => {
-                let mut anchors = Vec::with_capacity(file_editor.cursors_len());
-                file_editor.move_each_cursor(|mut mover| {
+                let mut anchors = Vec::with_capacity(editable_actor.cursors_len());
+                editable_actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                file_editor.edit_on_each_cursor(|mut editor| {
+                editable_actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
                     if let Some(Some((anchor, true))) = anchors.next() {
                         editor.calibrate_pos(anchor);
                     }
                 });
-                file_editor.move_each_cursor(|mut mover| {
+                editable_actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -108,89 +117,123 @@ impl Editor {
                 });
             }
             KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut file_editor, Direction::Left, 1);
+                move_each_and_select(&mut editable_actor, Direction::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut file_editor, Direction::Right, 1);
+                move_each_and_select(&mut editable_actor, Direction::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut file_editor, Direction::Top, 1);
+                move_each_and_select(&mut editable_actor, Direction::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut file_editor, Direction::Bottom, 1);
+                move_each_and_select(&mut editable_actor, Direction::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Left, .. } => {
-                move_each(&mut file_editor, Direction::Left, 1);
+                move_each(&mut editable_actor, Direction::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, .. } => {
-                move_each(&mut file_editor, Direction::Right, 1);
+                move_each(&mut editable_actor, Direction::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, .. } => {
-                move_each(&mut file_editor, Direction::Top, 1);
+                move_each(&mut editable_actor, Direction::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, .. } => {
-                move_each(&mut file_editor, Direction::Bottom, 1);
+                move_each(&mut editable_actor, Direction::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Tab, .. } => {
-                file_editor.new_moment();
+                editable_actor.new_moment();
                 *self.cur_mode.write() = Mode::Normal;
             }
             _ => {}
         }
     }
 
-    fn match_normal<U>(
-        &mut self, key: &KeyEvent, mut file_editor: FileEditor<U>,
-    ) where
+    /// The default mappings for the normal mode.
+    fn match_normal<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
+    where
         U: Ui,
+        E: EditableWidget<U>,
     {
         match key {
-            ////////// Movement keys that get rid of selections.
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'h' => {
-                move_each(&mut file_editor, Direction::Left, 1);
+            ////////// Movement keys that retain or create selections.
+            KeyEvent {
+                code: KeyCode::Char('H') | KeyCode::Left,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
+                move_each_and_select(&mut editable_actor, Direction::Left, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'j' => {
-                move_each(&mut file_editor, Direction::Bottom, 1);
+            KeyEvent {
+                code: KeyCode::Char('J') | KeyCode::Down,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
+                move_each_and_select(&mut editable_actor, Direction::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'k' => {
-                move_each(&mut file_editor, Direction::Top, 1);
+            KeyEvent {
+                code: KeyCode::Char('K') | KeyCode::Up,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
+                move_each_and_select(&mut editable_actor, Direction::Top, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'l' => {
-                move_each(&mut file_editor, Direction::Right, 1);
+            KeyEvent {
+                code: KeyCode::Char('L') | KeyCode::Right,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
+                move_each_and_select(&mut editable_actor, Direction::Right, 1);
             }
 
-            ////////// Movement keys that retain or create selections.
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'H' => {
-                move_each_and_select(&mut file_editor, Direction::Left, 1);
+            ////////// Movement keys that get rid of selections.
+            KeyEvent { code: KeyCode::Char('h') | KeyCode::Left, .. } => {
+                move_each(&mut editable_actor, Direction::Left, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'J' => {
-                move_each_and_select(&mut file_editor, Direction::Bottom, 1);
+            KeyEvent { code: KeyCode::Char('j') | KeyCode::Down, .. } => {
+                move_each(&mut editable_actor, Direction::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'K' => {
-                move_each_and_select(&mut file_editor, Direction::Top, 1);
+            KeyEvent { code: KeyCode::Char('k') | KeyCode::Up, .. } => {
+                move_each(&mut editable_actor, Direction::Top, 1);
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'L' => {
-                move_each_and_select(&mut file_editor, Direction::Right, 1);
+            KeyEvent { code: KeyCode::Char('l') | KeyCode::Right, .. } => {
+                move_each(&mut editable_actor, Direction::Right, 1);
             }
 
             ////////// Insertion keys.
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'i' => {
-                file_editor.move_each_cursor(|mut mover| mover.set_caret_on_start());
+            KeyEvent { code: KeyCode::Char('i'), .. } => {
+                editable_actor.move_each_cursor(|mut mover| mover.set_caret_on_start());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'a' => {
-                file_editor.move_each_cursor(|mut mover| mover.set_caret_on_end());
+            KeyEvent { code: KeyCode::Char('a'), .. } => {
+                editable_actor.move_each_cursor(|mut mover| mover.set_caret_on_end());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'c' => {
-                file_editor.edit_on_each_cursor(|mut editor| editor.replace(""));
-                file_editor.move_each_cursor(|mut mover| mover.unset_anchor());
+            KeyEvent { code: KeyCode::Char('c'), .. } => {
+                editable_actor.edit_on_each_cursor(|mut editor| editor.replace(""));
+                editable_actor.move_each_cursor(|mut mover| mover.unset_anchor());
                 *self.cur_mode.write() = Mode::Insert;
             }
 
+            ////////// Command line keys.
+            KeyEvent { code: KeyCode::Char(':'), .. } => *self.cur_mode.write() = Mode::Command,
+
             ////////// History manipulation.
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'u' => file_editor.undo(),
-            KeyEvent { code: KeyCode::Char(ch), .. } if *ch == 'U' => file_editor.redo(),
+            KeyEvent { code: KeyCode::Char('u'), .. } => editable_actor.undo(),
+            KeyEvent { code: KeyCode::Char('U'), .. } => editable_actor.redo(),
+            _ => {}
+        }
+    }
+
+    /// The default mappings for the command mode.
+    fn match_command<U, E>(&mut self, key: &KeyEvent, mut widget_actor: WidgetActor<U, E>)
+    where
+        U: Ui,
+        E: EditableWidget<U>,
+    {
+        match key {
+            KeyEvent { code: KeyCode::Esc, .. } => {
+                *self.cur_mode.write() = Mode::Normal;
+            }
             _ => {}
         }
     }
@@ -205,12 +248,13 @@ impl InputScheme for Editor {
     where
         U: parsec_core::ui::Ui,
     {
-        let file_editor = FileEditor::from(file);
+        let widget_actor = WidgetActor::from(file);
 
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
-            Mode::Insert => self.match_insert(key, file_editor),
-            Mode::Normal => self.match_normal(key, file_editor),
+            Mode::Insert => self.match_insert(key, widget_actor),
+            Mode::Normal => self.match_normal(key, widget_actor),
+            Mode::Command => self.match_command(key, widget_actor),
             _ => {}
         }
     }
@@ -220,9 +264,10 @@ impl InputScheme for Editor {
     }
 }
 
-fn move_each<U>(file_editor: &mut FileEditor<U>, direction: Direction, amount: usize)
+fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize)
 where
     U: Ui,
+    E: EditableWidget<U>,
 {
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
@@ -235,9 +280,11 @@ where
     });
 }
 
-fn move_each_and_select<U>(file_editor: &mut FileEditor<U>, direction: Direction, amount: usize)
-where
+fn move_each_and_select<U, E>(
+    file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize,
+) where
     U: Ui,
+    E: EditableWidget<U>,
 {
     file_editor.move_each_cursor(|mut mover| {
         if !mover.anchor_is_set() {
