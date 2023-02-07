@@ -3,7 +3,7 @@ use std::{cmp::min, ops::RangeInclusive};
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
     config::{Config, ShowNewLine, WrapMethod},
-    cursor::TextPos,
+    cursor::{TextPos, TextCursor},
     get_byte_at_col,
     widgets::file_widget::PrintInfo,
     tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
@@ -548,6 +548,60 @@ impl Text {
 
     pub fn lines(&self) -> &Vec<TextLine> {
         &self.lines
+    }
+
+    /// Removes the tags for all the cursors, used before they are expected to move.
+    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_cursor_index: usize) {
+        for (index, cursor) in cursors.iter().enumerate() {
+            let TextRange { start, end } = cursor.range();
+            let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
+                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
+            } else {
+                (
+                    CharTag::SecondaryCursor,
+                    CharTag::SecondarySelectionStart,
+                    CharTag::SecondarySelectionEnd,
+                )
+            };
+
+            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
+
+            let no_selection = if start == end { 2 } else { 0 };
+
+            for (pos, tag) in pos_list.iter().skip(no_selection) {
+                if let Some(line) = self.lines.get_mut(pos.row) {
+                    let byte = line.get_line_byte_at(pos.col);
+                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
+                }
+            }
+        }
+    }
+
+    /// Adds the tags for all the cursors, used after they are expected to have moved.
+    pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_cursor_index: usize) {
+        for (index, cursor) in cursors.iter().enumerate() {
+            let TextRange { start, end } = cursor.range();
+            let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
+                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
+            } else {
+                (
+                    CharTag::SecondaryCursor,
+                    CharTag::SecondarySelectionStart,
+                    CharTag::SecondarySelectionEnd,
+                )
+            };
+
+            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
+
+            let no_selection = if start == end { 2 } else { 0 };
+
+            for (pos, tag) in pos_list.iter().skip(no_selection) {
+                if let Some(line) = self.lines.get_mut(pos.row) {
+                    let byte = line.get_line_byte_at(pos.col) as u32;
+                    line.info.char_tags.insert((byte, *tag));
+                }
+            }
+        }
     }
 }
 

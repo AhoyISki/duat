@@ -92,8 +92,7 @@ where
     pub(crate) main_cursor: usize,
     // The `Box` here is used in order to comply with `RoState` printability.
     pub(crate) cursors: Vec<TextCursor>,
-    pub(crate) history: History,
-    do_set_print_info: bool,
+    pub(crate) history: History,    do_set_print_info: bool,
     do_add_cursor_tags: bool,
 }
 
@@ -122,8 +121,6 @@ where
             do_add_cursor_tags: false,
         };
 
-        file_widget.text.update_lines(&file_widget.end_node.read());
-        file_widget.add_cursor_tags();
         file_widget
     }
 
@@ -338,62 +335,6 @@ where
         }
     }
 
-    /// Removes the tags for all the cursors, used before they are expected to move.
-    pub(crate) fn remove_cursor_tags(&mut self) {
-        for (index, cursor) in self.cursors.iter().enumerate() {
-            let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == self.main_cursor {
-                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
-            } else {
-                (
-                    CharTag::SecondaryCursor,
-                    CharTag::SecondarySelectionStart,
-                    CharTag::SecondarySelectionEnd,
-                )
-            };
-
-            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
-
-            let no_selection = if start == end { 2 } else { 0 };
-
-            for (pos, tag) in pos_list.iter().skip(no_selection) {
-                if let Some(line) = self.text.lines.get_mut(pos.row) {
-                    let byte = line.get_line_byte_at(pos.col);
-                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
-                }
-            }
-        }
-
-        self.do_add_cursor_tags = true;
-    }
-
-    /// Adds the tags for all the cursors, used after they are expected to have moved.
-    pub(crate) fn add_cursor_tags(&mut self) {
-        for (index, cursor) in self.cursors.iter().enumerate() {
-            let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == self.main_cursor {
-                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
-            } else {
-                (
-                    CharTag::SecondaryCursor,
-                    CharTag::SecondarySelectionStart,
-                    CharTag::SecondarySelectionEnd,
-                )
-            };
-
-            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
-
-            let no_selection = if start == end { 2 } else { 0 };
-
-            for (pos, tag) in pos_list.iter().skip(no_selection) {
-                if let Some(line) = self.text.lines.get_mut(pos.row) {
-                    let byte = line.get_line_byte_at(pos.col) as u32;
-                    line.info.char_tags.insert((byte, *tag));
-                }
-            }
-        }
-    }
-
     /// Returns the currently printed set of lines.
     pub fn printed_lines(&self) -> Vec<usize> {
         let end_node = self.end_node.read();
@@ -491,10 +432,8 @@ where
         drop(node);
         //self.match_scroll();
 
-        if self.do_add_cursor_tags {
-            self.add_cursor_tags();
-            self.do_add_cursor_tags = false
-        }
+        self.text.add_cursor_tags(self.cursors.as_slice(), self.main_cursor);
+        self.do_add_cursor_tags = false
     }
 
     fn needs_update(&self) -> bool {
@@ -570,6 +509,10 @@ where
 
     fn redo(&mut self) {
         self.redo()
+    }
+
+    fn update_pre_keys(&mut self) {
+        self.text.remove_cursor_tags(self.cursors.as_slice(), self.main_cursor);
     }
 }
 

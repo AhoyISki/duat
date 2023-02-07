@@ -2,6 +2,7 @@ use std::{
     cmp::min,
     fmt::Display,
     io::{stdout, Stdout},
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -18,7 +19,10 @@ use parsec_core::{
     },
     text::{Text, TextLine, TextLineBuilder},
     ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
-    widgets::{file_widget::{FileWidget, PrintInfo}, Widget},
+    widgets::{
+        file_widget::{FileWidget, PrintInfo},
+        Widget,
+    },
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -504,54 +508,54 @@ impl SeparatorForm {
 }
 
 #[derive(Default)]
-pub struct VerticalRuleConfig {
+pub struct VertRuleConfig {
     pub separator_char: SeparatorChar,
     pub separator_form: SeparatorForm,
     pub print_on_empty: bool,
 }
 
-pub struct VerticalRule<U>
+pub struct VertRule<U>
 where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
     file: RoData<FileWidget<U>>,
     text: Text,
-    vertical_rule_config: VerticalRuleConfig,
+    vert_rule_config: VertRuleConfig,
 }
 
-impl<U> VerticalRule<U>
+impl<U> VertRule<U>
 where
     U: Ui + 'static,
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
     pub fn new(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-        vertical_rule_config: VerticalRuleConfig,
-    ) -> Box<dyn Widget<U>> {
+        vert_rule_config: VertRuleConfig,
+    ) -> Arc<Mutex<dyn Widget<U>>> {
         let file = RoData::from(&file_widget);
 
-        Box::new(VerticalRule { end_node, file, text: Text::default(), vertical_rule_config })
+        Arc::new(Mutex::new(VertRule { end_node, file, text: Text::default(), vert_rule_config }))
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(
         node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Box<dyn Widget<U>> {
+    ) -> Arc<Mutex<dyn Widget<U>>> {
         let file = RoData::from(&file_widget);
 
-        Box::new(VerticalRule {
+        Arc::new(Mutex::new(VertRule {
             end_node: node,
             file,
             text: Text::default(),
-            vertical_rule_config: VerticalRuleConfig::default(),
-        })
+            vert_rule_config: VertRuleConfig::default(),
+        }))
     }
 }
 
-unsafe impl<U> Send for VerticalRule<U> where U: Ui {}
+unsafe impl<U> Send for VertRule<U> where U: Ui {}
 
-impl<U> Widget<U> for VerticalRule<U>
+impl<U> Widget<U> for VertRule<U>
 where
     U: Ui + 'static,
 {
@@ -572,7 +576,7 @@ where
         self.text.lines.clear();
 
         let mut iterations = file.printed_lines();
-        if self.vertical_rule_config.print_on_empty {
+        if self.vert_rule_config.print_on_empty {
             let element_beyond = *iterations.last().unwrap() + 1;
             iterations.extend_from_slice(
                 vec![element_beyond; area.height().saturating_sub(iterations.len())].as_slice(),
@@ -582,10 +586,10 @@ where
         let main_line = file.main_cursor().row();
 
         for number in iterations {
-            let ch = self.vertical_rule_config.separator_char.get_char(number, main_line);
+            let ch = self.vert_rule_config.separator_char.get_char(number, main_line);
 
             let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
-            let line = self.vertical_rule_config.separator_form.form_line(number, main_line, line);
+            let line = self.vert_rule_config.separator_form.form_line(number, main_line, line);
 
             self.text.lines.push(line);
         }

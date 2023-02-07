@@ -9,7 +9,7 @@ use super::{file_widget::{FileWidget, PrintInfo}, Widget};
 
 use std::{
     cmp::max,
-    fmt::{Alignment, Write},
+    fmt::{Alignment, Write}, sync::{Arc, Mutex},
 };
 
 pub struct LineNumbers<U>
@@ -35,7 +35,7 @@ where
     pub fn new(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         line_numbers_config: LineNumbersConfig,
-    ) -> Box<dyn Widget<U>> {
+    ) -> Arc<Mutex<dyn Widget<U>>> {
         let file = RoData::from(&file_widget);
 
         let min_width = end_node.read().label.read().area().width();
@@ -55,12 +55,12 @@ where
 
         line_numbers.update();
 
-        Box::new(line_numbers)
+        Arc::new(Mutex::new(line_numbers))
     }
 
     pub fn default(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Box<dyn Widget<U>> {
+    ) -> Arc<Mutex<dyn Widget<U>>> {
         let file = RoData::from(&file_widget);
         let min_width = end_node.read().label.read().area().width();
 
@@ -79,7 +79,7 @@ where
 
         line_numbers.update();
 
-        Box::new(line_numbers)
+        Arc::new(Mutex::new(line_numbers))
     }
 
     fn calculate_width(&self) -> usize {

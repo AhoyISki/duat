@@ -95,7 +95,7 @@ impl<U> StatusLine<U>
 where
     U: Ui,
 {
-    pub(super) fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
+    pub fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
         StatusLine {
             end_node,
             text: Text::default(),

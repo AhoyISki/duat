@@ -5,11 +5,7 @@ use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
     ui::{Direction, Ui},
-    widgets::{
-        file_widget::FileWidget,
-        WidgetActor,
-        EditableWidget,
-    },
+    widgets::{EditableWidget, WidgetActor},
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -47,7 +43,7 @@ impl Editor {
     fn match_insert<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
     where
         U: Ui,
-        E: EditableWidget<U>,
+        E: EditableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent { code: KeyCode::Char(ch), .. } => {
@@ -152,7 +148,7 @@ impl Editor {
     fn match_normal<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
     where
         U: Ui,
-        E: EditableWidget<U>,
+        E: EditableWidget<U> + ?Sized,
     {
         match key {
             ////////// Movement keys that retain or create selections.
@@ -228,7 +224,7 @@ impl Editor {
     fn match_command<U, E>(&mut self, key: &KeyEvent, mut widget_actor: WidgetActor<U, E>)
     where
         U: Ui,
-        E: EditableWidget<U>,
+        E: EditableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent { code: KeyCode::Esc, .. } => {
@@ -244,11 +240,11 @@ impl Editor {
 }
 
 impl InputScheme for Editor {
-    fn process_key<U>(&mut self, key: &KeyEvent, file: &mut FileWidget<U>)
+    fn process_key<U>(&mut self, key: &KeyEvent, editable: &mut dyn EditableWidget<U>)
     where
         U: parsec_core::ui::Ui,
     {
-        let widget_actor = WidgetActor::from(file);
+        let widget_actor = WidgetActor::from(editable);
 
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
@@ -267,7 +263,7 @@ impl InputScheme for Editor {
 fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize)
 where
     U: Ui,
-    E: EditableWidget<U>,
+    E: EditableWidget<U> + ?Sized,
 {
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
@@ -284,7 +280,7 @@ fn move_each_and_select<U, E>(
     file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize,
 ) where
     U: Ui,
-    E: EditableWidget<U>,
+    E: EditableWidget<U> + ?Sized,
 {
     file_editor.move_each_cursor(|mut mover| {
         if !mover.anchor_is_set() {

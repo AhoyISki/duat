@@ -3,7 +3,7 @@ use std::{error::Error, fmt::Display};
 use crate::{
     config::RwData,
     text::Text,
-    ui::{EndNode, Ui},
+    ui::{EndNode, Ui}, cursor::TextCursor,
 };
 
 use super::{Widget, file_widget::PrintInfo};
@@ -133,6 +133,7 @@ where
 {
     end_node: RwData<EndNode<U>>,
     text: Text,
+    cursor: TextCursor,
     command_list: RwData<CommandList>
 }
 

@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::{widgets::file_widget::FileWidget, ui::Ui};
+use crate::{ui::Ui, widgets::{file_widget::FileWidget, EditableWidget}};
 
 /// A widget that can receive and process input.
 pub trait KeyTakingWidget {
@@ -21,7 +21,7 @@ pub trait KeyTakingWidget {
 /// A method of editing a file.
 pub trait InputScheme {
     /// Affects a file, given a certain key input.
-    fn process_key<U>(&mut self, key: &KeyEvent, file: &mut FileWidget<U>)
+    fn process_key<U>(&mut self, key: &KeyEvent, editable: &mut dyn EditableWidget<U>)
     where
         U: Ui;
 
@@ -58,7 +58,6 @@ where
     where
         U: Ui,
     {
-        file.remove_cursor_tags();
         for key in &self.gives {
             editing_scheme.process_key(key, file);
         }
@@ -66,7 +65,7 @@ where
 }
 
 /// The structure responsible for remapping sequences of characters.
-pub struct FileRemapper<E>
+pub struct KeyRemapper<E>
 where
     E: InputScheme,
 {
@@ -80,12 +79,12 @@ where
     should_check: Vec<usize>,
 }
 
-impl<E> FileRemapper<E>
+impl<E> KeyRemapper<E>
 where
     E: InputScheme,
 {
     pub fn new(editing_scheme: E) -> Self {
-        FileRemapper {
+        KeyRemapper {
             remaps: Vec::new(),
             current_sequence: Vec::new(),
             input_scheme: editing_scheme,
@@ -107,7 +106,10 @@ where
     }
 
     /// Send a given key to be processed.
-    pub fn send_key_to_file(&mut self, key: KeyEvent, file: &mut FileWidget<impl Ui>) {
+    pub fn send_key_to_editable<U>(&mut self, key: KeyEvent, file: &mut dyn EditableWidget<U>)
+    where
+        U: Ui,
+    {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };
 
@@ -142,13 +144,11 @@ where
             }
         }
 
-        file.remove_cursor_tags();
         for key in keys_to_send {
             self.input_scheme.process_key(&key, file);
         }
 
         if should_check_new.is_empty() {
-            file.remove_cursor_tags();
             self.input_scheme.process_key(&key, file);
         }
 
