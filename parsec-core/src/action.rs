@@ -452,11 +452,11 @@ impl History {
         if self.current_moment == self.moments.len() {
             return None;
         } else {
-            if (&self.moments[self.current_moment + 1]).changes.is_empty() {
+            if (&self.moments[self.current_moment]).changes.is_empty() {
                 None
             } else {
                 self.current_moment += 1;
-                Some(&self.moments[self.current_moment])
+                Some(&self.moments[self.current_moment - 1])
             }
         }
     }

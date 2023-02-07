@@ -469,8 +469,8 @@ where
             splice_adder,
             &mut self.text,
             &self.end_node,
-            None,
-            None,
+            Some(&mut self.history),
+            Some(self.print_info),
         )
     }
 
