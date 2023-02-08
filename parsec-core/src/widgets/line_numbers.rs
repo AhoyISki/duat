@@ -85,7 +85,8 @@ where
     fn calculate_width(&self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
-        let len = self.file.read().text().lines().len();
+        // "+ 1" because we index from 1, not from 0.
+        let len = self.file.read().text().lines().len() + 1;
 
         while len > num_exp {
             num_exp *= 10;
@@ -120,13 +121,13 @@ where
         for line in lines.iter() {
             let mut line_number = String::with_capacity(width + 5);
             let number = match self.line_numbers_config.numbering {
-                Numbering::Absolute => *line,
-                Numbering::Relative => usize::abs_diff(*line, main_line),
+                Numbering::Absolute => *line + 1,
+                Numbering::Relative => usize::abs_diff(*line + 1, main_line),
                 Numbering::Hybrid => {
                     if *line != main_line {
-                        usize::abs_diff(*line, main_line)
+                        usize::abs_diff(*line, main_line) + 1
                     } else {
-                        *line
+                        *line + 1
                     }
                 }
             };
