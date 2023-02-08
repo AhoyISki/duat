@@ -5,6 +5,7 @@ authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-kak"
 license = "AGPL-3.0-or-later"
+readme = "README.md"
 keywords = ["editor", "editing-mode", "text", "parsec"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"

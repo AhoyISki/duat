@@ -5,6 +5,7 @@ authors = ["AhoyISki"]
 description = "A Hihgly customizable text editor, configured through a rust crate."
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"
 license = "AGPL-3.0-or-later"
+readme = "../README.md"
 keywords = ["editor", "text", "application", "parsec"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"

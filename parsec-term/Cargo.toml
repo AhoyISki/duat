@@ -5,6 +5,7 @@ authors = ["AhoyISki"]
 description = "A frontend for Parsec for the terminal"
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-term"
 license = "AGPL-3.0-or-later"
+readme = "README.md"
 keywords = ["editor", "terminal", "text", "parsec"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
