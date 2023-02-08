@@ -11,28 +11,28 @@ right now is mostly just a waste of time.
 
 These are the goals that have been acomplished or are on their way:
 
-[x] Implement basic visual functionality (printing, scrolling, etc);
-[x] Implement wrapping;
-[x] Implement editing;
-[x] Create a kak mode;
-[x] Implement the use of multiple cursors;
-[x] Implement a history system;
-[x] Implement colors;
-[x] Implement widgets and designated areas;
-[x] Make all of these things easy to use on a public interface;
-[x] Create a number line and a separator line;
-[x] Create a status line;
-[ ] Create a command creation interface and a command line;
-[ ] Add the ability to create hooks;
-[ ] Implement folding;
-[ ] Add floating widgets, not tied to the session layout;
-[ ] Implement autocompletion lists;
-[ ] Create a "normal editing" mode;
-[ ] Create a vim mode;
-[ ] Create a more generalized plugin system;
-[ ] Create an LSP plugin;
+- [x] Implement basic visual functionality (printing, scrolling, etc);
+- [x] Implement wrapping;
+- [x] Implement editing;
+- [x] Create a kak mode;
+- [x] Implement the use of multiple cursors;
+- [x] Implement a history system;
+- [x] Implement colors;
+- [x] Implement widgets and designated areas;
+- [x] Make all of these things easy to use on a public interface;
+- [x] Create a number line and a separator line;
+- [x] Create a status line;
+- [ ] Create a command creation interface and a command line;
+- [ ] Add the ability to create hooks;
+- [ ] Implement folding;
+- [ ] Add floating widgets, not tied to the session layout;
+- [ ] Implement autocompletion lists;
+- [ ] Create a "normal editing" mode;
+- [ ] Create a vim mode;
+- [ ] Create a more generalized plugin system;
+- [ ] Create an LSP plugin;
 ...
-[ ] Create a GTK or ICED frontend;
+- [ ] Create a GTK or ICED frontend;
 
 __NOTE:__ These are not set in stone, and may be done out of order.
 
