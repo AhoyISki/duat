@@ -1,8 +1,22 @@
+// Even when not on a terminal, Parsec (for the foreseable future) will use the crossterm crate in
+// order to get a baseline access to terminal-like features, such as colors and control of the
+// cursor's shape. Such features will also be present on any other frontends, and crossterm is an
+// easy way to get access to them.
 use crossterm::style::{ContentStyle, Stylize};
+
+// parsec-core is the main crate for Parsec. It handles all the functionality, with the exception of
+// frontend implementations.
 use parsec_core::{
+    // The config module handles the `Config` struct. It contains common options for the end user.
+    // This module also handles the `RwData` and `RoData`, useful for the extension  of Parsec.
     config::{Config, ScrollOff, WrapMethod},
     form_status,
+    // The input module handles remapping and input methods. Remapping will always be done in the
+    // same way, and is not implemented individually for every editing method.
     input::KeyRemapper,
+    // Tags are a really powerfull part of Parsec. For now, they handle `Form`s (font styling),
+    // cursors, and wrapping, but in the future, they will also allow the creation of buttons and
+    // folding zones.
     tags::{
         form::FormPalette,
         form::{CursorStyle, Form},
@@ -22,6 +36,7 @@ fn main() {
         ..Config::default()
     };
 
+    // The `FormPalette` is a struct with all of your `Form`s and `CursorStyle`s in it.
     let mut palette = FormPalette {
         //main_cursor: CursorStyle::new(None, Form::new(ContentStyle::new().on_dark_yellow(), true)),
         ..Default::default()

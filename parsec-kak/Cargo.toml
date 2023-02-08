@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parsec-core = { version = "*", path = "../parsec-core" }
-crossterm = { path = "../../crossterm/" }
+parsec-core = "0.1.0"
+crossterm = "0.26.0"
