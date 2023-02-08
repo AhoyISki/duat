@@ -350,7 +350,7 @@ macro_rules! form_status {
     };
 
     (@get_fun (|$obj:ident| $internals:expr)) => {
-        |$obj| { $internals.read().to_string() }
+        |$obj| { $internals.to_string() }
     };
     (@get_fun $obj:expr) => {
         |data| { data.to_string() }
@@ -370,10 +370,10 @@ macro_rules! form_status {
     ) => {
         $(
             $status.push_file_var(form_status!(@file_fun $file_to_string));
-        );*
+        )*
         $(
             $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
-        );*
+        )*
 
 		$status.set_left_text($left);
 		$status.set_center_text($center);
