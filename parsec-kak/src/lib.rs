@@ -40,44 +40,44 @@ impl Editor {
     }
 
     /// The default mappings for the insert mode.
-    fn match_insert<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
+    fn match_insert<U, E>(&mut self, key: &KeyEvent, mut widget_actor: WidgetActor<U, E>)
     where
         U: Ui,
         E: EditableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent { code: KeyCode::Char(ch), .. } => {
-                editable_actor.edit_on_each_cursor(|mut editor| {
+                widget_actor.edit_on_each_cursor(|mut editor| {
                     editor.insert(ch);
                 });
-                editable_actor.move_each_cursor(|mut mover| {
+                widget_actor.move_each_cursor(|mut mover| {
                     mover.move_hor(1);
                 });
             }
             KeyEvent { code: KeyCode::Enter, .. } => {
-                editable_actor.edit_on_each_cursor(|mut editor| {
+                widget_actor.edit_on_each_cursor(|mut editor| {
                     editor.insert('\n');
                 });
-                editable_actor.move_each_cursor(|mut mover| {
+                widget_actor.move_each_cursor(|mut mover| {
                     mover.move_hor(1);
                 });
             }
             KeyEvent { code: KeyCode::Backspace, .. } => {
-                let mut anchors = Vec::with_capacity(editable_actor.cursors_len());
-                editable_actor.move_each_cursor(|mut mover| {
+                let mut anchors = Vec::with_capacity(widget_actor.cursors_len());
+                widget_actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                editable_actor.edit_on_each_cursor(|mut editor| {
+                widget_actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
                     if let Some(Some((anchor, true))) = anchors.next() {
                         editor.calibrate_pos(anchor);
                     }
                 });
-                editable_actor.move_each_cursor(|mut mover| {
+                widget_actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -88,21 +88,21 @@ impl Editor {
                 });
             }
             KeyEvent { code: KeyCode::Delete, .. } => {
-                let mut anchors = Vec::with_capacity(editable_actor.cursors_len());
-                editable_actor.move_each_cursor(|mut mover| {
+                let mut anchors = Vec::with_capacity(widget_actor.cursors_len());
+                widget_actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                editable_actor.edit_on_each_cursor(|mut editor| {
+                widget_actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
                     if let Some(Some((anchor, true))) = anchors.next() {
                         editor.calibrate_pos(anchor);
                     }
                 });
-                editable_actor.move_each_cursor(|mut mover| {
+                widget_actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -113,31 +113,31 @@ impl Editor {
                 });
             }
             KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut editable_actor, Direction::Left, 1);
+                move_each_and_select(&mut widget_actor, Direction::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut editable_actor, Direction::Right, 1);
+                move_each_and_select(&mut widget_actor, Direction::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut editable_actor, Direction::Top, 1);
+                move_each_and_select(&mut widget_actor, Direction::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut editable_actor, Direction::Bottom, 1);
+                move_each_and_select(&mut widget_actor, Direction::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Left, .. } => {
-                move_each(&mut editable_actor, Direction::Left, 1);
+                move_each(&mut widget_actor, Direction::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, .. } => {
-                move_each(&mut editable_actor, Direction::Right, 1);
+                move_each(&mut widget_actor, Direction::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, .. } => {
-                move_each(&mut editable_actor, Direction::Top, 1);
+                move_each(&mut widget_actor, Direction::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, .. } => {
-                move_each(&mut editable_actor, Direction::Bottom, 1);
+                move_each(&mut widget_actor, Direction::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Tab, .. } => {
-                editable_actor.new_moment();
+                widget_actor.new_moment();
                 *self.cur_mode.write() = Mode::Normal;
             }
             _ => {}
@@ -145,7 +145,7 @@ impl Editor {
     }
 
     /// The default mappings for the normal mode.
-    fn match_normal<U, E>(&mut self, key: &KeyEvent, mut editable_actor: WidgetActor<U, E>)
+    fn match_normal<U, E>(&mut self, key: &KeyEvent, mut widget_actor: WidgetActor<U, E>)
     where
         U: Ui,
         E: EditableWidget<U> + ?Sized,
@@ -157,56 +157,56 @@ impl Editor {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut editable_actor, Direction::Left, 1);
+                move_each_and_select(&mut widget_actor, Direction::Left, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('J') | KeyCode::Down,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut editable_actor, Direction::Bottom, 1);
+                move_each_and_select(&mut widget_actor, Direction::Bottom, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('K') | KeyCode::Up,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut editable_actor, Direction::Top, 1);
+                move_each_and_select(&mut widget_actor, Direction::Top, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('L') | KeyCode::Right,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut editable_actor, Direction::Right, 1);
+                move_each_and_select(&mut widget_actor, Direction::Right, 1);
             }
 
             ////////// Movement keys that get rid of selections.
             KeyEvent { code: KeyCode::Char('h') | KeyCode::Left, .. } => {
-                move_each(&mut editable_actor, Direction::Left, 1);
+                move_each(&mut widget_actor, Direction::Left, 1);
             }
             KeyEvent { code: KeyCode::Char('j') | KeyCode::Down, .. } => {
-                move_each(&mut editable_actor, Direction::Bottom, 1);
+                move_each(&mut widget_actor, Direction::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Char('k') | KeyCode::Up, .. } => {
-                move_each(&mut editable_actor, Direction::Top, 1);
+                move_each(&mut widget_actor, Direction::Top, 1);
             }
             KeyEvent { code: KeyCode::Char('l') | KeyCode::Right, .. } => {
-                move_each(&mut editable_actor, Direction::Right, 1);
+                move_each(&mut widget_actor, Direction::Right, 1);
             }
 
             ////////// Insertion keys.
             KeyEvent { code: KeyCode::Char('i'), .. } => {
-                editable_actor.move_each_cursor(|mut mover| mover.set_caret_on_start());
+                widget_actor.move_each_cursor(|mut mover| mover.set_caret_on_start());
                 *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent { code: KeyCode::Char('a'), .. } => {
-                editable_actor.move_each_cursor(|mut mover| mover.set_caret_on_end());
+                widget_actor.move_each_cursor(|mut mover| mover.set_caret_on_end());
                 *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent { code: KeyCode::Char('c'), .. } => {
-                editable_actor.edit_on_each_cursor(|mut editor| editor.replace(""));
-                editable_actor.move_each_cursor(|mut mover| mover.unset_anchor());
+                widget_actor.edit_on_each_cursor(|mut editor| editor.replace(""));
+                widget_actor.move_each_cursor(|mut mover| mover.unset_anchor());
                 *self.cur_mode.write() = Mode::Insert;
             }
 
@@ -214,8 +214,8 @@ impl Editor {
             KeyEvent { code: KeyCode::Char(':'), .. } => *self.cur_mode.write() = Mode::Command,
 
             ////////// History manipulation.
-            KeyEvent { code: KeyCode::Char('u'), .. } => editable_actor.undo(),
-            KeyEvent { code: KeyCode::Char('U'), .. } => editable_actor.redo(),
+            KeyEvent { code: KeyCode::Char('u'), .. } => widget_actor.undo(),
+            KeyEvent { code: KeyCode::Char('U'), .. } => widget_actor.redo(),
             _ => {}
         }
     }
@@ -227,7 +227,7 @@ impl Editor {
         E: EditableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Esc, .. } => {
+            KeyEvent { code: KeyCode::Tab, .. } => {
                 *self.cur_mode.write() = Mode::Normal;
             }
             _ => {}
