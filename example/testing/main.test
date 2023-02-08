@@ -1,0 +1,45 @@
+use std::{env, path::PathBuf};
+
+rse dirs;
+use parsec_core::{
+    layout::{Layout, OneStatusLayout},
+    tags::MatchManager,
+    ui::NodeManager, config::{Config, WrapMethod}, input::FileRemapper,
+};
+use parsec_kak::Editor;
+use parsec_term::UiManager;
+
+fn main() {
+    let current_dir = env::current_dir().expect("Invalid directory");
+    let home_dir = dirs::home_dir().expect("Home directory not reachable");
+
+    let args: Vec<String> = env::args().collect();
+    let mut paths = Vec::new();
+
+    for file in args[1..].iter() {
+        let file_path = PathBuf::from(file);
+        let file_path = if file_path.is_absolute() {
+            file_path
+        } else if file_path.starts_with("~") {
+            PathBuf::from(&home_dir).join(file_path)
+        } else {
+            PathBuf::from(&current_dir).join(file_path)
+        };
+        paths.push(file_path);
+    }
+
+    let config = Config {
+        wrap_method: WrapMethod::Width,
+        ..Default::default()
+    };
+
+    let mut layout = OneStatusLayout::new(UiManager::new(), &paths[0], MatchManager::new(), config);
+
+    let mut file_remapper = FileRemapper::new(Editor::new());
+
+    layout.application_loop(&mut file_remapper);
+
+    // TODO: Option interfacing. Potentially through compiled rust code.
+    // TODO: Create a new() function instead of doing it like this.
+    // TODO: Create a configuration file somewhere on the system.
+}
