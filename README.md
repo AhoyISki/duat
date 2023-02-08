@@ -31,6 +31,7 @@ These are the goals that have been acomplished or are on their way:
 - [ ] Create a vim mode;
 - [ ] Create a more generalized plugin system;
 - [ ] Create an LSP plugin;
+ 
 ...
 - [ ] Create a GTK or ICED frontend;
 
@@ -38,7 +39,7 @@ __NOTE:__ These are not set in stone, and may be done out of order.
 
 ## Trying it out
 
-If you wish to, you can copy the example folder's content into your computer and compile it. It is a very standard configuration for Parsec, using the kakoune editing mode. It is also annotated so you can tell what is going on, and how to further configure it.
+If you wish to, you can copy the example folder into your computer and compile it. It is a very standard configuration for Parsec, using the kakoune editing mode. It is also annotated so you can tell what is going on, and how to further configure it.
 
 ## Motivation
 
