@@ -12,7 +12,6 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyCode};
-use futures::future::Either;
 
 use crate::{
     config::{Config, RoData, RwData},
