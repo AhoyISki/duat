@@ -4,3 +4,7 @@ members = [
     "parsec-term",
     "parsec-kak",
 ]
+
+exclude = [
+	"example"
+]

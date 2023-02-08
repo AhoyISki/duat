@@ -405,12 +405,20 @@ impl History {
 
     /// Gets a mutable reference to the current `Moment`.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
-        self.moments.get_mut(self.current_moment - 1)
+        if self.current_moment > 0 {
+            self.moments.get_mut(self.current_moment - 1)
+        } else {
+            None
+        }
     }
 
     /// Gets a reference to the current `Moment`.
     pub fn current_moment(&self) -> Option<&Moment> {
-        self.moments.get(self.current_moment - 1)
+        if self.current_moment > 0 {
+            self.moments.get(self.current_moment - 1)
+        } else {
+            None
+        }
     }
 
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.

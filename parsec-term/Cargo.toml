@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
 [dependencies]
-unicode-width = "0.1.10"
+parsec-core = { path = "../parsec-core/", version = "0.1.0" }
 
+unicode-width = "0.1.10"
 crossterm = "0.26.0"
-parsec-core = "0.1.0"

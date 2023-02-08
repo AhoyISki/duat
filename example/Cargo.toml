@@ -1,13 +1,13 @@
 [package]
-name = "parsec-config"
+name = "example"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parsec-term = { path = "../parsec/parsec-term", version = "*" }
-parsec-core = { path = "../parsec/parsec-core", version = "*" }
-parsec-kak = { path = "../parsec/parsec-kak", version = "*" }
+parsec-core = { path = "../parsec-core/", version = "0.1.0" }
+parsec-term = { path = "../parsec-term/", version = "0.1.0" }
+parsec-kak = { path = "../parsec-kak/", version = "0.1.0" }
 
-crossterm = { path = "../crossterm/" }
+crossterm = "0.26.0"
