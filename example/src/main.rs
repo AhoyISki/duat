@@ -95,7 +95,7 @@ fn main() {
 	// 
 	// This will happen to every file that is opened AFTER this method is used. It does not apply
 	// to files that were opened before then.
-    session.push_node_to_file(
+    session.push_widget_to_file(
         Box::new(VertRule::default),
         Direction::Left,
         Split::Static(1),
@@ -110,7 +110,7 @@ fn main() {
 	// ││It is very short   │       │3│It is very short  │
 	// ╰────────────────────╯       ╰────────────────────╯
 	//
-    session.push_node_to_file(
+    session.push_widget_to_file(
         // `LineNumbers::default` is a method with the following signature:
         // 
         // Fn(

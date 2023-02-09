@@ -4,7 +4,7 @@ use crate::{
     ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{file_widget::{FileWidget, PrintInfo}, Widget};
+use super::{file_widget::{FileWidget, PrintInfo}, NormalWidget};
 
 pub trait DataToString {
     /// Converts the data to a `String`, usually through an embedded function.
@@ -172,10 +172,14 @@ where
     }
 }
 
-impl<U> Widget<U> for StatusLine<U>
+impl<U> NormalWidget<U> for StatusLine<U>
 where
     U: Ui,
 {
+    fn identifier(&self) -> String {
+        String::from("status_line")
+    }
+
     fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }

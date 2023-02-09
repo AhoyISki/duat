@@ -6,17 +6,17 @@ pub mod status_line;
 use std::{
     marker::PhantomData,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLockWriteGuard},
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event};
 
 use crate::{
     config::{Config, RoData, RwData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    input::{KeyRemapper, InputScheme},
+    input::{InputScheme, KeyRemapper},
     tags::{form::FormPalette, MatchManager},
     text::Text,
     ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui},
@@ -30,10 +30,13 @@ use self::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait Widget<U>: Send
+pub trait NormalWidget<U>: Send
 where
     U: Ui,
 {
+    /// Returns an identifier for this `Widget`. They may not be unique.
+    fn identifier(&self) -> String;
+
     /// Returns the `EndNode` associated with this area.
     fn end_node(&self) -> &RwData<EndNode<U>>;
 
@@ -49,6 +52,7 @@ where
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
 
+    /// Prints the contents of this `Widget`.
     fn print(&mut self);
 
     /// Scrolls the text vertically by an amount.
@@ -61,13 +65,14 @@ where
     fn command_list(&mut self) -> Option<CommandList> {
         None
     }
+
+    fn editable(&mut self) -> Option<&mut dyn EditableWidget<U>> {
+        None
+    }
 }
 
-pub type WidgetFormer<U> = dyn Fn(
-    RwData<EndNode<U>>,
-    &mut NodeManager<U>,
-    RwData<FileWidget<U>>,
-) -> Arc<Mutex<dyn Widget<U>>>;
+pub type WidgetFormer<U> =
+    dyn Fn(RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>) -> Widget<U>;
 
 pub struct Session<U>
 where
@@ -75,15 +80,16 @@ where
 {
     node_manager: NodeManager<U>,
     pub status: StatusLine<U>,
-    widgets: Vec<Arc<Mutex<dyn Widget<U>>>>,
-    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>,
+    widgets: Vec<Widget<U>>,
+    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<Widget<U>>)>,
     future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
     session_control: RwData<SessionControl>,
     global_commands: CommandList,
-    active_widget: ActiveWidget<U>,
+    active_file: usize,
+    active_widget: Option<Arc<Mutex<dyn EditableWidget<U>>>>,
 }
 
 impl<U> Session<U>
@@ -119,7 +125,8 @@ where
             match_manager,
             session_control: RwData::new(SessionControl::default()),
             global_commands: command_list,
-            active_widget: ActiveWidget::File(0),
+            active_file: 0,
+            active_widget: None,
         };
 
         session
@@ -130,21 +137,35 @@ where
         let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
         let (file, mut file_parent) = (RwData::new(file), None);
 
+        let mut widgets = Vec::new();
         for (constructor, direction, split) in &self.future_file_widgets {
             let (mid_node, end_node) = match &mut file_parent {
                 None => self.node_manager.split_end(&mut node, *direction, *split, false),
                 Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
             };
 
-            self.widgets.push(constructor(end_node, &mut self.node_manager, file.clone()));
+            let mut widget = constructor(end_node, &mut self.node_manager, file.clone());
+            *widget.mut_index() = self.get_next_index(&widget);
+            widgets.push(widget.clone());
+            self.widgets.push(widget);
             file_parent = Some(mid_node);
         }
 
-        self.files.push((file, file_parent));
+        self.files.push((file, file_parent, widgets));
     }
 
-    pub fn active_file_mut(&mut self) -> RwData<FileWidget<U>> {
-        self.files[0].0.clone()
+    /// Returns the next index for a given `Widget` type.
+    fn get_next_index(&self, widget: &Widget<U>) -> usize {
+        let identifier = widget.identifier();
+        let mut index = 0;
+
+        for widget in self.widgets.iter().rev() {
+            if widget.identifier() == identifier {
+                index = widget.index() + 1;
+                break;
+            }
+        }
+        index
     }
 
     pub fn active_file(&self) -> RoData<FileWidget<U>> {
@@ -194,22 +215,21 @@ where
         self.status.set_file(RoData::from(&self.files.last().unwrap().0));
     }
 
-    pub fn push_node_to_edge<P, C>(&mut self, constructor: C, direction: Direction, split: Split)
+    pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        P: Widget<U> + 'static,
-        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> P,
+        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> Widget<U>,
     {
         let (master_node, end_node) =
             self.node_manager.split_mid(&mut self.master_node, direction, split, false);
 
         self.master_node = master_node;
 
-        let widget = constructor(end_node.clone(), &mut self.node_manager);
-
-        self.widgets.push(Arc::new(Mutex::new(widget)));
+        let mut widget = constructor(end_node.clone(), &mut self.node_manager);
+        *widget.mut_index() = self.get_next_index(&widget);
+        self.widgets.push(widget);
     }
 
-    pub fn push_node_to_file(
+    pub fn push_widget_to_file(
         &mut self, constructor: Box<WidgetFormer<U>>, direction: Direction, split: Split,
     ) {
         self.future_file_widgets.push((Box::new(constructor), direction, split));
@@ -225,8 +245,7 @@ where
         self.status.update();
         self.status.print();
         print_files(&mut self.files);
-        for widget in &self.widgets {
-            let mut widget = widget.lock().unwrap();
+        for widget in &mut self.widgets {
             widget.update();
             widget.print();
         }
@@ -237,47 +256,34 @@ where
         // The main loop.
         thread::scope(|s_0| {
             loop {
-                if let Ok(mut resize_requested) = resize_requested.try_lock() {
-                    if *resize_requested {
-                        *resize_requested = false;
-                        drop(resize_requested);
-                        for widget in self.widgets.iter() {
-                            if let Ok(mut widget) = widget.try_lock() {
-                                widget.end_node_mut().write().try_set_size().unwrap();
-                            }
-                        }
-                        let _printer_lock = printer.lock().unwrap();
-                        for widget in &self.widgets {
-                            if let Ok(mut widget) = widget.try_lock() {
-                                widget.print();
-                            }
-                        }
-                        print_files(&mut self.files);
-                    }
-                }
+                resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
 
                 if let Ok(true) = event::poll(Duration::from_micros(100)) {
                     if let Event::Key(key_event) = event::read().unwrap() {
-                        match &mut self.active_widget {
-                            ActiveWidget::File(index) => {
-                                // NOTE: Temporary.
-                                if let KeyCode::Esc = key_event.code {
-                                    break;
-                                } else {
-                                    let mut file = self.files[*index].0.write();
-                                    file.update_pre_keys();
-                                    key_remapper.send_key_to_editable(key_event, &mut *file);
-                                }
-                            }
-                            ActiveWidget::Other(editable) => {
-                                let mut editable = editable.lock().unwrap();
-                                editable.update_pre_keys();
-                                key_remapper.send_key_to_editable(key_event, &mut *editable);
-                            }
+                        if let Some(widget) = &mut self.active_widget {
+                            let mut widget = widget.lock().unwrap();
+                            widget.update_pre_keys();
+                            key_remapper.send_key_to_editable(key_event, &mut *widget);
+                            // NOTE: Temporary.
+                        } else {
+                            let mut file = self.files[self.active_file].0.write();
+                            file.update_pre_keys();
+                            key_remapper.send_key_to_editable(key_event, &mut *file);
                         }
                     }
                 } else {
                     continue;
+                }
+
+                let session_control = self.session_control.read();
+                if session_control.should_quit {
+                    break;
+                } else if let Some(target) = &session_control.target_widget {
+                    if let Some(file) = target.find_file(&self.files) {
+                        self.active_file = file;
+                    } else {
+                        self.active_widget = target.find_widget(&self.widgets);
+                    }
                 }
 
                 self.status.update();
@@ -291,15 +297,12 @@ where
                 for index in &widget_indices {
                     let widget = &self.widgets[*index];
                     s_0.spawn(|| {
-                        let mut widget = widget.lock().unwrap();
                         widget.update();
-                        let widget_resized = widget.end_node().read().resize_requested();
-                        let mut resize_requested = resize_requested.lock().unwrap();
-                        *resize_requested |= widget_resized;
-                        if !widget_resized {
-                            drop(resize_requested);
+                        if !widget.resize_requested() {
                             let _printer_lock = printer.lock().unwrap();
                             widget.print();
+                        } else {
+                            *resize_requested.lock().unwrap() = true;
                         }
                     });
                 }
@@ -308,20 +311,9 @@ where
 
         self.node_manager.shutdown();
     }
-
-    fn files(&self) -> Vec<RoData<FileWidget<U>>> {
-        self.files.iter().map(|(f, ..)| RoData::from(f)).collect()
-    }
 }
 
-#[derive(Default)]
-pub struct SessionControl {
-    should_quit: bool,
-    files_to_open: Option<Vec<PathBuf>>,
-    go_to_command_line: bool,
-}
-
-pub trait EditableWidget<U>: Widget<U>
+pub trait EditableWidget<U>: NormalWidget<U>
 where
     U: Ui,
 {
@@ -561,20 +553,215 @@ where
     }
 }
 
-enum ActiveWidget<U>
+#[derive(Clone)]
+pub enum TargetWidget {
+    File(String),
+    FirstLocal(String),
+    LastLocal(String),
+    FirstGlobal(String),
+    LastGlobal(String),
+    Absolute(String, usize),
+}
+
+impl TargetWidget {
+    fn find_file<U>(
+        &self, files: &Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<Widget<U>>)>,
+    ) -> Option<usize>
+    where
+        U: Ui,
+    {
+        let TargetWidget::File(name) = self else {
+            return None;
+        };
+
+        files
+            .iter()
+            .enumerate()
+            .find(|(_, (file, _, _))| file.read().name() == *name)
+            .map(|(index, _)| index)
+    }
+
+    fn find_widget<U>(&self, widgets: &Vec<Widget<U>>) -> Option<Arc<Mutex<dyn EditableWidget<U>>>>
+    where
+        U: Ui,
+    {
+        let mut widgets = widgets.iter();
+
+        let result = match self {
+            TargetWidget::File(_) => None,
+            TargetWidget::FirstLocal(_) => todo!(),
+            TargetWidget::LastLocal(_) => todo!(),
+            TargetWidget::FirstGlobal(identifier) => {
+                widgets.find(|widget| widget.identifier() == *identifier)
+            }
+            TargetWidget::LastGlobal(identifier) => {
+                widgets.rev().find(|widget| widget.identifier() == *identifier)
+            }
+            TargetWidget::Absolute(identifier, index) => widgets
+                .find(|widget| widget.identifier() == *identifier && widget.index() == *index),
+        };
+
+        result.map(|widget| widget.try_to_editable()).flatten()
+    }
+
+    fn identifier(&self) -> &String {
+        match self {
+            TargetWidget::File(identifier)
+            | TargetWidget::FirstLocal(identifier)
+            | TargetWidget::LastLocal(identifier)
+            | TargetWidget::FirstGlobal(identifier)
+            | TargetWidget::LastGlobal(identifier)
+            | TargetWidget::Absolute(identifier, _) => identifier,
+        }
+    }
+}
+
+pub enum Widget<U>
 where
     U: Ui,
 {
-    File(usize),
-    Other(Arc<Mutex<dyn EditableWidget<U>>>),
+    Normal(Arc<Mutex<dyn NormalWidget<U>>>, usize),
+    Editable(Arc<Mutex<dyn EditableWidget<U>>>, usize),
+}
+
+impl<U> Clone for Widget<U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Widget::Normal(widget, index) => Widget::Normal(widget.clone(), *index),
+            Widget::Editable(widget, index) => Widget::Editable(widget.clone(), *index),
+        }
+    }
+}
+
+impl<U> Widget<U>
+where
+    U: Ui,
+{
+    pub fn new_normal<N>(normal: Arc<Mutex<N>>) -> Self
+    where
+        N: NormalWidget<U> + 'static,
+    {
+        Widget::Normal(normal, 0)
+    }
+
+    pub fn new_editable<E>(editable: Arc<Mutex<E>>) -> Self
+    where
+        E: EditableWidget<U> + 'static,
+    {
+        Widget::Editable(editable, 0)
+    }
+
+    fn identifier(&self) -> String {
+        match self {
+            Widget::Normal(widget, _) => widget.lock().unwrap().identifier(),
+            Widget::Editable(widget, _) => widget.lock().unwrap().identifier(),
+        }
+    }
+
+    fn index(&self) -> usize {
+        match self {
+            Widget::Normal(_, index) | Widget::Editable(_, index) => *index,
+        }
+    }
+
+    fn mut_index(&mut self) -> &mut usize {
+        match self {
+            Widget::Normal(_, index) | Widget::Editable(_, index) => index,
+        }
+    }
+
+    fn update(&self) {
+        match self {
+            Widget::Normal(widget, _) => widget.lock().unwrap().update(),
+            Widget::Editable(widget, _) => widget.lock().unwrap().update(),
+        }
+    }
+
+    fn needs_update(&self) -> bool {
+        match self {
+            Widget::Normal(widget, _) => {
+                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+            }
+            Widget::Editable(widget, _) => {
+                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+            }
+        }
+    }
+
+    fn resize_requested(&self) -> bool {
+        match self {
+            Widget::Normal(widget, _) => {
+                widget.lock().unwrap().end_node().read().resize_requested()
+            }
+            Widget::Editable(widget, _) => {
+                widget.lock().unwrap().end_node().read().resize_requested()
+            }
+        }
+    }
+
+    fn print(&self) {
+        match self {
+            Widget::Normal(widget, _) => widget.try_lock().unwrap().print(),
+            Widget::Editable(widget, _) => widget.lock().unwrap().print(),
+        }
+    }
+
+    fn try_set_size(&self) -> Result<(), ()> {
+        match self {
+            Widget::Normal(widget, _) => {
+                if let Ok(mut widget) = widget.try_lock() {
+                    widget.end_node_mut().write().try_set_size()
+                } else {
+                    Err(())
+                }
+            }
+            Widget::Editable(widget, _) => {
+                if let Ok(mut widget) = widget.try_lock() {
+                    widget.end_node_mut().write().try_set_size()
+                } else {
+                    Err(())
+                }
+            }
+        }
+    }
+
+    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn EditableWidget<U>>>> {
+        match self {
+            Widget::Normal(_, _) => None,
+            Widget::Editable(widget, _) => Some(widget.clone()),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct SessionControl {
+    should_quit: bool,
+    files_to_open: Option<Vec<PathBuf>>,
+    target_widget: Option<TargetWidget>,
+}
+
+impl SessionControl {
+    /// Switches the input to another `Widget`.
+    pub fn switch_widget(&mut self, target_widget: &TargetWidget) {
+        self.target_widget = Some(target_widget.clone());
+    }
+
+    /// Quits Parsec.
+    pub fn quit(&mut self) {
+        self.should_quit = true;
+    }
 }
 
 /// Prints all the files.
-fn print_files<U>(printer: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>)>)
-where
+fn print_files<U>(
+    files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<Widget<U>>)>,
+) where
     U: Ui,
 {
-    for (file_widget, _) in printer.iter_mut() {
+    for (file_widget, ..) in files.iter_mut() {
         let mut file_widget = file_widget.write();
         file_widget.update();
         file_widget.print();
@@ -582,7 +769,7 @@ where
 }
 
 /// List of widgets that need to be updated.
-fn widgets_to_update<U>(widgets: &Vec<Arc<Mutex<dyn Widget<U>>>>) -> Vec<usize>
+fn widgets_to_update<U>(widgets: &Vec<Widget<U>>) -> Vec<usize>
 where
     U: Ui,
 {
@@ -590,14 +777,30 @@ where
 
     for (index, widget) in widgets.iter().enumerate() {
         // If the lock is unavailable, that means the widget is being updated.
-        if let Ok(lock) = widget.try_lock() {
-            if lock.needs_update() {
-                indices.push(index);
-            }
+        if widget.needs_update() {
+            indices.push(index);
         }
     }
 
     indices
+}
+
+fn resize_widgets<U>(
+    resize_requested: &Mutex<bool>, printer: &Mutex<bool>, widgets: &Vec<Widget<U>>,
+    files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<Widget<U>>)>,
+) where
+    U: Ui,
+{
+    if let Ok(mut resize_requested) = resize_requested.try_lock() {
+        if *resize_requested {
+            *resize_requested = false;
+            drop(resize_requested);
+            widgets.iter().for_each(|widget| widget.try_set_size().unwrap());
+            let _printer_lock = printer.lock().unwrap();
+            widgets.iter().for_each(|widget| widget.print());
+            print_files(files);
+        }
+    }
 }
 
 pub fn session_commands<U>(session: RwData<SessionControl>) -> Vec<Command<SessionControl>>

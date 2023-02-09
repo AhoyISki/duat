@@ -12,7 +12,6 @@ use crossterm::{
 };
 use parsec_core::{
     config::{RoData, RwData},
-    cursor::TextCursor,
     tags::{
         form::CursorStyle,
         form::{Form, DEFAULT_ID},
@@ -21,7 +20,7 @@ use parsec_core::{
     ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
     widgets::{
         file_widget::{FileWidget, PrintInfo},
-        Widget,
+        NormalWidget, Widget,
     },
 };
 use unicode_width::UnicodeWidthChar;
@@ -532,7 +531,7 @@ where
     pub fn new(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         vert_rule_config: VertRuleConfig,
-    ) -> Arc<Mutex<dyn Widget<U>>> {
+    ) -> Arc<Mutex<dyn NormalWidget<U>>> {
         let file = RoData::from(&file_widget);
 
         Arc::new(Mutex::new(VertRule { end_node, file, text: Text::default(), vert_rule_config }))
@@ -541,24 +540,28 @@ where
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(
         node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Arc<Mutex<dyn Widget<U>>> {
+    ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        Arc::new(Mutex::new(VertRule {
+        Widget::new_normal(Arc::new(Mutex::new(VertRule {
             end_node: node,
             file,
             text: Text::default(),
             vert_rule_config: VertRuleConfig::default(),
-        }))
+        })))
     }
 }
 
 unsafe impl<U> Send for VertRule<U> where U: Ui {}
 
-impl<U> Widget<U> for VertRule<U>
+impl<U> NormalWidget<U> for VertRule<U>
 where
     U: Ui + 'static,
 {
+    fn identifier(&self) -> String {
+        String::from("vertical_rule")
+    }
+
     fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }

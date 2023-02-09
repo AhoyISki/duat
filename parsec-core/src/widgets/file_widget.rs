@@ -14,7 +14,7 @@ use crate::{
     ui::{Area, EndNode, Label, Ui},
 };
 
-use super::{EditableWidget, Widget};
+use super::{EditableWidget, NormalWidget};
 
 // NOTE: The defaultness in here, when it comes to `last_main`, main cause issues in the future.
 /// Information about how to print the file on the `Label`.
@@ -408,10 +408,14 @@ where
     }
 }
 
-impl<U> Widget<U> for FileWidget<U>
+impl<U> NormalWidget<U> for FileWidget<U>
 where
     U: Ui,
 {
+    fn identifier(&self) -> String {
+        String::from("file")
+    }
+
     fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }

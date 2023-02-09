@@ -5,11 +5,15 @@ use crate::{
     ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{file_widget::{FileWidget, PrintInfo}, Widget};
+use super::{
+    file_widget::{FileWidget, PrintInfo},
+    NormalWidget, Widget,
+};
 
 use std::{
     cmp::max,
-    fmt::{Alignment, Write}, sync::{Arc, Mutex},
+    fmt::{Alignment, Write},
+    sync::{Arc, Mutex},
 };
 
 pub struct LineNumbers<U>
@@ -35,7 +39,7 @@ where
     pub fn new(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         line_numbers_config: LineNumbersConfig,
-    ) -> Arc<Mutex<dyn Widget<U>>> {
+    ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
         let min_width = end_node.read().label.read().area().width();
@@ -55,12 +59,12 @@ where
 
         line_numbers.update();
 
-        Arc::new(Mutex::new(line_numbers))
+        Widget::new_normal(Arc::new(Mutex::new(line_numbers)))
     }
 
     pub fn default(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Arc<Mutex<dyn Widget<U>>> {
+    ) -> Widget<U> {
         let file = RoData::from(&file_widget);
         let min_width = end_node.read().label.read().area().width();
 
@@ -79,7 +83,7 @@ where
 
         line_numbers.update();
 
-        Arc::new(Mutex::new(line_numbers))
+        Widget::new_normal(Arc::new(Mutex::new(line_numbers)))
     }
 
     fn calculate_width(&self) -> usize {
@@ -96,10 +100,14 @@ where
     }
 }
 
-impl<U> Widget<U> for LineNumbers<U>
+impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
 {
+    fn identifier(&self) -> String {
+        String::from("line_numbers")
+    }
+
     fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }

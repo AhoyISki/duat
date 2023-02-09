@@ -11,7 +11,7 @@ use crate::{
     ui::{Area, EndNode, Label, Ui},
     widgets::{
         file_widget::{FileWidget, PrintInfo},
-        Widget,
+        NormalWidget,
     },
 };
 

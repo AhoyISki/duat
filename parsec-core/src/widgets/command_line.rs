@@ -6,7 +6,7 @@ use crate::{
     ui::{EndNode, Ui}, cursor::TextCursor,
 };
 
-use super::{Widget, file_widget::PrintInfo};
+use super::{NormalWidget, file_widget::PrintInfo};
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -137,10 +137,14 @@ where
     command_list: RwData<CommandList>
 }
 
-impl<U> Widget<U> for CommandLine<U>
+impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
+    fn identifier(&self) -> String {
+        String::from("command_line")
+    }
+
     fn end_node(&self) -> &RwData<EndNode<U>> {
         &self.end_node
     }
