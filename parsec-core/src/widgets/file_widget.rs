@@ -9,7 +9,7 @@ use crate::{
     config::{RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     max_line,
-    tags::{CharTag, MatchManager},
+    tags::{MatchManager},
     text::{update_range, Text},
     ui::{Area, EndNode, Label, Ui},
 };

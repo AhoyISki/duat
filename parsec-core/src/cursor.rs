@@ -8,10 +8,9 @@ use crate::{
     config::RwData,
     get_byte_at_col, max_line, split_string_lines,
     text::{update_range, Text, TextLine},
-    ui::{Area, EndNode, Label, Ui},
+    ui::{EndNode, Ui},
     widgets::{
-        file_widget::{FileWidget, PrintInfo},
-        NormalWidget,
+        file_widget::{PrintInfo},
     },
 };
 

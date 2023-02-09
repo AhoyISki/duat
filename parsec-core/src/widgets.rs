@@ -5,28 +5,17 @@ pub mod status_line;
 
 use std::{
     marker::PhantomData,
-    path::PathBuf,
     sync::{Arc, Mutex},
-    thread,
-    time::Duration,
 };
-
-use crossterm::event::{self, Event};
 
 use crate::{
-    config::{Config, RoData, RwData},
+    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    input::{InputScheme, KeyRemapper},
-    tags::{form::FormPalette, MatchManager},
     text::Text,
-    ui::{Direction, EndNode, MidNode, Node, NodeManager, Split, Ui},
+    ui::{EndNode, MidNode, Ui},
 };
 
-use self::{
-    command_line::{Command, CommandList},
-    file_widget::FileWidget,
-    status_line::StatusLine,
-};
+use self::{command_line::CommandList, file_widget::FileWidget};
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
