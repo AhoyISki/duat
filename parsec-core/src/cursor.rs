@@ -9,9 +9,7 @@ use crate::{
     get_byte_at_col, max_line, split_string_lines,
     text::{update_range, Text, TextLine},
     ui::{EndNode, Ui},
-    widgets::{
-        file_widget::{PrintInfo},
-    },
+    widgets::file_widget::PrintInfo,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.

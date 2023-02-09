@@ -1,6 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::{ui::Ui, widgets::{file_widget::FileWidget, EditableWidget}};
+use crate::{
+    ui::Ui,
+    widgets::{file_widget::FileWidget, ActionableWidget, WidgetActor},
+    SessionControl,
+};
 
 /// A widget that can receive and process input.
 pub trait KeyTakingWidget {
@@ -21,9 +25,12 @@ pub trait KeyTakingWidget {
 /// A method of editing a file.
 pub trait InputScheme {
     /// Affects a file, given a certain key input.
-    fn process_key<U>(&mut self, key: &KeyEvent, editable: &mut dyn EditableWidget<U>)
-    where
-        U: Ui;
+    fn process_key<U, A>(
+        &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
+        session_control: &mut SessionControl,
+    ) where
+        U: Ui,
+        A: ActionableWidget<U> + ?Sized;
 
     /// Wether or not remapped keys should be sent.
     fn send_remapped_keys(&self) -> bool;
@@ -54,12 +61,15 @@ where
     }
 
     /// Sends the transformed keys to an editing scheme to affect a given file.
-    fn send_keys<U>(&self, editing_scheme: &mut E, file: &mut FileWidget<U>)
-    where
+    fn send_keys<U, A>(
+        &self, editing_scheme: &mut E, widget: &mut A, session_control: &mut SessionControl,
+    ) where
         U: Ui,
+        A: ActionableWidget<U> + ?Sized,
     {
         for key in &self.gives {
-            editing_scheme.process_key(key, file);
+            let actor = WidgetActor::from(&mut *widget);
+            editing_scheme.process_key(key, actor, session_control);
         }
     }
 }
@@ -106,9 +116,10 @@ where
     }
 
     /// Send a given key to be processed.
-    pub fn send_key_to_editable<U>(&mut self, key: KeyEvent, file: &mut dyn EditableWidget<U>)
+    pub fn send_key_to_actionable<U, A>(&mut self, key: KeyEvent, widget: &mut A, session_control: &mut SessionControl)
     where
         U: Ui,
+        A: ActionableWidget<U> + ?Sized,
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };
@@ -145,11 +156,11 @@ where
         }
 
         for key in keys_to_send {
-            self.input_scheme.process_key(&key, file);
+            self.input_scheme.process_key(&key, WidgetActor::from(&mut *widget), session_control);
         }
 
         if should_check_new.is_empty() {
-            self.input_scheme.process_key(&key, file);
+            self.input_scheme.process_key(&key, WidgetActor::from(widget), session_control);
         }
 
         self.should_check = should_check_new;

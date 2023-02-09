@@ -55,12 +55,12 @@ where
         None
     }
 
-    fn editable(&mut self) -> Option<&mut dyn EditableWidget<U>> {
+    fn editable(&mut self) -> Option<&mut dyn ActionableWidget<U>> {
         None
     }
 }
 
-pub trait EditableWidget<U>: NormalWidget<U>
+pub trait ActionableWidget<U>: NormalWidget<U>
 where
     U: Ui,
 {
@@ -100,7 +100,7 @@ where
     U: Ui,
 {
     Normal(Arc<Mutex<dyn NormalWidget<U>>>),
-    Editable(Arc<Mutex<dyn EditableWidget<U>>>),
+    Editable(Arc<Mutex<dyn ActionableWidget<U>>>),
 }
 
 impl<U> Clone for Widget<U>
@@ -177,7 +177,7 @@ where
         }
     }
 
-    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn EditableWidget<U>>>> {
+    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>> {
         match self {
             Widget::Normal(_) => None,
             Widget::Editable(widget) => Some(widget.clone()),
@@ -188,7 +188,7 @@ where
 pub struct WidgetActor<'a, U, E>
 where
     U: Ui,
-    E: EditableWidget<U> + ?Sized,
+    E: ActionableWidget<U> + ?Sized,
 {
     clearing_needed: bool,
     editable: &'a mut E,
@@ -198,7 +198,7 @@ where
 impl<'a, U, E> WidgetActor<'a, U, E>
 where
     U: Ui,
-    E: EditableWidget<U> + ?Sized,
+    E: ActionableWidget<U> + ?Sized,
 {
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
     fn clear_intersections(&mut self) {
@@ -383,7 +383,7 @@ where
 impl<'a, U, E> From<&'a mut E> for WidgetActor<'a, U, E>
 where
     U: Ui,
-    E: EditableWidget<U> + ?Sized,
+    E: ActionableWidget<U> + ?Sized,
 {
     fn from(value: &'a mut E) -> Self {
         WidgetActor { editable: value, clearing_needed: false, _ghost: PhantomData::default() }
@@ -421,7 +421,7 @@ impl TargetWidget {
 
     pub(crate) fn find_editable<U>(
         &self, widgets: &Vec<(Widget<U>, usize)>,
-    ) -> Option<Arc<Mutex<dyn EditableWidget<U>>>>
+    ) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>>
     where
         U: Ui,
     {

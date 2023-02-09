@@ -26,7 +26,7 @@ use widgets::{
     command_line::{Command, CommandList},
     file_widget::{FileWidget, PrintInfo},
     status_line::StatusLine,
-    EditableWidget, NormalWidget, TargetWidget, Widget,
+    ActionableWidget, NormalWidget, TargetWidget, Widget,
 };
 
 pub type WidgetFormer<U> =
@@ -44,10 +44,10 @@ where
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
-    session_control: RwData<SessionControl>,
+    control: RwData<SessionControl>,
     global_commands: CommandList,
     active_file: usize,
-    active_widget: Option<Arc<Mutex<dyn EditableWidget<U>>>>,
+    active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
 }
 
 impl<U> Session<U>
@@ -81,7 +81,7 @@ where
             master_node,
             all_files_parent: Node::EndNode(node),
             match_manager,
-            session_control: RwData::new(SessionControl::default()),
+            control: RwData::new(SessionControl::default()),
             global_commands: command_list,
             active_file: 0,
             active_widget: None,
@@ -215,58 +215,47 @@ where
         let mut iteration = 0;
 
         // The main loop.
-        thread::scope(|s_0| {
-            loop {
-                resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
+        thread::scope(|s_0| loop {
+            resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
 
-                if let Ok(true) = event::poll(Duration::from_micros(100)) {
-                    if let Event::Key(key_event) = event::read().unwrap() {
-                        if let Some(widget) = &mut self.active_widget {
-                            let mut widget = widget.lock().unwrap();
-                            widget.update_pre_keys();
-                            key_remapper.send_key_to_editable(key_event, &mut *widget);
-                            // NOTE: Temporary.
-                        } else {
-                            let mut file = self.files[self.active_file].0.write();
-                            file.update_pre_keys();
-                            key_remapper.send_key_to_editable(key_event, &mut *file);
-                        }
-                    }
+            if let Ok(true) = event::poll(Duration::from_micros(100)) {
+                let active_file = &mut self.files[self.active_file];
+                let active_file = (&mut active_file.0, active_file.2.as_mut_slice());
+                send_event(key_remapper, &mut self.control, active_file, &mut self.active_widget);
+            } else {
+                continue;
+            }
+
+            let control = self.control.read();
+            if control.should_quit {
+                break;
+            } else if let Some(target) = &control.target_widget {
+                if let Some(file) = target.find_file(&self.files) {
+                    self.active_file = file;
                 } else {
-                    continue;
+                    self.active_widget = target.find_editable(&self.widgets);
                 }
+            }
 
-                let session_control = self.session_control.read();
-                if session_control.should_quit {
-                    break;
-                } else if let Some(target) = &session_control.target_widget {
-                    if let Some(file) = target.find_file(&self.files) {
-                        self.active_file = file;
+            self.status.update();
+            let printer_lock = printer.lock().unwrap();
+            self.status.print();
+            print_files(&mut self.files);
+            drop(printer_lock);
+            iteration = 0;
+
+            let widget_indices = widgets_to_update(&self.widgets);
+            for index in &widget_indices {
+                let (widget, _) = &self.widgets[*index];
+                s_0.spawn(|| {
+                    widget.update();
+                    if !widget.resize_requested() {
+                        let _printer_lock = printer.lock().unwrap();
+                        widget.print();
                     } else {
-                        self.active_widget = target.find_editable(&self.widgets);
+                        *resize_requested.lock().unwrap() = true;
                     }
-                }
-
-                self.status.update();
-                let printer_lock = printer.lock().unwrap();
-                self.status.print();
-                print_files(&mut self.files);
-                drop(printer_lock);
-                iteration = 0;
-
-                let widget_indices = widgets_to_update(&self.widgets);
-                for index in &widget_indices {
-                    let (widget, _) = &self.widgets[*index];
-                    s_0.spawn(|| {
-                        widget.update();
-                        if !widget.resize_requested() {
-                            let _printer_lock = printer.lock().unwrap();
-                            widget.print();
-                        } else {
-                            *resize_requested.lock().unwrap() = true;
-                        }
-                    });
-                }
+                });
             }
         });
 
@@ -365,6 +354,28 @@ fn resize_widgets<U>(
             let _printer_lock = printer.lock().unwrap();
             widgets.iter().for_each(|(widget, _)| widget.print());
             print_files(files);
+        }
+    }
+}
+
+fn send_event<U, I>(
+    key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl>,
+    active_file: (&mut RwData<FileWidget<U>>, &mut [(Widget<U>, usize)]),
+    active_widget: &mut Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
+) where
+    U: Ui,
+    I: InputScheme,
+{
+    if let Event::Key(key_event) = event::read().unwrap() {
+        let mut control = control.write();
+        if let Some(widget) = active_widget {
+            let mut widget = widget.lock().unwrap();
+            widget.update_pre_keys();
+            key_remapper.send_key_to_actionable(key_event, &mut *widget, &mut control);
+        } else {
+            let mut file = active_file.0.write();
+            file.update_pre_keys();
+            key_remapper.send_key_to_actionable(key_event, &mut *file, &mut control);
         }
     }
 }

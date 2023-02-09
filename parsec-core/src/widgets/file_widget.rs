@@ -9,12 +9,12 @@ use crate::{
     config::{RwData, WrapMethod},
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     max_line,
-    tags::{MatchManager},
+    tags::MatchManager,
     text::{update_range, Text},
     ui::{Area, EndNode, Label, Ui},
 };
 
-use super::{EditableWidget, NormalWidget};
+use super::{ActionableWidget, NormalWidget};
 
 // NOTE: The defaultness in here, when it comes to `last_main`, main cause issues in the future.
 /// Information about how to print the file on the `Label`.
@@ -92,7 +92,8 @@ where
     pub(crate) main_cursor: usize,
     // The `Box` here is used in order to comply with `RoState` printability.
     pub(crate) cursors: Vec<TextCursor>,
-    pub(crate) history: History,    do_set_print_info: bool,
+    pub(crate) history: History,
+    do_set_print_info: bool,
     do_add_cursor_tags: bool,
 }
 
@@ -463,7 +464,7 @@ where
     }
 }
 
-impl<U> EditableWidget<U> for FileWidget<U>
+impl<U> ActionableWidget<U> for FileWidget<U>
 where
     U: Ui,
 {
