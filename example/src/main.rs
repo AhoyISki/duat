@@ -158,7 +158,7 @@ fn main() {
 
 	// The `Editor` (in this case, the Kakoune editor) is the thing that determines how the program
 	// will be handle input to edit a file or any piece of text.
-    let editor = Editor::new();
+    let editor = Editor::default();
 
 	// The `form_status!` macro takes a `StatusLine` widget and formats it in the desired fashion.
     form_status!(

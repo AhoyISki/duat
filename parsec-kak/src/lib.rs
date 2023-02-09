@@ -1,19 +1,20 @@
-use std::fmt::Display;
+use std::{default, fmt::Display};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
     ui::{Direction, Ui},
-    widgets::{ActionableWidget, WidgetActor},
+    widgets::{ActionableWidget, TargetWidget, WidgetActor},
     SessionControl,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy, PartialEq)]
 pub enum Mode {
     Insert,
+    #[default]
     Normal,
-    Goto,
+    GoTo,
     View,
     Command,
 }
@@ -23,23 +24,20 @@ impl Display for Mode {
         match self {
             Mode::Insert => f.write_fmt(format_args!("insert")),
             Mode::Normal => f.write_fmt(format_args!("normal")),
-            Mode::Goto => f.write_fmt(format_args!("goto")),
+            Mode::GoTo => f.write_fmt(format_args!("goto")),
             Mode::View => f.write_fmt(format_args!("view")),
             Mode::Command => f.write_fmt(format_args!("command")),
         }
     }
 }
 
+#[derive(Default)]
 pub struct Editor {
     cur_mode: RwData<Mode>,
+    last_file: usize,
 }
 
 impl Editor {
-    /// Returns a new instance of `parsec-kak::Editor`.
-    pub fn new() -> Self {
-        Editor { cur_mode: RwData::new(Mode::Normal) }
-    }
-
     /// The default mappings for the insert mode.
     fn match_insert<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
     where
@@ -147,7 +145,7 @@ impl Editor {
 
     /// The default mappings for the normal mode.
     fn match_normal<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl,
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
@@ -217,8 +215,12 @@ impl Editor {
                 *self.cur_mode.write() = Mode::Insert;
             }
 
-            ////////// Command line keys.
-            KeyEvent { code: KeyCode::Char(':'), .. } => *self.cur_mode.write() = Mode::Command,
+            ////////// Other mode changing keys.
+            KeyEvent { code: KeyCode::Char(':'), .. } => {
+                control.switch_widget(TargetWidget::First(String::from("command")));
+                *self.cur_mode.write() = Mode::Command;
+            }
+            KeyEvent { code: KeyCode::Char('g'), .. } => *self.cur_mode.write() = Mode::GoTo,
 
             ////////// History manipulation.
             KeyEvent { code: KeyCode::Char('u'), .. } => actor.undo(),
@@ -228,19 +230,59 @@ impl Editor {
     }
 
     /// The default mappings for the command mode.
-    fn match_command<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
-    where
+    fn match_command<U, E>(
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+    ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Tab, .. } => {
+            KeyEvent { code: KeyCode::Char('\n'), .. } => {
+                actor.edit_on_main(|mut editor| editor.replace('\n'));
+                control.return_to_file();
+                *self.cur_mode.write() = Mode::Normal;
+            }
+            KeyEvent { code: KeyCode::Char(ch), .. } => {
+                actor.edit_on_main(|mut editor| editor.replace(ch));
+            }
+            KeyEvent { code: KeyCode::Esc, .. } => {
+                control.return_to_file();
                 *self.cur_mode.write() = Mode::Normal;
             }
             _ => {}
         }
     }
 
+    fn match_goto<U, E>(
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+    ) where
+        U: Ui,
+        E: ActionableWidget<U> + ?Sized,
+    {
+        match key {
+            KeyEvent { code: KeyCode::Char('a'), .. } => {
+                control.switch_widget(TargetWidget::Absolute(String::from("file"), self.last_file));
+                self.last_file = control.active_file();
+            }
+            KeyEvent { code: KeyCode::Char('n'), .. } => {
+                let (active, max) = (control.active_file(), control.max_file());
+                let next_file = if active == max { 0 } else { active + 1 };
+
+                control.switch_widget(TargetWidget::Absolute(String::from("file"), next_file));
+                self.last_file = control.active_file();
+            }
+            KeyEvent { code: KeyCode::Char('N'), .. } => {
+                let (active, max) = (control.active_file(), control.max_file());
+                let prev_file = if active == 0 { max } else { active - 1 };
+                control.switch_widget(TargetWidget::Absolute(String::from("file"), prev_file));
+                self.last_file = control.active_file();
+            }
+            _ => {}
+        }
+        *self.cur_mode.write() = Mode::Normal;
+    }
+
+    /// A readable state of which mode is currently active.
     pub fn cur_mode(&self) -> RoData<Mode> {
         RoData::from(&self.cur_mode)
     }
@@ -248,7 +290,7 @@ impl Editor {
 
 impl InputScheme for Editor {
     fn process_key<U, A>(
-        &mut self, key: &KeyEvent, actor: WidgetActor<U, A>, control: &mut SessionControl,
+        &mut self, key: &KeyEvent, actor: WidgetActor<U, A>, control: &mut SessionControl<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
@@ -257,8 +299,9 @@ impl InputScheme for Editor {
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
             Mode::Normal => self.match_normal(key, actor, control),
-            Mode::Command => self.match_command(key, actor),
-            _ => {}
+            Mode::Command => self.match_command(key, actor, control),
+            Mode::GoTo => self.match_goto(key, actor, control),
+            Mode::View => todo!(),
         }
     }
 

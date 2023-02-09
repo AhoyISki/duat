@@ -392,11 +392,9 @@ where
 
 #[derive(Clone)]
 pub enum TargetWidget {
-    File(String),
-    FirstLocal(String),
-    LastLocal(String),
-    FirstGlobal(String),
-    LastGlobal(String),
+    FileName(String),
+    First(String),
+    Last(String),
     Absolute(String, usize),
 }
 
@@ -408,15 +406,21 @@ impl TargetWidget {
     where
         U: Ui,
     {
-        let TargetWidget::File(name) = self else {
-            return None;
-        };
-
-        files
-            .iter()
-            .enumerate()
-            .find(|(_, (file, _, _))| file.read().name() == *name)
-            .map(|(index, _)| index)
+        match self {
+            TargetWidget::FileName(name) => files
+                .iter()
+                .enumerate()
+                .find(|(_, (file, _, _))| file.read().name() == *name)
+                .map(|(index, _)| index),
+            TargetWidget::First(id) if id.as_str() == "file" => files.first().map(|_| 0),
+            TargetWidget::Last(id) if id.as_str() == "file" => {
+                files.last().map(|_| files.len() - 1)
+            }
+            TargetWidget::Absolute(id, index) if id.as_str() == "file" => {
+                files.get(*index).map(|_| *index)
+            }
+            _ => None
+        }
     }
 
     pub(crate) fn find_editable<U>(
@@ -428,13 +432,11 @@ impl TargetWidget {
         let mut widgets = widgets.iter();
 
         let result = match self {
-            TargetWidget::File(_) => None,
-            TargetWidget::FirstLocal(_) => todo!(),
-            TargetWidget::LastLocal(_) => todo!(),
-            TargetWidget::FirstGlobal(identifier) => {
+            TargetWidget::FileName(_) => None,
+            TargetWidget::First(identifier) => {
                 widgets.find(|(widget, _)| widget.identifier() == *identifier)
             }
-            TargetWidget::LastGlobal(identifier) => {
+            TargetWidget::Last(identifier) => {
                 widgets.rev().find(|(widget, _)| widget.identifier() == *identifier)
             }
             TargetWidget::Absolute(identifier, index) => {

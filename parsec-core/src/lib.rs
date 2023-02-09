@@ -44,10 +44,8 @@ where
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
-    control: RwData<SessionControl>,
+    control: RwData<SessionControl<U>>,
     global_commands: CommandList,
-    active_file: usize,
-    active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
 }
 
 impl<U> Session<U>
@@ -66,7 +64,7 @@ where
 
         let status = StatusLine::new(end_node, &mut node_manager);
 
-        let session_control = RwData::new(SessionControl::default());
+        let session_control = RwData::new(SessionControl::<U>::default());
         let mut command_list = CommandList::default();
         for command in session_commands::<U>(session_control.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
@@ -83,8 +81,6 @@ where
             match_manager,
             control: RwData::new(SessionControl::default()),
             global_commands: command_list,
-            active_file: 0,
-            active_widget: None,
         };
 
         session
@@ -171,6 +167,7 @@ where
         }
 
         self.status.set_file(RoData::from(&self.files.last().unwrap().0));
+        self.control.write().max_file += 1;
     }
 
     pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Direction, split: Split)
@@ -182,7 +179,7 @@ where
 
         self.master_node = master_node;
 
-        let mut widget = constructor(end_node.clone(), &mut self.node_manager);
+        let widget = constructor(end_node.clone(), &mut self.node_manager);
         let index = self.get_next_index(&widget);
         self.widgets.push((widget, index));
     }
@@ -219,21 +216,21 @@ where
             resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
 
             if let Ok(true) = event::poll(Duration::from_micros(100)) {
-                let active_file = &mut self.files[self.active_file];
+                let active_file = &mut self.files[self.control.read().active_file];
                 let active_file = (&mut active_file.0, active_file.2.as_mut_slice());
-                send_event(key_remapper, &mut self.control, active_file, &mut self.active_widget);
+                send_event(key_remapper, &mut self.control, active_file);
             } else {
                 continue;
             }
 
-            let control = self.control.read();
+            let mut control = self.control.write();
             if control.should_quit {
                 break;
             } else if let Some(target) = &control.target_widget {
                 if let Some(file) = target.find_file(&self.files) {
-                    self.active_file = file;
+                    control.active_file = file;
                 } else {
-                    self.active_widget = target.find_editable(&self.widgets);
+                    control.active_widget = target.find_editable(&self.widgets);
                 }
             }
 
@@ -263,32 +260,68 @@ where
     }
 }
 
-#[derive(Default)]
-pub struct SessionControl {
+pub struct SessionControl<U>
+where
+    U: Ui,
+{
     should_quit: bool,
-    files_to_open: Option<Vec<PathBuf>>,
+    files_to_open: Vec<PathBuf>,
     target_widget: Option<TargetWidget>,
+    max_file: usize,
+    active_file: usize,
+    active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
 }
 
-impl SessionControl {
+impl<U> Default for SessionControl<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        SessionControl {
+            should_quit: false,
+            files_to_open: Vec::new(),
+            target_widget: None,
+            max_file: 0,
+            active_file: 0,
+            active_widget: None,
+        }
+    }
+}
+
+impl<U> SessionControl<U>
+where
+    U: Ui,
+{
+    pub fn return_to_file(&mut self) {
+        self.target_widget = Some(TargetWidget::Absolute(String::from("file"), self.active_file));
+    }
+
     /// Switches the input to another `Widget`.
-    pub fn switch_widget(&mut self, target_widget: &TargetWidget) {
-        self.target_widget = Some(target_widget.clone());
+    pub fn switch_widget(&mut self, target_widget: TargetWidget) {
+        self.target_widget = Some(target_widget);
     }
 
     /// Quits Parsec.
     pub fn quit(&mut self) {
         self.should_quit = true;
     }
+
+    pub fn active_file(&self) -> usize {
+        self.active_file
+    }
+
+    pub fn max_file(&self) -> usize {
+        self.max_file
+    }
 }
 
-pub fn session_commands<U>(session: RwData<SessionControl>) -> Vec<Command<SessionControl>>
+pub fn session_commands<U>(session: RwData<SessionControl<U>>) -> Vec<Command<SessionControl<U>>>
 where
     U: Ui,
 {
     let quit_callers = vec![String::from("quit"), String::from("q")];
     let quit_command = Command::new(
-        Box::new(|session: &mut SessionControl, _, _| {
+        Box::new(|session: &mut SessionControl<U>, _, _| {
             session.should_quit = true;
             Ok(None)
         }),
@@ -298,9 +331,8 @@ where
 
     let open_file_callers = vec![String::from("edit"), String::from("e")];
     let open_file_command = Command::new(
-        Box::new(|session: &mut SessionControl, _, files| {
-            session.files_to_open =
-                Some(files.into_iter().map(|file| PathBuf::from(file)).collect());
+        Box::new(|session: &mut SessionControl<U>, _, files| {
+            session.files_to_open = files.into_iter().map(|file| PathBuf::from(file)).collect();
             Ok(None)
         }),
         open_file_callers,
@@ -359,19 +391,20 @@ fn resize_widgets<U>(
 }
 
 fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl>,
+    key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl<U>>,
     active_file: (&mut RwData<FileWidget<U>>, &mut [(Widget<U>, usize)]),
-    active_widget: &mut Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
 ) where
     U: Ui,
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
         let mut control = control.write();
-        if let Some(widget) = active_widget {
-            let mut widget = widget.lock().unwrap();
-            widget.update_pre_keys();
-            key_remapper.send_key_to_actionable(key_event, &mut *widget, &mut control);
+        if let Some(widget) = control.active_widget.take() {
+            let mut lock = widget.lock().unwrap();
+            lock.update_pre_keys();
+            key_remapper.send_key_to_actionable(key_event, &mut *lock, &mut control);
+            drop(lock);
+            control.active_widget = Some(widget);
         } else {
             let mut file = active_file.0.write();
             file.update_pre_keys();

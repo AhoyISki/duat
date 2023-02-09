@@ -27,7 +27,7 @@ pub trait InputScheme {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
-        session_control: &mut SessionControl,
+        session_control: &mut SessionControl<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized;
@@ -62,7 +62,7 @@ where
 
     /// Sends the transformed keys to an editing scheme to affect a given file.
     fn send_keys<U, A>(
-        &self, editing_scheme: &mut E, widget: &mut A, session_control: &mut SessionControl,
+        &self, editing_scheme: &mut E, widget: &mut A, session_control: &mut SessionControl<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
@@ -116,8 +116,9 @@ where
     }
 
     /// Send a given key to be processed.
-    pub fn send_key_to_actionable<U, A>(&mut self, key: KeyEvent, widget: &mut A, session_control: &mut SessionControl)
-    where
+    pub fn send_key_to_actionable<U, A>(
+        &mut self, key: KeyEvent, widget: &mut A, session_control: &mut SessionControl<U>,
+    ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
     {
