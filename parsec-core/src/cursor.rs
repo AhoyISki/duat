@@ -73,12 +73,6 @@ impl std::fmt::Display for TextPos {
     }
 }
 
-impl std::fmt::Debug for TextPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("col: {}, line: {}, byte: {}", self.col, self.row, self.byte))
-    }
-}
-
 impl std::ops::Add for TextPos {
     type Output = TextPos;
 
@@ -206,7 +200,12 @@ impl TextCursor {
         }
 
         let line = lines.get(caret.row).unwrap();
-        caret.col = col.clamp(0, line.char_count() as i32 - 1) as usize;
+        caret.col = if caret.row < lines.len() - 1 {
+            col.clamp(0, line.char_count() as i32 - 1) as usize
+        } else {
+            // The cursor should be able to go one character beyound the end of the text.
+            col.clamp(0, line.char_count() as i32) as usize
+        };
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         caret.byte = caret.byte.saturating_add_signed(get_byte_distance(lines, old_caret, *caret));

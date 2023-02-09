@@ -237,7 +237,7 @@ impl Editor {
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Char('\n'), .. } => {
+            KeyEvent { code: KeyCode::Enter, .. } => {
                 actor.edit_on_main(|mut editor| editor.replace('\n'));
                 control.return_to_file();
                 *self.cur_mode.write() = Mode::Normal;

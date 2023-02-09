@@ -45,7 +45,7 @@ use crate::{
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct TextRange {
     pub start: TextPos,
     pub end: TextPos,
@@ -127,7 +127,7 @@ impl From<TextPos> for TextRange {
 }
 
 /// A range describing a splice operation;
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Splice {
     /// The start of both texts.
     pub(crate) start: TextPos,
@@ -202,7 +202,7 @@ impl Splice {
 }
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The splice involving the two texts.
     pub splice: Splice,
@@ -320,7 +320,7 @@ impl Change {
 ///
 /// It also contains information about how to print the file, so that going back in time is less
 /// jaring.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Moment {
     /// Where the file was printed at the time this moment started.
     pub(crate) starting_print_info: PrintInfo,
@@ -388,7 +388,6 @@ impl Moment {
 }
 
 /// The history of edits, contains all moments.
-#[derive(Debug)]
 pub struct History {
     /// The list of moments in this file's editing history.
     moments: Vec<Moment>,

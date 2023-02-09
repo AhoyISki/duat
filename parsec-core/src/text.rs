@@ -595,7 +595,7 @@ impl Text {
 
 // NOTE: The defaultness in here, when it comes to `last_main`, may cause issues in the future.
 /// Information about how to print the file on the `Label`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
     /// How many times the row at the top wraps around before being shown.
     pub top_wraps: usize,
