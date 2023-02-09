@@ -412,14 +412,16 @@ impl TargetWidget {
                 .enumerate()
                 .find(|(_, (file, _, _))| file.read().name() == *name)
                 .map(|(index, _)| index),
-            TargetWidget::First(id) if id.as_str() == "file" => files.first().map(|_| 0),
-            TargetWidget::Last(id) if id.as_str() == "file" => {
+            TargetWidget::First(identifier) if identifier.as_str() == "file" => {
+                files.first().map(|_| 0)
+            }
+            TargetWidget::Last(identifier) if identifier.as_str() == "file" => {
                 files.last().map(|_| files.len() - 1)
             }
-            TargetWidget::Absolute(id, index) if id.as_str() == "file" => {
+            TargetWidget::Absolute(identifier, index) if identifier.as_str() == "file" => {
                 files.get(*index).map(|_| *index)
             }
-            _ => None
+            _ => None,
         }
     }
 

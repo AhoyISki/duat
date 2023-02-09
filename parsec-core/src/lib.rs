@@ -45,7 +45,7 @@ where
     all_files_parent: Node<U>,
     match_manager: MatchManager,
     control: RwData<SessionControl<U>>,
-    global_commands: CommandList,
+    global_commands: RwData<CommandList>,
 }
 
 impl<U> Session<U>
@@ -80,7 +80,7 @@ where
             all_files_parent: Node::EndNode(node),
             match_manager,
             control: RwData::new(SessionControl::default()),
-            global_commands: command_list,
+            global_commands: RwData::new(command_list),
         };
 
         session
@@ -167,19 +167,19 @@ where
         }
 
         self.status.set_file(RoData::from(&self.files.last().unwrap().0));
-        self.control.write().max_file += 1;
+        self.control.write().files_len += 1;
     }
 
     pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Direction, split: Split)
     where
-        C: Fn(RwData<EndNode<U>>, &mut NodeManager<U>) -> Widget<U>,
+        C: Fn(RwData<EndNode<U>>, &mut Session<U>) -> Widget<U>,
     {
         let (master_node, end_node) =
             self.node_manager.split_mid(&mut self.master_node, direction, split, false);
 
         self.master_node = master_node;
 
-        let widget = constructor(end_node.clone(), &mut self.node_manager);
+        let widget = constructor(end_node.clone(), self);
         let index = self.get_next_index(&widget);
         self.widgets.push((widget, index));
     }
@@ -229,6 +229,7 @@ where
             } else if let Some(target) = &control.target_widget {
                 if let Some(file) = target.find_file(&self.files) {
                     control.active_file = file;
+                    control.active_widget = None;
                 } else {
                     control.active_widget = target.find_editable(&self.widgets);
                 }
@@ -258,6 +259,10 @@ where
 
         self.node_manager.shutdown();
     }
+
+    pub fn global_commands(&self) -> RwData<CommandList> {
+        self.global_commands.clone()
+    }
 }
 
 pub struct SessionControl<U>
@@ -267,7 +272,7 @@ where
     should_quit: bool,
     files_to_open: Vec<PathBuf>,
     target_widget: Option<TargetWidget>,
-    max_file: usize,
+    files_len: usize,
     active_file: usize,
     active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
 }
@@ -281,8 +286,8 @@ where
             should_quit: false,
             files_to_open: Vec::new(),
             target_widget: None,
-            max_file: 0,
-            active_file: 1,
+            files_len: 0,
+            active_file: 0,
             active_widget: None,
         }
     }
@@ -292,6 +297,7 @@ impl<U> SessionControl<U>
 where
     U: Ui,
 {
+    /// Returns to the active file from any widget, including the file itself.
     pub fn return_to_file(&mut self) {
         self.target_widget = Some(TargetWidget::Absolute(String::from("file"), self.active_file));
     }
@@ -306,12 +312,14 @@ where
         self.should_quit = true;
     }
 
+	/// The creation index of the currently active file.
     pub fn active_file(&self) -> usize {
         self.active_file
     }
 
-    pub fn max_file(&self) -> usize {
-        self.max_file
+	/// The number of opened files.
+    pub fn files_len(&self) -> usize {
+        self.files_len
     }
 }
 

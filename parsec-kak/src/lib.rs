@@ -1,4 +1,4 @@
-use std::{default, fmt::Display};
+use std::fmt::Display;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
@@ -38,7 +38,7 @@ pub struct Editor {
 }
 
 impl Editor {
-	/// Commands that are available in `Mode::Insert`.
+    /// Commands that are available in `Mode::Insert`.
     fn match_insert<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
     where
         U: Ui,
@@ -143,7 +143,7 @@ impl Editor {
         }
     }
 
-	/// Commands that are available in `Mode::Normal`.
+    /// Commands that are available in `Mode::Normal`.
     fn match_normal<U, E>(
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
@@ -217,7 +217,7 @@ impl Editor {
 
             ////////// Other mode changing keys.
             KeyEvent { code: KeyCode::Char(':'), .. } => {
-                control.switch_widget(TargetWidget::First(String::from("command")));
+                control.switch_widget(TargetWidget::First(String::from("command_line")));
                 *self.cur_mode.write() = Mode::Command;
             }
             KeyEvent { code: KeyCode::Char('g'), .. } => *self.cur_mode.write() = Mode::GoTo,
@@ -229,7 +229,7 @@ impl Editor {
         }
     }
 
-	/// Commands that are available in `Mode::Command`.
+    /// Commands that are available in `Mode::Command`.
     fn match_command<U, E>(
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
@@ -244,7 +244,34 @@ impl Editor {
             }
             KeyEvent { code: KeyCode::Char(ch), .. } => {
                 actor.edit_on_main(|mut editor| editor.replace(ch));
+                actor.move_main(|mut mover| mover.move_hor(1));
             }
+
+            KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
+                move_each_and_select(&mut actor, Direction::Left, 1);
+            }
+            KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
+                move_each_and_select(&mut actor, Direction::Right, 1);
+            }
+            KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
+                move_each_and_select(&mut actor, Direction::Top, 1);
+            }
+            KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
+                move_each_and_select(&mut actor, Direction::Bottom, 1);
+            }
+            KeyEvent { code: KeyCode::Left, .. } => {
+                move_each(&mut actor, Direction::Left, 1);
+            }
+            KeyEvent { code: KeyCode::Right, .. } => {
+                move_each(&mut actor, Direction::Right, 1);
+            }
+            KeyEvent { code: KeyCode::Up, .. } => {
+                move_each(&mut actor, Direction::Top, 1);
+            }
+            KeyEvent { code: KeyCode::Down, .. } => {
+                move_each(&mut actor, Direction::Bottom, 1);
+            }
+
             KeyEvent { code: KeyCode::Esc, .. } => {
                 control.return_to_file();
                 *self.cur_mode.write() = Mode::Normal;
@@ -253,7 +280,7 @@ impl Editor {
         }
     }
 
-	/// Commands that are available in `Mode::GoTo`.
+    /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
         &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
@@ -266,14 +293,14 @@ impl Editor {
                 self.last_file = control.active_file();
             }
             KeyEvent { code: KeyCode::Char('n'), .. } => {
-                let (active, max) = (control.active_file(), control.max_file());
-                let next_file = if active == max { 1 } else { active + 1 };
+                let (active, files_len) = (control.active_file(), control.files_len());
+                let next_file = if active == files_len - 1 { 0 } else { active + 1 };
                 control.switch_widget(TargetWidget::Absolute(String::from("file"), next_file));
                 self.last_file = control.active_file();
             }
             KeyEvent { code: KeyCode::Char('N'), .. } => {
-                let (active, max) = (control.active_file(), control.max_file());
-                let prev_file = if active == 1 { max } else { active - 1 };
+                let (active, files_len) = (control.active_file(), control.files_len());
+                let prev_file = if active == 0 { files_len - 1 } else { active - 1 };
                 control.switch_widget(TargetWidget::Absolute(String::from("file"), prev_file));
                 self.last_file = control.active_file();
             }

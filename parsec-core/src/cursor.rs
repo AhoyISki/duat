@@ -116,7 +116,7 @@ impl std::ops::SubAssign for TextPos {
 }
 
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
-#[derive(Debug, Copy)]
+#[derive(Default, Copy)]
 pub struct TextCursor {
     /// Current position of the cursor in the file.
     caret: TextPos,

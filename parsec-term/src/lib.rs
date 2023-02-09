@@ -16,12 +16,9 @@ use parsec_core::{
         form::CursorStyle,
         form::{Form, DEFAULT_ID},
     },
-    text::{Text, TextLine, TextLineBuilder, PrintInfo},
+    text::{PrintInfo, Text, TextLine, TextLineBuilder},
     ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
-    widgets::{
-        file_widget::{FileWidget},
-        NormalWidget, Widget,
-    },
+    widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -531,10 +528,15 @@ where
     pub fn new(
         end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
         vert_rule_config: VertRuleConfig,
-    ) -> Arc<Mutex<dyn NormalWidget<U>>> {
+    ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        Arc::new(Mutex::new(VertRule { end_node, file, text: Text::default(), vert_rule_config }))
+        Widget::Normal(Arc::new(Mutex::new(VertRule {
+            end_node,
+            file,
+            text: Text::default(),
+            vert_rule_config,
+        })))
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.

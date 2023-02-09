@@ -1,16 +1,16 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     fs,
     path::{Path, PathBuf},
 };
 
 use crate::{
     action::{History, TextRange},
-    config::{RwData, WrapMethod},
+    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     max_line,
     tags::MatchManager,
-    text::{update_range, Text, PrintInfo},
+    text::{update_range, PrintInfo, Text},
     ui::{Area, EndNode, Label, Ui},
 };
 
@@ -21,16 +21,13 @@ pub struct FileWidget<U>
 where
     U: Ui,
 {
-    pub(crate) end_node: RwData<EndNode<U>>,
+    end_node: RwData<EndNode<U>>,
     name: RwData<String>,
-    pub(crate) text: Text,
+    text: Text,
     print_info: PrintInfo,
-    pub(crate) main_cursor: usize,
-    // The `Box` here is used in order to comply with `RoState` printability.
-    pub(crate) cursors: Vec<TextCursor>,
-    pub(crate) history: History,
-    do_set_print_info: bool,
-    do_add_cursor_tags: bool,
+    main_cursor: usize,
+    cursors: Vec<TextCursor>,
+    history: History,
 }
 
 impl<U> FileWidget<U>
@@ -54,8 +51,6 @@ where
             cursors: vec![cursor],
             end_node: node,
             history: History::new(),
-            do_set_print_info: true,
-            do_add_cursor_tags: false,
         };
 
         file_widget
@@ -84,8 +79,6 @@ where
     /// Undoes the last moment in history.
     pub fn undo(&mut self) {
         let end_node = self.end_node.read();
-
-        self.do_set_print_info = false;
 
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
@@ -118,8 +111,6 @@ where
     /// Redoes the last moment in history.
     pub fn redo(&mut self) {
         let end_node = self.end_node.read();
-
-        self.do_set_print_info = false;
 
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
@@ -233,11 +224,7 @@ where
     }
 
     fn update(&mut self) {
-        if self.do_set_print_info {
-            self.print_info.update(self.main_cursor().caret(), &self.text, &self.end_node)
-        } else {
-            self.do_set_print_info = true;
-        }
+        self.print_info.update(self.main_cursor().caret(), &self.text, &self.end_node);
 
         let mut node = self.end_node.write();
         self.text.update_lines(&mut node);
@@ -245,7 +232,6 @@ where
         //self.match_scroll();
 
         self.text.add_cursor_tags(self.cursors.as_slice(), self.main_cursor);
-        self.do_add_cursor_tags = false
     }
 
     fn needs_update(&self) -> bool {

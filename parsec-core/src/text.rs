@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
-    config::{Config, ShowNewLine, WrapMethod, RwData},
+    config::{Config, RwData, ShowNewLine, WrapMethod},
     cursor::{TextCursor, TextPos},
     get_byte_at_col,
     tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
@@ -14,7 +14,6 @@ use crate::{
 
 // TODO: move this to a more general file.
 /// A line in the text file.
-#[derive(Debug)]
 pub struct TextLine {
     /// The text on the line.
     text: String,
@@ -24,34 +23,8 @@ pub struct TextLine {
 }
 
 impl TextLine {
-    /// Returns a new inner of `TextLine`.
-    pub fn new(text: String) -> TextLine {
-        let info = LineInfo::default();
-
-        TextLine { text, info }
-    }
-
     /// Returns the line's indentation.
     fn indent<L, A>(&self, label: &L, config: &Config) -> usize
-    where
-        L: Label<A>,
-        A: Area,
-    {
-        let mut indent_sum = 0;
-
-        for ch in self.text.chars() {
-            if ch == ' ' || ch == '\t' {
-                indent_sum += get_char_len(ch, indent_sum, label, config);
-            } else {
-                break;
-            }
-        }
-
-        indent_sum as usize
-    }
-
-    /// Returns the line's indentation.
-    pub fn indetation<L, A>(&self, label: &L, config: &Config) -> usize
     where
         L: Label<A>,
         A: Area,
@@ -172,7 +145,7 @@ impl TextLine {
     where
         U: Ui,
     {
-        let indent = if config.wrap_indent { self.indetation(label, config) } else { 0 };
+        let indent = if config.wrap_indent { self.indent(label, config) } else { 0 };
         let indent = if indent < label.area().width() { indent } else { 0 };
 
         // Clear all `WrapppingChar`s from `char_tags`.
@@ -342,6 +315,15 @@ impl TextLine {
     }
 }
 
+impl<S> From<S> for TextLine
+where
+    S: ToString,
+{
+    fn from(value: S) -> Self {
+        TextLine { text: value.to_string(), info: LineInfo::default() }
+    }
+}
+
 #[derive(Default)]
 pub struct TextLineBuilder {
     forms: Vec<u16>,
@@ -415,11 +397,16 @@ impl<const N: usize> From<[u16; N]> for TextLineBuilder {
 }
 
 /// The text in a given area.
-#[derive(Default)]
 pub struct Text {
     pub lines: Vec<TextLine>,
     replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
     pub(crate) match_manager: Option<MatchManager>,
+}
+
+impl Default for Text {
+    fn default() -> Self {
+        Text { lines: vec![TextLine::from("")], replacements: Vec::new(), match_manager: None }
+    }
 }
 
 // TODO: Properly implement replacements.
@@ -427,7 +414,7 @@ impl Text {
     /// Returns a new instance of `Text`.
     pub fn new(text: String, match_manager: Option<MatchManager>) -> Self {
         Text {
-            lines: text.split_inclusive('\n').map(|l| TextLine::new(l.to_string())).collect(),
+            lines: text.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
             replacements: Vec::new(),
             match_manager,
         }
@@ -533,7 +520,7 @@ impl Text {
             edit.first_mut().unwrap().insert_str(0, first_amend);
             edit.last_mut().unwrap().push_str(last_amend);
 
-            let edit: Vec<TextLine> = edit.into_iter().map(|l| TextLine::new(l)).collect();
+            let edit: Vec<TextLine> = edit.into_iter().map(|l| TextLine::from(l)).collect();
 
             lines.splice(range.lines(), edit);
         }
@@ -739,7 +726,7 @@ impl PrintInfo {
                 top_offset = self.top_wraps
             };
 
-            if d_y >= height + top_offset - scrolloff.d_y {
+            if d_y >= (height + top_offset).saturating_sub(scrolloff.d_y) {
                 self.top_row = index;
                 // If this equals 0, that means the distance has matched up perfectly,
                 // i.e. the distance between the new `info.top_line` is exactly what's

@@ -1,13 +1,13 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, sync::{Arc, Mutex}};
 
 use crate::{
-    config::RwData,
+    config::{RwData, RoData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    text::{Text, PrintInfo},
-    ui::{EndNode, Ui},
+    text::{PrintInfo, Text},
+    ui::{EndNode, Ui, NodeManager}, Session,
 };
 
-use super::{ActionableWidget, NormalWidget};
+use super::{ActionableWidget, NormalWidget, Widget};
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -137,7 +137,27 @@ where
     print_info: PrintInfo,
     cursor: [TextCursor; 1],
     command_list: RwData<CommandList>,
-    needs_update: bool
+    needs_update: bool,
+}
+
+impl<U> CommandLine<U>
+where
+    U: Ui + 'static,
+{
+    pub fn default(
+        end_node: RwData<EndNode<U>>, session: &mut Session<U>
+    ) -> Widget<U> {
+        let command_line = CommandLine {
+            end_node,
+            text: Text::default(),
+            print_info: PrintInfo::default(),
+            cursor: [TextCursor::default()],
+            command_list: session.global_commands(),
+            needs_update: false
+        };
+
+        Widget::Editable(Arc::new(Mutex::new(command_line)))
+    }
 }
 
 impl<U> NormalWidget<U> for CommandLine<U>
@@ -157,7 +177,27 @@ where
     }
 
     fn update(&mut self) {
-        todo!()
+        self.print_info.update(self.cursor[0].caret(), &self.text, &self.end_node);
+
+        let mut node = self.end_node.write();
+        self.text.update_lines(&mut node);
+        drop(node);
+        //self.match_scroll();
+        if self.text.lines().len() > 1 {
+            let lines: String = self.text.lines().iter().map(|line| line.text().as_str()).collect();
+            let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
+
+			let Some(command) = whole_command.next() else {
+    			return;
+			};
+
+			let mut command_list = self.command_list.write();
+			command_list.try_exec(command, Vec::new(), whole_command.collect()).unwrap();
+			self.text = Text::default();
+        }
+
+        self.text.add_cursor_tags(&self.cursor, 0);
+        self.needs_update = false;
     }
 
     fn needs_update(&self) -> bool {

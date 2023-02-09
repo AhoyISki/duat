@@ -27,7 +27,7 @@ use parsec_core::{
         MatchManager, LineFlags,
     },
     ui::{Direction, Split},
-    widgets::{line_numbers::{LineNumbers, LineNumbersConfig, Numbering}},
+    widgets::{line_numbers::{LineNumbers, LineNumbersConfig, Numbering}, command_line::CommandLine},
     Session,
 };
 use parsec_kak::Editor;
@@ -84,6 +84,7 @@ fn main() {
         Split::Static(1),
     );
 
+	session.push_widget_to_edge(CommandLine::default, Direction::Bottom, Split::Static(1));
 	// The method `push_node_to_file()` will "push" a widget, given a node, to every single future
 	// file. In this case, we are pushing a `VertRule` to every future file, on the `Left`, with a
 	// split of 1. This is what it would do:
