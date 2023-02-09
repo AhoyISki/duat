@@ -175,6 +175,16 @@ impl<T> Clone for RwData<T> {
     }
 }
 
+impl<D> Default for RwData<D> where D: Default {
+    fn default() -> Self {
+        RwData {
+            data: Arc::new(RwLock::new(D::default())),
+            updated_state: Arc::new(RwLock::new(1)),
+            last_read_state: RwLock::new(1),
+        }
+    }
+}
+
 unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 
 /// A read-only reference to information.
