@@ -190,7 +190,7 @@ where
         self.future_file_widgets.push((Box::new(constructor), direction, split));
     }
 
-    pub fn application_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
+    pub fn main_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
     {
@@ -199,34 +199,46 @@ where
         // This mutex is only used to prevent multiple printings at the same time.
         let printer = Mutex::new(true);
 
-        // Initial printing.
-        self.status.update();
-        self.status.print();
-        print_files(&mut self.files);
-        for (widget, _) in &mut self.widgets {
-            widget.update();
-            widget.print();
-        }
-
         let resize_requested = Mutex::new(true);
         let mut iteration = 0;
 
         // The main loop.
-        thread::scope(|s_0| loop {
-            resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
-
-            let mut control_lock = self.control.write();
-            if control_lock.should_quit {
-                break;
-            } else if let Some(target) = &control_lock.target_widget {
-                if let Some(file) = target.find_file(&self.files) {
-                    control_lock.active_file = file;
-                    control_lock.active_widget = None;
-                } else {
-                    control_lock.active_widget = target.find_editable(&self.widgets);
-                }
+        loop {
+            // Initial printing.
+            self.status.update();
+            self.status.print();
+            print_files(&mut self.files);
+            for (widget, _) in &mut self.widgets {
+                widget.update();
+                widget.print();
             }
-            drop(control_lock);
+
+            self.session_loop(&resize_requested, &printer, key_remapper, &mut iteration);
+
+            let control = self.control.read();
+            if control.should_quit {
+                break;
+            }
+        }
+
+        self.node_manager.shutdown();
+    }
+
+    fn session_loop<I>(
+        &mut self, resize_requested: &Mutex<bool>, printer: &Mutex<bool>,
+        key_remapper: &mut KeyRemapper<I>, iteration: &mut i32,
+    ) where
+        I: InputScheme,
+    {
+        thread::scope(|s_0| loop {
+            resize_widgets(resize_requested, printer, &self.widgets, &mut self.files);
+
+            let mut control = self.control.write();
+            control.switch_to_target(&self.files, &self.widgets);
+            if control.break_loop {
+                break;
+            }
+            drop(control);
 
             if let Ok(true) = event::poll(Duration::from_micros(100)) {
                 let active_file = &mut self.files[self.control.read().active_file];
@@ -236,13 +248,12 @@ where
                 continue;
             }
 
-
             self.status.update();
             let printer_lock = printer.lock().unwrap();
             self.status.print();
             print_files(&mut self.files);
             drop(printer_lock);
-            iteration = 0;
+            *iteration = 0;
 
             let widget_indices = widgets_to_update(&self.widgets);
             for index in &widget_indices {
@@ -258,8 +269,6 @@ where
                 });
             }
         });
-
-        self.node_manager.shutdown();
     }
 
     pub fn global_commands(&self) -> RwData<CommandList> {
@@ -277,6 +286,7 @@ where
     files_len: usize,
     active_file: usize,
     active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
+    break_loop: bool,
 }
 
 impl<U> Default for SessionControl<U>
@@ -291,6 +301,7 @@ where
             files_len: 0,
             active_file: 0,
             active_widget: None,
+            break_loop: false,
         }
     }
 }
@@ -311,17 +322,38 @@ where
 
     /// Quits Parsec.
     pub fn quit(&mut self) {
+        self.break_loop = true;
         self.should_quit = true;
     }
 
-	/// The creation index of the currently active file.
+    /// The creation index of the currently active file.
     pub fn active_file(&self) -> usize {
         self.active_file
     }
 
-	/// The number of opened files.
+    /// The number of opened files.
     pub fn files_len(&self) -> usize {
         self.files_len
+    }
+
+    /// Switches the active widget to `self.target_widget`.
+    fn switch_to_target(
+        &mut self,
+        files: &Vec<(
+            RwData<FileWidget<U>>,
+            Option<RwData<MidNode<U>>>,
+            Vec<(Widget<U>, usize)>,
+        )>,
+        widgets: &Vec<(Widget<U>, usize)>,
+    ) {
+        if let Some(target) = &self.target_widget {
+            if let Some(file) = target.find_file(&files) {
+                self.active_file = file;
+                self.active_widget = None;
+            } else {
+                self.active_widget = target.find_editable(widgets);
+            }
+        }
     }
 }
 
