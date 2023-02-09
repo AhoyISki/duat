@@ -22,6 +22,7 @@ These are the goals that have been acomplished or are on their way:
 - [x] Make all of these things easy to use on a public interface;
 - [x] Create a number line and a separator line;
 - [x] Create a status line;
+- [x] File switching;
 - [ ] Create a command creation interface and a command line;
 - [ ] Add the ability to create hooks;
 - [ ] Implement folding;
