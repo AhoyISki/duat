@@ -27,7 +27,8 @@ use parsec_core::{
         MatchManager, LineFlags,
     },
     ui::{Direction, Split},
-    widgets::{line_numbers::{LineNumbers, LineNumbersConfig, Numbering}, Session},
+    widgets::{line_numbers::{LineNumbers, LineNumbersConfig, Numbering}},
+    session::Session,
 };
 use parsec_kak::Editor;
 use parsec_term::{UiManager, VertRule};

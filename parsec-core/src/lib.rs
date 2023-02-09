@@ -1,18 +1,19 @@
+pub mod action;
+pub mod config;
+pub mod cursor;
+pub mod input;
+pub mod session;
+pub mod tags;
+pub mod text;
+pub mod ui;
+pub mod widgets;
+
 use std::cmp::min;
 
 use cursor::TextPos;
 use text::Text;
-use ui::{EndNode, Ui, Label, Area};
+use ui::{Area, EndNode, Label, Ui};
 use widgets::file_widget::PrintInfo;
-
-pub mod action;
-pub mod config;
-pub mod cursor;
-pub mod text;
-pub mod input;
-pub mod widgets;
-pub mod tags;
-pub mod ui;
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.
 pub fn get_line_start(pos: TextPos, line: &String) -> TextPos {
