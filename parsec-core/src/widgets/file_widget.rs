@@ -11,10 +11,10 @@ use crate::{
     max_line,
     tags::MatchManager,
     text::{update_range, PrintInfo, Text},
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, MidNode, Ui},
 };
 
-use super::{ActionableWidget, NormalWidget};
+use super::{ActionableWidget, NormalWidget, Widget};
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
@@ -22,6 +22,8 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
+    mid_node: Option<RwData<MidNode<U>>>,
+    pub(crate) side_widgets: Vec<(Widget<U>, usize)>,
     name: RwData<String>,
     text: Text,
     print_info: PrintInfo,
@@ -44,12 +46,14 @@ where
         let cursor = TextCursor::new(TextPos::default(), text.lines(), &node.read());
 
         let file_widget = FileWidget {
+            end_node: node,
+            mid_node: None,
+            side_widgets: Vec::new(),
             name: RwData::new(path.file_name().unwrap().to_string_lossy().to_string()),
             text,
             print_info: PrintInfo::default(),
             main_cursor: 0,
             cursors: vec![cursor],
-            end_node: node,
             history: History::new(),
         };
 
@@ -174,6 +178,14 @@ where
     /// The list of `TextCursor`s on the file.
     pub fn cursors(&self) -> Vec<TextCursor> {
         self.cursors.clone()
+    }
+
+    pub(crate) fn mid_node_mut(&mut self) -> &mut Option<RwData<MidNode<U>>> {
+        &mut self.mid_node
+    }
+
+    pub fn mid_node(&self) -> &Option<RwData<MidNode<U>>> {
+        &self.mid_node
     }
 
     ////////// Status line convenience functions:

@@ -220,5 +220,5 @@ fn main() {
     session.open_arg_files();
 
 	// Start Parsec.
-    session.application_loop(&mut file_remapper);
+    session.main_loop(&mut file_remapper);
 }

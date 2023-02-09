@@ -399,10 +399,7 @@ pub enum TargetWidget {
 }
 
 impl TargetWidget {
-    pub(crate) fn find_file<U>(
-        &self,
-        files: &Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<(Widget<U>, usize)>)>,
-    ) -> Option<usize>
+    pub(crate) fn find_file<U>(&self, files: &Vec<RwData<FileWidget<U>>>) -> Option<usize>
     where
         U: Ui,
     {
@@ -410,7 +407,7 @@ impl TargetWidget {
             TargetWidget::FileName(name) => files
                 .iter()
                 .enumerate()
-                .find(|(_, (file, _, _))| file.read().name() == *name)
+                .find(|(_, file)| file.read().name() == *name)
                 .map(|(index, _)| index),
             TargetWidget::First(identifier) if identifier.as_str() == "file" => {
                 files.first().map(|_| 0)

@@ -39,7 +39,7 @@ where
     node_manager: NodeManager<U>,
     pub status: StatusLine<U>,
     widgets: Vec<(Widget<U>, usize)>,
-    files: Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<(Widget<U>, usize)>)>,
+    files: Vec<RwData<FileWidget<U>>>,
     future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
@@ -89,23 +89,27 @@ where
     /// Creates or opens a new file in a given node.
     fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
         let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
-        let (file, mut file_parent) = (RwData::new(file), None);
+        let mut file = RwData::new(file);
+        let rw_file = file.clone();
 
-        let mut widgets = Vec::new();
         for (constructor, direction, split) in &self.future_file_widgets {
-            let (mid_node, end_node) = match &mut file_parent {
+            let mut file_lock = file.write();
+            let (mid_node, end_node) = match file_lock.mid_node_mut() {
                 None => self.node_manager.split_end(&mut node, *direction, *split, false),
                 Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
             };
+            drop(file_lock);
 
-            let mut widget = constructor(end_node, &mut self.node_manager, file.clone());
+            let widget = constructor(end_node, &mut self.node_manager, rw_file.clone());
             let index = self.get_next_index(&widget);
-            widgets.push((widget.clone(), index));
-            self.widgets.push((widget, index));
-            file_parent = Some(mid_node);
+            self.widgets.push((widget.clone(), index));
+
+            let mut file = file.write();
+            file.side_widgets.push((widget, index));
+            *file.mid_node_mut() = Some(mid_node);
         }
 
-        self.files.push((file, file_parent, widgets));
+        self.files.push(file);
     }
 
     /// Returns the next index for a given `Widget` type.
@@ -123,7 +127,7 @@ where
     }
 
     pub fn active_file(&self) -> RoData<FileWidget<U>> {
-        RoData::from(&self.files[0].0)
+        RoData::from(&self.files[0])
     }
 
     pub fn open_arg_files(&mut self) {
@@ -140,7 +144,7 @@ where
             Node::EndNode(node) => {
                 if let Some(file) = self.files.get_mut(0) {
                     let (all_files_parent, end_node) = self.node_manager.split_end(
-                        &mut file.0.write().end_node_mut(),
+                        &mut file.write().end_node_mut(),
                         Direction::Right,
                         Split::Static(50),
                         false,
@@ -149,7 +153,7 @@ where
                     self.all_files_parent = Node::MidNode(all_files_parent);
                 } else {
                     self.new_file_with_node(path, node.clone());
-                    if let Some(node) = &self.files.last().as_ref().unwrap().1 {
+                    if let Some(node) = &self.files.last().as_ref().unwrap().read().mid_node() {
                         self.all_files_parent = Node::MidNode(node.clone());
                     }
                 }
@@ -166,7 +170,7 @@ where
             }
         }
 
-        self.status.set_file(RoData::from(&self.files.last().unwrap().0));
+        self.status.set_file(RoData::from(self.files.last().unwrap()));
         self.control.write().files_len += 1;
     }
 
@@ -242,7 +246,6 @@ where
 
             if let Ok(true) = event::poll(Duration::from_micros(100)) {
                 let active_file = &mut self.files[self.control.read().active_file];
-                let active_file = (&mut active_file.0, active_file.2.as_mut_slice());
                 send_event(key_remapper, &mut self.control, active_file);
             } else {
                 continue;
@@ -338,13 +341,7 @@ where
 
     /// Switches the active widget to `self.target_widget`.
     fn switch_to_target(
-        &mut self,
-        files: &Vec<(
-            RwData<FileWidget<U>>,
-            Option<RwData<MidNode<U>>>,
-            Vec<(Widget<U>, usize)>,
-        )>,
-        widgets: &Vec<(Widget<U>, usize)>,
+        &mut self, files: &Vec<RwData<FileWidget<U>>>, widgets: &Vec<(Widget<U>, usize)>,
     ) {
         if let Some(target) = &self.target_widget {
             if let Some(file) = target.find_file(&files) {
@@ -386,11 +383,11 @@ where
 
 /// Prints all the files.
 fn print_files<U>(
-    files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<(Widget<U>, usize)>)>,
+    files: &mut Vec<RwData<FileWidget<U>>>,
 ) where
     U: Ui,
 {
-    for (file_widget, ..) in files.iter_mut() {
+    for file_widget in files.iter_mut() {
         let mut file_widget = file_widget.write();
         file_widget.update();
         file_widget.print();
@@ -416,7 +413,7 @@ where
 
 fn resize_widgets<U>(
     resize_requested: &Mutex<bool>, printer: &Mutex<bool>, widgets: &Vec<(Widget<U>, usize)>,
-    files: &mut Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<(Widget<U>, usize)>)>,
+    files: &mut Vec<RwData<FileWidget<U>>>,
 ) where
     U: Ui,
 {
@@ -434,7 +431,7 @@ fn resize_widgets<U>(
 
 fn send_event<U, I>(
     key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl<U>>,
-    active_file: (&mut RwData<FileWidget<U>>, &mut [(Widget<U>, usize)]),
+    active_file: &mut RwData<FileWidget<U>>,
 ) where
     U: Ui,
     I: InputScheme,
@@ -448,7 +445,7 @@ fn send_event<U, I>(
             drop(lock);
             control.active_widget = Some(widget);
         } else {
-            let mut file = active_file.0.write();
+            let mut file = active_file.write();
             file.update_pre_keys();
             key_remapper.send_key_to_actionable(key_event, &mut *file, &mut control);
         }
