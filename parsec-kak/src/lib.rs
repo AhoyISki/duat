@@ -146,12 +146,18 @@ impl Editor {
     }
 
     /// The default mappings for the normal mode.
-    fn match_normal<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
-    where
+    fn match_normal<U, E>(
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl,
+    ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
+            ////////// SessionControl commands.
+            KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
+                control.quit();
+            }
+
             ////////// Movement keys that retain or create selections.
             KeyEvent {
                 code: KeyCode::Char('H') | KeyCode::Left,
@@ -250,7 +256,7 @@ impl InputScheme for Editor {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
-            Mode::Normal => self.match_normal(key, actor),
+            Mode::Normal => self.match_normal(key, actor, control),
             Mode::Command => self.match_command(key, actor),
             _ => {}
         }
