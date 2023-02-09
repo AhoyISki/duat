@@ -2,11 +2,12 @@ use std::{error::Error, fmt::Display};
 
 use crate::{
     config::RwData,
-    text::Text,
-    ui::{EndNode, Ui}, cursor::TextCursor,
+    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    text::{Text, PrintInfo},
+    ui::{EndNode, Ui},
 };
 
-use super::{NormalWidget, file_widget::PrintInfo};
+use super::{ActionableWidget, NormalWidget};
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -133,8 +134,10 @@ where
 {
     end_node: RwData<EndNode<U>>,
     text: Text,
-    cursor: TextCursor,
-    command_list: RwData<CommandList>
+    print_info: PrintInfo,
+    cursor: [TextCursor; 1],
+    command_list: RwData<CommandList>,
+    needs_update: bool
 }
 
 impl<U> NormalWidget<U> for CommandLine<U>
@@ -158,7 +161,7 @@ where
     }
 
     fn needs_update(&self) -> bool {
-        todo!()
+        self.needs_update
     }
 
     fn text(&self) -> &Text {
@@ -167,6 +170,33 @@ where
 
     fn print(&mut self) {
         self.text.print(&mut self.end_node.write(), PrintInfo::default());
+    }
+}
+
+impl<U> ActionableWidget<U> for CommandLine<U>
+where
+    U: Ui,
+{
+    fn editor<'a>(&'a mut self, _: usize, splice_adder: &'a mut SpliceAdder) -> Editor<U> {
+        self.needs_update = true;
+        Editor::new(&mut self.cursor[0], splice_adder, &mut self.text, &self.end_node, None, None)
+    }
+
+    fn mover(&mut self, _: usize) -> Mover<U> {
+        self.needs_update = true;
+        Mover::new(&mut self.cursor[0], &self.text, &self.end_node, None)
+    }
+
+    fn cursors(&self) -> &[TextCursor] {
+        &self.cursor
+    }
+
+    fn main_cursor_index(&self) -> usize {
+        0
+    }
+
+    fn update_pre_keys(&mut self) {
+        self.text.remove_cursor_tags(&self.cursor, 0)
     }
 }
 

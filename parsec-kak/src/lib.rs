@@ -38,7 +38,7 @@ pub struct Editor {
 }
 
 impl Editor {
-    /// The default mappings for the insert mode.
+	/// Commands that are available in `Mode::Insert`.
     fn match_insert<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
     where
         U: Ui,
@@ -143,7 +143,7 @@ impl Editor {
         }
     }
 
-    /// The default mappings for the normal mode.
+	/// Commands that are available in `Mode::Normal`.
     fn match_normal<U, E>(
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
@@ -229,7 +229,7 @@ impl Editor {
         }
     }
 
-    /// The default mappings for the command mode.
+	/// Commands that are available in `Mode::Command`.
     fn match_command<U, E>(
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
@@ -253,8 +253,9 @@ impl Editor {
         }
     }
 
+	/// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
@@ -266,14 +267,13 @@ impl Editor {
             }
             KeyEvent { code: KeyCode::Char('n'), .. } => {
                 let (active, max) = (control.active_file(), control.max_file());
-                let next_file = if active == max { 0 } else { active + 1 };
-
+                let next_file = if active == max { 1 } else { active + 1 };
                 control.switch_widget(TargetWidget::Absolute(String::from("file"), next_file));
                 self.last_file = control.active_file();
             }
             KeyEvent { code: KeyCode::Char('N'), .. } => {
                 let (active, max) = (control.active_file(), control.max_file());
-                let prev_file = if active == 0 { max } else { active - 1 };
+                let prev_file = if active == 1 { max } else { active - 1 };
                 control.switch_widget(TargetWidget::Absolute(String::from("file"), prev_file));
                 self.last_file = control.active_file();
             }

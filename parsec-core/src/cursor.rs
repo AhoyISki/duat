@@ -7,9 +7,8 @@ use crate::{
     action::{Change, History, Moment, Splice, TextRange},
     config::RwData,
     get_byte_at_col, max_line, split_string_lines,
-    text::{update_range, Text, TextLine},
+    text::{update_range, Text, TextLine, PrintInfo},
     ui::{EndNode, Ui},
-    widgets::file_widget::PrintInfo,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.

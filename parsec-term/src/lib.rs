@@ -16,10 +16,10 @@ use parsec_core::{
         form::CursorStyle,
         form::{Form, DEFAULT_ID},
     },
-    text::{Text, TextLine, TextLineBuilder},
+    text::{Text, TextLine, TextLineBuilder, PrintInfo},
     ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
     widgets::{
-        file_widget::{FileWidget, PrintInfo},
+        file_widget::{FileWidget},
         NormalWidget, Widget,
     },
 };

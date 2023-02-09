@@ -40,9 +40,8 @@ use std::{
 use crate::{
     cursor::{get_text_in_range, SpliceAdder, TextPos},
     empty_edit,
-    text::TextLine,
+    text::{TextLine, PrintInfo},
     get_byte_at_col,
-    widgets::file_widget::PrintInfo,
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);

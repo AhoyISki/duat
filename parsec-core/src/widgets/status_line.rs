@@ -1,10 +1,10 @@
 use crate::{
     config::{RoData, RwData},
-    text::{Text, TextLineBuilder},
+    text::{Text, TextLineBuilder, PrintInfo},
     ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{file_widget::{FileWidget, PrintInfo}, NormalWidget};
+use super::{file_widget::FileWidget, NormalWidget};
 
 pub trait DataToString {
     /// Converts the data to a `String`, usually through an embedded function.

@@ -1,14 +1,11 @@
 use crate::{
     config::{RoData, RwData},
     tags::form::{DEFAULT_ID, LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
-    text::{Text, TextLineBuilder},
+    text::{Text, TextLineBuilder, PrintInfo},
     ui::{Area, EndNode, Label, NodeManager, Ui},
 };
 
-use super::{
-    file_widget::{FileWidget, PrintInfo},
-    NormalWidget, Widget,
-};
+use super::{file_widget::FileWidget, NormalWidget, Widget};
 
 use std::{
     cmp::max,

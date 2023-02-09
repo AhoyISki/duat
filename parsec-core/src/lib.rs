@@ -20,11 +20,11 @@ use crossterm::event::{self, Event};
 use cursor::TextPos;
 use input::{InputScheme, KeyRemapper};
 use tags::{form::FormPalette, MatchManager};
-use text::Text;
+use text::{PrintInfo, Text};
 use ui::{Area, Direction, EndNode, Label, MidNode, Node, NodeManager, Split, Ui};
 use widgets::{
     command_line::{Command, CommandList},
-    file_widget::{FileWidget, PrintInfo},
+    file_widget::FileWidget,
     status_line::StatusLine,
     ActionableWidget, NormalWidget, TargetWidget, Widget,
 };
@@ -282,7 +282,7 @@ where
             files_to_open: Vec::new(),
             target_widget: None,
             max_file: 0,
-            active_file: 0,
+            active_file: 1,
             active_widget: None,
         }
     }

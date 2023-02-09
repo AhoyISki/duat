@@ -1,11 +1,13 @@
-use std::{cmp::min, ops::RangeInclusive};
+use std::{
+    cmp::{max, min},
+    ops::RangeInclusive,
+};
 
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
-    config::{Config, ShowNewLine, WrapMethod},
-    cursor::{TextPos, TextCursor},
+    config::{Config, ShowNewLine, WrapMethod, RwData},
+    cursor::{TextCursor, TextPos},
     get_byte_at_col,
-    widgets::file_widget::PrintInfo,
     tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
@@ -28,7 +30,6 @@ impl TextLine {
 
         TextLine { text, info }
     }
-
 
     /// Returns the line's indentation.
     fn indent<L, A>(&self, label: &L, config: &Config) -> usize
@@ -343,41 +344,41 @@ impl TextLine {
 
 #[derive(Default)]
 pub struct TextLineBuilder {
-    forms: Vec<u16>
+    forms: Vec<u16>,
 }
 
 impl TextLineBuilder {
     /// Returns a new instance of `TextLineBuilder`, and removes every form inside a bracket pair.
-	pub fn format_and_create(text: &mut String, palette: &FormPalette) -> Self {
-    	let mut form_indices = Vec::new();
-    	let mut formless_text = text.clone();
+    pub fn format_and_create(text: &mut String, palette: &FormPalette) -> Self {
+        let mut form_indices = Vec::new();
+        let mut formless_text = text.clone();
 
-		let mut last_start = None;
-    	for (start, _) in text.match_indices('[').chain([(text.len(), "[")]) {
-        	if let Some(mut last_start) = last_start {
-            	if let Some(mut last_end) = text[(last_start + 1)..start].find(']') {
-                	last_end += last_start;
-                	last_start += 1;
-                	let (_, form_index) = palette.get_from_name(&text[last_start..=last_end]);
-                	form_indices.push(form_index);
-                	let removed_len = text.len() - formless_text.len();
-                	last_start -= removed_len;
-                	last_end -= removed_len;
-                	formless_text.replace_range(last_start..=last_end, "");
-            	}
-        	}
+        let mut last_start = None;
+        for (start, _) in text.match_indices('[').chain([(text.len(), "[")]) {
+            if let Some(mut last_start) = last_start {
+                if let Some(mut last_end) = text[(last_start + 1)..start].find(']') {
+                    last_end += last_start;
+                    last_start += 1;
+                    let (_, form_index) = palette.get_from_name(&text[last_start..=last_end]);
+                    form_indices.push(form_index);
+                    let removed_len = text.len() - formless_text.len();
+                    last_start -= removed_len;
+                    last_end -= removed_len;
+                    formless_text.replace_range(last_start..=last_end, "");
+                }
+            }
 
-        	last_start = Some(start);
-    	}
+            last_start = Some(start);
+        }
 
-    	*text = formless_text;
+        *text = formless_text;
 
-    	TextLineBuilder { forms: form_indices }
-	}
+        TextLineBuilder { forms: form_indices }
+    }
 
-	/// Takes in a string with empty bracket pairs and places forms according to their positions.
-	pub fn form_text_line(&self, text: impl ToString) -> TextLine {
-    	let text = text.to_string();
+    /// Takes in a string with empty bracket pairs and places forms according to their positions.
+    pub fn form_text_line(&self, text: impl ToString) -> TextLine {
+        let text = text.to_string();
         let mut formless_text = text.to_string();
         let mut info = LineInfo::default();
         let mut removed_len = 0;
@@ -393,18 +394,18 @@ impl TextLineBuilder {
         }
 
         TextLine { text: formless_text, info }
-	}
+    }
 
-	/// Makes it so this `TextLineBuilder` 
-	pub fn extend(&mut self, text: &mut String, palette: &FormPalette) {
-    	let builder = TextLineBuilder::format_and_create(text, palette);
-    	self.forms.extend_from_slice(&builder.forms);
-	}
+    /// Makes it so this `TextLineBuilder`
+    pub fn extend(&mut self, text: &mut String, palette: &FormPalette) {
+        let builder = TextLineBuilder::format_and_create(text, palette);
+        self.forms.extend_from_slice(&builder.forms);
+    }
 
-	/// Returns the amount of forms inserted into `TextLine`s.
-	pub fn form_count(&self) -> usize {
-    	self.forms.len()
-	}
+    /// Returns the amount of forms inserted into `TextLine`s.
+    pub fn form_count(&self) -> usize {
+        self.forms.len()
+    }
 }
 
 impl<const N: usize> From<[u16; N]> for TextLineBuilder {
@@ -602,6 +603,214 @@ impl Text {
                 }
             }
         }
+    }
+}
+
+// NOTE: The defaultness in here, when it comes to `last_main`, may cause issues in the future.
+/// Information about how to print the file on the `Label`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PrintInfo {
+    /// How many times the row at the top wraps around before being shown.
+    pub top_wraps: usize,
+    /// The index of the row at the top of the screen.
+    pub top_row: usize,
+    /// How shifted the text is to the left.
+    pub x_shift: usize,
+    /// The last position of the main cursor.
+    pub last_main: TextPos,
+}
+
+impl PrintInfo {
+    /// Scrolls the `PrintInfo` vertically by a given amount, on a given file.
+    pub fn scroll_vertically(&mut self, mut d_y: i32, text: &Text) {
+        if d_y > 0 {
+            let mut lines_iter = text.lines().iter().skip(self.top_row);
+
+            while let Some(line) = lines_iter.next() {
+                let wrap_count = line.wrap_iter().count();
+                if (wrap_count + 1) as i32 > d_y {
+                    self.top_wraps = d_y as usize;
+                    break;
+                } else {
+                    self.top_row += 1;
+                    d_y -= (wrap_count + 1) as i32;
+                }
+            }
+        } else if d_y < 0 {
+            let mut lines_iter = text.lines().iter().take(self.top_row).rev();
+
+            while let Some(line) = lines_iter.next() {
+                let wrap_count = line.wrap_iter().count();
+                if ((wrap_count + 1) as i32) < d_y {
+                    self.top_wraps = -d_y as usize;
+                    break;
+                } else {
+                    self.top_row -= 1;
+                    d_y += (wrap_count + 1) as i32;
+                }
+            }
+        }
+    }
+
+    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text, node: &EndNode<U>)
+    where
+        U: Ui,
+    {
+        let mut max_d = 0;
+        let label = node.label.read();
+        let config = node.config().read();
+
+        for index in text.printed_lines(label.area().height(), self) {
+            let line = &text.lines()[index];
+            let line_d = line.get_distance_to_col::<U>(line.char_count(), &label, &config);
+            max_d = max(max_d, line_d);
+        }
+
+        self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
+    }
+
+    /// Scrolls up or down, assuming that the lines cannot wrap.
+    fn calibrate_vertically<U>(
+        &mut self, target: TextPos, height: usize, end_node: &RwData<EndNode<U>>,
+    ) where
+        U: Ui,
+    {
+        let scrolloff = end_node.read().config().read().scrolloff;
+
+        if target.row > self.top_row + height - scrolloff.d_y {
+            self.top_row += target.row + scrolloff.d_y - self.top_row - height;
+        } else if target.row < self.top_row + scrolloff.d_y && self.top_row != 0 {
+            self.top_row -= (self.top_row + scrolloff.d_y) - target.row
+        }
+    }
+
+    /// Scrolls up, assuming that the lines can wrap.
+    fn calibrate_up<U>(
+        &mut self, target: TextPos, mut d_y: usize, text: &Text, end_node: &RwData<EndNode<U>>,
+    ) where
+        U: Ui,
+    {
+        let scrolloff = end_node.read().config().read().scrolloff;
+        let lines_iter = text.lines().iter().take(target.row);
+
+        // If the target line is above the top line, no matter what, a new top line is needed.
+        let mut needs_new_top_line = target.row < self.top_row;
+
+        for (index, line) in lines_iter.enumerate().rev() {
+            if index != target.row {
+                d_y += 1 + line.wrap_iter().count();
+            };
+
+            if index == self.top_row {
+                // This means we ran into the top line too early, and must scroll up.
+                if d_y < scrolloff.d_y + self.top_wraps {
+                    needs_new_top_line = true;
+                // If this happens, we're in the middle of the screen, and don't need to scroll.
+                } else if !needs_new_top_line {
+                    break;
+                }
+            }
+
+            if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
+                self.top_row = index;
+                self.top_wraps = d_y.saturating_sub(scrolloff.d_y);
+                break;
+            }
+        }
+    }
+
+    /// Scrolls down, assuming that the lines can wrap.
+    fn calibrate_down<U>(
+        &mut self, target: TextPos, mut d_y: usize, text: &Text, height: usize,
+        end_node: &RwData<EndNode<U>>,
+    ) where
+        U: Ui,
+    {
+        let scrolloff = end_node.read().config().read().scrolloff;
+        let lines_iter = text.lines().iter().take(target.row + 1);
+        let mut top_offset = 0;
+
+        for (index, line) in lines_iter.enumerate().rev() {
+            if index != target.row {
+                d_y += 1 + line.wrap_iter().count();
+            }
+
+            if index == self.top_row {
+                top_offset = self.top_wraps
+            };
+
+            if d_y >= height + top_offset - scrolloff.d_y {
+                self.top_row = index;
+                // If this equals 0, that means the distance has matched up perfectly,
+                // i.e. the distance between the new `info.top_line` is exactly what's
+                // needed for the full height. If it's greater than 0, `info.top_wraps`
+                // needs to adjust where the line actually begins to match up.
+                self.top_wraps = d_y + scrolloff.d_y - height;
+                break;
+            }
+
+            // If this happens first, we're in the middle of the screen, and don't need to scroll.
+            if index == self.top_row {
+                break;
+            }
+        }
+    }
+
+    /// Scrolls the file horizontally, usually when no wrapping is being used.
+    fn calibrate_horizontally<U>(
+        &mut self, target: TextPos, text: &Text, width: usize, end_node: &RwData<EndNode<U>>,
+    ) where
+        U: Ui,
+    {
+        let node = end_node.read();
+        let config = node.config().read();
+        let label = node.label.read();
+
+        if let WrapMethod::NoWrap = config.wrap_method {
+            let target_line = &text.lines[target.row];
+            let distance = target_line.get_distance_to_col::<U>(target.col, &label, &config);
+
+            // If the distance is greater, it means that the cursor is out of bounds.
+            if distance > self.x_shift + width - config.scrolloff.d_x {
+                // Shift by the amount required to keep the cursor in bounds.
+                self.x_shift = distance + config.scrolloff.d_x - width;
+            // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
+            } else if distance < self.x_shift + config.scrolloff.d_x {
+                self.x_shift = distance.saturating_sub(config.scrolloff.d_x);
+            }
+        }
+    }
+
+    /// Updates the print info.
+    pub fn update<U>(&mut self, target: TextPos, text: &Text, end_node: &RwData<EndNode<U>>)
+    where
+        U: Ui,
+    {
+        let node = end_node.read();
+        let wrap_method = node.config().read().wrap_method;
+        let (height, width) = (node.label.read().area().height(), node.label.read().area().width());
+        drop(node);
+
+        let old = self.last_main;
+
+        let line = &text.lines()[min(old.row, text.lines().len() - 1)];
+        let current_byte = line.get_line_byte_at(old.col);
+        let cur_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
+
+        let line = &text.lines()[target.row];
+        let target_byte = line.get_line_byte_at(target.col);
+        let old_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
+
+        if let WrapMethod::NoWrap = wrap_method {
+            self.calibrate_vertically(target, height, end_node);
+            self.calibrate_horizontally(target, text, width, end_node);
+        } else if target.row < old.row || (target.row == old.row && old_wraps < cur_wraps) {
+            self.calibrate_up(target, old_wraps, text, end_node);
+        } else {
+            self.calibrate_down(target, old_wraps, text, height, end_node);
+        }
+
+        self.last_main = target;
     }
 }
 
