@@ -64,9 +64,9 @@ where
 
         let status = StatusLine::new(end_node, &mut node_manager);
 
-        let session_control = RwData::new(SessionControl::<U>::default());
+        let control = RwData::new(SessionControl::<U>::default());
         let mut command_list = CommandList::default();
-        for command in session_commands::<U>(session_control.clone()) {
+        for command in session_commands::<U>(control.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
         }
 
@@ -79,7 +79,7 @@ where
             master_node,
             all_files_parent: Node::EndNode(node),
             match_manager,
-            control: RwData::new(SessionControl::default()),
+            control,
             global_commands: RwData::new(command_list),
         };
 
@@ -215,6 +215,19 @@ where
         thread::scope(|s_0| loop {
             resize_widgets(&resize_requested, &printer, &self.widgets, &mut self.files);
 
+            let mut control_lock = self.control.write();
+            if control_lock.should_quit {
+                break;
+            } else if let Some(target) = &control_lock.target_widget {
+                if let Some(file) = target.find_file(&self.files) {
+                    control_lock.active_file = file;
+                    control_lock.active_widget = None;
+                } else {
+                    control_lock.active_widget = target.find_editable(&self.widgets);
+                }
+            }
+            drop(control_lock);
+
             if let Ok(true) = event::poll(Duration::from_micros(100)) {
                 let active_file = &mut self.files[self.control.read().active_file];
                 let active_file = (&mut active_file.0, active_file.2.as_mut_slice());
@@ -223,17 +236,6 @@ where
                 continue;
             }
 
-            let mut control = self.control.write();
-            if control.should_quit {
-                break;
-            } else if let Some(target) = &control.target_widget {
-                if let Some(file) = target.find_file(&self.files) {
-                    control.active_file = file;
-                    control.active_widget = None;
-                } else {
-                    control.active_widget = target.find_editable(&self.widgets);
-                }
-            }
 
             self.status.update();
             let printer_lock = printer.lock().unwrap();
