@@ -543,7 +543,7 @@ where
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        Widget::new_normal(Arc::new(Mutex::new(VertRule {
+        Widget::Normal(Arc::new(Mutex::new(VertRule {
             end_node: node,
             file,
             text: Text::default(),

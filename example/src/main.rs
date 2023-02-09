@@ -28,7 +28,7 @@ use parsec_core::{
     },
     ui::{Direction, Split},
     widgets::{line_numbers::{LineNumbers, LineNumbersConfig, Numbering}},
-    session::Session,
+    Session,
 };
 use parsec_kak::Editor;
 use parsec_term::{UiManager, VertRule};

@@ -106,6 +106,96 @@ where
     fn update_pre_keys(&mut self);
 }
 
+pub enum Widget<U>
+where
+    U: Ui,
+{
+    Normal(Arc<Mutex<dyn NormalWidget<U>>>),
+    Editable(Arc<Mutex<dyn EditableWidget<U>>>),
+}
+
+impl<U> Clone for Widget<U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Widget::Normal(widget) => Widget::Normal(widget.clone()),
+            Widget::Editable(widget) => Widget::Editable(widget.clone()),
+        }
+    }
+}
+
+impl<U> Widget<U>
+where
+    U: Ui,
+{
+    pub(crate) fn identifier(&self) -> String {
+        match self {
+            Widget::Normal(widget) => widget.lock().unwrap().identifier(),
+            Widget::Editable(widget) => widget.lock().unwrap().identifier(),
+        }
+    }
+
+    pub(crate) fn update(&self) {
+        match self {
+            Widget::Normal(widget) => widget.lock().unwrap().update(),
+            Widget::Editable(widget) => widget.lock().unwrap().update(),
+        }
+    }
+
+    pub(crate) fn needs_update(&self) -> bool {
+        match self {
+            Widget::Normal(widget) => {
+                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+            }
+            Widget::Editable(widget) => {
+                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+            }
+        }
+    }
+
+    pub(crate) fn resize_requested(&self) -> bool {
+        match self {
+            Widget::Normal(widget) => widget.lock().unwrap().end_node().read().resize_requested(),
+            Widget::Editable(widget) => widget.lock().unwrap().end_node().read().resize_requested(),
+        }
+    }
+
+    pub(crate) fn print(&self) {
+        match self {
+            Widget::Normal(widget) => widget.try_lock().unwrap().print(),
+            Widget::Editable(widget) => widget.lock().unwrap().print(),
+        }
+    }
+
+    pub(crate) fn try_set_size(&self) -> Result<(), ()> {
+        match self {
+            Widget::Normal(widget) => {
+                if let Ok(mut widget) = widget.try_lock() {
+                    widget.end_node_mut().write().try_set_size()
+                } else {
+                    Err(())
+                }
+            }
+            Widget::Editable(widget) => {
+                if let Ok(mut widget) = widget.try_lock() {
+                    widget.end_node_mut().write().try_set_size()
+                } else {
+                    Err(())
+                }
+            }
+        }
+    }
+
+    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn EditableWidget<U>>>> {
+        match self {
+            Widget::Normal(_) => None,
+            Widget::Editable(widget) => Some(widget.clone()),
+        }
+    }
+}
+
 pub struct WidgetActor<'a, U, E>
 where
     U: Ui,
@@ -323,7 +413,8 @@ pub enum TargetWidget {
 
 impl TargetWidget {
     pub(crate) fn find_file<U>(
-        &self, files: &Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<Widget<U>>)>,
+        &self,
+        files: &Vec<(RwData<FileWidget<U>>, Option<RwData<MidNode<U>>>, Vec<(Widget<U>, usize)>)>,
     ) -> Option<usize>
     where
         U: Ui,
@@ -339,7 +430,9 @@ impl TargetWidget {
             .map(|(index, _)| index)
     }
 
-    pub(crate) fn find_editable<U>(&self, widgets: &Vec<Widget<U>>) -> Option<Arc<Mutex<dyn EditableWidget<U>>>>
+    pub(crate) fn find_editable<U>(
+        &self, widgets: &Vec<(Widget<U>, usize)>,
+    ) -> Option<Arc<Mutex<dyn EditableWidget<U>>>>
     where
         U: Ui,
     {
@@ -350,136 +443,16 @@ impl TargetWidget {
             TargetWidget::FirstLocal(_) => todo!(),
             TargetWidget::LastLocal(_) => todo!(),
             TargetWidget::FirstGlobal(identifier) => {
-                widgets.find(|widget| widget.identifier() == *identifier)
+                widgets.find(|(widget, _)| widget.identifier() == *identifier)
             }
             TargetWidget::LastGlobal(identifier) => {
-                widgets.rev().find(|widget| widget.identifier() == *identifier)
+                widgets.rev().find(|(widget, _)| widget.identifier() == *identifier)
             }
-            TargetWidget::Absolute(identifier, index) => widgets
-                .find(|widget| widget.identifier() == *identifier && widget.index() == *index),
+            TargetWidget::Absolute(identifier, index) => {
+                widgets.find(|(widget, cmp)| widget.identifier() == *identifier && cmp == index)
+            }
         };
 
-        result.map(|widget| widget.try_to_editable()).flatten()
+        result.map(|(widget, _)| widget.try_to_editable()).flatten()
     }
 }
-
-pub enum Widget<U>
-where
-    U: Ui,
-{
-    Normal(Arc<Mutex<dyn NormalWidget<U>>>, usize),
-    Editable(Arc<Mutex<dyn EditableWidget<U>>>, usize),
-}
-
-impl<U> Clone for Widget<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Widget::Normal(widget, index) => Widget::Normal(widget.clone(), *index),
-            Widget::Editable(widget, index) => Widget::Editable(widget.clone(), *index),
-        }
-    }
-}
-
-impl<U> Widget<U>
-where
-    U: Ui,
-{
-    pub fn new_normal<N>(normal: Arc<Mutex<N>>) -> Self
-    where
-        N: NormalWidget<U> + 'static,
-    {
-        Widget::Normal(normal, 0)
-    }
-
-    pub fn new_editable<E>(editable: Arc<Mutex<E>>) -> Self
-    where
-        E: EditableWidget<U> + 'static,
-    {
-        Widget::Editable(editable, 0)
-    }
-
-    pub(crate) fn identifier(&self) -> String {
-        match self {
-            Widget::Normal(widget, _) => widget.lock().unwrap().identifier(),
-            Widget::Editable(widget, _) => widget.lock().unwrap().identifier(),
-        }
-    }
-
-    pub(crate) fn index(&self) -> usize {
-        match self {
-            Widget::Normal(_, index) | Widget::Editable(_, index) => *index,
-        }
-    }
-
-    pub(crate) fn mut_index(&mut self) -> &mut usize {
-        match self {
-            Widget::Normal(_, index) | Widget::Editable(_, index) => index,
-        }
-    }
-
-    pub(crate) fn update(&self) {
-        match self {
-            Widget::Normal(widget, _) => widget.lock().unwrap().update(),
-            Widget::Editable(widget, _) => widget.lock().unwrap().update(),
-        }
-    }
-
-    pub(crate) fn needs_update(&self) -> bool {
-        match self {
-            Widget::Normal(widget, _) => {
-                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
-            }
-            Widget::Editable(widget, _) => {
-                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
-            }
-        }
-    }
-
-    pub(crate) fn resize_requested(&self) -> bool {
-        match self {
-            Widget::Normal(widget, _) => {
-                widget.lock().unwrap().end_node().read().resize_requested()
-            }
-            Widget::Editable(widget, _) => {
-                widget.lock().unwrap().end_node().read().resize_requested()
-            }
-        }
-    }
-
-    pub(crate) fn print(&self) {
-        match self {
-            Widget::Normal(widget, _) => widget.try_lock().unwrap().print(),
-            Widget::Editable(widget, _) => widget.lock().unwrap().print(),
-        }
-    }
-
-    pub(crate) fn try_set_size(&self) -> Result<(), ()> {
-        match self {
-            Widget::Normal(widget, _) => {
-                if let Ok(mut widget) = widget.try_lock() {
-                    widget.end_node_mut().write().try_set_size()
-                } else {
-                    Err(())
-                }
-            }
-            Widget::Editable(widget, _) => {
-                if let Ok(mut widget) = widget.try_lock() {
-                    widget.end_node_mut().write().try_set_size()
-                } else {
-                    Err(())
-                }
-            }
-        }
-    }
-
-    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn EditableWidget<U>>>> {
-        match self {
-            Widget::Normal(_, _) => None,
-            Widget::Editable(widget, _) => Some(widget.clone()),
-        }
-    }
-}
-

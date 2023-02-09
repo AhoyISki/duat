@@ -59,7 +59,7 @@ where
 
         line_numbers.update();
 
-        Widget::new_normal(Arc::new(Mutex::new(line_numbers)))
+        Widget::Normal(Arc::new(Mutex::new(line_numbers)))
     }
 
     pub fn default(
@@ -83,7 +83,7 @@ where
 
         line_numbers.update();
 
-        Widget::new_normal(Arc::new(Mutex::new(line_numbers)))
+        Widget::Normal(Arc::new(Mutex::new(line_numbers)))
     }
 
     fn calculate_width(&self) -> usize {
