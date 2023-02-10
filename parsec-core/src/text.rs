@@ -713,7 +713,8 @@ impl PrintInfo {
     ) where
         U: Ui,
     {
-        let scrolloff = end_node.read().config().read().scrolloff;
+        let mut scrolloff = end_node.read().config().read().scrolloff;
+        scrolloff.d_y = min(scrolloff.d_y, height);
         let lines_iter = text.lines().iter().take(target.row + 1);
         let mut top_offset = 0;
 
@@ -726,7 +727,7 @@ impl PrintInfo {
                 top_offset = self.top_wraps
             };
 
-            if d_y >= (height + top_offset).saturating_sub(scrolloff.d_y) {
+            if d_y + scrolloff.d_y >= height + top_offset {
                 self.top_row = index;
                 // If this equals 0, that means the distance has matched up perfectly,
                 // i.e. the distance between the new `info.top_line` is exactly what's
@@ -752,6 +753,8 @@ impl PrintInfo {
         let node = end_node.read();
         let config = node.config().read();
         let label = node.label.read();
+        let mut scrolloff = config.scrolloff;
+        scrolloff.d_x = min(scrolloff.d_x, width);
 
         if let WrapMethod::NoWrap = config.wrap_method {
             let target_line = &text.lines[target.row];
@@ -760,9 +763,9 @@ impl PrintInfo {
             // If the distance is greater, it means that the cursor is out of bounds.
             if distance > self.x_shift + width - config.scrolloff.d_x {
                 // Shift by the amount required to keep the cursor in bounds.
-                self.x_shift = distance + config.scrolloff.d_x - width;
+                self.x_shift = distance + scrolloff.d_x - width;
             // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
-            } else if distance < self.x_shift + config.scrolloff.d_x {
+            } else if distance < self.x_shift + scrolloff.d_x {
                 self.x_shift = distance.saturating_sub(config.scrolloff.d_x);
             }
         }

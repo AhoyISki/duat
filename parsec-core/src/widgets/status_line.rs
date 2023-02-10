@@ -219,8 +219,6 @@ where
     fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, PrintInfo::default())
     }
-
-    fn resize(&mut self, node: &EndNode<U>) {}
 }
 
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}

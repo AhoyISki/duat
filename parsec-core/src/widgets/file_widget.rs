@@ -242,8 +242,6 @@ where
         self.text.update_lines(&mut node);
         drop(node);
         //self.match_scroll();
-
-        self.text.add_cursor_tags(self.cursors.as_slice(), self.main_cursor);
     }
 
     fn needs_update(&self) -> bool {
@@ -297,12 +295,16 @@ where
         self.cursors.as_slice()
     }
 
-    fn main_cursor_index(&self) -> usize {
-        self.main_cursor
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
+        (&mut self.text, self.cursors.as_slice(), self.main_cursor)
     }
 
     fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
         Some(&mut self.cursors)
+    }
+
+    fn main_cursor_index(&self) -> usize {
+        self.main_cursor
     }
 
     fn mut_main_cursor_index(&mut self) -> Option<&mut usize> {
@@ -319,10 +321,6 @@ where
 
     fn redo(&mut self) {
         self.redo()
-    }
-
-    fn update_pre_keys(&mut self) {
-        self.text.remove_cursor_tags(self.cursors.as_slice(), self.main_cursor);
     }
 }
 

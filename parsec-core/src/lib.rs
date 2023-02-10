@@ -105,8 +105,12 @@ where
             self.widgets.push((widget.clone(), index));
 
             let mut file = file.write();
+
             file.side_widgets.push((widget, index));
             *file.mid_node_mut() = Some(mid_node);
+
+            let (text, cursors, main_index) = file.members_for_cursor_tags();
+            text.add_cursor_tags(cursors, main_index);
         }
 
         self.files.push(file);
@@ -267,6 +271,7 @@ where
         });
     }
 
+	/// The list of commands that are considered global, as oposed to local to a file.
     pub fn global_commands(&self) -> RwData<CommandList> {
         self.global_commands.clone()
     }
@@ -441,14 +446,25 @@ fn send_event<U, I>(
         let mut control = control.write();
         if let Some(widget) = control.active_widget.take() {
             let mut widget_lock = widget.lock().unwrap();
-            widget_lock.update_pre_keys();
+            let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
+            text.remove_cursor_tags(cursors, main_index);
+
             key_remapper.send_key_to_actionable(key_event, &mut *widget_lock, &mut control);
+
+            let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
+            text.add_cursor_tags(cursors, main_index);
             drop(widget_lock);
+
             control.active_widget = Some(widget);
         } else {
             let mut file = active_file.write();
-            file.update_pre_keys();
+            let (text, cursors, main_index) = file.members_for_cursor_tags();
+            text.remove_cursor_tags(cursors, main_index);
+
             key_remapper.send_key_to_actionable(key_event, &mut *file, &mut control);
+
+            let (text, cursors, main_index) = file.members_for_cursor_tags();
+            text.add_cursor_tags(cursors, main_index);
         }
     }
 }

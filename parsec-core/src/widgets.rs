@@ -11,8 +11,9 @@ use std::{
 use crate::{
     config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    text::{Text, PrintInfo},
-    ui::{EndNode, Ui}, print_widget,
+    print_widget,
+    text::{PrintInfo, Text},
+    ui::{EndNode, Ui},
 };
 
 use self::{command_line::CommandList, file_widget::FileWidget};
@@ -38,7 +39,7 @@ where
     /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
 
-	/// The text that this widget prints out.
+    /// The text that this widget prints out.
     fn text(&self) -> &Text;
 
     /// These are the three things that are needed to print text to the screen.
@@ -70,6 +71,8 @@ where
 
     fn cursors(&self) -> &[TextCursor];
 
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize);
+
     fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
         None
     }
@@ -91,8 +94,6 @@ where
     fn redo(&mut self) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
-
-    fn update_pre_keys(&mut self);
 }
 
 pub enum Widget<U>

@@ -256,9 +256,7 @@ impl Label<TermArea> for TermLabel {
 
         stdout().execute(RestorePosition).unwrap();
         self.clear_form();
-        unsafe {
-            LOCK = None
-        }
+        unsafe { LOCK = None }
     }
 }
 

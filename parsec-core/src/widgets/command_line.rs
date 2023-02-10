@@ -200,7 +200,6 @@ where
             self.text = Text::default();
         }
 
-        self.text.add_cursor_tags(&self.cursor, 0);
         self.needs_update = false;
     }
 
@@ -239,8 +238,8 @@ where
         0
     }
 
-    fn update_pre_keys(&mut self) {
-        self.text.remove_cursor_tags(&self.cursor, 0)
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
+        (&mut self.text, &self.cursor, 0)
     }
 }
 
