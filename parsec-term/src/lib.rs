@@ -2,7 +2,7 @@ use std::{
     cmp::min,
     fmt::Display,
     io::{stdout, Stdout},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crossterm::{
@@ -21,6 +21,9 @@ use parsec_core::{
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
+
+static mut PRINTER: Mutex<()> = Mutex::new(());
+static mut LOCK: Option<MutexGuard<()>> = None;
 
 pub struct UiManager {
     initial: bool,
@@ -237,6 +240,9 @@ impl Label<TermArea> for TermLabel {
     }
 
     fn start_printing(&mut self) {
+        unsafe {
+            LOCK = Some(PRINTER.lock().unwrap());
+        }
         self.cursor = self.area.tl;
         self.stdout.queue(MoveTo(self.area.tl.x, self.area.tl.y)).unwrap();
     }
@@ -250,6 +256,9 @@ impl Label<TermArea> for TermLabel {
 
         stdout().execute(RestorePosition).unwrap();
         self.clear_form();
+        unsafe {
+            LOCK = None
+        }
     }
 }
 

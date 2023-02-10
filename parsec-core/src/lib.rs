@@ -201,10 +201,7 @@ where
         self.node_manager.startup();
 
         // This mutex is only used to prevent multiple printings at the same time.
-        let printer = Mutex::new(true);
-
         let resize_requested = Mutex::new(true);
-        let mut iteration = 0;
 
         // The main loop.
         loop {
@@ -217,10 +214,9 @@ where
                 widget.print();
             }
 
-            self.session_loop(&resize_requested, &printer, key_remapper, &mut iteration);
+            self.session_loop(&resize_requested, key_remapper);
 
-            let control = self.control.read();
-            if control.should_quit {
+            if self.control.read().should_quit {
                 break;
             }
         }
@@ -228,14 +224,13 @@ where
         self.node_manager.shutdown();
     }
 
-    fn session_loop<I>(
-        &mut self, resize_requested: &Mutex<bool>, printer: &Mutex<bool>,
-        key_remapper: &mut KeyRemapper<I>, iteration: &mut i32,
-    ) where
+    /// The main loop, executed while no breaking commands have been sent to `SessionControl`.
+    fn session_loop<I>(&mut self, resize_requested: &Mutex<bool>, key_remapper: &mut KeyRemapper<I>)
+    where
         I: InputScheme,
     {
         thread::scope(|s_0| loop {
-            resize_widgets(resize_requested, printer, &self.widgets, &mut self.files);
+            resize_widgets(resize_requested, &self.widgets, &mut self.files);
 
             let mut control = self.control.write();
             control.switch_to_target(&self.files, &self.widgets);
@@ -252,11 +247,8 @@ where
             }
 
             self.status.update();
-            let printer_lock = printer.lock().unwrap();
             self.status.print();
             print_files(&mut self.files);
-            drop(printer_lock);
-            *iteration = 0;
 
             let widget_indices = widgets_to_update(&self.widgets);
             for index in &widget_indices {
@@ -264,7 +256,6 @@ where
                 s_0.spawn(|| {
                     widget.update();
                     if !widget.resize_requested() {
-                        let _printer_lock = printer.lock().unwrap();
                         widget.print();
                     } else {
                         *resize_requested.lock().unwrap() = true;
@@ -361,6 +352,7 @@ where
     let quit_callers = vec![String::from("quit"), String::from("q")];
     let quit_command = Command::new(
         Box::new(|session: &mut SessionControl<U>, _, _| {
+            session.break_loop = true;
             session.should_quit = true;
             Ok(None)
         }),
@@ -382,9 +374,8 @@ where
 }
 
 /// Prints all the files.
-fn print_files<U>(
-    files: &mut Vec<RwData<FileWidget<U>>>,
-) where
+fn print_files<U>(files: &mut Vec<RwData<FileWidget<U>>>)
+where
     U: Ui,
 {
     for file_widget in files.iter_mut() {
@@ -412,7 +403,7 @@ where
 }
 
 fn resize_widgets<U>(
-    resize_requested: &Mutex<bool>, printer: &Mutex<bool>, widgets: &Vec<(Widget<U>, usize)>,
+    resize_requested: &Mutex<bool>, widgets: &Vec<(Widget<U>, usize)>,
     files: &mut Vec<RwData<FileWidget<U>>>,
 ) where
     U: Ui,
@@ -422,7 +413,6 @@ fn resize_widgets<U>(
             *resize_requested = false;
             drop(resize_requested);
             widgets.iter().for_each(|(widget, _)| widget.try_set_size().unwrap());
-            let _printer_lock = printer.lock().unwrap();
             widgets.iter().for_each(|(widget, _)| widget.print());
             print_files(files);
         }

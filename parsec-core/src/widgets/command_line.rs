@@ -1,10 +1,15 @@
-use std::{error::Error, fmt::Display, sync::{Arc, Mutex}};
+use std::{
+    error::Error,
+    fmt::Display,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
-    config::{RwData, RoData},
+    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
-    ui::{EndNode, Ui, NodeManager}, Session,
+    ui::{EndNode, Ui},
+    Session,
 };
 
 use super::{ActionableWidget, NormalWidget, Widget};
@@ -144,16 +149,14 @@ impl<U> CommandLine<U>
 where
     U: Ui + 'static,
 {
-    pub fn default(
-        end_node: RwData<EndNode<U>>, session: &mut Session<U>
-    ) -> Widget<U> {
+    pub fn default(end_node: RwData<EndNode<U>>, session: &mut Session<U>) -> Widget<U> {
         let command_line = CommandLine {
             end_node,
             text: Text::default(),
             print_info: PrintInfo::default(),
             cursor: [TextCursor::default()],
             command_list: session.global_commands(),
-            needs_update: false
+            needs_update: false,
         };
 
         Widget::Editable(Arc::new(Mutex::new(command_line)))
@@ -187,13 +190,14 @@ where
             let lines: String = self.text.lines().iter().map(|line| line.text().as_str()).collect();
             let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
 
-			let Some(command) = whole_command.next() else {
+            let Some(command) = whole_command.next() else {
     			return;
 			};
 
-			let mut command_list = self.command_list.write();
-			let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
-			self.text = Text::default();
+            let mut command_list = self.command_list.write();
+            let result = command_list.try_exec(command, Vec::new(), whole_command.collect());
+
+            self.text = Text::default();
         }
 
         self.text.add_cursor_tags(&self.cursor, 0);
