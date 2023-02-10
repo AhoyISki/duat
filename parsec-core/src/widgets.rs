@@ -94,6 +94,14 @@ where
     fn redo(&mut self) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
+
+    fn on_focus(&mut self) {}
+
+	fn on_unfocus(&mut self) {}
+
+   	fn still_valid(&self) -> bool {
+       	true
+   	}
 }
 
 pub enum Widget<U>

@@ -7,6 +7,7 @@ use std::{
 
 use crossterm::{
     cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle},
+    execute, queue,
     style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal, ExecutableCommand, QueueableCommand,
 };
@@ -24,6 +25,7 @@ use unicode_width::UnicodeWidthChar;
 
 static mut PRINTER: Mutex<()> = Mutex::new(());
 static mut LOCK: Option<MutexGuard<()>> = None;
+static mut SHOW_CURSOR: bool = false;
 
 pub struct UiManager {
     initial: bool,
@@ -119,6 +121,7 @@ pub struct TermLabel {
     direction: Direction,
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
+    is_active: bool,
 }
 
 impl TermLabel {
@@ -130,6 +133,7 @@ impl TermLabel {
             direction,
             style_before_cursor: None,
             last_style: ContentStyle::default(),
+            is_active: false,
         }
     }
 
@@ -140,16 +144,13 @@ impl TermLabel {
             // The rest of the line is featureless.
             let padding_count = (self.area.br.x - self.cursor.x) as usize;
             let padding = " ".repeat(padding_count);
-            self.stdout.queue(Print(padding)).unwrap();
+            queue!(self.stdout, Print(padding)).unwrap();
         }
 
         self.cursor.x = self.area.tl.x;
         self.cursor.y += 1;
 
-        self.stdout
-            .queue(MoveTo(self.cursor.x, self.cursor.y))
-            .unwrap()
-            .queue(SetStyle(self.last_style))
+        queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), SetStyle(self.last_style))
             .unwrap();
     }
 }
@@ -161,12 +162,82 @@ impl Clone for TermLabel {
 }
 
 impl Label<TermArea> for TermLabel {
+    fn area_mut(&mut self) -> &mut TermArea {
+        &mut self.area
+    }
+
     fn area(&self) -> &TermArea {
         &self.area
     }
 
-    fn area_mut(&mut self) -> &mut TermArea {
-        &mut self.area
+    fn set_form(&mut self, form: Form) {
+        self.last_style = form.style;
+        queue!(self.stdout, ResetColor, SetStyle(self.last_style)).unwrap();
+    }
+
+    fn clear_form(&mut self) {
+        queue!(self.stdout, ResetColor).unwrap();
+    }
+
+    fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
+        if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
+            self.stdout.queue(caret).unwrap().queue(SavePosition).unwrap();
+            unsafe { SHOW_CURSOR = true }
+        } else {
+            self.style_before_cursor = Some(self.last_style);
+            queue!(self.stdout, SetStyle(cursor_style.form.style)).unwrap();
+        }
+    }
+
+    fn place_secondary_cursor(&mut self, cursor_style: CursorStyle) {
+        self.style_before_cursor = Some(self.last_style);
+        queue!(self.stdout, SetStyle(cursor_style.form.style)).unwrap();
+    }
+
+    fn set_as_active(&mut self) {
+        self.is_active = true;
+    }
+
+    fn start_printing(&mut self) {
+        unsafe {
+            LOCK = Some(PRINTER.lock().unwrap());
+        }
+
+        self.cursor = self.area.tl;
+        queue!(self.stdout, MoveTo(self.area.tl.x, self.area.tl.y)).unwrap();
+        execute!(self.stdout, cursor::Hide).unwrap();
+
+        if self.is_active {
+            unsafe { SHOW_CURSOR = false }
+        }
+    }
+
+    fn stop_printing(&mut self) {
+        for _ in self.cursor.y..(self.area.br.y.saturating_sub(2)) {
+            let _ = self.next_line();
+        }
+
+        self.clear_line();
+
+        execute!(self.stdout, RestorePosition).unwrap();
+        if unsafe { SHOW_CURSOR } {
+            execute!(self.stdout, cursor::Show).unwrap();
+        }
+
+        self.clear_form();
+        unsafe { LOCK = None };
+        self.is_active = false;
+    }
+
+    fn print(&mut self, ch: char) {
+        let len = self.get_char_len(ch) as u16;
+        if self.cursor.x <= self.area.br.x - len {
+            self.cursor.x += len;
+            queue!(self.stdout, Print(ch)).unwrap();
+            if let Some(style) = self.style_before_cursor.take() {
+                queue!(self.stdout, ResetColor, SetStyle(style)).unwrap();
+            }
+        }
     }
 
     fn next_line(&mut self) -> Result<(), ()> {
@@ -184,10 +255,7 @@ impl Label<TermArea> for TermLabel {
         } else {
             self.clear_line();
 
-            self.stdout
-                .queue(MoveTo(self.cursor.x, self.cursor.y))
-                .unwrap()
-                .queue(Print(" ".repeat(indent)))
+            queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(indent)))
                 .unwrap();
 
             self.cursor.x += indent as u16;
@@ -196,67 +264,8 @@ impl Label<TermArea> for TermLabel {
         }
     }
 
-    fn clear_form(&mut self) {
-        self.stdout.queue(ResetColor).unwrap();
-    }
-
-    fn set_form(&mut self, form: Form) {
-        self.last_style = form.style;
-        self.stdout.queue(ResetColor).unwrap().queue(SetStyle(self.last_style)).unwrap();
-    }
-
     fn get_char_len(&self, ch: char) -> usize {
         UnicodeWidthChar::width(ch).unwrap_or(0)
-    }
-
-    fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
-        if let Some(caret) = cursor_style.caret {
-            self.stdout.queue(caret).unwrap().queue(SavePosition).unwrap();
-        } else {
-            self.style_before_cursor = Some(self.last_style);
-            self.stdout
-                .queue(cursor::Hide)
-                .unwrap()
-                .queue(SetStyle(cursor_style.form.style))
-                .unwrap();
-        }
-    }
-
-    fn place_secondary_cursor(&mut self, cursor_style: CursorStyle) {
-        self.style_before_cursor = Some(self.last_style);
-        self.stdout.queue(SetStyle(cursor_style.form.style)).unwrap();
-    }
-
-    fn print(&mut self, ch: char) {
-        let len = self.get_char_len(ch) as u16;
-        if self.cursor.x <= self.area.br.x - len {
-            self.cursor.x += len;
-            self.stdout.queue(Print(ch)).unwrap();
-            if let Some(style) = self.style_before_cursor.take() {
-                self.stdout.queue(ResetColor).unwrap();
-                self.stdout.queue(SetStyle(style)).unwrap();
-            }
-        }
-    }
-
-    fn start_printing(&mut self) {
-        unsafe {
-            LOCK = Some(PRINTER.lock().unwrap());
-        }
-        self.cursor = self.area.tl;
-        self.stdout.queue(MoveTo(self.area.tl.x, self.area.tl.y)).unwrap();
-    }
-
-    fn stop_printing(&mut self) {
-        for _ in self.cursor.y..(self.area.br.y.saturating_sub(2)) {
-            let _ = self.next_line();
-        }
-
-        self.clear_line();
-
-        stdout().execute(RestorePosition).unwrap();
-        self.clear_form();
-        unsafe { LOCK = None }
     }
 }
 
@@ -309,44 +318,39 @@ impl ui::Ui for UiManager {
 
             terminal::disable_raw_mode().unwrap();
 
-            stdout
-                .execute(terminal::EnableLineWrap)
-                .unwrap()
-                .execute(terminal::Clear(terminal::ClearType::All))
-                .unwrap()
-                .execute(MoveTo(0, 0))
-                .unwrap();
+            execute!(
+                stdout,
+                terminal::EnableLineWrap,
+                terminal::Clear(terminal::ClearType::All),
+                MoveTo(0, 0)
+            )
+            .unwrap();
 
-            println!("{}", msg);
+            use std::backtrace::Backtrace;
+            println!("{}\n\n{}", msg, Backtrace::force_capture());
         }));
 
         let mut stdout = stdout();
 
         terminal::enable_raw_mode().unwrap();
 
-        stdout
-            .execute(terminal::DisableLineWrap)
-            .unwrap()
-            .execute(terminal::Clear(terminal::ClearType::All))
+        execute!(stdout, terminal::DisableLineWrap, terminal::Clear(terminal::ClearType::All))
             .unwrap();
     }
 
     fn shutdown(&mut self) {
         let mut stdout = stdout();
 
-        stdout
-            .queue(ResetColor)
-            .unwrap()
-            .queue(terminal::Clear(terminal::ClearType::All))
-            .unwrap()
-            .queue(terminal::EnableLineWrap)
-            .unwrap()
-            .queue(MoveTo(0, 0))
-            .unwrap()
-            .queue(SetCursorStyle::DefaultUserShape)
-            .unwrap()
-            .execute(cursor::Show)
-            .unwrap();
+        execute!(
+            stdout,
+            ResetColor,
+            terminal::Clear(terminal::ClearType::All),
+            terminal::EnableLineWrap,
+            MoveTo(0, 0),
+            SetCursorStyle::DefaultUserShape,
+            cursor::Show
+        )
+        .unwrap();
 
         terminal::disable_raw_mode().unwrap();
     }

@@ -13,7 +13,7 @@ use crate::{
     ui::{Area, Label},
 };
 
-use self::form::{FormFormer, FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
+use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -31,16 +31,16 @@ pub enum CharTag {
     /// Places the main cursor.
     MainCursor,
     /// Begins a main selection in the file.
-    MainSelectionStart,
+    MainSelStart,
     /// Ends a main selection in the file.
-    MainSelectionEnd,
+    MainSelEnd,
 
     /// Places a secondary cursor.
     SecondaryCursor,
     /// Begins a secondary selection in the file.
-    SecondarySelectionStart,
+    SecondarySelStart,
     /// Ends a secondary selection in the file.
-    SecondarySelectionEnd,
+    SecondarySelEnd,
 
     // Not Implemented:
     /// Begins or ends a hoverable section in the file.
@@ -51,8 +51,7 @@ pub enum CharTag {
 
 impl CharTag {
     pub(crate) fn trigger<L, A>(
-        &self, label: &mut L, palette: &FormPalette, wrap_indent: usize,
-        form_former: &mut FormFormer,
+        &self, label: &mut L, palette: &mut FormPalette, wrap_indent: usize,
     ) -> bool
     where
         L: Label<A>,
@@ -60,9 +59,9 @@ impl CharTag {
     {
         match self {
             CharTag::PushForm(id) => {
-                label.set_form(form_former.push_form(palette.get(*id)));
+                label.set_form(palette.apply(*id));
             }
-            CharTag::PopForm(id) => label.set_form(form_former.remove_form(*id)),
+            CharTag::PopForm(id) => label.set_form(palette.remove(*id)),
 
             CharTag::WrapppingChar => {
                 if label.wrap_line(wrap_indent).is_err() {
@@ -70,19 +69,13 @@ impl CharTag {
                 }
             }
 
-            CharTag::MainCursor => label.place_primary_cursor(palette.main_cursor),
-            CharTag::MainSelectionStart => {
-                label.set_form(form_former.push_form(palette.get(MAIN_SELECTION_ID)));
-            }
-            CharTag::MainSelectionEnd => label.set_form(form_former.remove_form(MAIN_SELECTION_ID)),
+            CharTag::MainCursor => label.place_primary_cursor(*palette.main_cursor()),
+            CharTag::MainSelStart => label.set_form(palette.apply(MAIN_SELECTION_ID)),
+            CharTag::MainSelEnd => label.set_form(palette.remove(MAIN_SELECTION_ID)),
 
-            CharTag::SecondaryCursor => label.place_secondary_cursor(palette.secondary_cursor),
-            CharTag::SecondarySelectionStart => {
-                label.set_form(form_former.push_form(palette.get(SECONDARY_SELECTION_ID)));
-            }
-            CharTag::SecondarySelectionEnd => {
-                label.set_form(form_former.remove_form(SECONDARY_SELECTION_ID))
-            }
+            CharTag::SecondaryCursor => label.place_secondary_cursor(*palette.secondary_cursor()),
+            CharTag::SecondarySelStart => label.set_form(palette.apply(SECONDARY_SELECTION_ID)),
+            CharTag::SecondarySelEnd => label.set_form(palette.remove(SECONDARY_SELECTION_ID)),
             _ => {}
         }
 
@@ -133,8 +126,8 @@ impl std::fmt::Debug for CharTags {
                 CharTag::WrapppingChar => format!("{}:Wc", b),
                 CharTag::MainCursor => format!("{}:Pc", b),
                 CharTag::SecondaryCursor => format!("{}:Pc", b),
-                CharTag::MainSelectionStart => format!("{}:Ss", b),
-                CharTag::MainSelectionEnd => format!("{}:Se", b),
+                CharTag::MainSelStart => format!("{}:Ss", b),
+                CharTag::MainSelEnd => format!("{}:Se", b),
                 _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()

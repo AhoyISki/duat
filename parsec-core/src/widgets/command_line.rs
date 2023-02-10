@@ -133,6 +133,17 @@ impl CommandList {
     }
 }
 
+pub struct CommandLineConfig {
+    run_string: String,
+    cmd_replacements: Vec<(String, String)>,
+}
+
+impl Default for CommandLineConfig {
+    fn default() -> Self {
+        CommandLineConfig { run_string: String::from(':'), cmd_replacements: Vec::new() }
+    }
+}
+
 pub struct CommandLine<U>
 where
     U: Ui,
@@ -143,6 +154,7 @@ where
     cursor: [TextCursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
+    config: CommandLineConfig
 }
 
 impl<U> CommandLine<U>
@@ -157,6 +169,7 @@ where
             cursor: [TextCursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
+            config: CommandLineConfig::default()
         };
 
         Widget::Editable(Arc::new(Mutex::new(command_line)))
@@ -195,9 +208,7 @@ where
 			};
 
             let mut command_list = self.command_list.write();
-            let result = command_list.try_exec(command, Vec::new(), whole_command.collect());
-
-            self.text = Text::default();
+            let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
         }
 
         self.needs_update = false;
@@ -240,6 +251,23 @@ where
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
         (&mut self.text, &self.cursor, 0)
+    }
+
+    fn on_focus(&mut self) {
+        self.needs_update = true;
+        self.text = Text::from(&self.config.run_string);
+        let chars = self.config.run_string.chars().count() as i32;
+        self.cursor[0].move_hor(chars, &self.text.lines(), &self.end_node.read());
+    }
+
+    fn on_unfocus(&mut self) {
+        self.needs_update = true;
+        self.text = Text::default();
+        self.cursor[0] = TextCursor::default();
+    }
+
+    fn still_valid(&self) -> bool {
+        !self.text.is_empty()
     }
 }
 

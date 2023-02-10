@@ -45,17 +45,17 @@ where
     /// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
 
-    // TODO: Give it a default form.
     /// Clears the current form.
     fn clear_form(&mut self);
 
-    // TODO: Give it a default form.
     /// Places the primary cursor on the current printing position.
     fn place_primary_cursor(&mut self, style: CursorStyle);
 
-    // TODO: Give it a default form.
     /// Places the secondary cursor on the current printing position.
     fn place_secondary_cursor(&mut self, style: CursorStyle);
+
+	/// Tells the `UiManager` that this `Label` is the one that is currently focused.
+    fn set_as_active(&mut self);
 
     //////////////////// Printing
     /// Tell the area that printing has begun.
@@ -222,6 +222,7 @@ where
     requested_width: Option<usize>,
     requested_height: Option<usize>,
     is_second: bool,
+    pub(crate) is_active: bool,
 }
 
 impl<U> EndNode<U>
@@ -522,6 +523,7 @@ where
                 requested_width: None,
                 requested_height: None,
                 is_second: false,
+                is_active: false,
             })
         })
     }
@@ -548,6 +550,7 @@ where
             requested_width: None,
             requested_height: None,
             is_second: true,
+            is_active: false,
         });
 
         let mid_node = RwData::new(MidNode {
@@ -607,6 +610,7 @@ where
             requested_width: None,
             requested_height: None,
             is_second: true,
+            is_active: false,
         });
 
         let mid_node = RwData::new(MidNode {

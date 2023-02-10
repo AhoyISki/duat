@@ -108,6 +108,7 @@ where
 
             file.side_widgets.push((widget, index));
             *file.mid_node_mut() = Some(mid_node);
+            file.end_node_mut().write().is_active = true;
 
             let (text, cursors, main_index) = file.members_for_cursor_tags();
             text.add_cursor_tags(cursors, main_index);
@@ -239,7 +240,7 @@ where
             resize_widgets(resize_requested, &self.widgets, &mut self.files);
 
             let mut control = self.control.write();
-            control.switch_to_target(&self.files, &self.widgets);
+            control.switch_to_target(&mut self.files, &self.widgets);
             if control.break_loop {
                 break;
             }
@@ -271,7 +272,7 @@ where
         });
     }
 
-	/// The list of commands that are considered global, as oposed to local to a file.
+    /// The list of commands that are considered global, as oposed to local to a file.
     pub fn global_commands(&self) -> RwData<CommandList> {
         self.global_commands.clone()
     }
@@ -337,17 +338,47 @@ where
         self.files_len
     }
 
+    fn unfocus_old(&mut self, active_file: &mut RwData<FileWidget<U>>) {
+        if let Some(widget) = &mut self.active_widget {
+            let mut widget = widget.lock().unwrap();
+            widget.end_node_mut().write().is_active = false;
+            widget.on_unfocus();
+            print_widget(&mut *widget);
+        } else {
+            let mut active_file = active_file.write();
+            active_file.end_node_mut().write().is_active = false;
+            active_file.on_unfocus();
+            print_widget(&mut *active_file);
+        }
+    }
+
     /// Switches the active widget to `self.target_widget`.
     fn switch_to_target(
-        &mut self, files: &Vec<RwData<FileWidget<U>>>, widgets: &Vec<(Widget<U>, usize)>,
+        &mut self, files: &mut Vec<RwData<FileWidget<U>>>, widgets: &Vec<(Widget<U>, usize)>,
     ) {
-        if let Some(target) = &self.target_widget {
-            if let Some(file) = target.find_file(&files) {
-                self.active_file = file;
-                self.active_widget = None;
-            } else {
-                self.active_widget = target.find_editable(widgets);
-            }
+        if let Some(target) = self.target_widget.take() {
+            let Some(file) = target.find_file(&files) else {
+                let mut new_widget = target.find_editable(widgets);
+                if let Some(widget) = new_widget.take() {
+                    self.unfocus_old(&mut files[self.active_file]);
+
+                    let mut widget_lock = widget.lock().unwrap();
+                    widget_lock.on_focus();
+                    widget_lock.end_node_mut().write().is_active = true;
+                    print_widget(&mut *widget_lock);
+                    drop(widget_lock);
+                    self.active_widget = Some(widget);
+                }
+
+                return;
+            };
+
+            self.unfocus_old(&mut files[self.active_file]);
+            self.active_file = file;
+            let mut file = files[self.active_file].write();
+            file.end_node_mut().write().is_active = true;
+            print_widget(&mut *file);
+            self.active_widget = None;
         }
     }
 }
@@ -453,9 +484,12 @@ fn send_event<U, I>(
 
             let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
             text.add_cursor_tags(cursors, main_index);
-            drop(widget_lock);
 
-            control.active_widget = Some(widget);
+            // If the widget is no longer valid, return to the file.
+            if widget_lock.still_valid() {
+                drop(widget_lock);
+                control.active_widget = Some(widget);
+            }
         } else {
             let mut file = active_file.write();
             let (text, cursors, main_index) = file.members_for_cursor_tags();

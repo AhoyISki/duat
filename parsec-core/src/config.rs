@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
-use crate::ui::{Label, Area};
+use crate::{ui::{Area, Label, Ui}, text::TextLine};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -50,6 +50,22 @@ pub enum ShowNewLine {
     AfterSpace(char),
 }
 
+impl ShowNewLine {
+    pub fn get_new_line_ch(&self, last_ch: char) -> char {
+        match self {
+            ShowNewLine::Never => ' ',
+            ShowNewLine::Always(ch) => *ch,
+            ShowNewLine::AfterSpace(ch) => {
+                if last_ch.is_whitespace() {
+                    *ch
+                } else {
+                    ' '
+                }
+            }
+        }
+    }
+}
+
 impl Default for TabPlaces {
     fn default() -> Self {
         TabPlaces::Regular(4)
@@ -58,12 +74,12 @@ impl Default for TabPlaces {
 
 impl TabPlaces {
     /// Returns the amount of spaces between a position and the next tab place.
-    pub(crate) fn get_tab_len<L, A>(&self, x: usize, printer: &L) -> usize
+    pub(crate) fn get_tab_len<L, A>(&self, x: usize, label: &L) -> usize
     where
         L: Label<A>,
         A: Area,
     {
-        let space_len = printer.get_char_len(' ');
+        let space_len = label.get_char_len(' ');
         match self {
             TabPlaces::Regular(step) => (step - (x % step)) * space_len,
             TabPlaces::Varied(steps) => {
@@ -91,6 +107,21 @@ pub struct Config {
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
     pub show_new_line: ShowNewLine,
+}
+
+impl Config {
+    pub fn usable_indent<A, L>(&self, line: &TextLine, label: &L) -> usize
+    where
+        A: Area,
+        L: Label<A>,
+    {
+        let indent = line.indent(label, self);
+        if self.wrap_indent && indent < label.area().width() {
+            indent
+        } else {
+            0
+        }
+    }
 }
 
 /// A read-write reference to information, and can tell readers if said information has changed.
@@ -175,7 +206,10 @@ impl<T> Clone for RwData<T> {
     }
 }
 
-impl<D> Default for RwData<D> where D: Default {
+impl<D> Default for RwData<D>
+where
+    D: Default,
+{
     fn default() -> Self {
         RwData {
             data: Arc::new(RwLock::new(D::default())),

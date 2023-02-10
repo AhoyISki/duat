@@ -1,14 +1,15 @@
 use std::{
     cmp::{max, min},
     ops::RangeInclusive,
+    slice::Iter,
 };
 
 use crate::{
     action::{get_byte, Change, Splice, TextRange},
-    config::{Config, RwData, ShowNewLine, WrapMethod},
+    config::{Config, RwData, WrapMethod},
     cursor::{TextCursor, TextPos},
     get_byte_at_col,
-    tags::{form::FormFormer, form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
+    tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
 
@@ -24,7 +25,7 @@ pub struct TextLine {
 
 impl TextLine {
     /// Returns the line's indentation.
-    fn indent<L, A>(&self, label: &L, config: &Config) -> usize
+    pub fn indent<L, A>(&self, label: &L, config: &Config) -> usize
     where
         L: Label<A>,
         A: Area,
@@ -203,11 +204,11 @@ impl TextLine {
     // NOTE: It always prints at `x = 0`, `x` in pos is treated here as an `x_shift`.
     /// Prints a line in a given position, skipping `skip` characters.
     ///
-    /// Returns the amount of wrapped lines that were printed.
+    /// Returns true if we should try printing the next line.
     #[inline]
     fn print<U>(
-        &self, label: &mut U::Label, config: &Config, palette: &FormPalette, x_shift: usize,
-        skip: usize, form_former: &mut FormFormer,
+        &self, label: &mut U::Label, config: &Config, palette: &mut FormPalette, x_shift: usize,
+        skip: usize,
     ) -> bool
     where
         U: Ui,
@@ -231,38 +232,24 @@ impl TextLine {
         }
 
         // Iterate through the tags before the first unskipped character.
-        let mut tags_iter = self.info.char_tags.vec().iter();
-        let mut current_char_tag = None;
-        while let Some(tag) = tags_iter.next() {
-            if tag.0 as usize >= skip {
-                current_char_tag = Some(tag);
-                break;
-            }
-            if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
-                tag.1.trigger(label, &palette, 0, form_former);
-            }
-        }
+        let (mut tags, mut cur_tag) = self.trigger_skipped::<U>(skip, label, palette);
+        // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
+        let mut last_ch = 'a';
 
-        let wrap_indent = if config.wrap_indent { self.indent(label, config) } else { 0 };
-        // If `wrap_indent >= area.width()`, indenting on wraps becomes impossible.
-        let wrap_indent = if wrap_indent < label.area_mut().width() { wrap_indent } else { 0 };
-
-        let mut last_was_whitespace = false;
-        let show_new_line = config.show_new_line;
-
-        let text_iter = self.text.char_indices().skip_while(|&(b, _)| b < skip);
-        for (byte, ch) in text_iter {
+        let text = self.text.char_indices().skip_while(|&(b, _)| b < skip);
+        for (byte, ch) in text {
             let char_width = get_char_len(ch, d_x + x_shift, label, config);
 
-            while let Some(&(tag_byte, tag)) = current_char_tag {
+            while let Some(&(tag_byte, tag)) = cur_tag {
                 if byte == tag_byte as usize {
-                    current_char_tag = tags_iter.next();
+                    cur_tag = tags.next();
 
                     // If this is the first printed character of `top_line`, we don't wrap.
                     if let (CharTag::WrapppingChar, true) = (tag, d_x == 0) {
                         continue;
                     } else {
-                        if !tag.trigger(label, &palette, wrap_indent, form_former) {
+                        let indent = config.usable_indent(self, label);
+                        if !tag.trigger(label, palette, indent) {
                             return false;
                         }
                     }
@@ -274,37 +261,44 @@ impl TextLine {
             d_x += char_width;
             if let WrapMethod::NoWrap = config.wrap_method {
                 if d_x > label.area_mut().width() {
-                    break;
+                    return true;
                 }
             }
 
-            if ch == '\t' {
-                (0..char_width).for_each(|_| label.print(' '));
-            } else if ch == '\n' {
-                let ch = match show_new_line {
-                    ShowNewLine::Never => ' ',
-                    ShowNewLine::Always(ch) => ch,
-                    ShowNewLine::AfterSpace(ch) => {
-                        if last_was_whitespace {
-                            ch
-                        } else {
-                            ' '
-                        }
-                    }
-                };
-                label.print(ch);
-                return label.next_line().is_ok();
-            } else {
-                if ch.is_whitespace() {
-                    last_was_whitespace = true;
-                } else {
-                    last_was_whitespace = false;
+            match ch {
+                '\t' => (0..char_width).for_each(|_| label.print(' ')),
+                '\n' => {
+                    label.print(config.show_new_line.get_new_line_ch(last_ch));
+                    return label.next_line().is_ok();
                 }
-                label.print(ch);
+                _ => label.print(ch),
             }
+            last_ch = ch;
         }
 
+        label.print(' ');
+
         true
+    }
+
+    fn trigger_skipped<U>(
+        &self, skip: usize, label: &mut U::Label, palette: &mut FormPalette,
+    ) -> (Iter<(u32, CharTag)>, Option<&(u32, CharTag)>)
+    where
+        U: Ui,
+    {
+        let mut tags_iter = self.info.char_tags.vec().iter();
+        let mut current_char_tag = None;
+        while let Some(tag) = tags_iter.next() {
+            if tag.0 as usize >= skip {
+                current_char_tag = Some(tag);
+                break;
+            }
+            if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
+                tag.1.trigger(label, palette, 0);
+            }
+        }
+        (tags_iter, current_char_tag)
     }
 
     ////////////////////////////////
@@ -427,43 +421,33 @@ impl Text {
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print<U>(&self, node: &mut EndNode<U>, print_info: PrintInfo)
+    pub(crate) fn print<U>(&self, end_node: &mut EndNode<U>, print_info: PrintInfo)
     where
         U: Ui,
     {
-        let mut label = node.label.write();
-        let config = node.config.read();
-        let palette = node.palette.read();
+        let mut label = end_node.label.write();
+        let config = end_node.config.read();
+        let mut palette = end_node.palette.write();
 
+        if end_node.is_active {
+            label.set_as_active();
+        }
         label.start_printing();
 
         // Print the `top_line`.
-        let mut form_former = FormFormer::new();
         let top_line = &self.lines[print_info.top_row];
         let top_wraps = print_info.top_wraps;
         let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
-        top_line.print::<U>(
-            &mut label,
-            &config,
-            &palette,
-            print_info.x_shift,
-            skip as usize,
-            &mut form_former,
-        );
+        top_line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, skip as usize);
 
         // Prints other lines until it can't anymore.
         for line in self.lines.iter().skip(print_info.top_row + 1) {
-            if !line.print::<U>(
-                &mut label,
-                &config,
-                &palette,
-                print_info.x_shift,
-                0,
-                &mut form_former,
-            ) {
+            if !line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, 0) {
                 break;
             }
         }
+
+        palette.clear_applied();
 
         label.stop_printing();
     }
@@ -538,20 +522,19 @@ impl Text {
         &self.lines
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.lines.len() == 1 && self.lines[0].text.as_str() == ""
+    }
+
     /// Removes the tags for all the cursors, used before they are expected to move.
     pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_cursor_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
-                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
+                (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
             } else {
-                (
-                    CharTag::SecondaryCursor,
-                    CharTag::SecondarySelectionStart,
-                    CharTag::SecondarySelectionEnd,
-                )
+                (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)
             };
-
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
             let no_selection = if start == end { 2 } else { 0 };
@@ -570,13 +553,9 @@ impl Text {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
-                (CharTag::MainCursor, CharTag::MainSelectionStart, CharTag::MainSelectionEnd)
+                (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
             } else {
-                (
-                    CharTag::SecondaryCursor,
-                    CharTag::SecondarySelectionStart,
-                    CharTag::SecondarySelectionEnd,
-                )
+                (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)
             };
 
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
@@ -589,6 +568,19 @@ impl Text {
                     line.info.char_tags.insert((byte, *tag));
                 }
             }
+        }
+    }
+}
+
+impl<S> From<S> for Text
+where
+    S: ToString,
+{
+    fn from(value: S) -> Self {
+        Text {
+            lines: value.to_string().split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
+            replacements: Vec::new(),
+            match_manager: None,
         }
     }
 }

@@ -36,70 +36,6 @@ impl CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-pub(crate) struct FormFormer {
-    forms: Vec<(Form, u16)>,
-}
-
-impl FormFormer {
-    pub(crate) fn new() -> Self {
-        Self { forms: Vec::new() }
-    }
-
-    pub(super) fn push_form(&mut self, form_and_id: (Form, u16)) -> Form {
-        self.forms.push(form_and_id);
-
-        self.make_form()
-    }
-
-    pub(super) fn remove_form(&mut self, id: u16) -> Form {
-        if let Some((index, _)) = self.forms.iter().enumerate().rfind(|(_, &(_, i))| i == id) {
-            self.forms.remove(index);
-
-            self.make_form()
-        } else {
-            panic!("The id {} has yet to be pushed.", id);
-        }
-    }
-
-    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
-    pub fn make_form(&self) -> Form {
-        let style = ContentStyle {
-            foreground_color: Some(Color::Reset),
-            background_color: Some(Color::Reset),
-            underline_color: Some(Color::Reset),
-            attributes: Attributes::default(),
-        };
-
-        let mut form = Form { style, is_final: false };
-
-        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
-
-        for &(Form { style, is_final }, _) in &self.forms {
-            let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
-
-            let new_background = style.background_color;
-            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
-
-            let new_underline = style.underline_color;
-            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
-
-            if !attr_done {
-                form.style.attributes.extend(style.attributes);
-                if is_final {
-                    attr_done = true
-                }
-            }
-
-            if fg_done && bg_done && ul_done && attr_done {
-                break;
-            }
-        }
-
-        form
-    }
-}
-
 pub const DEFAULT_ID: u16 = 0;
 pub const LINE_NUMBERS_ID: u16 = 1;
 pub const MAIN_LINE_NUMBER_ID: u16 = 2;
@@ -109,19 +45,20 @@ pub const SECONDARY_SELECTION_ID: u16 = 4;
 /// The list of forms to be used when rendering.
 #[derive(Clone)]
 pub struct FormPalette {
-    pub main_cursor: CursorStyle,
-    pub secondary_cursor: CursorStyle,
-    pub forms: Vec<(String, Form)>,
+    main_cursor: CursorStyle,
+    secondary_cursor: CursorStyle,
+    forms: Vec<(String, Form)>,
+    applied_forms: Vec<(Form, u16)>,
 }
 
 impl Default for FormPalette {
     fn default() -> Self {
-        let cursor_form = CursorStyle::new(
+        let main_cursor = CursorStyle::new(
             Some(SetCursorStyle::DefaultUserShape),
             Form::new(ContentStyle::new().reverse(), false),
         );
         let selection_form = Form::new(ContentStyle::new().on_dark_grey(), false);
-        let extra_forms = vec![
+        let forms = vec![
             (String::from("Default"), Form::default()),
             (String::from("LineNumbers"), Form::default()),
             (String::from("MainLineNumber"), Form::default()),
@@ -129,7 +66,7 @@ impl Default for FormPalette {
             (String::from("SecondarySelection"), selection_form),
         ];
 
-        Self { main_cursor: cursor_form, secondary_cursor: cursor_form, forms: extra_forms }
+        Self { main_cursor, secondary_cursor: main_cursor, forms, applied_forms: Vec::new() }
     }
 }
 
@@ -147,7 +84,7 @@ impl FormPalette {
         }
     }
 
-    /// Returns the `Form` associated to a given name with the index for efficient access.
+    /// Sets the `Form` with a given name to a new one.
     pub fn set_form<S>(&mut self, name: S, form: Form)
     where
         S: ToString,
@@ -171,19 +108,94 @@ impl FormPalette {
 
         let name_match = self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name);
         if let Some(tuple) = name_match.map(|(index, &(_, form))| (form, index as u16)) {
-            return tuple
+            return tuple;
         } else {
             panic!("The form of name \"{}\" wasn't added!", name);
         }
     }
 
     /// Returns a form, given an index.
-    pub fn get(&self, index: u16) -> (Form, u16) {
-        (
-            self.forms.get(index as usize).map(|(_, form)| *form).expect("The id is not valid!"),
-            index,
-        )
+    pub fn get(&self, index: u16) -> Form {
+        self.forms.get(index as usize).map(|(_, form)| *form).expect("The id is not valid!")
     }
+
+	/// Applies the `Form` with the given `id` and returns the result, given previous triggers.
+    pub(super) fn apply(&mut self, id: u16) -> Form {
+        let form = self.get(id);
+        self.applied_forms.push((form, id));
+        self.make_form()
+    }
+
+	/// Removes the `Form` with the given `id` and returns the result, given previous triggers.
+    pub(super) fn remove(&mut self, id: u16) -> Form {
+        let mut applied_forms = self.applied_forms.iter().enumerate();
+        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
+            self.applied_forms.remove(index);
+            self.make_form()
+        } else {
+            panic!("The id {} has yet to be pushed.", id);
+        }
+    }
+
+	/// Clears the list of applied `Form`s.
+    pub(crate) fn clear_applied(&mut self) {
+        self.applied_forms.clear();
+    }
+
+    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
+    pub fn make_form(&self) -> Form {
+        let style = ContentStyle {
+            foreground_color: Some(Color::Reset),
+            background_color: Some(Color::Reset),
+            underline_color: Some(Color::Reset),
+            attributes: Attributes::default(),
+        };
+
+        let mut form = Form { style, is_final: false };
+
+        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
+
+        for &(Form { style, is_final }, _) in &self.applied_forms {
+            let new_foreground = style.foreground_color;
+            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
+
+            let new_background = style.background_color;
+            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
+
+            let new_underline = style.underline_color;
+            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
+
+            if !attr_done {
+                form.style.attributes.extend(style.attributes);
+                if is_final {
+                    attr_done = true
+                }
+            }
+
+            if fg_done && bg_done && ul_done && attr_done {
+                break;
+            }
+        }
+
+        form
+    }
+
+    pub fn main_cursor(&self) -> &CursorStyle {
+        &self.main_cursor
+    }
+
+    pub fn secondary_cursor(&self) -> &CursorStyle {
+        &self.secondary_cursor
+    }
+
+    pub fn set_main_cursor(&mut self, style: CursorStyle) {
+        self.main_cursor = style;
+    }
+
+    pub fn set_secondary_cursor(&mut self, style: CursorStyle) {
+        self.secondary_cursor = style;
+    }
+
 }
 
 /// Internal method used only to shorten code in `make_form()`.
