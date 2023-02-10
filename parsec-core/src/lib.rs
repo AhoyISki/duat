@@ -110,9 +110,12 @@ where
             *file.mid_node_mut() = Some(mid_node);
             file.end_node_mut().write().is_active = true;
 
-            let (text, cursors, main_index) = file.members_for_cursor_tags();
-            text.add_cursor_tags(cursors, main_index);
         }
+
+		let mut file_lock = file.write();
+        let (text, cursors, main_index) = file_lock.members_for_cursor_tags();
+        text.add_cursor_tags(cursors, main_index);
+        drop(file_lock);
 
         self.files.push(file);
     }

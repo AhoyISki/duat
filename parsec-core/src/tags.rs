@@ -10,7 +10,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     text::TextLine,
-    ui::{Area, Label},
+    ui::{Area, Label}, log_info,
 };
 
 use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};

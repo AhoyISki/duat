@@ -8,7 +8,7 @@ use crate::{
     action::{get_byte, Change, Splice, TextRange},
     config::{Config, RwData, WrapMethod},
     cursor::{TextCursor, TextPos},
-    get_byte_at_col,
+    get_byte_at_col, log_info,
     tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
@@ -540,10 +540,11 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.iter().skip(no_selection) {
-                if let Some(line) = self.lines.get_mut(pos.row) {
-                    let byte = line.get_line_byte_at(pos.col);
-                    line.info.char_tags.remove_first(|(n, t)| n as usize == byte && t == *tag);
-                }
+                let Some(line) = self.lines.get_mut(pos.row) else { return; };
+                let byte = line.get_line_byte_at(pos.col);
+                line.info.char_tags.remove_first(|(cmp_byte, cmp_tag)| {
+                    cmp_byte as usize == byte && cmp_tag == *tag
+                });
             }
         }
     }
@@ -563,10 +564,9 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.iter().skip(no_selection) {
-                if let Some(line) = self.lines.get_mut(pos.row) {
-                    let byte = line.get_line_byte_at(pos.col) as u32;
-                    line.info.char_tags.insert((byte, *tag));
-                }
+                let Some(line) = self.lines.get_mut(pos.row) else { return; };
+                let byte = line.get_line_byte_at(pos.col) as u32;
+                line.info.char_tags.insert((byte, *tag));
             }
         }
     }
