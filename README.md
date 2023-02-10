@@ -2,11 +2,6 @@
 
 Parsec is a work in progress for a text editor that is configured through the use of a rust crate, allowing for a massive amount of customizability.
 
-## DO NOT USE PARSEC YET
-
-It is very much in pre-alpha stage right now, and much of the functionality is yet to come, so using it
-right now is mostly just a waste of time.
-
 ## Roadmap
 
 These are the goals that have been acomplished or are on their way:
@@ -23,7 +18,7 @@ These are the goals that have been acomplished or are on their way:
 - [x] Create a number line and a separator line;
 - [x] Create a status line;
 - [x] File switching;
-- [ ] Create a command creation interface and a command line;
+- [x] Create a command creation interface and a command line;
 - [ ] Add the ability to create hooks;
 - [ ] Implement folding;
 - [ ] Add floating widgets, not tied to the session layout;
@@ -40,7 +35,13 @@ __NOTE:__ These are not set in stone, and may be done out of order.
 
 ## Trying it out
 
-If you wish to, you can copy the example folder into your computer and compile it. It is a very standard configuration for Parsec, using the kakoune editing mode. It is also annotated so you can tell what is going on, and how to further configure it.
+If you wish to try it out, assuming you have cargo installed, the recommended way is the one below:
+```
+git clone https://github.com/AhoyISki/parsec
+cd parsec/example
+cargo run --release <your file path here>
+```
+It will run the example crate, a basic, documented configuration that shows how to customize and extend parsec. When running the example crate in this manner, you will be pulling `parsec-core`, `parsec-term` and `parsec-kak` from the local repository, as opposed to crates.io. This is useful in order to keep up with the latest version of Parsec, updating as desired with `git pull`. While these three crates are in crates.io, the version in there won't be kept up to date as often as the ones in the repository.
 
 ## Motivation
 
