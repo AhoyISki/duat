@@ -192,7 +192,7 @@ where
 			};
 
 			let mut command_list = self.command_list.write();
-			command_list.try_exec(command, Vec::new(), whole_command.collect()).unwrap();
+			let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
 			self.text = Text::default();
         }
 

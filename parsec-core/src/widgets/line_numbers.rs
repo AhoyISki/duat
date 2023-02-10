@@ -119,7 +119,7 @@ where
         self.end_node.write().request_width(width);
 
         let lines = file.printed_lines();
-        let main_line = file.main_cursor().row();
+        let main_line = file.main_cursor().true_row();
 
         self.text.lines.clear();
 

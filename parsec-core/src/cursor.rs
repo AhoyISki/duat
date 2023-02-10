@@ -7,7 +7,7 @@ use crate::{
     action::{Change, History, Moment, Splice, TextRange},
     config::RwData,
     get_byte_at_col, max_line, split_string_lines,
-    text::{update_range, Text, TextLine, PrintInfo},
+    text::{update_range, PrintInfo, Text, TextLine},
     ui::{EndNode, Ui},
 };
 
@@ -51,25 +51,43 @@ impl TextPos {
         }
     }
 
-    /// The byte (relative to the beginning of the file) of this `TextPos`.
+    /// The byte (relative to the beginning of the file) of self. Indexed at 1. Intended only
+    /// for displaying by the end user. For internal use, see `true_byte()`.
     pub fn byte(&self) -> usize {
+        self.byte + 1
+    }
+
+    /// The column of self. Indexed at 1. Intended only for displaying by the end user. For
+    /// internal use, see `true_col()`.
+    pub fn col(&self) -> usize {
+        self.col + 1
+    }
+
+    /// The row of self. Indexed at 1. Intended only for displaying by the end user. For
+    /// internal use, see `true_row()`.
+    pub fn row(&self) -> usize {
+        self.row + 1
+    }
+
+    /// The byte (relative to the beginning of the file) of self. Indexed at 0.
+    pub fn true_byte(&self) -> usize {
         self.byte
     }
 
-    /// The column of this `TextPos`.
-    pub fn col(&self) -> usize {
+    /// The column of self. Indexed at 0.
+    pub fn true_col(&self) -> usize {
         self.col
     }
 
-    /// The row of this `TextPos`.
-    pub fn row(&self) -> usize {
+    /// The row of self. Indexed at 0.
+    pub fn true_row(&self) -> usize {
         self.row
     }
 }
 
 impl std::fmt::Display for TextPos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.col, self.row))
+        f.write_fmt(format_args!("{}:{}", self.col + 1, self.row + 1))
     }
 }
 
@@ -323,25 +341,43 @@ impl TextCursor {
         self.anchor
     }
 
-    /// The byte (relative to the beginning of the file) of the caret.
+    /// The byte (relative to the beginning of the file) of the caret. Indexed at 1. Intended only
+    /// for displaying by the end user. For internal use, see `true_byte()`.
     pub fn byte(&self) -> usize {
+        self.caret.byte + 1
+    }
+
+    /// The column of the caret. Indexed at 1. Intended only for displaying by the end user. For
+    /// internal use, see `true_col()`.
+    pub fn col(&self) -> usize {
+        self.caret.col + 1
+    }
+
+    /// The row of the caret. Indexed at 1. Intended only for displaying by the end user. For
+    /// internal use, see `true_row()`.
+    pub fn row(&self) -> usize {
+        self.caret.row + 1
+    }
+
+    /// The byte (relative to the beginning of the file) of the caret. Indexed at 0.
+    pub fn true_byte(&self) -> usize {
         self.caret.byte
     }
 
-    /// The column of the caret.
-    pub fn col(&self) -> usize {
+    /// The column of the caret. Indexed at 0.
+    pub fn true_col(&self) -> usize {
         self.caret.col
     }
 
-    /// The row of the caret.
-    pub fn row(&self) -> usize {
+    /// The row of the caret. Indexed at 0.
+    pub fn true_row(&self) -> usize {
         self.caret.row
     }
 }
 
 impl Display for TextCursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.caret.row, self.caret.col))
+        f.write_fmt(format_args!("{}:{}", self.caret.row + 1, self.caret.col + 1))
     }
 }
 

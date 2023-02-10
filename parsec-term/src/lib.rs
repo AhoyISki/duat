@@ -588,7 +588,7 @@ where
             );
         }
 
-        let main_line = file.main_cursor().row();
+        let main_line = file.main_cursor().true_row();
 
         for number in iterations {
             let ch = self.vert_rule_config.separator_char.get_char(number, main_line);
