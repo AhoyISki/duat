@@ -11,8 +11,8 @@ use std::{
 use crate::{
     config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    text::Text,
-    ui::{EndNode, MidNode, Ui},
+    text::{Text, PrintInfo},
+    ui::{EndNode, Ui}, print_widget,
 };
 
 use self::{command_line::CommandList, file_widget::FileWidget};
@@ -38,11 +38,11 @@ where
     /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
 
-    /// The text that this widget prints out.
+	/// The text that this widget prints out.
     fn text(&self) -> &Text;
 
-    /// Prints the contents of this `Widget`.
-    fn print(&mut self);
+    /// These are the three things that are needed to print text to the screen.
+    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo);
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, d_y: i32) {}
@@ -153,8 +153,8 @@ where
 
     pub(crate) fn print(&self) {
         match self {
-            Widget::Normal(widget) => widget.try_lock().unwrap().print(),
-            Widget::Editable(widget) => widget.lock().unwrap().print(),
+            Widget::Normal(widget) => print_widget(&mut *widget.lock().unwrap()),
+            Widget::Editable(widget) => print_widget(&mut *widget.lock().unwrap()),
         }
     }
 

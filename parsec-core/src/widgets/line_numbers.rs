@@ -157,8 +157,8 @@ where
         &self.text
     }
 
-    fn print(&mut self) {
-        self.text.print(&mut self.end_node.write(), PrintInfo::default());
+    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+        (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }
 

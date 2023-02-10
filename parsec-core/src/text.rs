@@ -123,7 +123,7 @@ impl TextLine {
     /// Updates the information for a line in the file.
     ///
     /// Returns `true` if the screen needs a full refresh.
-    pub fn update_line_info<U>(&mut self, node: &EndNode<U>)
+    fn update_line_info<U>(&mut self, node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -141,7 +141,7 @@ impl TextLine {
         }
     }
 
-    pub fn parse_wrapping<U>(&mut self, label: &<U>::Label, config: &Config)
+    pub(crate) fn parse_wrapping<U>(&mut self, label: &<U>::Label, config: &Config)
     where
         U: Ui,
     {
@@ -205,7 +205,7 @@ impl TextLine {
     ///
     /// Returns the amount of wrapped lines that were printed.
     #[inline]
-    pub(crate) fn print<U>(
+    fn print<U>(
         &self, label: &mut U::Label, config: &Config, palette: &FormPalette, x_shift: usize,
         skip: usize, form_former: &mut FormFormer,
     ) -> bool
@@ -420,14 +420,14 @@ impl Text {
         }
     }
 
-    pub fn update_lines(&mut self, node: &EndNode<impl Ui>) {
+    pub(crate) fn update_lines(&mut self, node: &EndNode<impl Ui>) {
         for line in &mut self.lines {
             line.update_line_info(node);
         }
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub fn print<U>(&self, node: &mut EndNode<U>, print_info: PrintInfo)
+    pub(crate) fn print<U>(&self, node: &mut EndNode<U>, print_info: PrintInfo)
     where
         U: Ui,
     {
@@ -526,11 +526,11 @@ impl Text {
         }
     }
 
-    pub fn apply_change(&mut self, change: &Change) {
+    pub(crate) fn apply_change(&mut self, change: &Change) {
         self.merge_text(&change.added_text, change.splice.taken_range());
     }
 
-    pub fn undo_change(&mut self, change: &Change, splice: &Splice) {
+    pub(crate) fn undo_change(&mut self, change: &Change, splice: &Splice) {
         self.merge_text(&change.taken_text, splice.added_range());
     }
 

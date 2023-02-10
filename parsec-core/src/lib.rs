@@ -194,6 +194,7 @@ where
         self.future_file_widgets.push((Box::new(constructor), direction, split));
     }
 
+    /// The full loop. A break in this loop means quitting Parsec.
     pub fn main_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
@@ -207,7 +208,7 @@ where
         loop {
             // Initial printing.
             self.status.update();
-            self.status.print();
+            print_widget(&mut self.status);
             print_files(&mut self.files);
             for (widget, _) in &mut self.widgets {
                 widget.update();
@@ -224,7 +225,8 @@ where
         self.node_manager.shutdown();
     }
 
-    /// The main loop, executed while no breaking commands have been sent to `SessionControl`.
+    /// The primary application loop, executed while no breaking commands have been sent to
+    /// `SessionControl`.
     fn session_loop<I>(&mut self, resize_requested: &Mutex<bool>, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
@@ -247,7 +249,7 @@ where
             }
 
             self.status.update();
-            self.status.print();
+            print_widget(&mut self.status);
             print_files(&mut self.files);
 
             let widget_indices = widgets_to_update(&self.widgets);
@@ -373,6 +375,15 @@ where
     vec![quit_command, open_file_command]
 }
 
+fn print_widget<U, W>(widget: &mut W)
+where
+    U: Ui,
+    W: NormalWidget<U> + ?Sized,
+{
+    let (text, end_node, print_info) = widget.members_for_printing();
+    text.print(&mut end_node.write(), print_info);
+}
+
 /// Prints all the files.
 fn print_files<U>(files: &mut Vec<RwData<FileWidget<U>>>)
 where
@@ -381,7 +392,7 @@ where
     for file_widget in files.iter_mut() {
         let mut file_widget = file_widget.write();
         file_widget.update();
-        file_widget.print();
+        print_widget(&mut *file_widget);
     }
 }
 
@@ -429,10 +440,10 @@ fn send_event<U, I>(
     if let Event::Key(key_event) = event::read().unwrap() {
         let mut control = control.write();
         if let Some(widget) = control.active_widget.take() {
-            let mut lock = widget.lock().unwrap();
-            lock.update_pre_keys();
-            key_remapper.send_key_to_actionable(key_event, &mut *lock, &mut control);
-            drop(lock);
+            let mut widget_lock = widget.lock().unwrap();
+            widget_lock.update_pre_keys();
+            key_remapper.send_key_to_actionable(key_event, &mut *widget_lock, &mut control);
+            drop(widget_lock);
             control.active_widget = Some(widget);
         } else {
             let mut file = active_file.write();
