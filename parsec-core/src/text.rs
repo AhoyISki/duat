@@ -154,7 +154,7 @@ impl TextLine {
         self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapNext));
 
         let mut distance = 0;
-        let mut indent_wrap = 0;
+        let mut wrapped_indent = 0;
         let area = *label.area();
 
         // TODO: Add an enum parameter signifying the wrapping type.
@@ -164,21 +164,23 @@ impl TextLine {
             while distance < self.text.len() {
                 self.info.char_tags.insert((distance as u32, CharTag::WrapNext));
 
-                indent_wrap = indent;
+                wrapped_indent = indent;
 
-                distance += area.width() - indent_wrap;
+                distance += area.width() - wrapped_indent;
             }
         } else {
             let mut char_indices = self.text.char_indices().peekable();
-            while let Some((byte, _)) = char_indices.next() {
-                if let Some((_, peek_ch)) = char_indices.peek() {
-                    distance += get_char_len(*peek_ch, distance, label, config);
-                    if distance > area.width() - indent_wrap {
-                        distance = 0;
-                        indent_wrap = indent;
+            char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
 
-                        self.info.char_tags.insert((byte as u32, CharTag::WrapNext));
-                    }
+            while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
+            {
+                let ch_len = get_char_len(*ch, distance, label, config);
+                distance += ch_len;
+                if distance > area.width() - wrapped_indent {
+                    distance = ch_len;
+                    wrapped_indent = indent;
+
+                    self.info.char_tags.insert((byte as u32, CharTag::WrapNext));
                 }
             }
         }
@@ -238,10 +240,8 @@ impl TextLine {
         for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
             let char_width = get_char_len(ch, d_x + x_shift, label, config);
 
-            if let Some(value) =
-                self.trigger_tags::<U>(&mut tags, byte, config, label, palette)
-            {
-                return value;
+            if !self.trigger_on_byte::<U>(&mut tags, byte, label, config, palette) {
+                return false;
             }
 
             d_x += char_width;
@@ -267,10 +267,10 @@ impl TextLine {
         true
     }
 
-    fn trigger_tags<'a, U>(
+    fn trigger_on_byte<'a, U>(
         &self, tags: &mut Peekable<impl Iterator<Item = &'a (u32, CharTag)>>, byte: usize,
-        config: &Config, label: &mut U::Label, palette: &mut FormPalette,
-    ) -> Option<bool>
+        label: &mut U::Label, config: &Config, palette: &mut FormPalette,
+    ) -> bool
     where
         U: Ui,
     {
@@ -280,13 +280,13 @@ impl TextLine {
                 // If this is the first printed character of `top_line`, we don't wrap.
                 let indent = config.usable_indent(self, label);
                 if !tag.trigger(label, palette, indent) {
-                    return Some(false);
+                    return false;
                 }
             } else {
                 break;
             }
         }
-        None
+        true
     }
 
     fn trigger_skipped<U>(
