@@ -1,5 +1,6 @@
 use std::{
     cmp::{max, min},
+    iter::Peekable,
     ops::RangeInclusive,
     slice::Iter,
 };
@@ -150,7 +151,7 @@ impl TextLine {
         let indent = if indent < label.area().width() { indent } else { 0 };
 
         // Clear all `WrapppingChar`s from `char_tags`.
-        self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapppingChar));
+        self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapNext));
 
         let mut distance = 0;
         let mut indent_wrap = 0;
@@ -159,37 +160,33 @@ impl TextLine {
         // TODO: Add an enum parameter signifying the wrapping type.
         // Wrapping at the final character at the width of the area.
         if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = area.width();
+            distance = area.width() - 1;
             while distance < self.text.len() {
-                self.info.char_tags.insert((distance as u32, CharTag::WrapppingChar));
+                self.info.char_tags.insert((distance as u32, CharTag::WrapNext));
 
                 indent_wrap = indent;
 
                 distance += area.width() - indent_wrap;
             }
         } else {
-            for (index, ch) in self.text.char_indices() {
-                distance += get_char_len(ch, distance, label, config);
+            let mut char_indices = self.text.char_indices().peekable();
+            while let Some((byte, _)) = char_indices.next() {
+                if let Some((_, peek_ch)) = char_indices.peek() {
+                    distance += get_char_len(*peek_ch, distance, label, config);
+                    if distance > area.width() - indent_wrap {
+                        distance = 0;
+                        indent_wrap = indent;
 
-                if distance > area.width() - indent_wrap {
-                    distance = get_char_len(ch, distance, label, config);
-
-                    self.info.char_tags.insert((index as u32, CharTag::WrapppingChar));
-
-                    indent_wrap = indent;
+                        self.info.char_tags.insert((byte as u32, CharTag::WrapNext));
+                    }
                 }
             }
         }
     }
 
     /// Returns an iterator over the wrapping bytes of the line.
-    pub fn wrap_iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.info
-            .char_tags
-            .vec()
-            .iter()
-            .filter(|(_, t)| matches!(t, CharTag::WrapppingChar))
-            .map(|(c, _)| *c)
+    pub fn iter_wraps(&self) -> impl Iterator<Item = u32> + '_ {
+        self.info.char_tags.iter_wraps()
     }
 
     /// Returns how many characters are in the line.
@@ -213,7 +210,7 @@ impl TextLine {
     where
         U: Ui,
     {
-        let (skip, d_x) = if let WrapMethod::NoWrap = config.wrap_method {
+        let (skip, mut d_x) = if let WrapMethod::NoWrap = config.wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
@@ -221,42 +218,30 @@ impl TextLine {
         } else {
             (skip, 0)
         };
-
-        let mut d_x = d_x as usize;
         (0..d_x).for_each(|_| label.print(' '));
 
-        if let Some(first_wrap_col) = self.wrap_iter().next() {
+        if let Some(first_wrap_col) = self.iter_wraps().next() {
             if skip >= first_wrap_col as usize && config.wrap_indent {
                 (0..self.indent(label, config)).for_each(|_| label.print(' '));
             }
         }
 
         // Iterate through the tags before the first unskipped character.
-        let (mut tags, mut cur_tag) = self.trigger_skipped::<U>(skip, label, palette);
+        let index_to_skip = self.trigger_skipped::<U>(skip as u32, label, palette);
+        let mut tags = self.info.char_tags.iter().skip(index_to_skip).peekable();
 
         // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
         let mut last_ch = 'a';
 
-		let last_char = [(self.text.len(), ' ')];
-        for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(last_char) {
+        // To possibly print a cursor one byte after the end of the last line.
+        let extra_ch = [(self.text.len(), ' ')];
+        for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
             let char_width = get_char_len(ch, d_x + x_shift, label, config);
 
-            while let Some(&(tag_byte, tag)) = cur_tag {
-                if byte == tag_byte as usize {
-                    cur_tag = tags.next();
-
-                    // If this is the first printed character of `top_line`, we don't wrap.
-                    if let (CharTag::WrapppingChar, true) = (tag, d_x == 0) {
-                        continue;
-                    } else {
-                        let indent = config.usable_indent(self, label);
-                        if !tag.trigger(label, palette, indent) {
-                            return false;
-                        }
-                    }
-                } else {
-                    break;
-                }
+            if let Some(value) =
+                self.trigger_tags::<U>(&mut tags, byte, config, label, palette)
+            {
+                return value;
             }
 
             d_x += char_width;
@@ -282,24 +267,43 @@ impl TextLine {
         true
     }
 
-    fn trigger_skipped<U>(
-        &self, skip: usize, label: &mut U::Label, palette: &mut FormPalette,
-    ) -> (Iter<(u32, CharTag)>, Option<&(u32, CharTag)>)
+    fn trigger_tags<'a, U>(
+        &self, tags: &mut Peekable<impl Iterator<Item = &'a (u32, CharTag)>>, byte: usize,
+        config: &Config, label: &mut U::Label, palette: &mut FormPalette,
+    ) -> Option<bool>
     where
         U: Ui,
     {
-        let mut tags_iter = self.info.char_tags.vec().iter();
-        let mut current_char_tag = None;
-        while let Some(tag) = tags_iter.next() {
-            if tag.0 as usize >= skip {
-                current_char_tag = Some(tag);
+        while let Some(&(tag_byte, tag)) = tags.peek() {
+            if byte == *tag_byte as usize {
+                tags.next();
+                // If this is the first printed character of `top_line`, we don't wrap.
+                let indent = config.usable_indent(self, label);
+                if !tag.trigger(label, palette, indent) {
+                    return Some(false);
+                }
+            } else {
                 break;
             }
-            if matches!(tag.1, CharTag::PushForm(_)) || matches!(tag.1, CharTag::PopForm(_)) {
-                tag.1.trigger(label, palette, 0);
+        }
+        None
+    }
+
+    fn trigger_skipped<U>(
+        &self, skip: u32, label: &mut U::Label, palette: &mut FormPalette,
+    ) -> usize
+    where
+        U: Ui,
+    {
+        let mut tags_iter = self.info.char_tags.iter().take_while(|(byte, _)| skip > *byte);
+        let mut last_checked_index = 0;
+        while let Some((byte, tag)) = tags_iter.next() {
+            last_checked_index += 1;
+            if let CharTag::PushForm(_) | CharTag::PopForm(_) = tag {
+                tag.trigger(label, palette, 0);
             }
         }
-        (tags_iter, current_char_tag)
+        last_checked_index
     }
 
     ////////////////////////////////
@@ -438,7 +442,8 @@ impl Text {
         // Print the `top_line`.
         let top_line = &self.lines[print_info.top_row];
         let top_wraps = print_info.top_wraps;
-        let skip = if top_wraps > 0 { top_line.wrap_iter().nth(top_wraps - 1).unwrap() } else { 0 };
+        let skip =
+            if top_wraps > 0 { top_line.iter_wraps().nth(top_wraps - 1).unwrap() } else { 0 };
         top_line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, skip as usize);
 
         // Prints other lines until it can't anymore.
@@ -464,14 +469,14 @@ impl Text {
 
         // List the top line.
         let top_line = lines_iter.nth(print_info.top_row).unwrap();
-        let mut d_y = 1 + top_line.1.wrap_iter().count();
+        let mut d_y = 1 + top_line.1.iter_wraps().count();
         for _ in 0..min(d_y - print_info.top_wraps, height) {
             printed_lines.push(top_line.0);
         }
 
         // List all the other lines.
         while let (Some((index, line)), true) = (lines_iter.next(), d_y < height_sum) {
-            let line_count = 1 + line.wrap_iter().count();
+            let line_count = 1 + line.iter_wraps().count();
             for _ in 0..min(line_count, height_sum - d_y) {
                 printed_lines.push(index);
             }
@@ -607,7 +612,7 @@ impl PrintInfo {
             let mut lines_iter = text.lines().iter().skip(self.top_row);
 
             while let Some(line) = lines_iter.next() {
-                let wrap_count = line.wrap_iter().count();
+                let wrap_count = line.iter_wraps().count();
                 if (wrap_count + 1) as i32 > d_y {
                     self.top_wraps = d_y as usize;
                     break;
@@ -620,7 +625,7 @@ impl PrintInfo {
             let mut lines_iter = text.lines().iter().take(self.top_row).rev();
 
             while let Some(line) = lines_iter.next() {
-                let wrap_count = line.wrap_iter().count();
+                let wrap_count = line.iter_wraps().count();
                 if ((wrap_count + 1) as i32) < d_y {
                     self.top_wraps = -d_y as usize;
                     break;
@@ -678,7 +683,7 @@ impl PrintInfo {
 
         for (index, line) in lines_iter.enumerate().rev() {
             if index != target.row {
-                d_y += 1 + line.wrap_iter().count();
+                d_y += 1 + line.iter_wraps().count();
             };
 
             if index == self.top_row {
@@ -713,7 +718,7 @@ impl PrintInfo {
 
         for (index, line) in lines_iter.enumerate().rev() {
             if index != target.row {
-                d_y += 1 + line.wrap_iter().count();
+                d_y += 1 + line.iter_wraps().count();
             }
 
             if index == self.top_row {
@@ -778,11 +783,11 @@ impl PrintInfo {
 
         let line = &text.lines()[min(old.row, text.lines().len() - 1)];
         let current_byte = line.get_line_byte_at(old.col);
-        let cur_wraps = line.wrap_iter().take_while(|&c| c <= current_byte as u32).count();
+        let cur_wraps = line.iter_wraps().take_while(|&c| c <= current_byte as u32).count();
 
         let line = &text.lines()[target.row];
         let target_byte = line.get_line_byte_at(target.col);
-        let old_wraps = line.wrap_iter().take_while(|&c| c <= target_byte as u32).count();
+        let old_wraps = line.iter_wraps().take_while(|&c| c <= target_byte as u32).count();
 
         if let WrapMethod::NoWrap = wrap_method {
             self.calibrate_vertically(target, height, end_node);

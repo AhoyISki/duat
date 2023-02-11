@@ -147,14 +147,14 @@ where
         let mut printed_lines = Vec::with_capacity(label.area().height());
 
         let top_line = lines_iter.nth(self.print_info.top_row).unwrap().1;
-        let mut d_y = min(height, 1 + top_line.wrap_iter().count() - self.print_info.top_wraps);
+        let mut d_y = min(height, 1 + top_line.iter_wraps().count() - self.print_info.top_wraps);
         for _ in 0..d_y {
             printed_lines.push(self.print_info.top_row);
         }
 
         while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
             let old_d_y = d_y;
-            d_y = min(d_y + line.wrap_iter().count(), height);
+            d_y = min(d_y + line.iter_wraps().count(), height);
             for _ in old_d_y..=d_y {
                 printed_lines.push(index);
             }

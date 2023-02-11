@@ -82,7 +82,7 @@ where
     /// Wraps to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
     ///
     /// Unlike `next_line()`, this function should not remove any text.
-    fn wrap_line(&mut self, indent: usize) -> Result<(), ()>;
+    fn wrap_next(&mut self, indent: usize) -> Result<(), ()>;
 
     //////////////////// Getters
     /// Gets the length of a character.

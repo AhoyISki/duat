@@ -122,6 +122,8 @@ pub struct TermLabel {
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
     is_active: bool,
+    wrap_next: bool,
+    indent: usize,
 }
 
 impl TermLabel {
@@ -134,6 +136,8 @@ impl TermLabel {
             style_before_cursor: None,
             last_style: ContentStyle::default(),
             is_active: false,
+            wrap_next: false,
+            indent: 0,
         }
     }
 
@@ -152,6 +156,17 @@ impl TermLabel {
 
         queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), SetStyle(self.last_style))
             .unwrap();
+    }
+
+    fn wrap_line(&mut self) {
+        self.clear_line();
+
+        queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(self.indent)))
+            .unwrap();
+
+        self.cursor.x += self.indent as u16;
+        self.indent = 0;
+        self.wrap_next = false;
     }
 }
 
@@ -238,6 +253,9 @@ impl Label<TermArea> for TermLabel {
                 queue!(self.stdout, ResetColor, SetStyle(style)).unwrap();
             }
         }
+        if self.wrap_next {
+            self.wrap_line();
+        }
     }
 
     fn next_line(&mut self) -> Result<(), ()> {
@@ -249,17 +267,12 @@ impl Label<TermArea> for TermLabel {
         }
     }
 
-    fn wrap_line(&mut self, indent: usize) -> Result<(), ()> {
+    fn wrap_next(&mut self, indent: usize) -> Result<(), ()> {
         if self.cursor.y == self.area.br.y - 1 {
             Err(())
         } else {
-            self.clear_line();
-
-            queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(indent)))
-                .unwrap();
-
-            self.cursor.x += indent as u16;
-
+            self.wrap_next = true;
+            self.indent = indent;
             Ok(())
         }
     }

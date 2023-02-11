@@ -10,7 +10,7 @@ use crate::{
     action::TextRange,
     cursor::TextPos,
     text::TextLine,
-    ui::{Area, Label}, log_info,
+    ui::{Area, Label},
 };
 
 use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
@@ -25,8 +25,8 @@ pub enum CharTag {
     /// Removes a form from the stack. It won't always be the last one.
     PopForm(u16),
 
-    /// Wraps *before* printing the character, not after.
-    WrapppingChar,
+    /// Wraps after printing the character.
+    WrapNext,
 
     /// Places the main cursor.
     MainCursor,
@@ -63,8 +63,8 @@ impl CharTag {
             }
             CharTag::PopForm(id) => label.set_form(palette.remove(*id)),
 
-            CharTag::WrapppingChar => {
-                if label.wrap_line(wrap_indent).is_err() {
+            CharTag::WrapNext => {
+                if label.wrap_next(wrap_indent).is_err() {
                     return false;
                 }
             }
@@ -123,7 +123,7 @@ impl std::fmt::Debug for CharTags {
             .map(|(b, t)| match t {
                 CharTag::PushForm(id) => format!("{}:PuF({})", b, id),
                 CharTag::PopForm(id) => format!("{}PoF({})", b, id),
-                CharTag::WrapppingChar => format!("{}:Wc", b),
+                CharTag::WrapNext => format!("{}:Wc", b),
                 CharTag::MainCursor => format!("{}:Pc", b),
                 CharTag::SecondaryCursor => format!("{}:Pc", b),
                 CharTag::MainSelStart => format!("{}:Ss", b),
@@ -161,8 +161,8 @@ impl CharTags {
     }
 
     /// Returns an immutable reference to the vector.
-    pub fn vec(&self) -> &Vec<(u32, CharTag)> {
-        &self.0
+    pub fn iter(&self) -> impl Iterator<Item = &(u32, CharTag)> + '_ {
+        self.0.iter()
     }
 
     /// The same as a regular `Vec::retain`, but we only care about what `CharTag` it is.
@@ -180,6 +180,12 @@ impl CharTags {
         if let Some((index, _)) = self.0.iter().enumerate().find(|&(_, &t)| cmp(t)) {
             self.0.remove(index);
         }
+    }
+
+    pub fn iter_wraps(&self) -> impl Iterator<Item = u32> + '_ {
+        self.0.iter().filter_map(
+            |(byte, tag)| if let CharTag::WrapNext = tag { Some(*byte) } else { None },
+        )
     }
 }
 
