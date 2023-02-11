@@ -229,8 +229,8 @@ impl TextLine {
         }
 
         // Iterate through the tags before the first unskipped character.
-        let index_to_skip = self.trigger_skipped::<U>(skip as u32, label, palette);
-        let mut tags = self.info.char_tags.iter().skip(index_to_skip).peekable();
+        let tags_to_skip = self.trigger_skipped::<U>(skip as u32, label, palette);
+        let mut tags = self.info.char_tags.iter().skip(tags_to_skip).peekable();
 
         // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
         let mut last_ch = 'a';
@@ -441,9 +441,11 @@ impl Text {
 
         // Print the `top_line`.
         let top_line = &self.lines[print_info.top_row];
-        let top_wraps = print_info.top_wraps;
-        let skip =
-            if top_wraps > 0 { top_line.iter_wraps().nth(top_wraps - 1).unwrap() } else { 0 };
+        let skip = if print_info.top_wraps > 0 {
+            top_line.iter_wraps().nth(print_info.top_wraps - 1).unwrap() + 1
+        } else {
+            0
+        };
         top_line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, skip as usize);
 
         // Prints other lines until it can't anymore.
