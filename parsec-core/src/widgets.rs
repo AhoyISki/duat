@@ -69,19 +69,15 @@ where
 
     fn mover(&mut self, index: usize) -> Mover<U>;
 
-    fn cursors(&self) -> &[TextCursor];
-
     fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize);
 
-    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
-        None
-    }
+    fn cursors(&self) -> &[TextCursor];
+
+    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>>;
 
     fn main_cursor_index(&self) -> usize;
 
-    fn mut_main_cursor_index(&mut self) -> Option<&mut usize> {
-        None
-    }
+    fn mut_main_cursor_index(&mut self) -> Option<&mut usize>;
 
     fn new_moment(&mut self) {
         panic!("This implementation of Editable does not have a History of its own.")
@@ -97,11 +93,11 @@ where
 
     fn on_focus(&mut self) {}
 
-	fn on_unfocus(&mut self) {}
+    fn on_unfocus(&mut self) {}
 
-   	fn still_valid(&self) -> bool {
-       	true
-   	}
+    fn still_valid(&self) -> bool {
+        true
+    }
 }
 
 pub enum Widget<U>
@@ -109,7 +105,7 @@ where
     U: Ui,
 {
     Normal(Arc<Mutex<dyn NormalWidget<U>>>),
-    Editable(Arc<Mutex<dyn ActionableWidget<U>>>),
+    Actionable(Arc<Mutex<dyn ActionableWidget<U>>>),
 }
 
 impl<U> Clone for Widget<U>
@@ -119,7 +115,7 @@ where
     fn clone(&self) -> Self {
         match self {
             Widget::Normal(widget) => Widget::Normal(widget.clone()),
-            Widget::Editable(widget) => Widget::Editable(widget.clone()),
+            Widget::Actionable(widget) => Widget::Actionable(widget.clone()),
         }
     }
 }
@@ -131,14 +127,14 @@ where
     pub(crate) fn identifier(&self) -> String {
         match self {
             Widget::Normal(widget) => widget.lock().unwrap().identifier(),
-            Widget::Editable(widget) => widget.lock().unwrap().identifier(),
+            Widget::Actionable(widget) => widget.lock().unwrap().identifier(),
         }
     }
 
     pub(crate) fn update(&self) {
         match self {
             Widget::Normal(widget) => widget.lock().unwrap().update(),
-            Widget::Editable(widget) => widget.lock().unwrap().update(),
+            Widget::Actionable(widget) => widget.lock().unwrap().update(),
         }
     }
 
@@ -147,7 +143,7 @@ where
             Widget::Normal(widget) => {
                 widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
             }
-            Widget::Editable(widget) => {
+            Widget::Actionable(widget) => {
                 widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
             }
         }
@@ -156,14 +152,16 @@ where
     pub(crate) fn resize_requested(&self) -> bool {
         match self {
             Widget::Normal(widget) => widget.lock().unwrap().end_node().read().resize_requested(),
-            Widget::Editable(widget) => widget.lock().unwrap().end_node().read().resize_requested(),
+            Widget::Actionable(widget) => {
+                widget.lock().unwrap().end_node().read().resize_requested()
+            }
         }
     }
 
     pub(crate) fn print(&self) {
         match self {
             Widget::Normal(widget) => print_widget(&mut *widget.lock().unwrap()),
-            Widget::Editable(widget) => print_widget(&mut *widget.lock().unwrap()),
+            Widget::Actionable(widget) => print_widget(&mut *widget.lock().unwrap()),
         }
     }
 
@@ -176,7 +174,7 @@ where
                     Err(())
                 }
             }
-            Widget::Editable(widget) => {
+            Widget::Actionable(widget) => {
                 if let Ok(mut widget) = widget.try_lock() {
                     widget.end_node_mut().write().try_set_size()
                 } else {
@@ -189,7 +187,15 @@ where
     fn try_to_editable(&self) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>> {
         match self {
             Widget::Normal(_) => None,
-            Widget::Editable(widget) => Some(widget.clone()),
+            Widget::Actionable(widget) => Some(widget.clone()),
+        }
+    }
+
+    pub(crate) fn try_add_cursor_tags(&mut self) {
+        if let Widget::Actionable(widget) = self {
+            let mut widget = widget.lock().unwrap();
+            let (text, cursors, main_index) = widget.members_for_cursor_tags();
+            text.add_cursor_tags(cursors, main_index);
         }
     }
 }
@@ -200,7 +206,7 @@ where
     E: ActionableWidget<U> + ?Sized,
 {
     clearing_needed: bool,
-    editable: &'a mut E,
+    actionable: &'a mut E,
     _ghost: PhantomData<U>,
 }
 
@@ -211,7 +217,7 @@ where
 {
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
     fn clear_intersections(&mut self) {
-        let Some(cursors) = self.editable.mut_cursors() else {
+        let Some(cursors) = self.actionable.mut_cursors() else {
             return
         };
 
@@ -240,8 +246,10 @@ where
     {
         self.clear_intersections();
         let mut splice_adder = SpliceAdder::default();
-        for index in 0..self.editable.cursors().len() {
-            let mut editor = self.editable.editor(index, &mut splice_adder);
+        let cursors = self.actionable.cursors();
+
+        for index in 0..cursors.len() {
+            let mut editor = self.actionable.editor(index, &mut splice_adder);
             editor.calibrate_on_adder();
             editor.reset_cols();
             f(editor);
@@ -253,15 +261,15 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        for index in 0..self.editable.cursors().len() {
-            let mover = self.editable.mover(index);
+        for index in 0..self.actionable.cursors().len() {
+            let mover = self.actionable.mover(index);
             f(mover);
         }
 
         // TODO: Figure out a better way to sort.
-        self.editable
-            .mut_cursors()
-            .map(|cursors| cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range())));
+        self.actionable.mut_cursors().map(|cursors| {
+            cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
+        });
         self.clearing_needed = true;
     }
 
@@ -270,26 +278,24 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let mover = self.editable.mover(index);
+        let mover = self.actionable.mover(index);
         f(mover);
 
-        let Some(cursors) = self.editable.mut_cursors() else {
-            return;
-        };
-        let cursor = cursors.remove(index);
-        let range = cursor.range();
-        let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
-            Ok(index) => index,
-            Err(index) => index,
-        };
-        cursors.insert(new_index, cursor);
-        drop(cursors);
+        if let Some(cursors) = self.actionable.mut_cursors() {
+            let cursor = cursors.remove(index);
+            let range = cursor.range();
+            let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
+                Ok(index) => index,
+                Err(index) => index,
+            };
+            cursors.insert(new_index, cursor);
 
-        if let Some(main_cursor) = self.editable.mut_main_cursor_index() {
-            if index == *main_cursor {
-                *main_cursor = new_index;
+            if let Some(main_cursor) = self.actionable.mut_main_cursor_index() {
+                if index == *main_cursor {
+                    *main_cursor = new_index;
+                }
             }
-        }
+        };
 
         self.clearing_needed = true;
     }
@@ -299,8 +305,8 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let main_cursor = self.editable.main_cursor_index();
-        self.move_nth(f, main_cursor);
+        let main_index = self.actionable.main_cursor_index();
+        self.move_nth(f, main_index);
     }
 
     /// Alters the last cursor's selection.
@@ -308,7 +314,7 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let cursors = &self.editable.cursors();
+        let cursors = &self.actionable.cursors();
         if !cursors.is_empty() {
             let len = cursors.len();
             drop(cursors);
@@ -327,9 +333,10 @@ where
         }
 
         let mut splice_adder = SpliceAdder::default();
-        let editor = self.editable.editor(index, &mut splice_adder);
+        let editor = self.actionable.editor(index, &mut splice_adder);
         f(editor);
-        if let Some(cursors) = self.editable.mut_cursors() {
+
+        if let Some(cursors) = self.actionable.mut_cursors() {
             for cursor in cursors.iter_mut().skip(index + 1) {
                 cursor.calibrate_on_adder(&mut splice_adder);
             }
@@ -341,7 +348,7 @@ where
     where
         F: FnMut(Editor<U>),
     {
-        let main_cursor = self.editable.main_cursor_index();
+        let main_cursor = self.actionable.main_cursor_index();
         self.edit_on_nth(f, main_cursor);
     }
 
@@ -350,7 +357,7 @@ where
     where
         F: FnMut(Editor<U>),
     {
-        let cursors = &self.editable.cursors();
+        let cursors = &self.actionable.cursors();
         if !cursors.is_empty() {
             let len = cursors.len();
             drop(cursors);
@@ -360,32 +367,45 @@ where
 
     /// The main cursor index.
     pub fn main_cursor_index(&self) -> usize {
-        self.editable.main_cursor_index()
+        self.actionable.main_cursor_index()
     }
 
     pub fn rotate_main_forward(&mut self) {
-        let cursors_len = self.editable.cursors().len();
-        let Some(cursor) = self.editable.mut_main_cursor_index() else {
+        let cursors_len = self.cursors_len();
+        if cursors_len == 0 {
             return;
-        };
+        }
 
-        *cursor = if *cursor == cursors_len - 1 { 0 } else { *cursor + 1 }
+        self.actionable.mut_main_cursor_index().map(|main_index| {
+            *main_index = if *main_index == cursors_len - 1 { 0 } else { *main_index + 1 }
+        });
+    }
+
+    pub fn rotate_main_backwards(&mut self) {
+        let cursors_len = self.cursors_len();
+        if cursors_len == 0 {
+            return;
+        }
+
+        self.actionable.mut_main_cursor_index().map(|main_index| {
+            *main_index = if *main_index == 0 { cursors_len - 1 } else { *main_index - 1 }
+        });
     }
 
     pub fn cursors_len(&self) -> usize {
-        self.editable.cursors().len()
+        self.actionable.cursors().len()
     }
 
     pub fn new_moment(&mut self) {
-        self.editable.new_moment();
+        self.actionable.new_moment();
     }
 
     pub fn undo(&mut self) {
-        self.editable.undo();
+        self.actionable.undo();
     }
 
     pub fn redo(&mut self) {
-        self.editable.redo();
+        self.actionable.redo();
     }
 }
 
@@ -395,7 +415,7 @@ where
     E: ActionableWidget<U> + ?Sized,
 {
     fn from(value: &'a mut E) -> Self {
-        WidgetActor { editable: value, clearing_needed: false, _ghost: PhantomData::default() }
+        WidgetActor { actionable: value, clearing_needed: false, _ghost: PhantomData::default() }
     }
 }
 

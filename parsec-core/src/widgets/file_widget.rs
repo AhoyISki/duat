@@ -291,12 +291,12 @@ where
         )
     }
 
-    fn cursors(&self) -> &[TextCursor] {
-        self.cursors.as_slice()
-    }
-
     fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
         (&mut self.text, self.cursors.as_slice(), self.main_cursor)
+    }
+
+    fn cursors(&self) -> &[TextCursor] {
+        self.cursors.as_slice()
     }
 
     fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {

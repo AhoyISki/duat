@@ -8,7 +8,7 @@ use crate::{
     action::{get_byte, Change, Splice, TextRange},
     config::{Config, RwData, WrapMethod},
     cursor::{TextCursor, TextPos},
-    get_byte_at_col, log_info,
+    get_byte_at_col,
     tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
@@ -233,11 +233,12 @@ impl TextLine {
 
         // Iterate through the tags before the first unskipped character.
         let (mut tags, mut cur_tag) = self.trigger_skipped::<U>(skip, label, palette);
+
         // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
         let mut last_ch = 'a';
 
-        let text = self.text.char_indices().skip_while(|&(b, _)| b < skip);
-        for (byte, ch) in text {
+		let last_char = [(self.text.len(), ' ')];
+        for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(last_char) {
             let char_width = get_char_len(ch, d_x + x_shift, label, config);
 
             while let Some(&(tag_byte, tag)) = cur_tag {
@@ -527,10 +528,10 @@ impl Text {
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
-    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_cursor_index: usize) {
+    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
+            let (caret_tag, start_tag, end_tag) = if index == main_index {
                 (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
             } else {
                 (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)
@@ -550,10 +551,10 @@ impl Text {
     }
 
     /// Adds the tags for all the cursors, used after they are expected to have moved.
-    pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_cursor_index: usize) {
+    pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == main_cursor_index {
+            let (caret_tag, start_tag, end_tag) = if index == main_index {
                 (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
             } else {
                 (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)

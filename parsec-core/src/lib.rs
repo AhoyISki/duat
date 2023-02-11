@@ -16,7 +16,7 @@ use std::{
 };
 
 use config::{Config, RoData, RwData};
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEvent};
 use cursor::TextPos;
 use input::{InputScheme, KeyRemapper};
 use tags::{form::FormPalette, MatchManager};
@@ -100,7 +100,8 @@ where
             };
             drop(file_lock);
 
-            let widget = constructor(end_node, &mut self.node_manager, rw_file.clone());
+            let mut widget = constructor(end_node, &mut self.node_manager, rw_file.clone());
+            widget.try_add_cursor_tags();
             let index = self.get_next_index(&widget);
             self.widgets.push((widget.clone(), index));
 
@@ -109,10 +110,9 @@ where
             file.side_widgets.push((widget, index));
             *file.mid_node_mut() = Some(mid_node);
             file.end_node_mut().write().is_active = true;
-
         }
 
-		let mut file_lock = file.write();
+        let mut file_lock = file.write();
         let (text, cursors, main_index) = file_lock.members_for_cursor_tags();
         text.add_cursor_tags(cursors, main_index);
         drop(file_lock);
@@ -469,6 +469,7 @@ fn resize_widgets<U>(
     }
 }
 
+/// Sends an event to the `Widget` determined by `SessionControl`.
 fn send_event<U, I>(
     key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl<U>>,
     active_file: &mut RwData<FileWidget<U>>,
@@ -480,14 +481,7 @@ fn send_event<U, I>(
         let mut control = control.write();
         if let Some(widget) = control.active_widget.take() {
             let mut widget_lock = widget.lock().unwrap();
-            let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
-            text.remove_cursor_tags(cursors, main_index);
-
-            key_remapper.send_key_to_actionable(key_event, &mut *widget_lock, &mut control);
-
-            let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
-            text.add_cursor_tags(cursors, main_index);
-
+            blink_cursors_and_send_key(&mut *widget_lock, &mut control, key_event, key_remapper);
             // If the widget is no longer valid, return to the file.
             if widget_lock.still_valid() {
                 drop(widget_lock);
@@ -495,15 +489,27 @@ fn send_event<U, I>(
             }
         } else {
             let mut file = active_file.write();
-            let (text, cursors, main_index) = file.members_for_cursor_tags();
-            text.remove_cursor_tags(cursors, main_index);
-
-            key_remapper.send_key_to_actionable(key_event, &mut *file, &mut control);
-
-            let (text, cursors, main_index) = file.members_for_cursor_tags();
-            text.add_cursor_tags(cursors, main_index);
+            blink_cursors_and_send_key(&mut *file, &mut control, key_event, key_remapper);
         }
     }
+}
+
+/// Removes the cursors, sends an event, and adds them again.
+fn blink_cursors_and_send_key<U, W, I>(
+    widget: &mut W, control: &mut SessionControl<U>, key_event: KeyEvent,
+    key_remapper: &mut KeyRemapper<I>,
+) where
+    U: Ui,
+    W: ActionableWidget<U> + ?Sized,
+    I: InputScheme,
+{
+    let (text, cursors, main_index) = widget.members_for_cursor_tags();
+    text.remove_cursor_tags(cursors, main_index);
+
+    key_remapper.send_key_to_actionable(key_event, &mut *widget, control);
+
+    let (text, cursors, main_index) = widget.members_for_cursor_tags();
+    text.add_cursor_tags(cursors, main_index);
 }
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.

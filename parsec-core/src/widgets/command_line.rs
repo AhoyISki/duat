@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     config::RwData,
-    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,
@@ -154,7 +154,7 @@ where
     cursor: [TextCursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
-    config: CommandLineConfig
+    config: CommandLineConfig,
 }
 
 impl<U> CommandLine<U>
@@ -169,10 +169,10 @@ where
             cursor: [TextCursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
-            config: CommandLineConfig::default()
+            config: CommandLineConfig::default(),
         };
 
-        Widget::Editable(Arc::new(Mutex::new(command_line)))
+        Widget::Actionable(Arc::new(Mutex::new(command_line)))
     }
 }
 
@@ -241,16 +241,24 @@ where
         Mover::new(&mut self.cursor[0], &self.text, &self.end_node, None)
     }
 
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
+        (&mut self.text, self.cursor.as_slice(), 0)
+    }
+
     fn cursors(&self) -> &[TextCursor] {
-        &self.cursor
+        self.cursor.as_slice()
+    }
+
+    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
+        None
     }
 
     fn main_cursor_index(&self) -> usize {
         0
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
-        (&mut self.text, &self.cursor, 0)
+    fn mut_main_cursor_index(&mut self) -> Option<&mut usize> {
+        None
     }
 
     fn on_focus(&mut self) {
@@ -258,12 +266,14 @@ where
         self.text = Text::from(&self.config.run_string);
         let chars = self.config.run_string.chars().count() as i32;
         self.cursor[0].move_hor(chars, &self.text.lines(), &self.end_node.read());
+        self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
     fn on_unfocus(&mut self) {
         self.needs_update = true;
         self.text = Text::default();
         self.cursor[0] = TextCursor::default();
+        self.text.remove_cursor_tags(self.cursor.as_slice(), 0);
     }
 
     fn still_valid(&self) -> bool {
