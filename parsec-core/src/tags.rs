@@ -8,9 +8,10 @@ use smallvec::SmallVec;
 
 use crate::{
     action::TextRange,
+    config::Config,
     cursor::TextPos,
-    text::TextLine,
-    ui::{Area, Label},
+    text::{get_char_len, TextLine},
+    ui::{Area, Label, Ui},
 };
 
 use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
@@ -165,14 +166,6 @@ impl CharTags {
         self.0.iter()
     }
 
-    /// The same as a regular `Vec::retain`, but we only care about what `CharTag` it is.
-    pub fn retain<F>(&mut self, do_retain: F)
-    where
-        F: Fn((u32, CharTag)) -> bool,
-    {
-        self.0.retain(|&t| do_retain(t))
-    }
-
     pub fn remove_first<F>(&mut self, cmp: F)
     where
         F: Fn((u32, CharTag)) -> bool,
@@ -183,9 +176,7 @@ impl CharTags {
     }
 
     pub fn iter_wraps(&self) -> impl Iterator<Item = u32> + '_ {
-        self.0.iter().filter_map(
-            |(byte, tag)| if let CharTag::WrapNext = tag { Some(*byte) } else { None },
-        )
+        self.0.iter().filter(|(byte, tag)| matches!(tag, CharTag::WrapNext)).map(|(byte, _)| *byte)
     }
 }
 
@@ -551,6 +542,45 @@ pub struct LineInfo {
     pub line_flags: LineFlags,
     pub starting_id: u16,
     pub ending_id: u16,
+}
+
+impl LineInfo {
+    /// Parses the wrapping of
+    pub(crate) fn parse_wrapping<U>(
+        &mut self, text: &String, indent: usize, label: &U::Label, config: &Config,
+    ) where
+        U: Ui,
+    {
+        self.char_tags.0.retain(|(_, t)| !matches!(t, CharTag::WrapNext));
+        let mut distance = 0;
+        let mut wrapped_indent = 0;
+
+        if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
+            distance = label.area().width();
+            while distance < text.len() {
+                self.char_tags.insert((distance as u32, CharTag::WrapNext));
+
+                wrapped_indent = indent;
+
+                distance += label.area().width() - wrapped_indent;
+            }
+        } else {
+            let mut char_indices = text.char_indices().peekable();
+            char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
+
+            while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
+            {
+                let ch_len = get_char_len(*ch, distance, label, config);
+                distance += ch_len;
+                if distance > label.area().width() - wrapped_indent {
+                    distance = ch_len;
+                    wrapped_indent = indent;
+
+                    self.char_tags.insert((byte as u32, CharTag::WrapNext));
+                }
+            }
+        }
+    }
 }
 
 impl FormPattern {

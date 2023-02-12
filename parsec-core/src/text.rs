@@ -2,7 +2,6 @@ use std::{
     cmp::{max, min},
     iter::Peekable,
     ops::RangeInclusive,
-    slice::Iter,
 };
 
 use crate::{
@@ -26,10 +25,9 @@ pub struct TextLine {
 
 impl TextLine {
     /// Returns the line's indentation.
-    pub fn indent<L, A>(&self, label: &L, config: &Config) -> usize
+    pub fn indent<U>(&self, label: &U::Label, config: &Config) -> usize
     where
-        L: Label<A>,
-        A: Area,
+        U: Ui,
     {
         let mut indent_sum = 0;
 
@@ -104,12 +102,10 @@ impl TextLine {
             }
         } else {
             let (mut col, mut distance) = (0, 0);
-
             let mut text_iter = self.text.chars().enumerate();
 
             while let Some((new_col, ch)) = text_iter.next() {
                 col = new_col;
-
                 if distance >= min_dist {
                     break;
                 }
@@ -139,50 +135,9 @@ impl TextLine {
         );
 
         if !matches!(config.wrap_method, WrapMethod::NoWrap) {
-            self.parse_wrapping::<U>(&label, &config);
-        }
-    }
-
-    pub(crate) fn parse_wrapping<U>(&mut self, label: &<U>::Label, config: &Config)
-    where
-        U: Ui,
-    {
-        let indent = if config.wrap_indent { self.indent(label, config) } else { 0 };
-        let indent = if indent < label.area().width() { indent } else { 0 };
-
-        // Clear all `WrapppingChar`s from `char_tags`.
-        self.info.char_tags.retain(|(_, t)| !matches!(t, CharTag::WrapNext));
-
-        let mut distance = 0;
-        let mut wrapped_indent = 0;
-        let area = *label.area();
-
-        // TODO: Add an enum parameter signifying the wrapping type.
-        // Wrapping at the final character at the width of the area.
-        if self.info.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = area.width() - 1;
-            while distance < self.text.len() {
-                self.info.char_tags.insert((distance as u32, CharTag::WrapNext));
-
-                wrapped_indent = indent;
-
-                distance += area.width() - wrapped_indent;
-            }
-        } else {
-            let mut char_indices = self.text.char_indices().peekable();
-            char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
-
-            while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
-            {
-                let ch_len = get_char_len(*ch, distance, label, config);
-                distance += ch_len;
-                if distance > area.width() - wrapped_indent {
-                    distance = ch_len;
-                    wrapped_indent = indent;
-
-                    self.info.char_tags.insert((byte as u32, CharTag::WrapNext));
-                }
-            }
+            let indent = if config.wrap_indent { self.indent::<U>(&label, &config) } else { 0 };
+            let indent = if indent < label.area().width() { indent } else { 0 };
+            self.info.parse_wrapping::<U>(&self.text, indent, &label, &config);
         }
     }
 
@@ -224,7 +179,7 @@ impl TextLine {
 
         if let Some(first_wrap_col) = self.iter_wraps().next() {
             if skip >= first_wrap_col as usize && config.wrap_indent {
-                (0..self.indent(label, config)).for_each(|_| label.print(' '));
+                (0..self.indent::<U>(label, config)).for_each(|_| label.print(' '));
             }
         }
 
@@ -578,6 +533,26 @@ impl Text {
             }
         }
     }
+
+    pub fn iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
+        self.lines
+            .iter()
+            .skip(pos.row)
+            .flat_map(|line| line.text.char_indices())
+            .skip(pos.col)
+            .map(|(_, ch)| ch)
+    }
+
+    pub fn rev_iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
+        let pos_row_len = self.lines[pos.row].text.chars().count();
+        self.lines
+            .iter()
+            .rev()
+            .skip(self.lines.len() - 1 - pos.row)
+            .flat_map(|line| line.text.char_indices().rev())
+            .skip(pos_row_len - 1 - pos.col)
+            .map(|(_, ch)| ch)
+    }
 }
 
 impl<S> From<S> for Text
@@ -804,7 +779,7 @@ impl PrintInfo {
     }
 }
 
-fn get_char_len<L, A>(ch: char, col: usize, label: &L, config: &Config) -> usize
+pub fn get_char_len<L, A>(ch: char, col: usize, label: &L, config: &Config) -> usize
 where
     L: Label<A>,
     A: Area,
