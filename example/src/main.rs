@@ -44,7 +44,7 @@ fn main() {
 
     // `FormPalette` is a struct with all of your `Form`s and `CursorStyle`s in it.
     let mut palette = FormPalette::default();
-    palette.set_main_cursor(CursorStyle::new(None, Form::new(ContentStyle::new().on_yellow(), true)));
+    //palette.set_main_cursor(CursorStyle::new(None, Form::new(ContentStyle::new().on_yellow(), true)));
         // A `CursorStyle` is a style unique to cursors. It contains a shape (bar, block, or
         // underscore), and a `Form` to be used when printing the shape is not allowed (e.g. on a
         // terminal, that only has one cursor).
@@ -95,11 +95,11 @@ fn main() {
 	// 
 	// This will happen to every file that is opened AFTER this method is used. It does not apply
 	// to files that were opened before then.
-    session.push_widget_to_file(
-        Box::new(VertRule::default),
-        Direction::Left,
-        Split::Static(1),
-    );
+    //session.push_widget_to_file(
+    //    Box::new(VertRule::default),
+    //    Direction::Left,
+    //    Split::Static(1),
+    //);
 
 	// Now, we push another widget to every file, that being the `LineNumbers` widget. This is what
 	// that would do:
@@ -110,22 +110,22 @@ fn main() {
 	// ││It is very short   │       │3│It is very short  │
 	// ╰────────────────────╯       ╰────────────────────╯
 	//
-    session.push_widget_to_file(
-        // `LineNumbers::default` is a method with the following signature:
-        // 
-        // Fn(
-        //     RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>
-        // ) -> Arc<Mutex<dyn Widget<U>>>
-        // where
-        //     U: UiManager
-        //
-        // This is the type of method that will need to be provided for the end user to be able to
-        // push widgets to files. If you know Rust, you know that this could also be acomplished
-        // with the use of closures.
-        Box::new(LineNumbers::default),
-        Direction::Left,
-        Split::Static(1),
-    );
+    //session.push_widget_to_file(
+    //    // `LineNumbers::default` is a method with the following signature:
+    //    // 
+    //    // Fn(
+    //    //     RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>
+    //    // ) -> Arc<Mutex<dyn Widget<U>>>
+    //    // where
+    //    //     U: UiManager
+    //    //
+    //    // This is the type of method that will need to be provided for the end user to be able to
+    //    // push widgets to files. If you know Rust, you know that this could also be acomplished
+    //    // with the use of closures.
+    //    Box::new(LineNumbers::default),
+    //    Direction::Left,
+    //    Split::Static(1),
+    //);
 	// By replacing the above piece of code with the one below:
 	//
     // let config = LineNumbersConfig {

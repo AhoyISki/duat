@@ -110,12 +110,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn usable_indent<A, L>(&self, line: &TextLine, label: &L) -> usize
+    pub fn usable_indent<U>(&self, line: &TextLine, label: &U::Label) -> usize
     where
-        A: Area,
-        L: Label<A>,
+        U: Ui
     {
-        let indent = line.indent(label, self);
+        let indent = line.indent::<U>(label, self);
         if self.wrap_indent && indent < label.area().width() {
             indent
         } else {

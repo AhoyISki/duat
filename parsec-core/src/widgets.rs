@@ -40,10 +40,10 @@ where
     fn needs_update(&self) -> bool;
 
     /// The text that this widget prints out.
-    fn text(&self) -> &Text;
+    fn text(&self) -> &Text<U>;
 
     /// These are the three things that are needed to print text to the screen.
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo);
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo);
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, d_y: i32) {}
@@ -69,7 +69,7 @@ where
 
     fn mover(&mut self, index: usize) -> Mover<U>;
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize);
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize);
 
     fn cursors(&self) -> &[TextCursor];
 

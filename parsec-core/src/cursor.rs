@@ -393,7 +393,7 @@ where
     U: Ui,
 {
     cursor: &'a mut TextCursor,
-    text: &'a mut Text,
+    text: &'a mut Text<U>,
     end_node: &'a RwData<EndNode<U>>,
     print_info: Option<PrintInfo>,
     history: Option<&'a mut History>,
@@ -406,7 +406,7 @@ where
 {
     /// Returns a new instance of `Editor`.
     pub fn new(
-        cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text,
+        cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text<U>,
         end_node: &'a RwData<EndNode<U>>, history: Option<&'a mut History>,
         print_info: Option<PrintInfo>,
     ) -> Self {
@@ -498,7 +498,7 @@ where
     U: Ui,
 {
     cursor: &'a mut TextCursor,
-    text: &'a Text,
+    text: &'a Text<U>,
     end_node: &'a RwData<EndNode<U>>,
     current_moment: Option<&'a Moment>,
 }
@@ -509,7 +509,7 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut TextCursor, text: &'a Text, end_node: &'a RwData<EndNode<U>>,
+        cursor: &'a mut TextCursor, text: &'a Text<U>, end_node: &'a RwData<EndNode<U>>,
         current_moment: Option<&'a Moment>,
     ) -> Self {
         Self { cursor, text, end_node, current_moment }

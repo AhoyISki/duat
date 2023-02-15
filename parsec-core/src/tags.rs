@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     cursor::TextPos,
     text::{get_char_len, TextLine},
-    ui::{Area, Label, Ui},
+    ui::{Area, Label, Ui}, log_info,
 };
 
 use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
@@ -65,6 +65,7 @@ impl CharTag {
             CharTag::PopForm(id) => label.set_form(palette.remove(*id)),
 
             CharTag::WrapNext => {
+                log_info!("\nwrap_next");
                 if label.wrap_next(wrap_indent).is_err() {
                     return false;
                 }
@@ -114,7 +115,7 @@ bitflags! {
 // create efficient insertion algorithms that take that into account.
 /// A vector of `CharTags`.
 #[derive(Clone, Default)]
-pub struct CharTags(Vec<(u32, CharTag)>);
+pub struct CharTags(Vec<(usize, CharTag)>);
 
 impl std::fmt::Debug for CharTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -145,7 +146,7 @@ impl CharTags {
     }
 
     /// More efficient insertion method that requires no sorting.
-    pub fn insert(&mut self, char_tag: (u32, CharTag)) {
+    pub fn insert(&mut self, char_tag: (usize, CharTag)) {
         // It just finds the first element with a bigger number and puts the `char_tag` behind it.
         match self.0.iter().enumerate().find(|(_, &(c, _))| c > char_tag.0) {
             Some((pos, _)) => self.0.insert(pos, char_tag),
@@ -154,7 +155,7 @@ impl CharTags {
     }
 
     /// It's like `insert`, but it inserts "in the background". Used on multi-line ranges.
-    pub fn bottom_insert(&mut self, char_tag: (u32, CharTag)) {
+    pub fn bottom_insert(&mut self, char_tag: (usize, CharTag)) {
         match self.0.iter().enumerate().rev().find(|(_, &(c, _))| c < char_tag.0) {
             Some((pos, _)) => self.0.insert(pos + 1, char_tag),
             None => self.0.insert(0, char_tag),
@@ -162,20 +163,20 @@ impl CharTags {
     }
 
     /// Returns an immutable reference to the vector.
-    pub fn iter(&self) -> impl Iterator<Item = &(u32, CharTag)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = &(usize, CharTag)> + '_ {
         self.0.iter()
     }
 
     pub fn remove_first<F>(&mut self, cmp: F)
     where
-        F: Fn((u32, CharTag)) -> bool,
+        F: Fn((usize, CharTag)) -> bool,
     {
         if let Some((index, _)) = self.0.iter().enumerate().find(|&(_, &t)| cmp(t)) {
             self.0.remove(index);
         }
     }
 
-    pub fn iter_wraps(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn iter_wraps(&self) -> impl Iterator<Item = usize> + '_ {
         self.0.iter().filter(|(byte, tag)| matches!(tag, CharTag::WrapNext)).map(|(byte, _)| *byte)
     }
 }
@@ -555,29 +556,18 @@ impl LineInfo {
         let mut distance = 0;
         let mut wrapped_indent = 0;
 
-        if self.line_flags.contains(LineFlags::PURE_1_COL | LineFlags::PURE_ASCII) {
-            distance = label.area().width();
-            while distance < text.len() {
-                self.char_tags.insert((distance as u32, CharTag::WrapNext));
+        let mut char_indices = text.char_indices().peekable();
+        char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
 
+        while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
+        {
+            let ch_len = get_char_len(*ch, distance, label, config);
+            distance += ch_len;
+            if distance > label.area().width() - wrapped_indent {
+                distance = ch_len;
                 wrapped_indent = indent;
 
-                distance += label.area().width() - wrapped_indent;
-            }
-        } else {
-            let mut char_indices = text.char_indices().peekable();
-            char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
-
-            while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
-            {
-                let ch_len = get_char_len(*ch, distance, label, config);
-                distance += ch_len;
-                if distance > label.area().width() - wrapped_indent {
-                    distance = ch_len;
-                    wrapped_indent = indent;
-
-                    self.char_tags.insert((byte as u32, CharTag::WrapNext));
-                }
+                self.char_tags.insert((byte, CharTag::WrapNext));
             }
         }
     }
@@ -634,7 +624,7 @@ impl FormPattern {
                         // The start is the starting byte in the first line, 0 otherwise.
                         if line == range.start.row {
                             if let Some(id) = form_match.form {
-                                tags.insert((range.start.byte as u32, CharTag::PushForm(id)));
+                                tags.insert((range.start.byte, CharTag::PushForm(id)));
                             }
                         } else {
                             info[line - first_start.row].0.starting_id = form_match.id;
@@ -655,7 +645,7 @@ impl FormPattern {
                                 info[line - first_start.row].0.ending_id = form_match.id;
                             }
                             if let Some(form) = form_match.form {
-                                tags.insert((range.end.byte as u32, CharTag::PopForm(form)));
+                                tags.insert((range.end.byte, CharTag::PopForm(form)));
                             }
                         } else {
                             // On lines other than the last, the line ends with the id.

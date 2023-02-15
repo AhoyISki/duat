@@ -19,7 +19,7 @@ where
 {
     end_node: RwData<EndNode<U>>,
     file: RoData<FileWidget<U>>,
-    text: Text,
+    text: Text<U>,
     main_line_builder: TextLineBuilder,
     other_line_builder: TextLineBuilder,
     min_width: usize,
@@ -153,11 +153,11 @@ where
         self.file.has_changed()
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &Text<U> {
         &self.text
     }
 
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }

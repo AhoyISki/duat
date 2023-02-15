@@ -149,7 +149,7 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
-    text: Text,
+    text: Text<U>,
     print_info: PrintInfo,
     cursor: [TextCursor; 1],
     command_list: RwData<CommandList>,
@@ -195,9 +195,6 @@ where
     fn update(&mut self) {
         self.print_info.update(self.cursor[0].caret(), &self.text, &self.end_node);
 
-        let mut node = self.end_node.write();
-        self.text.update_lines(&mut node);
-        drop(node);
         //self.match_scroll();
         if self.text.lines().len() > 1 {
             let lines: String = self.text.lines().iter().map(|line| line.text().as_str()).collect();
@@ -218,11 +215,11 @@ where
         self.needs_update
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &Text<U> {
         &self.text
     }
 
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, self.print_info)
     }
 }
@@ -241,7 +238,7 @@ where
         Mover::new(&mut self.cursor[0], &self.text, &self.end_node, None)
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
         (&mut self.text, self.cursor.as_slice(), 0)
     }
 

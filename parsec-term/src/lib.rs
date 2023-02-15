@@ -9,7 +9,7 @@ use crossterm::{
     cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle},
     execute, queue,
     style::{ContentStyle, Print, ResetColor, SetStyle},
-    terminal, ExecutableCommand, QueueableCommand,
+    terminal, QueueableCommand,
 };
 use parsec_core::{
     config::{RoData, RwData},
@@ -196,7 +196,7 @@ impl Label<TermArea> for TermLabel {
 
     fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
-            self.stdout.queue(caret).unwrap().queue(SavePosition).unwrap();
+            queue!(self.stdout, caret, SavePosition).unwrap();
             unsafe { SHOW_CURSOR = true }
         } else {
             self.style_before_cursor = Some(self.last_style);
@@ -540,7 +540,7 @@ where
 {
     end_node: RwData<EndNode<U>>,
     file: RoData<FileWidget<U>>,
-    text: Text,
+    text: Text<U>,
     vert_rule_config: VertRuleConfig,
 }
 
@@ -628,11 +628,11 @@ where
         self.file.has_changed()
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &Text<U> {
         &self.text
     }
 
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }

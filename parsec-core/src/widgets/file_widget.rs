@@ -10,7 +10,7 @@ use crate::{
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
     max_line,
     tags::MatchManager,
-    text::{update_range, PrintInfo, Text},
+    text::{reader::MutTextReader, update_range, PrintInfo, Text},
     ui::{Area, EndNode, Label, MidNode, Ui},
 };
 
@@ -22,14 +22,15 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
-    mid_node: Option<RwData<MidNode<U>>>,
+    pub(crate) mid_node: Option<RwData<MidNode<U>>>,
     pub(crate) side_widgets: Vec<(Widget<U>, usize)>,
     name: RwData<String>,
-    text: Text,
+    text: Text<U>,
     print_info: PrintInfo,
     main_cursor: usize,
     cursors: Vec<TextCursor>,
     history: History,
+    readers: Vec<Box<dyn MutTextReader<U>>>,
 }
 
 impl<U> FileWidget<U>
@@ -55,6 +56,7 @@ where
             main_cursor: 0,
             cursors: vec![cursor],
             history: History::new(),
+            readers: Vec::new(),
         };
 
         file_widget
@@ -180,12 +182,14 @@ where
         self.cursors.clone()
     }
 
-    pub(crate) fn mid_node_mut(&mut self) -> &mut Option<RwData<MidNode<U>>> {
-        &mut self.mid_node
-    }
-
+    /// The `MidNode` associated with this `FileWidget`.
     pub fn mid_node(&self) -> &Option<RwData<MidNode<U>>> {
         &self.mid_node
+    }
+
+    /// A mutable reference to the `Text` of self.
+    pub fn mut_text(&mut self) -> &mut Text<U> {
+        &mut self.text
     }
 
     ////////// Status line convenience functions:
@@ -210,12 +214,13 @@ where
         self.text.lines().len()
     }
 
-    pub fn node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
+    /// The `PrintInfo` of the `FileWidget`.
     pub fn print_info(&self) -> PrintInfo {
         self.print_info
+    }
+
+    pub fn add_reader(&mut self, reader: Box<dyn MutTextReader<U>>) {
+        self.readers.push(reader);
     }
 }
 
@@ -238,9 +243,9 @@ where
     fn update(&mut self) {
         self.print_info.update(self.main_cursor().caret(), &self.text, &self.end_node);
 
-        let mut node = self.end_node.write();
-        self.text.update_lines(&mut node);
-        drop(node);
+        //let mut node = self.end_node.write();
+        //self.text.update_lines(&mut node);
+        //drop(node);
         //self.match_scroll();
     }
 
@@ -248,22 +253,16 @@ where
         true
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &Text<U> {
         &self.text
     }
 
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, self.print_info)
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {
         self.print_info.scroll_vertically(d_y, &self.text);
-    }
-
-    fn resize(&mut self, node: &EndNode<U>) {
-        for line in &mut self.text.lines {
-            line.parse_wrapping::<U>(&node.label.read(), &node.config().read());
-        }
     }
 }
 
@@ -291,7 +290,7 @@ where
         )
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[TextCursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
         (&mut self.text, self.cursors.as_slice(), self.main_cursor)
     }
 

@@ -94,7 +94,7 @@ where
 
         for (constructor, direction, split) in &self.future_file_widgets {
             let mut file_lock = file.write();
-            let (mid_node, end_node) = match file_lock.mid_node_mut() {
+            let (mid_node, end_node) = match &mut file_lock.mid_node {
                 None => self.node_manager.split_end(&mut node, *direction, *split, false),
                 Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
             };
@@ -108,7 +108,7 @@ where
             let mut file = file.write();
 
             file.side_widgets.push((widget, index));
-            *file.mid_node_mut() = Some(mid_node);
+            file.mid_node = Some(mid_node);
             file.end_node_mut().write().is_active = true;
         }
 
@@ -249,7 +249,7 @@ where
             }
             drop(control);
 
-            if let Ok(true) = event::poll(Duration::from_micros(100)) {
+            if let Ok(true) = event::poll(Duration::from_millis(5)) {
                 let active_file = &mut self.files[self.control.read().active_file];
                 send_event(key_remapper, &mut self.control, active_file);
             } else {
@@ -543,7 +543,10 @@ pub fn empty_edit() -> Vec<String> {
 
 // NOTE: Will definitely break once folding becomes a thing.
 /// The last line that could possibly be printed.
-pub fn max_line(text: &Text, print_info: &PrintInfo, node: &EndNode<impl Ui>) -> usize {
+pub fn max_line<U>(text: &Text<U>, print_info: &PrintInfo, node: &EndNode<U>) -> usize
+where
+    U: Ui,
+{
     min(print_info.top_row + node.label.read().area().height(), text.lines().len() - 1)
 }
 

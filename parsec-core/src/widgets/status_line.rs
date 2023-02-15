@@ -81,7 +81,7 @@ where
     U: Ui,
 {
     end_node: RwData<EndNode<U>>,
-    text: Text,
+    text: Text<U>,
     left_text: String,
     center_text: String,
     right_text: String,
@@ -212,11 +212,11 @@ where
         self.printables.iter().any(|p| p.has_changed())
     }
 
-    fn text(&self) -> &Text {
+    fn text(&self) -> &Text<U> {
         &self.text
     }
 
-    fn members_for_printing(&mut self) -> (&Text, &mut RwData<EndNode<U>>, PrintInfo) {
+    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
         (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }

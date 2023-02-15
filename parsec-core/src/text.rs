@@ -1,3 +1,5 @@
+pub mod reader;
+
 use std::{
     cmp::{max, min},
     iter::Peekable,
@@ -12,6 +14,8 @@ use crate::{
     tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
+
+use self::reader::MutTextReader;
 
 // TODO: move this to a more general file.
 /// A line in the text file.
@@ -117,32 +121,8 @@ impl TextLine {
         }
     }
 
-    // TODO: Eventually will include syntax highlighting, hover info, etc.
-    /// Updates the information for a line in the file.
-    ///
-    /// Returns `true` if the screen needs a full refresh.
-    fn update_line_info<U>(&mut self, node: &EndNode<U>)
-    where
-        U: Ui,
-    {
-        let label = node.label.read();
-        let config = node.config().read();
-
-        self.info.line_flags.set(LineFlags::PURE_ASCII, self.text.is_ascii());
-        self.info.line_flags.set(
-            LineFlags::PURE_1_COL,
-            !self.text.chars().any(|c| label.get_char_len(c) > 1 || c == '\t'),
-        );
-
-        if !matches!(config.wrap_method, WrapMethod::NoWrap) {
-            let indent = if config.wrap_indent { self.indent::<U>(&label, &config) } else { 0 };
-            let indent = if indent < label.area().width() { indent } else { 0 };
-            self.info.parse_wrapping::<U>(&self.text, indent, &label, &config);
-        }
-    }
-
     /// Returns an iterator over the wrapping bytes of the line.
-    pub fn iter_wraps(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn iter_wraps(&self) -> impl Iterator<Item = usize> + '_ {
         self.info.char_tags.iter_wraps()
     }
 
@@ -184,7 +164,7 @@ impl TextLine {
         }
 
         // Iterate through the tags before the first unskipped character.
-        let tags_to_skip = self.trigger_skipped::<U>(skip as u32, label, palette);
+        let tags_to_skip = self.trigger_skipped::<U>(skip, label, palette);
         let mut tags = self.info.char_tags.iter().skip(tags_to_skip).peekable();
 
         // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
@@ -223,17 +203,17 @@ impl TextLine {
     }
 
     fn trigger_on_byte<'a, U>(
-        &self, tags: &mut Peekable<impl Iterator<Item = &'a (u32, CharTag)>>, byte: usize,
+        &self, tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
         label: &mut U::Label, config: &Config, palette: &mut FormPalette,
     ) -> bool
     where
         U: Ui,
     {
         while let Some(&(tag_byte, tag)) = tags.peek() {
-            if byte == *tag_byte as usize {
+            if byte == *tag_byte {
                 tags.next();
                 // If this is the first printed character of `top_line`, we don't wrap.
-                let indent = config.usable_indent(self, label);
+                let indent = config.usable_indent::<U>(self, label);
                 if !tag.trigger(label, palette, indent) {
                     return false;
                 }
@@ -245,7 +225,7 @@ impl TextLine {
     }
 
     fn trigger_skipped<U>(
-        &self, skip: u32, label: &mut U::Label, palette: &mut FormPalette,
+        &self, skip: usize, label: &mut U::Label, palette: &mut FormPalette,
     ) -> usize
     where
         U: Ui,
@@ -259,6 +239,15 @@ impl TextLine {
             }
         }
         last_checked_index
+    }
+
+    pub fn parse_wrapping<U>(&mut self, label: &U::Label, config: &Config)
+    where
+        U: Ui,
+    {
+        let indent = if config.wrap_indent { self.indent::<U>(&label, &config) } else { 0 };
+        let indent = if indent < label.area().width() { indent } else { 0 };
+        self.info.parse_wrapping::<U>(&self.text, indent, &label, &config)
     }
 
     ////////////////////////////////
@@ -322,9 +311,9 @@ impl TextLineBuilder {
         for (index, (start, _)) in text.match_indices("[]").enumerate() {
             let start = start - removed_len;
             formless_text.replace_range(start..=(start + 1), "");
-            info.char_tags.insert((start as u32, CharTag::PushForm(self.forms[index])));
+            info.char_tags.insert((start, CharTag::PushForm(self.forms[index])));
             if index > 0 {
-                info.char_tags.insert((start as u32, CharTag::PopForm(self.forms[index - 1])));
+                info.char_tags.insert((start, CharTag::PopForm(self.forms[index - 1])));
             }
             removed_len += 2;
         }
@@ -351,40 +340,40 @@ impl<const N: usize> From<[u16; N]> for TextLineBuilder {
 }
 
 /// The text in a given area.
-pub struct Text {
+pub struct Text<U>
+where
+    U: Ui,
+{
     pub lines: Vec<TextLine>,
     replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
-    pub(crate) match_manager: Option<MatchManager>,
+    readers: Vec<Box<dyn MutTextReader<U>>>,
 }
 
-impl Default for Text {
+impl<U> Default for Text<U>
+where
+    U: Ui,
+{
     fn default() -> Self {
-        Text { lines: vec![TextLine::from("")], replacements: Vec::new(), match_manager: None }
+        Text { lines: vec![TextLine::from("")], replacements: Vec::new(), readers: Vec::new() }
     }
 }
 
 // TODO: Properly implement replacements.
-impl Text {
+impl<U> Text<U>
+where
+    U: Ui,
+{
     /// Returns a new instance of `Text`.
     pub fn new(text: String, match_manager: Option<MatchManager>) -> Self {
         Text {
             lines: text.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
             replacements: Vec::new(),
-            match_manager,
-        }
-    }
-
-    pub(crate) fn update_lines(&mut self, node: &EndNode<impl Ui>) {
-        for line in &mut self.lines {
-            line.update_line_info(node);
+            readers: Vec::new(),
         }
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print<U>(&self, end_node: &mut EndNode<U>, print_info: PrintInfo)
-    where
-        U: Ui,
-    {
+    pub(crate) fn print(&self, end_node: &mut EndNode<U>, print_info: PrintInfo) {
         let mut label = end_node.label.write();
         let config = end_node.config.read();
         let mut palette = end_node.palette.write();
@@ -528,42 +517,51 @@ impl Text {
 
             for (pos, tag) in pos_list.iter().skip(no_selection) {
                 let Some(line) = self.lines.get_mut(pos.row) else { return; };
-                let byte = line.get_line_byte_at(pos.col) as u32;
+                let byte = line.get_line_byte_at(pos.col);
                 line.info.char_tags.insert((byte, *tag));
             }
         }
     }
 
-    pub fn iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
-        self.lines
-            .iter()
-            .skip(pos.row)
-            .flat_map(|line| line.text.char_indices())
-            .skip(pos.col)
-            .map(|(_, ch)| ch)
-    }
+    ///// Iterates on the chars of the `Text`, starting from a specific `TextPos`.
+    //pub fn iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
+    //    self.lines.iter().skip(pos.row).flat_map(|line| line.text.chars()).skip(pos.col)
+    //}
 
-    pub fn rev_iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
-        let pos_row_len = self.lines[pos.row].text.chars().count();
-        self.lines
-            .iter()
-            .rev()
-            .skip(self.lines.len() - 1 - pos.row)
-            .flat_map(|line| line.text.char_indices().rev())
-            .skip(pos_row_len - 1 - pos.col)
-            .map(|(_, ch)| ch)
-    }
+    ///// Iterates on the chars of the `Text`, starting from a specific `TextPos`, in reverse.
+    //pub fn rev_iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
+    //    self.lines
+    //        .iter()
+    //        .rev()
+    //        .skip(self.lines.len() - 1 - pos.row)
+    //        .flat_map(|line| line.text.char_indices().rev())
+    //        .skip(self.lines[pos.row].text.chars().count() - 1 - pos.col)
+    //        .map(|(_, ch)| ch)
+    //}
+
+    //pub fn iter_items_from(&self, pos: TextPos) -> impl Iterator<Item = TextItem> + '_ {
+    //    let first_line_byte = pos.byte - self.lines[pos.row].get_line_byte_at(pos.col);
+    //    let mut tags =
+    //        self.lines.iter().skip(pos.row).flat_map(|line| line.info.char_tags.iter()).peekable().skip_while(|(byte, _)| byte + first_line_byte < pos.byte);
+    //    self.lines.iter().skip(pos.row).flat_map(|line| line.text.chars()).skip(pos.col)
+    //}
 }
 
-impl<S> From<S> for Text
+enum TextItem<'a> {
+    Char(char),
+    Tag(&'a CharTag),
+}
+
+impl<S, U> From<S> for Text<U>
 where
     S: ToString,
+    U: Ui,
 {
     fn from(value: S) -> Self {
         Text {
             lines: value.to_string().split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
             replacements: Vec::new(),
-            match_manager: None,
+            readers: Vec::new(),
         }
     }
 }
@@ -584,7 +582,10 @@ pub struct PrintInfo {
 
 impl PrintInfo {
     /// Scrolls the `PrintInfo` vertically by a given amount, on a given file.
-    pub fn scroll_vertically(&mut self, mut d_y: i32, text: &Text) {
+    pub fn scroll_vertically<U>(&mut self, mut d_y: i32, text: &Text<U>)
+    where
+        U: Ui,
+    {
         if d_y > 0 {
             let mut lines_iter = text.lines().iter().skip(self.top_row);
 
@@ -614,7 +615,7 @@ impl PrintInfo {
         }
     }
 
-    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text, node: &EndNode<U>)
+    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text<U>, node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -648,7 +649,7 @@ impl PrintInfo {
 
     /// Scrolls up, assuming that the lines can wrap.
     fn calibrate_up<U>(
-        &mut self, target: TextPos, mut d_y: usize, text: &Text, end_node: &RwData<EndNode<U>>,
+        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, end_node: &RwData<EndNode<U>>,
     ) where
         U: Ui,
     {
@@ -683,7 +684,7 @@ impl PrintInfo {
 
     /// Scrolls down, assuming that the lines can wrap.
     fn calibrate_down<U>(
-        &mut self, target: TextPos, mut d_y: usize, text: &Text, height: usize,
+        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, height: usize,
         end_node: &RwData<EndNode<U>>,
     ) where
         U: Ui,
@@ -721,7 +722,7 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn calibrate_horizontally<U>(
-        &mut self, target: TextPos, text: &Text, width: usize, end_node: &RwData<EndNode<U>>,
+        &mut self, target: TextPos, text: &Text<U>, width: usize, end_node: &RwData<EndNode<U>>,
     ) where
         U: Ui,
     {
@@ -747,7 +748,7 @@ impl PrintInfo {
     }
 
     /// Updates the print info.
-    pub fn update<U>(&mut self, target: TextPos, text: &Text, end_node: &RwData<EndNode<U>>)
+    pub fn update<U>(&mut self, target: TextPos, text: &Text<U>, end_node: &RwData<EndNode<U>>)
     where
         U: Ui,
     {
@@ -760,11 +761,11 @@ impl PrintInfo {
 
         let line = &text.lines()[min(old.row, text.lines().len() - 1)];
         let current_byte = line.get_line_byte_at(old.col);
-        let cur_wraps = line.iter_wraps().take_while(|&c| c <= current_byte as u32).count();
+        let cur_wraps = line.iter_wraps().take_while(|&c| c <= current_byte).count();
 
         let line = &text.lines()[target.row];
         let target_byte = line.get_line_byte_at(target.col);
-        let old_wraps = line.iter_wraps().take_while(|&c| c <= target_byte as u32).count();
+        let old_wraps = line.iter_wraps().take_while(|&c| c <= target_byte).count();
 
         if let WrapMethod::NoWrap = wrap_method {
             self.calibrate_vertically(target, height, end_node);
@@ -791,33 +792,35 @@ where
     }
 }
 
-pub(crate) fn update_range(
-    text: &mut Text, range: TextRange, max_line: usize, node: &EndNode<impl Ui>,
-) {
-    if let Some(match_manager) = &mut text.match_manager {
-        let line = &text.lines[max_line];
-        let max_pos = TextPos::default().translate(&text.lines, max_line, line.char_count());
+pub(crate) fn update_range<U>(
+    text: &mut Text<U>, range: TextRange, max_line: usize, node: &EndNode<U>,
+) where
+    U: Ui,
+{
+    //if let Some(match_manager) = &mut text.match_manager {
+    //    let line = &text.lines[max_line];
+    //    let max_pos = TextPos::default().translate(&text.lines, max_line, line.char_count());
 
-        let start = TextPos {
-            row: range.start.row,
-            col: 0,
-            byte: range.start.byte - get_byte(&text.lines[range.start.row].text(), range.start.col),
-        };
+    //    let start = TextPos {
+    //        row: range.start.row,
+    //        col: 0,
+    //        byte: range.start.byte - get_byte(&text.lines[range.start.row].text(), range.start.col),
+    //    };
 
-        let len = text.lines[range.end.row].text().len();
-        let end = TextPos {
-            row: range.end.row,
-            col: text.lines[range.end.row].char_count(),
-            byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) + len,
-        };
+    //    let len = text.lines[range.end.row].text().len();
+    //    let end = TextPos {
+    //        row: range.end.row,
+    //        col: text.lines[range.end.row].char_count(),
+    //        byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) + len,
+    //    };
 
-        let range = TextRange { start, end };
+    //    let range = TextRange { start, end };
 
-        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
+    //    let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
 
-        for (line_info, line_num) in line_infos {
-            text.lines[line_num].info = line_info;
-            text.lines[line_num].update_line_info(node);
-        }
-    }
+    //    for (line_info, line_num) in line_infos {
+    //        text.lines[line_num].info = line_info;
+    //        text.lines[line_num].update_line_info(node);
+    //    }
+    //}
 }
