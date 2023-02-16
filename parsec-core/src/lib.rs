@@ -7,13 +7,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{
-    cmp::min,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{cmp::min, path::PathBuf, sync::{Mutex, Arc}, thread, time::Duration};
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
@@ -260,9 +254,7 @@ where
             print_widget(&mut self.status);
             print_files(&mut self.files);
 
-            let widget_indices = widgets_to_update(&self.widgets);
-            for index in &widget_indices {
-                let (widget, _) = &self.widgets[*index];
+            for (widget, _) in &self.widgets {
                 s_0.spawn(|| {
                     widget.update();
                     if !widget.resize_requested() {
@@ -433,23 +425,6 @@ where
         file_widget.update();
         print_widget(&mut *file_widget);
     }
-}
-
-/// List of widgets that need to be updated.
-fn widgets_to_update<U>(widgets: &Vec<(Widget<U>, usize)>) -> Vec<usize>
-where
-    U: Ui,
-{
-    let mut indices = Vec::new();
-
-    for (index, (widget, _)) in widgets.iter().enumerate() {
-        // If the lock is unavailable, that means the widget is being updated.
-        if widget.needs_update() {
-            indices.push(index);
-        }
-    }
-
-    indices
 }
 
 fn resize_widgets<U>(

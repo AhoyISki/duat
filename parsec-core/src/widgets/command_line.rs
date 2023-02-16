@@ -33,7 +33,7 @@ pub trait Commander: private::Commander {
 /// command. The second one is a list of arguments passed on to the command.
 pub struct Command<C>
 where
-    C: ?Sized,
+    C: ?Sized + 'static,
 {
     /// A command that may mutate the `Commandable` struct.
     ///

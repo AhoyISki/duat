@@ -345,7 +345,7 @@ impl ui::Ui for UiManager {
 
         let mut stdout = stdout();
 
-        terminal::enable_raw_mode().unwrap();
+        //terminal::enable_raw_mode().unwrap();
 
         execute!(stdout, terminal::DisableLineWrap, terminal::Clear(terminal::ClearType::All))
             .unwrap();

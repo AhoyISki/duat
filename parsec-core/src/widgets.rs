@@ -5,7 +5,8 @@ pub mod status_line;
 
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    ops::Deref,
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crate::{
@@ -100,6 +101,33 @@ where
     }
 }
 
+pub struct RoMutexGuard<'a, T>(MutexGuard<'a, T>)
+where
+    T: ?Sized + 'a;
+
+impl<T> Deref for RoMutexGuard<'_, T>
+where
+    T: ?Sized,
+{
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct RoMutex<T>(Arc<Mutex<T>>)
+where
+    T: ?Sized;
+
+impl<T> From<Arc<Mutex<T>>> for RoMutex<T>
+where
+    T: ?Sized,
+{
+    fn from(value: Arc<Mutex<T>>) -> Self {
+        RoMutex(value.clone())
+    }
+}
+
 pub enum Widget<U>
 where
     U: Ui,
@@ -133,18 +161,17 @@ where
 
     pub(crate) fn update(&self) {
         match self {
-            Widget::Normal(widget) => widget.lock().unwrap().update(),
-            Widget::Actionable(widget) => widget.lock().unwrap().update(),
-        }
-    }
-
-    pub(crate) fn needs_update(&self) -> bool {
-        match self {
             Widget::Normal(widget) => {
-                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+                let mut widget = widget.lock().unwrap();
+                if widget.needs_update() {
+                    widget.update()
+                }
             }
             Widget::Actionable(widget) => {
-                widget.try_lock().map(|widget| widget.needs_update()).unwrap_or(false)
+                let mut widget = widget.lock().unwrap();
+                if widget.needs_update() {
+                    widget.update()
+                }
             }
         }
     }
@@ -184,7 +211,7 @@ where
         }
     }
 
-    fn try_to_editable(&self) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>> {
+    fn try_to_actionable(&self) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>> {
         match self {
             Widget::Normal(_) => None,
             Widget::Actionable(widget) => Some(widget.clone()),
@@ -472,6 +499,6 @@ impl TargetWidget {
             }
         };
 
-        result.map(|(widget, _)| widget.try_to_editable()).flatten()
+        result.map(|(widget, _)| widget.try_to_actionable()).flatten()
     }
 }

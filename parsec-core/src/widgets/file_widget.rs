@@ -242,6 +242,7 @@ where
 
     fn update(&mut self) {
         self.print_info.update(self.main_cursor().caret(), &self.text, &self.end_node);
+        panic!();
 
         //let mut node = self.end_node.write();
         //self.text.update_lines(&mut node);

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     config::{Config, RwData},
-    tags::form::{CursorStyle, Form, FormPalette},
+    tags::form::{CursorStyle, Form, FormPalette}, widgets::Widget,
 };
 
 pub trait Area: PartialEq + Eq + Clone + Copy {
@@ -54,7 +54,7 @@ where
     /// Places the secondary cursor on the current printing position.
     fn place_secondary_cursor(&mut self, style: CursorStyle);
 
-	/// Tells the `UiManager` that this `Label` is the one that is currently focused.
+    /// Tells the `UiManager` that this `Label` is the one that is currently focused.
     fn set_as_active(&mut self);
 
     //////////////////// Printing
@@ -493,9 +493,13 @@ pub trait Ui {
 }
 
 /// A manager for nodes.
-pub struct NodeManager<U>(U)
+pub struct NodeManager<U>
 where
-    U: Ui;
+    U: Ui,
+{
+    ui_manager: U,
+    nodes: Vec<(Node<U>, Widget<U>)>
+}
 
 impl<U> NodeManager<U>
 where
@@ -503,14 +507,14 @@ where
 {
     /// Returns a new instance of `NodeManager`.
     pub fn new(ui_manager: U) -> Self {
-        NodeManager(ui_manager)
+        NodeManager { ui_manager, nodes: Vec::new() }
     }
 
     /// Returns an `EndNode` only if it is the only node in the `Ui`.
     pub fn only_child(
         &mut self, config: Config, palette: FormPalette, class: &str,
     ) -> Option<RwData<EndNode<U>>> {
-        self.0.only_label().map(|l| {
+        self.ui_manager.only_label().map(|l| {
             RwData::new(EndNode {
                 label: RwData::new(l),
                 class: RwData::new(String::from(class)),
@@ -536,7 +540,7 @@ where
         let cloned_node = node.clone();
         let mut raw_node = node.write();
         let (container, label) =
-            self.0.split_label(&mut raw_node.label.write(), direction, split, glued);
+            self.ui_manager.split_label(&mut raw_node.label.write(), direction, split, glued);
 
         let mut end_node = RwData::new(EndNode {
             label: RwData::new(label),
@@ -573,7 +577,7 @@ where
         raw_node.direction = direction.opposite();
         raw_node.sibling = Some(Node::EndNode(end_node.clone()));
 
-		drop(raw_node);
+        drop(raw_node);
         if let Some(mut parent) = old_parent {
             let mut parent = parent.write();
             if mid_node.read().is_second {
@@ -593,8 +597,12 @@ where
     pub fn split_mid(
         &mut self, node: &mut RwData<MidNode<U>>, direction: Direction, split: Split, glued: bool,
     ) -> (RwData<MidNode<U>>, RwData<EndNode<U>>) {
-        let (container, label) =
-            self.0.split_container(&mut node.write().container.write(), direction, split, glued);
+        let (container, label) = self.ui_manager.split_container(
+            &mut node.write().container.write(),
+            direction,
+            split,
+            glued,
+        );
 
         let cloned_node = node.clone();
         let mut raw_node = node.write();
@@ -634,7 +642,7 @@ where
         raw_node.sibling = Some(Node::EndNode(end_node.clone()));
         raw_node.resize_children().unwrap();
 
-		drop(raw_node);
+        drop(raw_node);
         if let Some(mut parent) = old_parent {
             let mut parent = parent.write();
             if mid_node.read().is_second {
@@ -651,17 +659,12 @@ where
 
     /// Triggers the functions to use when the program starts.
     pub(crate) fn startup(&mut self) {
-        self.0.startup();
+        self.ui_manager.startup();
     }
 
     /// Triggers the functions to use when the program ends.
     pub(crate) fn shutdown(&mut self) {
-        self.0.shutdown();
-    }
-
-    /// Triggers the functions to once every `Label` has been printed.
-    pub(crate) fn finish_all_printing(&mut self) {
-        self.0.finish_all_printing()
+        self.ui_manager.shutdown();
     }
 }
 

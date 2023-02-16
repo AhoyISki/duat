@@ -1,6 +1,12 @@
-use std::sync::{Arc, Mutex, TryLockError, MutexGuard};
+use std::{
+    ops::Deref,
+    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, RwLockWriteGuard},
+};
 
-use crate::{ui::{Area, Label, Ui}, text::TextLine};
+use crate::{
+    text::TextLine,
+    ui::{Area, Label, Ui},
+};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -112,7 +118,7 @@ pub struct Config {
 impl Config {
     pub fn usable_indent<U>(&self, line: &TextLine, label: &U::Label) -> usize
     where
-        U: Ui
+        U: Ui,
     {
         let indent = line.indent::<U>(label, self);
         if self.wrap_indent && indent < label.area().width() {
@@ -128,9 +134,9 @@ pub struct RwData<T>
 where
     T: ?Sized,
 {
-    data: Arc<Mutex<T>>,
-    updated_state: Arc<Mutex<usize>>,
-    last_read_state: Mutex<usize>,
+    data: Arc<RwLock<T>>,
+    updated_state: Arc<RwLock<usize>>,
+    last_read_state: RwLock<usize>,
 }
 
 impl<T> RwData<T> {
@@ -139,9 +145,9 @@ impl<T> RwData<T> {
         // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
         // `true` at least once, by copying the second value - 1.
         RwData {
-            data: Arc::new(Mutex::new(data)),
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
+            data: Arc::new(RwLock::new(data)),
+            updated_state: Arc::new(RwLock::new(1)),
+            last_read_state: RwLock::new(1),
         }
     }
 }
@@ -153,41 +159,41 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> MutexGuard<T> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
+    pub fn read(&self) -> RwLockReadGuard<T> {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut last_read_state = self.last_read_state.write().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.lock().unwrap()
+        self.data.read().unwrap()
     }
 
     /// Tries to read the data immediately and returns a `Result`.
-    pub fn try_read(&self) -> Result<MutexGuard<T>, TryLockError<MutexGuard<T>>> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
+    pub fn try_read(&self) -> Result<RwLockReadGuard<T>, TryLockError<RwLockReadGuard<T>>> {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut last_read_state = self.last_read_state.write().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.try_lock()
+        self.data.try_read()
     }
 
     /// Returns a writeable reference to the state.
     ///
     /// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
-    pub fn write(&mut self) -> MutexGuard<T> {
-        *self.updated_state.lock().unwrap() += 1;
-        self.data.lock().unwrap()
+    pub fn write(&mut self) -> RwLockWriteGuard<T> {
+        *self.updated_state.write().unwrap() += 1;
+        self.data.write().unwrap()
     }
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let last_version = self.updated_state.lock().unwrap();
-        let mut current_version = self.last_read_state.lock().unwrap();
+        let last_version = self.updated_state.read().unwrap();
+        let mut current_version = self.last_read_state.write().unwrap();
         let has_changed = *last_version > *current_version;
         *current_version = *last_version;
 
@@ -195,12 +201,15 @@ where
     }
 }
 
-impl<T> Clone for RwData<T> {
+impl<T> Clone for RwData<T>
+where
+    T: ?Sized,
+{
     fn clone(&self) -> Self {
         RwData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: Mutex::new(*self.updated_state.lock().unwrap() - 1),
+            last_read_state: RwLock::new(*self.updated_state.read().unwrap() - 1),
         }
     }
 }
@@ -211,9 +220,9 @@ where
 {
     fn default() -> Self {
         RwData {
-            data: Arc::new(Mutex::new(D::default())),
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
+            data: Arc::new(RwLock::new(D::default())),
+            updated_state: Arc::new(RwLock::new(1)),
+            last_read_state: RwLock::new(1),
         }
     }
 }
@@ -225,20 +234,9 @@ pub struct RoData<T>
 where
     T: ?Sized,
 {
-    data: Arc<Mutex<T>>,
-    updated_state: Arc<Mutex<usize>>,
-    last_read_state: Mutex<usize>,
-}
-
-impl<T> RoData<T> {
-    /// Returns a new instance of `RoState`.
-    pub fn new(data: T) -> Self {
-        RoData {
-            data: Arc::new(Mutex::new(data)),
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
-        }
-    }
+    data: Arc<RwLock<T>>,
+    updated_state: Arc<RwLock<usize>>,
+    last_read_state: RwLock<usize>,
 }
 
 impl<T> RoData<T>
@@ -248,23 +246,23 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> MutexGuard<T> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
+    pub fn read(&self) -> RwLockReadGuard<T> {
+        let updated_version = self.updated_state.read().unwrap();
+        let mut last_read_state = self.last_read_state.write().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.lock().unwrap()
+        self.data.read().unwrap()
     }
 
     /// Checks if the state within has changed.
     ///
     /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
     pub fn has_changed(&self) -> bool {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut current_version = self.last_read_state.lock().unwrap();
+        let updated_version = self.updated_state.read().unwrap();
+        let mut current_version = self.last_read_state.write().unwrap();
 
         if *updated_version > *current_version {
             *current_version = *updated_version;
@@ -276,12 +274,15 @@ where
     }
 }
 
-impl<T> From<&RwData<T>> for RoData<T> {
+impl<T> From<&RwData<T>> for RoData<T>
+where
+    T: ?Sized,
+{
     fn from(state: &RwData<T>) -> Self {
         RoData {
             data: state.data.clone(),
             updated_state: state.updated_state.clone(),
-            last_read_state: Mutex::new(*state.updated_state.lock().unwrap() - 1),
+            last_read_state: RwLock::new(*state.updated_state.read().unwrap() - 1),
         }
     }
 }
@@ -295,64 +296,7 @@ where
         RoData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: Mutex::new(*self.last_read_state.lock().unwrap()),
-        }
-    }
-}
-
-pub struct RtData<T, U>
-where
-    T: ?Sized,
-{
-    data: Arc<Mutex<T>>,
-    function: Box<dyn Fn(&T) -> U>,
-    updated_state: Arc<Mutex<usize>>,
-    last_read_state: Mutex<usize>,
-}
-
-impl<T, U> RtData<T, U> {
-    /// Returns a new instance of `RoState`.
-    pub fn new(rw_data: &RwData<T>, function: Box<dyn Fn(&T) -> U>) -> Self {
-        RtData {
-            data: rw_data.data.clone(),
-            function,
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
-        }
-    }
-}
-
-impl<T, U> RtData<T, U>
-where
-    T: ?Sized,
-{
-    /// Reads the information.
-    ///
-    /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> U {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
-
-        if *updated_version > *last_read_state {
-            *last_read_state = *updated_version;
-        }
-
-        (self.function)(&self.data.lock().unwrap())
-    }
-
-    /// Checks if the state within has changed.
-    ///
-    /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
-    pub fn has_changed(&self) -> bool {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut current_version = self.last_read_state.lock().unwrap();
-
-        if *updated_version > *current_version {
-            *current_version = *updated_version;
-
-            true
-        } else {
-            false
+            last_read_state: RwLock::new(*self.last_read_state.read().unwrap()),
         }
     }
 }
