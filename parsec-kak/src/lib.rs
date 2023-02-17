@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
-    ui::{Direction, Ui},
+    ui::{Side, Ui},
     widgets::{ActionableWidget, TargetWidget, WidgetActor},
     SessionControl,
 };
@@ -112,28 +112,28 @@ impl Editor {
                 });
             }
             KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Left, 1);
+                move_each_and_select(&mut actor, Side::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Right, 1);
+                move_each_and_select(&mut actor, Side::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Top, 1);
+                move_each_and_select(&mut actor, Side::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Bottom, 1);
+                move_each_and_select(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Left, .. } => {
-                move_each(&mut actor, Direction::Left, 1);
+                move_each(&mut actor, Side::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, .. } => {
-                move_each(&mut actor, Direction::Right, 1);
+                move_each(&mut actor, Side::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, .. } => {
-                move_each(&mut actor, Direction::Top, 1);
+                move_each(&mut actor, Side::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, .. } => {
-                move_each(&mut actor, Direction::Bottom, 1);
+                move_each(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Tab, .. } => {
                 actor.new_moment();
@@ -162,42 +162,42 @@ impl Editor {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut actor, Direction::Left, 1);
+                move_each_and_select(&mut actor, Side::Left, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('J') | KeyCode::Down,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut actor, Direction::Bottom, 1);
+                move_each_and_select(&mut actor, Side::Bottom, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('K') | KeyCode::Up,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut actor, Direction::Top, 1);
+                move_each_and_select(&mut actor, Side::Top, 1);
             }
             KeyEvent {
                 code: KeyCode::Char('L') | KeyCode::Right,
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                move_each_and_select(&mut actor, Direction::Right, 1);
+                move_each_and_select(&mut actor, Side::Right, 1);
             }
 
             ////////// Movement keys that get rid of selections.
             KeyEvent { code: KeyCode::Char('h') | KeyCode::Left, .. } => {
-                move_each(&mut actor, Direction::Left, 1);
+                move_each(&mut actor, Side::Left, 1);
             }
             KeyEvent { code: KeyCode::Char('j') | KeyCode::Down, .. } => {
-                move_each(&mut actor, Direction::Bottom, 1);
+                move_each(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Char('k') | KeyCode::Up, .. } => {
-                move_each(&mut actor, Direction::Top, 1);
+                move_each(&mut actor, Side::Top, 1);
             }
             KeyEvent { code: KeyCode::Char('l') | KeyCode::Right, .. } => {
-                move_each(&mut actor, Direction::Right, 1);
+                move_each(&mut actor, Side::Right, 1);
             }
 
             ////////// Insertion keys.
@@ -248,28 +248,28 @@ impl Editor {
             }
 
             KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Left, 1);
+                move_each_and_select(&mut actor, Side::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Right, 1);
+                move_each_and_select(&mut actor, Side::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Top, 1);
+                move_each_and_select(&mut actor, Side::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
-                move_each_and_select(&mut actor, Direction::Bottom, 1);
+                move_each_and_select(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: KeyCode::Left, .. } => {
-                move_each(&mut actor, Direction::Left, 1);
+                move_each(&mut actor, Side::Left, 1);
             }
             KeyEvent { code: KeyCode::Right, .. } => {
-                move_each(&mut actor, Direction::Right, 1);
+                move_each(&mut actor, Side::Right, 1);
             }
             KeyEvent { code: KeyCode::Up, .. } => {
-                move_each(&mut actor, Direction::Top, 1);
+                move_each(&mut actor, Side::Top, 1);
             }
             KeyEvent { code: KeyCode::Down, .. } => {
-                move_each(&mut actor, Direction::Bottom, 1);
+                move_each(&mut actor, Side::Bottom, 1);
             }
 
             KeyEvent { code: KeyCode::Esc, .. } => {
@@ -337,7 +337,7 @@ impl InputScheme for Editor {
     }
 }
 
-fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize)
+fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
     E: ActionableWidget<U> + ?Sized,
@@ -345,16 +345,16 @@ where
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
         match direction {
-            Direction::Top => mover.move_ver(-(amount as i32)),
-            Direction::Bottom => mover.move_ver(amount as i32),
-            Direction::Left => mover.move_hor(-(amount as i32)),
-            Direction::Right => mover.move_hor(amount as i32),
+            Side::Top => mover.move_ver(-(amount as i32)),
+            Side::Bottom => mover.move_ver(amount as i32),
+            Side::Left => mover.move_hor(-(amount as i32)),
+            Side::Right => mover.move_hor(amount as i32),
         }
     });
 }
 
 fn move_each_and_select<U, E>(
-    file_editor: &mut WidgetActor<U, E>, direction: Direction, amount: usize,
+    file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize,
 ) where
     U: Ui,
     E: ActionableWidget<U> + ?Sized,
@@ -364,10 +364,10 @@ fn move_each_and_select<U, E>(
             mover.set_anchor();
         }
         match direction {
-            Direction::Top => mover.move_ver(-(amount as i32)),
-            Direction::Bottom => mover.move_ver(amount as i32),
-            Direction::Left => mover.move_hor(-(amount as i32)),
-            Direction::Right => mover.move_hor(amount as i32),
+            Side::Top => mover.move_ver(-(amount as i32)),
+            Side::Bottom => mover.move_ver(amount as i32),
+            Side::Left => mover.move_hor(-(amount as i32)),
+            Side::Right => mover.move_hor(amount as i32),
         }
     });
 }

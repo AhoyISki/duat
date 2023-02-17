@@ -130,7 +130,7 @@ where
 
 pub enum Widget<U>
 where
-    U: Ui,
+    U: Ui + ?Sized,
 {
     Normal(Arc<Mutex<dyn NormalWidget<U>>>),
     Actionable(Arc<Mutex<dyn ActionableWidget<U>>>),

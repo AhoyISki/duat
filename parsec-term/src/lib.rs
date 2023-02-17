@@ -18,7 +18,7 @@ use parsec_core::{
         form::{Form, DEFAULT_ID},
     },
     text::{PrintInfo, Text, TextLine, TextLineBuilder},
-    ui::{self, Area, Container, Direction, EndNode, Label, NodeManager, Split, Ui},
+    ui::{self, Area, Side, EndNode, NodeManager, Split, Ui},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
@@ -71,11 +71,11 @@ impl Area for TermArea {
     }
 
     fn resize_children(
-        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Direction,
+        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Side,
     ) -> Result<(), ()> {
         let max_len = match first_dir {
-            Direction::Left | Direction::Right => self.width(),
-            Direction::Top | Direction::Bottom => self.height(),
+            Side::Left | Side::Right => self.width(),
+            Side::Top | Side::Bottom => self.height(),
         };
 
         if len > max_len {
@@ -99,12 +99,12 @@ impl TermArea {
 }
 
 #[derive(Clone)]
-pub struct TermContainer {
+pub struct Container {
     area: TermArea,
-    direction: Direction,
+    direction: Side,
 }
 
-impl Container<TermArea> for TermContainer {
+impl ui::Container<TermArea> for Container {
     fn area(&self) -> &TermArea {
         &self.area
     }
@@ -114,11 +114,11 @@ impl Container<TermArea> for TermContainer {
     }
 }
 
-pub struct TermLabel {
+pub struct Label {
     stdout: Stdout,
     area: TermArea,
     cursor: Coord,
-    direction: Direction,
+    direction: Side,
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
     is_active: bool,
@@ -126,9 +126,9 @@ pub struct TermLabel {
     indent: usize,
 }
 
-impl TermLabel {
-    fn new(area: TermArea, direction: Direction) -> Self {
-        TermLabel {
+impl Label {
+    fn new(area: TermArea, direction: Side) -> Self {
+        Label {
             stdout: stdout(),
             area,
             cursor: area.tl,
@@ -170,13 +170,13 @@ impl TermLabel {
     }
 }
 
-impl Clone for TermLabel {
+impl Clone for Label {
     fn clone(&self) -> Self {
-        TermLabel { stdout: stdout(), ..*self }
+        Label { stdout: stdout(), ..*self }
     }
 }
 
-impl Label<TermArea> for TermLabel {
+impl ui::Label<TermArea> for Label {
     fn area_mut(&mut self) -> &mut TermArea {
         &mut self.area
     }
@@ -284,39 +284,53 @@ impl Label<TermArea> for TermLabel {
 
 impl ui::Ui for UiManager {
     type Area = TermArea;
-    type Container = TermContainer;
-    type Label = TermLabel;
+    type Container = Container;
+    type Label = Label;
 
-    fn split_container(
-        &mut self, container: &mut Self::Container, direction: Direction, split: Split, glued: bool,
+    fn split_label(
+        &mut self, label: &mut Self::Label, side: Side, split: Split,
     ) -> (Self::Container, Self::Label) {
-        let len = get_split_len(split, container.area, direction);
-        let parent_container = container.clone();
+        let len = get_split_len(split, label.area, side);
+        let parent_container = Container { area: label.area, direction: label.direction };
 
-        let area = split_by(len, &mut container.area, direction);
+        let area = split_by(len, &mut label.area, side);
 
-        let new_label = TermLabel::new(area, direction);
+        let new_label = Label::new(area, side);
 
         (parent_container, new_label)
     }
 
-    fn split_label(
-        &mut self, label: &mut Self::Label, direction: Direction, split: Split, glued: bool,
+    fn split_container(
+        &mut self, container: &mut Self::Container, side: Side, split: Split,
     ) -> (Self::Container, Self::Label) {
-        let len = get_split_len(split, label.area, direction);
-        let parent_container = TermContainer { area: label.area, direction: label.direction };
+        let len = get_split_len(split, container.area, side);
+        let parent_container = container.clone();
 
-        let area = split_by(len, &mut label.area, direction);
+        let area = split_by(len, &mut container.area, side);
 
-        let new_label = TermLabel::new(area, direction);
+        let new_label = Label::new(area, side);
 
         (parent_container, new_label)
+    }
+
+    fn trim_label(&mut self, label: &mut Self::Label, side: Side, split: Split)
+        -> Self::Label {
+        let len = get_split_len(split, label.area, side);
+        let area = split_by(len, &mut label.area, side);
+        Label::new(area, side)
+    }
+
+    fn trim_container(&mut self, container: &mut Self::Container, side: Side, split: Split)
+        -> Self::Label {
+        let len = get_split_len(split, container.area, side);
+        let area = split_by(len, &mut container.area, side);
+        Label::new(area, side)
     }
 
     fn only_label(&mut self) -> Option<Self::Label> {
         if self.initial {
             self.initial = false;
-            Some(TermLabel::new(TermArea::total(), Direction::Left))
+            Some(Label::new(TermArea::total(), Side::Left))
         } else {
             None
         }
@@ -345,7 +359,7 @@ impl ui::Ui for UiManager {
 
         let mut stdout = stdout();
 
-        //terminal::enable_raw_mode().unwrap();
+        terminal::enable_raw_mode().unwrap();
 
         execute!(stdout, terminal::DisableLineWrap, terminal::Clear(terminal::ClearType::All))
             .unwrap();
@@ -371,10 +385,10 @@ impl ui::Ui for UiManager {
     fn finish_all_printing(&mut self) {}
 }
 
-fn get_split_len(split: Split, area: TermArea, direction: Direction) -> u16 {
+fn get_split_len(split: Split, area: TermArea, direction: Side) -> u16 {
     let current_len = match direction {
-        Direction::Left | Direction::Right => area.width(),
-        Direction::Top | Direction::Bottom => area.height(),
+        Side::Left | Side::Right => area.width(),
+        Side::Top | Side::Bottom => area.height(),
     };
 
     match split {
@@ -383,24 +397,24 @@ fn get_split_len(split: Split, area: TermArea, direction: Direction) -> u16 {
     }
 }
 
-fn split_by(len: u16, area: &mut TermArea, direction: Direction) -> TermArea {
+fn split_by(len: u16, area: &mut TermArea, direction: Side) -> TermArea {
     match direction {
-        Direction::Left => {
+        Side::Left => {
             let old_tl = area.tl;
             area.tl.x += len;
             TermArea { tl: old_tl, br: Coord { x: area.tl.x, y: area.br.y } }
         }
-        Direction::Right => {
+        Side::Right => {
             let old_br = area.br;
             area.br.x -= len;
             TermArea { tl: Coord { x: area.br.x, y: area.tl.y }, br: old_br }
         }
-        Direction::Top => {
+        Side::Top => {
             let old_tl = area.tl;
             area.tl.y += len;
             TermArea { tl: old_tl, br: Coord { x: area.br.x, y: area.tl.y } }
         }
-        Direction::Bottom => {
+        Side::Bottom => {
             let old_br = area.br;
             area.br.y -= len;
             TermArea { tl: Coord { x: area.tl.x, y: area.br.y }, br: old_br }

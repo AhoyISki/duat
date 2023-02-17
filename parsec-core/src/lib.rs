@@ -15,7 +15,7 @@ use cursor::TextPos;
 use input::{InputScheme, KeyRemapper};
 use tags::{form::FormPalette, MatchManager};
 use text::{PrintInfo, Text};
-use ui::{Area, Direction, EndNode, Label, MidNode, Node, NodeManager, Split, Ui};
+use ui::{Area, Side, EndNode, Label, MidNode, Node, NodeManager, Split, Ui};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -34,7 +34,7 @@ where
     pub status: StatusLine<U>,
     widgets: Vec<(Widget<U>, usize)>,
     files: Vec<RwData<FileWidget<U>>>,
-    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Direction, Split)>,
+    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Side, Split)>,
     master_node: RwData<MidNode<U>>,
     all_files_parent: Node<U>,
     match_manager: MatchManager,
@@ -49,12 +49,12 @@ where
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
         ui: U, match_manager: MatchManager, config: Config, palette: FormPalette,
-        direction: Direction, split: Split,
+        direction: Side, split: Split,
     ) -> Self {
         let mut node_manager = NodeManager::new(ui);
         let mut node = node_manager.only_child(config, palette, "code").unwrap();
 
-        let (master_node, end_node) = node_manager.split_end(&mut node, direction, split, false);
+        let (master_node, end_node) = node_manager.push_widget(&mut node, direction, split, false);
 
         let status = StatusLine::new(end_node, &mut node_manager);
 
@@ -71,7 +71,7 @@ where
             files: Vec::new(),
             future_file_widgets: Vec::new(),
             master_node,
-            all_files_parent: Node::EndNode(node),
+            all_files_parent: Node::EndNode { end_node: node },
             match_manager,
             control,
             global_commands: RwData::new(command_list),
@@ -89,7 +89,7 @@ where
         for (constructor, direction, split) in &self.future_file_widgets {
             let mut file_lock = file.write();
             let (mid_node, end_node) = match &mut file_lock.mid_node {
-                None => self.node_manager.split_end(&mut node, *direction, *split, false),
+                None => self.node_manager.push_widget(&mut node, *direction, *split, false),
                 Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
             };
             drop(file_lock);
@@ -143,32 +143,32 @@ where
         match &self.all_files_parent {
             // If it is an `EndNode`, no file has been opened, or a file was opened without any
             // widgets attached.
-            Node::EndNode(node) => {
+            Node::EndNode { end_node: node } => {
                 if let Some(file) = self.files.get_mut(0) {
-                    let (all_files_parent, end_node) = self.node_manager.split_end(
+                    let (all_files_parent, end_node) = self.node_manager.push_widget(
                         &mut file.write().end_node_mut(),
-                        Direction::Right,
+                        Side::Right,
                         Split::Static(50),
                         false,
                     );
                     self.new_file_with_node(path, end_node);
-                    self.all_files_parent = Node::MidNode(all_files_parent);
+                    self.all_files_parent = Node::MidNode { mid_node: all_files_parent };
                 } else {
                     self.new_file_with_node(path, node.clone());
                     if let Some(node) = &self.files.last().as_ref().unwrap().read().mid_node() {
-                        self.all_files_parent = Node::MidNode(node.clone());
+                        self.all_files_parent = Node::MidNode { mid_node: node.clone() };
                     }
                 }
             }
-            Node::MidNode(node) => {
+            Node::MidNode { mid_node: node } => {
                 let (all_files_parent, end_node) = self.node_manager.split_mid(
                     &mut node.clone(),
-                    Direction::Right,
+                    Side::Right,
                     Split::Static(50),
                     false,
                 );
                 self.new_file_with_node(path, end_node);
-                self.all_files_parent = Node::MidNode(all_files_parent);
+                self.all_files_parent = Node::MidNode { mid_node: all_files_parent };
             }
         }
 
@@ -176,7 +176,7 @@ where
         self.control.write().files_len += 1;
     }
 
-    pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Direction, split: Split)
+    pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Side, split: Split)
     where
         C: Fn(RwData<EndNode<U>>, &mut Session<U>) -> Widget<U>,
     {
@@ -191,7 +191,7 @@ where
     }
 
     pub fn push_widget_to_file(
-        &mut self, constructor: Box<WidgetFormer<U>>, direction: Direction, split: Split,
+        &mut self, constructor: Box<WidgetFormer<U>>, direction: Side, split: Split,
     ) {
         self.future_file_widgets.push((Box::new(constructor), direction, split));
     }
