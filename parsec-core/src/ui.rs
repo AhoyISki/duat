@@ -1,22 +1,23 @@
 use std::{fmt::Display, mem};
 
 use crate::{
-    config::{Config, RwData},
+    config::{Config, RwData, WrapMethod},
     tags::form::{CursorStyle, Form, FormPalette},
     widgets::Widget,
 };
 
-pub trait Area: PartialEq + Eq + Clone + Copy {
+pub trait Area: PartialEq + Eq + Clone {
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
     /// Gets the height of the area.
     fn height(&self) -> usize;
 
-    /// Resizes the children so they fit inside `self` properly.
-    fn resize_children(
-        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Side,
-    ) -> Result<(), ()>;
+    /// Requests a new width to the widget.
+    fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()>;
+
+    /// Requests that the width be enough to fit a certain piece of text.
+    fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()>;
 }
 
 /// A `Label` or `Container` container, that holds exactly two in total.
@@ -80,17 +81,8 @@ where
     /// end.
     fn next_line(&mut self) -> Result<(), ()>;
 
-    /// Wraps to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
-    ///
-    /// Unlike `next_line()`, this function should not remove any text.
-    fn wrap_next(&mut self, indent: usize) -> Result<(), ()>;
-
-    //////////////////// Getters
-    /// Gets the length of a character.
-    ///
-    /// In a terminal, this would be in "cells", but in a variable width GUI, it could be in
-    /// pixels, or em. It really depends on the implementation.
-    fn get_char_len(&self, ch: char) -> usize;
+    /// Counts how many times the given string would wrap.
+    fn wrap_count(&self, text: &str, wrap_method: WrapMethod) -> usize;
 }
 
 /// A node that contains other nodes.
@@ -100,115 +92,31 @@ where
 {
     old_area: U::Area,
     children: Vec<Node<U>>,
-    axis: Axis,
-    container: RwData<U::Container>,
+    container: U::Container,
     config: RwData<Config>,
     palette: RwData<FormPalette>,
-    requested_width: Option<usize>,
-    requested_height: Option<usize>,
 }
 
 impl<U> MidNode<U>
 where
     U: Ui,
 {
-    fn new_from(container: U::Container, node: &Node<U>, side: Side) -> Self {
+    fn new_from(container: U::Container, node: &Node<U>) -> Self {
         MidNode {
             old_area: *container.area(),
             children: Vec::new(),
-            axis: Axis::from(side),
-            container: RwData::new(container),
+            container,
             config: node.config(),
             palette: node.palette(),
-            requested_width: None,
-            requested_height: None,
         }
-    }
-    /// Requests a change in the width of `self`.
-    pub fn request_width(&mut self, width: usize) {
-        self.requested_width = Some(width);
-    }
-
-    /// Requests a change in the height of `self`.
-    pub fn request_height(&mut self, height: usize) {
-        self.requested_height = Some(height);
-    }
-
-    pub(crate) fn try_set_size(&mut self) -> Result<(), ()> {
-        if let Some(width) = self.requested_width.take() {
-            self.try_set_width(width)?;
-        }
-        if let Some(height) = self.requested_height.take() {
-            self.try_set_height(height)?;
-        }
-
-        Ok(())
-    }
-
-    /// Tries to set a new width for `self`.
-    fn try_set_width(&mut self, width: usize) -> Result<(), ()> {
-        if let Side::Left | Side::Right = self.side {
-            let mut container = self.container.write();
-            let area = container.area_mut();
-            resize(area, &self.parent, &mut self.sibling, width, self.side)?;
-
-            let parent = self.parent.as_mut().unwrap();
-            let mut parent = parent.write();
-            let total_len = parent.container.read().area().width();
-            let new_len = if self.is_second { width } else { total_len - width };
-            parent.split.adapt_to_len(new_len, total_len);
-        } else {
-            todo!()
-        }
-        self.resize_children()?;
-
-        Ok(())
-    }
-
-    /// Tries to set a new height for `self`.
-    fn try_set_height(&mut self, height: usize) -> Result<(), ()> {
-        if let Side::Top | Side::Bottom = self.side {
-            let mut container = self.container.write();
-            let area = container.area_mut();
-            resize(area, &self.parent, &mut self.sibling, height, self.side)?;
-
-            let parent = self.parent.as_mut().unwrap();
-            let mut parent = parent.write();
-            let total_len = parent.container.read().area().width();
-            let new_len = if self.is_second { height } else { total_len - height };
-            parent.split.adapt_to_len(new_len, total_len);
-        } else {
-            todo!()
-        }
-        self.resize_children()?;
-
-        Ok(())
-    }
-
-    pub fn resize_children(&mut self) -> Result<(), ()> {
-        let container = self.container.read();
-        let self_area = container.area();
-
-        let first_area = &mut self.children.0.area();
-        let second_area = &mut self.children.1.area();
-        let second_direction = self.children.1.direction();
-        let width = self.split.get_second_len(self_area.width());
-
-        self_area.resize_children(second_area, first_area, width, second_direction)?;
-        self.children.0.set_area(*first_area);
-        self.children.1.set_area(*second_area);
-
-        self.children.0.resize_children_if_mid_node()?;
-        self.children.1.resize_children_if_mid_node()?;
-
-        Ok(())
     }
 
     /// Wether or not the size has changed since last checking.
     pub fn size_changed(&mut self) -> bool {
-        let has_changed = *self.container.read().area() != self.old_area;
-        self.old_area = *self.container.read().area();
-        has_changed
+        todo!()
+        // let has_changed = *self.container.read().area() != self.old_area;
+        // self.old_area = *self.container.read().area();
+        // has_changed
     }
 
     fn replace_child_with_mid(
@@ -228,7 +136,7 @@ pub struct EndNode<U>
 where
     U: Ui + ?Sized,
 {
-    pub(crate) label: RwData<U::Label>,
+    pub(crate) label: U::Label,
     pub(crate) config: RwData<Config>,
     pub(crate) palette: RwData<FormPalette>,
     requested_width: Option<usize>,
@@ -242,7 +150,7 @@ where
 {
     fn new_from(label: U::Label, node: &Node<U>) -> Self {
         EndNode {
-            label: RwData::new(label),
+            label: label,
             config: node.config(),
             palette: node.palette(),
             requested_width: None,
@@ -250,67 +158,19 @@ where
             is_active: false,
         }
     }
+
     /// Requests a change in the width of `self`.
     pub fn request_width(&mut self, width: usize) {
-        if self.label.read().area().width() != width {
+        if self.label.area().width() != width {
             self.requested_width = Some(width);
         }
     }
 
     /// Requests a change in the height of `self`.
     pub fn request_height(&mut self, height: usize) {
-        if self.label.read().area().height() != height {
+        if self.label.area().height() != height {
             self.requested_height = Some(height);
         }
-    }
-
-    pub(crate) fn try_set_size(&mut self) -> Result<(), ()> {
-        if let Some(width) = self.requested_width.take() {
-            self.try_set_width(width)?;
-        }
-        if let Some(height) = self.requested_height.take() {
-            self.try_set_height(height)?;
-        }
-
-        Ok(())
-    }
-
-    /// Requests a new width for itself, going up the tree.
-    pub fn try_set_width(&mut self, width: usize) -> Result<(), ()> {
-        if let Side::Left | Side::Right = self.side {
-            let mut label = self.label.write();
-            let area = label.area_mut();
-            resize(area, &self.parent, &mut self.sibling, width, self.side)?;
-
-            let parent = self.parent.as_mut().unwrap();
-            let mut parent = parent.write();
-            let total_len = parent.container.read().area().width();
-            let new_len = if self.is_second { width } else { total_len - width };
-            parent.split.adapt_to_len(new_len, total_len);
-        } else {
-            todo!()
-        }
-
-        Ok(())
-    }
-
-    /// Requests a new width for itself, going up the tree.
-    pub fn try_set_height(&mut self, height: usize) -> Result<(), ()> {
-        if let Side::Top | Side::Bottom = self.side {
-            let mut label = self.label.write();
-            let area = label.area_mut();
-            resize(area, &self.parent, &mut self.sibling, height, self.side)?;
-
-            let parent = self.parent.as_mut().unwrap();
-            let mut parent = parent.write();
-            let total_len = parent.container.read().area().width();
-            let new_len = if self.is_second { height } else { total_len - height };
-            parent.split.adapt_to_len(new_len, total_len);
-        } else {
-            todo!()
-        }
-
-        Ok(())
     }
 
     /// Returns a reference to the `Config` of the node.
@@ -320,10 +180,6 @@ where
 
     pub fn palette(&self) -> &RwData<FormPalette> {
         &self.palette
-    }
-
-    pub fn label(&self) -> &RwData<U::Label> {
-        &self.label
     }
 
     /// Wether or not the size has changed since last checking.
@@ -345,99 +201,6 @@ impl<U> Node<U>
 where
     U: Ui,
 {
-    // TODO: Remove pub(crate).
-    pub(crate) fn area(&self) -> U::Area {
-        match self {
-            Node::MidNode { mid_node, .. } => {
-                let container = mid_node.container.read();
-                container.area().clone()
-            }
-            Node::EndNode { end_node, .. } => {
-                let label = end_node.label.read();
-                label.area().clone()
-            }
-        }
-    }
-
-    fn set_area(&mut self, area: U::Area) {
-        match self {
-            Node::MidNode { mid_node, .. } => {
-                let mut container = mid_node.container.write();
-                *container.area_mut() = area;
-            }
-            Node::EndNode { end_node, .. } => {
-                let mut label = end_node.label.write();
-                *label.area_mut() = area;
-            }
-        }
-    }
-
-    fn resize_children_if_mid_node(&mut self) -> Result<(), ()> {
-        if let Node::MidNode { mid_node, .. } = self {
-            mid_node.resize_children()
-        } else {
-            Ok(())
-        }
-    }
-
-    fn try_split(&mut self, ui_manager: U, side: Side, split: Split) -> (U::Container, U::Label) {
-        match self {
-            Node::MidNode { mid_node, .. } => {
-                let mut container = mid_node.container.write();
-                let (container, label) = ui_manager.split_container(&mut *container, side, split);
-                mid_node.resize_children().unwrap();
-                (container, label)
-            }
-            Node::EndNode { end_node, .. } => {
-                ui_manager.split_label(&mut *end_node.label.write(), side, split)
-            }
-        }
-    }
-
-    fn trim_area(&mut self, ui_manager: U, side: Side, split: Split) -> U::Label {
-        match self {
-            Node::MidNode { mid_node, .. } => {
-                let mut container = mid_node.container.write();
-                let label = ui_manager.trim_container(&mut *container, side, split);
-                mid_node.resize_children().unwrap();
-                label
-            }
-            Node::EndNode { end_node, .. } => {
-                ui_manager.trim_label(&mut *end_node.label.write(), side, split)
-            }
-        }
-    }
-
-    fn find_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<U>> {
-        if self.index() == node_index {
-            return Some(self);
-        } else if let Node::MidNode { mid_node, .. } = self {
-            for child in mid_node.children {
-                if let Some(node) = child.find_mut(node_index) {
-                    return Some(node);
-                }
-            }
-        }
-        None
-    }
-
-    /// Returns `Some(self)` if it is the parent of the given `NodeIndex`.
-    fn find_mut_parent(&mut self, node_index: NodeIndex) -> Option<&mut MidNode<U>> {
-        if let Node::MidNode { mid_node, .. } = self {
-            let children = &mut mid_node.children;
-            if children.iter_mut().find(|child| child.index() == node_index).is_some() {
-                return Some(mid_node);
-            } else {
-                for child in children.iter_mut() {
-                    if let Some(node) = child.find_mut_parent(node_index) {
-                        return Some(node);
-                    }
-                }
-            }
-        }
-        None
-    }
-
     fn config(&self) -> RwData<Config> {
         match self {
             Node::MidNode { mid_node, .. } => mid_node.config.clone(),
@@ -459,10 +222,68 @@ where
         }
     }
 
-    fn get_child(&mut self, index: usize) -> Option<&mut Node<U>> {
+    pub(crate) fn take(
+        &mut self, node_index: NodeIndex,
+    ) -> Option<(Node<U>, &mut MidNode<U>, usize)>
+    where
+        U: Ui,
+    {
+        let Node::MidNode { mid_node, .. } = &mut self else {
+            return None;
+        };
+
+        if let Some(pos) = mid_node.children.iter().position(|child| child.index() == node_index) {
+            Some((mid_node.children.remove(pos), mid_node, pos))
+        } else {
+            for child in &mut mid_node.children {
+                if let Some((node, mid_node, pos)) = child.take(node_index) {
+                    return Some((node, mid_node, pos));
+                }
+            }
+
+            None
+        }
+    }
+
+    fn find_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<U>> {
+        if self.index() == node_index {
+            return Some(self);
+        } else if let Node::MidNode { mid_node, .. } = self {
+            for child in mid_node.children {
+                if let Some(node) = child.find_mut(node_index) {
+                    return Some(node);
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns `Some((self, split_of_node))` if it is the parent of the given `NodeIndex`.
+    fn find_mut_parent(&mut self, node_index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
+        let Node::MidNode { mid_node, .. } = self else {
+            return None;
+        };
+
+        if let Some(pos) = mid_node.children.iter().position(|child| child.index() == node_index) {
+            Some((mid_node, pos))
+        } else {
+            for child in &mut mid_node.children {
+                if let Some((mid_node, pos)) = child.find_mut_parent(node_index) {
+                    return Some((mid_node, pos));
+                }
+            }
+
+            None
+        }
+    }
+
+    fn area_mut(&mut self) -> &mut U::Area
+    where
+        U: Ui,
+    {
         match self {
-            Node::MidNode { mid_node, .. } => mid_node.children.get_mut(index),
-            Node::EndNode { end_node, .. } => None,
+            Node::MidNode { mid_node, .. } => mid_node.container.area_mut(),
+            Node::EndNode { end_node, .. } => end_node.label.area_mut(),
         }
     }
 }
@@ -471,23 +292,13 @@ where
 #[derive(Clone, Copy)]
 pub enum Split {
     Locked(usize),
-    Static(usize),
-    Ratio(f32),
+    Minimum(usize),
 }
 
 impl Split {
-    fn get_second_len(&self, total: usize) -> usize {
+    pub fn len(&self) -> usize {
         match self {
-            Split::Locked(len) | Split::Static(len) => *len,
-            Split::Ratio(ratio) => (total as f32 * ratio).floor() as usize,
-        }
-    }
-
-    fn adapt_to_len(&mut self, new_len: usize, total_len: usize) {
-        match self {
-            Self::Static(len) => *len = new_len,
-            Self::Ratio(ratio) => *ratio = new_len as f32 / total_len as f32,
-            Self::Locked(_) => (),
+            Split::Locked(len) | Split::Minimum(len) => *len,
         }
     }
 }
@@ -500,11 +311,7 @@ pub enum Axis {
 
 impl From<Side> for Axis {
     fn from(value: Side) -> Self {
-        if let Side::Top | Side::Bottom = value {
-            Axis::Vertical
-        } else {
-            Axis::Horizontal
-        }
+        if let Side::Top | Side::Bottom = value { Axis::Vertical } else { Axis::Horizontal }
     }
 }
 
@@ -557,35 +364,9 @@ pub trait Ui {
     ///   maintain a ratio between the two areas.
     /// * glued: If `true`, the two areas will become inseparable, by moving one, you will move the
     ///   other one with it.
-    fn split_label(
-        &mut self, label: &mut Self::Label, side: Side, split: Split,
-    ) -> (Self::Container, Self::Label);
-
-    /// Splits a container in two, and places each of the areas on a new parent area.
-    ///
-    /// # Returns
-    ///
-    /// * The new parent area first, and the new child area second.
-    ///
-    /// # Arguments
-    ///
-    /// * container: The area that will be split.
-    /// * direction: In what direction, relative to the old area, will the new area be inserted.
-    /// * split: How to decide where to place the barrier between the two areas. If
-    ///   `Split::Static`, the new area will have a fixed size, and resizing the parent area will
-    ///   only change the size of the old area. If `Split::Ratio`, resizing the parent will
-    ///   maintain a ratio between the two areas.
-    /// * glued: If `true`, the two areas will become inseparable, by moving one, you will move the
-    ///   other one with it.
-    fn split_container(
-        &mut self, container: &mut Self::Container, side: Side, split: Split,
-    ) -> (Self::Container, Self::Label);
-
-    fn trim_label(&mut self, label: &mut Self::Label, side: Side, split: Split) -> Self::Label;
-
-    fn trim_container(
-        &mut self, container: &mut Self::Container, side: Side, split: Split,
-    ) -> Self::Label;
+    fn push_label(
+        &mut self, area: &mut Self::Area, side: Side, split: Split,
+    ) -> (Self::Label, Option<Self::Container>);
 
     /// Returns `Some(_)` only if the node tree contains a single `Label`, and no `Container`s.
     fn only_label(&mut self) -> Option<Self::Label>;
@@ -609,7 +390,8 @@ where
     U: Ui,
 {
     ui_manager: U,
-    nodes: Vec<Node<U>>,
+    windows: Vec<Node<U>>,
+    floating: Vec<Node<U>>,
     last_index: usize,
 }
 
@@ -621,7 +403,7 @@ where
     pub fn new(
         ui_manager: U, widget: Widget<U>, config: RwData<Config>, palette: RwData<FormPalette>,
     ) -> Self {
-        let label = RwData::new(ui_manager.only_label().unwrap());
+        let label = ui_manager.only_label().unwrap();
 
         let first_node = Node::EndNode {
             end_node: EndNode {
@@ -635,76 +417,66 @@ where
             widget,
             index: NodeIndex(0),
         };
-        NodeManager { ui_manager, nodes: vec![first_node], last_index: 0 }
-    }
-
-    fn try_trim(
-        &mut self, index: NodeIndex, side: Side, split: Split, glued: bool, widget: Widget<U>,
-    ) -> Result<NodeIndex, ()> {
-        let parent = self.mut_parent_of(index);
-        let Some(parent) = parent.filter(|parent| side.is_aligned(parent.axis)) else {
-            return Err(());
-        };
-
-        let node = parent.children.iter_mut().find(|child| child.index() == index).unwrap();
-        let label = node.trim_area(self.ui_manager, side, split);
-        let index = NodeIndex(self.last_index);
-        let node = Node::EndNode { end_node: EndNode::new_from(label, &node), widget, index };
-
-        if let Side::Bottom | Side::Right = side {
-            parent.children.push(node);
-        } else {
-            parent.children.insert(0, node);
-        }
-
-        Ok(NodeIndex(self.last_index))
+        NodeManager { ui_manager, windows: vec![first_node], floating: Vec::new(), last_index: 0 }
     }
 
     pub fn push_widget(
         &mut self, index: NodeIndex, side: Side, split: Split, glued: bool, widget: Widget<U>,
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index += 1;
-        if let Ok(end_node) = self.try_trim(index, side, split, glued, widget) {
-            (end_node, None)
-        } else if let Ok((end_node, mid_node)) = self.try_split(index, side, split, glued, widget) {
-            (end_node, Some(mid_node))
+
+        let (end_node, mid_node) = self.split_node(index, side, split, widget);
+
+        if let Some(mid_node) = mid_node {
+            self.last_index += 1;
+
+            self.rebranch_tree(index, mid_node, end_node, side);
+
+            (NodeIndex(self.last_index - 1), Some(NodeIndex(self.last_index)))
         } else {
-            panic!("This ish weally bad gouys!");
+            if let Some((parent, pos)) = self.mut_parent_of(index) {
+                if let Side::Top | Side::Left = side {
+                    parent.children.insert(pos, end_node);
+                } else {
+                    parent.children.insert(pos + 1, end_node);
+                }
+            }
+
+            (NodeIndex(self.last_index), None)
         }
     }
 
-    // TODO: Move this to an owning struct.
-    /// Splits a given `EndNode` into two, with a new parent `MidNode`, and a new child `EndNode`.
-    pub fn try_split(
-        &mut self, node_index: NodeIndex, side: Side, split: Split, glued: bool, widget: Widget<U>,
-    ) -> Result<(NodeIndex, NodeIndex), ()> {
-        let node = self.find_node(node_index);
-        let (container, label) = node.try_split(self.ui_manager, side, split);
+	/// Splits a given `Node` into two, and if necessary, returns a new parent for the 2 `Node`s.
+    fn split_node(
+        &mut self, index: NodeIndex, side: Side, split: Split, widget: Widget<U>,
+    ) -> (Node<U>, Option<MidNode<U>>) {
+        let node = self.find_mut(index);
+        let area = node.area_mut();
+        let (label, container) = self.ui_manager.push_label(area, side, split);
 
-        let mut end_node = Node::EndNode {
-            end_node: EndNode::new_from(label, &node),
-            widget,
-            index: NodeIndex(self.last_index),
-        };
+        let mid_node = container.map(|container| MidNode::new_from(container, &node));
 
-        self.last_index += 1;
-        // This is the new parent node of the original node and this new one.
-        let mut mid_node = Node::MidNode {
-            mid_node: MidNode::new_from(container, &node, side),
-            index: NodeIndex(self.last_index),
-        };
+        let end_node = EndNode::new_from(label, &node);
+        let end_node = Node::EndNode { end_node, index: NodeIndex(self.last_index), widget };
 
-        drop(node);
-        if let Some(parent) = self.mut_parent_of(node_index) {
-            let (orig_node, mid_node) = parent.replace_child_with_mid(node_index, mid_node);
-            mid_node.children = if let Side::Top | Side::Left = side {
-                vec![end_node, orig_node]
-            } else {
-                vec![orig_node, end_node]
-            };
+        (end_node, mid_node)
+    }
+
+	/// Rebranches a tree, assuming that the parent of a given `Node` has been changed.
+    fn rebranch_tree(
+        &mut self, index: NodeIndex, mut mid_node: MidNode<U>, end_node: Node<U>, side: Side,
+    ) {
+        let (target_node, descendency) = self.take(index);
+        mid_node.children.push(target_node);
+        let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
+        mid_node.children.insert(insert_index, end_node);
+
+        let mid_node = Node::MidNode { mid_node, index: NodeIndex(self.last_index) };
+        if let Some((parent, target_index)) = descendency {
+            parent.children.insert(target_index, mid_node);
+        } else {
+            self.windows.push(mid_node);
         }
-
-        Ok((NodeIndex(self.last_index - 1), NodeIndex(self.last_index)))
     }
 
     /// Triggers the functions to use when the program starts.
@@ -717,46 +489,33 @@ where
         self.ui_manager.shutdown();
     }
 
-    fn find_node(&mut self, node_index: NodeIndex) -> &mut Node<U> {
-        for node in &mut self.nodes {
-            if let Some(node) = node.find_mut(node_index) {
+    fn take(&mut self, index: NodeIndex) -> (Node<U>, Option<(&mut MidNode<U>, usize)>) {
+        if let Some(pos) = self.windows.iter().position(|window| window.index() == index) {
+            return (self.windows.remove(pos), None);
+        }
+        for node in &mut self.windows {
+            if let Some((node, mid_node, pos)) = node.take(index) {
+                return (node, Some((mid_node, pos)));
+            }
+        }
+        panic!("This NodeIndex was not found, that shouldn't be possible.");
+    }
+
+    fn find_mut(&mut self, index: NodeIndex) -> &mut Node<U> {
+        for node in &mut self.windows {
+            if let Some(node) = node.find_mut(index) {
                 return node;
             }
         }
         panic!("This NodeIndex was not found, that shouldn't be possible.");
     }
 
-    fn mut_parent_of(&mut self, node_index: NodeIndex) -> Option<&mut MidNode<U>> {
-        for node in &mut self.nodes {
-            if let Some(node) = node.find_mut_parent(node_index) {
+    fn mut_parent_of(&mut self, index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
+        for node in &mut self.windows {
+            if let Some(node) = node.find_mut_parent(index) {
                 return Some(node);
             }
         }
         None
     }
-}
-
-fn resize<U>(
-    target_area: &mut U::Area, parent: &Option<RwData<MidNode<U>>>, sibling: &mut Option<Node<U>>,
-    len: usize, direction: Side,
-) -> Result<(), ()>
-where
-    U: Ui,
-{
-    let parent = parent.as_ref().expect("You can't resize a parentless node!");
-    let parent = parent.read();
-    if let Split::Locked(_) = parent.split {
-        return Err(());
-    }
-    let container = parent.container.read();
-    let parent_area = container.area();
-
-    let sibling = sibling.as_mut().unwrap();
-    let sibling_area = &mut sibling.area();
-    parent_area.resize_children(target_area, sibling_area, len, direction)?;
-    sibling.set_area(*sibling_area);
-
-    sibling.resize_children_if_mid_node()?;
-
-    Ok(())
 }
