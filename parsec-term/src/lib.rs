@@ -9,7 +9,7 @@ use crossterm::{
     cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle},
     execute, queue,
     style::{ContentStyle, Print, ResetColor, SetStyle},
-    terminal, QueueableCommand,
+    terminal,
 };
 use parsec_core::{
     config::{RoData, RwData},
@@ -18,7 +18,7 @@ use parsec_core::{
         form::{Form, DEFAULT_ID},
     },
     text::{PrintInfo, Text, TextLine, TextLineBuilder},
-    ui::{self, Area, Side, EndNode, NodeManager, Split, Ui},
+    ui::{self, Area as UiArea, Axis, EndNode, Window, Side, Split},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
@@ -27,13 +27,14 @@ static mut PRINTER: Mutex<()> = Mutex::new(());
 static mut LOCK: Option<MutexGuard<()>> = None;
 static mut SHOW_CURSOR: bool = false;
 
-pub struct UiManager {
+pub struct Ui {
     initial: bool,
+    areas: Vec<Area>,
 }
 
-impl UiManager {
-    pub fn new() -> Self {
-        UiManager { initial: true }
+impl Default for Ui {
+    fn default() -> Self {
+        Ui { initial: true, areas: Vec::new() }
     }
 }
 
@@ -49,19 +50,32 @@ impl Display for Coord {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TermArea {
+#[derive(Clone)]
+enum Owner {
+    Parent { parent: Box<Area>, self_index: usize },
+    TlAnchor,
+    TrAnchor,
+    BlAnchor,
+    BrAnchor,
+    None,
+}
+
+#[derive(Clone)]
+struct InnerArea {
     tl: Coord,
     br: Coord,
+    split: Split,
 }
 
-impl Display for TermArea {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("({})({})", self.tl, self.br))
+impl InnerArea {
+    fn new(tl: Coord, br: Coord, split: Split) -> Self {
+        Self { tl, br, split }
     }
-}
 
-impl Area for TermArea {
+    fn len(&self, axis: Axis) -> usize {
+        if let Axis::Horizontal = axis { self.width() } else { self.height() }
+    }
+
     fn width(&self) -> usize {
         (self.br.x - self.tl.x) as usize
     }
@@ -70,55 +84,273 @@ impl Area for TermArea {
         (self.br.y - self.tl.y - 1) as usize
     }
 
-    fn resize_children(
-        &self, first: &mut Self, second: &mut Self, len: usize, first_dir: Side,
-    ) -> Result<(), ()> {
-        let max_len = match first_dir {
-            Side::Left | Side::Right => self.width(),
-            Side::Top | Side::Bottom => self.height(),
+    fn add_or_take(&mut self, do_add: bool, remaining: usize, side: Side) -> (Coord, usize) {
+        if do_add {
+            self.add_to_side(remaining, side)
+        } else {
+            self.take_from_side(remaining, side)
+        }
+    }
+
+    fn take_from_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
+        let Split::Minimum(min_len) = self.split else {
+            (self.coord_from_side(side), len)
+        };
+        let len_diff = min(self.len(Axis::from(side)) - min_len, len);
+
+        match side {
+            Side::Top => self.tl.y -= len_diff,
+            Side::Right => self.br.x -= len_diff,
+            Side::Bottom => self.br.y -= len_diff,
+            Side::Left => self.tl.x -= len_diff,
+        }
+
+        (self.coord_from_side(side), len - len_diff)
+    }
+
+    fn add_to_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
+        let Split::Minimum(min_len) = self.split else {
+            (self.coord_from_side(side), len)
         };
 
-        if len > max_len {
-            return Err(());
-        };
+        match side {
+            Side::Top => self.tl.y += len,
+            Side::Right => self.br.x += len,
+            Side::Bottom => self.br.y += len,
+            Side::Left => self.tl.x += len,
+        }
 
-        let mut new_second = *self;
-        *first = split_by(len as u16, &mut new_second, first_dir);
-        *second = new_second;
+        (self.coord_from_side(side), 0)
+    }
 
-        Ok(())
+    fn coord_from_side(&self, side: Side) -> Coord {
+        if let Side::Top | Side::Right = side {
+            Coord { x: self.br.x, y: self.tl.y }
+        } else {
+            Coord { x: self.tl.x, y: self.br.y }
+        }
+    }
+
+    fn set_tl(&mut self, tl: Coord) {
+        let (width, height) = (self.width(), self.height());
+        self.tl = tl;
+        self.br.x = tl.x + width;
+        self.br.y = tl.y + height;
+    }
+
+    fn set_br(&mut self, br: Coord) {
+        let (width, height) = (self.width(), self.height());
+        self.br = br;
+        self.tl.x = br.x - width;
+        self.tl.y = br.y - height;
+    }
+
+    fn set_coords(&mut self, inner: InnerArea) {
+        self.tl = inner.tl;
+        self.br = inner.br;
     }
 }
 
-impl TermArea {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Area {
+    Container { inner: RwData<InnerArea>, owner: Owner, children: Vec<Area>, axis: Axis },
+    Label { inner: RwData<InnerArea>, owner: Owner },
+}
+
+impl Area {
+    pub fn new(inner: RwData<InnerArea>, owner: Owner) -> Self {
+        Self { inner, owner }
+    }
+
+    fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
+        let Area::Container { inner, owner, children, axis } = self else {
+            panic!("Supposed to be unreachable");
+        };
+
+        let target = children.get(index).unwrap();
+        let (old_len, target_inner) = (target.width(), target.inner().write());
+        let mut remaining = old_len.abs_diff(new_len);
+        let mut last_corner = parent.tl;
+        (last_corner, remaining) = target_inner.add_or_take(old_len < new_len, remaining, side);
+
+        if let Side::Right | Side::Bottom = side {
+            let mut children = children.iter_mut().skip(index + 1);
+
+            while let (Some(child), true) = (children.next(), remaining > 0) {
+                let inner = child.inner_mut().write();
+                inner.set_tl(last_corner);
+                inner.add_or_take(old_len > new_len, remaining, side);
+            }
+        } else {
+            let mut children = children.iter_mut().take(index);
+
+            while let (Some(child), true) = (children.next(), remaining > 0) {
+                let inner = child.inner_mut().write();
+                inner.set_br(last_corner);
+                inner.add_or_take(old_len > new_len, remaining, side);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn regulate_children(&mut self, axis: Axis) {
+        let Area::Container { inner, owner, children, axis } = self else {
+            panic!("Supposed to be unreachable");
+        };
+        
+        let mut last_tl = self.tl;
+        let (old_len, new_len) = if let Axis::Horizontal = axis {
+            (self.resizable_width(), self.width())
+        } else {
+            (self.resizable_width(), self.height())
+        };
+
+        for child in children.iter_mut().take(self.children.len() - 1) {
+            let inner = child.inner_mut().write();
+            inner.tl = last_tl;
+
+            (inner.br, last_tl) = if let Axis::Horizontal = axis {
+                let ratio = (inner.width() as f32) / (old_len as f32);
+                (
+                    Coord { x: inner.tl.x + (ratio * (new_len as f32)).floor(), y: self.br.y },
+                    Coord { x: inner.tl.x + (ratio * (new_len as f32)).floor(), y: self.tl.y },
+                )
+            } else {
+                let ratio = (inner.height() as f32) / (old_len as f32);
+                (
+                    Coord { x: self.br.x, y: inner.tl.y + (ratio * (new_len as f32)).floor() },
+                    Coord { x: inner.tl.x, y: self.br.y },
+                )
+            };
+        }
+
+        children.last_mut().map(|last| last.inner_mut().write().br = self.br);
+    }
+
+    fn resizable_on(&self, axis: Axis) -> bool {
+        if let Axis::Horizontal = axis {
+            self.inner().read().resizable_width() != 0
+        } else {
+            self.inner().read().resizable_height() != 0
+        }
+    }
+
+    fn resizable_width(&self) -> usize {
+        let Split::Minimum(_) = self.inner().split else {
+            return 0;
+        };
+
+        let Area::Container { inner, owner, children, axis } = self else {
+            panic!("Supposed to be unreachable");
+        };
+
+        if children.is_empty() {
+            self.width()
+        } else {
+            children.iter().map(|child| child.read().modifiable_width()).sum()
+        }
+    }
+
+    fn resizable_height(&self) -> usize {
+        let Split::Minimum(_) = self.split else {
+            return 0;
+        };
+
+        if self.children.is_empty() {
+            self.height
+        } else {
+            self.children.iter().map(|child| child.read().modifiable_height()).sum()
+        }
+    }
+
+    fn inner(&self) -> &RwData<InnerArea> {
+        match self {
+            Area::Container { inner, .. } => inner,
+            Area::Label { inner, .. } => inner,
+        }
+    }
+
+    fn inner_mut(&mut self) -> &mut RwData<InnerArea> {
+        match self {
+            Area::Container { inner, .. } => inner,
+            Area::Label { inner, .. } => inner,
+        }
+    }
+}
+
+impl Display for Area {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("({})({})", self.tl, self.br))
+    }
+}
+
+impl ui::Area for Area {
+    fn width(&self) -> usize {
+        self.inner.read().width()
+    }
+
+    fn height(&self) -> usize {
+        self.inner.read().height()
+    }
+
+    fn request_len(&mut self, width: usize, side: Side) -> Result<(), ()> {
+        match self.owner {
+            Owner::Parent { parent, self_index, axis } => {
+                if Axis::from(side) != axis {
+                    parent.request_len(width, side)
+                } else if parent.resizable_width() < width {
+                    let new_parent_width = parent.width() + width - self.width();
+                    parent.request_len(new_parent_width, side)
+                } else {
+                    parent.set_child_len(width, self_index, side)
+                }
+            }
+            Owner::TlAnchor => todo!(),
+            Owner::TrAnchor => todo!(),
+            Owner::BlAnchor => todo!(),
+            Owner::BrAnchor => todo!(),
+            Owner::None => Err(()),
+        }
+    }
+
+    fn request_height(&mut self, height: usize) -> Result<(), ()> {
+        todo!()
+    }
+
+    fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()> {
+        todo!()
+    }
+}
+
+impl Area {
     fn total() -> Self {
         let size = terminal::size().unwrap();
 
-        TermArea { tl: Coord { x: 0, y: 0 }, br: Coord { x: size.0 as u16, y: size.1 as u16 } }
+        Area { inner: RwData::new(Coord { x: 0, y: 0 }), owner: Owner::None }
     }
 }
 
 #[derive(Clone)]
 pub struct Container {
-    area: TermArea,
+    area: Area,
     direction: Side,
 }
 
-impl ui::Container<TermArea> for Container {
-    fn area(&self) -> &TermArea {
+impl ui::Container<Area> for Container {
+    fn area(&self) -> &Area {
         &self.area
     }
 
-    fn area_mut(&mut self) -> &mut TermArea {
+    fn area_mut(&mut self) -> &mut Area {
         &mut self.area
     }
 }
 
 pub struct Label {
     stdout: Stdout,
-    area: TermArea,
+    area: Area,
     cursor: Coord,
-    direction: Side,
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
     is_active: bool,
@@ -127,12 +359,11 @@ pub struct Label {
 }
 
 impl Label {
-    fn new(area: TermArea, direction: Side) -> Self {
+    fn new(area: Area, direction: Side) -> Self {
         Label {
             stdout: stdout(),
             area,
             cursor: area.tl,
-            direction,
             style_before_cursor: None,
             last_style: ContentStyle::default(),
             is_active: false,
@@ -176,12 +407,12 @@ impl Clone for Label {
     }
 }
 
-impl ui::Label<TermArea> for Label {
-    fn area_mut(&mut self) -> &mut TermArea {
+impl ui::Label<Area> for Label {
+    fn area_mut(&mut self) -> &mut Area {
         &mut self.area
     }
 
-    fn area(&self) -> &TermArea {
+    fn area(&self) -> &Area {
         &self.area
     }
 
@@ -282,28 +513,27 @@ impl ui::Label<TermArea> for Label {
     }
 }
 
-impl ui::Ui for UiManager {
-    type Area = TermArea;
+impl ui::Ui for Ui {
+    type Area = Area;
     type Container = Container;
     type Label = Label;
 
-    fn split_label(
+    fn push_label(
         &mut self, label: &mut Self::Label, side: Side, split: Split,
     ) -> (Self::Container, Self::Label) {
-        let len = get_split_len(split, label.area, side);
-        let parent_container = Container { area: label.area, direction: label.direction };
+        label.area.request_len(split.len(), side);
+        let (split_inner, resized_inner) = split_by(&mut label.area, split, side);
+        let (split_area, resized_area) =
+            form_family(&mut label.area, split_inner, resized_inner, side);
 
-        let area = split_by(len, &mut label.area, side);
-
-        let new_label = Label::new(area, side);
+        let new_label = Label::new(split_inner, side);
 
         (parent_container, new_label)
     }
 
-    fn split_container(
+    fn push_container(
         &mut self, container: &mut Self::Container, side: Side, split: Split,
     ) -> (Self::Container, Self::Label) {
-        let len = get_split_len(split, container.area, side);
         let parent_container = container.clone();
 
         let area = split_by(len, &mut container.area, side);
@@ -313,24 +543,10 @@ impl ui::Ui for UiManager {
         (parent_container, new_label)
     }
 
-    fn trim_label(&mut self, label: &mut Self::Label, side: Side, split: Split)
-        -> Self::Label {
-        let len = get_split_len(split, label.area, side);
-        let area = split_by(len, &mut label.area, side);
-        Label::new(area, side)
-    }
-
-    fn trim_container(&mut self, container: &mut Self::Container, side: Side, split: Split)
-        -> Self::Label {
-        let len = get_split_len(split, container.area, side);
-        let area = split_by(len, &mut container.area, side);
-        Label::new(area, side)
-    }
-
-    fn only_label(&mut self) -> Option<Self::Label> {
+    fn maximum_label(&mut self) -> Option<Self::Label> {
         if self.initial {
             self.initial = false;
-            Some(Label::new(TermArea::total(), Side::Left))
+            Some(Label::new(Area::total(), Side::Left))
         } else {
             None
         }
@@ -345,39 +561,21 @@ impl ui::Ui for UiManager {
 
             terminal::disable_raw_mode().unwrap();
 
-            execute!(
-                stdout,
-                terminal::EnableLineWrap,
-                terminal::Clear(terminal::ClearType::All),
-                MoveTo(0, 0)
-            )
-            .unwrap();
+            execute!(stdout, terminal::Clear, terminal::LeaveAlternateScreen).unwrap();
 
             use std::backtrace::Backtrace;
             println!("{}\n\n{}", msg, Backtrace::force_capture());
         }));
 
         let mut stdout = stdout();
-
         terminal::enable_raw_mode().unwrap();
-
-        execute!(stdout, terminal::DisableLineWrap, terminal::Clear(terminal::ClearType::All))
-            .unwrap();
+        execute!(stdout, terminal::EnterAlternateScreen).unwrap();
     }
 
     fn shutdown(&mut self) {
         let mut stdout = stdout();
 
-        execute!(
-            stdout,
-            ResetColor,
-            terminal::Clear(terminal::ClearType::All),
-            terminal::EnableLineWrap,
-            MoveTo(0, 0),
-            SetCursorStyle::DefaultUserShape,
-            cursor::Show
-        )
-        .unwrap();
+        execute!(stdout, terminal::Clear, terminal::LeaveAlternateScreen,).unwrap();
 
         terminal::disable_raw_mode().unwrap();
     }
@@ -385,7 +583,7 @@ impl ui::Ui for UiManager {
     fn finish_all_printing(&mut self) {}
 }
 
-fn get_split_len(split: Split, area: TermArea, direction: Side) -> u16 {
+fn get_split_len(split: Split, area: Area, direction: Side) -> u16 {
     let current_len = match direction {
         Side::Left | Side::Right => area.width(),
         Side::Top | Side::Bottom => area.height(),
@@ -397,28 +595,68 @@ fn get_split_len(split: Split, area: TermArea, direction: Side) -> u16 {
     }
 }
 
-fn split_by(len: u16, area: &mut TermArea, direction: Side) -> TermArea {
-    match direction {
+fn split_by(area: &mut Area, split: Split, side: Side) -> (InnerArea, InnerArea) {
+    let old_inner = area.inner.read();
+    let mut resized_inner = old_inner.clone();
+    let split_inner = match side {
         Side::Left => {
-            let old_tl = area.tl;
-            area.tl.x += len;
-            TermArea { tl: old_tl, br: Coord { x: area.tl.x, y: area.br.y } }
+            resized_inner.tl.x += split.len();
+            InnerArea::new(old_inner.tl, Coord { x: resized_inner.tl.x, y: old_inner.br.y }, split)
         }
         Side::Right => {
-            let old_br = area.br;
-            area.br.x -= len;
-            TermArea { tl: Coord { x: area.br.x, y: area.tl.y }, br: old_br }
+            resized_inner.br.x -= split.len();
+            InnerArea::new(Coord { x: resized_inner.br.x, y: old_inner.tl.y }, old_inner.br, split)
         }
         Side::Top => {
-            let old_tl = area.tl;
-            area.tl.y += len;
-            TermArea { tl: old_tl, br: Coord { x: area.br.x, y: area.tl.y } }
+            resized_inner.tl.y += split.len();
+            InnerArea::new(old_inner.tl, Coord { x: old_inner.br.x, y: resized_inner.tl.y }, split)
         }
         Side::Bottom => {
-            let old_br = area.br;
-            area.br.y -= len;
-            TermArea { tl: Coord { x: area.tl.x, y: area.br.y }, br: old_br }
+            resized_inner.br.y -= split.len();
+            InnerArea::new(Coord { x: old_inner.tl.x, y: resized_inner.br.y }, old_inner.br, split)
         }
+    };
+
+    (split_inner, resized_inner)
+}
+
+fn form_family(
+    area: &mut Area, split_inner: InnerArea, mut resized_inner: InnerArea, side: Side,
+) -> (Area, Option<Area>) {
+    let old_inner = area.inner.write();
+    let split_area = Area::new(RwData::new(split_inner), Owner::None);
+
+    #[rustfmt::skip]
+    if let Owner::Parent { parent, self_index } = &mut area.owner && let parent_inner = parent.inner.write() && parent_inner.children.unwrap {
+        let parent_inner = parent.inner.write();
+
+        let split_index =
+            if let Side::Top | Side::Left = side { self_index } else { self_index + 1 };
+
+        for child in parent_inner.children.unwrap().0.iter_mut().skip(split_index) {
+            if let Owner::Parent { self_index, .. } = &mut child.onwer {
+                *self_index += 1;
+            }
+        }
+        parent_inner.children.unwrap().0.insert(split_index, split_area.clone());
+
+        old_inner.set_coords(resized_inner);
+        split_area.owner = Owner::Parent { parent: parent.clone(), self_index: split_index };
+        (split_area, None)
+    } else {
+        resized_inner.children = std::mem::take(&mut old_inner.children);
+        let split_index = if let Side::Top | Side::Left = side { 1 } else { 0 };
+        let resized_area = Area::new(RwData::new(resized_inner), Owner::Parent {
+            parent: area.clone(),
+            self_index: (split_index + 1) % 2,
+        });
+
+		let mut children = vec![resized_area];
+		children.insert(split_index, split_area.clone());
+        old_inner.children = Some((children, Axis::from(side)));
+
+        split_area.owner = Owner::Parent { parent: area.clone(), self_index: split_index };
+        (split_area, Some(resized_area))
     }
 }
 
@@ -473,7 +711,7 @@ impl Default for SeparatorForm {
 impl SeparatorForm {
     pub fn uniform<U>(node: &RwData<EndNode<U>>, name: impl ToString) -> Self
     where
-        U: Ui,
+        U: ui::Ui,
     {
         let node = node.read();
         let palette = node.palette().read();
@@ -484,7 +722,7 @@ impl SeparatorForm {
 
     pub fn different_on_main<U, S>(node: &RwData<EndNode<U>>, main_name: S, other_name: S) -> Self
     where
-        U: Ui,
+        U: ui::Ui,
         S: ToString,
     {
         let node = node.read();
@@ -502,7 +740,7 @@ impl SeparatorForm {
         node: &RwData<EndNode<U>>, main_name: S, lower_name: S, higher_name: S,
     ) -> Self
     where
-        U: Ui,
+        U: ui::Ui,
         S: ToString,
     {
         let node = node.read();
@@ -550,7 +788,7 @@ pub struct VertRuleConfig {
 
 pub struct VertRule<U>
 where
-    U: Ui,
+    U: ui::Ui,
 {
     end_node: RwData<EndNode<U>>,
     file: RoData<FileWidget<U>>,
@@ -560,11 +798,11 @@ where
 
 impl<U> VertRule<U>
 where
-    U: Ui + 'static,
+    U: ui::Ui + 'static,
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
     pub fn new(
-        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        end_node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
         vert_rule_config: VertRuleConfig,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
@@ -579,7 +817,7 @@ where
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(
-        node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        node: RwData<EndNode<U>>, _: &mut Window>, file_widget: RwData<FileWidget<U>>,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
@@ -592,11 +830,11 @@ where
     }
 }
 
-unsafe impl<U> Send for VertRule<U> where U: Ui {}
+unsafe impl<U> Send for VertRule<U> where U: ui::Ui {}
 
 impl<U> NormalWidget<U> for VertRule<U>
 where
-    U: Ui + 'static,
+    U: ui::Ui + 'static,
 {
     fn identifier(&self) -> String {
         String::from("vertical_rule")

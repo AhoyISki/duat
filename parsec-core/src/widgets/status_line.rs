@@ -1,10 +1,9 @@
+use super::{file_widget::FileWidget, NormalWidget};
 use crate::{
     config::{RoData, RwData},
-    text::{Text, TextLineBuilder, PrintInfo},
-    ui::{Area, EndNode, Label, NodeManager, Ui},
+    text::{PrintInfo, Text, TextLineBuilder},
+    ui::{EndNode, Window, Ui},
 };
-
-use super::{file_widget::FileWidget, NormalWidget};
 
 pub trait DataToString {
     /// Converts the data to a `String`, usually through an embedded function.
@@ -95,7 +94,7 @@ impl<U> StatusLine<U>
 where
     U: Ui,
 {
-    pub fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut NodeManager<U>) -> Self {
+    pub fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut Window<U>) -> Self {
         StatusLine {
             end_node,
             text: Text::default(),

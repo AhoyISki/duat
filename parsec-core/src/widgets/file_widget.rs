@@ -2,8 +2,10 @@ use std::{
     cmp::min,
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
+use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     action::{History, TextRange},
     config::RwData,
@@ -11,20 +13,17 @@ use crate::{
     max_line,
     tags::MatchManager,
     text::{reader::MutTextReader, update_range, PrintInfo, Text},
-    ui::{Area, EndNode, Label, MidNode, Ui},
+    ui::{EndNode, MidNode, NodeIndex, Ui},
 };
-
-use super::{ActionableWidget, NormalWidget, Widget};
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
 where
     U: Ui,
 {
-    end_node: RwData<EndNode<U>>,
-    pub(crate) mid_node: Option<RwData<MidNode<U>>>,
-    pub(crate) side_widgets: Vec<(Widget<U>, usize)>,
-    name: RwData<String>,
+    pub(crate) mid_node: Option<NodeIndex>,
+    pub(crate) side_widgets: Vec<NodeIndex>,
+    name: String,
     text: Text<U>,
     print_info: PrintInfo,
     main_cursor: usize,
@@ -38,48 +37,30 @@ where
     U: Ui,
 {
     /// Returns a new instance of `FileWidget`.
-    pub fn new(
-        path: &PathBuf, node: RwData<EndNode<U>>, match_manager: &Option<MatchManager>,
-    ) -> Self {
+    pub fn new(path: Option<PathBuf>) -> Widget<U> {
         // TODO: Allow the creation of a new file.
-        let file_contents = fs::read_to_string(path).expect("Failed to read the file.");
-        let text = Text::new(file_contents, match_manager.clone());
-        let cursor = TextCursor::new(TextPos::default(), text.lines(), &node.read());
+        let file_contents = path
+            .map(|path| fs::read_to_string(path).expect("Failed to read the file."))
+            .unwrap_or(String::from(""));
 
-        let file_widget = FileWidget {
-            end_node: node,
+        let name = path
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+            .unwrap_or(String::from("scratch_file"));
+
+        let text = Text::new(file_contents, match_manager.clone());
+        let cursor = TextCursor::default();
+
+        Widget::Actionable(Arc::new(Mutex::new(FileWidget {
             mid_node: None,
             side_widgets: Vec::new(),
-            name: RwData::new(path.file_name().unwrap().to_string_lossy().to_string()),
+            name,
             text,
             print_info: PrintInfo::default(),
             main_cursor: 0,
             cursors: vec![cursor],
             history: History::new(),
             readers: Vec::new(),
-        };
-
-        file_widget
-    }
-
-    /// Tbh, I don't remember what this is supposed to do, but it seems important.
-    fn _match_scroll(&mut self) {
-        let node = self.end_node.read();
-        let label = node.label.read();
-
-        let main_cursor = self.main_cursor();
-        let limit_row =
-            min(main_cursor.caret().row + label.area().height(), self.text.lines().len() - 1);
-        let start = main_cursor.caret().translate(self.text.lines(), limit_row, 0);
-        let target_line = &self.text.lines()[limit_row];
-        let _range = TextRange {
-            start,
-            end: TextPos {
-                byte: start.byte + target_line.text().len(),
-                col: target_line.char_count(),
-                ..start
-            },
-        };
+        })))
     }
 
     /// Undoes the last moment in history.
@@ -229,19 +210,11 @@ where
     U: Ui,
 {
     fn identifier(&self) -> String {
-        String::from("file")
+        [String::from("parsec-file: "), self.name()].join("")
     }
 
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.end_node
-    }
-
-    fn update(&mut self) {
-        self.print_info.update(self.main_cursor().caret(), &self.text, &self.end_node);
+    fn update(&mut self, end_node: &mut EndNode<U>) {
+        self.print_info.update(self.main_cursor().caret(), &self.text, end_node);
 
         //let mut node = self.end_node.write();
         //self.text.update_lines(&mut node);
@@ -255,10 +228,6 @@ where
 
     fn text(&self) -> &Text<U> {
         &self.text
-    }
-
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
-        (&self.text, &mut self.end_node, self.print_info)
     }
 
     fn scroll_vertically(&mut self, d_y: i32) {

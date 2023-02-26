@@ -8,7 +8,7 @@ use crate::{
     config::RwData,
     get_byte_at_col, max_line, split_string_lines,
     text::{update_range, PrintInfo, Text, TextLine},
-    ui::{EndNode, Ui},
+    ui::{EndNode, Label, Ui},
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -149,24 +149,22 @@ pub struct TextCursor {
 
 impl TextCursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: TextPos, lines: &[TextLine], node: &EndNode<U>) -> TextCursor
+    pub fn new<U>(pos: TextPos, lines: &[TextLine], end_node: &EndNode<U>) -> TextCursor
     where
         U: Ui,
     {
-        let label = node.label.read();
-        let config = node.config().read();
         let line = lines.get(pos.row).unwrap();
         TextCursor {
             caret: pos,
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: line.get_distance_to_col::<U>(pos.col, &label, &config),
+            desired_x: line.get_dist_to_col(pos.col, end_node)
         }
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver<U>(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<U>)
+    pub(crate) fn move_ver<U>(&mut self, count: i32, lines: &Vec<TextLine>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -178,16 +176,15 @@ impl TextCursor {
         let line = &lines[cur.row];
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        let label = node.label.read();
-        let config = node.config().read();
-        (cur.col, _) = line.get_col_at_distance::<U>(self.desired_x, &label, &config);
+        let config = end_node.config();
+        cur.col = end_node.label.get_col_at_dist(line.text(), self.desired_x, &config.tab_places);
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = cur.byte.saturating_add_signed(get_byte_distance(lines, old_target, *cur));
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor<U>(&mut self, count: i32, lines: &Vec<TextLine>, node: &EndNode<U>)
+    pub(crate) fn move_hor<U>(&mut self, count: i32, lines: &Vec<TextLine>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -228,13 +225,11 @@ impl TextCursor {
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         caret.byte = caret.byte.saturating_add_signed(get_byte_distance(lines, old_caret, *caret));
 
-        let label = node.label.read();
-        let config = node.config().read();
-        self.desired_x = line.get_distance_to_col::<U>(caret.col, &label, &config) as usize;
+        self.desired_x = line.get_dist_to_col::<U>(caret.col, &end_node);
     }
 
     /// Internal absolute movement function. Assumes that `pos` is not calibrated.
-    pub(crate) fn move_to<U>(&mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<U>)
+    pub(crate) fn move_to<U>(&mut self, pos: TextPos, lines: &Vec<TextLine>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -248,23 +243,19 @@ impl TextCursor {
 
         let line = lines.get(pos.row).unwrap();
 
-        let label = node.label.read();
-        let config = node.config().read();
-        self.desired_x = line.get_distance_to_col::<U>(pos.col, &label, &config);
+        self.desired_x = line.get_dist_to_col::<U>(pos.col, &end_node);
     }
 
     /// Internal absolute movement function. Assumes that `pos` is a valid position.
     pub(crate) fn move_to_calibrated<U>(
-        &mut self, pos: TextPos, lines: &Vec<TextLine>, node: &EndNode<U>,
+        &mut self, pos: TextPos, lines: &Vec<TextLine>, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
         self.caret = pos;
         let line = lines.get(pos.row).unwrap();
 
-        let label = node.label.read();
-        let config = node.config().read();
-        self.desired_x = line.get_distance_to_col::<U>(pos.col, &label, &config);
+        self.desired_x = line.get_dist_to_col::<U>(pos.col, &end_node);
     }
 
     /// Returns the range between `target` and `anchor`.

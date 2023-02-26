@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     text::TextLine,
-    ui::{Area, Label, Ui},
+    ui::{Area, Label, Ui}, tags::form::FormPalette,
 };
 
 /// If and how to wrap lines at the end of the screen.
@@ -44,6 +44,22 @@ pub enum TabPlaces {
     Varied(Vec<usize>),
 }
 
+impl TabPlaces {
+    /// Returns the amount of spaces that a tabulation would produce in the given column.
+    pub fn spaces_on_col(&self, x: usize) -> usize {
+        match self {
+            TabPlaces::Regular(step) => step - (x % step),
+            TabPlaces::Varied(cols) => cols.iter().find(|&s| *s > x).expect("Not enough tabs") - x,
+        }
+    }
+}
+
+impl Default for TabPlaces {
+    fn default() -> Self {
+        TabPlaces::Regular(4)
+    }
+}
+
 /// Wheter to show the new line or not.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum ShowNewLine {
@@ -72,33 +88,10 @@ impl ShowNewLine {
     }
 }
 
-impl Default for TabPlaces {
-    fn default() -> Self {
-        TabPlaces::Regular(4)
-    }
-}
-
-impl TabPlaces {
-    /// Returns the amount of spaces between a position and the next tab place.
-    pub(crate) fn get_tab_len<L, A>(&self, x: usize, label: &L) -> usize
-    where
-        L: Label<A>,
-        A: Area,
-    {
-        let space_len = label.get_char_len(' ');
-        match self {
-            TabPlaces::Regular(step) => (step - (x % step)) * space_len,
-            TabPlaces::Varied(steps) => {
-                (steps.iter().find(|&s| *s > x).expect("not enough tabs") - x) * space_len
-            }
-        }
-    }
-}
-
 // TODO: Move options to a centralized option place.
 // TODO: Make these private.
 /// Some standard parsec options.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct Config {
     pub line_numbers_separator: Option<&'static str>,
     /// How to wrap the file.
@@ -113,6 +106,8 @@ pub struct Config {
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
     pub show_new_line: ShowNewLine,
+	/// The palette of forms that will be used.
+    pub palette: FormPalette
 }
 
 impl Config {
@@ -120,7 +115,7 @@ impl Config {
     where
         U: Ui,
     {
-        let indent = line.indent::<U>(label, self);
+        let indent = line.indent(self);
         if self.wrap_indent && indent < label.area().width() {
             indent
         } else {

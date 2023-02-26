@@ -6,16 +6,15 @@ use std::{
     ops::RangeInclusive,
 };
 
+use self::reader::MutTextReader;
 use crate::{
-    action::{get_byte, Change, Splice, TextRange},
-    config::{Config, RwData, WrapMethod},
+    action::{Change, Splice, TextRange},
+    config::{Config, TabPlaces, WrapMethod},
     cursor::{TextCursor, TextPos},
     get_byte_at_col,
     tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
     ui::{Area, EndNode, Label, Ui},
 };
-
-use self::reader::MutTextReader;
 
 // TODO: move this to a more general file.
 /// A line in the text file.
@@ -28,22 +27,28 @@ pub struct TextLine {
 }
 
 impl TextLine {
-    /// Returns the line's indentation.
-    pub fn indent<U>(&self, label: &U::Label, config: &Config) -> usize
-    where
-        U: Ui,
-    {
+    /// Returns the line's indentation, in the number of spaces.
+    pub fn indent(&self, config: &Config) -> usize {
         let mut indent_sum = 0;
 
         for ch in self.text.chars() {
-            if ch == ' ' || ch == '\t' {
-                indent_sum += get_char_len(ch, indent_sum, label, config);
-            } else {
-                break;
-            }
+            indent_sum += match ch {
+                ' ' => 1,
+                '\t' => config.tab_places.spaces_on_col(indent_sum),
+                _ => break,
+            };
         }
 
         indent_sum as usize
+    }
+
+    pub fn get_dist_to_col<U>(&self, col: usize, end_node: &EndNode<U>) -> usize
+    where
+        U: Ui,
+    {
+        let (col_byte, _) = self.text().char_indices().take(col).last().unwrap();
+        let prior_text = &self.text()[..col_byte];
+        end_node.label.get_width(prior_text, &end_node.config().tab_places)
     }
 
     /// Returns the byte index of a given column.
@@ -52,72 +57,6 @@ impl TextLine {
             col
         } else {
             self.text.char_indices().nth(col).unwrap_or((self.text.len(), ' ')).0
-        }
-    }
-
-    /// Returns the visual distance to a certain column.
-    pub(crate) fn get_distance_to_col<U>(
-        &self, col: usize, label: &U::Label, config: &Config,
-    ) -> usize
-    where
-        U: Ui,
-    {
-        let mut width = 0;
-
-        if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
-            width = col
-        } else {
-            for ch in self.text.chars().take(col) {
-                width += if ch == '\t' {
-                    config.tab_places.get_tab_len(width, label)
-                } else {
-                    label.get_char_len(ch)
-                };
-            }
-        }
-
-        width
-    }
-
-    /// Returns the column and byte found at visual distance from 0. Also returns any leftovers.
-    ///
-    /// The leftover number is positive if the width of the characters is greater (happens if the
-    /// last checked character has a width greater than 1), and 0 otherwise.
-    pub(crate) fn get_col_at_distance<U>(
-        &self, min_dist: usize, label: &U::Label, config: &Config,
-    ) -> (usize, usize)
-    where
-        U: Ui,
-    {
-        if self.info.line_flags.contains(LineFlags::PURE_1_COL) {
-            if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
-                let byte = min(min_dist, self.text.len() - 1);
-
-                (byte, 0)
-            } else {
-                match self.text.chars().enumerate().nth(min_dist) {
-                    Some((col, _)) => (col, 0),
-                    None => {
-                        let count = self.text.chars().count();
-
-                        (count - 1, 0)
-                    }
-                }
-            }
-        } else {
-            let (mut col, mut distance) = (0, 0);
-            let mut text_iter = self.text.chars().enumerate();
-
-            while let Some((new_col, ch)) = text_iter.next() {
-                col = new_col;
-                if distance >= min_dist {
-                    break;
-                }
-
-                distance += get_char_len(ch, distance, label, config);
-            }
-
-            (col, distance.saturating_sub(min_dist))
         }
     }
 
@@ -542,8 +481,10 @@ where
     //pub fn iter_items_from(&self, pos: TextPos) -> impl Iterator<Item = TextItem> + '_ {
     //    let first_line_byte = pos.byte - self.lines[pos.row].get_line_byte_at(pos.col);
     //    let mut tags =
-    //        self.lines.iter().skip(pos.row).flat_map(|line| line.info.char_tags.iter()).peekable().skip_while(|(byte, _)| byte + first_line_byte < pos.byte);
-    //    self.lines.iter().skip(pos.row).flat_map(|line| line.text.chars()).skip(pos.col)
+    //        self.lines.iter().skip(pos.row).flat_map(|line|
+    // line.info.char_tags.iter()).peekable().skip_while(|(byte, _)| byte + first_line_byte <
+    // pos.byte);    self.lines.iter().skip(pos.row).flat_map(|line|
+    // line.text.chars()).skip(pos.col)
     //}
 }
 
@@ -633,12 +574,11 @@ impl PrintInfo {
     }
 
     /// Scrolls up or down, assuming that the lines cannot wrap.
-    fn calibrate_vertically<U>(
-        &mut self, target: TextPos, height: usize, end_node: &RwData<EndNode<U>>,
-    ) where
+    fn calibrate_vertically<U>(&mut self, target: TextPos, height: usize, end_node: &EndNode<U>)
+    where
         U: Ui,
     {
-        let scrolloff = end_node.read().config().read().scrolloff;
+        let scrolloff = end_node.config().scrolloff;
 
         if target.row > self.top_row + height - scrolloff.d_y {
             self.top_row += target.row + scrolloff.d_y - self.top_row - height;
@@ -649,11 +589,11 @@ impl PrintInfo {
 
     /// Scrolls up, assuming that the lines can wrap.
     fn calibrate_up<U>(
-        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, end_node: &RwData<EndNode<U>>,
+        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
-        let scrolloff = end_node.read().config().read().scrolloff;
+        let scrolloff = end_node.config().scrolloff;
         let lines_iter = text.lines().iter().take(target.row);
 
         // If the target line is above the top line, no matter what, a new top line is needed.
@@ -685,11 +625,11 @@ impl PrintInfo {
     /// Scrolls down, assuming that the lines can wrap.
     fn calibrate_down<U>(
         &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, height: usize,
-        end_node: &RwData<EndNode<U>>,
+        end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
-        let mut scrolloff = end_node.read().config().read().scrolloff;
+        let mut scrolloff = end_node.config().scrolloff;
         scrolloff.d_y = min(scrolloff.d_y, height);
         let lines_iter = text.lines().iter().take(target.row + 1);
         let mut top_offset = 0;
@@ -722,40 +662,35 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn calibrate_horizontally<U>(
-        &mut self, target: TextPos, text: &Text<U>, width: usize, end_node: &RwData<EndNode<U>>,
+        &mut self, target: TextPos, text: &Text<U>, width: usize, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
-        let node = end_node.read();
-        let config = node.config().read();
-        let label = node.label.read();
-        let mut scrolloff = config.scrolloff;
+        let mut scrolloff = end_node.config().scrolloff;
         scrolloff.d_x = min(scrolloff.d_x, width);
 
-        if let WrapMethod::NoWrap = config.wrap_method {
+        if let WrapMethod::NoWrap = end_node.config().wrap_method {
             let target_line = &text.lines[target.row];
-            let distance = target_line.get_distance_to_col::<U>(target.col, &label, &config);
+            let distance = end_node.get_width(&target_line.text[..target.col]);
 
             // If the distance is greater, it means that the cursor is out of bounds.
-            if distance > self.x_shift + width - config.scrolloff.d_x {
+            if distance > self.x_shift + width - end_node.config().scrolloff.d_x {
                 // Shift by the amount required to keep the cursor in bounds.
                 self.x_shift = distance + scrolloff.d_x - width;
             // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
             } else if distance < self.x_shift + scrolloff.d_x {
-                self.x_shift = distance.saturating_sub(config.scrolloff.d_x);
+                self.x_shift = distance.saturating_sub(end_node.config().scrolloff.d_x);
             }
         }
     }
 
     /// Updates the print info.
-    pub fn update<U>(&mut self, target: TextPos, text: &Text<U>, end_node: &RwData<EndNode<U>>)
+    pub fn update<U>(&mut self, target: TextPos, text: &Text<U>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
-        let node = end_node.read();
-        let wrap_method = node.config().read().wrap_method;
-        let (height, width) = (node.label.read().area().height(), node.label.read().area().width());
-        drop(node);
+        let wrap_method = end_node.config().wrap_method;
+        let (height, width) = (end_node.label.area().height(), end_node.label.area().width());
 
         let old = self.last_main;
 
@@ -780,18 +715,6 @@ impl PrintInfo {
     }
 }
 
-pub fn get_char_len<L, A>(ch: char, col: usize, label: &L, config: &Config) -> usize
-where
-    L: Label<A>,
-    A: Area,
-{
-    if ch == '\t' {
-        config.tab_places.get_tab_len(col, label)
-    } else {
-        label.get_char_len(ch)
-    }
-}
-
 pub(crate) fn update_range<U>(
     text: &mut Text<U>, range: TextRange, max_line: usize, node: &EndNode<U>,
 ) where
@@ -804,15 +727,15 @@ pub(crate) fn update_range<U>(
     //    let start = TextPos {
     //        row: range.start.row,
     //        col: 0,
-    //        byte: range.start.byte - get_byte(&text.lines[range.start.row].text(), range.start.col),
-    //    };
+    //        byte: range.start.byte - get_byte(&text.lines[range.start.row].text(),
+    // range.start.col),    };
 
     //    let len = text.lines[range.end.row].text().len();
     //    let end = TextPos {
     //        row: range.end.row,
     //        col: text.lines[range.end.row].char_count(),
-    //        byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) + len,
-    //    };
+    //        byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) +
+    // len,    };
 
     //    let range = TextRange { start, end };
 

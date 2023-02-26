@@ -2,7 +2,7 @@ use crate::{
     config::{RoData, RwData},
     tags::form::{DEFAULT_ID, LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
     text::{Text, TextLineBuilder, PrintInfo},
-    ui::{Area, EndNode, Label, NodeManager, Ui},
+    ui::{Area, EndNode, Label, Window, Ui},
 };
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
@@ -34,7 +34,7 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        end_node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
         line_numbers_config: LineNumbersConfig,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
@@ -60,7 +60,7 @@ where
     }
 
     pub fn default(
-        end_node: RwData<EndNode<U>>, _: &mut NodeManager<U>, file_widget: RwData<FileWidget<U>>,
+        end_node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
         let min_width = end_node.read().label.read().area().width();

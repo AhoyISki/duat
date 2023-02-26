@@ -1,9 +1,13 @@
-use std::{fmt::Display, mem};
+use std::{
+    fmt::Display,
+    mem,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
-    config::{Config, RwData, WrapMethod},
-    tags::form::{CursorStyle, Form, FormPalette},
-    widgets::Widget,
+    config::{Config, TabPlaces, WrapMethod},
+    tags::form::{CursorStyle, Form},
+    widgets::{ActionableWidget, Widget},
 };
 
 pub trait Area: PartialEq + Eq + Clone {
@@ -83,6 +87,12 @@ where
 
     /// Counts how many times the given string would wrap.
     fn wrap_count(&self, text: &str, wrap_method: WrapMethod) -> usize;
+
+    /// Gets the visual distance to a given column.
+    fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize;
+
+    /// Gets the column at the given distance from the left side.
+    fn get_col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize;
 }
 
 /// A node that contains other nodes.
@@ -93,8 +103,7 @@ where
     old_area: U::Area,
     children: Vec<Node<U>>,
     container: U::Container,
-    config: RwData<Config>,
-    palette: RwData<FormPalette>,
+    config: Config,
 }
 
 impl<U> MidNode<U>
@@ -107,27 +116,7 @@ where
             children: Vec::new(),
             container,
             config: node.config(),
-            palette: node.palette(),
         }
-    }
-
-    /// Wether or not the size has changed since last checking.
-    pub fn size_changed(&mut self) -> bool {
-        todo!()
-        // let has_changed = *self.container.read().area() != self.old_area;
-        // self.old_area = *self.container.read().area();
-        // has_changed
-    }
-
-    fn replace_child_with_mid(
-        &mut self, node_index: NodeIndex, node: Node<U>,
-    ) -> (Node<U>, &mut MidNode<U>) {
-        let index = self.children.iter_mut().position(|child| child.index() == node_index).unwrap();
-        let end_node = mem::replace(&mut self.children[index], node);
-        let Node::MidNode { mid_node, .. } = &mut self.children[index] else {
-            unreachable!();
-        };
-        (end_node, mid_node)
     }
 }
 
@@ -137,10 +126,7 @@ where
     U: Ui + ?Sized,
 {
     pub(crate) label: U::Label,
-    pub(crate) config: RwData<Config>,
-    pub(crate) palette: RwData<FormPalette>,
-    requested_width: Option<usize>,
-    requested_height: Option<usize>,
+    pub(crate) config: Config,
     pub(crate) is_active: bool,
 }
 
@@ -149,42 +135,16 @@ where
     U: Ui,
 {
     fn new_from(label: U::Label, node: &Node<U>) -> Self {
-        EndNode {
-            label: label,
-            config: node.config(),
-            palette: node.palette(),
-            requested_width: None,
-            requested_height: None,
-            is_active: false,
-        }
-    }
-
-    /// Requests a change in the width of `self`.
-    pub fn request_width(&mut self, width: usize) {
-        if self.label.area().width() != width {
-            self.requested_width = Some(width);
-        }
-    }
-
-    /// Requests a change in the height of `self`.
-    pub fn request_height(&mut self, height: usize) {
-        if self.label.area().height() != height {
-            self.requested_height = Some(height);
-        }
+        EndNode { label: label, config: node.config(), is_active: false }
     }
 
     /// Returns a reference to the `Config` of the node.
-    pub fn config(&self) -> &RwData<Config> {
+    pub fn config(&self) -> &Config {
         &self.config
     }
 
-    pub fn palette(&self) -> &RwData<FormPalette> {
-        &self.palette
-    }
-
-    /// Wether or not the size has changed since last checking.
-    pub fn resize_requested(&self) -> bool {
-        self.requested_height.is_some() || self.requested_width.is_some()
+    pub(crate) fn get_width(&self, text: &str) -> usize {
+        self.label.get_width(text, &self.config.tab_places)
     }
 }
 
@@ -193,62 +153,47 @@ pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
-    MidNode { mid_node: MidNode<U>, index: NodeIndex },
-    EndNode { end_node: EndNode<U>, widget: Widget<U>, index: NodeIndex },
+    MidNode { mid_node: Arc<Mutex<MidNode<U>>>, node_index: NodeIndex },
+    EndNode { end_node: Arc<Mutex<EndNode<U>>>, widget: Widget<U>, node_index: NodeIndex },
 }
 
 impl<U> Node<U>
 where
     U: Ui,
 {
-    fn config(&self) -> RwData<Config> {
+    fn config(&self) -> Config {
         match self {
-            Node::MidNode { mid_node, .. } => mid_node.config.clone(),
-            Node::EndNode { end_node, .. } => end_node.config.clone(),
+            Node::MidNode { mid_node, .. } => mid_node.lock().unwrap().config.clone(),
+            Node::EndNode { end_node, .. } => end_node.lock().unwrap().config.clone(),
         }
     }
 
-    fn palette(&self) -> RwData<FormPalette> {
+    fn node_index(&self) -> NodeIndex {
         match self {
-            Node::MidNode { mid_node, .. } => mid_node.palette.clone(),
-            Node::EndNode { end_node, .. } => end_node.palette.clone(),
+            Node::MidNode { node_index, .. } => *node_index,
+            Node::EndNode { node_index, .. } => *node_index,
         }
     }
 
-    fn index(&self) -> NodeIndex {
-        match self {
-            Node::MidNode { index: node_index, .. } => *node_index,
-            Node::EndNode { index: node_index, .. } => *node_index,
-        }
-    }
-
-    pub(crate) fn take(
-        &mut self, node_index: NodeIndex,
-    ) -> Option<(Node<U>, &mut MidNode<U>, usize)>
-    where
-        U: Ui,
-    {
-        let Node::MidNode { mid_node, .. } = &mut self else {
-            return None;
-        };
-
-        if let Some(pos) = mid_node.children.iter().position(|child| child.index() == node_index) {
-            Some((mid_node.children.remove(pos), mid_node, pos))
-        } else {
-            for child in &mut mid_node.children {
-                if let Some((node, mid_node, pos)) = child.take(node_index) {
-                    return Some((node, mid_node, pos));
+    pub(crate) fn find(&self, node_index: NodeIndex) -> Option<&Node<U>> {
+        if self.node_index() == node_index {
+            return Some(self);
+        } else if let Node::MidNode { mid_node, .. } = self {
+            let mid_node = mid_node.lock().unwrap();
+            for child in mid_node.children {
+                if let Some(node) = child.find(node_index) {
+                    return Some(node);
                 }
             }
-
-            None
         }
+        None
     }
 
     fn find_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<U>> {
-        if self.index() == node_index {
+        if self.node_index() == node_index {
             return Some(self);
         } else if let Node::MidNode { mid_node, .. } = self {
+            let mut mid_node = mid_node.lock().unwrap();
             for child in mid_node.children {
                 if let Some(node) = child.find_mut(node_index) {
                     return Some(node);
@@ -263,9 +208,12 @@ where
         let Node::MidNode { mid_node, .. } = self else {
             return None;
         };
+        let mut mid_node = mid_node.lock().unwrap();
 
-        if let Some(pos) = mid_node.children.iter().position(|child| child.index() == node_index) {
-            Some((mid_node, pos))
+        if let Some(pos) =
+            mid_node.children.iter().position(|child| child.node_index() == node_index)
+        {
+            Some((&mut *mid_node, pos))
         } else {
             for child in &mut mid_node.children {
                 if let Some((mid_node, pos)) = child.find_mut_parent(node_index) {
@@ -282,9 +230,63 @@ where
         U: Ui,
     {
         match self {
-            Node::MidNode { mid_node, .. } => mid_node.container.area_mut(),
-            Node::EndNode { end_node, .. } => end_node.label.area_mut(),
+            Node::MidNode { mid_node, .. } => mid_node.lock().unwrap().container.area_mut(),
+            Node::EndNode { end_node, .. } => end_node.lock().unwrap().label.area_mut(),
         }
+    }
+
+    fn bisect(
+        &self, side: Side, split: Split, widget: Widget<U>, last_index: NodeIndex, ui: &mut U,
+    ) -> (Node<U>, Option<MidNode<U>>) {
+        let area = self.area_mut();
+        let (label, container) = ui.push_label(area, side, split);
+
+        let end_node = Arc::new(Mutex::new(EndNode::new_from(label, &self)));
+        let end_node = Node::EndNode { end_node, node_index: last_index, widget };
+
+        let mid_node = container.map(|container| MidNode::new_from(container, &self));
+
+        (end_node, mid_node)
+    }
+
+    /// Rebranches a tree, assuming that the parent of a given `Node` has been changed.
+    fn replace_with_mid(&mut self, mut new_node: Node<U>, end_node: Node<U>, side: Side) {
+        std::mem::swap(self, &mut new_node);
+
+        let Node::MidNode { mid_node, node_index: index } = self else {
+    		unreachable!();
+		};
+        let mut mid_node = mid_node.lock().unwrap();
+        *index = new_node.node_index();
+
+        mid_node.children.push(new_node);
+        let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
+        mid_node.children.insert(insert_index, end_node);
+    }
+}
+
+pub struct ModNode<'a, U>
+where
+    U: Ui,
+{
+    node_manager: &'a mut Window<U>,
+    node_index: NodeIndex,
+}
+
+impl<'a, U> ModNode<'a, U>
+where
+    U: Ui,
+{
+    pub fn push_widget(
+        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        self.node_manager.push_widget(self.node_index, widget, side, split, glued)
+    }
+
+    pub fn push_widget_to_node(
+        &mut self, widget: Widget<U>, node_index: NodeIndex, side: Side, split: Split, glued: bool,
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        self.node_manager.push_widget(node_index, widget, side, split, glued)
     }
 }
 
@@ -333,13 +335,6 @@ impl Side {
             Side::Right => Side::Left,
         }
     }
-
-    fn is_aligned(&self, axis: Axis) -> bool {
-        match self {
-            Side::Top | Side::Bottom => matches!(axis, Axis::Vertical),
-            Side::Right | Side::Left => matches!(axis, Axis::Horizontal),
-        }
-    }
 }
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
@@ -369,7 +364,7 @@ pub trait Ui {
     ) -> (Self::Label, Option<Self::Container>);
 
     /// Returns `Some(_)` only if the node tree contains a single `Label`, and no `Container`s.
-    fn only_label(&mut self) -> Option<Self::Label>;
+    fn maximum_label(&mut self) -> Self::Label;
 
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
@@ -379,62 +374,99 @@ pub trait Ui {
 
     /// Functions to trigger once every `Label` has been printed.
     fn finish_all_printing(&mut self);
+
+    /// Wether or not the layout of the `Ui` (size of widgets, their positions, etc) has changed.
+    fn layout_has_changed(&self) -> bool;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct NodeIndex(usize);
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NodeIndex(pub(crate) usize);
 
-/// A manager for nodes.
-pub struct NodeManager<U>
+/// A "viewport" of Parsec. It contains a group of widgets that can be displayed at the same time.
+pub struct Window<U>
 where
     U: Ui,
 {
-    ui_manager: U,
-    windows: Vec<Node<U>>,
-    floating: Vec<Node<U>>,
-    last_index: usize,
+    ui: U,
+    main_node: Node<U>,
+    floating_nodes: Vec<Node<U>>,
+    last_index: NodeIndex,
+    files_parent: NodeIndex,
 }
 
-impl<U> NodeManager<U>
+impl<U> Window<U>
 where
     U: Ui,
 {
     /// Returns a new instance of `NodeManager`.
-    pub fn new(
-        ui_manager: U, widget: Widget<U>, config: RwData<Config>, palette: RwData<FormPalette>,
-    ) -> Self {
-        let label = ui_manager.only_label().unwrap();
+    pub fn new<C>(ui: U, widget: Widget<U>, config: Config, constructor_hook: &C) -> Self
+    where
+        C: Fn(ModNode<U>),
+    {
+        let label = ui.maximum_label();
 
-        let first_node = Node::EndNode {
-            end_node: EndNode {
-                label,
-                config,
-                palette,
-                requested_width: None,
-                requested_height: None,
-                is_active: true,
-            },
+        let main_node = Node::EndNode {
+            end_node: Arc::new(Mutex::new(EndNode { label, config, is_active: true })),
             widget,
-            index: NodeIndex(0),
+            node_index: NodeIndex(0),
         };
-        NodeManager { ui_manager, windows: vec![first_node], floating: Vec::new(), last_index: 0 }
+        let mut node_manager = Window {
+            ui,
+            main_node,
+            floating_nodes: Vec::new(),
+            last_index: NodeIndex(0),
+            files_parent: NodeIndex(0),
+        };
+
+        let mod_node = ModNode { node_manager: &mut node_manager, node_index: NodeIndex(0) };
+        (constructor_hook)(mod_node);
+
+        node_manager
     }
 
-    pub fn push_widget(
-        &mut self, index: NodeIndex, side: Side, split: Split, glued: bool, widget: Widget<U>,
+    fn push_hooked(
+        &mut self, node_index: NodeIndex, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        constructor_hook: &dyn Fn(ModNode<U>),
     ) -> (NodeIndex, Option<NodeIndex>) {
-        self.last_index += 1;
+        let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let (end_node, mid_node) = self.split_node(index, side, split, widget);
+        let mod_node = ModNode { node_manager: &mut self, node_index: new_node };
+        (constructor_hook)(mod_node);
+
+        (new_node, maybe_node)
+    }
+
+    /// Pushes a `Widget` onto an
+    fn push_widget(
+        &mut self, node_index: NodeIndex, widget: Widget<U>, side: Side, split: Split, glued: bool,
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        self.last_index.0 += 1;
+
+        let target_node = self.find_mut(node_index);
+        let (end_node, mid_node) =
+            target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
 
         if let Some(mid_node) = mid_node {
-            self.last_index += 1;
+            let mid_node = Arc::new(Mutex::new(mid_node));
+            self.last_index.0 += 1;
 
-            self.rebranch_tree(index, mid_node, end_node, side);
+            // Here, I swap the `NodeIndex`es in order to keep the same node "position".
+            let new_node = Node::MidNode { mid_node, node_index: target_node.node_index() };
+            match target_node {
+                Node::MidNode { node_index: index, .. } => *index = self.last_index,
+                Node::EndNode { node_index: index, .. } => *index = self.last_index,
+            }
 
-            (NodeIndex(self.last_index - 1), Some(NodeIndex(self.last_index)))
+            target_node.replace_with_mid(new_node, end_node, side);
+
+            if !glued && node_index == self.files_parent {
+                self.files_parent = self.last_index;
+            }
+
+            (NodeIndex(self.last_index.0 - 1), Some(self.last_index))
         } else {
-            if let Some((parent, pos)) = self.mut_parent_of(index) {
+            drop(target_node);
+            if let Some((parent, pos)) = self.mut_parent_of(node_index) {
                 if let Side::Top | Side::Left = side {
                     parent.children.insert(pos, end_node);
                 } else {
@@ -442,80 +474,137 @@ where
                 }
             }
 
-            (NodeIndex(self.last_index), None)
+            (self.last_index, None)
         }
     }
 
-	/// Splits a given `Node` into two, and if necessary, returns a new parent for the 2 `Node`s.
-    fn split_node(
-        &mut self, index: NodeIndex, side: Side, split: Split, widget: Widget<U>,
-    ) -> (Node<U>, Option<MidNode<U>>) {
-        let node = self.find_mut(index);
-        let area = node.area_mut();
-        let (label, container) = self.ui_manager.push_label(area, side, split);
+    /// Pushes a `Widget` to the parent of all files.
+    pub fn push_to_files(
+        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        constructor_hook: &dyn Fn(ModNode<U>),
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        let node_index = self.files_parent;
+        let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let mid_node = container.map(|container| MidNode::new_from(container, &node));
+        let mod_node = ModNode { node_manager: &mut self, node_index: new_node };
+        (constructor_hook)(mod_node);
 
-        let end_node = EndNode::new_from(label, &node);
-        let end_node = Node::EndNode { end_node, index: NodeIndex(self.last_index), widget };
-
-        (end_node, mid_node)
+        (new_node, maybe_node)
     }
 
-	/// Rebranches a tree, assuming that the parent of a given `Node` has been changed.
-    fn rebranch_tree(
-        &mut self, index: NodeIndex, mut mid_node: MidNode<U>, end_node: Node<U>, side: Side,
-    ) {
-        let (target_node, descendency) = self.take(index);
-        mid_node.children.push(target_node);
-        let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
-        mid_node.children.insert(insert_index, end_node);
-
-        let mid_node = Node::MidNode { mid_node, index: NodeIndex(self.last_index) };
-        if let Some((parent, target_index)) = descendency {
-            parent.children.insert(target_index, mid_node);
-        } else {
-            self.windows.push(mid_node);
-        }
+    /// Pushes a `Widget` to the master node of the current window.
+    pub fn push_to_master(
+        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        self.push_widget(NodeIndex(0), widget, side, split, glued)
     }
 
     /// Triggers the functions to use when the program starts.
     pub(crate) fn startup(&mut self) {
-        self.ui_manager.startup();
+        self.ui.startup();
     }
 
     /// Triggers the functions to use when the program ends.
     pub(crate) fn shutdown(&mut self) {
-        self.ui_manager.shutdown();
+        self.ui.shutdown();
     }
 
-    fn take(&mut self, index: NodeIndex) -> (Node<U>, Option<(&mut MidNode<U>, usize)>) {
-        if let Some(pos) = self.windows.iter().position(|window| window.index() == index) {
-            return (self.windows.remove(pos), None);
-        }
-        for node in &mut self.windows {
-            if let Some((node, mid_node, pos)) = node.take(index) {
-                return (node, Some((mid_node, pos)));
-            }
+    /// Returns a mutable refrerence to the `Node` associated with the given `NodeIndex`.
+    fn find_mut(&mut self, node_index: NodeIndex) -> &mut Node<U> {
+        if let Some(node) = self.main_node.find_mut(node_index) {
+            return node;
         }
         panic!("This NodeIndex was not found, that shouldn't be possible.");
     }
 
-    fn find_mut(&mut self, index: NodeIndex) -> &mut Node<U> {
-        for node in &mut self.windows {
-            if let Some(node) = node.find_mut(index) {
-                return node;
-            }
+    fn find(&self, node_index: NodeIndex) -> &Node<U> {
+        if let Some(node) = self.main_node.find(node_index) {
+            return node;
         }
         panic!("This NodeIndex was not found, that shouldn't be possible.");
     }
 
-    fn mut_parent_of(&mut self, index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
-        for node in &mut self.windows {
-            if let Some(node) = node.find_mut_parent(index) {
-                return Some(node);
-            }
+    /// Returns the parent of a given `NodeIndex`, if it exists.
+    fn mut_parent_of(&mut self, node_index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
+        if let Some(node) = self.main_node.find_mut_parent(node_index) {
+            return Some(node);
         }
         None
+    }
+
+    pub fn widgets(&self) -> Widgets<U> {
+        Widgets { window: self, cur_node_index: NodeIndex(0) }
+    }
+
+    pub fn actionable_widgets(&self) -> ActionableWidgets<U> {
+        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }
+    }
+
+    pub(crate) fn print_if_layout_changed(&self) {
+        if self.ui.layout_has_changed() {
+            for (widget, end_node) in self.widgets() {
+                widget.print(&mut end_node.lock().unwrap());
+            }
+        }
+    }
+}
+
+pub struct Widgets<'a, U>
+where
+    U: Ui,
+{
+    window: &'a Window<U>,
+    cur_node_index: NodeIndex,
+}
+
+impl<'a, U> Iterator for Widgets<'a, U>
+where
+    U: Ui,
+{
+    type Item = (&'a Widget<U>, &'a Arc<Mutex<EndNode<U>>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.cur_node_index > self.window.last_index {
+                return None;
+            }
+
+            if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
+                return Some((widget, &end_node));
+            };
+
+            self.cur_node_index.0 += 1;
+        }
+    }
+}
+
+pub struct ActionableWidgets<'a, U>
+where
+    U: Ui,
+{
+    window: &'a Window<U>,
+    cur_node_index: NodeIndex,
+}
+
+impl<'a, U> Iterator for ActionableWidgets<'a, U>
+where
+    U: Ui,
+{
+    type Item = (&'a Arc<Mutex<dyn ActionableWidget<U>>>, &'a Arc<Mutex<EndNode<U>>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.cur_node_index > self.window.last_index {
+                return None;
+            }
+
+            if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
+                if let Widget::Actionable(widget) = widget {
+                    return Some((&widget, &end_node));
+                }
+            };
+
+            self.cur_node_index.0 += 1;
+        }
     }
 }

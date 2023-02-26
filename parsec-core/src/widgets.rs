@@ -9,15 +9,12 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
+use self::{command_line::CommandList};
 use crate::{
-    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
-    print_widget,
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
 };
-
-use self::{command_line::CommandList, file_widget::FileWidget};
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
@@ -28,14 +25,8 @@ where
     /// Returns an identifier for this `Widget`. They may not be unique.
     fn identifier(&self) -> String;
 
-    /// Returns the `EndNode` associated with this area.
-    fn end_node(&self) -> &RwData<EndNode<U>>;
-
-    /// Returns a mutable reference to the `EndNode` associated with this area.
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>>;
-
     /// Updates the widget.
-    fn update(&mut self);
+    fn update(&mut self, end_node: &mut EndNode<U>);
 
     /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
@@ -43,14 +34,11 @@ where
     /// The text that this widget prints out.
     fn text(&self) -> &Text<U>;
 
-    /// These are the three things that are needed to print text to the screen.
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo);
-
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, node: &EndNode<U>) {}
+    fn resize(&mut self, end_node: &EndNode<U>) {}
 
     /// If the `Widget` implements `Commandable`. Should return `Some(widget)`
     fn command_list(&mut self) -> Option<CommandList> {
@@ -59,6 +47,10 @@ where
 
     fn editable(&mut self) -> Option<&mut dyn ActionableWidget<U>> {
         None
+    }
+
+    fn print_info(&self) -> PrintInfo {
+        PrintInfo::default()
     }
 }
 
@@ -110,6 +102,7 @@ where
     T: ?Sized,
 {
     type Target = T;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -128,24 +121,28 @@ where
     }
 }
 
+pub struct RoWidget<U>(Widget<U>)
+where
+    U: Ui;
+
+impl<U> RoWidget<U>
+where
+    U: Ui,
+{
+    pub fn text(&self) -> &Text<U> {
+        match self.0 {
+            Widget::Normal(widget) => widget.lock().unwrap().text(),
+            Widget::Actionable(widget) => widget.lock().unwrap().text(),
+        }
+    }
+}
+
 pub enum Widget<U>
 where
     U: Ui + ?Sized,
 {
     Normal(Arc<Mutex<dyn NormalWidget<U>>>),
     Actionable(Arc<Mutex<dyn ActionableWidget<U>>>),
-}
-
-impl<U> Clone for Widget<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Widget::Normal(widget) => Widget::Normal(widget.clone()),
-            Widget::Actionable(widget) => Widget::Actionable(widget.clone()),
-        }
-    }
 }
 
 impl<U> Widget<U>
@@ -159,54 +156,38 @@ where
         }
     }
 
-    pub(crate) fn update(&self) {
+    pub(crate) fn update(&mut self, end_node: &mut EndNode<U>) -> bool {
         match self {
             Widget::Normal(widget) => {
                 let mut widget = widget.lock().unwrap();
                 if widget.needs_update() {
-                    widget.update()
+                    widget.update(end_node);
+                    true
+                } else {
+                    false
                 }
             }
             Widget::Actionable(widget) => {
                 let mut widget = widget.lock().unwrap();
                 if widget.needs_update() {
-                    widget.update()
+                    widget.update(end_node);
+                    true
+                } else {
+                    false
                 }
             }
         }
     }
 
-    pub(crate) fn resize_requested(&self) -> bool {
-        match self {
-            Widget::Normal(widget) => widget.lock().unwrap().end_node().read().resize_requested(),
-            Widget::Actionable(widget) => {
-                widget.lock().unwrap().end_node().read().resize_requested()
-            }
-        }
-    }
-
-    pub(crate) fn print(&self) {
-        match self {
-            Widget::Normal(widget) => print_widget(&mut *widget.lock().unwrap()),
-            Widget::Actionable(widget) => print_widget(&mut *widget.lock().unwrap()),
-        }
-    }
-
-    pub(crate) fn try_set_size(&self) -> Result<(), ()> {
+    pub(crate) fn print(&self, end_node: &mut EndNode<U>) {
         match self {
             Widget::Normal(widget) => {
-                if let Ok(mut widget) = widget.try_lock() {
-                    widget.end_node_mut().write().try_set_size()
-                } else {
-                    Err(())
-                }
+                let widget = widget.lock().unwrap();
+                widget.text().print(end_node, widget.print_info());
             }
             Widget::Actionable(widget) => {
-                if let Ok(mut widget) = widget.try_lock() {
-                    widget.end_node_mut().write().try_set_size()
-                } else {
-                    Err(())
-                }
+                let widget = widget.lock().unwrap();
+                widget.text().print(end_node, widget.print_info());
             }
         }
     }
@@ -443,62 +424,5 @@ where
 {
     fn from(value: &'a mut E) -> Self {
         WidgetActor { actionable: value, clearing_needed: false, _ghost: PhantomData::default() }
-    }
-}
-
-#[derive(Clone)]
-pub enum TargetWidget {
-    FileName(String),
-    First(String),
-    Last(String),
-    Absolute(String, usize),
-}
-
-impl TargetWidget {
-    pub(crate) fn find_file<U>(&self, files: &Vec<RwData<FileWidget<U>>>) -> Option<usize>
-    where
-        U: Ui,
-    {
-        match self {
-            TargetWidget::FileName(name) => files
-                .iter()
-                .enumerate()
-                .find(|(_, file)| file.read().name() == *name)
-                .map(|(index, _)| index),
-            TargetWidget::First(identifier) if identifier.as_str() == "file" => {
-                files.first().map(|_| 0)
-            }
-            TargetWidget::Last(identifier) if identifier.as_str() == "file" => {
-                files.last().map(|_| files.len() - 1)
-            }
-            TargetWidget::Absolute(identifier, index) if identifier.as_str() == "file" => {
-                files.get(*index).map(|_| *index)
-            }
-            _ => None,
-        }
-    }
-
-    pub(crate) fn find_editable<U>(
-        &self, widgets: &Vec<(Widget<U>, usize)>,
-    ) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>>
-    where
-        U: Ui,
-    {
-        let mut widgets = widgets.iter();
-
-        let result = match self {
-            TargetWidget::FileName(_) => None,
-            TargetWidget::First(identifier) => {
-                widgets.find(|(widget, _)| widget.identifier() == *identifier)
-            }
-            TargetWidget::Last(identifier) => {
-                widgets.rev().find(|(widget, _)| widget.identifier() == *identifier)
-            }
-            TargetWidget::Absolute(identifier, index) => {
-                widgets.find(|(widget, cmp)| widget.identifier() == *identifier && cmp == index)
-            }
-        };
-
-        result.map(|(widget, _)| widget.try_to_actionable()).flatten()
     }
 }

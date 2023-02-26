@@ -7,37 +7,32 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{cmp::min, path::PathBuf, sync::{Mutex, Arc}, thread, time::Duration};
+use std::{
+    cmp::min,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
-use config::{Config, RoData, RwData};
+use config::{Config, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use cursor::TextPos;
 use input::{InputScheme, KeyRemapper};
-use tags::{form::FormPalette, MatchManager};
 use text::{PrintInfo, Text};
-use ui::{Area, Side, EndNode, Label, MidNode, Node, NodeManager, Split, Ui};
+use ui::{ActionableWidgets, Area, EndNode, Label, ModNode, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
-    status_line::StatusLine,
-    ActionableWidget, NormalWidget, TargetWidget, Widget,
+    ActionableWidget, Widget,
 };
-
-pub type WidgetFormer<U> =
-    dyn Fn(RwData<EndNode<U>>, &mut NodeManager<U>, RwData<FileWidget<U>>) -> Widget<U>;
 
 pub struct Session<U>
 where
     U: Ui,
 {
-    node_manager: NodeManager<U>,
-    pub status: StatusLine<U>,
-    widgets: Vec<(Widget<U>, usize)>,
-    files: Vec<RwData<FileWidget<U>>>,
-    future_file_widgets: Vec<(Box<WidgetFormer<U>>, Side, Split)>,
-    master_node: RwData<MidNode<U>>,
-    all_files_parent: Node<U>,
-    match_manager: MatchManager,
+    window: Window<U>,
+    pub constructor_hook: Box<dyn Fn(ModNode<U>)>,
     control: RwData<SessionControl<U>>,
     global_commands: RwData<CommandList>,
 }
@@ -47,32 +42,27 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(
-        ui: U, match_manager: MatchManager, config: Config, palette: FormPalette,
-        direction: Side, split: Split,
-    ) -> Self {
-        let mut node_manager = NodeManager::new(ui);
-        let mut node = node_manager.only_child(config, palette, "code").unwrap();
+    pub fn new<C>(ui: U, config: Config, constructor_hook: Box<C>) -> Self
+    where
+        C: Fn(ModNode<U>),
+    {
+        let mut file = std::env::args().nth(2);
+        let file_widget = FileWidget::new(file.as_ref().map(|file| PathBuf::from(file)));
+        let file_name = file_widget.identifier();
 
-        let (master_node, end_node) = node_manager.push_widget(&mut node, direction, split, false);
+        let node_manager = Window::new(ui, file_widget, config, &constructor_hook);
+        let (active_widget, _) = node_manager.actionable_widgets().next().unwrap();
 
-        let status = StatusLine::new(end_node, &mut node_manager);
+        let control = RwData::new(SessionControl::<U>::new(file_name, active_widget.clone()));
 
-        let control = RwData::new(SessionControl::<U>::default());
         let mut command_list = CommandList::default();
         for command in session_commands::<U>(control.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
         }
 
         let session = Session {
-            node_manager,
-            status,
-            widgets: Vec::new(),
-            files: Vec::new(),
-            future_file_widgets: Vec::new(),
-            master_node,
-            all_files_parent: Node::EndNode { end_node: node },
-            match_manager,
+            window: node_manager,
+            constructor_hook,
             control,
             global_commands: RwData::new(command_list),
         };
@@ -80,120 +70,20 @@ where
         session
     }
 
-    /// Creates or opens a new file in a given node.
-    fn new_file_with_node(&mut self, path: &PathBuf, mut node: RwData<EndNode<U>>) {
-        let file = FileWidget::<U>::new(path, node.clone(), &Some(self.match_manager.clone()));
-        let mut file = RwData::new(file);
-        let rw_file = file.clone();
-
-        for (constructor, direction, split) in &self.future_file_widgets {
-            let mut file_lock = file.write();
-            let (mid_node, end_node) = match &mut file_lock.mid_node {
-                None => self.node_manager.push_widget(&mut node, *direction, *split, false),
-                Some(parent) => self.node_manager.split_mid(parent, *direction, *split, false),
-            };
-            drop(file_lock);
-
-            let mut widget = constructor(end_node, &mut self.node_manager, rw_file.clone());
-            widget.try_add_cursor_tags();
-            let index = self.get_next_index(&widget);
-            self.widgets.push((widget.clone(), index));
-
-            let mut file = file.write();
-
-            file.side_widgets.push((widget, index));
-            file.mid_node = Some(mid_node);
-            file.end_node_mut().write().is_active = true;
-        }
-
-        let mut file_lock = file.write();
-        let (text, cursors, main_index) = file_lock.members_for_cursor_tags();
-        text.add_cursor_tags(cursors, main_index);
-        drop(file_lock);
-
-        self.files.push(file);
-    }
-
-    /// Returns the next index for a given `Widget` type.
-    fn get_next_index(&self, widget: &Widget<U>) -> usize {
-        let identifier = widget.identifier();
-        let mut new_index = 0;
-
-        for (widget, index) in self.widgets.iter().rev() {
-            if widget.identifier() == identifier {
-                new_index = index + 1;
-                break;
-            }
-        }
-        new_index
-    }
-
-    pub fn active_file(&self) -> RoData<FileWidget<U>> {
-        RoData::from(&self.files[0])
-    }
-
     pub fn open_arg_files(&mut self) {
         for file in std::env::args().skip(1) {
-            self.open_file(&PathBuf::from(file))
+            self.open_file(PathBuf::from(file))
         }
-        self.master_node.write().resize_children().unwrap();
     }
 
-    pub fn open_file(&mut self, path: &PathBuf) {
-        match &self.all_files_parent {
-            // If it is an `EndNode`, no file has been opened, or a file was opened without any
-            // widgets attached.
-            Node::EndNode { end_node: node } => {
-                if let Some(file) = self.files.get_mut(0) {
-                    let (all_files_parent, end_node) = self.node_manager.push_widget(
-                        &mut file.write().end_node_mut(),
-                        Side::Right,
-                        Split::Static(50),
-                        false,
-                    );
-                    self.new_file_with_node(path, end_node);
-                    self.all_files_parent = Node::MidNode { mid_node: all_files_parent };
-                } else {
-                    self.new_file_with_node(path, node.clone());
-                    if let Some(node) = &self.files.last().as_ref().unwrap().read().mid_node() {
-                        self.all_files_parent = Node::MidNode { mid_node: node.clone() };
-                    }
-                }
-            }
-            Node::MidNode { mid_node: node } => {
-                let (all_files_parent, end_node) = self.node_manager.split_mid(
-                    &mut node.clone(),
-                    Side::Right,
-                    Split::Static(50),
-                    false,
-                );
-                self.new_file_with_node(path, end_node);
-                self.all_files_parent = Node::MidNode { mid_node: all_files_parent };
-            }
-        }
-
-        self.status.set_file(RoData::from(self.files.last().unwrap()));
-        self.control.write().files_len += 1;
+    pub fn open_file(&mut self, path: PathBuf) {
+        let file_widget = FileWidget::new(Some(path));
+        let (side, split) = (Side::Right, Split::Minimum(40));
+        self.window.push_to_files(file_widget, side, split, false, &self.constructor_hook);
     }
 
-    pub fn push_widget_to_edge<C>(&mut self, constructor: C, direction: Side, split: Split)
-    where
-        C: Fn(RwData<EndNode<U>>, &mut Session<U>) -> Widget<U>,
-    {
-        let (master_node, end_node) =
-            self.node_manager.split_mid(&mut self.master_node, direction, split, false);
-
-        self.master_node = master_node;
-
-        let widget = constructor(end_node.clone(), self);
-        let index = self.get_next_index(&widget);
-        self.widgets.push((widget, index));
-    }
-
-    pub fn push_widget_to_file(
-        &mut self, constructor: Box<WidgetFormer<U>>, direction: Side, split: Split,
-    ) {
-        self.future_file_widgets.push((Box::new(constructor), direction, split));
+    pub fn push_widget_to_edge(&mut self, widget: Widget<U>, side: Side, split: Split) {
+        let (master_node, end_node) = self.window.push_to_master(widget, side, split, false);
     }
 
     /// The full loop. A break in this loop means quitting Parsec.
@@ -201,7 +91,7 @@ where
     where
         I: InputScheme,
     {
-        self.node_manager.startup();
+        self.window.startup();
 
         // This mutex is only used to prevent multiple printings at the same time.
         let resize_requested = Mutex::new(true);
@@ -209,12 +99,11 @@ where
         // The main loop.
         loop {
             // Initial printing.
-            self.status.update();
-            print_widget(&mut self.status);
-            print_files(&mut self.files);
-            for (widget, _) in &mut self.widgets {
-                widget.update();
-                widget.print();
+            for (widget, end_node) in self.window.widgets() {
+                let mut end_node = end_node.lock().unwrap();
+                if widget.update(&mut end_node) {
+                    widget.print(&mut end_node);
+                }
             }
 
             self.session_loop(&resize_requested, key_remapper);
@@ -224,7 +113,7 @@ where
             }
         }
 
-        self.node_manager.shutdown();
+        self.window.shutdown();
     }
 
     /// The primary application loop, executed while no breaking commands have been sent to
@@ -233,36 +122,31 @@ where
     where
         I: InputScheme,
     {
-        thread::scope(|s_0| loop {
-            resize_widgets(resize_requested, &self.widgets, &mut self.files);
+        thread::scope(|s_0| {
+            loop {
+                self.window.print_if_layout_changed();
 
-            let mut control = self.control.write();
-            control.switch_to_target(&mut self.files, &self.widgets);
-            if control.break_loop {
-                break;
-            }
-            drop(control);
+                let mut control = self.control.write();
+                control.try_switch_to_target(self.window.actionable_widgets());
+                if control.break_loop {
+                    break;
+                }
+                drop(control);
 
-            if let Ok(true) = event::poll(Duration::from_millis(5)) {
-                let active_file = &mut self.files[self.control.read().active_file];
-                send_event(key_remapper, &mut self.control, active_file);
-            } else {
-                continue;
-            }
+                if let Ok(true) = event::poll(Duration::from_millis(5)) {
+                    send_event(key_remapper, &mut self.control);
+                } else {
+                    continue;
+                }
 
-            self.status.update();
-            print_widget(&mut self.status);
-            print_files(&mut self.files);
-
-            for (widget, _) in &self.widgets {
-                s_0.spawn(|| {
-                    widget.update();
-                    if !widget.resize_requested() {
-                        widget.print();
-                    } else {
-                        *resize_requested.lock().unwrap() = true;
-                    }
-                });
+                for (widget, end_node) in self.window.widgets() {
+                    s_0.spawn(|| {
+                        let end_node = end_node.lock().unwrap();
+                        if widget.update(&mut end_node) {
+                            widget.print(&mut end_node);
+                        }
+                    });
+                }
             }
         });
     }
@@ -277,43 +161,36 @@ pub struct SessionControl<U>
 where
     U: Ui,
 {
-    should_quit: bool,
     files_to_open: Vec<PathBuf>,
-    target_widget: Option<TargetWidget>,
-    files_len: usize,
-    active_file: usize,
-    active_widget: Option<Arc<Mutex<dyn ActionableWidget<U>>>>,
+    target_widget: Option<String>,
+    active_file: String,
+    active_widget: Arc<Mutex<dyn ActionableWidget<U>>>,
     break_loop: bool,
-}
-
-impl<U> Default for SessionControl<U>
-where
-    U: Ui,
-{
-    fn default() -> Self {
-        SessionControl {
-            should_quit: false,
-            files_to_open: Vec::new(),
-            target_widget: None,
-            files_len: 0,
-            active_file: 0,
-            active_widget: None,
-            break_loop: false,
-        }
-    }
+    should_quit: bool,
 }
 
 impl<U> SessionControl<U>
 where
     U: Ui,
 {
+    fn new(active_file: String, active_widget: Arc<Mutex<dyn ActionableWidget<U>>>) -> Self {
+        SessionControl {
+            files_to_open: Vec::new(),
+            target_widget: None,
+            active_file,
+            active_widget,
+            break_loop: false,
+            should_quit: false,
+        }
+    }
+
     /// Returns to the active file from any widget, including the file itself.
     pub fn return_to_file(&mut self) {
-        self.target_widget = Some(TargetWidget::Absolute(String::from("file"), self.active_file));
+        self.target_widget = Some(self.active_file);
     }
 
     /// Switches the input to another `Widget`.
-    pub fn switch_widget(&mut self, target_widget: TargetWidget) {
+    pub fn switch_widget(&mut self, target_widget: String) {
         self.target_widget = Some(target_widget);
     }
 
@@ -323,57 +200,24 @@ where
         self.should_quit = true;
     }
 
-    /// The creation index of the currently active file.
-    pub fn active_file(&self) -> usize {
-        self.active_file
-    }
-
-    /// The number of opened files.
-    pub fn files_len(&self) -> usize {
-        self.files_len
-    }
-
-    fn unfocus_old(&mut self, active_file: &mut RwData<FileWidget<U>>) {
-        if let Some(widget) = &mut self.active_widget {
-            let mut widget = widget.lock().unwrap();
-            widget.end_node_mut().write().is_active = false;
-            widget.on_unfocus();
-            print_widget(&mut *widget);
-        } else {
-            let mut active_file = active_file.write();
-            active_file.end_node_mut().write().is_active = false;
-            active_file.on_unfocus();
-            print_widget(&mut *active_file);
-        }
+    fn unfocus_old(&mut self) {
+        let mut widget = self.active_widget.lock().unwrap();
+        widget.on_unfocus();
     }
 
     /// Switches the active widget to `self.target_widget`.
-    fn switch_to_target(
-        &mut self, files: &mut Vec<RwData<FileWidget<U>>>, widgets: &Vec<(Widget<U>, usize)>,
-    ) {
-        if let Some(target) = self.target_widget.take() {
-            let Some(file) = target.find_file(&files) else {
-                let mut new_widget = target.find_editable(widgets);
-                if let Some(widget) = new_widget.take() {
-                    self.unfocus_old(&mut files[self.active_file]);
+    fn try_switch_to_target(&mut self, mut actionable_widgets: ActionableWidgets<U>) {
+        let Some(identifier) = self.target_widget.take() else {
+            return;
+        };
 
-                    let mut widget_lock = widget.lock().unwrap();
-                    widget_lock.on_focus();
-                    widget_lock.end_node_mut().write().is_active = true;
-                    print_widget(&mut *widget_lock);
-                    drop(widget_lock);
-                    self.active_widget = Some(widget);
-                }
+        let widget = actionable_widgets
+            .find(|(widget, _)| widget.lock().unwrap().identifier() == identifier);
 
-                return;
-            };
+        self.unfocus_old();
 
-            self.unfocus_old(&mut files[self.active_file]);
-            self.active_file = file;
-            let mut file = files[self.active_file].write();
-            file.end_node_mut().write().is_active = true;
-            print_widget(&mut *file);
-            self.active_widget = None;
+        if identifier.starts_with("parsec-file: ") {
+            self.active_file = identifier;
         }
     }
 }
@@ -406,65 +250,20 @@ where
     vec![quit_command, open_file_command]
 }
 
-fn print_widget<U, W>(widget: &mut W)
-where
-    U: Ui,
-    W: NormalWidget<U> + ?Sized,
-{
-    let (text, end_node, print_info) = widget.members_for_printing();
-    text.print(&mut end_node.write(), print_info);
-}
-
-/// Prints all the files.
-fn print_files<U>(files: &mut Vec<RwData<FileWidget<U>>>)
-where
-    U: Ui,
-{
-    for file_widget in files.iter_mut() {
-        let mut file_widget = file_widget.write();
-        file_widget.update();
-        print_widget(&mut *file_widget);
-    }
-}
-
-fn resize_widgets<U>(
-    resize_requested: &Mutex<bool>, widgets: &Vec<(Widget<U>, usize)>,
-    files: &mut Vec<RwData<FileWidget<U>>>,
-) where
-    U: Ui,
-{
-    if let Ok(mut resize_requested) = resize_requested.try_lock() {
-        if *resize_requested {
-            *resize_requested = false;
-            drop(resize_requested);
-            widgets.iter().for_each(|(widget, _)| widget.try_set_size().unwrap());
-            widgets.iter().for_each(|(widget, _)| widget.print());
-            print_files(files);
-        }
-    }
-}
-
 /// Sends an event to the `Widget` determined by `SessionControl`.
-fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl<U>>,
-    active_file: &mut RwData<FileWidget<U>>,
-) where
+fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl<U>>)
+where
     U: Ui,
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
         let mut control = control.write();
-        if let Some(widget) = control.active_widget.take() {
-            let mut widget_lock = widget.lock().unwrap();
-            blink_cursors_and_send_key(&mut *widget_lock, &mut control, key_event, key_remapper);
-            // If the widget is no longer valid, return to the file.
-            if widget_lock.still_valid() {
-                drop(widget_lock);
-                control.active_widget = Some(widget);
-            }
-        } else {
-            let mut file = active_file.write();
-            blink_cursors_and_send_key(&mut *file, &mut control, key_event, key_remapper);
+
+        let mut widget = control.active_widget.lock().unwrap();
+        blink_cursors_and_send_key(&mut *widget, &mut control, key_event, key_remapper);
+        // If the widget is no longer valid, return to the file.
+        if !widget.still_valid() {
+            control.target_widget = Some(control.active_file);
         }
     }
 }
@@ -522,7 +321,7 @@ pub fn max_line<U>(text: &Text<U>, print_info: &PrintInfo, node: &EndNode<U>) ->
 where
     U: Ui,
 {
-    min(print_info.top_row + node.label.read().area().height(), text.lines().len() - 1)
+    min(print_info.top_row + node.label.area().height(), text.lines().len() - 1)
 }
 
 //////////// Useful for testing.
