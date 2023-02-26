@@ -1,29 +1,28 @@
-use crate::{
-    config::{RoData, RwData},
-    tags::form::{DEFAULT_ID, LINE_NUMBERS_ID, MAIN_LINE_NUMBER_ID},
-    text::{Text, TextLineBuilder, PrintInfo},
-    ui::{Area, EndNode, Label, Window, Ui},
-};
-
-use super::{file_widget::FileWidget, NormalWidget, Widget};
-
 use std::{
     cmp::max,
     fmt::{Alignment, Write},
     sync::{Arc, Mutex},
 };
 
+use super::{file_widget::FileWidget, NormalWidget, Widget};
+use crate::{
+    config::{RoData, RwData},
+    tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
+    text::{PrintInfo, Text, TextLineBuilder},
+    ui::{Area, EndNode, Label, Side, Ui, Window},
+};
+
 pub struct LineNumbers<U>
 where
     U: Ui,
 {
-    end_node: RwData<EndNode<U>>,
     file: RoData<FileWidget<U>>,
     text: Text<U>,
     main_line_builder: TextLineBuilder,
     other_line_builder: TextLineBuilder,
     min_width: usize,
     line_numbers_config: LineNumbersConfig,
+    identifier: String,
 }
 
 unsafe impl<U> Send for LineNumbers<U> where U: Ui {}
@@ -34,51 +33,35 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        end_node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
-        line_numbers_config: LineNumbersConfig,
+        file_widget: RwData<FileWidget<U>>, line_numbers_config: LineNumbersConfig,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        let min_width = end_node.read().label.read().area().width();
-
         let mut line_numbers = LineNumbers {
-            end_node,
             file,
             text: Text::default(),
-            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
-            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
-            min_width,
+            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
+            other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
+            min_width: 1,
             line_numbers_config,
+            identifier: String::from("line-numbers")
         };
-
-        let width = line_numbers.calculate_width();
-        line_numbers.end_node.write().request_width(width);
-
-        line_numbers.update();
 
         Widget::Normal(Arc::new(Mutex::new(line_numbers)))
     }
 
-    pub fn default(
-        end_node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
-    ) -> Widget<U> {
+    pub fn new_with_default_config(file_widget: RwData<FileWidget<U>>) -> Widget<U> {
         let file = RoData::from(&file_widget);
-        let min_width = end_node.read().label.read().area().width();
 
         let mut line_numbers = LineNumbers {
-            end_node,
             file,
             text: Text::default(),
-            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER_ID, DEFAULT_ID]),
-            other_line_builder: TextLineBuilder::from([LINE_NUMBERS_ID, DEFAULT_ID]),
-            min_width,
+            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
+            other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
+            min_width: 1,
             line_numbers_config: LineNumbersConfig::default(),
+            identifier: String::from("line-numbers")
         };
-
-        let width = line_numbers.calculate_width();
-        line_numbers.end_node.write().request_width(width);
-
-        line_numbers.update();
 
         Widget::Normal(Arc::new(Mutex::new(line_numbers)))
     }
@@ -101,22 +84,14 @@ impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
 {
-    fn identifier(&self) -> String {
-        String::from("line_numbers")
+    fn identifier(&self) -> &str {
+        self.identifier.as_str()
     }
 
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.end_node
-    }
-
-    fn update(&mut self) {
+    fn update(&mut self, end_node: &mut EndNode<U>) {
         let file = self.file.read();
         let width = self.calculate_width();
-        self.end_node.write().request_width(width);
+        end_node.label.area_mut().request_len(width, Side::Right);
 
         let lines = file.printed_lines();
         let main_line = file.main_cursor().true_row();
@@ -155,10 +130,6 @@ where
 
     fn text(&self) -> &Text<U> {
         &self.text
-    }
-
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
-        (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }
 

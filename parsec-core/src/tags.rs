@@ -6,15 +6,13 @@ use bitflags::bitflags;
 use regex::Regex;
 use smallvec::SmallVec;
 
+use self::form::{FormFormer};
 use crate::{
     action::TextRange,
-    config::Config,
     cursor::TextPos,
-    text::{get_char_len, TextLine},
-    ui::{Area, Label, Ui}, log_info,
+    text::TextLine,
+    ui::{Area, Label},
 };
-
-use self::form::{FormPalette, MAIN_SELECTION_ID, SECONDARY_SELECTION_ID};
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
 // The reason is that modules like `regex` and `tree-sitter` work on `u8`s, rather than `char`s.
@@ -26,58 +24,36 @@ pub enum CharTag {
     /// Removes a form from the stack. It won't always be the last one.
     PopForm(u16),
 
-    /// Wraps after printing the character.
-    WrapNext,
-
     /// Places the main cursor.
     MainCursor,
-    /// Begins a main selection in the file.
-    MainSelStart,
-    /// Ends a main selection in the file.
-    MainSelEnd,
-
-    /// Places a secondary cursor.
-    SecondaryCursor,
-    /// Begins a secondary selection in the file.
-    SecondarySelStart,
-    /// Ends a secondary selection in the file.
-    SecondarySelEnd,
+    /// Places an extra cursor.
+    ExtraCursor,
 
     // Not Implemented:
     /// Begins or ends a hoverable section in the file.
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
     PermanentConceal { index: u16 },
+
+    // DEPRECATED - Will soon be removed.
+    /// Wraps after printing the character.
+    WrapNext,
 }
 
 impl CharTag {
     pub(crate) fn trigger<L, A>(
-        &self, label: &mut L, palette: &mut FormPalette, wrap_indent: usize,
+        &self, label: &mut L, form_former: &mut FormFormer, wrap_indent: usize,
     ) -> bool
     where
         L: Label<A>,
         A: Area,
     {
         match self {
-            CharTag::PushForm(id) => {
-                label.set_form(palette.apply(*id));
-            }
-            CharTag::PopForm(id) => label.set_form(palette.remove(*id)),
+            CharTag::PushForm(id) => label.set_form(form_former.apply(*id)),
+            CharTag::PopForm(id) => label.set_form(form_former.remove(*id)),
 
-            CharTag::WrapNext => {
-                log_info!("\nwrap_next");
-                if label.wrap_next(wrap_indent).is_err() {
-                    return false;
-                }
-            }
-
-            CharTag::MainCursor => label.place_primary_cursor(*palette.main_cursor()),
-            CharTag::MainSelStart => label.set_form(palette.apply(MAIN_SELECTION_ID)),
-            CharTag::MainSelEnd => label.set_form(palette.remove(MAIN_SELECTION_ID)),
-
-            CharTag::SecondaryCursor => label.place_secondary_cursor(*palette.secondary_cursor()),
-            CharTag::SecondarySelStart => label.set_form(palette.apply(SECONDARY_SELECTION_ID)),
-            CharTag::SecondarySelEnd => label.set_form(palette.remove(SECONDARY_SELECTION_ID)),
+            CharTag::MainCursor => label.place_main_cursor(form_former.main_cursor()),
+            CharTag::ExtraCursor => label.place_extra_cursor(form_former.extra_cursor()),
             _ => {}
         }
 
@@ -127,9 +103,7 @@ impl std::fmt::Debug for CharTags {
                 CharTag::PopForm(id) => format!("{}PoF({})", b, id),
                 CharTag::WrapNext => format!("{}:Wc", b),
                 CharTag::MainCursor => format!("{}:Pc", b),
-                CharTag::SecondaryCursor => format!("{}:Pc", b),
-                CharTag::MainSelStart => format!("{}:Ss", b),
-                CharTag::MainSelEnd => format!("{}:Se", b),
+                CharTag::ExtraCursor => format!("{}:Pc", b),
                 _ => panic!("{:#?}", (b, t)),
             })
             .collect::<Vec<String>>()
@@ -290,14 +264,10 @@ impl Pattern {
             })
             .scan(range.start.file_byte, |acc, (n, t, s)| {
                 *acc += t.len();
-                Some((
-                    n,
-                    str::from_utf8(t).unwrap(),
-                    TagRange {
-                        start: TagPos { row: n, byte: s, file_byte: *acc - t.len() },
-                        end: TagPos { row: n, byte: s + t.len(), file_byte: *acc },
-                    },
-                ))
+                Some((n, str::from_utf8(t).unwrap(), TagRange {
+                    start: TagPos { row: n, byte: s, file_byte: *acc - t.len() },
+                    end: TagPos { row: n, byte: s + t.len(), file_byte: *acc },
+                }))
             });
 
         let mut matched_ranges = SmallVec::<[TagRange; 32]>::new();
@@ -475,22 +445,14 @@ impl Ord for TagPos {
     where
         Self: Sized,
     {
-        if self > other {
-            self
-        } else {
-            other
-        }
+        if self > other { self } else { other }
     }
 
     fn min(self, other: Self) -> Self
     where
         Self: Sized,
     {
-        if self < other {
-            self
-        } else {
-            other
-        }
+        if self < other { self } else { other }
     }
 }
 
@@ -543,34 +505,6 @@ pub struct LineInfo {
     pub line_flags: LineFlags,
     pub starting_id: u16,
     pub ending_id: u16,
-}
-
-impl LineInfo {
-    /// Parses the wrapping of
-    pub(crate) fn parse_wrapping<U>(
-        &mut self, text: &String, indent: usize, label: &U::Label, config: &Config,
-    ) where
-        U: Ui,
-    {
-        self.char_tags.0.retain(|(_, t)| !matches!(t, CharTag::WrapNext));
-        let mut distance = 0;
-        let mut wrapped_indent = 0;
-
-        let mut char_indices = text.char_indices().peekable();
-        char_indices.peek().map(|(_, ch)| distance += get_char_len(*ch, 0, label, config));
-
-        while let (Some((byte, _)), Some((_, ch))) = (char_indices.next(), char_indices.peek())
-        {
-            let ch_len = get_char_len(*ch, distance, label, config);
-            distance += ch_len;
-            if distance > label.area().width() - wrapped_indent {
-                distance = ch_len;
-                wrapped_indent = indent;
-
-                self.char_tags.insert((byte, CharTag::WrapNext));
-            }
-        }
-    }
 }
 
 impl FormPattern {

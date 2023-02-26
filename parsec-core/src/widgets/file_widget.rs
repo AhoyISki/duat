@@ -8,12 +8,9 @@ use std::{
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     action::{History, TextRange},
-    config::RwData,
-    cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
-    max_line,
-    tags::MatchManager,
-    text::{reader::MutTextReader, update_range, PrintInfo, Text},
-    ui::{EndNode, MidNode, NodeIndex, Ui},
+    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    text::{reader::MutTextReader, PrintInfo, Text},
+    ui::{Area, EndNode, Label, MidNode, NodeIndex, Ui},
 };
 
 /// The widget that is used to print and edit files.
@@ -23,23 +20,25 @@ where
 {
     pub(crate) mid_node: Option<NodeIndex>,
     pub(crate) side_widgets: Vec<NodeIndex>,
-    name: String,
+    identifier: String,
     text: Text<U>,
     print_info: PrintInfo,
     main_cursor: usize,
     cursors: Vec<TextCursor>,
     history: History,
     readers: Vec<Box<dyn MutTextReader<U>>>,
+    printed_lines: Vec<usize>,
 }
 
 impl<U> FileWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     /// Returns a new instance of `FileWidget`.
     pub fn new(path: Option<PathBuf>) -> Widget<U> {
         // TODO: Allow the creation of a new file.
         let file_contents = path
+            .as_ref()
             .map(|path| fs::read_to_string(path).expect("Failed to read the file."))
             .unwrap_or(String::from(""));
 
@@ -47,26 +46,25 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let text = Text::new(file_contents, match_manager.clone());
+        let text = Text::new(file_contents);
         let cursor = TextCursor::default();
 
         Widget::Actionable(Arc::new(Mutex::new(FileWidget {
             mid_node: None,
             side_widgets: Vec::new(),
-            name,
+            identifier: ["parsec-file: ", name.as_str()].join(""),
             text,
             print_info: PrintInfo::default(),
             main_cursor: 0,
             cursors: vec![cursor],
             history: History::new(),
             readers: Vec::new(),
+            printed_lines: Vec::new(),
         })))
     }
 
     /// Undoes the last moment in history.
-    pub fn undo(&mut self) {
-        let end_node = self.end_node.read();
-
+    pub fn undo(&mut self, end_node: &EndNode<U>) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
             None => return,
@@ -87,18 +85,16 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, &end_node));
+            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, end_node));
 
             let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
-            update_range(&mut self.text, range, max_line, &self.end_node.read());
+            //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
+            //update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
     }
 
     /// Redoes the last moment in history.
-    pub fn redo(&mut self) {
-        let end_node = self.end_node.read();
-
+    pub fn redo(&mut self, end_node: &EndNode<U>) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return,
@@ -116,34 +112,35 @@ where
             self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
 
             let range = TextRange { start: splice.start(), end: splice.added_end() };
-            let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
-            update_range(&mut self.text, range, max_line, &self.end_node.read());
+            //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
+            //update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
     }
 
-    /// Returns the currently printed set of lines.
-    pub fn printed_lines(&self) -> Vec<usize> {
-        let end_node = self.end_node.read();
-        let label = end_node.label.read();
-        let height = label.area().height();
+    fn set_printed_lines(&mut self, end_node: &EndNode<U>) {
+        let height = end_node.label.area().height();
         let mut lines_iter = self.text.lines().iter().enumerate();
-        let mut printed_lines = Vec::with_capacity(label.area().height());
+
+        self.printed_lines.clear();
 
         let top_line = lines_iter.nth(self.print_info.top_row).unwrap().1;
         let mut d_y = min(height, 1 + top_line.iter_wraps().count() - self.print_info.top_wraps);
         for _ in 0..d_y {
-            printed_lines.push(self.print_info.top_row);
+            self.printed_lines.push(self.print_info.top_row);
         }
 
         while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
             let old_d_y = d_y;
             d_y = min(d_y + line.iter_wraps().count(), height);
             for _ in old_d_y..=d_y {
-                printed_lines.push(index);
+                self.printed_lines.push(index);
             }
         }
+    }
 
-        printed_lines
+    /// Returns the currently printed set of lines.
+    pub fn printed_lines(&self) -> &Vec<usize> {
+        &self.printed_lines
     }
 
     // TODO: Move the history to a general placement, taking in all the files.
@@ -163,11 +160,6 @@ where
         self.cursors.clone()
     }
 
-    /// The `MidNode` associated with this `FileWidget`.
-    pub fn mid_node(&self) -> &Option<RwData<MidNode<U>>> {
-        &self.mid_node
-    }
-
     /// A mutable reference to the `Text` of self.
     pub fn mut_text(&mut self) -> &mut Text<U> {
         &mut self.text
@@ -180,13 +172,13 @@ where
     }
 
     /// The file's name.
-    pub fn name(&self) -> String {
-        self.name.read().clone()
+    pub fn name(&self) -> &str {
+        &self.identifier[13..]
     }
 
     pub fn full_path(&self) -> String {
         let mut path = std::env::current_dir().unwrap();
-        path.push(Path::new(&self.name.read().as_str()));
+        path.push(Path::new(self.name()));
         path.to_string_lossy().to_string()
     }
 
@@ -207,10 +199,10 @@ where
 
 impl<U> NormalWidget<U> for FileWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
-    fn identifier(&self) -> String {
-        [String::from("parsec-file: "), self.name()].join("")
+    fn identifier(&self) -> &str {
+        self.identifier.as_str()
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
@@ -237,26 +229,23 @@ where
 
 impl<U> ActionableWidget<U> for FileWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
-    fn editor<'a>(&'a mut self, index: usize, splice_adder: &'a mut SpliceAdder) -> Editor<U> {
+    fn editor<'a>(
+        &'a mut self, index: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+    ) -> Editor<U> {
         Editor::new(
             &mut self.cursors[index],
             splice_adder,
             &mut self.text,
-            &self.end_node,
+            end_node,
             Some(&mut self.history),
             Some(self.print_info),
         )
     }
 
-    fn mover(&mut self, index: usize) -> Mover<U> {
-        Mover::new(
-            &mut self.cursors[index],
-            &self.text,
-            &self.end_node,
-            self.history.current_moment(),
-        )
+    fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U> {
+        Mover::new(&mut self.cursors[index], &self.text, end_node, self.history.current_moment())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
@@ -283,12 +272,12 @@ where
         self.new_moment();
     }
 
-    fn undo(&mut self) {
-        self.undo()
+    fn undo(&mut self, end_node: &EndNode<U>) {
+        self.undo(end_node)
     }
 
-    fn redo(&mut self) {
-        self.redo()
+    fn redo(&mut self, end_node: &EndNode<U>) {
+        self.redo(end_node)
     }
 }
 

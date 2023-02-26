@@ -1,6 +1,5 @@
 use std::{
     fmt::Display,
-    mem,
     sync::{Arc, Mutex},
 };
 
@@ -55,10 +54,10 @@ where
     fn clear_form(&mut self);
 
     /// Places the primary cursor on the current printing position.
-    fn place_primary_cursor(&mut self, style: CursorStyle);
+    fn place_main_cursor(&mut self, style: CursorStyle);
 
-    /// Places the secondary cursor on the current printing position.
-    fn place_secondary_cursor(&mut self, style: CursorStyle);
+    /// Places an extra cursor on the current printing position.
+    fn place_extra_cursor(&mut self, style: CursorStyle);
 
     /// Tells the `UiManager` that this `Label` is the one that is currently focused.
     fn set_as_active(&mut self);
@@ -88,7 +87,7 @@ where
     /// Counts how many times the given string would wrap.
     fn wrap_count(&self, text: &str, wrap_method: WrapMethod) -> usize;
 
-    /// Gets the visual distance to a given column.
+    /// Gets the visual width to a given column.
     fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize;
 
     /// Gets the column at the given distance from the left side.
@@ -100,8 +99,6 @@ pub struct MidNode<U>
 where
     U: Ui + ?Sized,
 {
-    old_area: U::Area,
-    children: Vec<Node<U>>,
     container: U::Container,
     config: Config,
 }
@@ -111,12 +108,7 @@ where
     U: Ui,
 {
     fn new_from(container: U::Container, node: &Node<U>) -> Self {
-        MidNode {
-            old_area: *container.area(),
-            children: Vec::new(),
-            container,
-            config: node.config(),
-        }
+        MidNode { container, config: node.config() }
     }
 }
 
@@ -153,7 +145,7 @@ pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
-    MidNode { mid_node: Arc<Mutex<MidNode<U>>>, node_index: NodeIndex },
+    MidNode { mid_node: Arc<Mutex<MidNode<U>>>, children: Vec<Node<U>>, node_index: NodeIndex },
     EndNode { end_node: Arc<Mutex<EndNode<U>>>, widget: Widget<U>, node_index: NodeIndex },
 }
 
@@ -178,9 +170,8 @@ where
     pub(crate) fn find(&self, node_index: NodeIndex) -> Option<&Node<U>> {
         if self.node_index() == node_index {
             return Some(self);
-        } else if let Node::MidNode { mid_node, .. } = self {
-            let mid_node = mid_node.lock().unwrap();
-            for child in mid_node.children {
+        } else if let Node::MidNode { children, .. } = self {
+            for child in children {
                 if let Some(node) = child.find(node_index) {
                     return Some(node);
                 }
@@ -192,9 +183,8 @@ where
     fn find_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<U>> {
         if self.node_index() == node_index {
             return Some(self);
-        } else if let Node::MidNode { mid_node, .. } = self {
-            let mut mid_node = mid_node.lock().unwrap();
-            for child in mid_node.children {
+        } else if let Node::MidNode { children, .. } = self {
+            for child in children {
                 if let Some(node) = child.find_mut(node_index) {
                     return Some(node);
                 }
@@ -204,19 +194,16 @@ where
     }
 
     /// Returns `Some((self, split_of_node))` if it is the parent of the given `NodeIndex`.
-    fn find_mut_parent(&mut self, node_index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
-        let Node::MidNode { mid_node, .. } = self else {
+    fn find_mut_siblings(&mut self, node_index: NodeIndex) -> Option<(&mut Vec<Node<U>>, usize)> {
+        let Node::MidNode { children, .. } = self else {
             return None;
         };
-        let mut mid_node = mid_node.lock().unwrap();
 
-        if let Some(pos) =
-            mid_node.children.iter().position(|child| child.node_index() == node_index)
-        {
-            Some((&mut *mid_node, pos))
+        if let Some(pos) = children.iter().position(|child| child.node_index() == node_index) {
+            Some((children, pos))
         } else {
-            for child in &mut mid_node.children {
-                if let Some((mid_node, pos)) = child.find_mut_parent(node_index) {
+            for child in children {
+                if let Some((mid_node, pos)) = child.find_mut_siblings(node_index) {
                     return Some((mid_node, pos));
                 }
             }
@@ -225,21 +212,17 @@ where
         }
     }
 
-    fn area_mut(&mut self) -> &mut U::Area
-    where
-        U: Ui,
-    {
-        match self {
-            Node::MidNode { mid_node, .. } => mid_node.lock().unwrap().container.area_mut(),
-            Node::EndNode { end_node, .. } => end_node.lock().unwrap().label.area_mut(),
-        }
-    }
-
     fn bisect(
         &self, side: Side, split: Split, widget: Widget<U>, last_index: NodeIndex, ui: &mut U,
     ) -> (Node<U>, Option<MidNode<U>>) {
-        let area = self.area_mut();
-        let (label, container) = ui.push_label(area, side, split);
+        let (label, container) = match self {
+            Node::MidNode { mid_node, .. } => {
+                ui.bisect_area(mid_node.lock().unwrap().container.area_mut(), side, split)
+            }
+            Node::EndNode { end_node, .. } => {
+                ui.bisect_area(end_node.lock().unwrap().label.area_mut(), side, split)
+            }
+        };
 
         let end_node = Arc::new(Mutex::new(EndNode::new_from(label, &self)));
         let end_node = Node::EndNode { end_node, node_index: last_index, widget };
@@ -253,15 +236,15 @@ where
     fn replace_with_mid(&mut self, mut new_node: Node<U>, end_node: Node<U>, side: Side) {
         std::mem::swap(self, &mut new_node);
 
-        let Node::MidNode { mid_node, node_index: index } = self else {
+        let Node::MidNode { mid_node, children, node_index } = self else {
     		unreachable!();
 		};
         let mut mid_node = mid_node.lock().unwrap();
-        *index = new_node.node_index();
+        *node_index = new_node.node_index();
 
-        mid_node.children.push(new_node);
+        children.push(new_node);
         let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
-        mid_node.children.insert(insert_index, end_node);
+        children.insert(insert_index, end_node);
     }
 }
 
@@ -317,7 +300,7 @@ impl From<Side> for Axis {
     }
 }
 
-/// The direction in which a secondary node was placed in relation to the first one.
+/// A direction, where a `Widget<U>` will be placed in relation to another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Top,
@@ -327,6 +310,7 @@ pub enum Side {
 }
 
 impl Side {
+    /// The opposite of this `Side`.
     pub fn opposite(&self) -> Side {
         match self {
             Side::Top => Side::Bottom,
@@ -343,27 +327,32 @@ pub trait Ui {
     type Container: Container<<Self as Ui>::Area> + Clone + Send + Sync;
     type Label: Label<<Self as Ui>::Area> + Clone + Send + Sync;
 
-    /// Splits an area in two, and places each of the areas on a new parent area.
+    /// Bisects the `Self::Area`, returning a new `Self::Label<Self::Area>` that will occupy the
+    /// region. If required, also returns a new `Self::Container<Self::Area>`, which will contain
+    /// both the old `Self::Area` and the new `Self::Label`.
     ///
-    /// # Returns
+    /// # Examples
     ///
-    /// * The new parent area first, and the new child area second.
+    /// ```
+    /// use crate::ui::Ui;
+    /// let mut ui: Self = foo();
+    /// // A container with a horizontal axis.
+    /// let mut container: Self::Container = bar(Side::Left);
+    /// let split: Split = baz();
     ///
-    /// # Arguments
+    /// // A new container is not needed here, since the split is parallel to the container's axis.
+    /// let (_, none_container) = ui.bisect_area(&mut container.mut_area(), Side::Right, split);
+    /// assert!(none_container.is_none());
     ///
-    /// * label: The area that will be split.
-    /// * direction: In what direction, relative to the old area, will the new area be inserted.
-    /// * split: How to decide where to place the barrier between the two areas. If
-    ///   `Split::Static`, the new area will have a fixed size, and resizing the parent area will
-    ///   only change the size of the old area. If `Split::Ratio`, resizing the parent will
-    ///   maintain a ratio between the two areas.
-    /// * glued: If `true`, the two areas will become inseparable, by moving one, you will move the
-    ///   other one with it.
-    fn push_label(
+    /// // A new container is needed here, since the split is perpendicular to the container's axis.
+    /// let (_, some_container) = ui.bisect_area(&mut area, Side::Top, split);
+    /// assert!(some_container.is_some());
+    /// ```
+    fn bisect_area(
         &mut self, area: &mut Self::Area, side: Side, split: Split,
     ) -> (Self::Label, Option<Self::Container>);
 
-    /// Returns `Some(_)` only if the node tree contains a single `Label`, and no `Container`s.
+    /// Returns a `Self::Label` representing the maximum possible extent an area could have.
     fn maximum_label(&mut self) -> Self::Label;
 
     /// Functions to trigger when the program begins.
@@ -399,7 +388,7 @@ where
     U: Ui,
 {
     /// Returns a new instance of `NodeManager`.
-    pub fn new<C>(ui: U, widget: Widget<U>, config: Config, constructor_hook: &C) -> Self
+    pub fn new<C>(mut ui: U, widget: Widget<U>, config: Config, constructor_hook: &C) -> Self
     where
         C: Fn(ModNode<U>),
     {
@@ -430,7 +419,7 @@ where
     ) -> (NodeIndex, Option<NodeIndex>) {
         let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let mod_node = ModNode { node_manager: &mut self, node_index: new_node };
+        let mod_node = ModNode { node_manager: self, node_index: new_node };
         (constructor_hook)(mod_node);
 
         (new_node, maybe_node)
@@ -442,7 +431,9 @@ where
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index.0 += 1;
 
-        let target_node = self.find_mut(node_index);
+        let Some(target_node) = self.main_node.find_mut(node_index) else {
+            panic!("Node not found");
+        };
         let (end_node, mid_node) =
             target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
 
@@ -451,7 +442,11 @@ where
             self.last_index.0 += 1;
 
             // Here, I swap the `NodeIndex`es in order to keep the same node "position".
-            let new_node = Node::MidNode { mid_node, node_index: target_node.node_index() };
+            let new_node = Node::MidNode {
+                mid_node,
+                children: Vec::new(),
+                node_index: target_node.node_index(),
+            };
             match target_node {
                 Node::MidNode { node_index: index, .. } => *index = self.last_index,
                 Node::EndNode { node_index: index, .. } => *index = self.last_index,
@@ -466,11 +461,11 @@ where
             (NodeIndex(self.last_index.0 - 1), Some(self.last_index))
         } else {
             drop(target_node);
-            if let Some((parent, pos)) = self.mut_parent_of(node_index) {
+            if let Some((children, pos)) = self.mut_parent_of(node_index) {
                 if let Side::Top | Side::Left = side {
-                    parent.children.insert(pos, end_node);
+                    children.insert(pos, end_node);
                 } else {
-                    parent.children.insert(pos + 1, end_node);
+                    children.insert(pos + 1, end_node);
                 }
             }
 
@@ -486,7 +481,7 @@ where
         let node_index = self.files_parent;
         let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let mod_node = ModNode { node_manager: &mut self, node_index: new_node };
+        let mod_node = ModNode { node_manager: self, node_index: new_node };
         (constructor_hook)(mod_node);
 
         (new_node, maybe_node)
@@ -509,14 +504,6 @@ where
         self.ui.shutdown();
     }
 
-    /// Returns a mutable refrerence to the `Node` associated with the given `NodeIndex`.
-    fn find_mut(&mut self, node_index: NodeIndex) -> &mut Node<U> {
-        if let Some(node) = self.main_node.find_mut(node_index) {
-            return node;
-        }
-        panic!("This NodeIndex was not found, that shouldn't be possible.");
-    }
-
     fn find(&self, node_index: NodeIndex) -> &Node<U> {
         if let Some(node) = self.main_node.find(node_index) {
             return node;
@@ -525,8 +512,8 @@ where
     }
 
     /// Returns the parent of a given `NodeIndex`, if it exists.
-    fn mut_parent_of(&mut self, node_index: NodeIndex) -> Option<(&mut MidNode<U>, usize)> {
-        if let Some(node) = self.main_node.find_mut_parent(node_index) {
+    fn mut_parent_of(&mut self, node_index: NodeIndex) -> Option<(&mut Vec<Node<U>>, usize)> {
+        if let Some(node) = self.main_node.find_mut_siblings(node_index) {
             return Some(node);
         }
         None

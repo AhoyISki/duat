@@ -9,10 +9,13 @@ use std::{
 use self::reader::MutTextReader;
 use crate::{
     action::{Change, Splice, TextRange},
-    config::{Config, TabPlaces, WrapMethod},
+    config::{Config, WrapMethod},
     cursor::{TextCursor, TextPos},
     get_byte_at_col,
-    tags::{form::FormPalette, CharTag, LineFlags, LineInfo, MatchManager},
+    tags::{
+        form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
+        CharTag, LineFlags, LineInfo, MatchManager,
+    },
     ui::{Area, EndNode, Label, Ui},
 };
 
@@ -74,51 +77,52 @@ impl TextLine {
         }
     }
 
-    // NOTE: It always prints at `x = 0`, `x` in pos is treated here as an `x_shift`.
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // MASSIVE CHANGES ARE INCOMING FOR PRINTING, EVERYTHING IS A BIT TERRIBLE AT THE MOMENT //
+    ///////////////////////////////////////////////////////////////////////////////////////////
     /// Prints a line in a given position, skipping `skip` characters.
     ///
     /// Returns true if we should try printing the next line.
     #[inline]
-    fn print<U>(
-        &self, label: &mut U::Label, config: &Config, palette: &mut FormPalette, x_shift: usize,
-        skip: usize,
-    ) -> bool
+    fn print<U>(&self, end_node: &mut EndNode<U>, x_shift: usize, skip: usize) -> bool
     where
         U: Ui,
     {
-        let (skip, mut d_x) = if let WrapMethod::NoWrap = config.wrap_method {
+        let (label, config) = (&mut end_node.label, &end_node.config);
+
+        let skip = if let WrapMethod::NoWrap = config.wrap_method {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            self.get_col_at_distance::<U>(x_shift, label, config)
+            label.get_col_at_dist(self.text.as_str(), x_shift, &config.tab_places)
         } else {
-            (skip, 0)
+            skip
         };
-        (0..d_x).for_each(|_| label.print(' '));
 
         if let Some(first_wrap_col) = self.iter_wraps().next() {
             if skip >= first_wrap_col as usize && config.wrap_indent {
-                (0..self.indent::<U>(label, config)).for_each(|_| label.print(' '));
+                (0..self.indent(config)).for_each(|_| label.print(' '));
             }
         }
 
         // Iterate through the tags before the first unskipped character.
-        let tags_to_skip = self.trigger_skipped::<U>(skip, label, palette);
+        let mut form_former = config.palette.form_former();
+        let tags_to_skip = self.trigger_skipped::<U>(skip, label, &mut form_former);
         let mut tags = self.info.char_tags.iter().skip(tags_to_skip).peekable();
 
         // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
         let mut last_ch = 'a';
 
+        let mut d_x = 0;
+
         // To possibly print a cursor one byte after the end of the last line.
         let extra_ch = [(self.text.len(), ' ')];
         for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
-            let char_width = get_char_len(ch, d_x + x_shift, label, config);
-
-            if !self.trigger_on_byte::<U>(&mut tags, byte, label, config, palette) {
+            if !self.trigger_on_byte::<U>(&mut tags, byte, label, config, &mut form_former) {
                 return false;
             }
 
-            d_x += char_width;
+            d_x += 1;
             if let WrapMethod::NoWrap = config.wrap_method {
                 if d_x > label.area_mut().width() {
                     return true;
@@ -126,7 +130,7 @@ impl TextLine {
             }
 
             match ch {
-                '\t' => (0..char_width).for_each(|_| label.print(' ')),
+                '\t' => (0..4).for_each(|_| label.print(' ')),
                 '\n' => {
                     label.print(config.show_new_line.get_new_line_ch(last_ch));
                     return label.next_line().is_ok();
@@ -143,7 +147,7 @@ impl TextLine {
 
     fn trigger_on_byte<'a, U>(
         &self, tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
-        label: &mut U::Label, config: &Config, palette: &mut FormPalette,
+        label: &mut U::Label, config: &Config, form_former: &mut FormFormer,
     ) -> bool
     where
         U: Ui,
@@ -153,7 +157,7 @@ impl TextLine {
                 tags.next();
                 // If this is the first printed character of `top_line`, we don't wrap.
                 let indent = config.usable_indent::<U>(self, label);
-                if !tag.trigger(label, palette, indent) {
+                if !tag.trigger(label, form_former, indent) {
                     return false;
                 }
             } else {
@@ -164,7 +168,7 @@ impl TextLine {
     }
 
     fn trigger_skipped<U>(
-        &self, skip: usize, label: &mut U::Label, palette: &mut FormPalette,
+        &self, skip: usize, label: &mut U::Label, form_former: &mut FormFormer,
     ) -> usize
     where
         U: Ui,
@@ -174,19 +178,10 @@ impl TextLine {
         while let Some((byte, tag)) = tags_iter.next() {
             last_checked_index += 1;
             if let CharTag::PushForm(_) | CharTag::PopForm(_) = tag {
-                tag.trigger(label, palette, 0);
+                tag.trigger(label, form_former, 0);
             }
         }
         last_checked_index
-    }
-
-    pub fn parse_wrapping<U>(&mut self, label: &U::Label, config: &Config)
-    where
-        U: Ui,
-    {
-        let indent = if config.wrap_indent { self.indent::<U>(&label, &config) } else { 0 };
-        let indent = if indent < label.area().width() { indent } else { 0 };
-        self.info.parse_wrapping::<U>(&self.text, indent, &label, &config)
     }
 
     ////////////////////////////////
@@ -261,7 +256,7 @@ impl TextLineBuilder {
     }
 
     /// Makes it so this `TextLineBuilder`
-    pub fn extend(&mut self, text: &mut String, palette: &FormPalette) {
+    pub fn format_and_extend(&mut self, text: &mut String, palette: &FormPalette) {
         let builder = TextLineBuilder::format_and_create(text, palette);
         self.forms.extend_from_slice(&builder.forms);
     }
@@ -303,7 +298,7 @@ where
     U: Ui,
 {
     /// Returns a new instance of `Text`.
-    pub fn new(text: String, match_manager: Option<MatchManager>) -> Self {
+    pub fn new(text: String) -> Self {
         Text {
             lines: text.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
             replacements: Vec::new(),
@@ -313,14 +308,10 @@ where
 
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(&self, end_node: &mut EndNode<U>, print_info: PrintInfo) {
-        let mut label = end_node.label.write();
-        let config = end_node.config.read();
-        let mut palette = end_node.palette.write();
-
         if end_node.is_active {
-            label.set_as_active();
+            end_node.label.set_as_active();
         }
-        label.start_printing();
+        end_node.label.start_printing();
 
         // Print the `top_line`.
         let top_line = &self.lines[print_info.top_row];
@@ -329,18 +320,16 @@ where
         } else {
             0
         };
-        top_line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, skip as usize);
+        top_line.print::<U>(end_node, print_info.x_shift, skip as usize);
 
         // Prints other lines until it can't anymore.
         for line in self.lines.iter().skip(print_info.top_row + 1) {
-            if !line.print::<U>(&mut label, &config, &mut palette, print_info.x_shift, 0) {
+            if !line.print::<U>(end_node, print_info.x_shift, 0) {
                 break;
             }
         }
 
-        palette.clear_applied();
-
-        label.stop_printing();
+        end_node.label.stop_printing();
     }
 
     /// Returns a list of all line indices that would be printed in a given node.
@@ -422,9 +411,9 @@ where
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == main_index {
-                (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
+                (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
             } else {
-                (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)
+                (CharTag::ExtraCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
             };
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
@@ -445,9 +434,9 @@ where
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = if index == main_index {
-                (CharTag::MainCursor, CharTag::MainSelStart, CharTag::MainSelEnd)
+                (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
             } else {
-                (CharTag::SecondaryCursor, CharTag::SecondarySelStart, CharTag::SecondarySelStart)
+                (CharTag::ExtraCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
             };
 
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
@@ -556,17 +545,14 @@ impl PrintInfo {
         }
     }
 
-    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text<U>, node: &EndNode<U>)
+    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text<U>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
         let mut max_d = 0;
-        let label = node.label.read();
-        let config = node.config().read();
-
-        for index in text.printed_lines(label.area().height(), self) {
+        for index in text.printed_lines(end_node.label.area().height(), self) {
             let line = &text.lines()[index];
-            let line_d = line.get_distance_to_col::<U>(line.char_count(), &label, &config);
+            let line_d = end_node.label.get_width(line.text.as_str(), &end_node.config.tab_places);
             max_d = max(max_d, line_d);
         }
 
@@ -746,4 +732,12 @@ pub(crate) fn update_range<U>(
     //        text.lines[line_num].update_line_info(node);
     //    }
     //}
+}
+
+fn cursor_tags(is_main: bool) -> (CharTag, CharTag, CharTag) {
+    if is_main {
+        (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
+    } else {
+        (CharTag::MainCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
+    }
 }

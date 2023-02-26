@@ -36,19 +36,18 @@ impl CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-pub const DEFAULT_ID: u16 = 0;
-pub const LINE_NUMBERS_ID: u16 = 1;
-pub const MAIN_LINE_NUMBER_ID: u16 = 2;
-pub const MAIN_SELECTION_ID: u16 = 3;
-pub const SECONDARY_SELECTION_ID: u16 = 4;
+pub const DEFAULT: u16 = 0;
+pub const LINE_NUMBERS: u16 = 1;
+pub const MAIN_LINE_NUMBER: u16 = 2;
+pub const MAIN_SEL_ID: u16 = 3;
+pub const EXTRA_SEL_ID: u16 = 4;
 
 /// The list of forms to be used when rendering.
 #[derive(Clone)]
 pub struct FormPalette {
     main_cursor: CursorStyle,
-    secondary_cursor: CursorStyle,
+    extra_cursor: CursorStyle,
     forms: Vec<(String, Form)>,
-    applied_forms: Vec<(Form, u16)>,
 }
 
 impl Default for FormPalette {
@@ -66,7 +65,7 @@ impl Default for FormPalette {
             (String::from("SecondarySelection"), selection_form),
         ];
 
-        Self { main_cursor, secondary_cursor: main_cursor, forms, applied_forms: Vec::new() }
+        Self { main_cursor, extra_cursor: main_cursor, forms }
     }
 }
 
@@ -119,30 +118,42 @@ impl FormPalette {
         self.forms.get(index as usize).map(|(_, form)| *form).expect("The id is not valid!")
     }
 
-	/// Applies the `Form` with the given `id` and returns the result, given previous triggers.
+    pub fn main_cursor(&self) -> &CursorStyle {
+        &self.main_cursor
+    }
+
+    pub fn secondary_cursor(&self) -> &CursorStyle {
+        &self.extra_cursor
+    }
+
+    pub fn set_main_cursor(&mut self, style: CursorStyle) {
+        self.main_cursor = style;
+    }
+
+    pub fn set_secondary_cursor(&mut self, style: CursorStyle) {
+        self.extra_cursor = style;
+    }
+
+    pub(crate) fn form_former(&self) -> FormFormer {
+        FormFormer { palette: self, forms: Vec::new() }
+    }
+}
+
+pub(crate) struct FormFormer<'a> {
+    palette: &'a FormPalette,
+    forms: Vec<(Form, u16)>,
+}
+
+impl<'a> FormFormer<'a> {
+    /// Applies the `Form` with the given `id` and returns the result, given previous triggers.
     pub(super) fn apply(&mut self, id: u16) -> Form {
-        let form = self.get(id);
-        self.applied_forms.push((form, id));
+        let form = self.palette.get(id);
+        self.forms.push((form, id));
         self.make_form()
     }
 
-	/// Removes the `Form` with the given `id` and returns the result, given previous triggers.
-    pub(super) fn remove(&mut self, id: u16) -> Form {
-        let mut applied_forms = self.applied_forms.iter().enumerate();
-        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
-            self.applied_forms.remove(index);
-            self.make_form()
-        } else {
-            panic!("The id {} has yet to be pushed.", id);
-        }
-    }
-
-	/// Clears the list of applied `Form`s.
-    pub(crate) fn clear_applied(&mut self) {
-        self.applied_forms.clear();
-    }
-
-    /// Generates the form to be printed, given all the previously pushed forms in the `Form` stack.
+    /// Generates the form to be printed, given all the previously pushed forms in the `Form`
+    /// stack.
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
             foreground_color: Some(Color::Reset),
@@ -155,7 +166,7 @@ impl FormPalette {
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-        for &(Form { style, is_final }, _) in &self.applied_forms {
+        for &(Form { style, is_final }, _) in &self.forms {
             let new_foreground = style.foreground_color;
             set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
 
@@ -180,22 +191,24 @@ impl FormPalette {
         form
     }
 
-    pub fn main_cursor(&self) -> &CursorStyle {
-        &self.main_cursor
+    /// Removes the `Form` with the given `id` and returns the result, given previous triggers.
+    pub(super) fn remove(&mut self, id: u16) -> Form {
+        let mut applied_forms = self.forms.iter().enumerate();
+        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
+            self.forms.remove(index);
+            self.make_form()
+        } else {
+            panic!("The id {} has yet to be pushed.", id);
+        }
     }
 
-    pub fn secondary_cursor(&self) -> &CursorStyle {
-        &self.secondary_cursor
+    pub fn main_cursor(&self) -> CursorStyle {
+        self.palette.main_cursor
     }
 
-    pub fn set_main_cursor(&mut self, style: CursorStyle) {
-        self.main_cursor = style;
+    pub fn extra_cursor(&self) -> CursorStyle {
+        self.palette.extra_cursor
     }
-
-    pub fn set_secondary_cursor(&mut self, style: CursorStyle) {
-        self.secondary_cursor = style;
-    }
-
 }
 
 /// Internal method used only to shorten code in `make_form()`.

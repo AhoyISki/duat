@@ -1,8 +1,9 @@
 use super::{file_widget::FileWidget, NormalWidget};
 use crate::{
-    config::{RoData, RwData},
-    text::{PrintInfo, Text, TextLineBuilder},
-    ui::{EndNode, Window, Ui},
+    config::RoData,
+    tags::form::FormPalette,
+    text::{Text, TextLineBuilder},
+    ui::{Area, EndNode, Label, Ui},
 };
 
 pub trait DataToString {
@@ -79,31 +80,91 @@ pub struct StatusLine<U>
 where
     U: Ui,
 {
-    end_node: RwData<EndNode<U>>,
     text: Text<U>,
-    left_text: String,
-    center_text: String,
-    right_text: String,
-    text_line_builder: TextLineBuilder,
-    printables: Vec<Box<dyn DataToString>>,
-    file: Option<RoData<FileWidget<U>>>,
-    file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
+    file_widget: RoData<FileWidget<U>>,
+    format: StatusFormat<U>,
+    new_status: bool,
+    identifier: String,
 }
 
 impl<U> StatusLine<U>
 where
     U: Ui,
 {
-    pub fn new(end_node: RwData<EndNode<U>>, _node_manager: &mut Window<U>) -> Self {
+    pub fn new(file_widget: RoData<FileWidget<U>>, status_format: StatusFormat<U>) -> Self {
         StatusLine {
-            end_node,
             text: Text::default(),
+            file_widget,
+            format: status_format,
+            new_status: true,
+            identifier: String::from("status-line"),
+        }
+    }
+
+    pub fn set_file(&mut self, file_widget: RoData<FileWidget<U>>) {
+        self.file_widget = file_widget;
+    }
+}
+
+impl<U> NormalWidget<U> for StatusLine<U>
+where
+    U: Ui,
+{
+    fn identifier(&self) -> &str {
+        self.identifier.as_str()
+    }
+
+    fn update(&mut self, end_node: &mut EndNode<U>) {
+        let print_diff = &mut 0;
+        let file_diff = &mut 0;
+
+        let left = sub_printables(&self.format.left_text, &self, print_diff, file_diff);
+        let center = sub_printables(&self.format.center_text, &self, print_diff, file_diff);
+        let right = sub_printables(&self.format.right_text, &self, print_diff, file_diff);
+        let form_count = self.format.text_line_builder.form_count();
+
+        let status = normalize_status::<U>(left, center, right, form_count, end_node);
+
+        self.text.lines.clear();
+        self.text.lines.push(self.format.text_line_builder.form_text_line(status));
+    }
+
+    fn needs_update(&self) -> bool {
+        self.file_widget.has_changed() || self.format.has_changed()
+    }
+
+    fn text(&self) -> &Text<U> {
+        &self.text
+    }
+}
+
+unsafe impl<U> Send for StatusLine<U> where U: Ui {}
+
+pub struct StatusFormat<U>
+where
+    U: Ui,
+{
+    text_line_builder: TextLineBuilder,
+    left_text: String,
+    center_text: String,
+    right_text: String,
+    global_printables: Vec<Box<dyn DataToString>>,
+    file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
+}
+
+impl<U> StatusFormat<U>
+where
+    U: Ui,
+{
+    /// Returns the default form of `StatusFormat<U>`.
+    pub fn default(palette: &FormPalette) -> Self {
+        let mut right_text = String::from("[FileName]() [Coords]() [Selections]() sel");
+        StatusFormat {
+            text_line_builder: TextLineBuilder::format_and_create(&mut right_text, palette),
             left_text: String::new(),
             center_text: String::new(),
-            right_text: String::new(),
-            text_line_builder: TextLineBuilder::default(),
-            printables: Vec::new(),
-            file: None,
+            right_text,
+            global_printables: Vec::new(),
             file_printables: Vec::new(),
         }
     }
@@ -114,7 +175,7 @@ where
         F: Fn(&T) -> String + 'static,
     {
         let new_state = DataString::new(state.clone(), f);
-        self.printables.push(Box::new(new_state));
+        self.global_printables.push(Box::new(new_state));
     }
 
     pub fn push_indexed<T, F>(&mut self, state: &RoData<Vec<Box<T>>>, f: F, index: &RoData<usize>)
@@ -123,7 +184,7 @@ where
         F: Fn(&Vec<Box<T>>, usize) -> String + 'static,
     {
         let new_state = DataStringIndexed::new(state.clone(), f, index.clone());
-        self.printables.push(Box::new(new_state));
+        self.global_printables.push(Box::new(new_state));
     }
 
     pub fn push_file_var<F>(&mut self, function: F)
@@ -133,96 +194,19 @@ where
         self.file_printables.push(Box::new(function));
     }
 
-    pub fn set_left_text<T>(&mut self, text: T)
-    where
-        T: ToString,
-    {
-        let end_node = self.end_node.read();
-        let palette = end_node.palette().read();
-        let mut text = text.to_string();
-        self.text_line_builder = TextLineBuilder::format_and_create(&mut text, &palette);
-        self.left_text = text;
+    fn has_changed(&self) -> bool {
+        self.global_printables.iter().any(|printable| printable.has_changed())
     }
 
-    pub fn set_center_text<T>(&mut self, text: T)
-    where
-        T: ToString,
-    {
-        let end_node = self.end_node.read();
-        let palette = end_node.palette().read();
-        let mut text = text.to_string();
-        self.text_line_builder.extend(&mut text, &palette);
-        self.center_text = text;
-    }
-
-    pub fn set_right_text<T>(&mut self, text: T)
-    where
-        T: ToString,
-    {
-        let end_node = self.end_node.read();
-        let palette = end_node.palette().read();
-        let mut text = text.to_string();
-        self.text_line_builder.extend(&mut text, &palette);
-        self.right_text = text;
-    }
-
-    pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
-        self.file = Some(file);
+    fn update_formater(&mut self, end_node: &EndNode<U>) {
+        let palette = &end_node.config().palette;
+        self.text_line_builder = TextLineBuilder::format_and_create(&mut self.left_text, palette);
+        self.text_line_builder.format_and_extend(&mut self.center_text, palette);
+        self.text_line_builder.format_and_extend(&mut self.right_text, palette);
     }
 }
 
-impl<U> NormalWidget<U> for StatusLine<U>
-where
-    U: Ui,
-{
-    fn identifier(&self) -> String {
-        String::from("status_line")
-    }
-
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.end_node
-    }
-
-    fn update(&mut self) {
-        let print_diff = &mut 0;
-        let file_diff = &mut 0;
-
-        let left = format_into_status(&self.left_text, &self, print_diff, file_diff);
-        let center = format_into_status(&self.center_text, &self, print_diff, file_diff);
-        let right = format_into_status(&self.right_text, &self, print_diff, file_diff);
-        let width = self.end_node.read().label.read().area().width();
-        let form_count = self.text_line_builder.form_count();
-        let end_node = self.end_node().read();
-        let label = end_node.label.read();
-
-        let status = normalize_status::<U>(left, center, right, width, form_count, &label);
-        drop(label);
-        drop(end_node);
-
-        self.text.lines.clear();
-        self.text.lines.push(self.text_line_builder.form_text_line(status));
-    }
-
-    fn needs_update(&self) -> bool {
-        self.printables.iter().any(|p| p.has_changed())
-    }
-
-    fn text(&self) -> &Text<U> {
-        &self.text
-    }
-
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
-        (&self.text, &mut self.end_node, PrintInfo::default())
-    }
-}
-
-unsafe impl<U> Send for StatusLine<U> where U: Ui {}
-
-fn format_into_status<U>(
+fn sub_printables<U>(
     text: &String, status: &StatusLine<U>, global_index: &mut usize, file_index: &mut usize,
 ) -> String
 where
@@ -234,25 +218,22 @@ where
     vars.extend(text.match_indices("()"));
     vars.sort_by_key(|&(pos, _)| pos);
 
-    let file = &status.file.as_ref().map(|file| file.read());
+    let file_widget = status.file_widget.read();
     for (mut pos, var) in vars {
         let replacement = if var == "{}" {
-            if let Some(replacement) = status.printables.get(*global_index) {
+            if let Some(replacement) = status.format.global_printables.get(*global_index) {
                 *global_index += 1;
                 replacement.to_string()
             } else {
                 panic!("There are not enough global_vars! One global_var per \"{{}}\"");
             }
-        } else if let Some(file) = file {
-            if let Some(replacement) = &status.file_printables.get(*file_index) {
+        } else {
+            if let Some(replacement) = &status.format.file_printables.get(*file_index) {
                 *file_index += 1;
-                (replacement)(&file)
+                (replacement)(&file_widget)
             } else {
                 panic!("There are not enough file_vars! One file_var per \"()\"");
             }
-        // Case for when this is a file_var, but no files are open.
-        } else {
-            String::from("")
         };
 
         pos = pos.saturating_add_signed(final_text.len() as isize - text.len() as isize);
@@ -262,17 +243,19 @@ where
     final_text
 }
 
-// TODO: Unicodeify.
-// TODO: Handle now atomic widths.
+// TODO: Evolve this into a system capable of handling non monospaced text.
 fn normalize_status<U>(
-    left: String, center: String, right: String, width: usize, form_count: usize, label: &U::Label,
+    left: String, center: String, right: String, form_count: usize, end_node: &EndNode<U>,
 ) -> String
 where
     U: Ui,
 {
-    let left_len: usize = left.chars().map(|ch| label.get_char_len(ch)).sum();
-    let center_len: usize = center.chars().map(|ch| label.get_char_len(ch)).sum();
-    let right_len: usize = right.chars().map(|ch| label.get_char_len(ch)).sum();
+    let width = end_node.label.area().width();
+
+    let (config, label) = (end_node.config(), &end_node.label);
+    let left_width: usize = label.get_width(left.as_str(), &config.tab_places);
+    let center_width: usize = label.get_width(left.as_str(), &config.tab_places);
+    let right_width: usize = label.get_width(left.as_str(), &config.tab_places);
 
     let left_forms: String = left.matches("[]").collect();
     let right_forms: String = right.matches("[]").collect();
@@ -286,61 +269,63 @@ where
     let mut status = " ".repeat(mod_width);
 
     // Print left, right, and center.
-    if left_len + center_len + right_len <= mod_width {
-        let center_dist = (mod_width - center_len) / 2;
-        let center_dist = if left_len + right_form_count - left_form_count > center_dist {
-            left_len
-        } else if right_len + left_form_count - right_form_count > center_dist {
-            2 * center_dist - right_len
+    if left_width + center_width + right_width <= mod_width {
+        let center_dist = (mod_width - center_width) / 2;
+        let center_dist = if left_width + right_form_count - left_form_count > center_dist {
+            left_width
+        } else if right_width + left_form_count - right_form_count > center_dist {
+            2 * center_dist - right_width
         } else {
             center_dist + left_form_count - right_form_count
         };
 
-        status.replace_range((mod_width - right_len).., right.as_str());
-        status.replace_range(center_dist..(center_dist + center_len), center.as_str());
-        status.replace_range(0..left_len, left.as_str());
+        status.replace_range((mod_width - right_width).., right.as_str());
+        status.replace_range(center_dist..(center_dist + center_width), center.as_str());
+        status.replace_range(0..left_width, left.as_str());
 
     // Print just the left and right parts.
-    } else if left_len + right_len <= mod_width {
+    } else if left_width + right_width <= mod_width {
         // We need to print the center, even while not printing the central part, in order to sync
         // correctly with the `TextLineBuilder`.
-        status.replace_range((mod_width - right_len).., right.as_str());
-        status.replace_range(left_len..(left_len + center_forms.len()), center_forms.as_str());
-        status.replace_range(0..left_len, left.as_str());
+        status.replace_range((mod_width - right_width).., right.as_str());
+        status.replace_range(left_width..(left_width + center_forms.len()), center_forms.as_str());
+        status.replace_range(0..left_width, left.as_str());
 
     // Print as much of the right part as possible, cutting off from the left.
     } else {
-        let mut adder = 0;
-        let (split_byte, _) = right
-            .char_indices()
-            .rev()
-            .take_while(|&(_, ch)| {
-                if ch != '[' && ch != ']' {
-                    adder += label.get_char_len(ch);
-                };
-                adder <= width
-            })
-            .last()
-            .unwrap();
+        todo!();
+        // let mut adder = 0;
+        // let (split_byte, _) = right
+        //     .char_indices()
+        //     .rev()
+        //     .take_while(|&(_, ch)| {
+        //         if ch != '[' && ch != ']' {
+        //             adder += label.get_char_len(ch);
+        //         };
+        //         adder <= width
+        //     })
+        //     .last()
+        //     .unwrap();
 
-        let cut_right_forms: String = right[..split_byte].matches("[]").collect();
+        // let cut_right_forms: String = right[..split_byte].matches("[]").collect();
 
-        let printed_len: usize = right[split_byte..].chars().map(|ch| label.get_char_len(ch)).sum();
+        // let printed_len: usize = right[split_byte..].chars().map(|ch|
+        // label.get_char_len(ch)).sum();
 
-        let center_end = left_forms.len() + center_forms.len();
-        let cut_right_end = center_end + cut_right_forms.len();
+        // let center_end = left_forms.len() + center_forms.len();
+        // let cut_right_end = center_end + cut_right_forms.len();
 
-        status.replace_range(0..left_forms.len(), left_forms.as_str());
-        status.replace_range(left_forms.len()..center_end, center_forms.as_str());
-        status.replace_range(center_end..cut_right_end, cut_right_forms.as_str());
-        status.replace_range((mod_width - printed_len).., &right[split_byte..]);
+        // status.replace_range(0..left_forms.len(), left_forms.as_str());
+        // status.replace_range(left_forms.len()..center_end, center_forms.as_str());
+        // status.replace_range(center_end..cut_right_end, cut_right_forms.as_str());
+        // status.replace_range((mod_width - printed_len).., &right[split_byte..]);
     }
 
     status
 }
 
 #[macro_export]
-macro_rules! form_status {
+macro_rules! new_format_status {
     (@ignore $ignored:expr) => {};
 
     (@get_obj (|$obj:ident| $internals:expr)) => {
@@ -366,23 +351,33 @@ macro_rules! form_status {
     };
 
     (
-        $status:expr => { left: $left:expr, center: $center:expr, right: $right:expr,
-        file_vars: [$($file_to_string:tt),*], global_vars: [$($to_string:tt),*]}
+        left: $left:expr, center: $center:expr, right: $right:expr,
+        file_vars: [$($file_to_string:tt),*], global_vars: [$($to_string:tt),*]
     ) => {
+        let mut format = StatusFormat::default();
         $(
-            $status.push_file_var(form_status!(@file_fun $file_to_string));
+            format.push_file_var(format_status!(@file_fun $file_to_string));
         )*
         $(
-            $status.push(form_status!(@get_obj $to_string), form_status!(@get_fun $to_string));
+            format.push(format_status!(@get_obj $to_string), format_status!(@get_fun $to_string));
         )*
 
-		$status.set_left_text($left);
-		$status.set_center_text($center);
-		$status.set_right_text($right);
+		format.left_text = left;
+		format.center_text = center;
+		format.right_text = right;
     };
 }
 
 /// A convenience macro to join any number of variables that can be turned into `String`s.
+///
+/// # Examples
+///
+/// ```
+/// use parsec_core::widgets::status_line::join;
+///
+/// let my_text = join!["number: ", 235, String::from(", floating: "), 3.14f32];
+/// assert!(my_text == String::from("number: 235, floating: 3.14"));
+/// ```
 #[macro_export]
 macro_rules! join {
     ($($var:expr),*) => {

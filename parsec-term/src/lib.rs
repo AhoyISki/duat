@@ -15,7 +15,7 @@ use parsec_core::{
     config::{RoData, RwData},
     tags::{
         form::CursorStyle,
-        form::{Form, DEFAULT_ID},
+        form::{Form, DEFAULT},
     },
     text::{PrintInfo, Text, TextLine, TextLineBuilder},
     ui::{self, Area as UiArea, Axis, EndNode, Window, Side, Split},
@@ -425,7 +425,7 @@ impl ui::Label<Area> for Label {
         queue!(self.stdout, ResetColor).unwrap();
     }
 
-    fn place_primary_cursor(&mut self, cursor_style: CursorStyle) {
+    fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
             queue!(self.stdout, caret, SavePosition).unwrap();
             unsafe { SHOW_CURSOR = true }
@@ -518,7 +518,7 @@ impl ui::Ui for Ui {
     type Container = Container;
     type Label = Label;
 
-    fn push_label(
+    fn bisect_area(
         &mut self, label: &mut Self::Label, side: Side, split: Split,
     ) -> (Self::Container, Self::Label) {
         label.area.request_len(split.len(), side);
@@ -704,7 +704,7 @@ pub enum SeparatorForm {
 
 impl Default for SeparatorForm {
     fn default() -> Self {
-        SeparatorForm::Uniform(TextLineBuilder::from([DEFAULT_ID, DEFAULT_ID]))
+        SeparatorForm::Uniform(TextLineBuilder::from([DEFAULT, DEFAULT]))
     }
 }
 
@@ -717,7 +717,7 @@ impl SeparatorForm {
         let palette = node.palette().read();
         let (_, id) = palette.get_from_name(name);
 
-        SeparatorForm::Uniform(TextLineBuilder::from([id, DEFAULT_ID]))
+        SeparatorForm::Uniform(TextLineBuilder::from([id, DEFAULT]))
     }
 
     pub fn different_on_main<U, S>(node: &RwData<EndNode<U>>, main_name: S, other_name: S) -> Self
@@ -731,8 +731,8 @@ impl SeparatorForm {
         let (_, other_id) = palette.get_from_name(other_name);
 
         SeparatorForm::DifferentOnMain(
-            TextLineBuilder::from([main_id, DEFAULT_ID]),
-            TextLineBuilder::from([other_id, DEFAULT_ID]),
+            TextLineBuilder::from([main_id, DEFAULT]),
+            TextLineBuilder::from([other_id, DEFAULT]),
         )
     }
 
@@ -750,9 +750,9 @@ impl SeparatorForm {
         let (_, higher_id) = palette.get_from_name(higher_name);
 
         SeparatorForm::ThreeWay(
-            TextLineBuilder::from([main_id, DEFAULT_ID]),
-            TextLineBuilder::from([lower_id, DEFAULT_ID]),
-            TextLineBuilder::from([higher_id, DEFAULT_ID]),
+            TextLineBuilder::from([main_id, DEFAULT]),
+            TextLineBuilder::from([lower_id, DEFAULT]),
+            TextLineBuilder::from([higher_id, DEFAULT,
         )
     }
 

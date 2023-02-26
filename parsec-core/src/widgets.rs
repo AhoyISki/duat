@@ -4,12 +4,11 @@ pub mod line_numbers;
 pub mod status_line;
 
 use std::{
-    marker::PhantomData,
     ops::Deref,
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use self::{command_line::CommandList};
+use self::command_line::CommandList;
 use crate::{
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
@@ -23,7 +22,7 @@ where
     U: Ui,
 {
     /// Returns an identifier for this `Widget`. They may not be unique.
-    fn identifier(&self) -> String;
+    fn identifier(&self) -> &str;
 
     /// Updates the widget.
     fn update(&mut self, end_node: &mut EndNode<U>);
@@ -58,9 +57,11 @@ pub trait ActionableWidget<U>: NormalWidget<U>
 where
     U: Ui,
 {
-    fn editor<'a>(&'a mut self, index: usize, splice_adder: &'a mut SpliceAdder) -> Editor<U>;
+    fn editor<'a>(
+        &'a mut self, index: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+    ) -> Editor<U>;
 
-    fn mover(&mut self, index: usize) -> Mover<U>;
+    fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U>;
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize);
 
@@ -76,11 +77,11 @@ where
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn undo(&mut self) {
+    fn undo(&mut self, end_node: &EndNode<U>) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn redo(&mut self) {
+    fn redo(&mut self, end_node: &EndNode<U>) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
@@ -121,22 +122,6 @@ where
     }
 }
 
-pub struct RoWidget<U>(Widget<U>)
-where
-    U: Ui;
-
-impl<U> RoWidget<U>
-where
-    U: Ui,
-{
-    pub fn text(&self) -> &Text<U> {
-        match self.0 {
-            Widget::Normal(widget) => widget.lock().unwrap().text(),
-            Widget::Actionable(widget) => widget.lock().unwrap().text(),
-        }
-    }
-}
-
 pub enum Widget<U>
 where
     U: Ui + ?Sized,
@@ -149,14 +134,14 @@ impl<U> Widget<U>
 where
     U: Ui,
 {
-    pub(crate) fn identifier(&self) -> String {
+    pub(crate) fn identifier_matches(&self, other: &str) -> bool {
         match self {
-            Widget::Normal(widget) => widget.lock().unwrap().identifier(),
-            Widget::Actionable(widget) => widget.lock().unwrap().identifier(),
+            Widget::Normal(widget) => widget.lock().unwrap().identifier() == other,
+            Widget::Actionable(widget) => widget.lock().unwrap().identifier() == other,
         }
     }
 
-    pub(crate) fn update(&mut self, end_node: &mut EndNode<U>) -> bool {
+    pub(crate) fn update(&self, end_node: &mut EndNode<U>) -> bool {
         match self {
             Widget::Normal(widget) => {
                 let mut widget = widget.lock().unwrap();
@@ -206,6 +191,13 @@ where
             text.add_cursor_tags(cursors, main_index);
         }
     }
+
+    pub(crate) fn identifier(&self) -> String {
+        match self {
+            Widget::Normal(widget) => widget.lock().unwrap().identifier().to_string(),
+            Widget::Actionable(widget) => widget.lock().unwrap().identifier().to_string(),
+        }
+    }
 }
 
 pub struct WidgetActor<'a, U, E>
@@ -215,7 +207,7 @@ where
 {
     clearing_needed: bool,
     actionable: &'a mut E,
-    _ghost: PhantomData<U>,
+    end_node: &'a EndNode<U>,
 }
 
 impl<'a, U, E> WidgetActor<'a, U, E>
@@ -223,6 +215,11 @@ where
     U: Ui,
     E: ActionableWidget<U> + ?Sized,
 {
+    /// Returns a new instace of `WidgetActor<U, E>`.
+    pub(crate) fn new(actionable: &'a mut E, end_node: &'a EndNode<U>) -> Self {
+        WidgetActor { clearing_needed: false, actionable, end_node }
+    }
+
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
     fn clear_intersections(&mut self) {
         let Some(cursors) = self.actionable.mut_cursors() else {
@@ -257,7 +254,7 @@ where
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let mut editor = self.actionable.editor(index, &mut splice_adder);
+            let mut editor = self.actionable.editor(index, &mut splice_adder, self.end_node);
             editor.calibrate_on_adder();
             editor.reset_cols();
             f(editor);
@@ -270,7 +267,7 @@ where
         F: FnMut(Mover<U>),
     {
         for index in 0..self.actionable.cursors().len() {
-            let mover = self.actionable.mover(index);
+            let mover = self.actionable.mover(index, self.end_node);
             f(mover);
         }
 
@@ -286,7 +283,7 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let mover = self.actionable.mover(index);
+        let mover = self.actionable.mover(index, self.end_node);
         f(mover);
 
         if let Some(cursors) = self.actionable.mut_cursors() {
@@ -341,7 +338,7 @@ where
         }
 
         let mut splice_adder = SpliceAdder::default();
-        let editor = self.actionable.editor(index, &mut splice_adder);
+        let editor = self.actionable.editor(index, &mut splice_adder, self.end_node);
         f(editor);
 
         if let Some(cursors) = self.actionable.mut_cursors() {
@@ -409,20 +406,10 @@ where
     }
 
     pub fn undo(&mut self) {
-        self.actionable.undo();
+        self.actionable.undo(self.end_node);
     }
 
     pub fn redo(&mut self) {
-        self.actionable.redo();
-    }
-}
-
-impl<'a, U, E> From<&'a mut E> for WidgetActor<'a, U, E>
-where
-    U: Ui,
-    E: ActionableWidget<U> + ?Sized,
-{
-    fn from(value: &'a mut E) -> Self {
-        WidgetActor { actionable: value, clearing_needed: false, _ghost: PhantomData::default() }
+        self.actionable.redo(self.end_node);
     }
 }

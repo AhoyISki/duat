@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
@@ -11,8 +12,6 @@ use crate::{
     ui::{EndNode, Ui},
     Session,
 };
-
-use super::{ActionableWidget, NormalWidget, Widget};
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -180,20 +179,12 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn identifier(&self) -> String {
-        String::from("command_line")
+    fn identifier(&self) -> &'static str {
+        "command_line"
     }
 
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.end_node
-    }
-
-    fn update(&mut self) {
-        self.print_info.update(self.cursor[0].caret(), &self.text, &self.end_node);
+    fn update(&mut self, end_node: &mut EndNode<U>) {
+        self.print_info.update(self.cursor[0].caret(), &self.text, end_node);
 
         //self.match_scroll();
         if self.text.lines().len() > 1 {
@@ -218,24 +209,22 @@ where
     fn text(&self) -> &Text<U> {
         &self.text
     }
-
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
-        (&self.text, &mut self.end_node, self.print_info)
-    }
 }
 
 impl<U> ActionableWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn editor<'a>(&'a mut self, _: usize, splice_adder: &'a mut SpliceAdder) -> Editor<U> {
+    fn editor<'a>(
+        &'a mut self, _: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+    ) -> Editor<U> {
         self.needs_update = true;
-        Editor::new(&mut self.cursor[0], splice_adder, &mut self.text, &self.end_node, None, None)
+        Editor::new(&mut self.cursor[0], splice_adder, &mut self.text, end_node, None, None)
     }
 
-    fn mover(&mut self, _: usize) -> Mover<U> {
+    fn mover<'a>(&'a mut self, _: usize, end_node: &'a EndNode<U>) -> Mover<U> {
         self.needs_update = true;
-        Mover::new(&mut self.cursor[0], &self.text, &self.end_node, None)
+        Mover::new(&mut self.cursor[0], &self.text, end_node, None)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
