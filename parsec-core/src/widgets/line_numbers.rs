@@ -8,8 +8,8 @@ use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{RoData, RwData},
     tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
-    text::{PrintInfo, Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, Side, Ui, Window},
+    text::{Text, TextLineBuilder},
+    ui::{Area, EndNode, Label, Side, Ui},
 };
 
 pub struct LineNumbers<U>
@@ -22,7 +22,6 @@ where
     other_line_builder: TextLineBuilder,
     min_width: usize,
     line_numbers_config: LineNumbersConfig,
-    identifier: String,
 }
 
 unsafe impl<U> Send for LineNumbers<U> where U: Ui {}
@@ -37,14 +36,13 @@ where
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        let mut line_numbers = LineNumbers {
+        let line_numbers = LineNumbers {
             file,
             text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
             min_width: 1,
             line_numbers_config,
-            identifier: String::from("line-numbers")
         };
 
         Widget::Normal(Arc::new(Mutex::new(line_numbers)))
@@ -53,14 +51,13 @@ where
     pub fn new_with_default_config(file_widget: RwData<FileWidget<U>>) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        let mut line_numbers = LineNumbers {
+        let line_numbers = LineNumbers {
             file,
             text: Text::default(),
             main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
             other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
             min_width: 1,
             line_numbers_config: LineNumbersConfig::default(),
-            identifier: String::from("line-numbers")
         };
 
         Widget::Normal(Arc::new(Mutex::new(line_numbers)))
@@ -85,13 +82,13 @@ where
     U: Ui + 'static,
 {
     fn identifier(&self) -> &str {
-        self.identifier.as_str()
+        "parsec-line-numbers"
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         let file = self.file.read();
         let width = self.calculate_width();
-        end_node.label.area_mut().request_len(width, Side::Right);
+        end_node.label.area_mut().request_len(width, Side::Right).unwrap();
 
         let lines = file.printed_lines();
         let main_line = file.main_cursor().true_row();

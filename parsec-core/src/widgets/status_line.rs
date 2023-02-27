@@ -83,8 +83,6 @@ where
     text: Text<U>,
     file_widget: RoData<FileWidget<U>>,
     format: StatusFormat<U>,
-    new_status: bool,
-    identifier: String,
 }
 
 impl<U> StatusLine<U>
@@ -96,8 +94,6 @@ where
             text: Text::default(),
             file_widget,
             format: status_format,
-            new_status: true,
-            identifier: String::from("status-line"),
         }
     }
 
@@ -111,7 +107,7 @@ where
     U: Ui,
 {
     fn identifier(&self) -> &str {
-        self.identifier.as_str()
+        "parsec-status-line"
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {

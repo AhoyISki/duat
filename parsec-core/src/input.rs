@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::{
     ui::{EndNode, Ui},
     widgets::{file_widget::FileWidget, ActionableWidget, WidgetActor},
-    SessionControl,
+    Controls, SessionManager,
 };
 
 /// A widget that can receive and process input.
@@ -27,7 +27,7 @@ pub trait InputScheme {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
-        session_control: &mut SessionControl,
+        session_control: &mut Controls<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized;
@@ -63,14 +63,14 @@ where
     /// Sends the transformed keys to an editing scheme to affect a given file.
     fn send_keys<U, A>(
         &self, editing_scheme: &mut E, widget: &mut A, end_node: &EndNode<U>,
-        session_control: &mut SessionControl,
+        controls: &mut Controls<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
     {
         for key in &self.gives {
             let actor = WidgetActor::new(&mut *widget, end_node);
-            editing_scheme.process_key(key, actor, session_control);
+            editing_scheme.process_key(key, actor, controls);
         }
     }
 }
@@ -118,8 +118,7 @@ where
 
     /// Send a given key to be processed.
     pub fn send_key_to_actionable<U, A>(
-        &mut self, key: KeyEvent, widget: &mut A, end_node: &EndNode<U>,
-        session_control: &mut SessionControl,
+        &mut self, key: KeyEvent, widget: &mut A, end_node: &EndNode<U>, mut controls: Controls<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
@@ -160,12 +159,12 @@ where
 
         for key in keys_to_send {
             let widget_actor = WidgetActor::new(&mut *widget, end_node);
-            self.input_scheme.process_key(&key, widget_actor, session_control);
+            self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
         if should_check_new.is_empty() {
             let widget_actor = WidgetActor::new(&mut *widget, end_node);
-            self.input_scheme.process_key(&key, widget_actor, session_control);
+            self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
         self.should_check = should_check_new;

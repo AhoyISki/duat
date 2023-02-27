@@ -179,8 +179,8 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn identifier(&self) -> &'static str {
-        "command_line"
+    fn identifier(&self) -> &str {
+        "parsec-command-line"
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {

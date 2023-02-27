@@ -20,7 +20,7 @@ use crossterm::event::{self, Event, KeyEvent};
 use cursor::TextPos;
 use input::{InputScheme, KeyRemapper};
 use text::{PrintInfo, Text};
-use ui::{ActionableWidgets, Area, EndNode, Label, ModNode, Side, Split, Ui, Window};
+use ui::{Area, EndNode, Label, ModNode, NodeIndex, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -33,7 +33,7 @@ where
 {
     window: Window<U>,
     pub constructor_hook: Box<dyn Fn(ModNode<U>)>,
-    control: RwData<SessionControl>,
+    session_manager: RwData<SessionManager>,
     global_commands: RwData<CommandList>,
 }
 
@@ -53,18 +53,19 @@ where
         let node_manager = Window::new(ui, file_widget, config, &constructor_hook);
         let (active_widget, _) = node_manager.actionable_widgets().next().unwrap();
 
-        let control = SessionControl::new(file_name, active_widget.lock().unwrap().identifier());
-        let control = RwData::new(control);
+        let session_manager =
+            SessionManager::new(file_name, active_widget.lock().unwrap().identifier());
+        let session_manager = RwData::new(session_manager);
 
         let mut command_list = CommandList::default();
-        for command in session_commands(control.clone()) {
+        for command in session_commands(session_manager.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
         }
 
         let session = Session {
             window: node_manager,
             constructor_hook,
-            control,
+            session_manager,
             global_commands: RwData::new(command_list),
         };
 
@@ -83,8 +84,10 @@ where
         self.window.push_to_files(file_widget, side, split, false, &self.constructor_hook);
     }
 
-    pub fn push_widget_to_edge(&mut self, widget: Widget<U>, side: Side, split: Split) {
-        let (master_node, end_node) = self.window.push_to_master(widget, side, split, false);
+    pub fn push_widget_to_edge(
+        &mut self, widget: Widget<U>, side: Side, split: Split,
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        self.window.push_to_master(widget, side, split, false)
     }
 
     /// The full loop. A break in this loop means quitting Parsec.
@@ -93,9 +96,6 @@ where
         I: InputScheme,
     {
         self.window.startup();
-
-        // This mutex is only used to prevent multiple printings at the same time.
-        let resize_requested = Mutex::new(true);
 
         // The main loop.
         loop {
@@ -107,9 +107,9 @@ where
                 }
             }
 
-            self.session_loop(&resize_requested, key_remapper);
+            self.session_loop(key_remapper);
 
-            if self.control.read().should_quit {
+            if self.session_manager.read().should_quit {
                 break;
             }
         }
@@ -119,7 +119,7 @@ where
 
     /// The primary application loop, executed while no breaking commands have been sent to
     /// `SessionControl`.
-    fn session_loop<I>(&mut self, resize_requested: &Mutex<bool>, key_remapper: &mut KeyRemapper<I>)
+    fn session_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
     {
@@ -127,15 +127,14 @@ where
             loop {
                 self.window.print_if_layout_changed();
 
-                let mut control = self.control.write();
-                control.try_switch_to_target(&self.window);
-                if control.break_loop {
+                let session_manager = self.session_manager.write();
+                if session_manager.break_loop {
                     break;
                 }
-                drop(control);
+                drop(session_manager);
 
                 if let Ok(true) = event::poll(Duration::from_millis(5)) {
-                    send_event(key_remapper, &mut self.control, &self.window);
+                    send_event(key_remapper, &mut self.session_manager, &self.window);
                 } else {
                     continue;
                 }
@@ -158,76 +157,126 @@ where
     }
 }
 
-pub struct SessionControl {
+struct SessionManager {
     files_to_open: Vec<PathBuf>,
-    target_widget: Option<String>,
     active_file: String,
     active_widget: String,
     break_loop: bool,
     should_quit: bool,
 }
 
-impl SessionControl {
+impl SessionManager {
     fn new(active_file: impl ToString, active_widget: impl ToString) -> Self {
-        SessionControl {
+        SessionManager {
             files_to_open: Vec::new(),
-            target_widget: None,
             active_file: active_file.to_string(),
             active_widget: active_widget.to_string(),
             break_loop: false,
             should_quit: false,
         }
     }
+}
 
-    /// Returns to the active file from any widget, including the file itself.
-    pub fn return_to_file(&mut self) {
-        self.target_widget = Some(self.active_file.clone());
-    }
+pub struct Controls<'a, U>
+where
+    U: Ui,
+{
+    session_manager: &'a mut SessionManager,
+    window: &'a Window<U>,
+}
 
-    /// Switches the input to another `Widget`.
-    pub fn switch_widget(&mut self, target_widget: String) {
-        self.target_widget = Some(target_widget);
-    }
-
+impl<'a, U> Controls<'a, U>
+where
+    U: Ui,
+{
     /// Quits Parsec.
     pub fn quit(&mut self) {
-        self.break_loop = true;
-        self.should_quit = true;
+        self.session_manager.should_quit = true;
+        self.session_manager.break_loop = true;
     }
 
-    /// Switches the active widget to `self.target_widget`.
-    fn try_switch_to_target<U>(&mut self, mut window: &Window<U>)
-    where
-        U: Ui,
-    {
-        let Some(identifier) = self.target_widget.take() else {
-            return;
-        };
-
-        let (widget, _) = window
+	/// Switches to a `Widget<U>` with the given identifier.
+    pub fn switch_to_widget(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
+        let (widget, _) = self
+            .window
             .actionable_widgets()
-            .find(|(widget, _)| widget.lock().unwrap().identifier() == self.active_widget.as_str())
-            .unwrap();
-        let mut widget = widget.lock().unwrap();
-        widget.on_unfocus();
-
-        let (widget, _) = window
-            .actionable_widgets()
-            .find(|(widget, _)| widget.lock().unwrap().identifier() == identifier.as_str())
-            .unwrap();
+            .find(|(widget, _)| widget.lock().unwrap().identifier() == target.as_ref())
+            .ok_or(())?;
         let mut widget = widget.lock().unwrap();
         widget.on_focus();
 
-        if identifier.starts_with("parsec-file: ") {
-            self.active_file = identifier;
+        let (widget, _) = self
+            .window
+            .actionable_widgets()
+            .find(|(widget, _)| {
+                widget.lock().unwrap().identifier() == self.session_manager.active_widget.as_str()
+            })
+            .ok_or(())?;
+
+        let mut widget = widget.lock().unwrap();
+        widget.on_unfocus();
+
+        if &target.as_ref()[..13] == "parsec-file: " {
+            self.session_manager.active_file = target.as_ref().to_string();
         }
+
+        self.session_manager.active_widget = target.as_ref().to_string();
+
+        Ok(())
+    }
+
+	/// Switches to the next `Widget<U>` that contains a `FileWidget<U>`.
+    pub fn next_file(&mut self) -> Result<(), ()> {
+        if self.window.files().count() < 2 {
+            Err(())
+        } else {
+            let widget = self.window
+                .files()
+                .cycle()
+                .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
+                .nth(1)
+                .ok_or(())?;
+
+            self.switch_to_widget(widget)
+        }
+    }
+
+	/// Switches to the previous `Widget<U>` that contains a `FileWidget<U>`.
+    pub fn prev_file(&mut self) -> Result<(), ()> {
+        if self.window.files().count() < 2 {
+            Err(())
+        } else {
+            let widget = self.window
+                .files()
+                .rev()
+                .cycle()
+                .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
+                .nth(1)
+                .ok_or(())?;
+
+            self.switch_to_widget(widget)
+        }
+    }
+
+	/// The identifier of the active file.
+    pub fn active_file(&self) -> &str {
+        self.session_manager.active_file.as_str()
+    }
+
+	/// The identifier of the active widget.
+    pub fn active_widget(&self) -> &str {
+        self.session_manager.active_widget.as_str()
+    }
+
+    pub fn return_to_file(&mut self) -> Result<(), ()> {
+        self.switch_to_widget(self.session_manager.active_file.clone())
     }
 }
 
-pub fn session_commands(session: RwData<SessionControl>) -> Vec<Command<SessionControl>> {
+fn session_commands(session: RwData<SessionManager>) -> Vec<Command<SessionManager>> {
     let quit_callers = vec![String::from("quit"), String::from("q")];
     let quit_command = Command::new(
-        Box::new(|session: &mut SessionControl, _, _| {
+        Box::new(|session: &mut SessionManager, _, _| {
             session.break_loop = true;
             session.should_quit = true;
             Ok(None)
@@ -238,7 +287,7 @@ pub fn session_commands(session: RwData<SessionControl>) -> Vec<Command<SessionC
 
     let open_file_callers = vec![String::from("edit"), String::from("e")];
     let open_file_command = Command::new(
-        Box::new(|session: &mut SessionControl, _, files| {
+        Box::new(|session: &mut SessionManager, _, files| {
             session.files_to_open = files.into_iter().map(|file| PathBuf::from(file)).collect();
             Ok(None)
         }),
@@ -251,16 +300,17 @@ pub fn session_commands(session: RwData<SessionControl>) -> Vec<Command<SessionC
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
 fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, control: &mut RwData<SessionControl>, window: &Window<U>,
+    key_remapper: &mut KeyRemapper<I>, session_manager: &mut RwData<SessionManager>,
+    window: &Window<U>,
 ) where
     U: Ui,
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let mut control = control.write();
+        let mut session_manager = session_manager.write();
         let actionable_widget = window.actionable_widgets().find(|(widget, _)| {
             if let Ok(widget) = widget.try_lock() {
-                widget.identifier() == control.active_widget
+                widget.identifier() == session_manager.active_widget
             } else {
                 false
             }
@@ -272,17 +322,19 @@ fn send_event<U, I>(
 
         let mut widget = widget.lock().unwrap();
         let end_node = end_node.lock().unwrap();
-        blink_cursors_and_send_key(&mut *widget, &end_node, &mut control, key_event, key_remapper);
+
+        let controls = Controls { session_manager: &mut *session_manager, window };
+        blink_cursors_and_send_key(&mut *widget, &end_node, controls, key_event, key_remapper);
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
-            control.target_widget = Some(control.active_file.clone());
+            session_manager.active_widget = session_manager.active_file.clone();
         }
     }
 }
 
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, W, I>(
-    widget: &mut W, end_node: &EndNode<U>, control: &mut SessionControl, key_event: KeyEvent,
+    widget: &mut W, end_node: &EndNode<U>, controls: Controls<U>, key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>,
 ) where
     U: Ui,
@@ -292,10 +344,19 @@ fn blink_cursors_and_send_key<U, W, I>(
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.remove_cursor_tags(cursors, main_index);
 
-    key_remapper.send_key_to_actionable(key_event, &mut *widget, end_node, control);
+    key_remapper.send_key_to_actionable(key_event, &mut *widget, end_node, controls);
 
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
+}
+
+pub fn identifier_matches<U>(
+    widget: &Arc<Mutex<dyn ActionableWidget<U>>>, identifier: impl AsRef<str>,
+) -> bool
+where
+    U: Ui,
+{
+    widget.lock().unwrap().identifier() == identifier.as_ref()
 }
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.

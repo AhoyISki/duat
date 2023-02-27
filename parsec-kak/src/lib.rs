@@ -5,8 +5,8 @@ use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
     ui::{Side, Ui},
-    widgets::{ActionableWidget, TargetWidget, WidgetActor},
-    SessionControl,
+    widgets::{ActionableWidget, WidgetActor},
+    Controls,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -34,7 +34,7 @@ impl Display for Mode {
 #[derive(Default)]
 pub struct Editor {
     cur_mode: RwData<Mode>,
-    last_file: usize,
+    last_file: String,
 }
 
 impl Editor {
@@ -145,7 +145,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
@@ -153,7 +153,7 @@ impl Editor {
         match key {
             ////////// SessionControl commands.
             KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
-                control.quit();
+                controls.quit();
             }
 
             ////////// Movement keys that retain or create selections.
@@ -217,8 +217,9 @@ impl Editor {
 
             ////////// Other mode changing keys.
             KeyEvent { code: KeyCode::Char(':'), .. } => {
-                control.switch_widget(TargetWidget::First(String::from("command_line")));
-                *self.cur_mode.write() = Mode::Command;
+                if let Ok(_) = controls.switch_to_widget("parsec-command-line") {
+                    *self.cur_mode.write() = Mode::Command;
+                }
             }
             KeyEvent { code: KeyCode::Char('g'), .. } => *self.cur_mode.write() = Mode::GoTo,
 
@@ -231,7 +232,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::Command`.
     fn match_command<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
@@ -239,8 +240,9 @@ impl Editor {
         match key {
             KeyEvent { code: KeyCode::Enter, .. } => {
                 actor.edit_on_main(|mut editor| editor.replace('\n'));
-                control.return_to_file();
-                *self.cur_mode.write() = Mode::Normal;
+                if let Ok(_) = controls.return_to_file() {
+                    *self.cur_mode.write() = Mode::Normal;
+                }
             }
             KeyEvent { code: KeyCode::Char(ch), .. } => {
                 actor.edit_on_main(|mut editor| editor.replace(ch));
@@ -273,8 +275,9 @@ impl Editor {
             }
 
             KeyEvent { code: KeyCode::Esc, .. } => {
-                control.return_to_file();
-                *self.cur_mode.write() = Mode::Normal;
+                if let Ok(_) = controls.return_to_file() {
+                    *self.cur_mode.write() = Mode::Normal;
+                }
             }
             _ => {}
         }
@@ -282,27 +285,26 @@ impl Editor {
 
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, control: &mut SessionControl<U>,
+        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent { code: KeyCode::Char('a'), .. } => {
-                control.switch_widget(TargetWidget::Absolute(String::from("file"), self.last_file));
-                self.last_file = control.active_file();
+                if let Ok(_) = controls.switch_to_widget(&self.last_file) {
+                    self.last_file = controls.active_file().to_string();
+                }
             }
             KeyEvent { code: KeyCode::Char('n'), .. } => {
-                let (active, files_len) = (control.active_file(), control.files_len());
-                let next_file = if active == files_len - 1 { 0 } else { active + 1 };
-                control.switch_widget(TargetWidget::Absolute(String::from("file"), next_file));
-                self.last_file = control.active_file();
+                if let Ok(_) = controls.next_file() {
+                    self.last_file = controls.active_file().to_string();
+                }
             }
             KeyEvent { code: KeyCode::Char('N'), .. } => {
-                let (active, files_len) = (control.active_file(), control.files_len());
-                let prev_file = if active == 0 { files_len - 1 } else { active - 1 };
-                control.switch_widget(TargetWidget::Absolute(String::from("file"), prev_file));
-                self.last_file = control.active_file();
+                if let Ok(_) = controls.prev_file() {
+                    self.last_file = controls.active_file().to_string();
+                }
             }
             _ => {}
         }
@@ -317,7 +319,7 @@ impl Editor {
 
 impl InputScheme for Editor {
     fn process_key<U, A>(
-        &mut self, key: &KeyEvent, actor: WidgetActor<U, A>, control: &mut SessionControl<U>,
+        &mut self, key: &KeyEvent, actor: WidgetActor<U, A>, controls: &mut Controls<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
@@ -325,9 +327,9 @@ impl InputScheme for Editor {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
-            Mode::Normal => self.match_normal(key, actor, control),
-            Mode::Command => self.match_command(key, actor, control),
-            Mode::GoTo => self.match_goto(key, actor, control),
+            Mode::Normal => self.match_normal(key, actor, controls),
+            Mode::Command => self.match_command(key, actor, controls),
+            Mode::GoTo => self.match_goto(key, actor, controls),
             Mode::View => todo!(),
         }
     }
@@ -353,9 +355,8 @@ where
     });
 }
 
-fn move_each_and_select<U, E>(
-    file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize,
-) where
+fn move_each_and_select<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
+where
     U: Ui,
     E: ActionableWidget<U> + ?Sized,
 {

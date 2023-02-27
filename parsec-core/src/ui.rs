@@ -1,5 +1,6 @@
 use std::{
     fmt::Display,
+    iter::{Cycle, Filter},
     sync::{Arc, Mutex},
 };
 
@@ -527,6 +528,25 @@ where
         ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }
     }
 
+    pub fn files(
+        &self,
+    ) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
+        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }.filter_map(|(widget, _)| {
+            let Ok(widget) = widget.try_lock() else {
+                return None;
+            };
+
+			let identifier = widget.identifier();
+            if let Some(prefix) = identifier.get(..13) {
+                if prefix == "parsec-file: " {
+                    return Some(String::from(identifier))
+                }
+            }
+
+            None
+        })
+    }
+
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
             for (widget, end_node) in self.widgets() {
@@ -573,6 +593,15 @@ where
     cur_node_index: NodeIndex,
 }
 
+impl<'a, U> Clone for ActionableWidgets<'a, U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        ActionableWidgets { ..*self }
+    }
+}
+
 impl<'a, U> Iterator for ActionableWidgets<'a, U>
 where
     U: Ui,
@@ -586,6 +615,28 @@ where
             }
 
             if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
+                if let Widget::Actionable(widget) = widget {
+                    return Some((&widget, &end_node));
+                }
+            };
+
+            self.cur_node_index.0 += 1;
+        }
+    }
+}
+
+impl<'a, U> DoubleEndedIterator for ActionableWidgets<'a, U>
+where
+    U: Ui,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.cur_node_index > self.window.last_index {
+                return None;
+            }
+
+            let node_index = NodeIndex(self.window.last_index.0 - self.cur_node_index.0);
+            if let Node::EndNode { end_node, widget, .. } = self.window.find(node_index) {
                 if let Widget::Actionable(widget) = widget {
                     return Some((&widget, &end_node));
                 }
