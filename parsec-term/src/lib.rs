@@ -17,8 +17,8 @@ use parsec_core::{
         form::CursorStyle,
         form::{Form, DEFAULT},
     },
-    text::{PrintInfo, Text, TextLine, TextLineBuilder},
-    ui::{self, Area as UiArea, Axis, EndNode, Window, Side, Split},
+    text::{Text, TextLine, TextLineBuilder},
+    ui::{self, Area as UiArea, Axis, EndNode, Window, Side, Split, Label as UiLabel},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
@@ -94,15 +94,15 @@ impl InnerArea {
 
     fn take_from_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
         let Split::Minimum(min_len) = self.split else {
-            (self.coord_from_side(side), len)
+            return (self.coord_from_side(side), len);
         };
         let len_diff = min(self.len(Axis::from(side)) - min_len, len);
 
         match side {
-            Side::Top => self.tl.y -= len_diff,
-            Side::Right => self.br.x -= len_diff,
-            Side::Bottom => self.br.y -= len_diff,
-            Side::Left => self.tl.x -= len_diff,
+            Side::Top => self.tl.y -= len_diff as u16,
+            Side::Right => self.br.x -= len_diff as u16,
+            Side::Bottom => self.br.y -= len_diff as u16,
+            Side::Left => self.tl.x -= len_diff as u16,
         }
 
         (self.coord_from_side(side), len - len_diff)
@@ -110,14 +110,14 @@ impl InnerArea {
 
     fn add_to_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
         let Split::Minimum(min_len) = self.split else {
-            (self.coord_from_side(side), len)
+            return (self.coord_from_side(side), len);
         };
 
         match side {
-            Side::Top => self.tl.y += len,
-            Side::Right => self.br.x += len,
-            Side::Bottom => self.br.y += len,
-            Side::Left => self.tl.x += len,
+            Side::Top => self.tl.y += len as u16,
+            Side::Right => self.br.x += len as u16,
+            Side::Bottom => self.br.y += len as u16,
+            Side::Left => self.tl.x += len as u16,
         }
 
         (self.coord_from_side(side), 0)
@@ -134,15 +134,15 @@ impl InnerArea {
     fn set_tl(&mut self, tl: Coord) {
         let (width, height) = (self.width(), self.height());
         self.tl = tl;
-        self.br.x = tl.x + width;
-        self.br.y = tl.y + height;
+        self.br.x = tl.x + width as u16;
+        self.br.y = tl.y + height as u16;
     }
 
     fn set_br(&mut self, br: Coord) {
         let (width, height) = (self.width(), self.height());
         self.br = br;
-        self.tl.x = br.x - width;
-        self.tl.y = br.y - height;
+        self.tl.x = br.x - width as u16;
+        self.tl.y = br.y - height as u16;
     }
 
     fn set_coords(&mut self, inner: InnerArea) {
@@ -151,7 +151,6 @@ impl InnerArea {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 enum Area {
     Container { inner: RwData<InnerArea>, owner: Owner, children: Vec<Area>, axis: Axis },
     Label { inner: RwData<InnerArea>, owner: Owner },
@@ -159,18 +158,19 @@ enum Area {
 
 impl Area {
     pub fn new(inner: RwData<InnerArea>, owner: Owner) -> Self {
-        Self { inner, owner }
+        Area::Label { inner, owner }
     }
 
     fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
         let Area::Container { inner, owner, children, axis } = self else {
             panic!("Supposed to be unreachable");
         };
+        let inner = inner.read();
 
         let target = children.get(index).unwrap();
         let (old_len, target_inner) = (target.width(), target.inner().write());
         let mut remaining = old_len.abs_diff(new_len);
-        let mut last_corner = parent.tl;
+        let mut last_corner = inner.tl;
         (last_corner, remaining) = target_inner.add_or_take(old_len < new_len, remaining, side);
 
         if let Side::Right | Side::Bottom = side {
@@ -287,11 +287,11 @@ impl Display for Area {
 
 impl ui::Area for Area {
     fn width(&self) -> usize {
-        self.inner.read().width()
+        self.inner().read().width()
     }
 
     fn height(&self) -> usize {
-        self.inner.read().height()
+        self.inner().read().height()
     }
 
     fn request_len(&mut self, width: usize, side: Side) -> Result<(), ()> {
@@ -314,10 +314,6 @@ impl ui::Area for Area {
         }
     }
 
-    fn request_height(&mut self, height: usize) -> Result<(), ()> {
-        todo!()
-    }
-
     fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()> {
         todo!()
     }
@@ -327,14 +323,13 @@ impl Area {
     fn total() -> Self {
         let size = terminal::size().unwrap();
 
-        Area { inner: RwData::new(Coord { x: 0, y: 0 }), owner: Owner::None }
+        Area::Label { inner: RwData::new(Coord { x: 0, y: 0 }), owner: Owner::None }
     }
 }
 
 #[derive(Clone)]
 pub struct Container {
     area: Area,
-    direction: Side,
 }
 
 impl ui::Container<Area> for Container {
@@ -363,7 +358,7 @@ impl Label {
         Label {
             stdout: stdout(),
             area,
-            cursor: area.tl,
+            cursor: area.inner().read().tl,
             style_before_cursor: None,
             last_style: ContentStyle::default(),
             is_active: false,
@@ -752,7 +747,7 @@ impl SeparatorForm {
         SeparatorForm::ThreeWay(
             TextLineBuilder::from([main_id, DEFAULT]),
             TextLineBuilder::from([lower_id, DEFAULT]),
-            TextLineBuilder::from([higher_id, DEFAULT,
+            TextLineBuilder::from([higher_id, DEFAULT]),
         )
     }
 
@@ -817,7 +812,7 @@ where
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(
-        node: RwData<EndNode<U>>, _: &mut Window>, file_widget: RwData<FileWidget<U>>,
+        node: RwData<EndNode<U>>, _: &mut Window<U>, file_widget: RwData<FileWidget<U>>,
     ) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
@@ -836,19 +831,11 @@ impl<U> NormalWidget<U> for VertRule<U>
 where
     U: ui::Ui + 'static,
 {
-    fn identifier(&self) -> String {
-        String::from("vertical_rule")
+    fn identifier(&self) -> &str {
+        "vertical_rule"
     }
 
-    fn end_node(&self) -> &RwData<EndNode<U>> {
-        &self.end_node
-    }
-
-    fn end_node_mut(&mut self) -> &mut RwData<EndNode<U>> {
-        &mut self.end_node
-    }
-
-    fn update(&mut self) {
+    fn update(&mut self, end_node: &mut EndNode<U>) {
         let file = self.file.read();
         let node = self.end_node.read();
         let label = node.label().read();
@@ -882,9 +869,5 @@ where
 
     fn text(&self) -> &Text<U> {
         &self.text
-    }
-
-    fn members_for_printing(&mut self) -> (&Text<U>, &mut RwData<EndNode<U>>, PrintInfo) {
-        (&self.text, &mut self.end_node, PrintInfo::default())
     }
 }

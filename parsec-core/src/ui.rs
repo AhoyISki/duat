@@ -1,6 +1,5 @@
 use std::{
     fmt::Display,
-    iter::{Cycle, Filter},
     sync::{Arc, Mutex},
 };
 
@@ -10,7 +9,7 @@ use crate::{
     widgets::{ActionableWidget, Widget},
 };
 
-pub trait Area: PartialEq + Eq + Clone {
+pub trait Area: Clone {
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
