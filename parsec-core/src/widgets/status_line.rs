@@ -321,7 +321,7 @@ where
 }
 
 #[macro_export]
-macro_rules! new_format_status {
+macro_rules! status_format {
     (@ignore $ignored:expr) => {};
 
     (@get_obj (|$obj:ident| $internals:expr)) => {

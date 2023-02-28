@@ -1,19 +1,69 @@
 use crossterm::{
     cursor::SetCursorStyle,
-    style::{Attributes, Color, ContentStyle, Stylize},
+    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
-#[derive(Default, Debug, Clone, Copy)]
 /// A style for text.
+#[derive(Default, Debug, Clone, Copy)]
 pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should override any that come after.
     pub is_final: bool,
 }
 
+macro_rules! mimic_method {
+    ($method:ident $type:ty) => {
+        pub fn $method(self, val: $type) -> Self {
+            let Form { style, is_final } = self;
+            Form { style: Stylize::$method(style, val), is_final }
+        }
+    };
+    ($($method:ident)+) => {
+        $(
+        pub fn $method(self) -> Self {
+            let Form { style, is_final } = self;
+            Form { style: Stylize::$method(style), is_final }
+        }
+        )*
+    }
+}
+
+#[rustfmt::skip]
 impl Form {
-    pub fn new(style: ContentStyle, is_final: bool) -> Self {
-        Self { style, is_final }
+    mimic_method!(with Color);
+    mimic_method!(on Color);
+    mimic_method!(underline Color );
+    mimic_method!(attribute Attribute );
+    mimic_method!(reset);
+    mimic_method!(bold);
+    mimic_method!(underlined);
+    mimic_method!(reverse);
+    mimic_method!(dim);
+    mimic_method!(italic);
+    mimic_method!(negative);
+    mimic_method!(slow_blink);
+    mimic_method!(rapid_blink);
+    mimic_method!(hidden);
+    mimic_method!(crossed_out);
+    mimic_method!(black on_black underline_black);
+    mimic_method!(dark_grey on_dark_grey underline_dark_grey);
+    mimic_method!(red on_red underline_red);
+    mimic_method!(dark_red on_dark_red underline_dark_red);
+    mimic_method!(green on_green underline_green);
+    mimic_method!(dark_green on_dark_green underline_dark_green);
+    mimic_method!(yellow on_yellow underline_yellow);
+    mimic_method!(dark_yellow on_dark_yellow underline_dark_yellow);
+    mimic_method!(blue on_blue underline_blue);
+    mimic_method!(dark_blue on_dark_blue underline_dark_blue);
+    mimic_method!(magenta on_magenta underline_magenta);
+    mimic_method!(dark_magenta on_dark_magenta underline_dark_magenta);
+    mimic_method!(cyan on_cyan underline_cyan);
+    mimic_method!(dark_cyan on_dark_cyan underline_dark_cyan);
+    mimic_method!(white on_white underline_white);
+    mimic_method!(grey on_grey underline_grey);
+
+    pub fn new(is_final: bool) -> Self {
+        Self { style: ContentStyle::default(), is_final }
     }
 }
 
@@ -52,17 +102,18 @@ pub struct FormPalette {
 
 impl Default for FormPalette {
     fn default() -> Self {
-        let main_cursor = CursorStyle::new(
-            Some(SetCursorStyle::DefaultUserShape),
-            Form::new(ContentStyle::new().reverse(), false),
-        );
-        let selection_form = Form::new(ContentStyle::new().on_dark_grey(), false);
+        let main_cursor =
+            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new(false).reverse());
+        let selection_form = Form::new(false).on_dark_grey();
         let forms = vec![
             (String::from("Default"), Form::default()),
             (String::from("LineNumbers"), Form::default()),
             (String::from("MainLineNumber"), Form::default()),
             (String::from("MainSelection"), selection_form),
             (String::from("SecondarySelection"), selection_form),
+            (String::from("FileName"), Form::new(false).yellow().italic()),
+            (String::from("Coords"), Form::new(false).dark_yellow()),
+            (String::from("Selections"), Form::new(false).dark_blue()),
         ];
 
         Self { main_cursor, extra_cursor: main_cursor, forms }
