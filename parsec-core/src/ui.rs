@@ -9,7 +9,7 @@ use crate::{
     widgets::{ActionableWidget, Widget},
 };
 
-pub trait Area: Clone {
+pub trait Area {
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
@@ -21,18 +21,6 @@ pub trait Area: Clone {
 
     /// Requests that the width be enough to fit a certain piece of text.
     fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()>;
-}
-
-/// A `Label` or `Container` container, that holds exactly two in total.
-pub trait Container<A>
-where
-    A: Area,
-{
-    /// Returns a mutable reference to the area of `self`.
-    fn area_mut(&mut self) -> &mut A;
-
-    /// Returns a reference to the area of `self`.
-    fn area(&self) -> &A;
 }
 
 /// A label that prints text to screen. Any area that prints will be a `Label` in the `Ui`.
@@ -99,7 +87,7 @@ pub struct MidNode<U>
 where
     U: Ui + ?Sized,
 {
-    container: U::Container,
+    area: U::Area,
     config: Config,
 }
 
@@ -107,8 +95,8 @@ impl<U> MidNode<U>
 where
     U: Ui,
 {
-    fn new_from(container: U::Container, node: &Node<U>) -> Self {
-        MidNode { container, config: node.config() }
+    fn new_from(container: U::Area, node: &Node<U>) -> Self {
+        MidNode { area: container, config: node.config() }
     }
 }
 
@@ -117,8 +105,8 @@ pub struct EndNode<U>
 where
     U: Ui + ?Sized,
 {
-    pub(crate) label: U::Label,
-    pub(crate) config: Config,
+    pub label: U::Label,
+    pub config: Config,
     pub(crate) is_active: bool,
 }
 
@@ -217,7 +205,7 @@ where
     ) -> (Node<U>, Option<MidNode<U>>) {
         let (label, container) = match self {
             Node::MidNode { mid_node, .. } => {
-                ui.bisect_area(mid_node.lock().unwrap().container.area_mut(), side, split)
+                ui.bisect_area(&mut mid_node.lock().unwrap().area, side, split)
             }
             Node::EndNode { end_node, .. } => {
                 ui.bisect_area(end_node.lock().unwrap().label.area_mut(), side, split)
@@ -236,10 +224,9 @@ where
     fn replace_with_mid(&mut self, mut new_node: Node<U>, end_node: Node<U>, side: Side) {
         std::mem::swap(self, &mut new_node);
 
-        let Node::MidNode { mid_node, children, node_index } = self else {
+        let Node::MidNode { children, node_index, .. } = self else {
     		unreachable!();
 		};
-        let mut mid_node = mid_node.lock().unwrap();
         *node_index = new_node.node_index();
 
         children.push(new_node);
@@ -323,8 +310,7 @@ impl Side {
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
 pub trait Ui {
-    type Area: Area + Display;
-    type Container: Container<<Self as Ui>::Area> + Clone + Send + Sync;
+    type Area: Area + Clone + Display + Send + Sync;
     type Label: Label<<Self as Ui>::Area> + Clone + Send + Sync;
 
     /// Bisects the `Self::Area`, returning a new `Self::Label<Self::Area>` that will occupy the
@@ -350,7 +336,7 @@ pub trait Ui {
     /// ```
     fn bisect_area(
         &mut self, area: &mut Self::Area, side: Side, split: Split,
-    ) -> (Self::Label, Option<Self::Container>);
+    ) -> (Self::Label, Option<Self::Area>);
 
     /// Returns a `Self::Label` representing the maximum possible extent an area could have.
     fn maximum_label(&mut self) -> Self::Label;

@@ -139,7 +139,7 @@ where
     }
 
     /// Returns the currently printed set of lines.
-    pub fn printed_lines(&self) -> &Vec<usize> {
+    pub fn printed_lines(&self) -> &[usize] {
         &self.printed_lines
     }
 
