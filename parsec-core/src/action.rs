@@ -255,19 +255,6 @@ impl Change {
         self.splice.merge(&edit.splice);
     }
 
-    /// Merges a new `edit`, assuming that it intersects the end of `self`.
-    pub(crate) fn merge_on_end(&mut self, edit: &Change) {
-        let intersect = TextRange { start: edit.splice.start, end: self.splice.added_end };
-        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
-
-        let mut edit_taken_text = edit.taken_text.clone();
-        let empty_range = TextRange::empty_at(self.splice.taken_end);
-        splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
-        splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
-
-        self.splice.merge(&edit.splice);
-    }
-
     /// Merges a new `edit`, assuming that it is completely contained within `self`.
     pub(crate) fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());

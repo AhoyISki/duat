@@ -5,9 +5,8 @@ use std::{
 
 use crate::{
     action::{Change, History, Moment, Splice, TextRange},
-    config::RwData,
-    get_byte_at_col, max_line, split_string_lines,
-    text::{update_range, PrintInfo, Text, TextLine},
+    get_byte_at_col, split_string_lines,
+    text::{PrintInfo, Text, TextLine},
     ui::{EndNode, Label, Ui},
 };
 
@@ -159,7 +158,7 @@ impl TextCursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: line.get_dist_to_col(pos.col, end_node)
+            desired_x: line.get_dist_to_col(pos.col, end_node),
         }
     }
 
@@ -398,8 +397,7 @@ where
     /// Returns a new instance of `Editor`.
     pub fn new(
         cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text<U>,
-        end_node: &'a EndNode<U>, history: Option<&'a mut History>,
-        print_info: Option<PrintInfo>,
+        end_node: &'a EndNode<U>, history: Option<&'a mut History>, print_info: Option<PrintInfo>,
     ) -> Self {
         Self { cursor, splice_adder, text, history, end_node, print_info }
     }
@@ -463,7 +461,7 @@ where
 
     /// Edits the file with a cursor.
     fn edit(&mut self, change: Change) {
-        let added_range = change.added_range();
+        //let added_range = change.added_range();
         self.splice_adder.calibrate(&change.splice);
 
         self.text.apply_change(&change);
@@ -476,8 +474,9 @@ where
             self.splice_adder.change_diff += change_diff;
         }
 
-        let max_line = max_line(&self.text, &self.print_info.unwrap_or_default(), &self.end_node);
-        update_range(&mut self.text, added_range, max_line, &self.end_node);
+        //let max_line = max_line(&self.text, &self.print_info.unwrap_or_default(),
+        // &self.end_node); update_range(&mut self.text, added_range, max_line,
+        // &self.end_node);
     }
 }
 

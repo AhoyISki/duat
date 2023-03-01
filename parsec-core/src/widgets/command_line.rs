@@ -7,7 +7,7 @@ use std::{
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     config::RwData,
-    cursor::{Editor, Mover, SpliceAdder, TextCursor, TextPos},
+    cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,
@@ -134,12 +134,12 @@ impl CommandList {
 
 pub struct CommandLineConfig {
     run_string: String,
-    cmd_replacements: Vec<(String, String)>,
+    _cmd_replacements: Vec<(String, String)>,
 }
 
 impl Default for CommandLineConfig {
     fn default() -> Self {
-        CommandLineConfig { run_string: String::from(':'), cmd_replacements: Vec::new() }
+        CommandLineConfig { run_string: String::from(':'), _cmd_replacements: Vec::new() }
     }
 }
 
@@ -147,7 +147,6 @@ pub struct CommandLine<U>
 where
     U: Ui,
 {
-    end_node: RwData<EndNode<U>>,
     text: Text<U>,
     print_info: PrintInfo,
     cursor: [TextCursor; 1],
@@ -160,9 +159,8 @@ impl<U> CommandLine<U>
 where
     U: Ui + 'static,
 {
-    pub fn default(end_node: RwData<EndNode<U>>, session: &mut Session<U>) -> Widget<U> {
+    pub fn default(session: &Session<U>) -> Widget<U> {
         let command_line = CommandLine {
-            end_node,
             text: Text::default(),
             print_info: PrintInfo::default(),
             cursor: [TextCursor::default()],
@@ -171,13 +169,13 @@ where
             config: CommandLineConfig::default(),
         };
 
-        Widget::Actionable(Arc::new(Mutex::new(command_line)))
+        Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(command_line))))
     }
 }
 
 impl<U> NormalWidget<U> for CommandLine<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn identifier(&self) -> &str {
         "parsec-command-line"
@@ -213,7 +211,7 @@ where
 
 impl<U> ActionableWidget<U> for CommandLine<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn editor<'a>(
         &'a mut self, _: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
@@ -247,15 +245,15 @@ where
         None
     }
 
-    fn on_focus(&mut self) {
+    fn on_focus(&mut self, end_node: &mut EndNode<U>) {
         self.needs_update = true;
         self.text = Text::from(&self.config.run_string);
         let chars = self.config.run_string.chars().count() as i32;
-        self.cursor[0].move_hor(chars, &self.text.lines(), &self.end_node.read());
+        self.cursor[0].move_hor(chars, &self.text.lines(), end_node);
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self) {
+    fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {
         self.needs_update = true;
         self.text = Text::default();
         self.cursor[0] = TextCursor::default();

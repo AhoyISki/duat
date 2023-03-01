@@ -1,12 +1,10 @@
-use std::{
-    fmt::Display,
-    sync::{Arc, Mutex},
-};
+use std::fmt::Display;
 
 use crate::{
-    config::{Config, TabPlaces, WrapMethod},
+    config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
-    widgets::{ActionableWidget, Widget},
+    widgets::{file_widget::FileWidget, ActionableWidget, Widget},
+    SessionManager,
 };
 
 pub trait Area {
@@ -73,7 +71,7 @@ where
     fn next_line(&mut self) -> Result<(), ()>;
 
     /// Counts how many times the given string would wrap.
-    fn wrap_count(&self, text: &str, wrap_method: WrapMethod) -> usize;
+    fn wrap_count(&self, text: &str, wrap_method: WrapMethod, tab_places: &TabPlaces) -> usize;
 
     /// Gets the visual width to a given column.
     fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize;
@@ -93,7 +91,7 @@ where
 
 impl<U> MidNode<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn new_from(container: U::Area, node: &Node<U>) -> Self {
         MidNode { area: container, config: node.config() }
@@ -112,7 +110,7 @@ where
 
 impl<U> EndNode<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn new_from(label: U::Label, node: &Node<U>) -> Self {
         EndNode { label: label, config: node.config(), is_active: false }
@@ -133,18 +131,18 @@ pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
-    MidNode { mid_node: Arc<Mutex<MidNode<U>>>, children: Vec<Node<U>>, node_index: NodeIndex },
-    EndNode { end_node: Arc<Mutex<EndNode<U>>>, widget: Widget<U>, node_index: NodeIndex },
+    MidNode { mid_node: RwData<MidNode<U>>, children: Vec<Node<U>>, node_index: NodeIndex },
+    EndNode { end_node: RwData<EndNode<U>>, widget: Widget<U>, node_index: NodeIndex },
 }
 
 impl<U> Node<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn config(&self) -> Config {
         match self {
-            Node::MidNode { mid_node, .. } => mid_node.lock().unwrap().config.clone(),
-            Node::EndNode { end_node, .. } => end_node.lock().unwrap().config.clone(),
+            Node::MidNode { mid_node, .. } => mid_node.read().config.clone(),
+            Node::EndNode { end_node, .. } => end_node.read().config.clone(),
         }
     }
 
@@ -205,14 +203,14 @@ where
     ) -> (Node<U>, Option<MidNode<U>>) {
         let (label, container) = match self {
             Node::MidNode { mid_node, .. } => {
-                ui.bisect_area(&mut mid_node.lock().unwrap().area, side, split)
+                ui.bisect_area(&mut mid_node.write().area, side, split)
             }
             Node::EndNode { end_node, .. } => {
-                ui.bisect_area(end_node.lock().unwrap().label.area_mut(), side, split)
+                ui.bisect_area(end_node.write().label.area_mut(), side, split)
             }
         };
 
-        let end_node = Arc::new(Mutex::new(EndNode::new_from(label, &self)));
+        let end_node = RwData::new(EndNode::new_from(label, &self));
         let end_node = Node::EndNode { end_node, node_index: last_index, widget };
 
         let mid_node = container.map(|container| MidNode::new_from(container, &self));
@@ -239,24 +237,31 @@ pub struct ModNode<'a, U>
 where
     U: Ui,
 {
-    node_manager: &'a mut Window<U>,
+    session_manager: &'a mut SessionManager,
+    window: &'a mut Window<U>,
     node_index: NodeIndex,
 }
 
 impl<'a, U> ModNode<'a, U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     pub fn push_widget(
-        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        &mut self, constructor: Box<dyn FnOnce(&SessionManager) -> Widget<U>>, side: Side,
+        split: Split, glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>) {
-        self.node_manager.push_widget(self.node_index, widget, side, split, glued)
+        let widget = (constructor)(self.session_manager);
+        self.window.push_widget(self.node_index, widget, side, split, glued)
     }
 
-    pub fn push_widget_to_node(
-        &mut self, widget: Widget<U>, node_index: NodeIndex, side: Side, split: Split, glued: bool,
-    ) -> (NodeIndex, Option<NodeIndex>) {
-        self.node_manager.push_widget(node_index, widget, side, split, glued)
+    pub fn push_widget_to_node<C>(
+        &mut self, constructor: C, node_index: NodeIndex, side: Side, split: Split, glued: bool,
+    ) -> (NodeIndex, Option<NodeIndex>)
+    where
+        C: Fn(&SessionManager) -> Widget<U>,
+    {
+        let widget = (constructor)(self.session_manager);
+        self.window.push_widget(node_index, widget, side, split, glued)
     }
 }
 
@@ -309,7 +314,7 @@ impl Side {
 }
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
-pub trait Ui {
+pub trait Ui: 'static {
     type Area: Area + Clone + Display + Send + Sync;
     type Label: Label<<Self as Ui>::Area> + Clone + Send + Sync;
 
@@ -364,55 +369,49 @@ where
 {
     ui: U,
     main_node: Node<U>,
-    floating_nodes: Vec<Node<U>>,
+    _floating_nodes: Vec<Node<U>>,
     last_index: NodeIndex,
     files_parent: NodeIndex,
 }
 
 impl<U> Window<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     /// Returns a new instance of `NodeManager`.
-    pub fn new<C>(mut ui: U, widget: Widget<U>, config: Config, constructor_hook: &C) -> Self
-    where
-        C: Fn(ModNode<U>),
-    {
+    pub fn new(
+        mut ui: U, widget: Widget<U>, config: Config, session_manager: &mut SessionManager,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
+    ) -> Self {
         let label = ui.maximum_label();
+        let Widget::Actionable(rw_data) = &widget else {
+            unreachable!();
+        };
+        let ro_widget = RoData::from(rw_data);
 
         let main_node = Node::EndNode {
-            end_node: Arc::new(Mutex::new(EndNode { label, config, is_active: true })),
+            end_node: RwData::new(EndNode { label, config, is_active: true }),
             widget,
             node_index: NodeIndex(0),
         };
-        let mut node_manager = Window {
+        let mut window = Window {
             ui,
             main_node,
-            floating_nodes: Vec::new(),
+            _floating_nodes: Vec::new(),
             last_index: NodeIndex(0),
             files_parent: NodeIndex(0),
         };
 
-        let mod_node = ModNode { node_manager: &mut node_manager, node_index: NodeIndex(0) };
-        (constructor_hook)(mod_node);
+        let file = ro_widget.try_downcast::<FileWidget<U>>().unwrap();
 
-        node_manager
-    }
+        let mod_node = ModNode { session_manager, window: &mut window, node_index: NodeIndex(0) };
+        (constructor_hook)(mod_node, file);
 
-    fn push_hooked(
-        &mut self, node_index: NodeIndex, widget: Widget<U>, side: Side, split: Split, glued: bool,
-        constructor_hook: &dyn Fn(ModNode<U>),
-    ) -> (NodeIndex, Option<NodeIndex>) {
-        let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
-
-        let mod_node = ModNode { node_manager: self, node_index: new_node };
-        (constructor_hook)(mod_node);
-
-        (new_node, maybe_node)
+        window
     }
 
     /// Pushes a `Widget` onto an
-    fn push_widget(
+    pub(crate) fn push_widget(
         &mut self, node_index: NodeIndex, widget: Widget<U>, side: Side, split: Split, glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index.0 += 1;
@@ -424,7 +423,7 @@ where
             target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
 
         if let Some(mid_node) = mid_node {
-            let mid_node = Arc::new(Mutex::new(mid_node));
+            let mid_node = RwData::new(mid_node);
             self.last_index.0 += 1;
 
             // Here, I swap the `NodeIndex`es in order to keep the same node "position".
@@ -459,20 +458,42 @@ where
         }
     }
 
-    /// Pushes a `Widget` to the parent of all files.
-    pub fn push_to_files(
-        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
-        constructor_hook: &dyn Fn(ModNode<U>),
+    pub fn push_hooked(
+        &mut self, widget: Widget<U>, node_index: NodeIndex, side: Side, split: Split, glued: bool,
+        constructor_hook: &dyn Fn(ModNode<U>), session_manager: &mut SessionManager,
     ) -> (NodeIndex, Option<NodeIndex>) {
-        let node_index = self.files_parent;
         let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let mod_node = ModNode { node_manager: self, node_index: new_node };
+        let mod_node = ModNode { session_manager, window: self, node_index: new_node };
         (constructor_hook)(mod_node);
 
         (new_node, maybe_node)
     }
 
+    pub fn push_file<C>(
+        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        session_manager: &mut SessionManager, constructor_hook: C,
+    ) -> (NodeIndex, Option<NodeIndex>)
+    where
+        C: Fn(ModNode<U>, RoData<FileWidget<U>>),
+    {
+        let node_index = self.files_parent;
+        let (new_index, maybe_index) = self.push_widget(node_index, widget, side, split, glued);
+        let node = self.find(new_index);
+
+        let Node::EndNode { widget: Widget::Actionable(widget), .. } = node else {
+            unreachable!();
+        };
+        let widget = RoData::from(widget);
+        let file = widget.try_downcast::<FileWidget<U>>().unwrap();
+
+        let mod_node = ModNode { session_manager, window: self, node_index: new_index };
+        (constructor_hook)(mod_node, file);
+
+        (new_index, maybe_index)
+    }
+
+    /// Pushes a `Widget` to the parent of all files.
     /// Pushes a `Widget` to the master node of the current window.
     pub fn push_to_master(
         &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
@@ -513,29 +534,30 @@ where
         ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }
     }
 
-    pub fn files(
-        &self,
-    ) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
-        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }.filter_map(|(widget, _)| {
-            let Ok(widget) = widget.try_lock() else {
-                return None;
-            };
+    pub fn files(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
+        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }.filter_map(
+            |(widget, _)| {
+                let widget = match widget.try_read() {
+                    Ok(widget) => widget,
+                    Err(_) => return None,
+                };
 
-			let identifier = widget.identifier();
-            if let Some(prefix) = identifier.get(..13) {
-                if prefix == "parsec-file: " {
-                    return Some(String::from(identifier))
+                let identifier = widget.identifier();
+                if let Some(prefix) = identifier.get(..13) {
+                    if prefix == "parsec-file: " {
+                        return Some(String::from(identifier));
+                    }
                 }
-            }
 
-            None
-        })
+                None
+            },
+        )
     }
 
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
             for (widget, end_node) in self.widgets() {
-                widget.print(&mut end_node.lock().unwrap());
+                widget.print(&mut end_node.write());
             }
         }
     }
@@ -551,9 +573,9 @@ where
 
 impl<'a, U> Iterator for Widgets<'a, U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
-    type Item = (&'a Widget<U>, &'a Arc<Mutex<EndNode<U>>>);
+    type Item = (&'a Widget<U>, &'a RwData<EndNode<U>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -562,7 +584,7 @@ where
             }
 
             if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
-                return Some((widget, &end_node));
+                return Some((widget, end_node));
             };
 
             self.cur_node_index.0 += 1;
@@ -589,9 +611,9 @@ where
 
 impl<'a, U> Iterator for ActionableWidgets<'a, U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
-    type Item = (&'a Arc<Mutex<dyn ActionableWidget<U>>>, &'a Arc<Mutex<EndNode<U>>>);
+    type Item = (&'a RwData<dyn ActionableWidget<U>>, &'a RwData<EndNode<U>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -612,7 +634,7 @@ where
 
 impl<'a, U> DoubleEndedIterator for ActionableWidgets<'a, U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
@@ -623,7 +645,7 @@ where
             let node_index = NodeIndex(self.window.last_index.0 - self.cur_node_index.0);
             if let Node::EndNode { end_node, widget, .. } = self.window.find(node_index) {
                 if let Widget::Actionable(widget) = widget {
-                    return Some((&widget, &end_node));
+                    return Some((widget, &end_node));
                 }
             };
 

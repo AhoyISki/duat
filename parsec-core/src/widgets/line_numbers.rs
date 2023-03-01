@@ -10,13 +10,14 @@ use crate::{
     tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
     text::{Text, TextLineBuilder},
     ui::{Area, EndNode, Label, Side, Ui},
+    SessionManager,
 };
 
 pub struct LineNumbers<U>
 where
     U: Ui,
 {
-    file: RoData<FileWidget<U>>,
+    file_widget: RoData<FileWidget<U>>,
     text: Text<U>,
     main_line_builder: TextLineBuilder,
     other_line_builder: TextLineBuilder,
@@ -32,42 +33,44 @@ where
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn new(
-        file_widget: RwData<FileWidget<U>>, line_numbers_config: LineNumbersConfig,
-    ) -> Widget<U> {
-        let file = RoData::from(&file_widget);
+        file_widget: RoData<FileWidget<U>>, line_numbers_config: LineNumbersConfig,
+    ) -> Box<dyn FnOnce(&SessionManager) -> Widget<U>> {
+        Box::new(move |_| {
+            let line_numbers = LineNumbers {
+                file_widget,
+                text: Text::default(),
+                main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
+                other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
+                min_width: 1,
+                line_numbers_config,
+            };
 
-        let line_numbers = LineNumbers {
-            file,
-            text: Text::default(),
-            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
-            other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
-            min_width: 1,
-            line_numbers_config,
-        };
-
-        Widget::Normal(Arc::new(Mutex::new(line_numbers)))
+            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
+        })
     }
 
-    pub fn new_with_default_config(file_widget: RwData<FileWidget<U>>) -> Widget<U> {
-        let file = RoData::from(&file_widget);
+    pub fn default(
+        file_widget: RoData<FileWidget<U>>,
+    ) -> Box<dyn FnOnce(&SessionManager) -> Widget<U>> {
+        Box::new(move |_| {
+            let line_numbers = LineNumbers {
+                file_widget,
+                text: Text::default(),
+                main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
+                other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
+                min_width: 1,
+                line_numbers_config: LineNumbersConfig::default(),
+            };
 
-        let line_numbers = LineNumbers {
-            file,
-            text: Text::default(),
-            main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
-            other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
-            min_width: 1,
-            line_numbers_config: LineNumbersConfig::default(),
-        };
-
-        Widget::Normal(Arc::new(Mutex::new(line_numbers)))
+            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
+        })
     }
 
     fn calculate_width(&self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.file.read().text().lines().len() + 1;
+        let len = self.file_widget.read().text().lines().len() + 1;
 
         while len > num_exp {
             num_exp *= 10;
@@ -86,7 +89,7 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        let file = self.file.read();
+        let file = self.file_widget.read();
         let width = self.calculate_width();
         end_node.label.area_mut().request_len(width, Side::Right).unwrap();
 
@@ -122,7 +125,7 @@ where
     }
 
     fn needs_update(&self) -> bool {
-        self.file.has_changed()
+        self.file_widget.has_changed()
     }
 
     fn text(&self) -> &Text<U> {

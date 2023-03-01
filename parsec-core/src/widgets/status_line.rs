@@ -35,6 +35,7 @@ where
 impl<T, F> DataToString for DataString<T, F>
 where
     F: Fn(&T) -> String,
+    T: 'static
 {
     fn to_string(&self) -> String {
         (self.to_string)(&self.data.read())
@@ -66,6 +67,7 @@ where
 impl<T, F> DataToString for DataStringIndexed<T, F>
 where
     F: Fn(&Vec<T>, usize) -> String,
+    T: 'static
 {
     fn to_string(&self) -> String {
         (self.to_string)(&self.data.read(), *self.index.read())
@@ -104,7 +106,7 @@ where
 
 impl<U> NormalWidget<U> for StatusLine<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn identifier(&self) -> &str {
         "parsec-status-line"
@@ -113,6 +115,11 @@ where
     fn update(&mut self, end_node: &mut EndNode<U>) {
         let print_diff = &mut 0;
         let file_diff = &mut 0;
+
+        if self.format.text_changed {
+            self.format.text_changed = false;
+            self.format.update_formater(&end_node.config().palette);
+        }
 
         let left = sub_printables(&self.format.left_text, &self, print_diff, file_diff);
         let center = sub_printables(&self.format.center_text, &self, print_diff, file_diff);
@@ -146,6 +153,7 @@ where
     right_text: String,
     global_printables: Vec<Box<dyn DataToString>>,
     file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
+    text_changed: bool,
 }
 
 impl<U> StatusFormat<U>
@@ -162,6 +170,7 @@ where
             right_text,
             global_printables: Vec::new(),
             file_printables: Vec::new(),
+            text_changed: true
         }
     }
 
@@ -194,11 +203,22 @@ where
         self.global_printables.iter().any(|printable| printable.has_changed())
     }
 
-    fn update_formater(&mut self, end_node: &EndNode<U>) {
-        let palette = &end_node.config().palette;
+    fn update_formater(&mut self, palette: &FormPalette) {
         self.text_line_builder = TextLineBuilder::format_and_create(&mut self.left_text, palette);
         self.text_line_builder.format_and_extend(&mut self.center_text, palette);
         self.text_line_builder.format_and_extend(&mut self.right_text, palette);
+    }
+
+    pub fn left_text_mut(&mut self) -> &mut String {
+        &mut self.left_text
+    }
+
+    pub fn center_text_mut(&mut self) -> &mut String {
+        &mut self.center_text
+    }
+
+    pub fn right_text_mut(&mut self) -> &mut String {
+        &mut self.right_text
     }
 }
 
@@ -347,20 +367,24 @@ macro_rules! status_format {
     };
 
     (
-        left: $left:expr, center: $center:expr, right: $right:expr,
+        $palette:expr, left: $left:expr, center: $center:expr, right: $right:expr,
         file_vars: [$($file_to_string:tt),*], global_vars: [$($to_string:tt),*]
     ) => {
-        let mut format = StatusFormat::default();
-        $(
-            format.push_file_var(format_status!(@file_fun $file_to_string));
-        )*
-        $(
-            format.push(format_status!(@get_obj $to_string), format_status!(@get_fun $to_string));
-        )*
+        {
+            let mut format = StatusFormat::default($palette);
+            $(
+                format.push_file_var(status_format!(@file_fun $file_to_string));
+            )*
+            $(
+                format.push(status_format!(@get_obj $to_string), status_format!(@get_fun $to_string));
+            )*
 
-		format.left_text = left;
-		format.center_text = center;
-		format.right_text = right;
+    		*format.left_text_mut() = $left.to_string();
+    		*format.center_text_mut() = $center.to_string();
+    		*format.right_text_mut() = $right.to_string();
+
+    		format
+        }
     };
 }
 

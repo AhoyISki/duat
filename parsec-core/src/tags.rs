@@ -42,7 +42,7 @@ pub enum CharTag {
 
 impl CharTag {
     pub(crate) fn trigger<L, A>(
-        &self, label: &mut L, form_former: &mut FormFormer, wrap_indent: usize,
+        &self, label: &mut L, form_former: &mut FormFormer,
     ) -> bool
     where
         L: Label<A>,
@@ -151,7 +151,7 @@ impl CharTags {
     }
 
     pub fn iter_wraps(&self) -> impl Iterator<Item = usize> + '_ {
-        self.0.iter().filter(|(byte, tag)| matches!(tag, CharTag::WrapNext)).map(|(byte, _)| *byte)
+        self.0.iter().filter(|(_, tag)| matches!(tag, CharTag::WrapNext)).map(|(byte, _)| *byte)
     }
 }
 

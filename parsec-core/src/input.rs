@@ -2,8 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
     ui::{EndNode, Ui},
-    widgets::{file_widget::FileWidget, ActionableWidget, WidgetActor},
-    Controls, SessionManager,
+    widgets::{ActionableWidget, WidgetActor},
+    Controls,
 };
 
 /// A widget that can receive and process input.
@@ -29,7 +29,7 @@ pub trait InputScheme {
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
         session_control: &mut Controls<U>,
     ) where
-        U: Ui,
+        U: Ui + 'static,
         A: ActionableWidget<U> + ?Sized;
 
     /// Wether or not remapped keys should be sent.
@@ -58,20 +58,6 @@ where
         takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>, condition: Box<dyn Fn(&E) -> bool>,
     ) -> Self {
         Self { takes: takes.clone(), gives: gives.clone(), condition }
-    }
-
-    /// Sends the transformed keys to an editing scheme to affect a given file.
-    fn send_keys<U, A>(
-        &self, editing_scheme: &mut E, widget: &mut A, end_node: &EndNode<U>,
-        controls: &mut Controls<U>,
-    ) where
-        U: Ui,
-        A: ActionableWidget<U> + ?Sized,
-    {
-        for key in &self.gives {
-            let actor = WidgetActor::new(&mut *widget, end_node);
-            editing_scheme.process_key(key, actor, controls);
-        }
     }
 }
 
@@ -120,7 +106,7 @@ where
     pub fn send_key_to_actionable<U, A>(
         &mut self, key: KeyEvent, widget: &mut A, end_node: &EndNode<U>, mut controls: Controls<U>,
     ) where
-        U: Ui,
+        U: Ui + 'static,
         A: ActionableWidget<U> + ?Sized,
     {
         let found_or_empty =

@@ -1,11 +1,15 @@
 use std::{
-    ops::Deref,
-    sync::{Arc, RwLock, RwLockReadGuard, TryLockError, RwLockWriteGuard},
+    any::{Any, TypeId},
+    error::Error,
+    fmt::{Debug, Display},
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex, MutexGuard, TryLockError},
 };
 
 use crate::{
+    tags::form::FormPalette,
     text::TextLine,
-    ui::{Area, Label, Ui}, tags::form::FormPalette,
+    ui::{Area, Label, Ui},
 };
 
 /// If and how to wrap lines at the end of the screen.
@@ -106,8 +110,8 @@ pub struct Config {
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
     pub show_new_line: ShowNewLine,
-	/// The palette of forms that will be used.
-    pub palette: FormPalette
+    /// The palette of forms that will be used.
+    pub palette: FormPalette,
 }
 
 impl Config {
@@ -116,11 +120,7 @@ impl Config {
         U: Ui,
     {
         let indent = line.indent(self);
-        if self.wrap_indent && indent < label.area().width() {
-            indent
-        } else {
-            0
-        }
+        if self.wrap_indent && indent < label.area().width() { indent } else { 0 }
     }
 }
 
@@ -129,82 +129,98 @@ pub struct RwData<T>
 where
     T: ?Sized,
 {
-    data: Arc<RwLock<T>>,
-    updated_state: Arc<RwLock<usize>>,
-    last_read_state: RwLock<usize>,
+    data: Arc<Mutex<T>>,
+    updated_state: Arc<Mutex<usize>>,
+    last_read_state: Mutex<usize>,
 }
 
 impl<T> RwData<T> {
-    /// Returns a new instance of `RwState`.
     pub fn new(data: T) -> Self {
-        // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
-        // `true` at least once, by copying the second value - 1.
         RwData {
-            data: Arc::new(RwLock::new(data)),
-            updated_state: Arc::new(RwLock::new(1)),
-            last_read_state: RwLock::new(1),
+            data: Arc::new(Mutex::new(data)),
+            updated_state: Arc::new(Mutex::new(1)),
+            last_read_state: Mutex::new(1),
         }
     }
 }
 
 impl<T> RwData<T>
 where
-    T: ?Sized,
+    T: ?Sized + 'static,
 {
+    /// Returns a new instance of [RwData<T>].
+    pub fn new_unsized(data: Arc<Mutex<T>>) -> Self {
+        // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
+        // `true` at least once, by copying the second value - 1.
+        RwData { data, updated_state: Arc::new(Mutex::new(1)), last_read_state: Mutex::new(1) }
+    }
+
     /// Reads the information.
     ///
-    /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_version = self.updated_state.read().unwrap();
-        let mut last_read_state = self.last_read_state.write().unwrap();
+    /// Also makes it so that [has_changed()] returns false.
+    pub fn read(&self) -> RwDataReadGuard<T> {
+        let updated_version = self.updated_state.lock().unwrap();
+        let mut last_read_state = self.last_read_state.lock().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.read().unwrap()
+        RwDataReadGuard(self.data.lock().unwrap())
     }
 
     /// Tries to read the data immediately and returns a `Result`.
-    pub fn try_read(&self) -> Result<RwLockReadGuard<T>, TryLockError<RwLockReadGuard<T>>> {
-        let updated_version = self.updated_state.read().unwrap();
-        let mut last_read_state = self.last_read_state.write().unwrap();
+    pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
+        let updated_version = self.updated_state.lock().unwrap();
+        let mut last_read_state = self.last_read_state.lock().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.try_read()
+        self.data.try_lock().map(|mutex_guard| RwDataReadGuard(mutex_guard))
     }
 
     /// Returns a writeable reference to the state.
     ///
     /// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
-    pub fn write(&mut self) -> RwLockWriteGuard<T> {
-        *self.updated_state.write().unwrap() += 1;
-        self.data.write().unwrap()
+    pub fn write(&self) -> RwDataWriteGuard<T> {
+        *self.updated_state.lock().unwrap() += 1;
+        RwDataWriteGuard(self.data.lock().unwrap())
     }
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let last_version = self.updated_state.read().unwrap();
-        let mut current_version = self.last_read_state.write().unwrap();
+        let last_version = self.updated_state.lock().unwrap();
+        let mut current_version = self.last_read_state.lock().unwrap();
         let has_changed = *last_version > *current_version;
         *current_version = *last_version;
 
         has_changed
     }
+
+    pub fn try_downcast<U>(self) -> Result<RwData<U>, RwDataCastError<T>>
+    where
+        U: 'static,
+    {
+        let RwData { data, updated_state, last_read_state } = self;
+        let data = Arc::into_raw(data);
+        if data.type_id() == TypeId::of::<Mutex<U>>() {
+            let data = unsafe { Arc::from_raw(data.cast::<Mutex<U>>()) };
+            Ok(RwData { data, updated_state, last_read_state })
+        } else {
+            let data = unsafe { Arc::from_raw(data) };
+            Err(RwDataCastError { rw_data: RwData { data, updated_state, last_read_state } })
+        }
+    }
 }
 
-impl<T> Clone for RwData<T>
-where
-    T: ?Sized,
-{
+impl<T> Clone for RwData<T> where T: ?Sized {
     fn clone(&self) -> Self {
         RwData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: RwLock::new(*self.updated_state.read().unwrap() - 1),
+            last_read_state: Mutex::new(*self.updated_state.lock().unwrap() - 1),
         }
     }
 }
@@ -215,9 +231,9 @@ where
 {
     fn default() -> Self {
         RwData {
-            data: Arc::new(RwLock::new(D::default())),
-            updated_state: Arc::new(RwLock::new(1)),
-            last_read_state: RwLock::new(1),
+            data: Arc::new(Mutex::new(D::default())),
+            updated_state: Arc::new(Mutex::new(1)),
+            last_read_state: Mutex::new(1),
         }
     }
 }
@@ -229,35 +245,35 @@ pub struct RoData<T>
 where
     T: ?Sized,
 {
-    data: Arc<RwLock<T>>,
-    updated_state: Arc<RwLock<usize>>,
-    last_read_state: RwLock<usize>,
+    data: Arc<Mutex<T>>,
+    updated_state: Arc<Mutex<usize>>,
+    last_read_state: Mutex<usize>,
 }
 
 impl<T> RoData<T>
 where
-    T: ?Sized,
+    T: ?Sized + Any,
 {
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_version = self.updated_state.read().unwrap();
-        let mut last_read_state = self.last_read_state.write().unwrap();
+    pub fn read(&self) -> RwDataReadGuard<T> {
+        let updated_version = self.updated_state.lock().unwrap();
+        let mut last_read_state = self.last_read_state.lock().unwrap();
 
         if *updated_version > *last_read_state {
             *last_read_state = *updated_version;
         }
 
-        self.data.read().unwrap()
+        RwDataReadGuard(self.data.lock().unwrap())
     }
 
     /// Checks if the state within has changed.
     ///
     /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
     pub fn has_changed(&self) -> bool {
-        let updated_version = self.updated_state.read().unwrap();
-        let mut current_version = self.last_read_state.write().unwrap();
+        let updated_version = self.updated_state.lock().unwrap();
+        let mut current_version = self.last_read_state.lock().unwrap();
 
         if *updated_version > *current_version {
             *current_version = *updated_version;
@@ -265,6 +281,21 @@ where
             true
         } else {
             false
+        }
+    }
+
+    pub fn try_downcast<U>(self) -> Result<RoData<U>, RoDataCastError<T>>
+    where
+        U: 'static,
+    {
+        let RoData { data, updated_state, last_read_state } = self;
+        let data = Arc::into_raw(data);
+        if data.type_id() == TypeId::of::<Mutex<U>>() {
+            let data = unsafe { Arc::from_raw(data.cast::<Mutex<U>>()) };
+            Ok(RoData { data, updated_state, last_read_state })
+        } else {
+            let data = unsafe { Arc::from_raw(data) };
+            Err(RoDataCastError { ro_data: RoData { data, updated_state, last_read_state } })
         }
     }
 }
@@ -277,7 +308,7 @@ where
         RoData {
             data: state.data.clone(),
             updated_state: state.updated_state.clone(),
-            last_read_state: RwLock::new(*state.updated_state.read().unwrap() - 1),
+            last_read_state: Mutex::new(*state.updated_state.lock().unwrap() - 1),
         }
     }
 }
@@ -291,7 +322,118 @@ where
         RoData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: RwLock::new(*self.last_read_state.read().unwrap()),
+            last_read_state: Mutex::new(*self.last_read_state.lock().unwrap()),
         }
     }
 }
+
+pub struct RwDataReadGuard<'a, T>(MutexGuard<'a, T>)
+where
+    T: ?Sized;
+
+impl<'a, T> Deref for RwDataReadGuard<'a, T>
+where
+    T: ?Sized,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct RwDataWriteGuard<'a, T>(MutexGuard<'a, T>)
+where
+    T: ?Sized;
+
+impl<'a, T> Deref for RwDataWriteGuard<'a, T>
+where
+    T: ?Sized,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a, T> DerefMut for RwDataWriteGuard<'a, T>
+where
+    T: ?Sized,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+pub struct RwDataCastError<T>
+where
+    T: ?Sized,
+{
+    rw_data: RwData<T>,
+}
+
+impl<T> RwDataCastError<T>
+where
+    T: ?Sized,
+{
+    pub fn retrieve(self) -> RwData<T> {
+        self.rw_data
+    }
+}
+
+impl<T> Debug for RwDataCastError<T>
+where
+    T: ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Downcasting failed!")
+    }
+}
+
+impl<T> Display for RwDataCastError<T>
+where
+    T: ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Downcasting failed!")
+    }
+}
+
+impl<T> Error for RwDataCastError<T> where T: ?Sized {}
+
+pub struct RoDataCastError<T>
+where
+    T: ?Sized,
+{
+    ro_data: RoData<T>,
+}
+
+impl<T> RoDataCastError<T>
+where
+    T: ?Sized,
+{
+    pub fn retrieve(self) -> RoData<T> {
+        self.ro_data
+    }
+}
+
+impl<T> Debug for RoDataCastError<T>
+where
+    T: ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Downcasting failed!")
+    }
+}
+
+impl<T> Display for RoDataCastError<T>
+where
+    T: ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Downcasting failed!")
+    }
+}
+
+impl<T> Error for RoDataCastError<T> where T: ?Sized {}

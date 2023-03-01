@@ -8,7 +8,7 @@ use std::{
 };
 
 use crossterm::{
-    cursor::{self, MoveTo, RestorePosition, SavePosition, SetCursorStyle},
+    cursor::{self, MoveTo, RestorePosition, SavePosition},
     execute, queue,
     style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal::{self, ClearType},
@@ -20,7 +20,7 @@ use parsec_core::{
         form::{Form, DEFAULT},
     },
     text::{Text, TextLine, TextLineBuilder},
-    ui::{self, Area as UiArea, Axis, EndNode, Label as UiLabel, Side, Split, Window},
+    ui::{self, Area as UiArea, Axis, EndNode, Label as UiLabel, Side, Split},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
 use unicode_width::UnicodeWidthChar;
@@ -154,11 +154,6 @@ impl InnerArea {
         self.tl.x = br.x - width as u16;
         self.tl.y = br.y - height as u16;
     }
-
-    fn set_coords(&mut self, inner: InnerArea) {
-        self.tl = inner.tl;
-        self.br = inner.br;
-    }
 }
 
 #[derive(Clone)]
@@ -209,6 +204,9 @@ impl Area {
                 let mut inner = child.inner.write();
                 inner.set_tl(last_corner);
                 (last_corner, remaining) = inner.add_or_take(old_len > new_len, remaining, side);
+                drop(inner);
+
+                child.regulate_children();
             }
         } else {
             let mut children = children.iter_mut().take(index);
@@ -217,6 +215,9 @@ impl Area {
                 let mut inner = child.inner.write();
                 inner.set_br(last_corner);
                 (last_corner, remaining) = inner.add_or_take(old_len > new_len, remaining, side);
+                drop(inner);
+
+                child.regulate_children();
             }
         }
 
@@ -333,7 +334,7 @@ impl ui::Area for Area {
         }
     }
 
-    fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()> {
+    fn request_width_to_fit(&mut self, _text: &str) -> Result<(), ()> {
         todo!()
     }
 }
@@ -350,7 +351,7 @@ pub struct Label {
 }
 
 impl Label {
-    fn new(area: Area, direction: Side) -> Self {
+    fn new(area: Area) -> Self {
         let cursor = area.inner.read().tl;
         Label {
             stdout: stdout(),
@@ -490,22 +491,51 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn wrap_count(&self, text: &str, wrap_method: WrapMethod) -> usize {
-        todo!()
+    fn wrap_count(&self, text: &str, wrap_method: WrapMethod, tab_places: &TabPlaces) -> usize {
+        match wrap_method {
+            WrapMethod::Width => self.get_width(text, tab_places) / self.area.width(),
+            WrapMethod::Capped(_) => todo!(),
+            WrapMethod::Word => todo!(),
+            WrapMethod::NoWrap => todo!(),
+        }
     }
 
     fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize {
-        todo!()
+        let mut width = 0;
+        for ch in text.chars() {
+            width += match ch {
+                '\t' => tab_places.spaces_on_col(width),
+                ch => UnicodeWidthChar::width(ch).unwrap_or(0),
+            }
+        }
+
+        width
     }
 
     fn get_col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize {
-        todo!()
+        text.chars()
+            .enumerate()
+            .scan((0, false), |(width, end_reached), (index, ch)| {
+                *width += match ch {
+                    '\t' => tab_places.spaces_on_col(*width),
+                    ch => UnicodeWidthChar::width(ch).unwrap_or(0),
+                };
+                if *end_reached {
+                    return None;
+                }
+                if *width >= dist {
+                    *end_reached = true
+                }
+                Some(index)
+            })
+            .last()
+            .unwrap_or(0)
     }
 }
 
 #[derive(Default)]
 pub struct Ui {
-    layout_has_changed: bool,
+    layout_has_changed: Mutex<bool>,
     areas: Vec<Area>,
 }
 
@@ -517,18 +547,19 @@ impl ui::Ui for Ui {
         &mut self, area: &mut Self::Area, side: Side, split: Split,
     ) -> (Self::Label, Option<Self::Area>) {
         let (tl, br) = (area.tl(), area.br());
-        area.request_len(max(area.resizable_len(Axis::from(side)), split.len()), side);
+        area.request_len(max(area.resizable_len(Axis::from(side)), split.len()), side).unwrap();
 
         let split_inner = split_by(area, split, side);
         let (split_area, resized_area) = restructure_tree(area, split_inner, side, split, tl, br);
 
-        let new_label = Label::new(split_area, side);
+        let new_label = Label::new(split_area);
 
         (new_label, resized_area)
     }
 
     fn maximum_label(&mut self) -> Self::Label {
-        Label::new(Area::total(), Side::Left)
+        *self.layout_has_changed.lock().unwrap() = true;
+        Label::new(Area::total())
     }
 
     fn startup(&mut self) {
@@ -563,7 +594,13 @@ impl ui::Ui for Ui {
     fn finish_all_printing(&mut self) {}
 
     fn layout_has_changed(&self) -> bool {
-        todo!()
+        let mut layout_has_changed = self.layout_has_changed.lock().unwrap();
+        if *layout_has_changed {
+            *layout_has_changed = false;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -788,22 +825,22 @@ where
     pub fn new(file_widget: RwData<FileWidget<U>>, vert_rule_config: VertRuleConfig) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        Widget::Normal(Arc::new(Mutex::new(VertRule {
+        Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
             file,
             text: Text::default(),
             vert_rule_config,
-        })))
+        }))))
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
     pub fn default(file_widget: RwData<FileWidget<U>>) -> Widget<U> {
         let file = RoData::from(&file_widget);
 
-        Widget::Normal(Arc::new(Mutex::new(VertRule {
+        Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
             file,
             text: Text::default(),
             vert_rule_config: VertRuleConfig::default(),
-        })))
+        }))))
     }
 }
 
@@ -817,13 +854,12 @@ where
         "vertical_rule"
     }
 
-    fn update(&mut self, end_node: &mut EndNode<U>) {
+    fn update(&mut self, _end_node: &mut EndNode<U>) {
         let file = self.file.read();
-        let area = end_node.label.area();
 
         self.text.lines.clear();
 
-        let mut iterations = file.printed_lines().iter().map(|number| *number);
+        let iterations = file.printed_lines().iter().map(|number| *number);
         let main_line = file.main_cursor().true_row();
 
         for number in iterations {

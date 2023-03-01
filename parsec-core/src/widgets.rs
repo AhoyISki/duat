@@ -10,6 +10,7 @@ use std::{
 
 use self::command_line::CommandList;
 use crate::{
+    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
@@ -19,7 +20,7 @@ use crate::{
 /// An area where text will be printed to the screen.
 pub trait NormalWidget<U>: Send
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     /// Returns an identifier for this `Widget`. They may not be unique.
     fn identifier(&self) -> &str;
@@ -34,10 +35,10 @@ where
     fn text(&self) -> &Text<U>;
 
     /// Scrolls the text vertically by an amount.
-    fn scroll_vertically(&mut self, d_y: i32) {}
+    fn scroll_vertically(&mut self, _d_y: i32) {}
 
     /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, end_node: &EndNode<U>) {}
+    fn resize(&mut self, _end_node: &EndNode<U>) {}
 
     /// If the `Widget` implements `Commandable`. Should return `Some(widget)`
     fn command_list(&mut self) -> Option<CommandList> {
@@ -55,7 +56,7 @@ where
 
 pub trait ActionableWidget<U>: NormalWidget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
     fn editor<'a>(
         &'a mut self, index: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
@@ -77,17 +78,17 @@ where
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn undo(&mut self, end_node: &EndNode<U>) {
+    fn undo(&mut self, _end_node: &EndNode<U>) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn redo(&mut self, end_node: &EndNode<U>) {
+    fn redo(&mut self, _end_node: &EndNode<U>) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn on_focus(&mut self) {}
+    fn on_focus(&mut self, _end_node: &mut EndNode<U>) {}
 
-    fn on_unfocus(&mut self) {}
+    fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {}
 
     fn still_valid(&self) -> bool {
         true
@@ -126,25 +127,18 @@ pub enum Widget<U>
 where
     U: Ui + ?Sized,
 {
-    Normal(Arc<Mutex<dyn NormalWidget<U>>>),
-    Actionable(Arc<Mutex<dyn ActionableWidget<U>>>),
+    Normal(RwData<dyn NormalWidget<U>>),
+    Actionable(RwData<dyn ActionableWidget<U>>),
 }
 
 impl<U> Widget<U>
 where
-    U: Ui,
+    U: Ui + 'static,
 {
-    pub(crate) fn identifier_matches(&self, other: &str) -> bool {
-        match self {
-            Widget::Normal(widget) => widget.lock().unwrap().identifier() == other,
-            Widget::Actionable(widget) => widget.lock().unwrap().identifier() == other,
-        }
-    }
-
     pub(crate) fn update(&self, end_node: &mut EndNode<U>) -> bool {
         match self {
             Widget::Normal(widget) => {
-                let mut widget = widget.lock().unwrap();
+                let mut widget = widget.write();
                 if widget.needs_update() {
                     widget.update(end_node);
                     true
@@ -153,7 +147,7 @@ where
                 }
             }
             Widget::Actionable(widget) => {
-                let mut widget = widget.lock().unwrap();
+                let mut widget = widget.write();
                 if widget.needs_update() {
                     widget.update(end_node);
                     true
@@ -167,42 +161,27 @@ where
     pub(crate) fn print(&self, end_node: &mut EndNode<U>) {
         match self {
             Widget::Normal(widget) => {
-                let widget = widget.lock().unwrap();
+                let widget = widget.read();
                 widget.text().print(end_node, widget.print_info());
             }
             Widget::Actionable(widget) => {
-                let widget = widget.lock().unwrap();
+                let widget = widget.read();
                 widget.text().print(end_node, widget.print_info());
             }
-        }
-    }
-
-    fn try_to_actionable(&self) -> Option<Arc<Mutex<dyn ActionableWidget<U>>>> {
-        match self {
-            Widget::Normal(_) => None,
-            Widget::Actionable(widget) => Some(widget.clone()),
-        }
-    }
-
-    pub(crate) fn try_add_cursor_tags(&mut self) {
-        if let Widget::Actionable(widget) = self {
-            let mut widget = widget.lock().unwrap();
-            let (text, cursors, main_index) = widget.members_for_cursor_tags();
-            text.add_cursor_tags(cursors, main_index);
         }
     }
 
     pub(crate) fn identifier(&self) -> String {
         match self {
-            Widget::Normal(widget) => widget.lock().unwrap().identifier().to_string(),
-            Widget::Actionable(widget) => widget.lock().unwrap().identifier().to_string(),
+            Widget::Normal(widget) => widget.read().identifier().to_string(),
+            Widget::Actionable(widget) => widget.read().identifier().to_string(),
         }
     }
 }
 
 pub struct WidgetActor<'a, U, E>
 where
-    U: Ui,
+    U: Ui + 'static,
     E: ActionableWidget<U> + ?Sized,
 {
     clearing_needed: bool,

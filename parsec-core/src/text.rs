@@ -14,7 +14,7 @@ use crate::{
     get_byte_at_col,
     tags::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
-        CharTag, LineFlags, LineInfo, MatchManager,
+        CharTag, LineFlags, LineInfo,
     },
     ui::{Area, EndNode, Label, Ui},
 };
@@ -118,7 +118,7 @@ impl TextLine {
         // To possibly print a cursor one byte after the end of the last line.
         let extra_ch = [(self.text.len(), ' ')];
         for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
-            if !self.trigger_on_byte::<U>(&mut tags, byte, label, config, &mut form_former) {
+            if !self.trigger_on_byte::<U>(&mut tags, byte, label, &mut form_former) {
                 return false;
             }
 
@@ -147,7 +147,7 @@ impl TextLine {
 
     fn trigger_on_byte<'a, U>(
         &self, tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
-        label: &mut U::Label, config: &Config, form_former: &mut FormFormer,
+        label: &mut U::Label, form_former: &mut FormFormer,
     ) -> bool
     where
         U: Ui,
@@ -156,8 +156,7 @@ impl TextLine {
             if byte == *tag_byte {
                 tags.next();
                 // If this is the first printed character of `top_line`, we don't wrap.
-                let indent = config.usable_indent::<U>(self, label);
-                if !tag.trigger(label, form_former, indent) {
+                if !tag.trigger(label, form_former) {
                     return false;
                 }
             } else {
@@ -175,10 +174,10 @@ impl TextLine {
     {
         let mut tags_iter = self.info.char_tags.iter().take_while(|(byte, _)| skip > *byte);
         let mut last_checked_index = 0;
-        while let Some((byte, tag)) = tags_iter.next() {
+        while let Some((_, tag)) = tags_iter.next() {
             last_checked_index += 1;
             if let CharTag::PushForm(_) | CharTag::PopForm(_) = tag {
-                tag.trigger(label, form_former, 0);
+                tag.trigger(label, form_former);
             }
         }
         last_checked_index
@@ -279,8 +278,8 @@ where
     U: Ui,
 {
     pub lines: Vec<TextLine>,
-    replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
-    readers: Vec<Box<dyn MutTextReader<U>>>,
+    _replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
+    _readers: Vec<Box<dyn MutTextReader<U>>>,
 }
 
 impl<U> Default for Text<U>
@@ -288,11 +287,11 @@ where
     U: Ui,
 {
     fn default() -> Self {
-        Text { lines: vec![TextLine::from("")], replacements: Vec::new(), readers: Vec::new() }
+        Text { lines: vec![TextLine::from("")], _replacements: Vec::new(), _readers: Vec::new() }
     }
 }
 
-// TODO: Properly implement replacements.
+// TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
     U: Ui,
@@ -301,8 +300,8 @@ where
     pub fn new(text: String) -> Self {
         Text {
             lines: text.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
-            replacements: Vec::new(),
-            readers: Vec::new(),
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
         }
     }
 
@@ -410,11 +409,8 @@ where
     pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == main_index {
-                (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
-            } else {
-                (CharTag::ExtraCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
-            };
+            let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
+
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
             let no_selection = if start == end { 2 } else { 0 };
@@ -433,11 +429,7 @@ where
     pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let TextRange { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = if index == main_index {
-                (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
-            } else {
-                (CharTag::ExtraCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
-            };
+            let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
 
@@ -477,11 +469,6 @@ where
     //}
 }
 
-enum TextItem<'a> {
-    Char(char),
-    Tag(&'a CharTag),
-}
-
 impl<S, U> From<S> for Text<U>
 where
     S: ToString,
@@ -490,8 +477,8 @@ where
     fn from(value: S) -> Self {
         Text {
             lines: value.to_string().split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
-            replacements: Vec::new(),
-            readers: Vec::new(),
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
         }
     }
 }
@@ -701,39 +688,39 @@ impl PrintInfo {
     }
 }
 
-pub(crate) fn update_range<U>(
-    text: &mut Text<U>, range: TextRange, max_line: usize, node: &EndNode<U>,
-) where
-    U: Ui,
-{
-    //if let Some(match_manager) = &mut text.match_manager {
-    //    let line = &text.lines[max_line];
-    //    let max_pos = TextPos::default().translate(&text.lines, max_line, line.char_count());
-
-    //    let start = TextPos {
-    //        row: range.start.row,
-    //        col: 0,
-    //        byte: range.start.byte - get_byte(&text.lines[range.start.row].text(),
-    // range.start.col),    };
-
-    //    let len = text.lines[range.end.row].text().len();
-    //    let end = TextPos {
-    //        row: range.end.row,
-    //        col: text.lines[range.end.row].char_count(),
-    //        byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) +
-    // len,    };
-
-    //    let range = TextRange { start, end };
-
-    //    let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
-
-    //    for (line_info, line_num) in line_infos {
-    //        text.lines[line_num].info = line_info;
-    //        text.lines[line_num].update_line_info(node);
-    //    }
-    //}
-}
-
+//pub(crate) fn update_range<U>(
+//    text: &mut Text<U>, range: TextRange, max_line: usize, node: &EndNode<U>,
+//) where
+//    U: Ui,
+//{
+//    if let Some(match_manager) = &mut text.match_manager {
+//        let line = &text.lines[max_line];
+//        let max_pos = TextPos::default().translate(&text.lines, max_line, line.char_count());
+//
+//        let start = TextPos {
+//            row: range.start.row,
+//            col: 0,
+//            byte: range.start.byte - get_byte(&text.lines[range.start.row].text(),
+//     range.start.col),    };
+//
+//        let len = text.lines[range.end.row].text().len();
+//        let end = TextPos {
+//            row: range.end.row,
+//            col: text.lines[range.end.row].char_count(),
+//            byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) +
+//     len,    };
+//
+//        let range = TextRange { start, end };
+//
+//        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
+//
+//        for (line_info, line_num) in line_infos {
+//            text.lines[line_num].info = line_info;
+//            text.lines[line_num].update_line_info(node);
+//        }
+//    }
+//}
+//
 fn cursor_tags(is_main: bool) -> (CharTag, CharTag, CharTag) {
     if is_main {
         (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))

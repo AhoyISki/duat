@@ -7,10 +7,11 @@ use std::{
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
-    action::{History, TextRange},
+    action::History,
+    config::RwData,
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, MidNode, NodeIndex, Ui},
+    ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
 
 /// The widget that is used to print and edit files.
@@ -18,8 +19,7 @@ pub struct FileWidget<U>
 where
     U: Ui,
 {
-    pub(crate) mid_node: Option<NodeIndex>,
-    pub(crate) side_widgets: Vec<NodeIndex>,
+    pub(crate) _side_widgets: Option<(NodeIndex, Vec<NodeIndex>)>,
     identifier: String,
     text: Text<U>,
     print_info: PrintInfo,
@@ -49,9 +49,8 @@ where
         let text = Text::new(file_contents);
         let cursor = TextCursor::default();
 
-        Widget::Actionable(Arc::new(Mutex::new(FileWidget {
-            mid_node: None,
-            side_widgets: Vec::new(),
+        Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(FileWidget {
+            _side_widgets: None,
             identifier: ["parsec-file: ", name.as_str()].join(""),
             text,
             print_info: PrintInfo::default(),
@@ -60,7 +59,7 @@ where
             history: History::new(),
             readers: Vec::new(),
             printed_lines: Vec::new(),
-        })))
+        }))))
     }
 
     /// Undoes the last moment in history.
@@ -87,7 +86,7 @@ where
 
             self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, end_node));
 
-            let range = TextRange { start: splice.start(), end: splice.taken_end() };
+            //let range = TextRange { start: splice.start(), end: splice.taken_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
             //update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
@@ -111,7 +110,7 @@ where
 
             self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
 
-            let range = TextRange { start: splice.start(), end: splice.added_end() };
+            //let range = TextRange { start: splice.start(), end: splice.added_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
             //update_range(&mut self.text, range, max_line, &self.end_node.read());
         }
@@ -207,6 +206,7 @@ where
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         self.print_info.update(self.main_cursor().caret(), &self.text, end_node);
+        self.set_printed_lines(end_node);
 
         //let mut node = self.end_node.write();
         //self.text.update_lines(&mut node);
