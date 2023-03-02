@@ -408,10 +408,10 @@ where
         if let Some(anchor) = self.cursor.anchor() {
             if anchor > caret {
                 self.cursor.place_anchor(splice.added_end);
-                self.cursor.move_to_calibrated(splice.start, &self.text.lines, &self.end_node);
+                self.cursor.move_to_calibrated(splice.start, &self.text.lines(), &self.end_node);
             } else {
                 self.cursor.place_anchor(splice.start);
-                self.cursor.move_to_calibrated(splice.added_end, &self.text.lines, &self.end_node);
+                self.cursor.move_to_calibrated(splice.added_end, self.text.lines(), &self.end_node);
             }
         }
     }
@@ -441,7 +441,7 @@ where
     /// Replaces the entire selection of the `TextCursor` with new text.
     pub fn replace(&mut self, edit: impl ToString) {
         let lines = split_string_lines(&edit.to_string());
-        let change = Change::new(&lines, self.cursor.range(), &self.text.lines);
+        let change = Change::new(&lines, self.cursor.range(), &self.text.lines());
         let splice = change.splice;
 
         self.edit(change);
@@ -452,7 +452,7 @@ where
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
         let lines = split_string_lines(&edit.to_string());
-        let change = Change::new(&lines, TextRange::from(self.cursor.caret()), &self.text.lines);
+        let change = Change::new(&lines, TextRange::from(self.cursor.caret()), &self.text.lines());
 
         self.edit(change);
 

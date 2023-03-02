@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crossterm::{
     cursor::SetCursorStyle,
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
@@ -83,6 +85,12 @@ impl CursorStyle {
     }
 }
 
+impl Debug for CursorStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		Debug::fmt(&self.form, f)
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
@@ -93,7 +101,7 @@ pub const MAIN_SEL_ID: u16 = 3;
 pub const EXTRA_SEL_ID: u16 = 4;
 
 /// The list of forms to be used when rendering.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FormPalette {
     main_cursor: CursorStyle,
     extra_cursor: CursorStyle,

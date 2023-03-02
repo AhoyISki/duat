@@ -1,10 +1,11 @@
 #![feature(stmt_expr_attributes, is_some_and)]
 
 use std::{
+    any::Any,
     cmp::{max, min},
-    fmt::Display,
+    fmt::{Debug, Display},
     io::{stdout, Stdout},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
 };
 
 use crossterm::{
@@ -13,6 +14,8 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal::{self, ClearType},
 };
+use no_deadlocks::Mutex;
+use parsec_core::{config::DownCastableData, log_info};
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{
@@ -25,8 +28,8 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-static mut PRINTER: Mutex<()> = Mutex::new(());
-static mut LOCK: Option<MutexGuard<()>> = None;
+static mut PRINTER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static mut LOCK: Option<std::sync::MutexGuard<()>> = None;
 static mut SHOW_CURSOR: bool = false;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +44,28 @@ impl Display for Coord {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Coords {
+    tl: Coord,
+    br: Coord,
+}
+
+impl Coords {
+    fn width(&self) -> usize {
+        (self.br.x - self.tl.x) as usize
+    }
+
+    fn height(&self) -> usize {
+        (self.br.y - self.tl.y - 1) as usize
+    }
+}
+
+impl Display for Coords {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{},{}", self.tl, self.br))
+    }
+}
+
 #[derive(Clone)]
 enum Owner {
     Parent { parent: Area, self_index: usize, split: Split },
@@ -50,7 +75,34 @@ enum Owner {
     BrAnchor,
     None,
 }
+
+impl Debug for Owner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Owner::Parent { parent, self_index, split } => f
+                .debug_struct("Parent")
+                .field("parent_coords", &parent.inner.read().coords)
+                .field("self_index", self_index)
+                .field("split", split)
+                .finish(),
+            Owner::TlAnchor => f.write_str("TlAnchor"),
+            Owner::TrAnchor => f.write_str("TrAnchor"),
+            Owner::BlAnchor => f.write_str("BlAnchor"),
+            Owner::BrAnchor => f.write_str("BrAnchor"),
+            Owner::None => f.write_str("None"),
+        }
+    }
+}
+
 impl Owner {
+    fn clone_with_split(&self, split: Split) -> Self {
+        if let Owner::Parent { parent, self_index, .. } = self {
+            Owner::Parent { parent: parent.clone(), self_index: *self_index, split }
+        } else {
+            self.clone()
+        }
+    }
+
     fn split(&self) -> Option<Split> {
         if let Owner::Parent { split, .. } = self { Some(*split) } else { None }
     }
@@ -70,28 +122,25 @@ impl Owner {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct InnerArea {
-    tl: Coord,
-    br: Coord,
+    coords: Coords,
     owner: Owner,
 }
 
+//impl Debug for InnerArea {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        f.debug_struct("InnerArea").field("tl", &self.coords).finish()
+//    }
+//}
+
 impl InnerArea {
-    fn new(tl: Coord, br: Coord, owner: Owner) -> Self {
-        InnerArea { tl, br, owner }
+    fn new(coords: Coords, owner: Owner) -> Self {
+        InnerArea { coords, owner }
     }
 
     fn len(&self, axis: Axis) -> usize {
-        if let Axis::Horizontal = axis { self.width() } else { self.height() }
-    }
-
-    fn width(&self) -> usize {
-        (self.br.x - self.tl.x) as usize
-    }
-
-    fn height(&self) -> usize {
-        (self.br.y - self.tl.y - 1) as usize
+        if let Axis::Horizontal = axis { self.coords.width() } else { self.coords.height() }
     }
 
     fn add_or_take(&mut self, do_add: bool, remaining: usize, side: Side) -> (Coord, usize) {
@@ -109,10 +158,10 @@ impl InnerArea {
         let len_diff = min(self.len(Axis::from(side)) - min_len, len);
 
         match side {
-            Side::Top => self.tl.y -= len_diff as u16,
-            Side::Right => self.br.x -= len_diff as u16,
-            Side::Bottom => self.br.y -= len_diff as u16,
-            Side::Left => self.tl.x -= len_diff as u16,
+            Side::Top => self.coords.tl.y -= len_diff as u16,
+            Side::Right => self.coords.br.x -= len_diff as u16,
+            Side::Bottom => self.coords.br.y -= len_diff as u16,
+            Side::Left => self.coords.tl.x -= len_diff as u16,
         }
 
         (self.coord_from_side(side), len - len_diff)
@@ -124,10 +173,10 @@ impl InnerArea {
         };
 
         match side {
-            Side::Top => self.tl.y += len as u16,
-            Side::Right => self.br.x += len as u16,
-            Side::Bottom => self.br.y += len as u16,
-            Side::Left => self.tl.x += len as u16,
+            Side::Top => self.coords.tl.y += len as u16,
+            Side::Right => self.coords.br.x += len as u16,
+            Side::Bottom => self.coords.br.y += len as u16,
+            Side::Left => self.coords.tl.x += len as u16,
         }
 
         (self.coord_from_side(side), 0)
@@ -135,28 +184,28 @@ impl InnerArea {
 
     fn coord_from_side(&self, side: Side) -> Coord {
         if let Side::Top | Side::Right = side {
-            Coord { x: self.br.x, y: self.tl.y }
+            Coord { x: self.coords.br.x, y: self.coords.tl.y }
         } else {
-            Coord { x: self.tl.x, y: self.br.y }
+            Coord { x: self.coords.tl.x, y: self.coords.br.y }
         }
     }
 
     fn set_tl(&mut self, tl: Coord) {
-        let (width, height) = (self.width(), self.height());
-        self.tl = tl;
-        self.br.x = tl.x + width as u16;
-        self.br.y = tl.y + height as u16;
+        let (width, height) = (self.coords.width(), self.coords.height());
+        self.coords.tl = tl;
+        self.coords.br.x = tl.x + width as u16;
+        self.coords.br.y = tl.y + height as u16;
     }
 
     fn set_br(&mut self, br: Coord) {
-        let (width, height) = (self.width(), self.height());
-        self.br = br;
-        self.tl.x = br.x - width as u16;
-        self.tl.y = br.y - height as u16;
+        let (width, height) = (self.coords.width(), self.coords.height());
+        self.coords.br = br;
+        self.coords.tl.x = br.x - width as u16;
+        self.coords.tl.y = br.y - height as u16;
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Area {
     inner: RwData<InnerArea>,
     lineage: RwData<Option<(Vec<Area>, Axis)>>,
@@ -165,22 +214,25 @@ pub struct Area {
 impl Area {
     fn total() -> Self {
         let (max_x, max_y) = terminal::size().unwrap();
-        let tl = Coord { x: 0, y: 0 };
-        let br = Coord { x: max_x, y: max_y };
+        let coords = Coords { tl: Coord { x: 0, y: 0 }, br: Coord { x: max_x, y: max_y } };
 
-        Area { inner: RwData::new(InnerArea::new(tl, br, Owner::None)), lineage: RwData::new(None) }
+        Area { inner: RwData::new(InnerArea::new(coords, Owner::None)), lineage: RwData::new(None) }
+    }
+
+    pub fn coords(&self) -> Coords {
+        self.inner.read().coords
     }
 
     pub fn tl(&self) -> Coord {
-        self.inner.read().tl
+        self.inner.read().coords.tl
     }
 
     pub fn br(&self) -> Coord {
-        self.inner.read().br
+        self.inner.read().coords.br
     }
 
-    fn new(inner: RwData<InnerArea>) -> Self {
-        Area { inner, lineage: RwData::new(None) }
+    fn new(inner: InnerArea) -> Self {
+        Area { inner: RwData::new(inner), lineage: RwData::new(None) }
     }
 
     fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
@@ -231,7 +283,7 @@ impl Area {
 
         let self_inner = self.inner.read();
 
-        let mut last_tl = self_inner.tl;
+        let mut last_tl = self_inner.coords.tl;
         let (old_len, new_len) = if let Axis::Horizontal = axis {
             (self.resizable_width(), self.width())
         } else {
@@ -242,20 +294,21 @@ impl Area {
         let (children, axis) = lineage.as_mut().unwrap();
         for child in children.iter_mut() {
             let mut inner = child.inner.write();
-            inner.tl = last_tl;
+            let coords = &mut inner.coords;
+            coords.tl = last_tl;
 
-            (inner.br, last_tl) = if let Axis::Horizontal = axis {
-                let ratio = (inner.width() as f32) / (old_len as f32);
-                let x = inner.tl.x + (ratio * (new_len as f32)).floor() as u16;
-                (Coord { x, y: inner.br.y }, Coord { x, y: inner.tl.y })
+            (coords.br, last_tl) = if let Axis::Horizontal = axis {
+                let ratio = (coords.width() as f32) / (old_len as f32);
+                let x = coords.tl.x + (ratio * (new_len as f32)).floor() as u16;
+                (Coord { x, y: coords.br.y }, Coord { x, y: coords.tl.y })
             } else {
-                let ratio = (inner.height() as f32) / (old_len as f32);
-                let y = inner.tl.y + (ratio * (new_len as f32)).floor() as u16;
-                (Coord { x: inner.br.x, y }, Coord { x: inner.tl.x, y })
+                let ratio = (coords.height() as f32) / (old_len as f32);
+                let y = coords.tl.y + (ratio * (new_len as f32)).floor() as u16;
+                (Coord { x: coords.br.x, y }, Coord { x: coords.tl.x, y })
             };
         }
 
-        children.last_mut().map(|last| last.inner.write().br = self_inner.br);
+        children.last_mut().map(|last| last.inner.write().coords.br = self_inner.coords.br);
     }
 
     fn resizable_len(&self, axis: Axis) -> usize {
@@ -263,7 +316,7 @@ impl Area {
     }
 
     fn resizable_width(&self) -> usize {
-        let Some(Split::Minimum(_)) = self.inner.read().owner.split() else {
+        if let Some(Split::Locked(_)) = self.inner.read().owner.split() {
             return 0;
         };
 
@@ -279,7 +332,7 @@ impl Area {
     }
 
     fn resizable_height(&self) -> usize {
-        let Some(Split::Minimum(_)) = self.inner.read().owner.split() else {
+        if let Some(Split::Locked(_)) = self.inner.read().owner.split() {
             return 0;
         };
 
@@ -297,40 +350,45 @@ impl Area {
 
 impl Display for Area {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("({})({})", self.inner.read().tl, self.inner.read().br))
+        f.write_fmt(format_args!("{},{}", self.inner.read().coords.tl, self.inner.read().coords.br))
     }
 }
 
 impl ui::Area for Area {
     fn width(&self) -> usize {
-        self.inner.read().width()
+        self.inner.read().coords.width()
     }
 
     fn height(&self) -> usize {
-        self.inner.read().height()
+        self.inner.read().coords.height()
     }
 
-    fn request_len(&mut self, width: usize, side: Side) -> Result<(), ()> {
-        let InnerArea { tl, br, owner } = &mut *self.inner.write();
+    fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()> {
+        let inner = self.inner.write();
+        let InnerArea { coords, owner } = &mut inner.clone();
+        drop(inner);
 
         match owner {
-            Owner::Parent { parent, self_index, .. } => {
+            Owner::Parent { ref mut parent, self_index, .. } => {
                 let axis = parent.lineage.read().as_ref().map(|(_, axis)| *axis).unwrap();
 
                 if Axis::from(side) != axis {
-                    parent.request_len(width, side)
-                } else if parent.resizable_width() < width {
-                    let new_parent_width = parent.width() + width - (br.x - tl.x) as usize;
+                    parent.request_len(len, side)
+                } else if parent.resizable_width() < len {
+                    let new_parent_width = parent.width() + len - coords.width();
                     parent.request_len(new_parent_width, side)
                 } else {
-                    parent.set_child_len(width, *self_index, side)
+                    //panic!("{:?}, {:?}", side, axis);
+                    parent.set_child_len(len, *self_index, side)
                 }
             }
             Owner::TlAnchor => todo!(),
             Owner::TrAnchor => todo!(),
             Owner::BlAnchor => todo!(),
             Owner::BrAnchor => todo!(),
-            Owner::None => Err(()),
+            Owner::None => {
+                if len == self.resizable_len(Axis::from(side)) { Ok(()) } else { Err(()) }
+            }
         }
     }
 
@@ -339,6 +397,7 @@ impl ui::Area for Area {
     }
 }
 
+#[derive(Debug)]
 pub struct Label {
     area: Area,
     cursor: Coord,
@@ -352,7 +411,7 @@ pub struct Label {
 
 impl Label {
     fn new(area: Area) -> Self {
-        let cursor = area.inner.read().tl;
+        let cursor = area.inner.read().coords.tl;
         Label {
             stdout: stdout(),
             area,
@@ -533,10 +592,24 @@ impl ui::Label<Area> for Label {
     }
 }
 
-#[derive(Default)]
 pub struct Ui {
     layout_has_changed: Mutex<bool>,
     areas: Vec<Area>,
+}
+
+impl Debug for Ui {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ui")
+            .field("layout_has_changed", &*self.layout_has_changed.lock().unwrap())
+            .field("areas", &self.areas)
+            .finish()
+    }
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Ui { layout_has_changed: Mutex::new(true), areas: Vec::new() }
+    }
 }
 
 impl ui::Ui for Ui {
@@ -546,15 +619,18 @@ impl ui::Ui for Ui {
     fn bisect_area(
         &mut self, area: &mut Self::Area, side: Side, split: Split,
     ) -> (Self::Label, Option<Self::Area>) {
-        let (tl, br) = (area.tl(), area.br());
-        area.request_len(max(area.resizable_len(Axis::from(side)), split.len()), side).unwrap();
+        let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
+        if let Err(_) = area.request_len(max(resizable_len, split.len()), side) {
+            panic!("Resize failed:\n    {:?}, {:?}, {:?}", old_coords, side, split)
+        }
 
-        let split_inner = split_by(area, split, side);
-        let (split_area, resized_area) = restructure_tree(area, split_inner, side, split, tl, br);
+        let split_coords = split_by(area, split, side);
+        let (split_area, resized_area) =
+            restructure_tree(area, old_coords, split_coords, side, split);
 
-        let new_label = Label::new(split_area);
+        let split_label = Label::new(split_area);
 
-        (new_label, resized_area)
+        (split_label, resized_area)
     }
 
     fn maximum_label(&mut self) -> Self::Label {
@@ -569,25 +645,22 @@ impl ui::Ui for Ui {
         set_hook(Box::new(|msg| {
             let mut stdout = stdout();
 
-            terminal::disable_raw_mode().unwrap();
-
             execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen)
                 .unwrap();
+            terminal::disable_raw_mode().unwrap();
 
-            use std::backtrace::Backtrace;
-            println!("{}\n\n{}", msg, Backtrace::force_capture());
+            println!("{}\n", msg);
         }));
 
         let mut stdout = stdout();
-        terminal::enable_raw_mode().unwrap();
         execute!(stdout, terminal::EnterAlternateScreen).unwrap();
+        terminal::enable_raw_mode().unwrap();
     }
 
     fn shutdown(&mut self) {
         let mut stdout = stdout();
 
         execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen,).unwrap();
-
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -604,84 +677,81 @@ impl ui::Ui for Ui {
     }
 }
 
-fn split_by(area: &mut Area, split: Split, side: Side) -> InnerArea {
+fn split_by(area: &mut Area, split: Split, side: Side) -> Coords {
     let (old_tl, old_br) = (area.tl(), area.br());
     let mut inner = area.inner.write();
+    let coords = &mut inner.coords;
 
-    let (tl, br) = match side {
+    match side {
         Side::Left => {
-            inner.tl.x += split.len() as u16;
-            (old_tl, Coord { x: inner.tl.x, y: old_br.y })
+            coords.tl.x += split.len() as u16;
+            Coords { tl: old_tl, br: Coord { x: coords.tl.x, y: old_br.y } }
         }
         Side::Right => {
-            inner.br.x -= split.len() as u16;
-            (Coord { x: inner.br.x, y: old_tl.y }, old_br)
+            coords.br.x -= split.len() as u16;
+            Coords { tl: Coord { x: coords.br.x, y: old_tl.y }, br: old_br }
         }
         Side::Top => {
-            inner.tl.y += split.len() as u16;
-            (old_tl, Coord { x: old_br.x, y: inner.tl.y })
+            coords.tl.y += split.len() as u16;
+            Coords { tl: old_tl, br: Coord { x: old_br.x, y: coords.tl.y } }
         }
         Side::Bottom => {
-            inner.br.y -= split.len() as u16;
-            (Coord { x: old_tl.x, y: inner.br.y }, old_br)
+            coords.br.y -= split.len() as u16;
+            Coords { tl: Coord { x: old_tl.x, y: coords.br.y }, br: old_br }
         }
-    };
-
-    let split_inner = InnerArea::new(tl, br, inner.owner.clone());
-
-    split_inner
+    }
 }
 
 fn restructure_tree(
-    area: &mut Area, split_inner: InnerArea, side: Side, split: Split, tl: Coord, br: Coord,
+    resized_area: &mut Area, old_coords: Coords, split_coords: Coords, side: Side, split: Split,
 ) -> (Area, Option<Area>) {
-    let mut split_area = Area::new(RwData::new(split_inner));
+    let mut inner = resized_area.inner.write();
 
-    let mut inner = area.inner.write();
-
-    #[rustfmt::skip]
     if let Some(Owner::Parent { parent, self_index, .. }) = inner.owner.aligns(Axis::from(side)) {
         let mut lineage = parent.lineage.write();
         let (children, _) = lineage.as_mut().unwrap();
-        let split_index =
-            if let Side::Top | Side::Left = side { *self_index } else { *self_index + 1 };
 
-        for child in children.iter_mut().skip(split_index) {
-            if let Owner::Parent { self_index, .. } = &mut child.inner.write().owner {
-                *self_index += 1;
-            }
-        }
-        children.insert(split_index, split_area.clone());
-
-		drop(lineage);
-        split_area.inner.write().owner = Owner::Parent {
-            parent: parent.clone(),
-            self_index: split_index,
-            split
-        };
-
-        (split_area, None)
+        (new_child_area(split_coords, children, side, split, *self_index), None)
     } else {
+        let new_parent = Area::new(InnerArea::new(old_coords, inner.owner.clone()));
+
+        if let Owner::Parent { parent, self_index, .. } = &mut inner.owner {
+            let mut lineage = parent.lineage.write();
+            let lineage = lineage.as_mut().unwrap();
+            lineage.0[*self_index] = new_parent.clone();
+        }
+
+        let resized_split = inner.owner.split().unwrap_or(Split::Minimum(0));
+        inner.owner =
+            Owner::Parent { parent: new_parent.clone(), self_index: 0, split: resized_split };
+
+        let mut children = vec![resized_area.clone()];
         drop(inner);
-        let new_inner = InnerArea::new(tl, br, area.inner.read().owner.clone());
-        let mut swapped_child = Area::new(RwData::new(new_inner));
-        std::mem::swap(&mut swapped_child.inner, &mut area.inner);
-        std::mem::swap(&mut swapped_child.lineage, &mut area.lineage);
+        let split_area = new_child_area(split_coords, &mut children, side, split, 0);
+        *new_parent.lineage.write() = Some((children, Axis::from(side)));
 
-        let split_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
-        swapped_child.inner.write().owner = Owner::Parent {
-            parent: area.clone(),
-            self_index: (split_index + 1) % 2,
-            split: area.inner.read().owner.split().unwrap_or(Split::Minimum(0))
-        };
+        log_info!("\n{:#?}", resized_area);
 
-		let mut children = vec![swapped_child.clone()];
-		children.insert((split_index + 1) % 2, split_area.clone());
-        *area.lineage.write() = Some((children, Axis::from(side)));
-
-        split_area.inner.write().owner = Owner::new_parent(area.clone(), split_index, split);
-        (split_area, Some(swapped_child))
+        (split_area, Some(new_parent))
     }
+}
+
+fn new_child_area(
+    child_coords: Coords, children: &mut Vec<Area>, side: Side, split: Split, pushed_index: usize,
+) -> Area {
+    let owner = children[pushed_index].inner.read().owner.clone_with_split(split);
+    let new_child = Area::new(InnerArea::new(child_coords, owner));
+
+    let index = if let Side::Top | Side::Left = side { pushed_index } else { pushed_index + 1 };
+    children.insert(index, new_child.clone());
+
+    for child in children.iter_mut().skip(pushed_index + 1) {
+        if let Owner::Parent { self_index, .. } = &mut child.inner.write().owner {
+            *self_index += 1;
+        }
+    }
+
+    new_child
 }
 
 pub enum SeparatorChar {
@@ -846,6 +916,15 @@ where
 
 unsafe impl<U> Send for VertRule<U> where U: ui::Ui {}
 
+impl<U> DownCastableData for VertRule<U>
+where
+    U: ui::Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 impl<U> NormalWidget<U> for VertRule<U>
 where
     U: ui::Ui + 'static,
@@ -857,7 +936,7 @@ where
     fn update(&mut self, _end_node: &mut EndNode<U>) {
         let file = self.file.read();
 
-        self.text.lines.clear();
+        self.text.clear_lines();
 
         let iterations = file.printed_lines().iter().map(|number| *number);
         let main_line = file.main_cursor().true_row();
@@ -868,7 +947,7 @@ where
             let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
             let line = self.vert_rule_config.separator_form.form_line(number, main_line, line);
 
-            self.text.lines.push(line);
+            self.text.push_line(line);
         }
     }
 

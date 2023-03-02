@@ -1,3 +1,5 @@
+#![feature(type_name_of_val)]
+
 pub mod action;
 pub mod config;
 pub mod cursor;
@@ -46,7 +48,7 @@ where
     pub fn new(
         ui: U, config: Config, constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
-        let file = std::env::args().nth(2);
+        let file = std::env::args().nth(1);
         let file_widget = FileWidget::new(file.as_ref().map(|file| PathBuf::from(file)));
         let file_name = file_widget.identifier();
 
@@ -56,6 +58,7 @@ where
         for command in session_commands(session_manager.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
         }
+        
         let window =
             Window::new(ui, file_widget, config, &mut session_manager.write(), &constructor_hook);
 
@@ -81,7 +84,7 @@ where
     }
 
     fn open_arg_files(&mut self) {
-        for file in std::env::args().skip(1) {
+        for file in std::env::args().skip(2) {
             self.open_file(PathBuf::from(file))
         }
     }
@@ -109,8 +112,8 @@ where
         self.mut_active_window().push_to_master(widget, side, split, false)
     }
 
-    /// The full loop. A break in this loop means quitting Parsec.
-    pub fn main_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
+    /// Start the application, initiating a read/response loop.
+    pub fn start_parsec<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
     {
@@ -118,13 +121,13 @@ where
 
         // The main loop.
         loop {
-            // Initial printing.
             for (widget, end_node) in self.active_window().widgets() {
                 let mut end_node = end_node.write();
                 if widget.update(&mut end_node) {
                     widget.print(&mut end_node);
                 }
             }
+
 
             self.session_loop(key_remapper);
 
@@ -426,9 +429,9 @@ pub static mut FOR_TEST: usize = 0;
 macro_rules! log_info {
     ($($text:tt)*) => {
         {
-            use std::{fs, io::Write};
-            let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-            log.write_fmt(format_args!($($text)*)).unwrap();
+            //use std::{fs, io::Write};
+            //let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+            //log.write_fmt(format_args!($($text)*)).unwrap();
         }
     }
 }

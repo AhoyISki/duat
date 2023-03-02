@@ -1,7 +1,8 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
+    log_info,
     tags::form::{CursorStyle, Form},
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
     SessionManager,
@@ -89,6 +90,15 @@ where
     config: Config,
 }
 
+impl<U: Debug> Debug for MidNode<U>
+where
+    U: Ui + ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MidNode").field("area", &self.area).finish()
+    }
+}
+
 impl<U> MidNode<U>
 where
     U: Ui + 'static,
@@ -106,6 +116,18 @@ where
     pub label: U::Label,
     pub config: Config,
     pub(crate) is_active: bool,
+}
+
+impl<U: Debug> Debug for EndNode<U>
+where
+    U: Ui + ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EndNode")
+            .field("label", &self.label)
+            .field("is_active", &self.is_active)
+            .finish()
+    }
 }
 
 impl<U> EndNode<U>
@@ -127,6 +149,7 @@ where
 }
 
 /// Container for middle and end nodes.
+#[derive(Debug)]
 pub enum Node<U>
 where
     U: Ui + ?Sized,
@@ -222,10 +245,9 @@ where
     fn replace_with_mid(&mut self, mut new_node: Node<U>, end_node: Node<U>, side: Side) {
         std::mem::swap(self, &mut new_node);
 
-        let Node::MidNode { children, node_index, .. } = self else {
+        let Node::MidNode { children, .. } = self else {
     		unreachable!();
 		};
-        *node_index = new_node.node_index();
 
         children.push(new_node);
         let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
@@ -266,7 +288,7 @@ where
 }
 
 /// A way of splitting areas.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Split {
     Locked(usize),
     Minimum(usize),
@@ -314,9 +336,9 @@ impl Side {
 }
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
-pub trait Ui: 'static {
-    type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<<Self as Ui>::Area> + Clone + Send + Sync;
+pub trait Ui: Debug + 'static {
+    type Area: Area + Debug + Clone + Display + Send + Sync;
+    type Label: Label<<Self as Ui>::Area> + Debug + Clone + Send + Sync;
 
     /// Bisects the `Self::Area`, returning a new `Self::Label<Self::Area>` that will occupy the
     /// region. If required, also returns a new `Self::Container<Self::Area>`, which will contain
@@ -359,10 +381,11 @@ pub trait Ui: 'static {
     fn layout_has_changed(&self) -> bool;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIndex(pub(crate) usize);
 
 /// A "viewport" of Parsec. It contains a group of widgets that can be displayed at the same time.
+#[derive(Debug)]
 pub struct Window<U>
 where
     U: Ui,
@@ -419,15 +442,15 @@ where
         let Some(target_node) = self.main_node.find_mut(node_index) else {
             panic!("Node not found");
         };
-        let (end_node, mid_node) =
+        let (new_child, new_parent) =
             target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
 
-        if let Some(mid_node) = mid_node {
+        if let Some(mid_node) = new_parent {
             let mid_node = RwData::new(mid_node);
             self.last_index.0 += 1;
 
             // Here, I swap the `NodeIndex`es in order to keep the same node "position".
-            let new_node = Node::MidNode {
+            let new_parent = Node::MidNode {
                 mid_node,
                 children: Vec::new(),
                 node_index: target_node.node_index(),
@@ -437,23 +460,25 @@ where
                 Node::EndNode { node_index: index, .. } => *index = self.last_index,
             }
 
-            target_node.replace_with_mid(new_node, end_node, side);
+            target_node.replace_with_mid(new_parent, new_child, side);
 
             if !glued && node_index == self.files_parent {
                 self.files_parent = self.last_index;
             }
 
+            log_info!("{:#?}", self);
             (NodeIndex(self.last_index.0 - 1), Some(self.last_index))
         } else {
             drop(target_node);
             if let Some((children, pos)) = self.mut_parent_of(node_index) {
                 if let Side::Top | Side::Left = side {
-                    children.insert(pos, end_node);
+                    children.insert(pos, new_child);
                 } else {
-                    children.insert(pos + 1, end_node);
+                    children.insert(pos + 1, new_child);
                 }
             }
 
+            log_info!("\n{:#?}", self);
             (self.last_index, None)
         }
     }
@@ -479,7 +504,7 @@ where
     {
         let node_index = self.files_parent;
         let (new_index, maybe_index) = self.push_widget(node_index, widget, side, split, glued);
-        let node = self.find(new_index);
+        let node = self.find(new_index).unwrap();
 
         let Node::EndNode { widget: Widget::Actionable(widget), .. } = node else {
             unreachable!();
@@ -511,11 +536,8 @@ where
         self.ui.shutdown();
     }
 
-    fn find(&self, node_index: NodeIndex) -> &Node<U> {
-        if let Some(node) = self.main_node.find(node_index) {
-            return node;
-        }
-        panic!("This NodeIndex was not found, that shouldn't be possible.");
+    fn find(&self, node_index: NodeIndex) -> Option<&Node<U>> {
+        self.main_node.find(node_index)
     }
 
     /// Returns the parent of a given `NodeIndex`, if it exists.
@@ -579,15 +601,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.cur_node_index > self.window.last_index {
-                return None;
-            }
-
-            if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
-                return Some((widget, end_node));
+            match self.window.find(self.cur_node_index) {
+                Some(Node::EndNode { end_node, widget, .. }) => {
+                    self.cur_node_index.0 += 1;
+                    return Some((widget, end_node));
+                }
+                None => return None,
+                _ => self.cur_node_index.0 += 1,
             };
-
-            self.cur_node_index.0 += 1;
         }
     }
 }
@@ -617,17 +638,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.cur_node_index > self.window.last_index {
-                return None;
-            }
-
-            if let Node::EndNode { end_node, widget, .. } = self.window.find(self.cur_node_index) {
-                if let Widget::Actionable(widget) = widget {
+            match self.window.find(self.cur_node_index) {
+                Some(Node::EndNode { end_node, widget: Widget::Actionable(widget), .. }) => {
+                    self.cur_node_index.0 += 1;
                     return Some((&widget, &end_node));
                 }
+                None => return None,
+                _ => self.cur_node_index.0 += 1,
             };
-
-            self.cur_node_index.0 += 1;
         }
     }
 }
@@ -638,18 +656,15 @@ where
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
-            if self.cur_node_index > self.window.last_index {
-                return None;
-            }
-
             let node_index = NodeIndex(self.window.last_index.0 - self.cur_node_index.0);
-            if let Node::EndNode { end_node, widget, .. } = self.window.find(node_index) {
-                if let Widget::Actionable(widget) = widget {
+            match self.window.find(node_index) {
+                Some(Node::EndNode { end_node, widget: Widget::Actionable(widget), .. }) => {
+                    self.cur_node_index.0 += 1;
                     return Some((widget, &end_node));
                 }
+                None => return None,
+                _ => self.cur_node_index.0 += 1,
             };
-
-            self.cur_node_index.0 += 1;
         }
     }
 }

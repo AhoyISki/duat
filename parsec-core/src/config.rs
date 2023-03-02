@@ -3,7 +3,7 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
-    sync::{Arc, Mutex, MutexGuard, TryLockError},
+    sync::{Arc, TryLockError},
 };
 
 use crate::{
@@ -11,6 +11,8 @@ use crate::{
     text::TextLine,
     ui::{Area, Label, Ui},
 };
+
+use no_deadlocks::{Mutex, MutexGuard};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -95,9 +97,8 @@ impl ShowNewLine {
 // TODO: Move options to a centralized option place.
 // TODO: Make these private.
 /// Some standard parsec options.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Config {
-    pub line_numbers_separator: Option<&'static str>,
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// The distance between the cursor and the edges of the screen when scrolling.
@@ -122,6 +123,10 @@ impl Config {
         let indent = line.indent(self);
         if self.wrap_indent && indent < label.area().width() { indent } else { 0 }
     }
+}
+
+pub trait DownCastableData: Any {
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// A read-write reference to information, and can tell readers if said information has changed.
@@ -215,7 +220,16 @@ where
     }
 }
 
-impl<T> Clone for RwData<T> where T: ?Sized {
+impl<T> Debug for RwData<T> where T: ?Sized + Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&*self.data.lock().unwrap(), f)
+    }
+}
+
+impl<T> Clone for RwData<T>
+where
+    T: ?Sized,
+{
     fn clone(&self) -> Self {
         RwData {
             data: self.data.clone(),
@@ -257,7 +271,7 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> RwDataReadGuard<T> {
+    pub fn read(&mut self) -> RwDataReadGuard<T> {
         let updated_version = self.updated_state.lock().unwrap();
         let mut last_read_state = self.last_read_state.lock().unwrap();
 
@@ -283,18 +297,22 @@ where
             false
         }
     }
+}
 
+impl<T> RoData<T>
+where
+    T: ?Sized + DownCastableData,
+{
     pub fn try_downcast<U>(self) -> Result<RoData<U>, RoDataCastError<T>>
     where
         U: 'static,
     {
         let RoData { data, updated_state, last_read_state } = self;
-        let data = Arc::into_raw(data);
-        if data.type_id() == TypeId::of::<Mutex<U>>() {
-            let data = unsafe { Arc::from_raw(data.cast::<Mutex<U>>()) };
+        if (&*data.lock().unwrap()).as_any().is::<U>() {
+            let raw_data_pointer = Arc::into_raw(data);
+            let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<Mutex<U>>()) };
             Ok(RoData { data, updated_state, last_read_state })
         } else {
-            let data = unsafe { Arc::from_raw(data) };
             Err(RoDataCastError { ro_data: RoData { data, updated_state, last_read_state } })
         }
     }
@@ -362,7 +380,7 @@ where
     T: ?Sized,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut *self.0
     }
 }
 

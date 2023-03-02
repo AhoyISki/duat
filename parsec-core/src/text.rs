@@ -277,7 +277,7 @@ pub struct Text<U>
 where
     U: Ui,
 {
-    pub lines: Vec<TextLine>,
+    lines: Vec<TextLine>,
     _replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
     _readers: Vec<Box<dyn MutTextReader<U>>>,
 }
@@ -395,6 +395,14 @@ where
 
     pub(crate) fn undo_change(&mut self, change: &Change, splice: &Splice) {
         self.merge_text(&change.taken_text, splice.added_range());
+    }
+
+    pub fn push_line(&mut self, line: TextLine) {
+        self.lines.push(line);
+    }
+
+    pub fn clear_lines(&mut self) {
+        *self = Text::default();
     }
 
     pub fn lines(&self) -> &Vec<TextLine> {

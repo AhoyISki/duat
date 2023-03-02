@@ -126,11 +126,11 @@ fn main() {
         }),
     );
 
-    session.push_widget_to_edge(CommandLine::default, Side::Bottom, Split::Locked(1));
+    //session.push_widget_to_edge(CommandLine::default, Side::Bottom, Split::Locked(1));
     // The `KeyRemapper` is an intermediary struct that takes the input, remaps it, and sends it to
     // the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
     // Start Parsec.
-    session.main_loop(&mut file_remapper);
+    session.start_parsec(&mut file_remapper);
 }

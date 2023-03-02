@@ -2,17 +2,19 @@ use std::{
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc, any::Any,
 };
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     action::History,
-    config::RwData,
+    config::{RwData, DownCastableData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
+
+use no_deadlocks::Mutex;
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
@@ -84,7 +86,7 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines, end_node));
+            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines(), end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.taken_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -108,7 +110,7 @@ where
 
             let splice = change.splice;
 
-            self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines, &end_node));
+            self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines(), &end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.added_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -193,6 +195,12 @@ where
 
     pub fn add_reader(&mut self, reader: Box<dyn MutTextReader<U>>) {
         self.readers.push(reader);
+    }
+}
+
+impl<U> DownCastableData for FileWidget<U> where U: Ui + 'static {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

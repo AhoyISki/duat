@@ -15,3 +15,4 @@ parsec-core = { path = "../parsec-core/", version = "0.1.0" }
 
 unicode-width = "0.1.10"
 crossterm = "0.26.0"
+no_deadlocks = { path = "../../no-deadlocks/" }

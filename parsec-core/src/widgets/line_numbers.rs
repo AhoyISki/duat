@@ -1,12 +1,15 @@
 use std::{
+    any::Any,
     cmp::max,
     fmt::{Alignment, Write},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+
+use no_deadlocks::Mutex;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{RoData, RwData},
+    config::{DownCastableData, RoData, RwData},
     tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
     text::{Text, TextLineBuilder},
     ui::{Area, EndNode, Label, Side, Ui},
@@ -66,7 +69,7 @@ where
         })
     }
 
-    fn calculate_width(&self) -> usize {
+    fn calculate_width(&mut self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
@@ -80,6 +83,14 @@ where
     }
 }
 
+impl<U> DownCastableData for LineNumbers<U>
+where
+    U: Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
@@ -89,14 +100,14 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        let file = self.file_widget.read();
         let width = self.calculate_width();
+        let file = self.file_widget.read();
         end_node.label.area_mut().request_len(width, Side::Right).unwrap();
 
         let lines = file.printed_lines();
         let main_line = file.main_cursor().true_row();
 
-        self.text.lines.clear();
+        self.text.clear_lines();
 
         for line in lines.iter() {
             let mut line_number = String::with_capacity(width + 5);
@@ -117,9 +128,9 @@ where
                 Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
             }
             if *line == main_line {
-                self.text.lines.push(self.main_line_builder.form_text_line(line_number));
+                self.text.push_line(self.main_line_builder.form_text_line(line_number));
             } else {
-                self.text.lines.push(self.other_line_builder.form_text_line(line_number));
+                self.text.push_line(self.other_line_builder.form_text_line(line_number));
             }
         }
     }

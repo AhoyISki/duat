@@ -5,12 +5,12 @@ pub mod status_line;
 
 use std::{
     ops::Deref,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard}, fmt::Debug,
 };
 
 use self::command_line::CommandList;
 use crate::{
-    config::RwData,
+    config::{RwData, DownCastableData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
@@ -18,7 +18,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait NormalWidget<U>: Send
+pub trait NormalWidget<U>: Send + DownCastableData
 where
     U: Ui + 'static,
 {
@@ -129,6 +129,18 @@ where
 {
     Normal(RwData<dyn NormalWidget<U>>),
     Actionable(RwData<dyn ActionableWidget<U>>),
+}
+
+impl<U> Debug for Widget<U>
+where
+    U: Ui + ?Sized,
+{
+fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+        Widget::Normal(_) => f.write_fmt(format_args!("Widget::Normal")),
+        Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Normal")),
+    }
+}
 }
 
 impl<U> Widget<U>

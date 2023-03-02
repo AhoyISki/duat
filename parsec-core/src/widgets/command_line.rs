@@ -1,17 +1,19 @@
 use std::{
     error::Error,
     fmt::Display,
-    sync::{Arc, Mutex},
+    sync::Arc, any::Any,
 };
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
-    config::RwData,
+    config::{DownCastableData, RwData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,
 };
+
+use no_deadlocks::Mutex;
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {
@@ -170,6 +172,12 @@ where
         };
 
         Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(command_line))))
+    }
+}
+
+impl<U> DownCastableData for CommandLine<U> where U: Ui + 'static {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
