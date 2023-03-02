@@ -1,6 +1,5 @@
-#![feature(type_name_of_val)]
-
-pub mod action;
+//! Parsec's history system.
+pub mod history;
 pub mod config;
 pub mod cursor;
 pub mod input;

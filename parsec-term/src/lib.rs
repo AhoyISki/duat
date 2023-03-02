@@ -17,7 +17,7 @@ use crossterm::{
 };
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
-use parsec_core::{config::DownCastableData, log_info};
+use parsec_core::{config::DownCastableData};
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{

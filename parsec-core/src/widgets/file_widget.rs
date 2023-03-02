@@ -13,7 +13,7 @@ use no_deadlocks::Mutex;
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
-    action::History,
+    history::History,
     config::{DownCastableData, RwData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{reader::MutTextReader, PrintInfo, Text},

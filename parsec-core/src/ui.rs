@@ -2,7 +2,6 @@ use std::fmt::{Debug, Display};
 
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
-    log_info,
     tags::form::{CursorStyle, Form},
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
     SessionManager,

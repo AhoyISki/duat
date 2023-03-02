@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 
 use self::form::FormFormer;
 use crate::{
-    action::TextRange,
+    history::TextRange,
     cursor::TextPos,
     text::TextLine,
     ui::{Area, Label},

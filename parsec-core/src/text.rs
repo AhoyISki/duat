@@ -8,7 +8,7 @@ use std::{
 
 use self::reader::MutTextReader;
 use crate::{
-    action::{Change, Splice, TextRange},
+    history::{Change, Splice, TextRange},
     config::{Config, WrapMethod},
     cursor::{TextCursor, TextPos},
     get_byte_at_col,
@@ -16,7 +16,7 @@ use crate::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
         CharTag, LineFlags, LineInfo,
     },
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui}, log_info,
 };
 
 // TODO: move this to a more general file.
@@ -49,8 +49,8 @@ impl TextLine {
     where
         U: Ui,
     {
-        let (col_byte, _) = self.text().char_indices().take(col).last().unwrap();
-        let prior_text = &self.text()[..col_byte];
+        let byte = self.text().char_indices().map(|(byte, _)| byte).take(col).last().unwrap_or(0);
+        let prior_text = &self.text()[..byte];
         end_node.label.get_width(prior_text, &end_node.config().tab_places)
     }
 
@@ -436,6 +436,7 @@ where
     /// Adds the tags for all the cursors, used after they are expected to have moved.
     pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
+            log_info!("\n{}", cursor);
             let TextRange { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    action::{Change, History, Moment, Splice, TextRange},
+    history::{Change, History, Moment, Splice, TextRange},
     get_byte_at_col, split_string_lines,
     text::{PrintInfo, Text, TextLine},
     ui::{EndNode, Label, Ui},
