@@ -257,7 +257,7 @@ where
 
     fn on_focus(&mut self, end_node: &mut EndNode<U>) {
         self.needs_update = true;
-        self.text = Text::from(&self.config.run_string);
+        self.text = Text::from(self.config.run_string.clone());
         let chars = self.config.run_string.chars().count() as i32;
         self.cursor[0].move_hor(chars, &self.text.lines(), end_node);
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);

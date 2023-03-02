@@ -17,7 +17,7 @@ use crossterm::{
 };
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
-use parsec_core::{config::DownCastableData};
+use parsec_core::config::DownCastableData;
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{
@@ -571,7 +571,7 @@ impl ui::Label<Area> for Label {
             WrapMethod::Width => self.get_width(text, tab_places) / self.area.width(),
             WrapMethod::Capped(_) => todo!(),
             WrapMethod::Word => todo!(),
-            WrapMethod::NoWrap => todo!(),
+            WrapMethod::NoWrap => 0,
         }
     }
 
@@ -952,19 +952,20 @@ where
     fn update(&mut self, _end_node: &mut EndNode<U>) {
         let file = self.file.read();
 
-        self.text.clear_lines();
-
-        let iterations = file.printed_lines().iter().map(|number| *number);
+        let lines = file.printed_lines().iter().map(|number| *number);
         let main_line = file.main_cursor().true_row();
+        let mut final_lines = Vec::with_capacity(lines.len());
 
-        for number in iterations {
+        for number in lines {
             let ch = self.vert_rule_config.separator_char.get_char(number, main_line);
 
             let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
             let line = self.vert_rule_config.separator_form.form_line(number, main_line, line);
 
-            self.text.push_line(line);
+            final_lines.push(line);
         }
+
+        self.text = Text::from(final_lines);
     }
 
     fn needs_update(&self) -> bool {

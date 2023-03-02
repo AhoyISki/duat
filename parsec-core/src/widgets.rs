@@ -14,7 +14,7 @@ use crate::{
     config::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover, SpliceAdder},
     text::{PrintInfo, Text},
-    ui::{EndNode, Ui},
+    ui::{EndNode, Ui}, log_info,
 };
 
 // TODO: Maybe set up the ability to print images as well.
@@ -139,7 +139,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Widget::Normal(_) => f.write_fmt(format_args!("Widget::Normal")),
-            Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Normal")),
+            Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Actionable")),
         }
     }
 }

@@ -126,7 +126,7 @@ where
 
             self.session_loop(key_remapper);
 
-            if self.session_manager.read().should_quit {
+            if self.session_manager.read().should_quit || true{
                 break;
             }
         }

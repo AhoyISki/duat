@@ -241,7 +241,9 @@ where
             }
         };
 
-        let end_node = RwData::new(EndNode::new_from(label, &self));
+        let mut end_node = EndNode::new_from(label, &self);
+        widget.update(&mut end_node);
+        let end_node = RwData::new(end_node);
         let identifier = widget.identifier();
         let end_node = Node::EndNode { end_node, node_index: last_index, widget, identifier };
 
@@ -415,7 +417,9 @@ where
         mut ui: U, widget: Widget<U>, config: Config, session_manager: &mut SessionManager,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
     ) -> Self {
-        let label = ui.maximum_label();
+        let mut end_node = EndNode { label: ui.maximum_label(), config, is_active: true };
+        widget.update(&mut end_node);
+
         let Widget::Actionable(rw_data) = &widget else {
             unreachable!();
         };
@@ -423,7 +427,7 @@ where
 
         let identifier = widget.identifier();
         let main_node = Node::EndNode {
-            end_node: RwData::new(EndNode { label, config, is_active: true }),
+            end_node: RwData::new(end_node),
             widget,
             identifier,
             node_index: NodeIndex(0),
@@ -450,9 +454,7 @@ where
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index.0 += 1;
 
-        let Some(target_node) = self.main_node.find_mut(node_index) else {
-            panic!("Node not found");
-        };
+        let target_node = self.main_node.find_mut(node_index).expect("Node not found");
         let (new_child, new_parent) =
             target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
 

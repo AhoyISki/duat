@@ -17,7 +17,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, SpliceAdder},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, NodeIndex, Ui},
+    ui::{Area, EndNode, Label, NodeIndex, Ui}, log_info,
 };
 
 /// The widget that is used to print and edit files.
@@ -128,16 +128,19 @@ where
 
         self.printed_lines.clear();
 
-        let top_line = lines_iter.nth(self.print_info.top_row).unwrap().1;
-        let mut d_y = min(height, 1 + top_line.iter_wraps().count() - self.print_info.top_wraps);
+        let mut d_y = min(height, 1);
         for _ in 0..d_y {
             self.printed_lines.push(self.print_info.top_row);
         }
 
+        let wrap_method = end_node.config().wrap_method;
+        let tab_places = &end_node.config().tab_places;
+
         while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
+            let wrap_count = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
             let old_d_y = d_y;
-            d_y = min(d_y + line.iter_wraps().count(), height);
-            for _ in old_d_y..=d_y {
+            d_y = min(d_y + wrap_count + 1, height);
+            for _ in old_d_y..d_y {
                 self.printed_lines.push(index);
             }
         }

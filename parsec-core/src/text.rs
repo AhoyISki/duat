@@ -1,17 +1,12 @@
 pub mod reader;
 
-use std::{
-    cmp::{max, min},
-    iter::Peekable,
-    ops::RangeInclusive,
-};
+use std::{cmp::min, iter::Peekable, ops::RangeInclusive};
 
 use self::reader::MutTextReader;
 use crate::{
     config::{Config, WrapMethod},
     get_byte_at_col,
     history::{Change, Splice},
-    log_info,
     position::{Cursor, Pos, Range},
     tags::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
@@ -22,6 +17,7 @@ use crate::{
 
 // TODO: move this to a more general file.
 /// A line in the text file.
+#[derive(Debug)]
 pub struct TextLine {
     /// The text on the line.
     text: String,
@@ -64,11 +60,6 @@ impl TextLine {
         }
     }
 
-    /// Returns an iterator over the wrapping bytes of the line.
-    pub fn iter_wraps(&self) -> impl Iterator<Item = usize> + '_ {
-        self.info.char_tags.iter_wraps()
-    }
-
     /// Returns how many characters are in the line.
     pub fn char_count(&self) -> usize {
         if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
@@ -100,12 +91,6 @@ impl TextLine {
             skip
         };
 
-        if let Some(first_wrap_col) = self.iter_wraps().next() {
-            if skip >= first_wrap_col as usize && config.wrap_indent {
-                (0..self.indent(config)).for_each(|_| label.print(' '));
-            }
-        }
-
         // Iterate through the tags before the first unskipped character.
         let mut form_former = config.palette.form_former();
         let tags_to_skip = self.trigger_skipped::<U>(skip, label, &mut form_former);
@@ -126,7 +111,7 @@ impl TextLine {
             d_x += 1;
             if let WrapMethod::NoWrap = config.wrap_method {
                 if d_x > label.area_mut().width() {
-                    return true;
+                    return label.next_line().is_ok();
                 }
             }
 
@@ -283,15 +268,6 @@ where
     _readers: Vec<Box<dyn MutTextReader<U>>>,
 }
 
-impl<U> Default for Text<U>
-where
-    U: Ui,
-{
-    fn default() -> Self {
-        Text { lines: vec![TextLine::from("")], _replacements: Vec::new(), _readers: Vec::new() }
-    }
-}
-
 // TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
@@ -306,49 +282,16 @@ where
 
         // Print the `top_line`.
         let top_line = &self.lines[print_info.top_row];
-        let skip = if print_info.top_wraps > 0 {
-            top_line.iter_wraps().nth(print_info.top_wraps - 1).unwrap() + 1
-        } else {
-            0
-        };
-        top_line.print::<U>(end_node, print_info.x_shift, skip as usize);
+        top_line.print::<U>(end_node, print_info.x_shift, 0);
 
         // Prints other lines until it can't anymore.
-        for line in self.lines.iter().skip(print_info.top_row + 1) {
+        for (iter, line) in self.lines.iter().enumerate().skip(print_info.top_row + 1) {
             if !line.print::<U>(end_node, print_info.x_shift, 0) {
                 break;
             }
         }
 
         end_node.label.stop_printing();
-    }
-
-    /// Returns a list of all line indices that would be printed in a given node.
-    ///
-    /// The first number is the `TextLine`'s index, and the second is the amount of visible lines
-    /// on the screen the `TextLine` would occupy.
-    pub fn printed_lines(&self, height: usize, print_info: &PrintInfo) -> Vec<usize> {
-        let height_sum = print_info.top_wraps + height;
-        let mut printed_lines = Vec::new();
-        let mut lines_iter = self.lines.iter().enumerate();
-
-        // List the top line.
-        let top_line = lines_iter.nth(print_info.top_row).unwrap();
-        let mut d_y = 1 + top_line.1.iter_wraps().count();
-        for _ in 0..min(d_y - print_info.top_wraps, height) {
-            printed_lines.push(top_line.0);
-        }
-
-        // List all the other lines.
-        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height_sum) {
-            let line_count = 1 + line.iter_wraps().count();
-            for _ in 0..min(line_count, height_sum - d_y) {
-                printed_lines.push(index);
-            }
-            d_y += line_count;
-        }
-
-        printed_lines
     }
 
     // This is more efficient than using the `merge_edit()` function.
@@ -389,14 +332,6 @@ where
         self.merge_text(&change.taken_text, splice.added_range());
     }
 
-    pub fn push_line(&mut self, line: TextLine) {
-        self.lines.push(line);
-    }
-
-    pub fn clear_lines(&mut self) {
-        *self = Text::default();
-    }
-
     pub fn lines(&self) -> &Vec<TextLine> {
         &self.lines
     }
@@ -428,7 +363,6 @@ where
     /// Adds the tags for all the cursors, used after they are expected to have moved.
     pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
-            log_info!("\n{}", cursor);
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
@@ -470,14 +404,40 @@ where
     //}
 }
 
-impl<S, U> From<S> for Text<U>
+impl<U> Default for Text<U>
 where
-    S: ToString,
     U: Ui,
 {
-    fn from(value: S) -> Self {
+    fn default() -> Self {
+        Text { lines: vec![TextLine::from("")], _replacements: Vec::new(), _readers: Vec::new() }
+    }
+}
+
+impl<U> From<TextLine> for Text<U>
+where
+    U: Ui,
+{
+    fn from(value: TextLine) -> Self {
+        Text { lines: vec![value], _replacements: Vec::new(), _readers: Vec::new() }
+    }
+}
+
+impl<U> From<Vec<TextLine>> for Text<U>
+where
+    U: Ui,
+{
+    fn from(value: Vec<TextLine>) -> Self {
+        Text { lines: value, _replacements: Vec::new(), _readers: Vec::new() }
+    }
+}
+
+impl<U> From<String> for Text<U>
+where
+    U: Ui,
+{
+    fn from(value: String) -> Self {
         Text {
-            lines: value.to_string().split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
+            lines: value.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
             _replacements: Vec::new(),
             _readers: Vec::new(),
         }
@@ -504,47 +464,47 @@ impl PrintInfo {
     where
         U: Ui,
     {
-        if d_y > 0 {
-            let mut lines_iter = text.lines().iter().skip(self.top_row);
+        //if d_y > 0 {
+        //    let mut lines_iter = text.lines().iter().skip(self.top_row);
 
-            while let Some(line) = lines_iter.next() {
-                let wrap_count = line.iter_wraps().count();
-                if (wrap_count + 1) as i32 > d_y {
-                    self.top_wraps = d_y as usize;
-                    break;
-                } else {
-                    self.top_row += 1;
-                    d_y -= (wrap_count + 1) as i32;
-                }
-            }
-        } else if d_y < 0 {
-            let mut lines_iter = text.lines().iter().take(self.top_row).rev();
+        //    while let Some(line) = lines_iter.next() {
+        //        let wrap_count = line.iter_wraps().count();
+        //        if (wrap_count + 1) as i32 > d_y {
+        //            self.top_wraps = d_y as usize;
+        //            break;
+        //        } else {
+        //            self.top_row += 1;
+        //            d_y -= (wrap_count + 1) as i32;
+        //        }
+        //    }
+        //} else if d_y < 0 {
+        //    let mut lines_iter = text.lines().iter().take(self.top_row).rev();
 
-            while let Some(line) = lines_iter.next() {
-                let wrap_count = line.iter_wraps().count();
-                if ((wrap_count + 1) as i32) < d_y {
-                    self.top_wraps = -d_y as usize;
-                    break;
-                } else {
-                    self.top_row -= 1;
-                    d_y += (wrap_count + 1) as i32;
-                }
-            }
-        }
+        //    while let Some(line) = lines_iter.next() {
+        //        let wrap_count = line.iter_wraps().count();
+        //        if ((wrap_count + 1) as i32) < d_y {
+        //            self.top_wraps = -d_y as usize;
+        //            break;
+        //        } else {
+        //            self.top_row -= 1;
+        //            d_y += (wrap_count + 1) as i32;
+        //        }
+        //    }
+        //}
     }
 
     pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text<U>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
-        let mut max_d = 0;
-        for index in text.printed_lines(end_node.label.area().height(), self) {
-            let line = &text.lines()[index];
-            let line_d = end_node.label.get_width(line.text.as_str(), &end_node.config.tab_places);
-            max_d = max(max_d, line_d);
-        }
+        //let mut max_d = 0;
+        //for index in text.printed_lines(end_node.label.area().height(), self) {
+        //    let line = &text.lines()[index];
+        //    let line_d = end_node.label.get_width(line.text.as_str(),
+        // &end_node.config.tab_places);    max_d = max(max_d, line_d);
+        //}
 
-        self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
+        //self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
     }
 
     /// Scrolls up or down, assuming that the lines cannot wrap.
@@ -567,33 +527,33 @@ impl PrintInfo {
     ) where
         U: Ui,
     {
-        let scrolloff = end_node.config().scrolloff;
-        let lines_iter = text.lines().iter().take(target.row);
+        //let scrolloff = end_node.config().scrolloff;
+        //let lines_iter = text.lines().iter().take(target.row);
 
-        // If the target line is above the top line, no matter what, a new top line is needed.
-        let mut needs_new_top_line = target.row < self.top_row;
+        //// If the target line is above the top line, no matter what, a new top line is needed.
+        //let mut needs_new_top_line = target.row < self.top_row;
 
-        for (index, line) in lines_iter.enumerate().rev() {
-            if index != target.row {
-                d_y += 1 + line.iter_wraps().count();
-            };
+        //for (index, line) in lines_iter.enumerate().rev() {
+        //    if index != target.row {
+        //        d_y += 1 + line.iter_wraps().count();
+        //    };
 
-            if index == self.top_row {
-                // This means we ran into the top line too early, and must scroll up.
-                if d_y < scrolloff.d_y + self.top_wraps {
-                    needs_new_top_line = true;
-                // If this happens, we're in the middle of the screen, and don't need to scroll.
-                } else if !needs_new_top_line {
-                    break;
-                }
-            }
+        //    if index == self.top_row {
+        //        // This means we ran into the top line too early, and must scroll up.
+        //        if d_y < scrolloff.d_y + self.top_wraps {
+        //            needs_new_top_line = true;
+        //        // If this happens, we're in the middle of the screen, and don't need to scroll.
+        //        } else if !needs_new_top_line {
+        //            break;
+        //        }
+        //    }
 
-            if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
-                self.top_row = index;
-                self.top_wraps = d_y.saturating_sub(scrolloff.d_y);
-                break;
-            }
-        }
+        //    if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
+        //        self.top_row = index;
+        //        self.top_wraps = d_y.saturating_sub(scrolloff.d_y);
+        //        break;
+        //    }
+        //}
     }
 
     /// Scrolls down, assuming that the lines can wrap.
@@ -603,35 +563,35 @@ impl PrintInfo {
     ) where
         U: Ui,
     {
-        let mut scrolloff = end_node.config().scrolloff;
-        scrolloff.d_y = min(scrolloff.d_y, height);
-        let lines_iter = text.lines().iter().take(target.row + 1);
-        let mut top_offset = 0;
+        //let mut scrolloff = end_node.config().scrolloff;
+        //scrolloff.d_y = min(scrolloff.d_y, height);
+        //let lines_iter = text.lines().iter().take(target.row + 1);
+        //let mut top_offset = 0;
 
-        for (index, line) in lines_iter.enumerate().rev() {
-            if index != target.row {
-                d_y += 1 + line.iter_wraps().count();
-            }
+        //for (index, line) in lines_iter.enumerate().rev() {
+        //    if index != target.row {
+        //        d_y += 1 + line.iter_wraps().count();
+        //    }
 
-            if index == self.top_row {
-                top_offset = self.top_wraps
-            };
+        //    if index == self.top_row {
+        //        top_offset = self.top_wraps
+        //    };
 
-            if d_y + scrolloff.d_y >= height + top_offset {
-                self.top_row = index;
-                // If this equals 0, that means the distance has matched up perfectly,
-                // i.e. the distance between the new `info.top_line` is exactly what's
-                // needed for the full height. If it's greater than 0, `info.top_wraps`
-                // needs to adjust where the line actually begins to match up.
-                self.top_wraps = d_y + scrolloff.d_y - height;
-                break;
-            }
+        //    if d_y + scrolloff.d_y >= height + top_offset {
+        //        self.top_row = index;
+        //        // If this equals 0, that means the distance has matched up perfectly,
+        //        // i.e. the distance between the new `info.top_line` is exactly what's
+        //        // needed for the full height. If it's greater than 0, `info.top_wraps`
+        //        // needs to adjust where the line actually begins to match up.
+        //        self.top_wraps = d_y + scrolloff.d_y - height;
+        //        break;
+        //    }
 
-            // If this happens first, we're in the middle of the screen, and don't need to scroll.
-            if index == self.top_row {
-                break;
-            }
-        }
+        //    // If this happens first, we're in the middle of the screen, and don't need to
+        // scroll.    if index == self.top_row {
+        //        break;
+        //    }
+        //}
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
@@ -663,6 +623,8 @@ impl PrintInfo {
     where
         U: Ui,
     {
+        let (wrap_method, tab_places) =
+            (&end_node.config().wrap_method, &end_node.config().tab_places);
         let wrap_method = end_node.config().wrap_method;
         let (height, width) = (end_node.label.area().height(), end_node.label.area().width());
 
@@ -670,11 +632,11 @@ impl PrintInfo {
 
         let line = &text.lines()[min(old.row, text.lines().len() - 1)];
         let current_byte = line.get_line_byte_at(old.col);
-        let cur_wraps = line.iter_wraps().take_while(|&c| c <= current_byte).count();
+        let cur_wraps = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
 
         let line = &text.lines()[target.row];
         let target_byte = line.get_line_byte_at(target.col);
-        let old_wraps = line.iter_wraps().take_while(|&c| c <= target_byte).count();
+        let old_wraps = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
 
         if let WrapMethod::NoWrap = wrap_method {
             self.calibrate_vertically(target, height, end_node);

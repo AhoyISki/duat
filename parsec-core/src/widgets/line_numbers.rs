@@ -13,6 +13,7 @@ use no_deadlocks::Mutex;
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RoData, RwData},
+    log_info,
     tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
     text::{Text, TextLineBuilder},
     ui::{Area, EndNode, Label, Side, Ui},
@@ -110,9 +111,9 @@ where
         let lines = file.printed_lines();
         let main_line = file.main_cursor().true_row();
 
-        self.text.clear_lines();
+        let mut final_lines = Vec::with_capacity(lines.len());
 
-        for line in lines.iter() {
+        for line in lines {
             let mut line_number = String::with_capacity(width + 5);
             let number = match self.line_numbers_config.numbering {
                 Numbering::Absolute => *line + 1,
@@ -127,15 +128,17 @@ where
             };
             match self.line_numbers_config.alignment {
                 Alignment::Left => write!(&mut line_number, "[]{:<width$}[]\n", number).unwrap(),
-                Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
                 Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
+                Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
             }
             if *line == main_line {
-                self.text.push_line(self.main_line_builder.form_text_line(line_number));
+                final_lines.push(self.main_line_builder.form_text_line(line_number));
             } else {
-                self.text.push_line(self.other_line_builder.form_text_line(line_number));
+                final_lines.push(self.other_line_builder.form_text_line(line_number));
             }
         }
+
+        self.text = Text::from(final_lines);
     }
 
     fn needs_update(&self) -> bool {

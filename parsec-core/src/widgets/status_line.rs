@@ -132,8 +132,7 @@ where
         let texts = substitute_printables(&mut self.format, &file_widget);
         let status = normalize_status::<U>(texts, form_count, end_node);
 
-        self.text.clear_lines();
-        self.text.push_line(self.format.text_line_builder.form_text_line(status));
+        self.text = Text::from(self.format.text_line_builder.form_text_line(status));
     }
 
     fn needs_update(&self) -> bool {

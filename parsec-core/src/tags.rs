@@ -33,10 +33,6 @@ pub enum CharTag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght, permanently.
     PermanentConceal { index: u16 },
-
-    // DEPRECATED - Will soon be removed.
-    /// Wraps after printing the character.
-    WrapNext,
 }
 
 impl CharTag {
@@ -98,7 +94,6 @@ impl std::fmt::Debug for CharTags {
             .map(|(b, t)| match t {
                 CharTag::PushForm(id) => format!("{}:PuF({})", b, id),
                 CharTag::PopForm(id) => format!("{}PoF({})", b, id),
-                CharTag::WrapNext => format!("{}:Wc", b),
                 CharTag::MainCursor => format!("{}:Pc", b),
                 CharTag::ExtraCursor => format!("{}:Pc", b),
                 _ => panic!("{:#?}", (b, t)),
@@ -145,10 +140,6 @@ impl CharTags {
         if let Some((index, _)) = self.0.iter().enumerate().find(|&(_, &t)| cmp(t)) {
             self.0.remove(index);
         }
-    }
-
-    pub fn iter_wraps(&self) -> impl Iterator<Item = usize> + '_ {
-        self.0.iter().filter(|(_, tag)| matches!(tag, CharTag::WrapNext)).map(|(byte, _)| *byte)
     }
 }
 
