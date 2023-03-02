@@ -40,7 +40,7 @@ use parsec_term::{Ui, VertRule};
 fn main() {
     // `FormPalette` is a struct with all of your `Form`s and `CursorStyle`s in it.
     let mut palette = FormPalette::default();
-    //palette.set_main_cursor(CursorStyle::new(None, Form::new(true).on_yellow()));
+    palette.set_main_cursor(CursorStyle::new(None, Form::new(true).on_yellow()));
     // A `CursorStyle` is a style unique to cursors. It contains a shape (bar, block,
     // or underscore), and a `Form` to be used when printing the shape is not allowed (e.g. on a
     // terminal, that only has one cursor).
@@ -58,6 +58,7 @@ fn main() {
         scrolloff: ScrollOff { d_x: 5, d_y: 5 },
         wrap_method: WrapMethod::Width,
         wrap_indent: true,
+        palette,
         ..Config::default()
     };
 
@@ -122,7 +123,7 @@ fn main() {
         // is very much a work in progress.
         config,
         Box::new(|mut mod_node, file| {
-            mod_node.push_widget(LineNumbers::default(file), Side::Left, Split::Minimum(1), true);
+            //mod_node.push_widget(LineNumbers::default(file), Side::Left, Split::Minimum(1), true);
         }),
     );
 

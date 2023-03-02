@@ -1,10 +1,15 @@
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::{Mutex, MutexGuard};
 use std::{
     any::{Any, TypeId},
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
-    sync::{Arc, TryLockError, Mutex, MutexGuard},
+    sync::{Arc, TryLockError},
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::{Mutex, MutexGuard};
 
 use crate::{
     tags::form::FormPalette,
@@ -218,7 +223,10 @@ where
     }
 }
 
-impl<T> Debug for RwData<T> where T: ?Sized + Debug {
+impl<T> Debug for RwData<T>
+where
+    T: ?Sized + Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&*self.data.lock().unwrap(), f)
     }

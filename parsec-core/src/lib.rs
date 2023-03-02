@@ -155,7 +155,6 @@ where
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(5)) {
-                    log_info!("\nevent sent xd");
                     let active_window = &self.windows[self.active_window];
                     send_event(key_remapper, &mut session_manager, active_window);
                 } else {
@@ -220,18 +219,18 @@ where
 
     /// Switches to a `Widget<U>` with the given identifier.
     pub fn switch_to_widget(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
-        let (widget, end_node) = self
+        let (widget, _, end_node) = self
             .window
             .actionable_widgets()
-            .find(|(widget, _)| widget.read().identifier() == target.as_ref())
+            .find(|(widget, ..)| widget.read().identifier() == target.as_ref())
             .ok_or(())?;
         let mut widget = widget.write();
         widget.on_focus(&mut end_node.write());
 
-        let (widget, end_node) = self
+        let (widget, _, end_node) = self
             .window
             .actionable_widgets()
-            .find(|(widget, _)| {
+            .find(|(widget, ..)| {
                 widget.read().identifier() == self.session_manager.active_widget.as_str()
             })
             .ok_or(())?;
@@ -331,19 +330,16 @@ fn send_event<U, I>(
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let actionable_widget = window.actionable_widgets().find(|(widget, _)| {
-            widget
-                .try_read()
-                .map(|widget| widget.identifier() == session_manager.active_widget)
-                .unwrap_or(false)
-        });
+        let actionable_widget = window
+            .actionable_widgets()
+            .find(|(_, identifier, _)| *identifier == session_manager.active_widget.as_str());
 
-        let Some((widget, end_node)) = actionable_widget else {
+        let Some((widget, _, end_node)) = actionable_widget else {
             return;
         };
 
-        let mut widget = widget.write();
         let end_node = end_node.read();
+        let mut widget = widget.write();
 
         let controls = Controls { session_manager: &mut *session_manager, window };
         blink_cursors_and_send_key(&mut *widget, &end_node, controls, key_event, key_remapper);

@@ -9,9 +9,9 @@
 //!
 //! Whenever you undo a `Moment`, all of its splices are reversed on the file, in an order defined
 //! by the starting position of each splice, and the file's `PrintInfo` is updated to the
-//! `Moment`'s `PrintInfo`. We change the `PrintInfo` in order to send the user back to the position
-//! he was in previously, as he can just look at the same place on the screen for the changes, which
-//! I think of as much less jarring.
+//! `Moment`'s `PrintInfo`. We change the `PrintInfo` in order to send the user back to the
+//! position he was in previously, as he can just look at the same place on the screen for the
+//! changes, which I think of as much less jarring.
 //!
 //! Undoing/redoing `Moment`s also has the effect of moving all `FileCursor`s below the splice's
 //! start to a new position, or creating a new `FileCursor` to take a change into effect. This has
@@ -39,9 +39,8 @@ use std::{
 
 use crate::{
     cursor::{get_text_in_range, SpliceAdder, TextPos},
-    empty_edit,
-    text::{TextLine, PrintInfo},
-    get_byte_at_col,
+    empty_edit, get_byte_at_col,
+    text::{PrintInfo, TextLine},
 };
 
 /// A range in a file, containing rows, columns, and bytes (from the beginning);
@@ -90,11 +89,7 @@ impl TextRange {
 
     /// Returns the amount of columns in the last line of the range.
     pub fn last_col_diff(&self) -> usize {
-        if self.lines().count() == 1 {
-            self.end.col - self.start.col
-        } else {
-            self.end.col
-        }
+        if self.lines().count() == 1 { self.end.col - self.start.col } else { self.end.col }
     }
 
     /// Returns `Ordering::Equal` if `self.at_start(other)`, otherwise, returns as expected.
@@ -390,20 +385,12 @@ impl History {
 
     /// Gets a mutable reference to the current `Moment`.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
-        if self.current_moment > 0 {
-            self.moments.get_mut(self.current_moment - 1)
-        } else {
-            None
-        }
+        if self.current_moment > 0 { self.moments.get_mut(self.current_moment - 1) } else { None }
     }
 
     /// Gets a reference to the current `Moment`.
     pub fn current_moment(&self) -> Option<&Moment> {
-        if self.current_moment > 0 {
-            self.moments.get(self.current_moment - 1)
-        } else {
-            None
-        }
+        if self.current_moment > 0 { self.moments.get(self.current_moment - 1) } else { None }
     }
 
     /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
@@ -455,7 +442,7 @@ impl History {
     }
 
     /// Moves backwards in the timeline.
-        pub fn move_backwards(&mut self) -> Option<&Moment> {
+    pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
             None
         } else {
@@ -466,7 +453,6 @@ impl History {
             } else {
                 Some(&self.moments[self.current_moment])
             }
-
         }
     }
 }
@@ -476,7 +462,8 @@ pub fn get_byte(line: &str, col: usize) -> usize {
     line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
 }
 
-/// Merges two `String`s into one, given a starting position of the original and a range to cut off.
+/// Merges two `String`s into one, given a starting position of the original and a range to cut
+/// off.
 fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range: TextRange) {
     let range = TextRange { start: range.start - start, end: range.end - start };
 

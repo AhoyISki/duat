@@ -1,11 +1,12 @@
 #![feature(stmt_expr_attributes, is_some_and)]
-
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::Mutex;
 use std::{
     any::Any,
     cmp::{max, min},
     fmt::{Debug, Display},
     io::{stdout, Stdout},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use crossterm::{
@@ -14,7 +15,9 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal::{self, ClearType},
 };
-use parsec_core::config::DownCastableData;
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::Mutex;
+use parsec_core::{config::DownCastableData, log_info};
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{
@@ -104,10 +107,6 @@ impl Owner {
 
     fn split(&self) -> Option<Split> {
         if let Owner::Parent { split, .. } = self { Some(*split) } else { None }
-    }
-
-    fn new_parent(parent: Area, self_index: usize, split: Split) -> Self {
-        Owner::Parent { parent, self_index, split }
     }
 
     fn aligns(&mut self, other: Axis) -> Option<&mut Self> {
@@ -235,7 +234,8 @@ impl Area {
     }
 
     fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
-        let Some((children, ..)) = &mut *self.lineage.write() else {
+        let mut lineage = self.lineage.write();
+        let Some((children, ..)) = &mut *lineage else {
             return Err(());
         };
 
@@ -243,8 +243,7 @@ impl Area {
         let (old_len, mut target_inner) = (target.width(), target.inner.write());
 
         let mut remaining = old_len.abs_diff(new_len);
-        let mut last_corner;
-        (last_corner, remaining) = target_inner.add_or_take(old_len < new_len, remaining, side);
+        let (mut last_corner, _) = target_inner.add_or_take(old_len < new_len, remaining, side);
         drop(target_inner);
         drop(target);
 
@@ -271,6 +270,8 @@ impl Area {
                 child.regulate_children();
             }
         }
+
+        drop(lineage);
 
         Ok(())
     }
@@ -312,6 +313,10 @@ impl Area {
 
     fn resizable_len(&self, axis: Axis) -> usize {
         if let Axis::Horizontal = axis { self.resizable_width() } else { self.resizable_height() }
+    }
+
+    fn len(&self, axis: Axis) -> usize {
+        if let Axis::Horizontal = axis { self.width() } else { self.height() }
     }
 
     fn resizable_width(&self) -> usize {
@@ -363,6 +368,10 @@ impl ui::Area for Area {
     }
 
     fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()> {
+        if self.len(Axis::from(side)) == len {
+            return Ok(());
+        };
+
         let inner = self.inner.write();
         let InnerArea { coords, owner } = &mut inner.clone();
         drop(inner);
@@ -377,7 +386,6 @@ impl ui::Area for Area {
                     let new_parent_width = parent.width() + len - coords.width();
                     parent.request_len(new_parent_width, side)
                 } else {
-                    //panic!("{:?}, {:?}", side, axis);
                     parent.set_child_len(len, *self_index, side)
                 }
             }
@@ -440,8 +448,13 @@ impl Label {
         self.cursor.x = self.area.tl().x;
         self.cursor.y += 1;
 
-        queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), SetStyle(self.last_style))
-            .unwrap();
+        queue!(
+            self.stdout,
+            ResetColor,
+            MoveTo(self.cursor.x, self.cursor.y),
+            SetStyle(self.last_style)
+        )
+        .unwrap();
     }
 
     fn wrap_line(&mut self) {
@@ -520,9 +533,9 @@ impl ui::Label<Area> for Label {
 
         self.clear_line();
 
-        execute!(self.stdout, RestorePosition).unwrap();
+        queue!(self.stdout, ResetColor, RestorePosition).unwrap();
         if unsafe { SHOW_CURSOR } {
-            execute!(self.stdout, cursor::Show).unwrap();
+            queue!(self.stdout, cursor::Show).unwrap();
         }
 
         self.clear_form();
@@ -644,15 +657,17 @@ impl ui::Ui for Ui {
     fn startup(&mut self) {
         // This makes it so that if the application panics, the panic message is printed
         // nicely and the terminal is left in a usable state.
-        use std::panic::set_hook;
-        set_hook(Box::new(|msg| {
+        use std::panic;
+        let orig_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
             let mut stdout = stdout();
 
             execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen)
                 .unwrap();
             terminal::disable_raw_mode().unwrap();
 
-            println!("{}\n", msg);
+            orig_hook(panic_info);
+            std::process::exit(1)
         }));
 
         let mut stdout = stdout();

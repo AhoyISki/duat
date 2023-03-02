@@ -1,14 +1,20 @@
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::Mutex;
 use std::{
+    any::Any,
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex}, any::Any,
+    sync::Arc,
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::Mutex;
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     action::History,
-    config::{RwData, DownCastableData},
+    config::{DownCastableData, RwData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
@@ -196,7 +202,10 @@ where
     }
 }
 
-impl<U> DownCastableData for FileWidget<U> where U: Ui + 'static {
+impl<U> DownCastableData for FileWidget<U>
+where
+    U: Ui + 'static,
+{
     fn as_any(&self) -> &dyn Any {
         self
     }

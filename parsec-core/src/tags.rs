@@ -6,7 +6,7 @@ use bitflags::bitflags;
 use regex::Regex;
 use smallvec::SmallVec;
 
-use self::form::{FormFormer};
+use self::form::FormFormer;
 use crate::{
     action::TextRange,
     cursor::TextPos,
@@ -41,9 +41,7 @@ pub enum CharTag {
 }
 
 impl CharTag {
-    pub(crate) fn trigger<L, A>(
-        &self, label: &mut L, form_former: &mut FormFormer,
-    ) -> bool
+    pub(crate) fn trigger<L, A>(&self, label: &mut L, form_former: &mut FormFormer) -> bool
     where
         L: Label<A>,
         A: Area,

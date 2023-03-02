@@ -18,3 +18,7 @@ crossterm = "0.26.0"
 bitflags = "1.3.2"
 regex = "1.7.1"
 smallvec = "1.10.0"
+no_deadlocks = { path = "../../no-deadlocks//", optional = true }
+
+[features]
+deadlock-detection = ["dep:no_deadlocks"]

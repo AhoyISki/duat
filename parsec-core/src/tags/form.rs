@@ -87,7 +87,7 @@ impl CursorStyle {
 
 impl Debug for CursorStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		Debug::fmt(&self.form, f)
+        Debug::fmt(&self.form, f)
     }
 }
 

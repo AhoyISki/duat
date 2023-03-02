@@ -6,8 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parsec-core = { path = "../parsec-core/", version = "0.1.0" }
-parsec-term = { path = "../parsec-term/", version = "0.1.0" }
 parsec-kak = { path = "../parsec-kak/", version = "0.1.0" }
-
 crossterm = "0.26.0"
+
+[dependencies.parsec-core]
+path = "../parsec-core/"
+version = "0.1.0"
+#features = ["deadlock-detection"]
+
+[dependencies.parsec-term]
+path = "../parsec-term/"
+version = "0.1.0"
+#features = ["deadlock-detection"]

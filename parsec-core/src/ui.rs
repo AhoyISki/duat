@@ -154,8 +154,17 @@ pub enum Node<U>
 where
     U: Ui + ?Sized,
 {
-    MidNode { mid_node: RwData<MidNode<U>>, children: Vec<Node<U>>, node_index: NodeIndex },
-    EndNode { end_node: RwData<EndNode<U>>, widget: Widget<U>, node_index: NodeIndex },
+    MidNode {
+        mid_node: RwData<MidNode<U>>,
+        children: Vec<Node<U>>,
+        node_index: NodeIndex,
+    },
+    EndNode {
+        end_node: RwData<EndNode<U>>,
+        widget: Widget<U>,
+        identifier: String,
+        node_index: NodeIndex,
+    },
 }
 
 impl<U> Node<U>
@@ -234,7 +243,8 @@ where
         };
 
         let end_node = RwData::new(EndNode::new_from(label, &self));
-        let end_node = Node::EndNode { end_node, node_index: last_index, widget };
+        let identifier = widget.identifier();
+        let end_node = Node::EndNode { end_node, node_index: last_index, widget, identifier };
 
         let mid_node = container.map(|container| MidNode::new_from(container, &self));
 
@@ -412,9 +422,11 @@ where
         };
         let ro_widget = RoData::from(rw_data);
 
+        let identifier = widget.identifier();
         let main_node = Node::EndNode {
             end_node: RwData::new(EndNode { label, config, is_active: true }),
             widget,
+            identifier,
             node_index: NodeIndex(0),
         };
         let mut window = Window {
@@ -556,7 +568,7 @@ where
 
     pub fn files(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
         ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }.filter_map(
-            |(widget, _)| {
+            |(widget, ..)| {
                 let widget = match widget.try_read() {
                     Ok(widget) => widget,
                     Err(_) => return None,
@@ -576,7 +588,6 @@ where
 
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
-            log_info!("\nprint lmao");
             for (widget, end_node) in self.widgets() {
                 widget.print(&mut end_node.write());
             }
@@ -633,14 +644,19 @@ impl<'a, U> Iterator for ActionableWidgets<'a, U>
 where
     U: Ui + 'static,
 {
-    type Item = (&'a RwData<dyn ActionableWidget<U>>, &'a RwData<EndNode<U>>);
+    type Item = (&'a RwData<dyn ActionableWidget<U>>, &'a str, &'a RwData<EndNode<U>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.window.find(self.cur_node_index) {
-                Some(Node::EndNode { end_node, widget: Widget::Actionable(widget), .. }) => {
+                Some(Node::EndNode {
+                    end_node,
+                    widget: Widget::Actionable(widget),
+                    identifier,
+                    ..
+                }) => {
                     self.cur_node_index.0 += 1;
-                    return Some((&widget, &end_node));
+                    return Some((&widget, &identifier, &end_node));
                 }
                 None => return None,
                 _ => self.cur_node_index.0 += 1,
@@ -657,9 +673,14 @@ where
         loop {
             let node_index = NodeIndex(self.window.last_index.0 - self.cur_node_index.0);
             match self.window.find(node_index) {
-                Some(Node::EndNode { end_node, widget: Widget::Actionable(widget), .. }) => {
+                Some(Node::EndNode {
+                    end_node,
+                    widget: Widget::Actionable(widget),
+                    identifier,
+                    ..
+                }) => {
                     self.cur_node_index.0 += 1;
-                    return Some((widget, &end_node));
+                    return Some((widget, &identifier, &end_node));
                 }
                 None => return None,
                 _ => self.cur_node_index.0 += 1,

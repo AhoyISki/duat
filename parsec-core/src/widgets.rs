@@ -4,13 +4,14 @@ pub mod line_numbers;
 pub mod status_line;
 
 use std::{
+    fmt::Debug,
     ops::Deref,
-    sync::{Arc, Mutex, MutexGuard}, fmt::Debug,
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use self::command_line::CommandList;
 use crate::{
-    config::{RwData, DownCastableData},
+    config::{DownCastableData, RwData},
     cursor::{Editor, Mover, SpliceAdder, TextCursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
@@ -135,12 +136,12 @@ impl<U> Debug for Widget<U>
 where
     U: Ui + ?Sized,
 {
-fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-        Widget::Normal(_) => f.write_fmt(format_args!("Widget::Normal")),
-        Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Normal")),
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Widget::Normal(_) => f.write_fmt(format_args!("Widget::Normal")),
+            Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Normal")),
+        }
     }
-}
 }
 
 impl<U> Widget<U>

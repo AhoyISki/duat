@@ -1,8 +1,14 @@
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::Mutex;
 use std::{
+    any::Any,
     error::Error,
     fmt::Display,
-    sync::{Arc, Mutex}, any::Any,
+    sync::{Arc},
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::Mutex;
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
@@ -173,7 +179,10 @@ where
     }
 }
 
-impl<U> DownCastableData for CommandLine<U> where U: Ui + 'static {
+impl<U> DownCastableData for CommandLine<U>
+where
+    U: Ui + 'static,
+{
     fn as_any(&self) -> &dyn Any {
         self
     }

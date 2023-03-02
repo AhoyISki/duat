@@ -1,9 +1,6 @@
 use std::any::Any;
 
-use super::{
-    file_widget::FileWidget,
-    NormalWidget,
-};
+use super::{file_widget::FileWidget, NormalWidget};
 use crate::{
     config::{DownCastableData, RoData},
     tags::form::FormPalette,
