@@ -1,11 +1,6 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::Mutex;
-use std::{
-    any::Any,
-    error::Error,
-    fmt::Display,
-    sync::{Arc},
-};
+use std::{any::Any, error::Error, fmt::Display, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
@@ -13,7 +8,7 @@ use no_deadlocks::Mutex;
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RwData},
-    position::{Editor, Mover, SpliceAdder, Cursor},
+    position::{Cursor, Editor, Mover, SpliceAdder},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,

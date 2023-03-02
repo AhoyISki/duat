@@ -8,15 +8,16 @@ use std::{
 
 use self::reader::MutTextReader;
 use crate::{
-    history::{Change, Splice},
     config::{Config, WrapMethod},
-    position::{Cursor, Pos, Range},
     get_byte_at_col,
+    history::{Change, Splice},
+    log_info,
+    position::{Cursor, Pos, Range},
     tags::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
         CharTag, LineFlags, LineInfo,
     },
-    ui::{Area, EndNode, Label, Ui}, log_info,
+    ui::{Area, EndNode, Label, Ui},
 };
 
 // TODO: move this to a more general file.
@@ -296,15 +297,6 @@ impl<U> Text<U>
 where
     U: Ui,
 {
-    /// Returns a new instance of `Text`.
-    pub fn new(text: String) -> Self {
-        Text {
-            lines: text.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
-            _replacements: Vec::new(),
-            _readers: Vec::new(),
-        }
-    }
-
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(&self, end_node: &mut EndNode<U>, print_info: PrintInfo) {
         if end_node.is_active {

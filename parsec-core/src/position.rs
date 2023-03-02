@@ -1,11 +1,13 @@
 use std::{
     cmp::{max, min, Ordering},
-    fmt::Display, ops::RangeInclusive,
+    fmt::Display,
+    ops::RangeInclusive,
 };
 
 use crate::{
+    get_byte_at_col,
     history::{Change, History, Moment, Splice},
-    get_byte_at_col, split_string_lines,
+    split_string_lines,
     text::{PrintInfo, Text, TextLine},
     ui::{EndNode, Label, Ui},
 };
@@ -20,13 +22,6 @@ pub struct Pos {
 }
 
 impl Pos {
-    /// Calculates a new `TextPos`, given a target position, in rows and columns.
-    pub fn translate(self, lines: &[TextLine], row: usize, col: usize) -> Pos {
-        let mut new = Pos { row, col, ..self };
-        new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
-        new
-    }
-
     // NOTE: It assumes that the `TextPos` is not contained in `splice`.
     /// Calibrates a `TextPos`, given a `Splice`.
     pub fn calibrate_on_splice(&mut self, splice: &Splice) {
@@ -50,13 +45,13 @@ impl Pos {
         }
     }
 
-    /// The byte (relative to the beginning of the file) of self. Indexed at 1. Intended only
-    /// for displaying by the end user. For internal use, see `true_byte()`.
+    /// The byte (relative to the beginning of the file) of self, indexed at 1. Intended only
+    /// for displaying by the end user. For internal use, see [true_byte()][Pos::true_byte].
     pub fn byte(&self) -> usize {
         self.byte + 1
     }
 
-    /// The column of self. Indexed at 1. Intended only for displaying by the end user. For
+    /// The column of self, indexed at 1. Intended only for displaying by the end user. For
     /// internal use, see `true_col()`.
     pub fn col(&self) -> usize {
         self.col + 1
@@ -134,11 +129,6 @@ pub struct Range {
 }
 
 impl Range {
-    /// Creates an empty [TextRange] from a single position.
-    pub fn empty_at(pos: Pos) -> Self {
-        Range { start: pos, end: pos }
-    }
-
     /// Returns a range with all the lines involved in the edit.
     pub fn lines(&self) -> RangeInclusive<usize> {
         self.start.row..=self.end.row

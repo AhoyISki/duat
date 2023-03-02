@@ -1,8 +1,7 @@
-//! Parsec's history system.
-pub mod history;
 pub mod config;
-pub mod position;
+pub mod history;
 pub mod input;
+pub mod position;
 pub mod tags;
 pub mod text;
 pub mod ui;
@@ -17,8 +16,8 @@ use std::{
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
-use position::Pos;
 use input::{InputScheme, KeyRemapper};
+use position::Pos;
 use ui::{EndNode, ModNode, NodeIndex, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},

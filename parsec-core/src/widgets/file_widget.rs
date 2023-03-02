@@ -13,9 +13,9 @@ use no_deadlocks::Mutex;
 
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
-    history::History,
     config::{DownCastableData, RwData},
-    position::{Editor, Mover, SpliceAdder, Cursor},
+    history::History,
+    position::{Cursor, Editor, Mover, SpliceAdder},
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
@@ -52,7 +52,7 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let text = Text::new(file_contents);
+        let text = Text::from(file_contents);
         let cursor = Cursor::default();
 
         Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(FileWidget {

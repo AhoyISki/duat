@@ -16,12 +16,12 @@
 use std::cmp::min;
 
 use crate::{
-    position::{get_text_in_range, Pos, Range, SpliceAdder},
     get_byte_at_col,
+    position::{get_text_in_range, Pos, Range, SpliceAdder},
     text::{PrintInfo, TextLine},
 };
 
-/// A range describing a splice operation;
+/// An object describing the starting and ending positions of a [Change]. 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Splice {
     /// The start of both texts.
@@ -33,38 +33,34 @@ pub struct Splice {
 }
 
 impl Splice {
-    ////////////////////////////////
-    // Getters
-    ////////////////////////////////
+    /// The start of the [Splice].
     pub fn start(&self) -> Pos {
         self.start
     }
 
+	/// The final end of the [Splice].
     pub fn added_end(&self) -> Pos {
         self.added_end
     }
 
+	/// The initial end of the [Splice].
     pub fn taken_end(&self) -> Pos {
         self.taken_end
     }
 
+	/// The final [Range] of the [Splice]. 
     pub fn added_range(&self) -> Range {
         Range { start: self.start, end: self.added_end }
     }
 
+	/// The initial [Range] of the [Splice]. 
     pub fn taken_range(&self) -> Range {
         Range { start: self.start, end: self.taken_end }
     }
 
-    pub fn calibrate_on_splice(&mut self, splice: &Splice) {
-        for pos in [&mut self.start, &mut self.taken_end, &mut self.added_end] {
-            if *pos >= splice.start {
-                pos.calibrate_on_splice(splice);
-            }
-        }
-    }
-
-    pub fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
+	/// Calibrates [self] agains a [SpliceAdder].
+	#[doc(hidden)]
+    pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
         for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
             pos.calibrate_on_adder(&splice_adder);
         }
@@ -76,7 +72,7 @@ impl Splice {
     }
 
     /// Merges a new [Splice] into an old one.
-    pub fn merge(&mut self, splice: &Splice) {
+    fn merge(&mut self, splice: &Splice) {
         if self.added_end.row == splice.taken_end.row {
             self.taken_end.col += splice.taken_end.col.saturating_sub(self.added_end.col);
             self.taken_end.byte += splice.taken_end.byte.saturating_sub(self.added_end.byte);
@@ -101,16 +97,15 @@ impl Splice {
 pub struct Change {
     /// The splice involving the two texts.
     pub splice: Splice,
-
     /// The text that was added in this change.
     pub added_text: Vec<String>,
-
     /// The text that was replaced in this change.
     pub taken_text: Vec<String>,
 }
 
 impl Change {
-    pub fn new(lines: &Vec<String>, range: Range, text: &Vec<TextLine>) -> Self {
+    /// Returns a new [Change].
+    pub fn new(lines: &[String], range: Range, text: &Vec<TextLine>) -> Self {
         let mut end = range.start;
 
         end.row += lines.len() - 1;
@@ -124,53 +119,43 @@ impl Change {
         let taken_text = get_text_in_range(text, range);
         let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
 
-        Change { added_text: lines.clone(), taken_text, splice }
+        Change { added_text: Vec::from(lines), taken_text, splice }
     }
 
-    /// Returns the [TextRange] that was removed.
-    pub fn taken_range(&self) -> Range {
-        self.splice.taken_range()
-    }
-
-    /// Returns the [TextRange] that was added.
-    pub fn added_range(&self) -> Range {
-        self.splice.added_range()
-    }
-
-    /// Merges a new [edit], assuming that it intersects the start of [self].
-    pub(crate) fn merge_on_start(&mut self, edit: &Change) {
+    /// Merges a new [Change], assuming that it intersects the start of [self].
+    fn merge_on_start(&mut self, edit: &Change) {
         let intersect = Range { start: self.splice.start, end: edit.splice.taken_end };
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
 
         let mut edit_taken_text = edit.taken_text.clone();
-        let empty_range = Range::empty_at(self.splice.start);
+        let empty_range = Range::from(self.splice.start);
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
         self.splice.merge(&edit.splice);
     }
 
-    /// Merges a new [edit], assuming that it is completely contained within [self].
-    pub(crate) fn merge_contained(&mut self, edit: &Change) {
+    /// Merges a new [Change], assuming that it is completely contained within [self].
+    fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
         self.splice.merge(&edit.splice);
     }
 
-    /// Merges a prior [edit], assuming that it is completely contained within [self].
-    pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
+    /// Merges a prior [Change], assuming that it is completely contained within [self].
+    fn back_merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
         let mut splice = edit.splice;
         splice.merge(&self.splice);
         self.splice = splice;
     }
 
-    /// Merges a prior [edit], assuming that it intersects the start of [self].
-    pub(crate) fn back_merge_on_start(&mut self, edit: &Change) {
+    /// Merges a prior [Change], assuming that it intersects the start of [self].
+    fn back_merge_on_start(&mut self, edit: &Change) {
         let intersect = Range { start: self.splice.start, end: edit.splice.added_end };
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, intersect);
 
         let mut edit_added_text = edit.added_text.clone();
-        let empty_range = Range::empty_at(self.splice.start);
+        let empty_range = Range::from(self.splice.start);
         splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
 
@@ -179,7 +164,7 @@ impl Change {
         self.splice = splice;
     }
 
-    /// Merges a list of sorted changes into one that overlaps all of them.
+    /// Merges a list of sorted [Change]s into one that overlaps all of them.
     fn merge_list(&mut self, changes: &[Change]) {
         let old_change = &changes[0];
 
@@ -195,6 +180,16 @@ impl Change {
         if start_offset == 1 {
             self.back_merge_on_start(&changes[0]);
         }
+    }
+
+    /// Returns the initial [Range].
+    pub fn taken_range(&self) -> Range {
+        self.splice.taken_range()
+    }
+
+    /// Returns the final [Range].
+    pub fn added_range(&self) -> Range {
+        self.splice.added_range()
     }
 }
 
@@ -215,11 +210,11 @@ pub struct Moment {
 impl Moment {
     /// First try to merge this change with as many changes as possible, then add it in.
     ///
-    /// * Returns
+    /// # Returns
     ///
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during its insertion.
-    pub fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
+    fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let splice_adder = SpliceAdder::new(&change.splice);
 
         let insertion_index = if let Some(index) = assoc_index {
@@ -254,7 +249,7 @@ impl Moment {
     }
 
     /// Searches for the first [Change] that can be merged with the one inserted on [last_index].
-    pub fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
+    fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
         while let Some((index, cur_change)) = change_iter.next() {
@@ -283,17 +278,22 @@ impl History {
         History { moments: Vec::new(), current_moment: 0 }
     }
 
-    /// Gets a mutable reference to the current [Moment].
+    /// Gets a mutable reference to the current [Moment], if not at the very beginning.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
         if self.current_moment > 0 { self.moments.get_mut(self.current_moment - 1) } else { None }
     }
 
-    /// Gets a reference to the current [Moment].
+    /// Gets a reference to the current [Moment], if not at the very beginning.
     pub fn current_moment(&self) -> Option<&Moment> {
         if self.current_moment > 0 { self.moments.get(self.current_moment - 1) } else { None }
     }
 
     /// Adds a [Change] to the current [Moment], or adds it to a new one, if no [Moment] exists.
+    /// 
+    /// # Returns
+    ///
+    /// - The index where the change was inserted;
+    /// - The number of changes that were added or subtracted during its insertion.
     pub fn add_change(
         &mut self, change: Change, assoc_index: Option<usize>, print_info: PrintInfo,
     ) -> (usize, isize) {
@@ -361,7 +361,7 @@ impl History {
     }
 }
 
-/// Merges a [String] into another, through a [TextRange] shifted by a [TextPos].
+/// Merges a [String] into another, through a [Range] shifted by a [Pos].
 fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: Pos, range: Range) {
     let range = Range { start: range.start - start, end: range.end - start };
 

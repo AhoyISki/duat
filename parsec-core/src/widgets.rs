@@ -12,7 +12,7 @@ use std::{
 use self::command_line::CommandList;
 use crate::{
     config::{DownCastableData, RwData},
-    position::{Editor, Mover, SpliceAdder, Cursor},
+    position::{Cursor, Editor, Mover, SpliceAdder},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
 };
