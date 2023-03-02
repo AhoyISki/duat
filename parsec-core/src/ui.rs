@@ -466,7 +466,6 @@ where
                 self.files_parent = self.last_index;
             }
 
-            log_info!("{:#?}", self);
             (NodeIndex(self.last_index.0 - 1), Some(self.last_index))
         } else {
             drop(target_node);
@@ -478,7 +477,6 @@ where
                 }
             }
 
-            log_info!("\n{:#?}", self);
             (self.last_index, None)
         }
     }
@@ -578,6 +576,7 @@ where
 
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
+            log_info!("\nprint lmao");
             for (widget, end_node) in self.widgets() {
                 widget.print(&mut end_node.write());
             }

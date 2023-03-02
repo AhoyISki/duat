@@ -2,7 +2,7 @@ use std::{
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::Arc, any::Any,
+    sync::{Arc, Mutex}, any::Any,
 };
 
 use super::{ActionableWidget, NormalWidget, Widget};
@@ -13,8 +13,6 @@ use crate::{
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
-
-use no_deadlocks::Mutex;
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>

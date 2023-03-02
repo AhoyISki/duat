@@ -58,7 +58,7 @@ where
         for command in session_commands(session_manager.clone()) {
             command_list.try_add(Box::new(command)).unwrap();
         }
-        
+
         let window =
             Window::new(ui, file_widget, config, &mut session_manager.write(), &constructor_hook);
 
@@ -128,7 +128,6 @@ where
                 }
             }
 
-
             self.session_loop(key_remapper);
 
             if self.session_manager.read().should_quit {
@@ -151,15 +150,14 @@ where
 
                 let mut session_manager = self.session_manager.write();
                 if session_manager.break_loop {
+                    session_manager.break_loop = false;
                     break;
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(5)) {
-                    send_event(
-                        key_remapper,
-                        &mut session_manager,
-                        &self.windows[self.active_window],
-                    );
+                    log_info!("\nevent sent xd");
+                    let active_window = &self.windows[self.active_window];
+                    send_event(key_remapper, &mut session_manager, active_window);
                 } else {
                     continue;
                 }
@@ -427,11 +425,9 @@ pub static mut FOR_TEST: usize = 0;
 /// Internal macro used to log information.
 #[macro_export]
 macro_rules! log_info {
-    ($($text:tt)*) => {
-        {
-            //use std::{fs, io::Write};
-            //let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-            //log.write_fmt(format_args!($($text)*)).unwrap();
-        }
-    }
+    ($($text:tt)*) => {{
+        use std::{fs, io::Write};
+        let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+        log.write_fmt(format_args!($($text)*)).unwrap();
+    }};
 }

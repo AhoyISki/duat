@@ -1,7 +1,7 @@
-use std::{any::Any, iter::repeat_with};
+use std::any::Any;
 
 use super::{
-    file_widget::{self, FileWidget},
+    file_widget::FileWidget,
     NormalWidget,
 };
 use crate::{

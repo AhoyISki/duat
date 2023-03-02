@@ -5,7 +5,7 @@ use std::{
     cmp::{max, min},
     fmt::{Debug, Display},
     io::{stdout, Stdout},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -14,8 +14,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle},
     terminal::{self, ClearType},
 };
-use no_deadlocks::Mutex;
-use parsec_core::{config::DownCastableData, log_info};
+use parsec_core::config::DownCastableData;
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{
@@ -387,7 +386,11 @@ impl ui::Area for Area {
             Owner::BlAnchor => todo!(),
             Owner::BrAnchor => todo!(),
             Owner::None => {
-                if len == self.resizable_len(Axis::from(side)) { Ok(()) } else { Err(()) }
+                if len == self.resizable_len(Axis::from(side)) {
+                    Ok(())
+                } else {
+                    Err(())
+                }
             }
         }
     }
@@ -729,8 +732,6 @@ fn restructure_tree(
         drop(inner);
         let split_area = new_child_area(split_coords, &mut children, side, split, 0);
         *new_parent.lineage.write() = Some((children, Axis::from(side)));
-
-        log_info!("\n{:#?}", resized_area);
 
         (split_area, Some(new_parent))
     }

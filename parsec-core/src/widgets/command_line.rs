@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::Display,
-    sync::Arc, any::Any,
+    sync::{Arc, Mutex}, any::Any,
 };
 
 use super::{ActionableWidget, NormalWidget, Widget};
@@ -12,8 +12,6 @@ use crate::{
     ui::{EndNode, Ui},
     Session,
 };
-
-use no_deadlocks::Mutex;
 
 /// The sole purpose of this module is to prevent any external implementations of `Commander`.
 mod private {

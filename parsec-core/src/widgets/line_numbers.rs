@@ -2,10 +2,8 @@ use std::{
     any::Any,
     cmp::max,
     fmt::{Alignment, Write},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
-
-use no_deadlocks::Mutex;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{

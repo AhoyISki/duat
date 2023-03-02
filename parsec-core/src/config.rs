@@ -3,7 +3,7 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
-    sync::{Arc, TryLockError},
+    sync::{Arc, TryLockError, Mutex, MutexGuard},
 };
 
 use crate::{
@@ -11,8 +11,6 @@ use crate::{
     text::TextLine,
     ui::{Area, Label, Ui},
 };
-
-use no_deadlocks::{Mutex, MutexGuard};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
