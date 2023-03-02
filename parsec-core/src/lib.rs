@@ -1,7 +1,7 @@
 //! Parsec's history system.
 pub mod history;
 pub mod config;
-pub mod cursor;
+pub mod position;
 pub mod input;
 pub mod tags;
 pub mod text;
@@ -9,7 +9,6 @@ pub mod ui;
 pub mod widgets;
 
 use std::{
-    cmp::min,
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
@@ -18,10 +17,9 @@ use std::{
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
-use cursor::TextPos;
+use position::Pos;
 use input::{InputScheme, KeyRemapper};
-use text::{PrintInfo, Text};
-use ui::{Area, EndNode, Label, ModNode, NodeIndex, Side, Split, Ui, Window};
+use ui::{EndNode, ModNode, NodeIndex, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -377,8 +375,8 @@ where
 }
 
 /// Given a position (which is assumed to be on the line), will return the position at its start.
-pub fn get_line_start(pos: TextPos, line: &String) -> TextPos {
-    TextPos { byte: pos.byte - line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
+pub fn get_line_start(pos: Pos, line: &String) -> Pos {
+    Pos { byte: pos.byte - line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
 }
 
 /// Creates a vector of `&str`s from a `String`, making sure to keep at least one empty
@@ -400,25 +398,13 @@ pub fn get_byte_at_col(col: usize, text: &String) -> usize {
     text.char_indices().nth(col).map(|c| c.0).unwrap_or(text.len())
 }
 
-/// An empty list of `String`s, representing an empty edit/file.
-pub fn empty_edit() -> Vec<String> {
-    vec![String::from("")]
-}
-
-// NOTE: Will definitely break once folding becomes a thing.
-/// The last line that could possibly be printed.
-pub fn max_line<U>(text: &Text<U>, print_info: &PrintInfo, node: &EndNode<U>) -> usize
-where
-    U: Ui,
-{
-    min(print_info.top_row + node.label.area().height(), text.lines().len() - 1)
-}
-
 //////////// Useful for testing.
+#[doc(hidden)]
 pub static mut FOR_TEST: usize = 0;
 
 /// Internal macro used to log information.
 #[macro_export]
+#[doc(hidden)]
 macro_rules! log_info {
     ($($text:tt)*) => {{
         use std::{fs, io::Write};

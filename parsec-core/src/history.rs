@@ -1,159 +1,59 @@
-//! Parsec's way of editing text.
+//! Parsec's history system.
 //!
-//! This module also deals with the history system and undoing/redoing changes. The history system
-//! works like this:
+//! The history system is comprised of 2 concepts: [Moment]s and [Change]s. A [Moment] contains any
+//! number of [Change]s, and by undoing/redoing a [Moment], all of them will be undone/redone. The
+//! [History] struct, present in each file, holds the list of [Moment]s in that file's history, and
+//! can be moved forwards or backwards in time.
 //!
-//! Each file's `History` has a list of `Moment`s, and each `Moment` has a list of `Change`s and
-//! one `PrintInfo`. `Change`s are splices that contain the original text, the text that
-//! was added, their respective ending positions in the file, and a starting position.
+//! Undoing/redoing [Moment]s also has the effect of removing all [Cursor]s and placing new ones
+//! where the [Change]s took place.
 //!
-//! Whenever you undo a `Moment`, all of its splices are reversed on the file, in an order defined
-//! by the starting position of each splice, and the file's `PrintInfo` is updated to the
-//! `Moment`'s `PrintInfo`. We change the `PrintInfo` in order to send the user back to the
-//! position he was in previously, as he can just look at the same place on the screen for the
-//! changes, which I think of as much less jarring.
+//! The method by which Parsec's [History] works permits the replication of the history system of
+//! many other editors, such as Vim/Neovim, which is strictly one [Change] per [Moment], or
+//! Kakoune, where [Moment]s may contain as many [Change]s as is desired.
 //!
-//! Undoing/redoing `Moment`s also has the effect of moving all `FileCursor`s below the splice's
-//! start to a new position, or creating a new `FileCursor` to take a change into effect. This has
-//! some interesting implications. Since parsec wants to be able to emulate both vim and kakoune,
-//! it needs to be able to adapt to both of its history systems.
-//!
-//! In vim, if you type text, move around, and type more text, all in insert mode, vim would
-//! consider that to be 2 `Moment`s. To fully undo the action, you would have to press `u` twice.
-//! Go ahead, try it. Parsec is consistent with this, you could make a history system that
-//! considers any cursor movement to be a new `Moment`, and since all `Moment`s would only have 1
-//! `Change`, multiple cursors would never happen by undoing/redoing, which is consistent with vim.
-//!
-//! In kakoune, if you do the same as in vim, and then undo, you will undo both actions at once,
-//! and will now have two cursors. Parsec, again, can be consistent with this, you just have to put
-//! both `Change`s in a single `Moment`, which is done by default.
-//!
-//! All this is to say that history management is an editor specific configuration. In vim, any
-//! cursor movement should create a new `Moment`, in kakoune, any insertion of text is considered a
-//! `Moment`, in most other text editors, a space, tab, new line, or movement, is what creates a
-//! `Moment`, which is why `parsec-core` does not define how new moments are created.
-use std::{
-    cmp::{max, min, Ordering},
-    ops::RangeInclusive,
-};
+//! [Cursor]: crate::cursor::Cursor
+use std::cmp::min;
 
 use crate::{
-    cursor::{get_text_in_range, SpliceAdder, TextPos},
-    empty_edit, get_byte_at_col,
+    position::{get_text_in_range, Pos, Range, SpliceAdder},
+    get_byte_at_col,
     text::{PrintInfo, TextLine},
 };
-
-/// A range in a file, containing rows, columns, and bytes (from the beginning);
-#[derive(Default, Clone, Copy)]
-pub struct TextRange {
-    pub start: TextPos,
-    pub end: TextPos,
-}
-
-impl TextRange {
-    /// Creates an empty `TextRange` from a single position.
-    pub fn empty_at(pos: TextPos) -> Self {
-        TextRange { start: pos, end: pos }
-    }
-
-    /// Returns a range with all the lines involved in the edit.
-    pub fn lines(&self) -> RangeInclusive<usize> {
-        self.start.row..=self.end.row
-    }
-
-    /// Returns true if `other` is contained within `self`.
-    pub fn contains<R>(&self, other: &R) -> bool
-    where
-        R: Into<TextRange> + Copy,
-    {
-        let range: TextRange = (*other).into();
-        self.start <= range.start && self.end >= range.end
-    }
-
-    /// Wether or not two `TextRange`s intersect eachother.
-    pub fn intersects(&self, other: &TextRange) -> bool {
-        (other.start >= self.start && self.end >= other.start)
-            || (other.end >= self.start && self.end >= other.end)
-    }
-
-    /// Wether or not `self` intersects the starting position of `other`.
-    pub fn at_start(&self, other: &TextRange) -> bool {
-        self.start <= other.start && other.start <= self.end && other.end >= self.end
-    }
-
-    /// Fuse two ranges into one.
-    pub fn merge(&mut self, other: TextRange) {
-        self.start = min(self.start, other.start);
-        self.end = max(self.end, other.end);
-    }
-
-    /// Returns the amount of columns in the last line of the range.
-    pub fn last_col_diff(&self) -> usize {
-        if self.lines().count() == 1 { self.end.col - self.start.col } else { self.end.col }
-    }
-
-    /// Returns `Ordering::Equal` if `self.at_start(other)`, otherwise, returns as expected.
-    pub fn at_start_ord(&self, other: &TextRange) -> Ordering {
-        if self.at_start(other) {
-            Ordering::Equal
-        } else if other.start > self.end {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-
-    /// Returns `Ordering::Equal` if `other.at_start(self)`, otherwise, returns as expected.
-    pub fn at_end_ord(&self, other: &TextRange) -> Ordering {
-        if other.at_start(self) {
-            Ordering::Equal
-        } else if other.end > self.end {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-}
-
-impl From<TextPos> for TextRange {
-    fn from(value: TextPos) -> Self {
-        TextRange { start: value, end: value }
-    }
-}
 
 /// A range describing a splice operation;
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Splice {
     /// The start of both texts.
-    pub(crate) start: TextPos,
+    pub(crate) start: Pos,
     /// The end of the taken text.
-    pub(crate) taken_end: TextPos,
+    pub(crate) taken_end: Pos,
     /// The end of the added text.
-    pub(crate) added_end: TextPos,
+    pub(crate) added_end: Pos,
 }
 
 impl Splice {
     ////////////////////////////////
     // Getters
     ////////////////////////////////
-    pub fn start(&self) -> TextPos {
+    pub fn start(&self) -> Pos {
         self.start
     }
 
-    pub fn added_end(&self) -> TextPos {
+    pub fn added_end(&self) -> Pos {
         self.added_end
     }
 
-    pub fn taken_end(&self) -> TextPos {
+    pub fn taken_end(&self) -> Pos {
         self.taken_end
     }
 
-    pub fn added_range(&self) -> TextRange {
-        TextRange { start: self.start, end: self.added_end }
+    pub fn added_range(&self) -> Range {
+        Range { start: self.start, end: self.added_end }
     }
 
-    pub fn taken_range(&self) -> TextRange {
-        TextRange { start: self.start, end: self.taken_end }
+    pub fn taken_range(&self) -> Range {
+        Range { start: self.start, end: self.taken_end }
     }
 
     pub fn calibrate_on_splice(&mut self, splice: &Splice) {
@@ -170,12 +70,12 @@ impl Splice {
         }
     }
 
-    /// Returns a reversed version of the `Splice`.
+    /// Returns a reversed version of the [Splice].
     pub fn reverse(&self) -> Splice {
         Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
     }
 
-    /// Merges a new `Splice` into an old one.
+    /// Merges a new [Splice] into an old one.
     pub fn merge(&mut self, splice: &Splice) {
         if self.added_end.row == splice.taken_end.row {
             self.taken_end.col += splice.taken_end.col.saturating_sub(self.added_end.col);
@@ -210,7 +110,7 @@ pub struct Change {
 }
 
 impl Change {
-    pub fn new(lines: &Vec<String>, range: TextRange, text: &Vec<TextLine>) -> Self {
+    pub fn new(lines: &Vec<String>, range: Range, text: &Vec<TextLine>) -> Self {
         let mut end = range.start;
 
         end.row += lines.len() - 1;
@@ -227,36 +127,36 @@ impl Change {
         Change { added_text: lines.clone(), taken_text, splice }
     }
 
-    /// Returns the `TextRange` that was removed.
-    pub fn taken_range(&self) -> TextRange {
+    /// Returns the [TextRange] that was removed.
+    pub fn taken_range(&self) -> Range {
         self.splice.taken_range()
     }
 
-    /// Returns the `TextRange` that was added.
-    pub fn added_range(&self) -> TextRange {
+    /// Returns the [TextRange] that was added.
+    pub fn added_range(&self) -> Range {
         self.splice.added_range()
     }
 
-    /// Merges a new `edit`, assuming that it intersects the start of `self`.
+    /// Merges a new [edit], assuming that it intersects the start of [self].
     pub(crate) fn merge_on_start(&mut self, edit: &Change) {
-        let intersect = TextRange { start: self.splice.start, end: edit.splice.taken_end };
+        let intersect = Range { start: self.splice.start, end: edit.splice.taken_end };
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
 
         let mut edit_taken_text = edit.taken_text.clone();
-        let empty_range = TextRange::empty_at(self.splice.start);
+        let empty_range = Range::empty_at(self.splice.start);
         splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
 
         self.splice.merge(&edit.splice);
     }
 
-    /// Merges a new `edit`, assuming that it is completely contained within `self`.
+    /// Merges a new [edit], assuming that it is completely contained within [self].
     pub(crate) fn merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
         self.splice.merge(&edit.splice);
     }
 
-    /// Merges a prior `edit`, assuming that it is completely contained within `self`.
+    /// Merges a prior [edit], assuming that it is completely contained within [self].
     pub(crate) fn back_merge_contained(&mut self, edit: &Change) {
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
         let mut splice = edit.splice;
@@ -264,13 +164,13 @@ impl Change {
         self.splice = splice;
     }
 
-    /// Merges a prior `edit`, assuming that it intersects the start of `self`.
+    /// Merges a prior [edit], assuming that it intersects the start of [self].
     pub(crate) fn back_merge_on_start(&mut self, edit: &Change) {
-        let intersect = TextRange { start: self.splice.start, end: edit.splice.added_end };
+        let intersect = Range { start: self.splice.start, end: edit.splice.added_end };
         splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, intersect);
 
         let mut edit_added_text = edit.added_text.clone();
-        let empty_range = TextRange::empty_at(self.splice.start);
+        let empty_range = Range::empty_at(self.splice.start);
         splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
         splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
 
@@ -353,7 +253,7 @@ impl Moment {
         (insertion_index, change_diff)
     }
 
-    /// Searches for the first `Change` that can be merged with the one inserted on `last_index`.
+    /// Searches for the first [Change] that can be merged with the one inserted on [last_index].
     pub fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
@@ -378,22 +278,22 @@ pub struct History {
 }
 
 impl History {
-    /// Returns a new instance of `History`.
+    /// Returns a new instance of [History].
     pub fn new() -> History {
         History { moments: Vec::new(), current_moment: 0 }
     }
 
-    /// Gets a mutable reference to the current `Moment`.
+    /// Gets a mutable reference to the current [Moment].
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
         if self.current_moment > 0 { self.moments.get_mut(self.current_moment - 1) } else { None }
     }
 
-    /// Gets a reference to the current `Moment`.
+    /// Gets a reference to the current [Moment].
     pub fn current_moment(&self) -> Option<&Moment> {
         if self.current_moment > 0 { self.moments.get(self.current_moment - 1) } else { None }
     }
 
-    /// Adds a `Change` to the current `Moment`, or adds it to a new one, if no `Moment`s exist.
+    /// Adds a [Change] to the current [Moment], or adds it to a new one, if no [Moment] exists.
     pub fn add_change(
         &mut self, change: Change, assoc_index: Option<usize>, print_info: PrintInfo,
     ) -> (usize, isize) {
@@ -411,7 +311,7 @@ impl History {
         }
     }
 
-    /// Declares that the current moment is complete and moves to the next one.
+    /// Declares that the current [Moment] is complete and starts a new one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
         if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
@@ -427,7 +327,9 @@ impl History {
         }
     }
 
-    /// Moves forwards in the timeline.
+    /// Moves backwards in the [History], returning the last [Moment].
+    ///
+    /// If The [History] is already at the end, returns [None] instead.
     pub fn move_forward(&mut self) -> Option<&Moment> {
         if self.current_moment == self.moments.len() {
             return None;
@@ -441,7 +343,9 @@ impl History {
         }
     }
 
-    /// Moves backwards in the timeline.
+    /// Moves backwards in the [History], returning the last [Moment].
+    ///
+    /// If The [History] is already at the start, returns [None] instead.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
             None
@@ -457,15 +361,9 @@ impl History {
     }
 }
 
-/// Gets the byte where a character starts on a given string.
-pub fn get_byte(line: &str, col: usize) -> usize {
-    line.char_indices().map(|(b, _)| b).nth(col).unwrap_or(line.len())
-}
-
-/// Merges two `String`s into one, given a starting position of the original and a range to cut
-/// off.
-fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range: TextRange) {
-    let range = TextRange { start: range.start - start, end: range.end - start };
+/// Merges a [String] into another, through a [TextRange] shifted by a [TextPos].
+fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: Pos, range: Range) {
+    let range = Range { start: range.start - start, end: range.end - start };
 
     let first_line = &orig[range.start.row];
     let first_byte = get_byte_at_col(range.start.col, first_line);
@@ -487,7 +385,7 @@ fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: TextPos, range
     }
 }
 
-/// Finds a  
+/// Finds a [Change] inside of a [Vec<Change>] that intersects another at its end.
 fn find_intersecting_end(change: &Change, changes: &Vec<Change>) -> usize {
     match changes.binary_search_by(|cmp| cmp.added_range().at_end_ord(&change.taken_range())) {
         Ok(index) => index,
@@ -495,7 +393,7 @@ fn find_intersecting_end(change: &Change, changes: &Vec<Change>) -> usize {
     }
 }
 
-/// Tries to merge a `Change` that is intersecting the end or is contained in another.
+/// Tries to merge a [Change] that is intersecting the end or is contained in another.
 fn end_or_inner_merge(new_change: &mut Change, changes: &mut Vec<Change>, index: usize) {
     if let Some(old_change) = changes.get_mut(index) {
         if new_change.taken_range().at_start(&old_change.added_range()) {
@@ -508,4 +406,9 @@ fn end_or_inner_merge(new_change: &mut Change, changes: &mut Vec<Change>, index:
             *new_change = old_change;
         }
     }
+}
+
+/// An empty list of [String]s, representing an empty edit/file.
+pub fn empty_edit() -> Vec<String> {
+    vec![String::from("")]
 }

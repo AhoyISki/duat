@@ -8,9 +8,9 @@ use std::{
 
 use self::reader::MutTextReader;
 use crate::{
-    history::{Change, Splice, TextRange},
+    history::{Change, Splice},
     config::{Config, WrapMethod},
-    cursor::{TextCursor, TextPos},
+    position::{Cursor, Pos, Range},
     get_byte_at_col,
     tags::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
@@ -361,7 +361,7 @@ where
 
     // This is more efficient than using the `merge_edit()` function.
     /// Merges `String`s with the body of text, given a range to replace.
-    fn merge_text(&mut self, edit: &Vec<String>, range: TextRange) {
+    fn merge_text(&mut self, edit: &Vec<String>, range: Range) {
         let lines = &mut self.lines;
 
         if range.lines().count() == 1 && edit.len() == 1 {
@@ -414,9 +414,9 @@ where
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
-    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
+    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
-            let TextRange { start, end } = cursor.range();
+            let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
@@ -434,10 +434,10 @@ where
     }
 
     /// Adds the tags for all the cursors, used after they are expected to have moved.
-    pub(crate) fn add_cursor_tags(&mut self, cursors: &[TextCursor], main_index: usize) {
+    pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             log_info!("\n{}", cursor);
-            let TextRange { start, end } = cursor.range();
+            let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
             let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
@@ -503,7 +503,7 @@ pub struct PrintInfo {
     /// How shifted the text is to the left.
     pub x_shift: usize,
     /// The last position of the main cursor.
-    pub last_main: TextPos,
+    pub last_main: Pos,
 }
 
 impl PrintInfo {
@@ -556,7 +556,7 @@ impl PrintInfo {
     }
 
     /// Scrolls up or down, assuming that the lines cannot wrap.
-    fn calibrate_vertically<U>(&mut self, target: TextPos, height: usize, end_node: &EndNode<U>)
+    fn calibrate_vertically<U>(&mut self, target: Pos, height: usize, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -571,7 +571,7 @@ impl PrintInfo {
 
     /// Scrolls up, assuming that the lines can wrap.
     fn calibrate_up<U>(
-        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, end_node: &EndNode<U>,
+        &mut self, target: Pos, mut d_y: usize, text: &Text<U>, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
@@ -606,7 +606,7 @@ impl PrintInfo {
 
     /// Scrolls down, assuming that the lines can wrap.
     fn calibrate_down<U>(
-        &mut self, target: TextPos, mut d_y: usize, text: &Text<U>, height: usize,
+        &mut self, target: Pos, mut d_y: usize, text: &Text<U>, height: usize,
         end_node: &EndNode<U>,
     ) where
         U: Ui,
@@ -644,7 +644,7 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
     fn calibrate_horizontally<U>(
-        &mut self, target: TextPos, text: &Text<U>, width: usize, end_node: &EndNode<U>,
+        &mut self, target: Pos, text: &Text<U>, width: usize, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
@@ -667,7 +667,7 @@ impl PrintInfo {
     }
 
     /// Updates the print info.
-    pub fn update<U>(&mut self, target: TextPos, text: &Text<U>, end_node: &EndNode<U>)
+    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, end_node: &EndNode<U>)
     where
         U: Ui,
     {

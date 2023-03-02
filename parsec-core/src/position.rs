@@ -1,10 +1,10 @@
 use std::{
-    cmp::{max, min},
-    fmt::Display,
+    cmp::{max, min, Ordering},
+    fmt::Display, ops::RangeInclusive,
 };
 
 use crate::{
-    history::{Change, History, Moment, Splice, TextRange},
+    history::{Change, History, Moment, Splice},
     get_byte_at_col, split_string_lines,
     text::{PrintInfo, Text, TextLine},
     ui::{EndNode, Label, Ui},
@@ -13,16 +13,16 @@ use crate::{
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TextPos {
+pub struct Pos {
     pub(crate) byte: usize,
     pub(crate) col: usize,
     pub(crate) row: usize,
 }
 
-impl TextPos {
+impl Pos {
     /// Calculates a new `TextPos`, given a target position, in rows and columns.
-    pub fn translate(self, lines: &[TextLine], row: usize, col: usize) -> TextPos {
-        let mut new = TextPos { row, col, ..self };
+    pub fn translate(self, lines: &[TextLine], row: usize, col: usize) -> Pos {
+        let mut new = Pos { row, col, ..self };
         new.byte = new.byte.saturating_add_signed(get_byte_distance(lines, self, new));
         new
     }
@@ -84,17 +84,17 @@ impl TextPos {
     }
 }
 
-impl std::fmt::Display for TextPos {
+impl std::fmt::Display for Pos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}:{}", self.col + 1, self.row + 1))
     }
 }
 
-impl std::ops::Add for TextPos {
-    type Output = TextPos;
+impl std::ops::Add for Pos {
+    type Output = Pos;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TextPos {
+        Pos {
             row: self.row + rhs.row,
             byte: self.byte + rhs.byte,
             col: if self.row == rhs.row { self.col + rhs.col } else { self.col },
@@ -102,17 +102,17 @@ impl std::ops::Add for TextPos {
     }
 }
 
-impl std::ops::AddAssign for TextPos {
+impl std::ops::AddAssign for Pos {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
-impl std::ops::Sub for TextPos {
-    type Output = TextPos;
+impl std::ops::Sub for Pos {
+    type Output = Pos;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        TextPos {
+        Pos {
             row: self.row - rhs.row,
             byte: self.byte - rhs.byte,
             col: if self.row == rhs.row { self.col - rhs.col } else { self.col },
@@ -120,20 +120,98 @@ impl std::ops::Sub for TextPos {
     }
 }
 
-impl std::ops::SubAssign for TextPos {
+impl std::ops::SubAssign for Pos {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
 
+/// A range in a file, containing rows, columns, and bytes (from the beginning);
+#[derive(Default, Clone, Copy)]
+pub struct Range {
+    pub start: Pos,
+    pub end: Pos,
+}
+
+impl Range {
+    /// Creates an empty [TextRange] from a single position.
+    pub fn empty_at(pos: Pos) -> Self {
+        Range { start: pos, end: pos }
+    }
+
+    /// Returns a range with all the lines involved in the edit.
+    pub fn lines(&self) -> RangeInclusive<usize> {
+        self.start.row..=self.end.row
+    }
+
+    /// Returns true if a given [Change] is contained within [self].
+    pub fn contains<R>(&self, other: &R) -> bool
+    where
+        R: Into<Range> + Copy,
+    {
+        let range: Range = (*other).into();
+        self.start <= range.start && self.end >= range.end
+    }
+
+    /// Wether or not two [TextRange]s intersect eachother.
+    pub fn intersects(&self, other: &Range) -> bool {
+        (other.start >= self.start && self.end >= other.start)
+            || (other.end >= self.start && self.end >= other.end)
+    }
+
+    /// Wether or not [self] intersects the starting position of another [Change].
+    pub fn at_start(&self, other: &Range) -> bool {
+        self.start <= other.start && other.start <= self.end && other.end >= self.end
+    }
+
+    /// Fuse two ranges into one.
+    pub fn merge(&mut self, other: Range) {
+        self.start = min(self.start, other.start);
+        self.end = max(self.end, other.end);
+    }
+
+    /// Returns the amount of columns in the last line of the range.
+    pub fn last_col_diff(&self) -> usize {
+        if self.lines().count() == 1 { self.end.col - self.start.col } else { self.end.col }
+    }
+
+    /// Returns [Ordering::Equal] if [self.at_start(other)], otherwise, returns as expected.
+    pub fn at_start_ord(&self, other: &Range) -> Ordering {
+        if self.at_start(other) {
+            Ordering::Equal
+        } else if other.start > self.end {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+
+    /// Returns [Ordering::Equal] if [other.at_start(self)], otherwise, returns as expected.
+    pub fn at_end_ord(&self, other: &Range) -> Ordering {
+        if other.at_start(self) {
+            Ordering::Equal
+        } else if other.end > self.end {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    }
+}
+
+impl From<Pos> for Range {
+    fn from(value: Pos) -> Self {
+        Range { start: value, end: value }
+    }
+}
+
 /// A cursor in the text file. This is an editing cursor, not a printing cursor.
 #[derive(Default, Copy)]
-pub struct TextCursor {
+pub struct Cursor {
     /// Current position of the cursor in the file.
-    caret: TextPos,
+    caret: Pos,
 
     /// An anchor for a selection.
-    anchor: Option<TextPos>,
+    anchor: Option<Pos>,
 
     /// The index to a `Change` in the current `Moment`, used for greater efficiency.
     pub(crate) assoc_index: Option<usize>,
@@ -146,14 +224,14 @@ pub struct TextCursor {
     desired_x: usize,
 }
 
-impl TextCursor {
+impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: TextPos, lines: &[TextLine], end_node: &EndNode<U>) -> TextCursor
+    pub fn new<U>(pos: Pos, lines: &[TextLine], end_node: &EndNode<U>) -> Cursor
     where
         U: Ui,
     {
         let line = lines.get(pos.row).unwrap();
-        TextCursor {
+        Cursor {
             caret: pos,
             // This should be fine.
             anchor: None,
@@ -228,7 +306,7 @@ impl TextCursor {
     }
 
     /// Internal absolute movement function. Assumes that `pos` is not calibrated.
-    pub(crate) fn move_to<U>(&mut self, pos: TextPos, lines: &Vec<TextLine>, end_node: &EndNode<U>)
+    pub(crate) fn move_to<U>(&mut self, pos: Pos, lines: &Vec<TextLine>, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -247,7 +325,7 @@ impl TextCursor {
 
     /// Internal absolute movement function. Assumes that `pos` is a valid position.
     pub(crate) fn move_to_calibrated<U>(
-        &mut self, pos: TextPos, lines: &Vec<TextLine>, end_node: &EndNode<U>,
+        &mut self, pos: Pos, lines: &Vec<TextLine>, end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
@@ -260,14 +338,14 @@ impl TextCursor {
     /// Returns the range between `target` and `anchor`.
     ///
     /// If `anchor` isn't set, returns an empty range on `target`.
-    pub fn range(&self) -> TextRange {
+    pub fn range(&self) -> Range {
         let anchor = self.anchor.unwrap_or(self.caret);
 
-        TextRange { start: min(self.caret, anchor), end: max(self.caret, anchor) }
+        Range { start: min(self.caret, anchor), end: max(self.caret, anchor) }
     }
 
     /// Returns the cursor's position on the screen.
-    pub fn caret(&self) -> TextPos {
+    pub fn caret(&self) -> Pos {
         self.caret
     }
 
@@ -279,7 +357,7 @@ impl TextCursor {
     }
 
     /// Merges the `TextCursor`s selection with another `TextRange`.
-    pub fn merge(&mut self, range: &TextRange) {
+    pub fn merge(&mut self, range: &Range) {
         if let Some(anchor) = &mut self.anchor {
             if self.caret > *anchor {
                 self.caret = max(self.caret, range.end);
@@ -309,7 +387,7 @@ impl TextCursor {
         }
     }
 
-    pub(crate) fn place_anchor(&mut self, pos: TextPos) {
+    pub(crate) fn place_anchor(&mut self, pos: Pos) {
         self.anchor = Some(pos);
     }
 
@@ -327,7 +405,7 @@ impl TextCursor {
         self.anchor = None;
     }
 
-    pub fn anchor(&self) -> Option<TextPos> {
+    pub fn anchor(&self) -> Option<Pos> {
         self.anchor
     }
 
@@ -365,15 +443,15 @@ impl TextCursor {
     }
 }
 
-impl Display for TextCursor {
+impl Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}:{}", self.caret.row + 1, self.caret.col + 1))
     }
 }
 
-impl Clone for TextCursor {
+impl Clone for Cursor {
     fn clone(&self) -> Self {
-        TextCursor { desired_x: self.caret.col, assoc_index: None, ..*self }
+        Cursor { desired_x: self.caret.col, assoc_index: None, ..*self }
     }
 }
 
@@ -382,7 +460,7 @@ pub struct Editor<'a, U>
 where
     U: Ui,
 {
-    cursor: &'a mut TextCursor,
+    cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
     end_node: &'a EndNode<U>,
     print_info: Option<PrintInfo>,
@@ -396,7 +474,7 @@ where
 {
     /// Returns a new instance of `Editor`.
     pub fn new(
-        cursor: &'a mut TextCursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text<U>,
+        cursor: &'a mut Cursor, splice_adder: &'a mut SpliceAdder, text: &'a mut Text<U>,
         end_node: &'a EndNode<U>, history: Option<&'a mut History>, print_info: Option<PrintInfo>,
     ) -> Self {
         Self { cursor, splice_adder, text, history, end_node, print_info }
@@ -416,7 +494,7 @@ where
         }
     }
 
-    pub fn calibrate_pos(&self, mut pos: TextPos) -> TextPos {
+    pub fn calibrate_pos(&self, mut pos: Pos) -> Pos {
         pos.calibrate_on_adder(&self.splice_adder);
         pos
     }
@@ -452,7 +530,7 @@ where
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
         let lines = split_string_lines(&edit.to_string());
-        let change = Change::new(&lines, TextRange::from(self.cursor.caret()), &self.text.lines());
+        let change = Change::new(&lines, Range::from(self.cursor.caret()), &self.text.lines());
 
         self.edit(change);
 
@@ -485,7 +563,7 @@ pub struct Mover<'a, U>
 where
     U: Ui,
 {
-    cursor: &'a mut TextCursor,
+    cursor: &'a mut Cursor,
     text: &'a Text<U>,
     end_node: &'a EndNode<U>,
     current_moment: Option<&'a Moment>,
@@ -497,7 +575,7 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut TextCursor, text: &'a Text<U>, end_node: &'a EndNode<U>,
+        cursor: &'a mut Cursor, text: &'a Text<U>, end_node: &'a EndNode<U>,
         current_moment: Option<&'a Moment>,
     ) -> Self {
         Self { cursor, text, end_node, current_moment }
@@ -525,7 +603,7 @@ where
     ///
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, caret: TextPos) {
+    pub fn move_to(&mut self, caret: Pos) {
         self.cursor.move_to(caret, self.text.lines(), self.end_node);
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
@@ -533,17 +611,17 @@ where
     }
 
     /// Returns the anchor of the `TextCursor`.
-    pub fn anchor(&self) -> Option<TextPos> {
+    pub fn anchor(&self) -> Option<Pos> {
         self.cursor.anchor
     }
 
     /// Returns the anchor of the `TextCursor`.
-    pub fn caret(&self) -> TextPos {
+    pub fn caret(&self) -> Pos {
         self.cursor.caret
     }
 
     /// Returns and takes the anchor of the `TextCursor`.
-    pub fn take_anchor(&mut self) -> Option<TextPos> {
+    pub fn take_anchor(&mut self) -> Option<Pos> {
         self.cursor.anchor.take()
     }
 
@@ -609,7 +687,7 @@ impl SpliceAdder {
     }
 
     /// Resets the column change if the row has changed.
-    pub fn reset_cols(&mut self, start: &TextPos) {
+    pub fn reset_cols(&mut self, start: &Pos) {
         if start.row > self.last_row {
             self.cols = 0;
         }
@@ -632,7 +710,7 @@ impl SpliceAdder {
 /// Returns the difference in byte index between two positions in a `Vec<TextLine>`.
 ///1
 /// Returns positive if `new > old`, negative if `new < old`, 0 otherwise.
-pub fn get_byte_distance(lines: &[TextLine], old: TextPos, new: TextPos) -> isize {
+pub fn get_byte_distance(lines: &[TextLine], old: Pos, new: Pos) -> isize {
     let mut distance = lines[new.row].get_line_byte_at(new.col) as isize;
     distance -= lines[old.row].get_line_byte_at(old.col) as isize;
 
@@ -650,7 +728,7 @@ pub fn get_byte_distance(lines: &[TextLine], old: TextPos, new: TextPos) -> isiz
 }
 
 /// Returns the text in the given range of `TextLine`s.
-pub fn get_text_in_range(text: &Vec<TextLine>, range: TextRange) -> Vec<String> {
+pub fn get_text_in_range(text: &Vec<TextLine>, range: Range) -> Vec<String> {
     let mut lines = Vec::with_capacity(range.lines().count());
     let first_byte = get_byte_at_col(range.start.col, text[range.start.row].text());
     let last_byte = get_byte_at_col(range.end.col, text[range.end.row].text());

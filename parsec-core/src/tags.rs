@@ -8,8 +8,8 @@ use smallvec::SmallVec;
 
 use self::form::FormFormer;
 use crate::{
-    history::TextRange,
-    cursor::TextPos,
+    position::Range,
+    position::Pos,
     text::TextLine,
     ui::{Area, Label},
 };
@@ -382,7 +382,7 @@ struct TagPos {
 }
 
 impl TagPos {
-    fn from_text(line: &TextLine, pos: TextPos) -> TagPos {
+    fn from_text(line: &TextLine, pos: Pos) -> TagPos {
         TagPos { row: pos.row, byte: line.get_line_byte_at(pos.col), file_byte: pos.byte }
     }
 }
@@ -712,7 +712,7 @@ impl MatchManager {
         }
     }
 
-    pub fn match_scroll(&mut self, lines: &[TextLine], end: TextPos) -> Vec<(LineInfo, usize)> {
+    pub fn match_scroll(&mut self, lines: &[TextLine], end: Pos) -> Vec<(LineInfo, usize)> {
         let end = TagPos::from_text(&lines[end.row], end);
 
         if end > self.last_match.pos {
@@ -725,7 +725,7 @@ impl MatchManager {
     }
 
     pub fn match_range(
-        &mut self, lines: &[TextLine], range: TextRange, max_pos: TextPos,
+        &mut self, lines: &[TextLine], range: Range, max_pos: Pos,
     ) -> Vec<(LineInfo, usize)> {
         let max_pos = TagPos::from_text(&lines[max_pos.row], max_pos);
 

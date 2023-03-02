@@ -15,7 +15,7 @@ use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     history::History,
     config::{DownCastableData, RwData},
-    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    position::{Editor, Mover, SpliceAdder, Cursor},
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
@@ -30,7 +30,7 @@ where
     text: Text<U>,
     print_info: PrintInfo,
     main_cursor: usize,
-    cursors: Vec<TextCursor>,
+    cursors: Vec<Cursor>,
     history: History,
     readers: Vec<Box<dyn MutTextReader<U>>>,
     printed_lines: Vec<usize>,
@@ -53,7 +53,7 @@ where
             .unwrap_or(String::from("scratch_file"));
 
         let text = Text::new(file_contents);
-        let cursor = TextCursor::default();
+        let cursor = Cursor::default();
 
         Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(FileWidget {
             _side_widgets: None,
@@ -90,7 +90,7 @@ where
 
             splice_adder.calibrate(&splice.reverse());
 
-            self.cursors.push(TextCursor::new(splice.taken_end(), &self.text.lines(), end_node));
+            self.cursors.push(Cursor::new(splice.taken_end(), &self.text.lines(), end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.taken_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -114,7 +114,7 @@ where
 
             let splice = change.splice;
 
-            self.cursors.push(TextCursor::new(splice.added_end(), &self.text.lines(), &end_node));
+            self.cursors.push(Cursor::new(splice.added_end(), &self.text.lines(), &end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.added_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -161,7 +161,7 @@ where
     }
 
     /// The list of `TextCursor`s on the file.
-    pub fn cursors(&self) -> Vec<TextCursor> {
+    pub fn cursors(&self) -> Vec<Cursor> {
         self.cursors.clone()
     }
 
@@ -172,7 +172,7 @@ where
 
     ////////// Status line convenience functions:
     /// The main cursor of the file.
-    pub fn main_cursor(&self) -> TextCursor {
+    pub fn main_cursor(&self) -> Cursor {
         *self.cursors.get(self.main_cursor).unwrap()
     }
 
@@ -263,15 +263,15 @@ where
         Mover::new(&mut self.cursors[index], &self.text, end_node, self.history.current_moment())
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
         (&mut self.text, self.cursors.as_slice(), self.main_cursor)
     }
 
-    fn cursors(&self) -> &[TextCursor] {
+    fn cursors(&self) -> &[Cursor] {
         self.cursors.as_slice()
     }
 
-    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
+    fn mut_cursors(&mut self) -> Option<&mut Vec<Cursor>> {
         Some(&mut self.cursors)
     }
 

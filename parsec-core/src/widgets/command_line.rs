@@ -13,7 +13,7 @@ use no_deadlocks::Mutex;
 use super::{ActionableWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RwData},
-    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    position::{Editor, Mover, SpliceAdder, Cursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,
@@ -155,7 +155,7 @@ where
 {
     text: Text<U>,
     print_info: PrintInfo,
-    cursor: [TextCursor; 1],
+    cursor: [Cursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
     config: CommandLineConfig,
@@ -169,7 +169,7 @@ where
         let command_line = CommandLine {
             text: Text::default(),
             print_info: PrintInfo::default(),
-            cursor: [TextCursor::default()],
+            cursor: [Cursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
             config: CommandLineConfig::default(),
@@ -240,15 +240,15 @@ where
         Mover::new(&mut self.cursor[0], &self.text, end_node, None)
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
         (&mut self.text, self.cursor.as_slice(), 0)
     }
 
-    fn cursors(&self) -> &[TextCursor] {
+    fn cursors(&self) -> &[Cursor] {
         self.cursor.as_slice()
     }
 
-    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>> {
+    fn mut_cursors(&mut self) -> Option<&mut Vec<Cursor>> {
         None
     }
 
@@ -271,7 +271,7 @@ where
     fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {
         self.needs_update = true;
         self.text = Text::default();
-        self.cursor[0] = TextCursor::default();
+        self.cursor[0] = Cursor::default();
         self.text.remove_cursor_tags(self.cursor.as_slice(), 0);
     }
 

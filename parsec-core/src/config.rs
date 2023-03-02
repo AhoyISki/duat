@@ -1,3 +1,5 @@
+//! Configuration options for parsec.
+
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{Mutex, MutexGuard};
 use std::{

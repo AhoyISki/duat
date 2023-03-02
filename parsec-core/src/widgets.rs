@@ -12,7 +12,7 @@ use std::{
 use self::command_line::CommandList;
 use crate::{
     config::{DownCastableData, RwData},
-    cursor::{Editor, Mover, SpliceAdder, TextCursor},
+    position::{Editor, Mover, SpliceAdder, Cursor},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
 };
@@ -65,11 +65,11 @@ where
 
     fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U>;
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[TextCursor], usize);
+    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize);
 
-    fn cursors(&self) -> &[TextCursor];
+    fn cursors(&self) -> &[Cursor];
 
-    fn mut_cursors(&mut self) -> Option<&mut Vec<TextCursor>>;
+    fn mut_cursors(&mut self) -> Option<&mut Vec<Cursor>>;
 
     fn main_cursor_index(&self) -> usize;
 
