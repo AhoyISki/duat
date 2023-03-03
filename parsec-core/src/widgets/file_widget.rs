@@ -17,7 +17,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, SpliceAdder},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, NodeIndex, Ui}, log_info,
+    ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
 
 /// The widget that is used to print and edit files.

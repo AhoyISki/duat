@@ -158,7 +158,7 @@ where
 
 impl<U> CommandLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + Default + 'static,
 {
     pub fn default(session: &Session<U>) -> Widget<U> {
         let command_line = CommandLine {

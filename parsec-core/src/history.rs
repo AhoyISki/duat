@@ -13,7 +13,9 @@
 //! Kakoune, where [Moment]s may contain as many [Change]s as is desired.
 //!
 //! [Cursor]: crate::cursor::Cursor
-use std::cmp::min;
+use std::{cmp::min, ops::RangeBounds};
+
+use ropey::Rope;
 
 use crate::{
     get_byte_at_col,
@@ -21,7 +23,7 @@ use crate::{
     text::{PrintInfo, TextLine},
 };
 
-/// An object describing the starting and ending positions of a [Change]. 
+/// An object describing the starting and ending positions of a [Change].
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Splice {
     /// The start of both texts.
@@ -38,28 +40,28 @@ impl Splice {
         self.start
     }
 
-	/// The final end of the [Splice].
+    /// The final end of the [Splice].
     pub fn added_end(&self) -> Pos {
         self.added_end
     }
 
-	/// The initial end of the [Splice].
+    /// The initial end of the [Splice].
     pub fn taken_end(&self) -> Pos {
         self.taken_end
     }
 
-	/// The final [Range] of the [Splice]. 
+    /// The final [Range] of the [Splice].
     pub fn added_range(&self) -> Range {
         Range { start: self.start, end: self.added_end }
     }
 
-	/// The initial [Range] of the [Splice]. 
+    /// The initial [Range] of the [Splice].
     pub fn taken_range(&self) -> Range {
         Range { start: self.start, end: self.taken_end }
     }
 
-	/// Calibrates [self] agains a [SpliceAdder].
-	#[doc(hidden)]
+    /// Calibrates [self] agains a [SpliceAdder].
+    #[doc(hidden)]
     pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
         for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
             pos.calibrate_on_adder(&splice_adder);
@@ -96,30 +98,19 @@ impl Splice {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The splice involving the two texts.
-    pub splice: Splice,
+    pub start: usize,
     /// The text that was added in this change.
-    pub added_text: Vec<String>,
+    pub added_text: String,
     /// The text that was replaced in this change.
-    pub taken_text: Vec<String>,
+    pub taken_text: String,
 }
 
 impl Change {
     /// Returns a new [Change].
-    pub fn new(lines: &[String], range: Range, text: &Vec<TextLine>) -> Self {
-        let mut end = range.start;
+    pub fn new(added_text: String, range: impl RangeBounds<usize>, rope: &Rope) -> Self {
+        let taken_text = rope.byte_slice(range).to_string();
 
-        end.row += lines.len() - 1;
-        end.byte += lines.iter().map(|l| l.len()).sum::<usize>();
-        end.col = if lines.len() == 1 {
-            range.start.col + lines[0].chars().count()
-        } else {
-            lines.last().unwrap().chars().count()
-        };
-
-        let taken_text = get_text_in_range(text, range);
-        let splice = Splice { start: range.start, taken_end: range.end, added_end: end };
-
-        Change { added_text: Vec::from(lines), taken_text, splice }
+        Change { pos: range.start, added_text, taken_text }
     }
 
     /// Merges a new [Change], assuming that it intersects the start of [self].
@@ -184,7 +175,7 @@ impl Change {
 
     /// Returns the initial [Range].
     pub fn taken_range(&self) -> Range {
-        self.splice.taken_range()
+        Range
     }
 
     /// Returns the final [Range].
@@ -289,7 +280,7 @@ impl History {
     }
 
     /// Adds a [Change] to the current [Moment], or adds it to a new one, if no [Moment] exists.
-    /// 
+    ///
     /// # Returns
     ///
     /// - The index where the change was inserted;

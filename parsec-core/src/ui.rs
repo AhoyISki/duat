@@ -1,10 +1,12 @@
 use std::fmt::{Debug, Display};
 
+use ropey::RopeSlice;
+
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
-    SessionManager,
+    SessionManager, text::PrintStatus,
 };
 
 pub trait Area {
@@ -62,7 +64,7 @@ where
     fn stop_printing(&mut self);
 
     /// Prints a character at the current position and moves the printing position forward.
-    fn print(&mut self, ch: char);
+    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
 
     /// Moves to the next line. If succesful, returns `Ok(())`, otherwise, returns `Err(())`.
     ///
@@ -77,7 +79,7 @@ where
     fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize;
 
     /// Gets the column at the given distance from the left side.
-    fn get_col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize;
+    fn col_at_dist(&self, text: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
 }
 
 /// A node that contains other nodes.
@@ -302,13 +304,13 @@ where
 #[derive(Debug, Clone, Copy)]
 pub enum Split {
     Locked(usize),
-    Minimum(usize),
+    Min(usize),
 }
 
 impl Split {
     pub fn len(&self) -> usize {
         match self {
-            Split::Locked(len) | Split::Minimum(len) => *len,
+            Split::Locked(len) | Split::Min(len) => *len,
         }
     }
 }

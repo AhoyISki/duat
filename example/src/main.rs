@@ -121,7 +121,14 @@ fn main() {
         // is very much a work in progress.
         config,
         Box::new(|mut mod_node, file| {
-            mod_node.push_widget(LineNumbers::default(file), Side::Left, Split::Minimum(1), true);
+            let config =
+                LineNumbersConfig { alignment: Alignment::Right, numbering: Numbering::Hybrid };
+            mod_node.push_widget(
+                LineNumbers::new(file, config),
+                Side::Left,
+                Split::Min(1),
+                true,
+            );
         }),
     );
 

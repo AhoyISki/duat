@@ -13,7 +13,6 @@ use no_deadlocks::Mutex;
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RoData, RwData},
-    log_info,
     tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
     text::{Text, TextLineBuilder},
     ui::{Area, EndNode, Label, Side, Ui},

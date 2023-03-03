@@ -244,7 +244,7 @@ impl Cursor {
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
         let config = end_node.config();
-        cur.col = end_node.label.get_col_at_dist(line.text(), self.desired_x, &config.tab_places);
+        cur.col = end_node.label.col_at_dist(line.text(), self.desired_x, &config.tab_places);
 
         // NOTE: Change this to `saturating_sub_signed` once that gets merged.
         cur.byte = cur.byte.saturating_add_signed(get_byte_distance(lines, old_target, *cur));

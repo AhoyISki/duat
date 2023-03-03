@@ -87,7 +87,7 @@ where
 
     pub fn open_file(&mut self, path: PathBuf) {
         let file_widget = FileWidget::new(Some(path));
-        let (side, split) = (Side::Right, Split::Minimum(40));
+        let (side, split) = (Side::Right, Split::Min(40));
         self.windows[self.active_window].push_file(
             file_widget,
             side,

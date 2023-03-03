@@ -150,7 +150,7 @@ impl InnerArea {
     }
 
     fn take_from_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
-        let Some(Split::Minimum(min_len)) = self.owner.split() else {
+        let Some(Split::Min(min_len)) = self.owner.split() else {
             return (self.coord_from_side(side), len);
         };
         let len_diff = min(self.len(Axis::from(side)) - min_len, len);
@@ -166,7 +166,7 @@ impl InnerArea {
     }
 
     fn add_to_side(&mut self, len: usize, side: Side) -> (Coord, usize) {
-        let Some(Split::Minimum(min_len)) = self.owner.split() else {
+        let Some(Split::Min(min_len)) = self.owner.split() else {
             return (self.coord_from_side(side), len);
         };
 
@@ -587,7 +587,7 @@ impl ui::Label<Area> for Label {
         width
     }
 
-    fn get_col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize {
+    fn col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize {
         text.chars()
             .enumerate()
             .scan((0, false), |(width, end_reached), (index, ch)| {
@@ -739,7 +739,7 @@ fn restructure_tree(
             lineage.0[*self_index] = new_parent.clone();
         }
 
-        let resized_split = inner.owner.split().unwrap_or(Split::Minimum(0));
+        let resized_split = inner.owner.split().unwrap_or(Split::Min(0));
         inner.owner =
             Owner::Parent { parent: new_parent.clone(), self_index: 0, split: resized_split };
 

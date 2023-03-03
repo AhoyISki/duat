@@ -36,7 +36,7 @@ pub enum CharTag {
 }
 
 impl CharTag {
-    pub(crate) fn trigger<L, A>(&self, label: &mut L, form_former: &mut FormFormer) -> bool
+    pub(crate) fn trigger<L, A>(&self, label: &mut L, form_former: &mut FormFormer)
     where
         L: Label<A>,
         A: Area,
@@ -49,8 +49,6 @@ impl CharTag {
             CharTag::ExtraCursor => label.place_extra_cursor(form_former.extra_cursor()),
             _ => {}
         }
-
-        true
     }
 }
 

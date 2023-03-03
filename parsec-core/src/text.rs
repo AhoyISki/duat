@@ -1,6 +1,12 @@
 pub mod reader;
 
-use std::{cmp::min, iter::Peekable, ops::RangeInclusive};
+use std::{
+    cmp::min,
+    iter::Peekable,
+    ops::{ControlFlow, RangeInclusive},
+};
+
+use ropey::Rope;
 
 use self::reader::MutTextReader;
 use crate::{
@@ -86,7 +92,7 @@ impl TextLine {
             // The leftover here represents the amount of characters that should not be printed,
             // for example, complex emoji may occupy several cells that should be empty, in the
             // case that part of the emoji is located before the first column.
-            label.get_col_at_dist(self.text.as_str(), x_shift, &config.tab_places)
+            label.col_at_dist(self.text.as_str(), x_shift, &config.tab_places)
         } else {
             skip
         };
@@ -104,10 +110,6 @@ impl TextLine {
         // To possibly print a cursor one byte after the end of the last line.
         let extra_ch = [(self.text.len(), ' ')];
         for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
-            if !self.trigger_on_byte::<U>(&mut tags, byte, label, &mut form_former) {
-                return false;
-            }
-
             d_x += 1;
             if let WrapMethod::NoWrap = config.wrap_method {
                 if d_x > label.area_mut().width() {
@@ -115,58 +117,12 @@ impl TextLine {
                 }
             }
 
-            match ch {
-                '\t' => (0..4).for_each(|_| label.print(' ')),
-                '\n' => {
-                    label.print(config.show_new_line.get_new_line_ch(last_ch));
-                    return label.next_line().is_ok();
-                }
-                _ => label.print(ch),
-            }
             last_ch = ch;
         }
 
         label.print(' ');
 
         true
-    }
-
-    fn trigger_on_byte<'a, U>(
-        &self, tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
-        label: &mut U::Label, form_former: &mut FormFormer,
-    ) -> bool
-    where
-        U: Ui,
-    {
-        while let Some(&(tag_byte, tag)) = tags.peek() {
-            if byte == *tag_byte {
-                tags.next();
-                // If this is the first printed character of `top_line`, we don't wrap.
-                if !tag.trigger(label, form_former) {
-                    return false;
-                }
-            } else {
-                break;
-            }
-        }
-        true
-    }
-
-    fn trigger_skipped<U>(
-        &self, skip: usize, label: &mut U::Label, form_former: &mut FormFormer,
-    ) -> usize
-    where
-        U: Ui,
-    {
-        let mut tags_iter = self.info.char_tags.iter().take_while(|(byte, _)| skip > *byte);
-        let mut last_checked_index = 0;
-        while let Some((_, tag)) = tags_iter.next() {
-            last_checked_index += 1;
-            if let CharTag::PushForm(_) | CharTag::PopForm(_) = tag {
-                tag.trigger(label, form_former);
-            }
-        }
-        last_checked_index
     }
 
     ////////////////////////////////
@@ -259,11 +215,13 @@ impl<const N: usize> From<[u16; N]> for TextLineBuilder {
 }
 
 /// The text in a given area.
+#[derive(Default)]
 pub struct Text<U>
 where
     U: Ui,
 {
-    lines: Vec<TextLine>,
+    rope: Rope,
+    line_info: Vec<LineInfo>,
     _replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
     _readers: Vec<Box<dyn MutTextReader<U>>>,
 }
@@ -279,49 +237,57 @@ where
             end_node.label.set_as_active();
         }
         end_node.label.start_printing();
+        let label = &mut end_node.label;
+        let config = &end_node.config;
 
-        // Print the `top_line`.
-        let top_line = &self.lines[print_info.top_row];
-        top_line.print::<U>(end_node, print_info.x_shift, 0);
+        let mut cur_line = self.rope.char_to_line(print_info.first_ch);
+        let line_start_ch = self.rope.line_to_char(cur_line);
 
-        // Prints other lines until it can't anymore.
-        for (iter, line) in self.lines.iter().enumerate().skip(print_info.top_row + 1) {
-            if !line.print::<U>(end_node, print_info.x_shift, 0) {
-                break;
+        let mut chars = self.rope.chars_at(line_start_ch);
+        let mut tags = self.iter_tags_from(cur_line);
+        let mut form_former = end_node.config().palette.form_former();
+
+        let mut skip_counter = print_info.first_ch - line_start_ch;
+        let mut last_ch = 'a';
+        let mut cur_byte = 0;
+        let mut skip_rest_of_line = false;
+        while let Some(ch) = chars.next() {
+            trigger_on_byte::<U>(&mut tags, cur_byte, label, &mut form_former);
+
+            if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {
+                skip_counter -= 1;
+                continue;
+            } else {
+                skip_rest_of_line = false;
+            }
+
+            match print_ch::<U>(ch, last_ch, label, config, print_info.x_shift) {
+                PrintStatus::NextLine => {
+                    skip_rest_of_line = true;
+                    cur_byte = 0;
+                    cur_line += 1;
+                }
+                PrintStatus::NextChar => cur_byte += ch.len_utf8(),
+                PrintStatus::Finished => break,
             }
         }
 
         end_node.label.stop_printing();
     }
 
+    fn iter_tags_from(&self, line: usize) -> Peekable<impl Iterator<Item = &(usize, CharTag)>> {
+        self.line_info[line..]
+            .iter()
+            .map(|LineInfo { char_tags, .. }| char_tags.iter())
+            .flatten()
+            .peekable()
+    }
+
     // This is more efficient than using the `merge_edit()` function.
     /// Merges `String`s with the body of text, given a range to replace.
-    fn merge_text(&mut self, edit: &Vec<String>, range: Range) {
-        let lines = &mut self.lines;
-
-        if range.lines().count() == 1 && edit.len() == 1 {
-            let line = &mut lines[range.start.row];
-            let first_byte = get_byte_at_col(range.start.col, &line.text);
-            let last_byte = get_byte_at_col(range.end.col, &line.text);
-            line.text.replace_range(first_byte..last_byte, edit[0].as_str());
-        } else {
-            let first_line = &lines[range.start.row];
-            let first_byte = get_byte_at_col(range.start.col, &first_line.text);
-            let last_line = &lines[range.end.row];
-            let last_byte = get_byte_at_col(range.end.col, &last_line.text);
-
-            let first_amend = &first_line.text[..first_byte];
-            let last_amend = &last_line.text[last_byte..];
-
-            let mut edit = edit.clone();
-
-            edit.first_mut().unwrap().insert_str(0, first_amend);
-            edit.last_mut().unwrap().push_str(last_amend);
-
-            let edit: Vec<TextLine> = edit.into_iter().map(|l| TextLine::from(l)).collect();
-
-            lines.splice(range.lines(), edit);
-        }
+    fn merge_text(&mut self, edit: impl AsRef<str>, range: Range) {
+        self.rope.remove(range.start.byte..range.end.byte);
+        self.rope.insert(range.start.byte, edit.as_ref());
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -333,11 +299,11 @@ where
     }
 
     pub fn lines(&self) -> &Vec<TextLine> {
-        &self.lines
+        &self.rope
     }
 
     pub fn is_empty(&self) -> bool {
-        self.lines.len() == 1 && self.lines[0].text.as_str() == ""
+        self.rope.len() == 1 && self.rope[0].text.as_str() == ""
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
@@ -351,7 +317,7 @@ where
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.iter().skip(no_selection) {
-                let Some(line) = self.lines.get_mut(pos.row) else { return; };
+                let Some(line) = self.rope.get_mut(pos.row) else { return; };
                 let byte = line.get_line_byte_at(pos.col);
                 line.info.char_tags.remove_first(|(cmp_byte, cmp_tag)| {
                     cmp_byte as usize == byte && cmp_tag == *tag
@@ -371,63 +337,44 @@ where
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.iter().skip(no_selection) {
-                let Some(line) = self.lines.get_mut(pos.row) else { return; };
+                let Some(line) = self.rope.get_mut(pos.row) else { return; };
                 let byte = line.get_line_byte_at(pos.col);
                 line.info.char_tags.insert((byte, *tag));
             }
         }
     }
-
-    ///// Iterates on the chars of the `Text`, starting from a specific `TextPos`.
-    //pub fn iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
-    //    self.lines.iter().skip(pos.row).flat_map(|line| line.text.chars()).skip(pos.col)
-    //}
-
-    ///// Iterates on the chars of the `Text`, starting from a specific `TextPos`, in reverse.
-    //pub fn rev_iter_from(&self, pos: TextPos) -> impl Iterator<Item = char> + '_ {
-    //    self.lines
-    //        .iter()
-    //        .rev()
-    //        .skip(self.lines.len() - 1 - pos.row)
-    //        .flat_map(|line| line.text.char_indices().rev())
-    //        .skip(self.lines[pos.row].text.chars().count() - 1 - pos.col)
-    //        .map(|(_, ch)| ch)
-    //}
-
-    //pub fn iter_items_from(&self, pos: TextPos) -> impl Iterator<Item = TextItem> + '_ {
-    //    let first_line_byte = pos.byte - self.lines[pos.row].get_line_byte_at(pos.col);
-    //    let mut tags =
-    //        self.lines.iter().skip(pos.row).flat_map(|line|
-    // line.info.char_tags.iter()).peekable().skip_while(|(byte, _)| byte + first_line_byte <
-    // pos.byte);    self.lines.iter().skip(pos.row).flat_map(|line|
-    // line.text.chars()).skip(pos.col)
-    //}
 }
 
-impl<U> Default for Text<U>
+/// Prints the given character, taking configuration options into account.
+fn print_ch<U>(
+    ch: char, last_ch: char, label: &mut U::Label, config: &Config, x_shift: usize
+) -> PrintStatus
 where
     U: Ui,
 {
-    fn default() -> Self {
-        Text { lines: vec![TextLine::from("")], _replacements: Vec::new(), _readers: Vec::new() }
+    match ch {
+        '\t' => label.print('\t', x_shift),
+        '\n' => {
+            label.print(config.show_new_line.get_new_line_ch(last_ch), x_shift);
+            if label.next_line().is_ok() { PrintStatus::NextLine } else { PrintStatus::Finished }
+        }
+        _ => label.print(ch, x_shift),
     }
 }
 
-impl<U> From<TextLine> for Text<U>
-where
+fn trigger_on_byte<'a, U>(
+    tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
+    label: &mut U::Label, form_former: &mut FormFormer,
+) where
     U: Ui,
 {
-    fn from(value: TextLine) -> Self {
-        Text { lines: vec![value], _replacements: Vec::new(), _readers: Vec::new() }
-    }
-}
-
-impl<U> From<Vec<TextLine>> for Text<U>
-where
-    U: Ui,
-{
-    fn from(value: Vec<TextLine>) -> Self {
-        Text { lines: value, _replacements: Vec::new(), _readers: Vec::new() }
+    while let Some(&(tag_byte, tag)) = tags.peek() {
+        if byte == *tag_byte {
+            tags.next();
+            tag.trigger(label, form_former);
+        } else {
+            break;
+        }
     }
 }
 
@@ -437,21 +384,26 @@ where
 {
     fn from(value: String) -> Self {
         Text {
-            lines: value.split_inclusive('\n').map(|l| TextLine::from(l)).collect(),
+            rope: Rope::from(value),
+            line_info: Vec::new(),
             _replacements: Vec::new(),
             _readers: Vec::new(),
         }
     }
 }
 
+pub enum PrintStatus {
+    NextLine,
+    NextChar,
+    Finished,
+}
+
 // NOTE: The defaultness in here, when it comes to `last_main`, may cause issues in the future.
 /// Information about how to print the file on the `Label`.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
-    /// How many times the row at the top wraps around before being shown.
-    pub top_wraps: usize,
-    /// The index of the row at the top of the screen.
-    pub top_row: usize,
+    /// The index of the first [char] that should be printed on the screen.
+    pub first_ch: usize,
     /// How shifted the text is to the left.
     pub x_shift: usize,
     /// The last position of the main cursor.
@@ -604,7 +556,7 @@ impl PrintInfo {
         scrolloff.d_x = min(scrolloff.d_x, width);
 
         if let WrapMethod::NoWrap = end_node.config().wrap_method {
-            let target_line = &text.lines[target.row];
+            let target_line = &text.rope[target.row];
             let distance = end_node.get_width(&target_line.text[..target.col]);
 
             // If the distance is greater, it means that the cursor is out of bounds.
