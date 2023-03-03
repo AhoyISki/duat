@@ -13,89 +13,17 @@
 //! Kakoune, where [Moment]s may contain as many [Change]s as is desired.
 //!
 //! [Cursor]: crate::cursor::Cursor
-use std::{cmp::min, ops::RangeBounds};
+use std::{
+    cmp::{min, Ordering},
+    ops::{Range, RangeBounds},
+};
 
 use ropey::Rope;
 
-use crate::{
-    get_byte_at_col,
-    position::{get_text_in_range, Pos, Range, SpliceAdder},
-    text::{PrintInfo, TextLine},
-};
-
-/// An object describing the starting and ending positions of a [Change].
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Splice {
-    /// The start of both texts.
-    pub(crate) start: Pos,
-    /// The end of the taken text.
-    pub(crate) taken_end: Pos,
-    /// The end of the added text.
-    pub(crate) added_end: Pos,
-}
-
-impl Splice {
-    /// The start of the [Splice].
-    pub fn start(&self) -> Pos {
-        self.start
-    }
-
-    /// The final end of the [Splice].
-    pub fn added_end(&self) -> Pos {
-        self.added_end
-    }
-
-    /// The initial end of the [Splice].
-    pub fn taken_end(&self) -> Pos {
-        self.taken_end
-    }
-
-    /// The final [Range] of the [Splice].
-    pub fn added_range(&self) -> Range {
-        Range { start: self.start, end: self.added_end }
-    }
-
-    /// The initial [Range] of the [Splice].
-    pub fn taken_range(&self) -> Range {
-        Range { start: self.start, end: self.taken_end }
-    }
-
-    /// Calibrates [self] agains a [SpliceAdder].
-    #[doc(hidden)]
-    pub(crate) fn calibrate_on_adder(&mut self, splice_adder: &SpliceAdder) {
-        for pos in [&mut self.start, &mut self.added_end, &mut self.taken_end] {
-            pos.calibrate_on_adder(&splice_adder);
-        }
-    }
-
-    /// Returns a reversed version of the [Splice].
-    pub fn reverse(&self) -> Splice {
-        Splice { added_end: self.taken_end, taken_end: self.added_end, ..*self }
-    }
-
-    /// Merges a new [Splice] into an old one.
-    fn merge(&mut self, splice: &Splice) {
-        if self.added_end.row == splice.taken_end.row {
-            self.taken_end.col += splice.taken_end.col.saturating_sub(self.added_end.col);
-            self.taken_end.byte += splice.taken_end.byte.saturating_sub(self.added_end.byte);
-        } else if splice.taken_end.row > self.added_end.row {
-            self.taken_end.col = splice.taken_end.col;
-            self.taken_end.row += splice.taken_end.row - self.added_end.row;
-            self.taken_end.byte += splice.taken_end.byte - self.added_end.byte;
-        }
-
-        if splice.taken_end >= self.added_end {
-            self.added_end = splice.added_end;
-        } else {
-            self.added_end.calibrate_on_splice(splice);
-        }
-
-        self.start = min(splice.start, self.start);
-    }
-}
+use crate::text::PrintInfo;
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The splice involving the two texts.
     pub start: usize,
@@ -108,79 +36,74 @@ pub struct Change {
 impl Change {
     /// Returns a new [Change].
     pub fn new(added_text: String, range: impl RangeBounds<usize>, rope: &Rope) -> Self {
-        let taken_text = rope.byte_slice(range).to_string();
-
-        Change { pos: range.start, added_text, taken_text }
-    }
-
-    /// Merges a new [Change], assuming that it intersects the start of [self].
-    fn merge_on_start(&mut self, edit: &Change) {
-        let intersect = Range { start: self.splice.start, end: edit.splice.taken_end };
-        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, intersect);
-
-        let mut edit_taken_text = edit.taken_text.clone();
-        let empty_range = Range::from(self.splice.start);
-        splice_text(&mut edit_taken_text, &empty_edit(), edit.splice.start, intersect);
-        splice_text(&mut self.taken_text, &edit_taken_text, self.splice.start, empty_range);
-
-        self.splice.merge(&edit.splice);
-    }
-
-    /// Merges a new [Change], assuming that it is completely contained within [self].
-    fn merge_contained(&mut self, edit: &Change) {
-        splice_text(&mut self.added_text, &edit.added_text, self.splice.start, edit.taken_range());
-        self.splice.merge(&edit.splice);
-    }
-
-    /// Merges a prior [Change], assuming that it is completely contained within [self].
-    fn back_merge_contained(&mut self, edit: &Change) {
-        splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, edit.added_range());
-        let mut splice = edit.splice;
-        splice.merge(&self.splice);
-        self.splice = splice;
-    }
-
-    /// Merges a prior [Change], assuming that it intersects the start of [self].
-    fn back_merge_on_start(&mut self, edit: &Change) {
-        let intersect = Range { start: self.splice.start, end: edit.splice.added_end };
-        splice_text(&mut self.taken_text, &edit.taken_text, self.splice.start, intersect);
-
-        let mut edit_added_text = edit.added_text.clone();
-        let empty_range = Range::from(self.splice.start);
-        splice_text(&mut edit_added_text, &empty_edit(), edit.splice.start, intersect);
-        splice_text(&mut self.added_text, &edit_added_text, self.splice.start, empty_range);
-
-        let mut splice = edit.splice;
-        splice.merge(&self.splice);
-        self.splice = splice;
-    }
-
-    /// Merges a list of sorted [Change]s into one that overlaps all of them.
-    fn merge_list(&mut self, changes: &[Change]) {
-        let old_change = &changes[0];
-
-        let start_offset = if old_change.splice.added_range().at_start(&self.splice.taken_range()) {
-            1
-        } else {
-            0
+        let start = match range.start_bound() {
+            std::ops::Bound::Included(&pos) => pos,
+            std::ops::Bound::Excluded(&pos) => pos + 1,
+            std::ops::Bound::Unbounded => 0,
         };
-        for old_change in changes.iter().skip(start_offset).rev() {
-            self.back_merge_contained(&old_change);
-        }
 
-        if start_offset == 1 {
-            self.back_merge_on_start(&changes[0]);
+        let end = match range.end_bound() {
+            std::ops::Bound::Included(&pos) => pos + 1,
+            std::ops::Bound::Excluded(&pos) => pos,
+            std::ops::Bound::Unbounded => rope.len_chars(),
+        };
+
+        let taken_text: String = rope.chars_at(start).take(end - start).collect();
+
+        Change { start, added_text, taken_text }
+    }
+
+    /// In this function, it is assumed that [self] happened _after_ [older][Change].
+    fn try_merge(&mut self, older: Change) -> Result<(), Change> {
+        if older.added_range().contains(&self.start) {
+            let removed_end = min(older.added_end(), self.taken_end());
+            older.added_text.replace_range(older.start..removed_end, &self.added_text);
+            older.taken_text.push_str(&self.taken_text[removed_end..]);
+
+            *self = older;
+
+            Ok(())
+        } else if self.taken_range().contains(&older.start) {
+            let removed_end = min(self.taken_end(), older.added_end());
+            self.taken_text.replace_range(older.start..removed_end, &older.taken_text);
+            self.added_text.push_str(&older.added_text[removed_end..]);
+
+            Ok(())
+        } else {
+            Err(older)
         }
     }
 
     /// Returns the initial [Range].
-    pub fn taken_range(&self) -> Range {
-        Range
+    pub fn taken_range(&self) -> Range<usize> {
+        self.start..(self.start + self.taken_text.chars().count())
     }
 
     /// Returns the final [Range].
-    pub fn added_range(&self) -> Range {
-        self.splice.added_range()
+    pub fn added_range(&self) -> Range<usize> {
+        self.start..(self.start + self.added_text.chars().count())
+    }
+
+    /// Returns the end of the [Change], before it was applied.
+    pub fn taken_end(&self) -> usize {
+        self.start + self.taken_text.chars().count()
+    }
+
+    /// Returns the end of the [Change], after it was applied.
+    pub fn added_end(&self) -> usize {
+        self.start + self.added_text.chars().count()
+    }
+
+    /// An ordering function that returns [Ordering::Equal] if [cmp][Change] has its end within
+    /// [self]'s `added_range`.
+    fn contains_ord(&self, cmp: &Change) -> Ordering {
+        if self.added_range().contains(&cmp.taken_end()) {
+            Ordering::Equal
+        } else if cmp.taken_end() > self.added_end() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
     }
 }
 
@@ -206,37 +129,35 @@ impl Moment {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during its insertion.
     fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
-        let splice_adder = SpliceAdder::new(&change.splice);
+        let initial_len = self.changes.len();
+        let chars_diff = change.added_end() as isize - change.taken_end() as isize;
 
-        let insertion_index = if let Some(index) = assoc_index {
-            if self.changes[index].added_range().end == change.splice.start {
-                index + 1
+        let last_index = assoc_index.unwrap_or_else(|| self.find_last_merger(&change));
+        let first_index = self.find_first_merger(&change, last_index).unwrap_or(last_index);
+
+        if let Some(prev_change) = self.changes.get_mut(last_index) {
+            let taken_change = std::mem::take(prev_change);
+            let changes_after = if let Err(taken_change) = change.try_merge(taken_change) {
+                *prev_change = taken_change;
+                self.changes.insert(last_index, change);
+                last_index + 1
             } else {
-                end_or_inner_merge(&mut change, &mut self.changes, index);
-                index
+                last_index
+            };
+
+            for change in &mut self.changes[changes_after..] {
+                change.start.saturating_add_signed(chars_diff);
             }
         } else {
-            let index = find_intersecting_end(&change, &self.changes);
-            end_or_inner_merge(&mut change, &mut self.changes, index);
-            index
+            self.changes.push(change);
         };
-        let merger_index = self.find_first_merger(&change, insertion_index);
 
-        for change in &mut self.changes[insertion_index..] {
-            change.splice.calibrate_on_adder(&splice_adder);
+        let added_change = self.changes.get_mut(last_index).unwrap();
+        for prior_change in self.changes.drain(first_index..last_index) {
+            added_change.try_merge(prior_change);
         }
 
-        let (insertion_index, change_diff) = if let Some(merger_index) = merger_index {
-            change.merge_list(&self.changes[merger_index..insertion_index]);
-            self.changes.splice(merger_index..insertion_index, Vec::new());
-            (merger_index, merger_index as isize - insertion_index as isize)
-        } else {
-            (insertion_index, 1)
-        };
-
-        self.changes.insert(merger_index.unwrap_or(insertion_index), change);
-
-        (insertion_index, change_diff)
+        (first_index, initial_len as isize - self.changes.len() as isize)
     }
 
     /// Searches for the first [Change] that can be merged with the one inserted on [last_index].
@@ -244,14 +165,22 @@ impl Moment {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
         while let Some((index, cur_change)) = change_iter.next() {
-            if change.taken_range().intersects(&cur_change.added_range()) {
+            if change.taken_range().contains(&cur_change.added_end()) {
                 first_index = Some(index);
             } else {
                 break;
             }
         }
 
-        return first_index;
+        first_index
+    }
+
+    /// Finds a [Change] inside of a [Vec<Change>] that intersects another at its end.
+    fn find_last_merger(&self, change: &Change) -> usize {
+        match self.changes.binary_search_by(|cmp| cmp.contains_ord(change)) {
+            Ok(index) => index,
+            Err(index) => index,
+        }
     }
 }
 
@@ -348,53 +277,6 @@ impl History {
             } else {
                 Some(&self.moments[self.current_moment])
             }
-        }
-    }
-}
-
-/// Merges a [String] into another, through a [Range] shifted by a [Pos].
-fn splice_text(orig: &mut Vec<String>, edit: &Vec<String>, start: Pos, range: Range) {
-    let range = Range { start: range.start - start, end: range.end - start };
-
-    let first_line = &orig[range.start.row];
-    let first_byte = get_byte_at_col(range.start.col, first_line);
-    let last_line = &orig[range.end.row];
-    let last_byte = get_byte_at_col(range.end.col, last_line);
-
-    if range.lines().count() == 1 && edit.len() == 1 {
-        orig[range.start.row].replace_range(first_byte..last_byte, edit[0].as_str());
-    } else {
-        let first_amend = &orig[range.start.row][..first_byte];
-        let last_amend = &orig[range.end.row][last_byte..];
-
-        let mut edit = edit.clone();
-
-        edit.first_mut().unwrap().insert_str(0, first_amend);
-        edit.last_mut().unwrap().push_str(last_amend);
-
-        orig.splice(range.lines(), edit);
-    }
-}
-
-/// Finds a [Change] inside of a [Vec<Change>] that intersects another at its end.
-fn find_intersecting_end(change: &Change, changes: &Vec<Change>) -> usize {
-    match changes.binary_search_by(|cmp| cmp.added_range().at_end_ord(&change.taken_range())) {
-        Ok(index) => index,
-        Err(index) => index,
-    }
-}
-
-/// Tries to merge a [Change] that is intersecting the end or is contained in another.
-fn end_or_inner_merge(new_change: &mut Change, changes: &mut Vec<Change>, index: usize) {
-    if let Some(old_change) = changes.get_mut(index) {
-        if new_change.taken_range().at_start(&old_change.added_range()) {
-            let mut old_change = changes.remove(index);
-            old_change.merge_on_start(&new_change);
-            *new_change = old_change;
-        } else if old_change.added_range().contains(&new_change.taken_range()) {
-            let mut old_change = changes.remove(index);
-            old_change.merge_contained(&new_change);
-            *new_change = old_change;
         }
     }
 }
