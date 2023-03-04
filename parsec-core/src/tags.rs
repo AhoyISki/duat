@@ -1,6 +1,6 @@
 pub mod form;
 
-use std::{ops::RangeInclusive, str};
+use std::{ops::{RangeInclusive, Range}, str};
 
 use bitflags::bitflags;
 use regex::Regex;
@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 
 use self::form::FormFormer;
 use crate::{
-    position::{Pos, Range},
+    position::Pos,
     text::TextLine,
     ui::{Area, Label},
 };
@@ -713,7 +713,7 @@ impl MatchManager {
     }
 
     pub fn match_range(
-        &mut self, lines: &[TextLine], range: Range, max_pos: Pos,
+        &mut self, lines: &[TextLine], range: Range<usize>, max_pos: Pos,
     ) -> Vec<(LineInfo, usize)> {
         let max_pos = TagPos::from_text(&lines[max_pos.row], max_pos);
 

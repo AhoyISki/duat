@@ -76,7 +76,7 @@ where
     fn wrap_count(&self, text: &str, wrap_method: WrapMethod, tab_places: &TabPlaces) -> usize;
 
     /// Gets the visual width to a given column.
-    fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize;
+    fn get_width(&self, text: RopeSlice, tab_places: &TabPlaces) -> usize;
 
     /// Gets the column at the given distance from the left side.
     fn col_at_dist(&self, text: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;

@@ -373,11 +373,6 @@ where
     widget.lock().unwrap().identifier() == identifier.as_ref()
 }
 
-/// Given a position (which is assumed to be on the line), will return the position at its start.
-pub fn get_line_start(pos: Pos, line: &String) -> Pos {
-    Pos { byte: pos.byte - line.char_indices().take(pos.col).count(), col: 0, row: pos.row }
-}
-
 /// Creates a vector of `&str`s from a `String`, making sure to keep at least one empty
 /// string at the end, in case of an empty, or `\n` terminated string.
 fn split_string_lines(string: &String) -> Vec<String> {

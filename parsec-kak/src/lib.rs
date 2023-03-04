@@ -202,7 +202,7 @@ impl Editor {
 
             ////////// Insertion keys.
             KeyEvent { code: KeyCode::Char('i'), .. } => {
-                actor.move_each_cursor(|mut mover| mover.set_caret_on_start());
+                actor.move_each_cursor(|mut mover| mover.switch_ends());
                 *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent { code: KeyCode::Char('a'), .. } => {

@@ -343,11 +343,15 @@ where
             }
         }
     }
+
+    pub(crate) fn rope(&self) -> &Rope {
+        &self.rope
+    }
 }
 
 /// Prints the given character, taking configuration options into account.
 fn print_ch<U>(
-    ch: char, last_ch: char, label: &mut U::Label, config: &Config, x_shift: usize
+    ch: char, last_ch: char, label: &mut U::Label, config: &Config, x_shift: usize,
 ) -> PrintStatus
 where
     U: Ui,
