@@ -867,21 +867,21 @@ impl SeparatorForm {
 
     fn form_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
         match self {
-            SeparatorForm::Uniform(builder) => builder.form_text_line(text),
+            SeparatorForm::Uniform(builder) => builder.form_info(text),
             SeparatorForm::DifferentOnMain(other_builder, main_builder) => {
                 if line_number == main_line {
-                    main_builder.form_text_line(text)
+                    main_builder.form_info(text)
                 } else {
-                    other_builder.form_text_line(text)
+                    other_builder.form_info(text)
                 }
             }
             SeparatorForm::ThreeWay(lower_builder, main_builder, higher_builder) => {
                 if line_number < main_line {
-                    lower_builder.form_text_line(text)
+                    lower_builder.form_info(text)
                 } else if line_number > main_line {
-                    higher_builder.form_text_line(text)
+                    higher_builder.form_info(text)
                 } else {
-                    main_builder.form_text_line(text)
+                    main_builder.form_infoext)
                 }
             }
         }

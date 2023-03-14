@@ -1,147 +1,22 @@
 pub mod reader;
 
-use std::{
-    cmp::min,
-    iter::Peekable,
-    ops::{ControlFlow, RangeInclusive},
-};
+use std::{cmp::min, iter::Peekable, ops::RangeInclusive};
 
 use ropey::Rope;
 
 use self::reader::MutTextReader;
 use crate::{
     config::{Config, WrapMethod},
-    get_byte_at_col,
-    history::{Change, Splice},
-    position::{Cursor, Pos, Range},
+    history::Change,
+    position::{Cursor, Pos},
     tags::{
         form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
-        CharTag, LineFlags, LineInfo,
+        Tag, LineInfo,
     },
     ui::{Area, EndNode, Label, Ui},
 };
 
-// TODO: move this to a more general file.
-/// A line in the text file.
-#[derive(Debug)]
-pub struct TextLine {
-    /// The text on the line.
-    text: String,
-
-    /// Information about a line.
-    pub(crate) info: LineInfo,
-}
-
-impl TextLine {
-    /// Returns the line's indentation, in the number of spaces.
-    pub fn indent(&self, config: &Config) -> usize {
-        let mut indent_sum = 0;
-
-        for ch in self.text.chars() {
-            indent_sum += match ch {
-                ' ' => 1,
-                '\t' => config.tab_places.spaces_on_col(indent_sum),
-                _ => break,
-            };
-        }
-
-        indent_sum as usize
-    }
-
-    pub fn get_dist_to_col<U>(&self, col: usize, end_node: &EndNode<U>) -> usize
-    where
-        U: Ui,
-    {
-        let byte = self.text().char_indices().map(|(byte, _)| byte).take(col).last().unwrap_or(0);
-        let prior_text = &self.text()[..byte];
-        end_node.label.get_width(prior_text, &end_node.config().tab_places)
-    }
-
-    /// Returns the byte index of a given column.
-    pub fn get_line_byte_at(&self, col: usize) -> usize {
-        if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
-            col
-        } else {
-            self.text.char_indices().nth(col).unwrap_or((self.text.len(), ' ')).0
-        }
-    }
-
-    /// Returns how many characters are in the line.
-    pub fn char_count(&self) -> usize {
-        if self.info.line_flags.contains(LineFlags::PURE_ASCII) {
-            self.text.len()
-        } else {
-            self.text.chars().count()
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // MASSIVE CHANGES ARE INCOMING FOR PRINTING, EVERYTHING IS A BIT TERRIBLE AT THE MOMENT //
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    /// Prints a line in a given position, skipping `skip` characters.
-    ///
-    /// Returns true if we should try printing the next line.
-    #[inline]
-    fn print<U>(&self, end_node: &mut EndNode<U>, x_shift: usize, skip: usize) -> bool
-    where
-        U: Ui,
-    {
-        let (label, config) = (&mut end_node.label, &end_node.config);
-
-        let skip = if let WrapMethod::NoWrap = config.wrap_method {
-            // The leftover here represents the amount of characters that should not be printed,
-            // for example, complex emoji may occupy several cells that should be empty, in the
-            // case that part of the emoji is located before the first column.
-            label.col_at_dist(self.text.as_str(), x_shift, &config.tab_places)
-        } else {
-            skip
-        };
-
-        // Iterate through the tags before the first unskipped character.
-        let mut form_former = config.palette.form_former();
-        let tags_to_skip = self.trigger_skipped::<U>(skip, label, &mut form_former);
-        let mut tags = self.info.char_tags.iter().skip(tags_to_skip).peekable();
-
-        // As long as `![' ', '\t', '\n'].contains(last_ch)` initially, we're good.
-        let mut last_ch = 'a';
-
-        let mut d_x = 0;
-
-        // To possibly print a cursor one byte after the end of the last line.
-        let extra_ch = [(self.text.len(), ' ')];
-        for (byte, ch) in self.text.char_indices().skip_while(|&(b, _)| b < skip).chain(extra_ch) {
-            d_x += 1;
-            if let WrapMethod::NoWrap = config.wrap_method {
-                if d_x > label.area_mut().width() {
-                    return label.next_line().is_ok();
-                }
-            }
-
-            last_ch = ch;
-        }
-
-        label.print(' ');
-
-        true
-    }
-
-    ////////////////////////////////
-    // Getters
-    ////////////////////////////////
-    pub fn text(&self) -> &String {
-        &self.text
-    }
-}
-
-impl<S> From<S> for TextLine
-where
-    S: ToString,
-{
-    fn from(value: S) -> Self {
-        TextLine { text: value.to_string(), info: LineInfo::default() }
-    }
-}
-
+// TODO: move this to a mo
 #[derive(Default)]
 pub struct TextLineBuilder {
     forms: Vec<u16>,
@@ -155,20 +30,23 @@ impl TextLineBuilder {
 
         let mut last_start = None;
         for (start, _) in text.match_indices('[').chain([(text.len(), "[")]) {
-            if let Some(mut last_start) = last_start {
-                if let Some(mut last_end) = text[(last_start + 1)..start].find(']') {
-                    last_end += last_start;
-                    last_start += 1;
-                    let (_, form_index) = palette.get_from_name(&text[last_start..=last_end]);
-                    form_indices.push(form_index);
-                    let removed_len = text.len() - formless_text.len();
-                    last_start -= removed_len;
-                    last_end -= removed_len;
-                    formless_text.replace_range(last_start..=last_end, "");
-                }
-            }
+            let Some(last_start) = &mut last_start else {
+                continue;
+            };
+            let Some(mut last_end) = text[(*last_start + 1)..start].find(']') else {
+                continue;
+            };
 
-            last_start = Some(start);
+            last_end += *last_start;
+            *last_start += 1;
+            let (_, form_index) = palette.get_from_name(&text[*last_start..=last_end]);
+            form_indices.push(form_index);
+            let removed_len = text.len() - formless_text.len();
+            *last_start -= removed_len;
+            last_end -= removed_len;
+            formless_text.replace_range(*last_start..=last_end, "");
+
+            *last_start = start;
         }
 
         *text = formless_text;
@@ -177,8 +55,7 @@ impl TextLineBuilder {
     }
 
     /// Takes in a string with empty bracket pairs and places forms according to their positions.
-    pub fn form_text_line(&self, text: impl ToString) -> TextLine {
-        let text = text.to_string();
+    pub fn form_info(&self, text: &str) -> Vec<LineInfo> {
         let mut formless_text = text.to_string();
         let mut info = LineInfo::default();
         let mut removed_len = 0;
@@ -186,14 +63,12 @@ impl TextLineBuilder {
         for (index, (start, _)) in text.match_indices("[]").enumerate() {
             let start = start - removed_len;
             formless_text.replace_range(start..=(start + 1), "");
-            info.char_tags.insert((start, CharTag::PushForm(self.forms[index])));
+            info.char_tags.insert((start, Tag::PushForm(self.forms[index])));
             if index > 0 {
-                info.char_tags.insert((start, CharTag::PopForm(self.forms[index - 1])));
+                info.char_tags.insert((start, Tag::PopForm(self.forms[index - 1])));
             }
             removed_len += 2;
         }
-
-        TextLine { text: formless_text, info }
     }
 
     /// Makes it so this `TextLineBuilder`
@@ -275,7 +150,7 @@ where
         end_node.label.stop_printing();
     }
 
-    fn iter_tags_from(&self, line: usize) -> Peekable<impl Iterator<Item = &(usize, CharTag)>> {
+    fn iter_tags_from(&self, line: usize) -> Peekable<impl Iterator<Item = &(usize, Tag)>> {
         self.line_info[line..]
             .iter()
             .map(|LineInfo { char_tags, .. }| char_tags.iter())
@@ -367,7 +242,7 @@ where
 }
 
 fn trigger_on_byte<'a, U>(
-    tags: &mut Peekable<impl Iterator<Item = &'a (usize, CharTag)>>, byte: usize,
+    tags: &mut Peekable<impl Iterator<Item = &'a (usize, Tag)>>, byte: usize,
     label: &mut U::Label, form_former: &mut FormFormer,
 ) where
     U: Ui,
@@ -640,10 +515,10 @@ impl PrintInfo {
 //    }
 //}
 //
-fn cursor_tags(is_main: bool) -> (CharTag, CharTag, CharTag) {
+fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
-        (CharTag::MainCursor, CharTag::PushForm(MAIN_SEL_ID), CharTag::PopForm(MAIN_SEL_ID))
+        (Tag::MainCursor, Tag::PushForm(MAIN_SEL_ID), Tag::PopForm(MAIN_SEL_ID))
     } else {
-        (CharTag::MainCursor, CharTag::PushForm(EXTRA_SEL_ID), CharTag::PopForm(EXTRA_SEL_ID))
+        (Tag::MainCursor, Tag::PushForm(EXTRA_SEL_ID), Tag::PopForm(EXTRA_SEL_ID))
     }
 }

@@ -131,9 +131,9 @@ where
                 Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
             }
             if *line == main_line {
-                final_lines.push(self.main_line_builder.form_text_line(line_number));
+                final_lines.push(self.main_line_builder.form_info(line_number));
             } else {
-                final_lines.push(self.other_line_builder.form_text_line(line_number));
+                final_lines.push(self.other_line_builder.form_info(line_number));
             }
         }
 

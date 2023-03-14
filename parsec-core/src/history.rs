@@ -280,8 +280,3 @@ impl History {
         }
     }
 }
-
-/// An empty list of [String]s, representing an empty edit/file.
-pub fn empty_edit() -> Vec<String> {
-    vec![String::from("")]
-}
