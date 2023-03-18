@@ -35,7 +35,8 @@ pub struct Change {
 
 impl Change {
     /// Returns a new [Change].
-    pub fn new(added_text: String, range: impl RangeBounds<usize>, rope: &Rope) -> Self {
+    pub fn new(edit: impl ToString, range: impl RangeBounds<usize>, rope: &Rope) -> Self {
+        let edit = edit.to_string();
         let start = match range.start_bound() {
             std::ops::Bound::Included(&pos) => pos,
             std::ops::Bound::Excluded(&pos) => pos + 1,
@@ -50,14 +51,20 @@ impl Change {
 
         let taken_text: String = rope.chars_at(start).take(end - start).collect();
 
-        Change { start, added_text, taken_text }
+        Change {
+            start,
+            added_text: edit,
+            taken_text,
+        }
     }
 
-    /// In this function, it is assumed that [self] happened _after_ [older][Change].
-    fn try_merge(&mut self, older: Change) -> Result<(), Change> {
+    /// In this function, it is assumed that [`self`] happened _after_ [`older`][Change].
+    fn try_merge(&mut self, mut older: Change) -> Result<(), Change> {
         if older.added_range().contains(&self.start) {
             let removed_end = min(older.added_end(), self.taken_end());
-            older.added_text.replace_range(older.start..removed_end, &self.added_text);
+            older
+                .added_text
+                .replace_range(older.start..removed_end, &self.added_text);
             older.taken_text.push_str(&self.taken_text[removed_end..]);
 
             *self = older;
@@ -65,7 +72,8 @@ impl Change {
             Ok(())
         } else if self.taken_range().contains(&older.start) {
             let removed_end = min(self.taken_end(), older.added_end());
-            self.taken_text.replace_range(older.start..removed_end, &older.taken_text);
+            self.taken_text
+                .replace_range(older.start..removed_end, &older.taken_text);
             self.added_text.push_str(&older.added_text[removed_end..]);
 
             Ok(())
@@ -133,7 +141,9 @@ impl Moment {
         let chars_diff = change.added_end() as isize - change.taken_end() as isize;
 
         let last_index = assoc_index.unwrap_or_else(|| self.find_last_merger(&change));
-        let first_index = self.find_first_merger(&change, last_index).unwrap_or(last_index);
+        let first_index = self
+            .find_first_merger(&change, last_index)
+            .unwrap_or(last_index);
 
         if let Some(prev_change) = self.changes.get_mut(last_index) {
             let taken_change = std::mem::take(prev_change);
@@ -152,12 +162,19 @@ impl Moment {
             self.changes.push(change);
         };
 
+        let prior_changes = self
+            .changes
+            .drain(first_index..last_index)
+            .collect::<Vec<Change>>();
         let added_change = self.changes.get_mut(last_index).unwrap();
-        for prior_change in self.changes.drain(first_index..last_index) {
+        for prior_change in prior_changes {
             added_change.try_merge(prior_change);
         }
 
-        (first_index, initial_len as isize - self.changes.len() as isize)
+        (
+            first_index,
+            initial_len as isize - self.changes.len() as isize,
+        )
     }
 
     /// Searches for the first [Change] that can be merged with the one inserted on [last_index].
@@ -177,7 +194,10 @@ impl Moment {
 
     /// Finds a [Change] inside of a [Vec<Change>] that intersects another at its end.
     fn find_last_merger(&self, change: &Change) -> usize {
-        match self.changes.binary_search_by(|cmp| cmp.contains_ord(change)) {
+        match self
+            .changes
+            .binary_search_by(|cmp| cmp.contains_ord(change))
+        {
             Ok(index) => index,
             Err(index) => index,
         }
@@ -195,17 +215,28 @@ pub struct History {
 impl History {
     /// Returns a new instance of [History].
     pub fn new() -> History {
-        History { moments: Vec::new(), current_moment: 0 }
+        History {
+            moments: Vec::new(),
+            current_moment: 0,
+        }
     }
 
     /// Gets a mutable reference to the current [Moment], if not at the very beginning.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
-        if self.current_moment > 0 { self.moments.get_mut(self.current_moment - 1) } else { None }
+        if self.current_moment > 0 {
+            self.moments.get_mut(self.current_moment - 1)
+        } else {
+            None
+        }
     }
 
     /// Gets a reference to the current [Moment], if not at the very beginning.
     pub fn current_moment(&self) -> Option<&Moment> {
-        if self.current_moment > 0 { self.moments.get(self.current_moment - 1) } else { None }
+        if self.current_moment > 0 {
+            self.moments.get(self.current_moment - 1)
+        } else {
+            None
+        }
     }
 
     /// Adds a [Change] to the current [Moment], or adds it to a new one, if no [Moment] exists.
@@ -215,7 +246,10 @@ impl History {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during its insertion.
     pub fn add_change(
-        &mut self, change: Change, assoc_index: Option<usize>, print_info: PrintInfo,
+        &mut self,
+        change: Change,
+        assoc_index: Option<usize>,
+        print_info: PrintInfo,
     ) -> (usize, isize) {
         // Cut off any actions that take place after the current one. We don't really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
@@ -225,7 +259,11 @@ impl History {
             moment.add_change(change, assoc_index)
         } else {
             self.new_moment(print_info);
-            self.moments.last_mut().unwrap().changes.push(change.clone());
+            self.moments
+                .last_mut()
+                .unwrap()
+                .changes
+                .push(change.clone());
 
             (0, 1)
         }
@@ -234,7 +272,10 @@ impl History {
     /// Declares that the current [Moment] is complete and starts a new one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
-        if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
+        if self
+            .current_moment_mut()
+            .map_or(true, |m| !m.changes.is_empty())
+        {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }

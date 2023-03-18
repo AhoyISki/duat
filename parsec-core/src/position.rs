@@ -4,9 +4,9 @@ use ropey::Rope;
 
 use crate::{
     history::{Change, History, Moment},
-    split_string_lines,
-    text::{PrintInfo, Text, TextLine},
+    text::{PrintInfo, Text},
     ui::{EndNode, Label, Ui},
+    widgets::EditAccum,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -27,10 +27,15 @@ impl Pos {
         self.col = self.ch - rope.line_to_char(self.row);
     }
 
-    fn new(ch: usize, rope: &Rope) -> Pos {
+    pub fn new(ch: usize, rope: &Rope) -> Pos {
         let row = rope.char_to_line(ch);
         let row_ch = rope.line_to_char(row);
-        Pos { byte: rope.char_to_byte(ch), ch, col: ch - row_ch, row }
+        Pos {
+            byte: rope.char_to_byte(ch),
+            ch,
+            col: ch - row_ch,
+            row,
+        }
     }
 
     /// Returns the byte (relative to the beginning of the file), indexed at 1. Intended only
@@ -107,17 +112,17 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, lines: &[TextLine], end_node: &EndNode<U>) -> Cursor
+    pub fn new<U>(pos: Pos, rope: &Rope, end_node: &EndNode<U>) -> Cursor
     where
         U: Ui,
     {
-        let line = lines.get(pos.row).unwrap();
+        let line = rope.line(pos.row);
         Cursor {
             caret: pos,
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: line.get_dist_to_col(pos.col, end_node),
+            desired_x: end_node.get_width(line.slice(0..pos.col)),
         }
     }
 
@@ -128,11 +133,16 @@ impl Cursor {
     {
         let cur = &mut self.caret;
 
-        cur.row = min(cur.row.saturating_add_signed(count), rope.len_lines().saturating_sub(1));
+        cur.row = min(
+            cur.row.saturating_add_signed(count),
+            rope.len_lines().saturating_sub(1),
+        );
         let line = rope.line(cur.row);
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        cur.col = end_node.label.col_at_dist(line, self.desired_x, &end_node.config().tab_places);
+        cur.col = end_node
+            .label
+            .col_at_dist(line, self.desired_x, &end_node.config().tab_places);
 
         cur.ch = rope.line_to_char(cur.row) + cur.col;
         cur.byte = rope.char_to_byte(cur.ch);
@@ -150,8 +160,9 @@ impl Cursor {
         let line_ch = rope.line_to_char(cur.row);
         cur.col = cur.ch - line_ch;
 
-        self.desired_x =
-            end_node.label.get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
+        self.desired_x = end_node
+            .label
+            .get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
 
         self.anchor = None;
     }
@@ -170,8 +181,9 @@ impl Cursor {
         cur.ch = rope.line_to_char(cur.row) + cur.col;
         cur.byte = rope.char_to_byte(cur.ch);
 
-        self.desired_x =
-            end_node.label.get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
+        self.desired_x = end_node
+            .label
+            .get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
 
         self.anchor = None;
     }
@@ -181,7 +193,19 @@ impl Cursor {
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> Range<usize> {
         let anchor = self.anchor.unwrap_or(self.caret);
-        if anchor < self.caret { anchor.ch..self.caret.ch } else { self.caret.ch..anchor.ch }
+        if anchor < self.caret {
+            anchor.ch..self.caret.ch
+        } else {
+            self.caret.ch..anchor.ch
+        }
+    }
+
+    /// Returns the range between `target` and `anchor`.
+    ///
+    /// If `anchor` isn't set, returns an empty range on `target`.
+    pub fn pos_range(&self) -> (Pos, Pos) {
+        let anchor = self.anchor.unwrap_or(self.caret);
+        (self.caret.min(anchor), self.caret.max(anchor))
     }
 
     /// Returns the cursor's position on the screen.
@@ -190,14 +214,21 @@ impl Cursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate_on_adder<U>(
-        &mut self, ch_diff: isize, change_diff: isize, rope: &Rope, end_node: &EndNode<U>,
+    pub(crate) fn calibrate_on_accum<U>(
+        &mut self,
+        edit_accum: &EditAccum,
+        rope: &Rope,
+        end_node: &EndNode<U>,
     ) where
         U: Ui,
     {
-        self.assoc_index.as_mut().map(|i| i.saturating_add_signed(change_diff));
-        self.caret.calibrate(ch_diff, rope);
-        self.anchor.as_mut().map(|anchor| anchor.calibrate(ch_diff, rope));
+        self.assoc_index
+            .as_mut()
+            .map(|i| i.saturating_add_signed(edit_accum.changes));
+        self.caret.calibrate(edit_accum.chars, rope);
+        self.anchor
+            .as_mut()
+            .map(|anchor| anchor.calibrate(edit_accum.chars, rope));
     }
 
     /// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
@@ -206,7 +237,7 @@ impl Cursor {
     pub fn change_range_check(&mut self, moment: &Moment) {
         if let Some(assoc_change) = self.assoc_index {
             if let Some(change) = moment.changes.get(assoc_change) {
-                if !intersects(change.added_range(), self.range()) {
+                if !range_intersects(change.added_range(), self.range()) {
                     self.assoc_index = None;
                 }
             } else {
@@ -269,17 +300,46 @@ impl Cursor {
     pub fn true_row(&self) -> usize {
         self.caret.row
     }
+
+    pub(crate) fn try_merge(&mut self, start: Pos, end: Pos) -> Result<(), ()> {
+        if !pos_intersects(self.pos_range(), (start, end)) {
+            return Err(());
+        }
+        let Some(anchor) = self.anchor.as_mut() else {
+            self.anchor = Some(start);
+            self.caret = self.caret.max(end);
+            return Ok(());
+        };
+
+        if *anchor > self.caret {
+            *anchor = (*anchor).max(end);
+            self.caret = self.caret.min(start);
+        } else {
+            *anchor = (*anchor).min(start);
+            self.caret = self.caret.max(end);
+        }
+
+        Ok(())
+    }
 }
 
 impl Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.caret.row + 1, self.caret.col + 1))
+        f.write_fmt(format_args!(
+            "{}:{}",
+            self.caret.row + 1,
+            self.caret.col + 1
+        ))
     }
 }
 
 impl Clone for Cursor {
     fn clone(&self) -> Self {
-        Cursor { desired_x: self.caret.col, assoc_index: None, ..*self }
+        Cursor {
+            desired_x: self.caret.col,
+            assoc_index: None,
+            ..*self
+        }
     }
 }
 
@@ -291,8 +351,7 @@ where
     cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
     end_node: &'a EndNode<U>,
-    ch_diff: &'a mut isize,
-    change_diff: &'a mut isize,
+    edit_accum: &'a mut EditAccum,
     print_info: Option<PrintInfo>,
     history: Option<&'a mut History>,
 }
@@ -303,11 +362,22 @@ where
 {
     /// Returns a new instance of `Editor`.
     pub fn new(
-        cursor: &'a mut Cursor, text: &'a mut Text<U>, end_node: &'a EndNode<U>,
-        ch_diff: &'a mut isize, change_diff: &'a mut isize, print_info: Option<PrintInfo>,
+        cursor: &'a mut Cursor,
+        text: &'a mut Text<U>,
+        end_node: &'a EndNode<U>,
+        edit_accum: &'a mut EditAccum,
+        print_info: Option<PrintInfo>,
         history: Option<&'a mut History>,
     ) -> Self {
-        Self { cursor, text, end_node, ch_diff, change_diff, print_info, history }
+        cursor.calibrate_on_accum(edit_accum, text.rope(), end_node);
+        Self {
+            cursor,
+            text,
+            end_node,
+            edit_accum,
+            print_info,
+            history,
+        }
     }
 
     /// Replaces the entire selection of the `TextCursor` with new text.
@@ -319,7 +389,7 @@ where
 
         if let Some(anchor) = &mut self.cursor.anchor {
             if anchor.ch > self.cursor.caret.ch {
-                *anchor = Pos::new(change.added_end(), self.text.rope());
+                *anchor = Pos::new(end, self.text.rope());
                 return;
             }
         }
@@ -332,13 +402,14 @@ where
     pub fn insert(&mut self, edit: impl ToString) {
         let range = self.cursor.caret.ch..self.cursor.caret.ch;
         let change = Change::new(edit.to_string(), range, self.text.rope());
+        let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
-        let ch_diff = change.added_end() as isize - change.taken_end() as isize;
+        let ch_diff = added_end as isize - taken_end as isize;
 
         if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor > self.cursor.caret() {
+            if *anchor > self.cursor.caret {
                 anchor.calibrate(ch_diff, self.text.rope());
             }
         }
@@ -353,7 +424,7 @@ where
             let (insertion_index, change_diff) =
                 history.add_change(change, assoc_index, self.print_info.unwrap_or_default());
             self.cursor.assoc_index = Some(insertion_index);
-            *self.change_diff += change_diff;
+            self.edit_accum.changes += change_diff;
         }
     }
 }
@@ -375,10 +446,17 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut Cursor, text: &'a Text<U>, end_node: &'a EndNode<U>,
+        cursor: &'a mut Cursor,
+        text: &'a Text<U>,
+        end_node: &'a EndNode<U>,
         current_moment: Option<&'a Moment>,
     ) -> Self {
-        Self { cursor, text, end_node, current_moment }
+        Self {
+            cursor,
+            text,
+            end_node,
+            current_moment,
+        }
     }
 
     ////////// Public movement functions
@@ -470,6 +548,10 @@ where
     }
 }
 
-fn intersects(first: Range<usize>, second: Range<usize>) -> bool {
+fn pos_intersects(left: (Pos, Pos), right: (Pos, Pos)) -> bool {
+    (left.0 > right.0 && right.1 > left.0) || (right.0 > left.0 && left.1 > right.0)
+}
+
+fn range_intersects(first: Range<usize>, second: Range<usize>) -> bool {
     first.end > second.start || second.end > first.start
 }

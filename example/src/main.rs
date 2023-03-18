@@ -93,11 +93,11 @@ fn main() {
         ],
         // Each "global_var" consists of 2 parts:
         // - An object in the form of `RoData<T>`.
-        // - A method that returns a `String` from `T`.
+        // - A method that returns a `String` from `M`.
         // `RoData` is, in essence, a multithreaded struct capable of holding data that can be
         // updated and read. It is the counterpart of `RwData`, as in, an `RwData<T>` can read
-        // and modify `T`, while an `RoData<T>`, created from `&RwData<T>`, will only be able to
-        // read `T`. These are the 2 structs that permit a great level of flexibility in sharing
+        // and modify `M`, while an `RoData<T>`, created from `&RwData<T>`, will only be able to
+        // read `M`. These are the 2 structs that permit a great level of flexibility in sharing
         // information without the process becoming too cumbersome.
         global_vars: [
             // In this case, `Editor::cur_mode()` returns an `RoData<D> where D: Display`. We
@@ -123,12 +123,8 @@ fn main() {
         Box::new(|mut mod_node, file| {
             let config =
                 LineNumbersConfig { alignment: Alignment::Right, numbering: Numbering::Hybrid };
-            mod_node.push_widget(
-                LineNumbers::new(file, config),
-                Side::Left,
-                Split::Min(1),
-                true,
-            );
+            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
+            mod_node.push_widget(LineNumbers::new(file, config), push_specs);
         }),
     );
 

@@ -1,5 +1,7 @@
 pub mod form;
 
+use std::ops::Range;
+
 use any_rope::{Measurable, Rope as AnyRope};
 use ropey::Rope as TextRope;
 
@@ -31,21 +33,6 @@ pub enum Tag {
     PermanentConceal { index: u16 },
 }
 
-#[derive(Clone, Copy)]
-enum TagOrSkip {
-    Tag(Tag, Lock),
-    Skip(u32),
-}
-
-impl Measurable for TagOrSkip {
-    fn width(&self) -> usize {
-        match self {
-            TagOrSkip::Tag(..) => 0,
-            TagOrSkip::Skip(count) => *count as usize,
-        }
-    }
-}
-
 impl Tag {
     pub(crate) fn trigger<L, A>(&self, label: &mut L, form_former: &mut FormFormer)
     where
@@ -61,50 +48,94 @@ impl Tag {
             _ => {}
         }
     }
+
+    pub fn inverse(&self) -> Option<Tag> {
+        match self {
+            Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
+            Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
+            Tag::HoverBound => Some(Tag::HoverBound),
+            _ => None,
+        }
+    }
 }
 
-struct CharTags(AnyRope<TagOrSkip>);
+#[derive(Clone, Copy)]
+enum TagOrSkip {
+    Tag(Tag, Lock),
+    Skip(u32),
+}
 
-impl CharTags {
+impl Measurable for TagOrSkip {
+    fn width(&self) -> usize {
+        match self {
+            TagOrSkip::Tag(..) => 0,
+            TagOrSkip::Skip(count) => *count as usize,
+        }
+    }
+}
+
+// TODO: Generic container.
+#[derive(Default)]
+pub struct Tags {
+    rope: AnyRope<TagOrSkip>,
+    last_lock: u16,
+}
+
+impl Tags {
     pub fn new(rope: &TextRope) -> Self {
         // An empty initial rope.
         let skip = TagOrSkip::Skip(rope.len_chars() as u32);
 
-        CharTags(AnyRope::from_slice(&[skip]))
+        Tags {
+            rope: AnyRope::from_slice(&[skip]),
+            last_lock: 0,
+        }
+    }
+
+    /// Gets a unique [`Lock`], for the purpose of "private" [`Tag`]
+    /// insertion and removal.
+    pub fn get_lock(&mut self) -> Lock {
+        self.last_lock += 1;
+        Lock(self.last_lock)
     }
 
     pub fn insert(&mut self, tag: Tag, lock: Lock, ch_index: usize) {
-        let (start_ch_index, tag_or_skip) = self.0.from_width(ch_index);
+        let (start_ch_index, tag_or_skip) = self.rope.from_width(ch_index);
         let TagOrSkip::Skip(count) = tag_or_skip else {
-            self.0.insert(ch_index, TagOrSkip::Tag(tag, lock));
+            self.rope.insert(ch_index, TagOrSkip::Tag(tag, lock));
             return;
         };
 
         // If inserting at any of the ends, no splitting is necessary.
         if ch_index == start_ch_index || ch_index == (start_ch_index + count as usize) {
-            self.0.insert(ch_index, TagOrSkip::Tag(tag, lock))
+            self.rope.insert(ch_index, TagOrSkip::Tag(tag, lock))
         } else {
-            self.0.remove(start_ch_index..(start_ch_index + 1));
+            let skip_range = start_ch_index..(start_ch_index + count as usize);
+            self.rope.remove_exclusive(skip_range);
             let insertion = [
                 TagOrSkip::Skip((ch_index - start_ch_index) as u32),
                 TagOrSkip::Tag(tag, lock),
                 TagOrSkip::Skip(start_ch_index as u32 + count - ch_index as u32),
             ];
 
-            self.0.insert_slice(start_ch_index, &insertion);
+            self.rope.insert_slice(start_ch_index, &insertion);
         }
     }
 
-	/// Removes all [Tag]s associated with a given [Lock] in the `ch_index`.
-    pub fn remove(&mut self, lock: Lock, ch_index: usize) {
-        let slice = self.0.width_slice(ch_index..ch_index);
-        let tags = self.0.iter_at_width(0);
+    /// Removes all [Tag]s associated with a given [Lock] in the `ch_index`.
+    pub fn remove(&mut self, ch_index: usize, lock: Lock) {
+        let slice = self.rope.width_slice(ch_index..ch_index);
+        let tags = self.rope.iter_at_width(0);
         let tags = tags
             .filter_map(|(_, tag_or_skip)| {
                 if let TagOrSkip::Tag(tag, cmp_lock) = tag_or_skip {
                     // Take all tags with the wrong `Lock`.
                     // Those will be kept.
-                    if cmp_lock != lock { Some(TagOrSkip::Tag(tag, cmp_lock)) } else { None }
+                    if cmp_lock != lock {
+                        Some(TagOrSkip::Tag(tag, cmp_lock))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -112,9 +143,54 @@ impl CharTags {
             .collect::<Vec<TagOrSkip>>();
 
         if !tags.is_empty() {
-            self.0.remove(ch_index..ch_index);
-            self.0.insert_slice(ch_index, tags.as_slice());
+            self.rope.remove_inclusive(ch_index..ch_index);
+            self.rope.insert_slice(ch_index, tags.as_slice());
         }
+    }
+
+    pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {
+        let Some((start_width, tag)) = self.rope.get_from_width(old.start) else {
+            return;
+        };
+
+        let removal_start = start_width.min(old.start);
+        let removal_end = old.end.max(start_width + tag.width());
+
+        let range_diff = new.count() as isize - old.count() as isize;
+        let skip = (removal_end - removal_start).saturating_add_signed(range_diff) as u32;
+
+        self.rope.remove_exclusive(removal_start..removal_end);
+        self.rope.insert(start_width, TagOrSkip::Skip(skip));
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
+        self.rope.iter().filter_map(|(width, tag_or_skip)| {
+            if let TagOrSkip::Tag(tag, _) = tag_or_skip {
+                Some((width, tag))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + '_ {
+        self.rope
+            .iter_at_width(ch_index)
+            .filter_map(|(width, tag_or_skip)| {
+                if let TagOrSkip::Tag(tag, _) = tag_or_skip {
+                    Some((width, tag))
+                } else {
+                    None
+                }
+            })
+    }
+
+    pub fn len(&self) -> usize {
+        self.rope.len()
+    }
+
+    pub fn width(&self) -> usize {
+        self.rope.width()
     }
 }
 

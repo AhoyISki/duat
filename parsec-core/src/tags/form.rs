@@ -97,8 +97,14 @@ pub struct ExtraForms(Vec<(String, Form)>);
 pub const DEFAULT: u16 = 0;
 pub const LINE_NUMBERS: u16 = 1;
 pub const MAIN_LINE_NUMBER: u16 = 2;
-pub const MAIN_SEL_ID: u16 = 3;
-pub const EXTRA_SEL_ID: u16 = 4;
+pub const WRAPPED_LINE_NUMBERS: u16 = 3;
+pub const WRAPPED_MAIN_LINE_NUMBER: u16 = 4;
+pub const MAIN_SEL: u16 = 5;
+pub const EXTRA_SEL: u16 = 6;
+pub const FILE_NAME: u16 = 7;
+pub const SELECTIONS: u16 = 8;
+pub const COORDS: u16 = 9;
+pub const SEPARATOR: u16 = 10;
 
 /// The list of forms to be used when rendering.
 #[derive(Debug, Clone)]
@@ -117,11 +123,14 @@ impl Default for FormPalette {
             (String::from("Default"), Form::default()),
             (String::from("LineNumbers"), Form::default()),
             (String::from("MainLineNumber"), Form::default()),
+            (String::from("WrappedLineNumbers"), Form::default()),
+            (String::from("WrappedMainLineNumber"), Form::default()),
             (String::from("MainSelection"), selection_form),
-            (String::from("SecondarySelection"), selection_form),
+            (String::from("ExtraSelection"), selection_form),
             (String::from("FileName"), Form::new(false).yellow().italic()),
-            (String::from("Coords"), Form::new(false).dark_yellow()),
             (String::from("Selections"), Form::new(false).dark_blue()),
+            (String::from("Coords"), Form::new(false).dark_yellow()),
+            (String::from("Separator"), Form::new(false).cyan()),
         ];
 
         Self { main_cursor, extra_cursor: main_cursor, forms }
@@ -158,18 +167,14 @@ impl FormPalette {
     }
 
     /// Returns the `Form` associated to a given name with the index for efficient access.
-    pub fn get_from_name<S>(&self, name: S) -> (Form, u16)
+    pub fn from_name<S>(&self, name: S) -> Option<(Form, u16)>
     where
         S: ToString,
     {
         let name = name.to_string();
 
         let name_match = self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name);
-        if let Some(tuple) = name_match.map(|(index, &(_, form))| (form, index as u16)) {
-            return tuple;
-        } else {
-            panic!("The form of name \"{}\" wasn't added!", name);
-        }
+        name_match.map(|(index, &(_, form))| (form, index as u16))
     }
 
     /// Returns a form, given an index.

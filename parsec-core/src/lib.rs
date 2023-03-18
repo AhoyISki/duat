@@ -9,7 +9,6 @@ pub mod widgets;
 
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -17,7 +16,6 @@ use std::{
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
-use position::Pos;
 use ui::{EndNode, ModNode, NodeIndex, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
@@ -362,34 +360,6 @@ fn blink_cursors_and_send_key<U, W, I>(
 
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
-}
-
-pub fn identifier_matches<U>(
-    widget: &Arc<Mutex<dyn ActionableWidget<U>>>, identifier: impl AsRef<str>,
-) -> bool
-where
-    U: Ui + 'static,
-{
-    widget.lock().unwrap().identifier() == identifier.as_ref()
-}
-
-/// Creates a vector of `&str`s from a `String`, making sure to keep at least one empty
-/// string at the end, in case of an empty, or `\n` terminated string.
-fn split_string_lines(string: &String) -> Vec<String> {
-    if string.is_empty() {
-        vec![String::from("")]
-    } else {
-        let mut lines: Vec<String> = string.split_inclusive('\n').map(|s| s.to_string()).collect();
-        if string.ends_with('\n') {
-            lines.push(String::from(""));
-        }
-        lines
-    }
-}
-
-/// Gets the line-byte at a given col in a string.
-pub fn get_byte_at_col(col: usize, text: &String) -> usize {
-    text.char_indices().nth(col).map(|c| c.0).unwrap_or(text.len())
 }
 
 //////////// Useful for testing.

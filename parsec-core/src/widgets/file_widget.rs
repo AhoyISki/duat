@@ -11,11 +11,11 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
 
-use super::{ActionableWidget, NormalWidget, Widget};
+use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RwData},
     history::History,
-    position::{Cursor, Editor, Mover, SpliceAdder},
+    position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
     ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
@@ -79,18 +79,15 @@ where
 
         self.cursors.clear();
 
-        let mut splice_adder = SpliceAdder::default();
+        let mut chars = 0isize;
         for change in &moment.changes {
-            let mut splice = change.splice;
+            chars += change.added_end() as isize - change.taken_end() as isize;
+            self.text.undo_change(&change, chars);
 
-            splice.calibrate_on_adder(&splice_adder);
-            splice_adder.reset_cols(&splice.added_end);
-
-            self.text.undo_change(&change, &splice);
-
-            splice_adder.calibrate(&splice.reverse());
-
-            self.cursors.push(Cursor::new(splice.taken_end(), &self.text.lines(), end_node));
+            let new_caret_ch = change.taken_end().saturating_add_signed(chars);
+            let pos = Pos::new(new_caret_ch, self.text.rope());
+            self.cursors
+                .push(Cursor::new(pos, &self.text.rope(), end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.taken_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -112,9 +109,9 @@ where
         for change in &moment.changes {
             self.text.apply_change(&change);
 
-            let splice = change.splice;
-
-            self.cursors.push(Cursor::new(splice.added_end(), &self.text.lines(), &end_node));
+            let new_pos = Pos::new(change.added_end(), self.text.rope());
+            self.cursors
+                .push(Cursor::new(new_pos, &self.text.rope(), &end_node));
 
             //let range = TextRange { start: splice.start(), end: splice.added_end() };
             //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
@@ -124,23 +121,22 @@ where
 
     fn set_printed_lines(&mut self, end_node: &EndNode<U>) {
         let height = end_node.label.area().height();
-        let mut lines_iter = self.text.lines().iter().enumerate();
+        let slice = self.text.rope().slice(self.print_info.first_ch..);
+        let mut lines_iter = slice.lines().enumerate();
 
         self.printed_lines.clear();
+        self.printed_lines.reserve_exact(height);
 
-        let mut d_y = min(height, 1);
-        for _ in 0..d_y {
-            self.printed_lines.push(self.print_info.top_row);
-        }
+        let mut accum = min(height, 1);
 
         let wrap_method = end_node.config().wrap_method;
         let tab_places = &end_node.config().tab_places;
 
-        while let (Some((index, line)), true) = (lines_iter.next(), d_y < height) {
-            let wrap_count = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
-            let old_d_y = d_y;
-            d_y = min(d_y + wrap_count + 1, height);
-            for _ in old_d_y..d_y {
+        while let (Some((index, line)), true) = (lines_iter.next(), accum < height) {
+            let wrap_count = end_node.label.wrap_count(line, wrap_method, tab_places);
+            let prev_accum = accum;
+            accum = min(accum + wrap_count + 1, height);
+            for _ in prev_accum..accum {
                 self.printed_lines.push(index);
             }
         }
@@ -159,13 +155,15 @@ where
 
     /// Ends the current moment and starts a new one.
     pub fn new_moment(&mut self) {
-        self.cursors.iter_mut().for_each(|cursor| cursor.assoc_index = None);
+        self.cursors
+            .iter_mut()
+            .for_each(|cursor| cursor.assoc_index = None);
         self.history.new_moment(self.print_info);
     }
 
     /// The list of `TextCursor`s on the file.
-    pub fn cursors(&self) -> Vec<Cursor> {
-        self.cursors.clone()
+    pub fn cursors(&self) -> &[Cursor] {
+        self.cursors.as_slice()
     }
 
     /// A mutable reference to the `Text` of self.
@@ -191,8 +189,12 @@ where
     }
 
     /// The lenght of the file, in lines.
-    pub fn len(&self) -> usize {
-        self.text.lines().len()
+    pub fn len_chars(&self) -> usize {
+        self.text.rope().len_chars()
+    }
+
+    pub(crate) fn len_lines(&self) -> usize {
+        self.text.rope().len_lines()
     }
 
     /// The `PrintInfo` of the `FileWidget`.
@@ -223,7 +225,8 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info.update(self.main_cursor().caret(), &self.text, end_node);
+        self.print_info
+            .update(self.main_cursor().caret(), self.text.rope(), end_node);
         self.set_printed_lines(end_node);
 
         //let mut node = self.end_node.write();
@@ -250,20 +253,28 @@ where
     U: Ui + 'static,
 {
     fn editor<'a>(
-        &'a mut self, index: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+        &'a mut self,
+        index: usize,
+        edit_accum: &'a mut EditAccum,
+        end_node: &'a EndNode<U>,
     ) -> Editor<U> {
         Editor::new(
             &mut self.cursors[index],
-            splice_adder,
             &mut self.text,
             end_node,
-            Some(&mut self.history),
+            edit_accum,
             Some(self.print_info),
+            Some(&mut self.history),
         )
     }
 
     fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, end_node, self.history.current_moment())
+        Mover::new(
+            &mut self.cursors[index],
+            &self.text,
+            end_node,
+            self.history.current_moment(),
+        )
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {

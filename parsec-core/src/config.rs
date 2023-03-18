@@ -15,7 +15,6 @@ use no_deadlocks::{Mutex, MutexGuard};
 
 use crate::{
     tags::form::FormPalette,
-    text::TextLine,
     ui::{Area, Label, Ui},
 };
 
@@ -36,13 +35,13 @@ pub enum WrapMethod {
 // Pretty much only exists because i wanted one of these with usize as its builtin type.
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
-    pub d_y: usize,
-    pub d_x: usize,
+    pub y_gap: usize,
+    pub x_gap: usize,
 }
 
 impl Default for ScrollOff {
     fn default() -> Self {
-        ScrollOff { d_y: 5, d_x: 3 }
+        ScrollOff { y_gap: 3, x_gap: 3 }
     }
 }
 
@@ -118,16 +117,6 @@ pub struct Config {
     pub show_new_line: ShowNewLine,
     /// The palette of forms that will be used.
     pub palette: FormPalette,
-}
-
-impl Config {
-    pub fn usable_indent<U>(&self, line: &TextLine, label: &U::Label) -> usize
-    where
-        U: Ui,
-    {
-        let indent = line.indent(self);
-        if self.wrap_indent && indent < label.area().width() { indent } else { 0 }
-    }
 }
 
 pub trait DownCastableData: Any {

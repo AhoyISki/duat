@@ -1,84 +1,103 @@
-use std::any::Any;
-
-use super::{file_widget::FileWidget, NormalWidget};
-use crate::{
-    config::{DownCastableData, RoData},
-    tags::form::FormPalette,
-    text::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, Ui},
+use std::{
+    any::Any,
+    sync::{Arc, Mutex},
 };
 
-pub trait DataToString {
-    /// Converts the data to a `String`, usually through an embedded function.
-    fn to_string(&mut self) -> String;
+use super::{file_widget::FileWidget, NormalWidget, Widget};
+use crate::{
+    config::{DownCastableData, RoData, RwData},
+    tags::{
+        form::{Form, FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
+        Tag,
+    },
+    text::{Text, TextBuilder},
+    ui::{EndNode, PushSpecs, Side, Ui},
+    SessionManager,
+};
 
-    /// Wether or not the data has changed since last read.
-    fn has_changed(&self) -> bool;
+pub enum Reader<U>
+where
+    U: Ui,
+{
+    Obj(Box<dyn Fn() -> String>),
+    File(Box<dyn Fn(&FileWidget<U>) -> String>),
 }
 
-struct DataString<T, F>
+impl<U> Reader<U>
 where
-    F: Fn(&T) -> String,
-    T: 'static,
+    U: Ui,
 {
-    data: RoData<T>,
-    to_string: Box<F>,
-}
-
-impl<T, F> DataString<T, F>
-where
-    F: Fn(&T) -> String,
-{
-    /// Returns a new instance of `StringState`.
-    fn new(state: RoData<T>, to_string: F) -> Self {
-        DataString { data: state, to_string: Box::new(to_string) }
+    fn read(&self, file_widget: &FileWidget<U>) -> String {
+        match self {
+            Reader::Obj(obj_fn) => obj_fn(),
+            Reader::File(file_fn) => file_fn(file_widget),
+        }
     }
 }
 
-impl<T, F> DataToString for DataString<T, F>
+pub enum StatusPart<U>
 where
-    F: Fn(&T) -> String,
-    T: 'static,
+    U: Ui,
 {
-    fn to_string(&mut self) -> String {
-        (self.to_string)(&mut self.data.read())
-    }
+    Dynamic(Reader<U>),
+    Static(&'static str),
+}
 
-    fn has_changed(&self) -> bool {
-        self.data.has_changed()
+impl<U> StatusPart<U>
+where
+    U: Ui,
+{
+    fn process(
+        self,
+        text_builder: &mut TextBuilder<U>,
+        file_widget: &FileWidget<U>,
+        palette: &FormPalette,
+    ) -> Option<Reader<U>> {
+        match self {
+            StatusPart::Dynamic(Reader::Obj(obj_fn)) => {
+                text_builder.push_swappable(obj_fn());
+                Some(Reader::Obj(obj_fn))
+            }
+            StatusPart::Dynamic(Reader::File(file_fn)) => {
+                text_builder.push_swappable(file_fn(file_widget));
+                Some(Reader::File(file_fn))
+            }
+            StatusPart::Static(text) => {
+                push_forms_and_text(text, text_builder, palette);
+                None
+            }
+        }
     }
 }
 
-struct DataStringIndexed<T, F>
+fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
 where
-    F: Fn(&Vec<T>, usize) -> String,
-    T: 'static,
+    U: Ui,
 {
-    data: RoData<Vec<T>>,
-    to_string: Box<F>,
-    index: RoData<usize>,
-}
+    let mut prev_l_index = None;
+    for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
+        let Some(l_index) = prev_l_index else {
+            text_builder.push_text(&text[..next_l_index]);
+            prev_l_index = Some(next_l_index);
+            continue;
+        };
 
-impl<T, F> DataStringIndexed<T, F>
-where
-    F: Fn(&Vec<T>, usize) -> String,
-{
-    fn new(state: RoData<Vec<T>>, to_string: F, index: RoData<usize>) -> Self {
-        Self { data: state, to_string: Box::new(to_string), index }
-    }
-}
+        if let Some((r_index, (_, form_id))) = text[(l_index + 1)..next_l_index]
+            .find(']')
+            .map(|r_index| {
+                palette
+                    .from_name(&text[l_index..r_index])
+                    .map(|form_id| (r_index, form_id))
+            })
+            .flatten()
+        {
+            text_builder.push_tag(Tag::PushForm(form_id));
+            text_builder.push_text(&text[(r_index + 1)..next_l_index]);
+        } else {
+            text_builder.push_text(&text[l_index..next_l_index]);
+        }
 
-impl<T, F> DataToString for DataStringIndexed<T, F>
-where
-    F: Fn(&Vec<T>, usize) -> String,
-    T: 'static,
-{
-    fn to_string(&mut self) -> String {
-        (self.to_string)(&mut self.data.read(), *self.index.read())
-    }
-
-    fn has_changed(&self) -> bool {
-        self.data.has_changed()
+        prev_l_index = Some(next_l_index);
     }
 }
 
@@ -86,22 +105,145 @@ pub struct StatusLine<U>
 where
     U: Ui,
 {
-    text: Text<U>,
     file_widget: RoData<FileWidget<U>>,
-    format: StatusFormat<U>,
+    text_builder: TextBuilder<U>,
+    readers: Vec<Reader<U>>,
+    clippable: bool,
 }
 
 impl<U> StatusLine<U>
 where
     U: Ui,
 {
-    pub fn new(file_widget: RoData<FileWidget<U>>, status_format: StatusFormat<U>) -> Self {
-        StatusLine { text: Text::default(), file_widget, format: status_format }
+    pub fn clippable_fn(
+        mut file_widget: RoData<FileWidget<U>>,
+        status_parts: Vec<StatusPart<U>>,
+        palette: &FormPalette,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        let mut text_builder = TextBuilder::default();
+        let mut readers = Vec::new();
+        let file = file_widget.read();
+        for part in status_parts.into_iter() {
+            if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                readers.push(reader);
+            }
+        }
+
+        drop(file);
+        StatusLine::new_fn(file_widget, text_builder, readers, false)
+    }
+
+    pub fn unclippable_fn(
+        mut file_widget: RoData<FileWidget<U>>,
+        status_parts: Vec<StatusPart<U>>,
+        palette: &FormPalette,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        let mut text_builder = TextBuilder::default();
+        let mut readers = Vec::new();
+        let file = file_widget.read();
+        for part in status_parts.into_iter() {
+            if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                readers.push(reader);
+            }
+        }
+
+        drop(file);
+        StatusLine::new_fn(file_widget, text_builder, readers, false)
+    }
+
+    fn new_fn(
+        file_widget: RoData<FileWidget<U>>,
+        text_builder: TextBuilder<U>,
+        readers: Vec<Reader<U>>,
+        clippable: bool,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        Box::new(move |_, _| {
+            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(StatusLine {
+                file_widget,
+                text_builder,
+                readers,
+                clippable,
+            }))))
+        })
+    }
+
+    pub fn default_fn(
+        mut file_widget: RoData<FileWidget<U>>,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        let name = Reader::File(file_name());
+        let sels = Reader::File(file_selections());
+        let col = Reader::File(main_col());
+        let line = Reader::File(main_line());
+        let lines = Reader::File(file_lines_len());
+
+        let file = file_widget.read();
+        let mut text_builder = TextBuilder::default();
+
+        text_builder.push_tag(Tag::PushForm(FILE_NAME));
+        text_builder.push_swappable(name.read(&file));
+        text_builder.push_tag(Tag::PushForm(SELECTIONS));
+        text_builder.push_swappable(sels.read(&file));
+        text_builder.push_tag(Tag::PushForm(COORDS));
+        text_builder.push_swappable(col.read(&file));
+        text_builder.push_tag(Tag::PushForm(SEPARATOR));
+        text_builder.push_text(":");
+        text_builder.push_tag(Tag::PushForm(COORDS));
+        text_builder.push_swappable(line.read(&file));
+        text_builder.push_tag(Tag::PushForm(SEPARATOR));
+        text_builder.push_text("/");
+        text_builder.push_tag(Tag::PushForm(COORDS));
+        text_builder.push_swappable(lines.read(&file));
+
+        let readers = vec![name, sels, col, line, lines];
+
+		drop(file);
+        StatusLine::new_fn(file_widget, text_builder, readers, true)
     }
 
     pub fn set_file(&mut self, file_widget: RoData<FileWidget<U>>) {
         self.file_widget = file_widget;
     }
+}
+
+fn file_lines_len<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui,
+{
+    Box::new(|file| file.len_lines().to_string())
+}
+
+fn main_line<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui,
+{
+    Box::new(|file| file.main_cursor().row().to_string())
+}
+
+fn main_col<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui,
+{
+    Box::new(|file| file.main_cursor().col().to_string())
+}
+
+fn file_selections<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui,
+{
+    Box::new(|file| {
+        if file.cursors().len() == 1 {
+            String::from("1 sel")
+        } else {
+            join![file.cursors().len(), "sels"]
+        }
+    })
+}
+
+fn file_name<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui,
+{
+    Box::new(|file| file.name().to_string())
 }
 
 impl<U> DownCastableData for StatusLine<U>
@@ -120,298 +262,84 @@ where
         "parsec-status-line"
     }
 
-    fn update(&mut self, end_node: &mut EndNode<U>) {
-        if self.format.text_changed {
-            self.format.text_changed = false;
-            self.format.update_formater(&end_node.config().palette);
+    fn update(&mut self, _end_node: &mut EndNode<U>) {
+        let file = self.file_widget.read();
+
+        for (index, reader) in self.readers.iter().enumerate() {
+            self.text_builder.swap_range(index, reader.read(&file));
         }
-
-        let file_widget = self.file_widget.read();
-        let form_count = self.format.text_line_builder.form_count();
-
-        let texts = substitute_printables(&mut self.format, &file_widget);
-        let status = normalize_status::<U>(texts, form_count, end_node);
-
-        self.text = Text::from(self.format.text_line_builder.form_info(status));
     }
 
     fn needs_update(&self) -> bool {
-        self.file_widget.has_changed() || self.format.has_changed()
+        true
     }
 
     fn text(&self) -> &Text<U> {
-        &self.text
+        &self.text_builder.text()
     }
 }
 
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 
-pub struct StatusFormat<U>
-where
-    U: Ui,
-{
-    text_line_builder: TextLineBuilder,
-    left: String,
-    center: String,
-    right: String,
-    global_printables: Vec<Box<dyn DataToString>>,
-    file_printables: Vec<Box<dyn Fn(&FileWidget<U>) -> String>>,
-    text_changed: bool,
-}
-
-impl<U> StatusFormat<U>
-where
-    U: Ui,
-{
-    /// Returns the default form of `StatusFormat<U>`.
-    pub fn default(palette: &FormPalette) -> Self {
-        let mut right_text = String::from("[FileName]() [Coords]() [Selections]() sel");
-        StatusFormat {
-            text_line_builder: TextLineBuilder::format_and_create(&mut right_text, palette),
-            left: String::new(),
-            center: String::new(),
-            right: right_text,
-            global_printables: Vec::new(),
-            file_printables: Vec::new(),
-            text_changed: true,
-        }
-    }
-
-    pub fn push<T, F>(&mut self, state: &RoData<T>, f: F)
-    where
-        T: 'static,
-        F: Fn(&T) -> String + 'static,
-    {
-        let new_state = DataString::new(state.clone(), f);
-        self.global_printables.push(Box::new(new_state));
-    }
-
-    pub fn push_indexed<T, F>(&mut self, state: &RoData<Vec<Box<T>>>, f: F, index: &RoData<usize>)
-    where
-        T: 'static,
-        F: Fn(&Vec<Box<T>>, usize) -> String + 'static,
-    {
-        let new_state = DataStringIndexed::new(state.clone(), f, index.clone());
-        self.global_printables.push(Box::new(new_state));
-    }
-
-    pub fn push_file_var<F>(&mut self, function: F)
-    where
-        F: Fn(&FileWidget<U>) -> String + 'static,
-    {
-        self.file_printables.push(Box::new(function));
-    }
-
-    fn has_changed(&self) -> bool {
-        self.global_printables.iter().any(|printable| printable.has_changed())
-    }
-
-    fn update_formater(&mut self, palette: &FormPalette) {
-        self.text_line_builder = TextLineBuilder::format_and_create(&mut self.left, palette);
-        self.text_line_builder.format_and_extend(&mut self.center, palette);
-        self.text_line_builder.format_and_extend(&mut self.right, palette);
-    }
-
-    pub fn left_text_mut(&mut self) -> &mut String {
-        &mut self.left
-    }
-
-    pub fn center_text_mut(&mut self) -> &mut String {
-        &mut self.center
-    }
-
-    pub fn right_text_mut(&mut self) -> &mut String {
-        &mut self.right
-    }
-}
-
-fn substitute_printables<U>(
-    format: &mut StatusFormat<U>, file_widget: &FileWidget<U>,
-) -> [String; 3]
-where
-    U: Ui,
-{
-    let mut global_iter = format.global_printables.iter_mut();
-    let mut file_iter = format.file_printables.iter_mut();
-
-    let mut texts = [format.left.clone(), format.center.clone(), format.right.clone()];
-    let mut texts_iter = texts.iter_mut().map(|text| (text.len(), text));
-
-    let (mut orig_len, mut text) = texts_iter.next().unwrap();
-
-    let substitutions = substitutions_iter(&format.left, &format.center, &format.right);
-
-    for (mut pos, var, is_last_in_place) in substitutions {
-        let replacement = if var == "{}" {
-            let replacement = global_iter.next().expect("Not enough global substitutions!");
-            replacement.to_string()
-        } else {
-            let replacement = file_iter.next().expect("Not enough file substitutions!");
-            (replacement)(&file_widget)
-        };
-
-        pos = pos.saturating_add_signed(text.len() as isize - orig_len as isize);
-        text.replace_range(pos..=(pos + 1), replacement.as_str());
-
-        if is_last_in_place {
-            let Some((next_orig_len, next_text)) = texts_iter.next() else {
-                break;
-            };
-            (orig_len, text) = (next_orig_len, next_text);
-        }
-    }
-
-    texts
-}
-
-// TODO: Evolve this into a system capable of handling non monospaced text.
-fn normalize_status<U>(texts: [String; 3], form_count: usize, end_node: &EndNode<U>) -> String
-where
-    U: Ui,
-{
-    let width = end_node.label.area().width();
-
-    let (config, label) = (end_node.config(), &end_node.label);
-    let left_width: usize = label.get_width(texts[0].as_str(), &config.tab_places);
-    let center_width: usize = label.get_width(texts[0].as_str(), &config.tab_places);
-    let right_width: usize = label.get_width(texts[0].as_str(), &config.tab_places);
-
-    let left_forms: String = texts[0].matches("[]").collect();
-    let center_forms: String = texts[1].matches("[]").collect();
-    let right_forms: String = texts[2].matches("[]").collect();
-
-    let left_form_count = left_forms.len() / 2;
-    let right_form_count = right_forms.len() / 2;
-
-    let mod_width = width + 2 * form_count;
-
-    let mut status = " ".repeat(mod_width);
-
-    // Print left, right, and center.
-    if left_width + center_width + right_width <= mod_width {
-        let center_dist = (mod_width - center_width) / 2;
-        let center_dist = if left_width + right_form_count - left_form_count > center_dist {
-            left_width
-        } else if right_width + left_form_count - right_form_count > center_dist {
-            2 * center_dist - right_width
-        } else {
-            center_dist + left_form_count - right_form_count
-        };
-
-        status.replace_range((mod_width - right_width).., texts[2].as_str());
-        status.replace_range(center_dist..(center_dist + center_width), texts[1].as_str());
-        status.replace_range(0..left_width, texts[0].as_str());
-
-    // Print just the left and right parts.
-    } else if left_width + right_width <= mod_width {
-        // We need to print the center, even while not printing the central part, in order to sync
-        // correctly with the `TextLineBuilder`.
-        status.replace_range((mod_width - right_width).., texts[2].as_str());
-        status.replace_range(left_width..(left_width + center_forms.len()), center_forms.as_str());
-        status.replace_range(0..left_width, texts[0].as_str());
-
-    // Print as much of the right part as possible, cutting off from the left.
-    } else {
-        todo!();
-        // let mut adder = 0;
-        // let (split_byte, _) = right
-        //     .char_indices()
-        //     .rev()
-        //     .take_while(|&(_, ch)| {
-        //         if ch != '[' && ch != ']' {
-        //             adder += label.get_char_len(ch);
-        //         };
-        //         adder <= width
-        //     })
-        //     .last()
-        //     .unwrap();
-
-        // let cut_right_forms: String = right[..split_byte].matches("[]").collect();
-
-        // let printed_len: usize = right[split_byte..].chars().map(|ch|
-        // label.get_char_len(ch)).sum();
-
-        // let center_end = left_forms.len() + center_forms.len();
-        // let cut_right_end = center_end + cut_right_forms.len();
-
-        // status.replace_range(0..left_forms.len(), left_forms.as_str());
-        // status.replace_range(left_forms.len()..center_end, center_forms.as_str());
-        // status.replace_range(center_end..cut_right_end, cut_right_forms.as_str());
-        // status.replace_range((mod_width - printed_len).., &right[split_byte..]);
-    }
-
-    status
-}
-
-/// Returns a sorted list of positions were "{}" or "()" have matched in a given [&str][str].
-fn all_matches(text: &str) -> Vec<(usize, &str)> {
-    let mut matches: Vec<(usize, &str)> = text.match_indices("{}").collect();
-    matches.extend(text.match_indices("()"));
-    matches.sort_by_key(|&(byte, _)| byte);
-    matches
-}
-
-fn substitutions_iter<'a>(
-    left: &'a str, center: &'a str, right: &'a str,
-) -> impl Iterator<Item = (usize, &'a str, bool)> {
-    let left_matches = all_matches(left);
-    let center_matches = all_matches(center);
-    let right_matches = all_matches(right);
-
-    let (left_len, center_len, right_len) =
-        (left_matches.len(), center_matches.len(), right_matches.len());
-
-    let countdown_iter =
-        move |len: &mut usize, (count, (byte, printable)): (usize, (usize, &'a str))| {
-            let is_final = count == *len - 1;
-            Some((byte, printable, is_final))
-        };
-
-    left_matches
-        .into_iter()
-        .enumerate()
-        .scan(left_len, countdown_iter)
-        .chain(center_matches.into_iter().enumerate().scan(center_len, countdown_iter))
-        .chain(right_matches.into_iter().enumerate().scan(right_len, countdown_iter))
-}
-
 #[macro_export]
 macro_rules! status_format {
-    (@ignore $ignored:expr) => {};
+	// File closures are bounded by "f(" and ")".
+    (@process_tokens $builder:ident, f(|$file:ident| $closure:expr), $remainder:tt) => {
+        let closure = |$file| { $closure.to_string() };
+        $builder.push(RopePart::FileFn(Box::new(closure)));
 
-    (@get_obj (|$obj:ident| $internals:expr)) => {
-        &$obj
-    };
-    (@get_obj $obj:expr) => {
-        &$obj
-    };
-
-    (@get_fun (|$obj:ident| $internals:expr)) => {
-        |$obj| { $internals.to_string() }
-    };
-    (@get_fun $obj:expr) => {
-        |data| { data.to_string() }
+        startus_format!(@process_tokens $builder, $remainder);
     };
 
-    (@file_fun (|$obj:ident| $internals:expr)) => {
-        |$obj| { $internals.to_string() }
+	// Object closures are bounded by "o(" and ")".
+    (@process_tokens $builder:ident, o(|$obj:ident| $closure:expr), $remainder:tt) => {
+        let closure = |$obj| { $closure.to_string() };
+        let part = RopePart::new_obj_fn(&$obj, closure);
+        $builder.push(part);
+
+        status_format!(@process_tokens $builder, $remainder);
     };
 
-    (@tt_to_string: $text:expr) => {
-        $text
+	// Objects that implement `ToString` are also bounded by "o(" and ")".
+    (@process_tokens $builder:ident, o($obj:expr), $remainder:tt) => {
+        let closure = |data| { data.to_string() };
+        let part = RopePart::new_obj_fn(&$obj, closure);
+        $builder.push(part);
+
+        status_format!(@process_tokens $builder, $remainder);
+    };
+
+	// Forms preceed a ":"
+    (@process_tokens $builder:ident, $form:ident:, $remainder:tt) => {
+        builder.push(RopePart::Form(stringify!($form)));
+
+        status_format!(@process_tokens $builder, $remainder);
+    };
+
+	// Remaining expressions are assumed to be text.
+    (@process_tokens $builder:ident, $text:expr, $remainder:tt) => {
+        builder.push(RopePart::Text(String::from($text)));
+
+        status_format!(@process_tokens $builder, $remainder);
     };
 
     (
-        $palette:expr, left: $left:expr, center: $center:expr, right: $right:expr,
-        file_vars: [$($file_to_string:tt),*], global_vars: [$($to_string:tt),*]
+        $palette:expr, left: $left:tt, center: $center:tt, right: $right:tt,
     ) => {
         {
-            let mut format = StatusFormat::default($palette);
+            let mut left_builder = RopeBuilder::new();
             $(
-                format.push_file_var(status_format!(@file_fun $file_to_string));
+                status_format!(@process_tokens left_builder, $left:tt);
             )*
+
+            let mut center_builder = RopeBuilder::new();
             $(
-                format.push(status_format!(@get_obj $to_string), status_format!(@get_fun $to_string));
+                status_format!(@process_tokens center_builder, $left:tt);
+            )*
+
+            let mut right_builder = RopeBuilder::new();
+            $(
+                status_format!(@process_tokens right_builder, $left:tt);
             )*
 
     		*format.left_text_mut() = $left.to_string();
@@ -439,3 +367,4 @@ macro_rules! join {
         [$($var.to_string()),*].join("")
     }
 }
+pub use join;

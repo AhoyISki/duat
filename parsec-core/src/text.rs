@@ -1,6 +1,10 @@
 pub mod reader;
 
-use std::{cmp::min, iter::Peekable, ops::RangeInclusive};
+use std::{
+    cmp::min,
+    iter::Peekable,
+    ops::{Range, RangeInclusive},
+};
 
 use ropey::Rope;
 
@@ -10,95 +14,203 @@ use crate::{
     history::Change,
     position::{Cursor, Pos},
     tags::{
-        form::{FormFormer, FormPalette, EXTRA_SEL_ID, MAIN_SEL_ID},
-        Tag, LineInfo,
+        form::{FormFormer, EXTRA_SEL, MAIN_SEL},
+        Lock, Tag, Tags,
     },
     ui::{Area, EndNode, Label, Ui},
 };
 
-// TODO: move this to a mo
-#[derive(Default)]
-pub struct TextLineBuilder {
-    forms: Vec<u16>,
+/// Builds and modifies a [`Text<U>`], based on replacements applied to it.
+///
+/// The generation of text by the `TextBuilder<U>` has a few peculiarities
+/// that are convenient in the situations where it is useful:
+///
+/// - The user cannot insert [`Tag`]s directly, only by appending and modifying
+/// existing tags.
+/// - All [`Tag`]s that are appended result in an inverse [`Tag`] being placed
+/// before the next one (e.g. [`Tag::PushForm`] would be followed a [`Tag::PopForm`]),
+/// or at the end of the [`Tags`].
+/// - You can insert swappable text with [`push_swappable()`][Self::push_swappable].
+///
+/// These properties allow for quick and easy modification of the [`Text<U>`] within,
+/// which can then be accessed with [`text()`][Self::text()].
+pub struct TextBuilder<U>
+where
+    U: Ui,
+{
+    text: Text<U>,
+    ranges: Vec<Range<usize>>,
+    tags: Vec<(Tag, usize, usize, Lock)>,
 }
 
-impl TextLineBuilder {
-    /// Returns a new instance of `TextLineBuilder`, and removes every form inside a bracket pair.
-    pub fn format_and_create(text: &mut String, palette: &FormPalette) -> Self {
-        let mut form_indices = Vec::new();
-        let mut formless_text = text.clone();
+impl<U> TextBuilder<U>
+where
+    U: Ui,
+{
+    pub fn push_text(&mut self, edit: impl AsRef<str>) {
+        let len = self.text.rope.len_chars();
 
-        let mut last_start = None;
-        for (start, _) in text.match_indices('[').chain([(text.len(), "[")]) {
-            let Some(last_start) = &mut last_start else {
-                continue;
-            };
-            let Some(mut last_end) = text[(*last_start + 1)..start].find(']') else {
-                continue;
-            };
+        let edit = edit.as_ref().to_string();
+        self.move_last_tag(edit.chars().count());
 
-            last_end += *last_start;
-            *last_start += 1;
-            let (_, form_index) = palette.get_from_name(&text[*last_start..=last_end]);
-            form_indices.push(form_index);
-            let removed_len = text.len() - formless_text.len();
-            *last_start -= removed_len;
-            last_end -= removed_len;
-            formless_text.replace_range(*last_start..=last_end, "");
-
-            *last_start = start;
-        }
-
-        *text = formless_text;
-
-        TextLineBuilder { forms: form_indices }
+        let change = Change::new(edit, len..len, &self.text.rope);
+        self.text.apply_change(&change);
     }
 
-    /// Takes in a string with empty bracket pairs and places forms according to their positions.
-    pub fn form_info(&self, text: &str) -> Vec<LineInfo> {
-        let mut formless_text = text.to_string();
-        let mut info = LineInfo::default();
-        let mut removed_len = 0;
+    pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
+        let len = self.text.len_chars();
+        self.ranges.push(len..(len + edit.as_ref().len()));
 
-        for (index, (start, _)) in text.match_indices("[]").enumerate() {
-            let start = start - removed_len;
-            formless_text.replace_range(start..=(start + 1), "");
-            info.char_tags.insert((start, Tag::PushForm(self.forms[index])));
-            if index > 0 {
-                info.char_tags.insert((start, Tag::PopForm(self.forms[index - 1])));
+        let edit = edit.as_ref().to_string();
+        self.move_last_tag(edit.chars().count());
+
+        let change = Change::new(edit, len..len, &self.text.rope);
+        self.text.apply_change(&change);
+    }
+
+    /// Replaces a range with a new piece of text.
+    pub fn swap_range(&mut self, index: usize, edit: impl AsRef<str>) {
+        let edit = edit.as_ref();
+        let range = self.ranges[index].clone();
+
+        let change = Change::new(edit.to_string(), range.clone(), self.text.rope());
+        self.text.apply_change(&change);
+
+        let range_diff = edit.chars().count() as isize - range.clone().count() as isize;
+
+        self.ranges[index].end = range.end.saturating_add_signed(range_diff);
+
+        for range in self.ranges.iter_mut().skip(index + 1) {
+            range.start = range.start.saturating_add_signed(range_diff);
+            range.end = range.end.saturating_add_signed(range_diff);
+        }
+
+        for (_, start, end, _) in self.tags.iter_mut() {
+            if *start > range.start {
+                *start = start.saturating_add_signed(range_diff);
+                *end = end.saturating_add_signed(range_diff)
             }
-            removed_len += 2;
         }
     }
 
-    /// Makes it so this `TextLineBuilder`
-    pub fn format_and_extend(&mut self, text: &mut String, palette: &FormPalette) {
-        let builder = TextLineBuilder::format_and_create(text, palette);
-        self.forms.extend_from_slice(&builder.forms);
+    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well as its
+    /// inverse at the end of the [`Text<U>`].
+    pub fn push_tag(&mut self, tag: Tag) -> Lock {
+        let width = self.text.tags.width();
+        let lock = self.text.tags.get_lock();
+
+        self.text.tags.insert(tag, lock, width);
+
+        if let Some(inv_tag) = tag.inverse() {
+            self.text.tags.insert(inv_tag, lock, width);
+        }
+        self.tags.push((tag, width, width, lock));
+
+        lock
     }
 
-    /// Returns the amount of forms inserted into `TextLine`s.
-    pub fn form_count(&self) -> usize {
-        self.forms.len()
+    fn move_last_tag(&mut self, edit_len: usize) {
+        if let Some((tag, start, end, lock)) = self.tags.last_mut() {
+            let new_end = *end + edit_len;
+            if let (Some(inv_tag), true) = (tag.inverse(), start == end) {
+                self.text.tags.remove(*start, *lock);
+                self.text.tags.insert(*tag, *lock, *start);
+                self.text
+                    .tags
+                    .insert(tag.inverse().unwrap(), *lock, new_end)
+            }
+
+            *end = new_end;
+        }
+    }
+
+    pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
+        let (tag, start, end, lock) = self.tags.get_mut(tag_index).unwrap();
+        self.text.tags.remove(*start, *lock);
+        if let Some(_) = tag.inverse() {
+            self.text.tags.remove(*end, *lock);
+        }
+
+        *tag = new_tag;
+
+        self.text.tags.insert(*tag, *lock, *start);
+        if let Some(inv_tag) = tag.inverse() {
+            self.text.tags.insert(*tag, *lock, *end);
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.text.rope = Rope::new();
+        self.tags.clear();
+        self.ranges.clear();
+    }
+
+    pub fn truncate(&mut self, range_index: usize) {
+        let trunc_start = self.ranges.get(range_index).unwrap().start;
+        self.ranges.truncate(range_index);
+
+        let change = Change::new("", trunc_start.., self.text.rope());
+        self.text.apply_change(&change);
+
+        for (_, start, end, lock) in &self.tags {
+            if *start >= trunc_start {
+                self.text.tags.remove(*start, *lock);
+                self.text.tags.remove(*end, *lock);
+            }
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.tags.is_empty() && self.ranges.is_empty() && self.text.is_empty()
+    }
+
+    pub fn ranges_len(&self) -> usize {
+        self.ranges.len()
+    }
+
+    pub fn text(&self) -> &Text<U> {
+        &self.text
     }
 }
 
-impl<const N: usize> From<[u16; N]> for TextLineBuilder {
-    fn from(value: [u16; N]) -> Self {
-        Self { forms: Vec::from(value) }
+impl<U> Default for TextBuilder<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        TextBuilder {
+            ..Default::default()
+        }
     }
 }
 
 /// The text in a given area.
-#[derive(Default)]
 pub struct Text<U>
 where
     U: Ui,
 {
     rope: Rope,
-    line_info: Vec<LineInfo>,
-    _replacements: Vec<(Vec<TextLine>, RangeInclusive<usize>, bool)>,
+    tags: Tags,
+    lock: Lock,
+    _replacements: Vec<(Vec<String>, RangeInclusive<usize>, bool)>,
     _readers: Vec<Box<dyn MutTextReader<U>>>,
+}
+
+impl<U> Default for Text<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        let mut tags = Tags::default();
+        let lock = tags.get_lock();
+        Text {
+            rope: Rope::default(),
+            tags,
+            lock,
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
+        }
+    }
 }
 
 // TODO: Properly implement _replacements.
@@ -119,8 +231,8 @@ where
         let line_start_ch = self.rope.line_to_char(cur_line);
 
         let mut chars = self.rope.chars_at(line_start_ch);
-        let mut tags = self.iter_tags_from(cur_line);
-        let mut form_former = end_node.config().palette.form_former();
+        let mut tags = self.tags.iter_at(line_start_ch).peekable();
+        let mut form_former = config.palette.form_former();
 
         let mut skip_counter = print_info.first_ch - line_start_ch;
         let mut last_ch = 'a';
@@ -130,7 +242,7 @@ where
             trigger_on_byte::<U>(&mut tags, cur_byte, label, &mut form_former);
 
             if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {
-                skip_counter -= 1;
+                skip_counter = skip_counter.saturating_sub(1);
                 continue;
             } else {
                 skip_rest_of_line = false;
@@ -145,40 +257,41 @@ where
                 PrintStatus::NextChar => cur_byte += ch.len_utf8(),
                 PrintStatus::Finished => break,
             }
+
+            last_ch = ch;
         }
 
         end_node.label.stop_printing();
     }
 
-    fn iter_tags_from(&self, line: usize) -> Peekable<impl Iterator<Item = &(usize, Tag)>> {
-        self.line_info[line..]
-            .iter()
-            .map(|LineInfo { char_tags, .. }| char_tags.iter())
-            .flatten()
-            .peekable()
-    }
-
     // This is more efficient than using the `merge_edit()` function.
     /// Merges `String`s with the body of text, given a range to replace.
-    fn merge_text(&mut self, edit: impl AsRef<str>, range: Range) {
-        self.rope.remove(range.start.byte..range.end.byte);
-        self.rope.insert(range.start.byte, edit.as_ref());
+    fn merge_text(&mut self, edit: impl AsRef<str>, old: Range<usize>) {
+        let edit = edit.as_ref();
+        let new = old.start..(old.start + edit.chars().count());
+
+        self.rope.remove(old.start..old.end);
+        self.rope.insert(old.start, edit);
+
+        self.tags.transform_range(old, new);
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
-        self.merge_text(&change.added_text, change.splice.taken_range());
+        self.merge_text(&change.added_text, change.taken_range());
     }
 
-    pub(crate) fn undo_change(&mut self, change: &Change, splice: &Splice) {
-        self.merge_text(&change.taken_text, splice.added_range());
+    pub(crate) fn undo_change(&mut self, change: &Change, chars: isize) {
+        let start = change.start.saturating_add_signed(chars);
+        let end = change.added_end().saturating_add_signed(chars);
+        self.merge_text(&change.taken_text, start..end);
     }
 
-    pub fn lines(&self) -> &Vec<TextLine> {
+    pub fn rope(&self) -> &Rope {
         &self.rope
     }
 
     pub fn is_empty(&self) -> bool {
-        self.rope.len() == 1 && self.rope[0].text.as_str() == ""
+        self.rope.len_chars() == 0
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
@@ -187,16 +300,16 @@ where
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
-            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
+            let pos_list = [
+                (start, start_tag),
+                (end, end_tag),
+                (cursor.caret().true_char(), caret_tag),
+            ];
 
             let no_selection = if start == end { 2 } else { 0 };
 
-            for (pos, tag) in pos_list.iter().skip(no_selection) {
-                let Some(line) = self.rope.get_mut(pos.row) else { return; };
-                let byte = line.get_line_byte_at(pos.col);
-                line.info.char_tags.remove_first(|(cmp_byte, cmp_tag)| {
-                    cmp_byte as usize == byte && cmp_tag == *tag
-                });
+            for (pos, tag) in pos_list.into_iter().skip(no_selection) {
+                self.tags.insert(tag, self.lock, pos);
             }
         }
     }
@@ -205,28 +318,33 @@ where
     pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let Range { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
-            let pos_list = [(start, start_tag), (end, end_tag), (cursor.caret(), caret_tag)];
-
-            let no_selection = if start == end { 2 } else { 0 };
-
-            for (pos, tag) in pos_list.iter().skip(no_selection) {
-                let Some(line) = self.rope.get_mut(pos.row) else { return; };
-                let byte = line.get_line_byte_at(pos.col);
-                line.info.char_tags.insert((byte, *tag));
+            for ch_index in [start, end].into_iter() {
+                self.tags.remove(ch_index, self.lock);
             }
         }
     }
 
-    pub(crate) fn rope(&self) -> &Rope {
-        &self.rope
+    pub fn len_chars(&self) -> usize {
+        self.rope.len_chars()
+    }
+
+    pub fn len_lines(&self) -> usize {
+        self.rope.len_lines()
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
     }
 }
 
 /// Prints the given character, taking configuration options into account.
 fn print_ch<U>(
-    ch: char, last_ch: char, label: &mut U::Label, config: &Config, x_shift: usize,
+    ch: char,
+    last_ch: char,
+    label: &mut U::Label,
+    config: &Config,
+    x_shift: usize,
 ) -> PrintStatus
 where
     U: Ui,
@@ -235,22 +353,28 @@ where
         '\t' => label.print('\t', x_shift),
         '\n' => {
             label.print(config.show_new_line.get_new_line_ch(last_ch), x_shift);
-            if label.next_line().is_ok() { PrintStatus::NextLine } else { PrintStatus::Finished }
+            if label.next_line().is_ok() {
+                PrintStatus::NextLine
+            } else {
+                PrintStatus::Finished
+            }
         }
         _ => label.print(ch, x_shift),
     }
 }
 
 fn trigger_on_byte<'a, U>(
-    tags: &mut Peekable<impl Iterator<Item = &'a (usize, Tag)>>, byte: usize,
-    label: &mut U::Label, form_former: &mut FormFormer,
+    tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
+    byte: usize,
+    label: &mut U::Label,
+    form_former: &mut FormFormer,
 ) where
     U: Ui,
 {
-    while let Some(&(tag_byte, tag)) = tags.peek() {
+    while let Some((tag_byte, tag)) = tags.peek() {
         if byte == *tag_byte {
-            tags.next();
             tag.trigger(label, form_former);
+            tags.next();
         } else {
             break;
         }
@@ -262,9 +386,13 @@ where
     U: Ui,
 {
     fn from(value: String) -> Self {
+        let rope = Rope::from(value);
+        let mut tags = Tags::new(&rope);
+        let lock = tags.get_lock();
         Text {
-            rope: Rope::from(value),
-            line_info: Vec::new(),
+            rope,
+            tags,
+            lock,
             _replacements: Vec::new(),
             _readers: Vec::new(),
         }
@@ -324,158 +452,123 @@ impl PrintInfo {
         //}
     }
 
-    pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Text<U>, end_node: &EndNode<U>)
+    //pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Rope, end_node: &EndNode<U>)
+    //where
+    //    U: Ui,
+    //{
+    //    let mut max_d = 0;
+    //    for index in text.printed_lines(end_node.label.area().height(), self) {
+    //        let line = &text.lines()[index];
+    //        let line_d = end_node
+    //            .label
+    //            .get_width(line.text.as_str(), &end_node.config.tab_places);
+    //        max_d = max_d.max(line_d);
+    //    }
+
+    //    self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
+    //}
+
+    /// Scrolls up.
+    fn scroll_up_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
     where
         U: Ui,
     {
-        //let mut max_d = 0;
-        //for index in text.printed_lines(end_node.label.area().height(), self) {
-        //    let line = &text.lines()[index];
-        //    let line_d = end_node.label.get_width(line.text.as_str(),
-        // &end_node.config.tab_places);    max_d = max(max_d, line_d);
-        //}
+        let label = &end_node.label;
+        let config = &end_node.config();
+        let min_dist = config.scrolloff.y_gap;
+        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        //self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
-    }
+        let slice = rope.slice(..target.true_char());
+        let mut lines = slice.lines_at(target.row()).reversed();
 
-    /// Scrolls up or down, assuming that the lines cannot wrap.
-    fn calibrate_vertically<U>(&mut self, target: Pos, height: usize, end_node: &EndNode<U>)
-    where
-        U: Ui,
-    {
-        let scrolloff = end_node.config().scrolloff;
+        let mut accum = 0;
+        while let Some(line) = lines.next() {
+            accum += 1 + label.wrap_count(line, wrap_method, tab_places);
+            if accum >= min_dist {
+                // `accum - gap` is the amount of wraps that should be offscreen.
+                self.first_ch = label.col_at_wrap(line, accum - min_dist, wrap_method, tab_places);
+                break;
+            }
+        }
 
-        if target.row > self.top_row + height - scrolloff.d_y {
-            self.top_row += target.row + scrolloff.d_y - self.top_row - height;
-        } else if target.row < self.top_row + scrolloff.d_y && self.top_row != 0 {
-            self.top_row -= (self.top_row + scrolloff.d_y) - target.row
+        // This means we can't scroll up anymore.
+        if accum < min_dist {
+            self.first_ch = 0;
         }
     }
 
-    /// Scrolls up, assuming that the lines can wrap.
-    fn calibrate_up<U>(
-        &mut self, target: Pos, mut d_y: usize, text: &Text<U>, end_node: &EndNode<U>,
-    ) where
+    /// Scrolls down.
+    fn scroll_down_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    where
         U: Ui,
     {
-        //let scrolloff = end_node.config().scrolloff;
-        //let lines_iter = text.lines().iter().take(target.row);
+        let label = &end_node.label;
+        let config = &end_node.config();
+        let max_dist = label.area().height() - config.scrolloff.y_gap;
+        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        //// If the target line is above the top line, no matter what, a new top line is needed.
-        //let mut needs_new_top_line = target.row < self.top_row;
+        let slice = rope.slice(..target.true_char());
+        let mut lines = slice.lines_at(target.row()).reversed();
+        let mut lines_to_top = target.true_row() - rope.char_to_line(self.first_ch);
 
-        //for (index, line) in lines_iter.enumerate().rev() {
-        //    if index != target.row {
-        //        d_y += 1 + line.iter_wraps().count();
-        //    };
-
-        //    if index == self.top_row {
-        //        // This means we ran into the top line too early, and must scroll up.
-        //        if d_y < scrolloff.d_y + self.top_wraps {
-        //            needs_new_top_line = true;
-        //        // If this happens, we're in the middle of the screen, and don't need to scroll.
-        //        } else if !needs_new_top_line {
-        //            break;
-        //        }
-        //    }
-
-        //    if needs_new_top_line && (d_y >= scrolloff.d_y || index == 0) {
-        //        self.top_row = index;
-        //        self.top_wraps = d_y.saturating_sub(scrolloff.d_y);
-        //        break;
-        //    }
-        //}
-    }
-
-    /// Scrolls down, assuming that the lines can wrap.
-    fn calibrate_down<U>(
-        &mut self, target: Pos, mut d_y: usize, text: &Text<U>, height: usize,
-        end_node: &EndNode<U>,
-    ) where
-        U: Ui,
-    {
-        //let mut scrolloff = end_node.config().scrolloff;
-        //scrolloff.d_y = min(scrolloff.d_y, height);
-        //let lines_iter = text.lines().iter().take(target.row + 1);
-        //let mut top_offset = 0;
-
-        //for (index, line) in lines_iter.enumerate().rev() {
-        //    if index != target.row {
-        //        d_y += 1 + line.iter_wraps().count();
-        //    }
-
-        //    if index == self.top_row {
-        //        top_offset = self.top_wraps
-        //    };
-
-        //    if d_y + scrolloff.d_y >= height + top_offset {
-        //        self.top_row = index;
-        //        // If this equals 0, that means the distance has matched up perfectly,
-        //        // i.e. the distance between the new `info.top_line` is exactly what's
-        //        // needed for the full height. If it's greater than 0, `info.top_wraps`
-        //        // needs to adjust where the line actually begins to match up.
-        //        self.top_wraps = d_y + scrolloff.d_y - height;
-        //        break;
-        //    }
-
-        //    // If this happens first, we're in the middle of the screen, and don't need to
-        // scroll.    if index == self.top_row {
-        //        break;
-        //    }
-        //}
-    }
-
-    /// Scrolls the file horizontally, usually when no wrapping is being used.
-    fn calibrate_horizontally<U>(
-        &mut self, target: Pos, text: &Text<U>, width: usize, end_node: &EndNode<U>,
-    ) where
-        U: Ui,
-    {
-        let mut scrolloff = end_node.config().scrolloff;
-        scrolloff.d_x = min(scrolloff.d_x, width);
-
-        if let WrapMethod::NoWrap = end_node.config().wrap_method {
-            let target_line = &text.rope[target.row];
-            let distance = end_node.get_width(&target_line.text[..target.col]);
-
-            // If the distance is greater, it means that the cursor is out of bounds.
-            if distance > self.x_shift + width - end_node.config().scrolloff.d_x {
-                // Shift by the amount required to keep the cursor in bounds.
-                self.x_shift = distance + scrolloff.d_x - width;
-            // Check if `info.x_shift` is already at 0, if it is, no scrolling is dones.
-            } else if distance < self.x_shift + scrolloff.d_x {
-                self.x_shift = distance.saturating_sub(end_node.config().scrolloff.d_x);
+        let mut accum = 0;
+        while let Some(line) = lines.next() {
+            lines_to_top -= 1;
+            accum += 1 + label.wrap_count(line, wrap_method, tab_places);
+            if accum >= max_dist {
+                // `accum - gap` is the amount of wraps that should be offscreen.
+                self.first_ch = label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                break;
+            // We have reached the top of the screen before the accum equaled gap.
+            // This means that no scrolling actually needs to take place.
+            } else if lines_to_top == 0 {
+                break;
             }
         }
     }
 
-    /// Updates the print info.
-    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, end_node: &EndNode<U>)
+    /// Scrolls the file horizontally, usually when no wrapping is being used.
+    fn scroll_hor_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
     where
         U: Ui,
     {
-        let (wrap_method, tab_places) =
-            (&end_node.config().wrap_method, &end_node.config().tab_places);
+        let label = &end_node.label;
+        let config = end_node.config();
+        let max_dist = label.area().width() - config.scrolloff.x_gap;
+        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
+
+        let slice = rope.slice(..target.true_char());
+        let line = rope.line(target.true_row());
+
+        let target_dist = label.get_width(line, tab_places);
+        self.x_shift = target_dist.saturating_sub(max_dist);
+    }
+
+    /// Updates the print info.
+    pub fn update<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    where
+        U: Ui,
+    {
+        let (wrap_method, tab_places) = (
+            &end_node.config().wrap_method,
+            &end_node.config().tab_places,
+        );
         let wrap_method = end_node.config().wrap_method;
-        let (height, width) = (end_node.label.area().height(), end_node.label.area().width());
+        let (height, width) = (
+            end_node.label.area().height(),
+            end_node.label.area().width(),
+        );
 
         let old = self.last_main;
 
-        let line = &text.lines()[min(old.row, text.lines().len() - 1)];
-        let current_byte = line.get_line_byte_at(old.col);
-        let cur_wraps = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
-
-        let line = &text.lines()[target.row];
-        let target_byte = line.get_line_byte_at(target.col);
-        let old_wraps = end_node.label.wrap_count(line.text(), wrap_method, tab_places);
-
         if let WrapMethod::NoWrap = wrap_method {
-            self.calibrate_vertically(target, height, end_node);
-            self.calibrate_horizontally(target, text, width, end_node);
-        } else if target.row < old.row || (target.row == old.row && old_wraps < cur_wraps) {
-            self.calibrate_up(target, old_wraps, text, end_node);
+            self.scroll_hor_to_gap(target, rope, end_node);
+        }
+
+        if target < old {
+            self.scroll_up_to_gap(target, rope, end_node);
         } else {
-            self.calibrate_down(target, old_wraps, text, height, end_node);
+            self.scroll_down_to_gap(target, rope, end_node);
         }
 
         self.last_main = target;
@@ -517,8 +610,16 @@ impl PrintInfo {
 //
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
-        (Tag::MainCursor, Tag::PushForm(MAIN_SEL_ID), Tag::PopForm(MAIN_SEL_ID))
+        (
+            Tag::MainCursor,
+            Tag::PushForm(MAIN_SEL),
+            Tag::PopForm(MAIN_SEL),
+        )
     } else {
-        (Tag::MainCursor, Tag::PushForm(EXTRA_SEL_ID), Tag::PopForm(EXTRA_SEL_ID))
+        (
+            Tag::MainCursor,
+            Tag::PushForm(EXTRA_SEL),
+            Tag::PopForm(EXTRA_SEL),
+        )
     }
 }

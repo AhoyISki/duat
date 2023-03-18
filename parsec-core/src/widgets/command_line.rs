@@ -5,10 +5,10 @@ use std::{any::Any, error::Error, fmt::Display, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
 
-use super::{ActionableWidget, NormalWidget, Widget};
+use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RwData},
-    position::{Cursor, Editor, Mover, SpliceAdder},
+    position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
     Session,
@@ -21,7 +21,10 @@ mod private {
 
 pub trait Commander: private::Commander {
     fn try_exec(
-        &mut self, cmd: &String, flags: &[String], args: &[String],
+        &mut self,
+        cmd: &String,
+        flags: &[String],
+        args: &[String],
     ) -> Result<Option<String>, CommandError>;
 
     fn callers(&self) -> &[String];
@@ -60,9 +63,14 @@ where
 {
     pub fn new(
         function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
-        callers: Vec<String>, commandable: RwData<C>,
+        callers: Vec<String>,
+        commandable: RwData<C>,
     ) -> Self {
-        Self { function, callers, commandable }
+        Self {
+            function,
+            callers,
+            commandable,
+        }
     }
 }
 
@@ -73,7 +81,10 @@ where
     C: ?Sized,
 {
     fn try_exec(
-        &mut self, cmd: &String, flags: &[String], args: &[String],
+        &mut self,
+        cmd: &String,
+        flags: &[String],
+        args: &[String],
     ) -> Result<Option<String>, CommandError> {
         if self.callers.contains(&cmd) {
             return (self.function)(&mut self.commandable.write(), flags, args)
@@ -100,12 +111,17 @@ impl CommandList {
     where
         C: Commander + 'static,
     {
-        CommandList { commands: vec![command] }
+        CommandList {
+            commands: vec![command],
+        }
     }
 
     /// Tries to execute a given command on any of its lists.
     pub(crate) fn try_exec(
-        &mut self, cmd: String, flags: Vec<String>, args: Vec<String>,
+        &mut self,
+        cmd: String,
+        flags: Vec<String>,
+        args: Vec<String>,
     ) -> Result<Option<String>, CommandError> {
         for command in &mut self.commands {
             let result = command.try_exec(&cmd, flags.as_slice(), args.as_slice());
@@ -140,7 +156,10 @@ pub struct CommandLineConfig {
 
 impl Default for CommandLineConfig {
     fn default() -> Self {
-        CommandLineConfig { run_string: String::from(':'), _cmd_replacements: Vec::new() }
+        CommandLineConfig {
+            run_string: String::from(':'),
+            _cmd_replacements: Vec::new(),
+        }
     }
 }
 
@@ -192,20 +211,19 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info.update(self.cursor[0].caret(), &self.text, end_node);
+        self.print_info
+            .update(self.cursor[0].caret(), self.text.rope(), end_node);
 
         //self.match_scroll();
-        if self.text.lines().len() > 1 {
-            let lines: String = self.text.lines().iter().map(|line| line.text().as_str()).collect();
-            let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
+        let lines: String = self.text.rope().chars().collect();
+        let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
 
-            let Some(command) = whole_command.next() else {
-    			return;
-			};
+        let Some(command) = whole_command.next() else {
+			return;
+		};
 
-            let mut command_list = self.command_list.write();
-            let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
-        }
+        let mut command_list = self.command_list.write();
+        let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
 
         self.needs_update = false;
     }
@@ -224,10 +242,20 @@ where
     U: Ui + 'static,
 {
     fn editor<'a>(
-        &'a mut self, _: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+        &'a mut self,
+        _: usize,
+        edit_accum: &'a mut EditAccum,
+        end_node: &'a EndNode<U>,
     ) -> Editor<U> {
         self.needs_update = true;
-        Editor::new(&mut self.cursor[0], splice_adder, &mut self.text, end_node, None, None)
+        Editor::new(
+            &mut self.cursor[0],
+            &mut self.text,
+            end_node,
+            edit_accum,
+            None,
+            None,
+        )
     }
 
     fn mover<'a>(&'a mut self, _: usize, end_node: &'a EndNode<U>) -> Mover<U> {
@@ -258,8 +286,8 @@ where
     fn on_focus(&mut self, end_node: &mut EndNode<U>) {
         self.needs_update = true;
         self.text = Text::from(self.config.run_string.clone());
-        let chars = self.config.run_string.chars().count() as i32;
-        self.cursor[0].move_hor(chars, &self.text.lines(), end_node);
+        let chars = self.config.run_string.chars().count() as isize;
+        self.cursor[0].move_hor(chars, &self.text.rope(), end_node);
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 

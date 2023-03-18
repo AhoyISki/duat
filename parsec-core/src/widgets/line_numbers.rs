@@ -10,12 +10,21 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
 
-use super::{file_widget::FileWidget, NormalWidget, Widget};
+use super::{
+    file_widget::{self, FileWidget},
+    NormalWidget, Widget,
+};
 use crate::{
     config::{DownCastableData, RoData, RwData},
-    tags::form::{DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER},
-    text::{Text, TextLineBuilder},
-    ui::{Area, EndNode, Label, Side, Ui},
+    tags::{
+        form::{
+            Form, DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS,
+            WRAPPED_MAIN_LINE_NUMBER,
+        },
+        Tag,
+    },
+    text::{self, Text, TextBuilder},
+    ui::{Area, EndNode, Label, PushSpecs, Side, Ui},
     SessionManager,
 };
 
@@ -24,11 +33,9 @@ where
     U: Ui,
 {
     file_widget: RoData<FileWidget<U>>,
-    text: Text<U>,
-    main_line_builder: TextLineBuilder,
-    other_line_builder: TextLineBuilder,
+    text_builder: TextBuilder<U>,
     min_width: usize,
-    line_numbers_config: LineNumbersConfig,
+    cfg: LineNumbersCfg,
 }
 
 unsafe impl<U> Send for LineNumbers<U> where U: Ui {}
@@ -38,35 +45,36 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `LineNumbersWidget`.
-    pub fn new(
-        file_widget: RoData<FileWidget<U>>, line_numbers_config: LineNumbersConfig,
-    ) -> Box<dyn FnOnce(&SessionManager) -> Widget<U>> {
-        Box::new(move |_| {
-            let line_numbers = LineNumbers {
+    pub fn config_fn(
+        file_widget: RoData<FileWidget<U>>,
+        cfg: LineNumbersCfg,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        Box::new(move |_, push_specs| {
+            let mut line_numbers = LineNumbers {
                 file_widget,
-                text: Text::default(),
-                main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
-                other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
-                min_width: 1,
-                line_numbers_config,
+                text_builder: TextBuilder::default(),
+                min_width: push_specs.split.len(),
+                cfg,
             };
+
+            line_numbers.update_text(push_specs.split.len());
 
             Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
         })
     }
 
-    pub fn default(
+    pub fn default_fn(
         file_widget: RoData<FileWidget<U>>,
-    ) -> Box<dyn FnOnce(&SessionManager) -> Widget<U>> {
-        Box::new(move |_| {
-            let line_numbers = LineNumbers {
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        Box::new(move |_, push_specs| {
+            let mut line_numbers = LineNumbers {
                 file_widget,
-                text: Text::default(),
-                main_line_builder: TextLineBuilder::from([MAIN_LINE_NUMBER, DEFAULT]),
-                other_line_builder: TextLineBuilder::from([LINE_NUMBERS, DEFAULT]),
-                min_width: 1,
-                line_numbers_config: LineNumbersConfig::default(),
+                text_builder: TextBuilder::default(),
+                min_width: push_specs.split.len(),
+                cfg: LineNumbersCfg::default(),
             };
+
+            line_numbers.update_text(push_specs.split.len());
 
             Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
         })
@@ -76,13 +84,49 @@ where
         let mut width = 1;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.file_widget.read().text().lines().len() + 1;
+        let len = self.file_widget.read().text().len_lines() + 1;
 
         while len > num_exp {
             num_exp *= 10;
             width += 1;
         }
         max(width, self.min_width)
+    }
+
+    fn update_text(&mut self, width: usize) {
+        let file = self.file_widget.read();
+        let printed_lines = file.printed_lines();
+        let main_line = file.main_cursor().row();
+
+        let Some(first_line) = printed_lines.first() else {
+            self.text_builder.clear();
+            return;
+        };
+        let mut tag = get_tag(*first_line, main_line, false);
+        let mut text = get_text(*first_line, main_line, width, &self.cfg);
+
+        self.text_builder.push_tag(tag);
+        self.text_builder.push_swappable(&text);
+
+        let mut last_line = *first_line;
+        for (index, line) in printed_lines.iter().enumerate() {
+            if index < self.text_builder.ranges_len() {
+                self.text_builder.swap_tag(index, tag);
+                self.text_builder.swap_range(index, &text);
+            } else {
+                self.text_builder.push_tag(tag);
+                self.text_builder.push_swappable(&text);
+            }
+
+            tag = get_tag(*first_line, main_line, *line == last_line);
+            text = get_text(*first_line, main_line, width, &self.cfg);
+
+            last_line = *line;
+        }
+
+        if printed_lines.len() < self.text_builder.ranges_len() {
+            self.text_builder.truncate(printed_lines.len());
+        }
     }
 }
 
@@ -104,40 +148,13 @@ where
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         let width = self.calculate_width();
-        let file = self.file_widget.read();
-        end_node.label.area_mut().request_len(width, Side::Right).unwrap();
+        end_node
+            .label
+            .area_mut()
+            .request_len(width.min(self.min_width), Side::Right)
+            .unwrap();
 
-        let lines = file.printed_lines();
-        let main_line = file.main_cursor().true_row();
-
-        let mut final_lines = Vec::with_capacity(lines.len());
-
-        for line in lines {
-            let mut line_number = String::with_capacity(width + 5);
-            let number = match self.line_numbers_config.numbering {
-                Numbering::Absolute => *line + 1,
-                Numbering::Relative => usize::abs_diff(*line + 1, main_line),
-                Numbering::Hybrid => {
-                    if *line != main_line {
-                        usize::abs_diff(*line, main_line) + 1
-                    } else {
-                        *line + 1
-                    }
-                }
-            };
-            match self.line_numbers_config.alignment {
-                Alignment::Left => write!(&mut line_number, "[]{:<width$}[]\n", number).unwrap(),
-                Alignment::Center => write!(&mut line_number, "[]{:^width$}[]\n", number).unwrap(),
-                Alignment::Right => write!(&mut line_number, "[]{:>width$}[]\n", number).unwrap(),
-            }
-            if *line == main_line {
-                final_lines.push(self.main_line_builder.form_info(line_number));
-            } else {
-                final_lines.push(self.other_line_builder.form_info(line_number));
-            }
-        }
-
-        self.text = Text::from(final_lines);
+        self.update_text(width);
     }
 
     fn needs_update(&self) -> bool {
@@ -145,7 +162,7 @@ where
     }
 
     fn text(&self) -> &Text<U> {
-        &self.text
+        self.text_builder.text()
     }
 }
 
@@ -162,13 +179,51 @@ pub enum Numbering {
 }
 
 #[derive(Clone, Copy)]
-pub struct LineNumbersConfig {
+pub struct LineNumbersCfg {
     pub numbering: Numbering,
     pub alignment: Alignment,
 }
 
-impl Default for LineNumbersConfig {
+impl Default for LineNumbersCfg {
     fn default() -> Self {
-        Self { alignment: Alignment::Left, numbering: Numbering::default() }
+        Self {
+            alignment: Alignment::Left,
+            numbering: Numbering::default(),
+        }
     }
+}
+
+fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
+    let tag = Tag::PushForm(match (line == main_line, is_wrapped) {
+        (false, false) => LINE_NUMBERS,
+        (false, true) => WRAPPED_LINE_NUMBERS,
+        (true, false) => MAIN_LINE_NUMBER,
+        (true, true) => WRAPPED_MAIN_LINE_NUMBER,
+    });
+
+    tag
+}
+
+fn get_text(line: usize, main_line: usize, width: usize, cfg: &LineNumbersCfg) -> String {
+    let mut line_text = String::with_capacity(width);
+
+    let number = match cfg.numbering {
+        Numbering::Absolute => line + 1,
+        Numbering::Relative => usize::abs_diff(line, main_line) + 1,
+        Numbering::Hybrid => {
+            if line != main_line {
+                usize::abs_diff(line, main_line) + 1
+            } else {
+                line + 1
+            }
+        }
+    };
+
+    match cfg.alignment {
+        Alignment::Left => write!(&mut line_text, "{:<width$}\n", number).unwrap(),
+        Alignment::Center => write!(&mut line_text, "{:^width$}\n", number).unwrap(),
+        Alignment::Right => write!(&mut line_text, "{:>width$}\n", number).unwrap(),
+    }
+
+    line_text
 }

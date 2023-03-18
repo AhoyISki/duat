@@ -24,7 +24,7 @@ use parsec_core::{
         form::CursorStyle,
         form::{Form, DEFAULT},
     },
-    text::{Text, TextLine, TextLineBuilder},
+    text::{Text, TextLine, TextBuilder},
     ui::{self, Area as UiArea, Axis, EndNode, Label as UiLabel, Side, Split},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
@@ -807,14 +807,14 @@ impl SeparatorChar {
 }
 
 pub enum SeparatorForm {
-    Uniform(TextLineBuilder),
-    DifferentOnMain(TextLineBuilder, TextLineBuilder),
-    ThreeWay(TextLineBuilder, TextLineBuilder, TextLineBuilder),
+    Uniform(TextBuilder),
+    DifferentOnMain(TextBuilder, TextBuilder),
+    ThreeWay(TextBuilder, TextBuilder, TextBuilder),
 }
 
 impl Default for SeparatorForm {
     fn default() -> Self {
-        SeparatorForm::Uniform(TextLineBuilder::from([DEFAULT, DEFAULT]))
+        SeparatorForm::Uniform(TextBuilder::from([DEFAULT, DEFAULT]))
     }
 }
 
@@ -824,9 +824,9 @@ impl SeparatorForm {
         U: ui::Ui,
     {
         let node = node.read();
-        let (_, id) = node.config().palette.get_from_name(name);
+        let (_, id) = node.config().palette.from_name(name);
 
-        SeparatorForm::Uniform(TextLineBuilder::from([id, DEFAULT]))
+        SeparatorForm::Uniform(TextBuilder::from([id, DEFAULT]))
     }
 
     pub fn different_on_main<U, S>(node: &RwData<EndNode<U>>, main_name: S, other_name: S) -> Self
@@ -836,12 +836,12 @@ impl SeparatorForm {
     {
         let node = node.read();
         let palette = &node.config().palette;
-        let (_, main_id) = palette.get_from_name(main_name);
-        let (_, other_id) = palette.get_from_name(other_name);
+        let (_, main_id) = palette.from_name(main_name);
+        let (_, other_id) = palette.from_name(other_name);
 
         SeparatorForm::DifferentOnMain(
-            TextLineBuilder::from([main_id, DEFAULT]),
-            TextLineBuilder::from([other_id, DEFAULT]),
+            TextBuilder::from([main_id, DEFAULT]),
+            TextBuilder::from([other_id, DEFAULT]),
         )
     }
 
@@ -854,32 +854,32 @@ impl SeparatorForm {
     {
         let node = node.read();
         let palette = &node.config().palette;
-        let (_, main_id) = palette.get_from_name(main_name);
-        let (_, lower_id) = palette.get_from_name(lower_name);
-        let (_, higher_id) = palette.get_from_name(higher_name);
+        let (_, main_id) = palette.from_name(main_name);
+        let (_, lower_id) = palette.from_name(lower_name);
+        let (_, higher_id) = palette.from_nameigher_name);
 
         SeparatorForm::ThreeWay(
-            TextLineBuilder::from([main_id, DEFAULT]),
-            TextLineBuilder::from([lower_id, DEFAULT]),
-            TextLineBuilder::from([higher_id, DEFAULT]),
+            TextBuilder::from([main_id, DEFAULT]),
+            TextBuilder::from([lower_id, DEFAULT]),
+            TextBuilderfrom([higher_id, DEFAULT]),
         )
     }
 
     fn form_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
         match self {
-            SeparatorForm::Uniform(builder) => builder.form_info(text),
+            SeparatorForm::Uniform(builder) => builder.swap_rangeext),
             SeparatorForm::DifferentOnMain(other_builder, main_builder) => {
                 if line_number == main_line {
-                    main_builder.form_info(text)
+                    main_builder.replace_rangeext)
                 } else {
-                    other_builder.form_info(text)
+                    other_builder.replace_rangesext)
                 }
             }
             SeparatorForm::ThreeWay(lower_builder, main_builder, higher_builder) => {
                 if line_number < main_line {
-                    lower_builder.form_info(text)
+                    lower_builder.iter_rangesext)
                 } else if line_number > main_line {
-                    higher_builder.form_info(text)
+                    higher_builder.replace_rangesext)
                 } else {
                     main_builder.form_infoext)
                 }

@@ -4,17 +4,18 @@ pub mod line_numbers;
 pub mod status_line;
 
 use std::{
+    cmp::Ordering,
     fmt::Debug,
-    ops::Deref,
+    ops::{Deref, Range},
     sync::{Arc, Mutex, MutexGuard},
 };
 
 use self::command_line::CommandList;
 use crate::{
     config::{DownCastableData, RwData},
-    position::{Cursor, Editor, Mover, SpliceAdder},
+    position::{Cursor, Editor, Mover, Pos},
     text::{PrintInfo, Text},
-    ui::{EndNode, Ui}, log_info,
+    ui::{EndNode, Ui},
 };
 
 // TODO: Maybe set up the ability to print images as well.
@@ -60,7 +61,10 @@ where
     U: Ui + 'static,
 {
     fn editor<'a>(
-        &'a mut self, index: usize, splice_adder: &'a mut SpliceAdder, end_node: &'a EndNode<U>,
+        &'a mut self,
+        index: usize,
+        edit_accum: &'a mut EditAccum,
+        end_node: &'a EndNode<U>,
     ) -> Editor<U>;
 
     fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U>;
@@ -192,6 +196,12 @@ where
     }
 }
 
+#[derive(Default)]
+pub struct EditAccum {
+    pub chars: isize,
+    pub changes: isize,
+}
+
 pub struct WidgetActor<'a, U, E>
 where
     U: Ui + 'static,
@@ -209,7 +219,11 @@ where
 {
     /// Returns a new instace of `WidgetActor<U, E>`.
     pub(crate) fn new(actionable: &'a mut E, end_node: &'a EndNode<U>) -> Self {
-        WidgetActor { clearing_needed: false, actionable, end_node }
+        WidgetActor {
+            clearing_needed: false,
+            actionable,
+            end_node,
+        }
     }
 
     /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
@@ -218,16 +232,15 @@ where
             return
         };
 
-        let mut last_range = cursors[0].range();
+        let (mut start, mut end) = cursors[0].pos_range();
         let mut last_index = 0;
         let mut to_remove = Vec::new();
 
         for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
-            if cursor.range().intersects(&last_range) {
-                cursor.merge(&last_range);
+            if cursor.try_merge(start, end).is_ok() {
                 to_remove.push(last_index);
             }
-            last_range = cursor.range();
+            (start, end) = cursor.pos_range();
             last_index = index;
         }
 
@@ -242,13 +255,13 @@ where
         F: FnMut(Editor<U>),
     {
         self.clear_intersections();
-        let mut splice_adder = SpliceAdder::default();
+        let mut edit_accum = EditAccum::default();
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let mut editor = self.actionable.editor(index, &mut splice_adder, self.end_node);
-            editor.calibrate_on_adder();
-            editor.reset_cols();
+            let mut editor = self
+                .actionable
+                .editor(index, &mut edit_accum, self.end_node);
             f(editor);
         }
     }
@@ -265,7 +278,7 @@ where
 
         // TODO: Figure out a better way to sort.
         self.actionable.mut_cursors().map(|cursors| {
-            cursors.sort_unstable_by(|j, k| j.range().at_start_ord(&k.range()));
+            cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
         });
         self.clearing_needed = true;
     }
@@ -281,7 +294,7 @@ where
         if let Some(cursors) = self.actionable.mut_cursors() {
             let cursor = cursors.remove(index);
             let range = cursor.range();
-            let new_index = match cursors.binary_search_by(|j| j.range().at_start_ord(&range)) {
+            let new_index = match cursors.binary_search_by(|j| at_start_ord(&j.range(), &range)) {
                 Ok(index) => index,
                 Err(index) => index,
             };
@@ -329,13 +342,20 @@ where
             self.clearing_needed = false;
         }
 
-        let mut splice_adder = SpliceAdder::default();
-        let editor = self.actionable.editor(index, &mut splice_adder, self.end_node);
+        let mut edit_accum = EditAccum::default();
+        let editor = self
+            .actionable
+            .editor(index, &mut edit_accum, self.end_node);
         f(editor);
 
+		let rope = self.actionable.text().rope().clone();
         if let Some(cursors) = self.actionable.mut_cursors() {
             for cursor in cursors.iter_mut().skip(index + 1) {
-                cursor.calibrate_on_adder(&mut splice_adder);
+                cursor.calibrate_on_accum(
+                    &edit_accum,
+                    &rope,
+                    self.end_node,
+                );
             }
         }
     }
@@ -374,7 +394,11 @@ where
         }
 
         self.actionable.mut_main_cursor_index().map(|main_index| {
-            *main_index = if *main_index == cursors_len - 1 { 0 } else { *main_index + 1 }
+            *main_index = if *main_index == cursors_len - 1 {
+                0
+            } else {
+                *main_index + 1
+            }
         });
     }
 
@@ -385,7 +409,11 @@ where
         }
 
         self.actionable.mut_main_cursor_index().map(|main_index| {
-            *main_index = if *main_index == 0 { cursors_len - 1 } else { *main_index - 1 }
+            *main_index = if *main_index == 0 {
+                cursors_len - 1
+            } else {
+                *main_index - 1
+            }
         });
     }
 
@@ -403,5 +431,17 @@ where
 
     pub fn redo(&mut self) {
         self.actionable.redo(self.end_node);
+    }
+}
+
+/// Comparets the `left` and `right` [`Range`]s, returning an [`Ordering`],
+/// based on the intersection at the start.
+fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
+    if left.end > right.start && right.start > left.start {
+        Ordering::Equal
+    } else if left.start > right.end {
+        Ordering::Greater
+    } else {
+        Ordering::Less
     }
 }

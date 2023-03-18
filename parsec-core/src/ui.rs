@@ -5,8 +5,9 @@ use ropey::RopeSlice;
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
+    text::PrintStatus,
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
-    SessionManager, text::PrintStatus,
+    SessionManager,
 };
 
 pub trait Area {
@@ -73,13 +74,27 @@ where
     fn next_line(&mut self) -> Result<(), ()>;
 
     /// Counts how many times the given string would wrap.
-    fn wrap_count(&self, text: &str, wrap_method: WrapMethod, tab_places: &TabPlaces) -> usize;
+    fn wrap_count(
+        &self,
+        slice: RopeSlice,
+        wrap_method: WrapMethod,
+        tab_places: &TabPlaces,
+    ) -> usize;
+
+    /// Returns the column that comes after the [slice][RopeSlice] wraps `wrap` times.
+    fn col_at_wrap(
+        &self,
+        slice: RopeSlice,
+        wrap: usize,
+        wrap_method: WrapMethod,
+        tab_places: &TabPlaces,
+    ) -> usize;
 
     /// Gets the visual width to a given column.
-    fn get_width(&self, text: RopeSlice, tab_places: &TabPlaces) -> usize;
+    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize;
 
     /// Gets the column at the given distance from the left side.
-    fn col_at_dist(&self, text: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
+    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
 }
 
 /// A node that contains other nodes.
@@ -105,7 +120,10 @@ where
     U: Ui + 'static,
 {
     fn new_from(container: U::Area, node: &Node<U>) -> Self {
-        MidNode { area: container, config: node.config() }
+        MidNode {
+            area: container,
+            config: node.config(),
+        }
     }
 }
 
@@ -136,7 +154,11 @@ where
     U: Ui + 'static,
 {
     fn new_from(label: U::Label, node: &Node<U>) -> Self {
-        EndNode { label: label, config: node.config(), is_active: false }
+        EndNode {
+            label: label,
+            config: node.config(),
+            is_active: false,
+        }
     }
 
     /// Returns a reference to the `Config` of the node.
@@ -144,7 +166,7 @@ where
         &self.config
     }
 
-    pub(crate) fn get_width(&self, text: &str) -> usize {
+    pub(crate) fn get_width(&self, text: RopeSlice) -> usize {
         self.label.get_width(text, &self.config.tab_places)
     }
 }
@@ -218,7 +240,10 @@ where
             return None;
         };
 
-        if let Some(pos) = children.iter().position(|child| child.node_index() == node_index) {
+        if let Some(pos) = children
+            .iter()
+            .position(|child| child.node_index() == node_index)
+        {
             Some((children, pos))
         } else {
             for child in children {
@@ -232,7 +257,12 @@ where
     }
 
     fn bisect(
-        &self, side: Side, split: Split, widget: Widget<U>, last_index: NodeIndex, ui: &mut U,
+        &self,
+        side: Side,
+        split: Split,
+        widget: Widget<U>,
+        last_index: NodeIndex,
+        ui: &mut U,
     ) -> (Node<U>, Option<MidNode<U>>) {
         let (label, container) = match self {
             Node::MidNode { mid_node, .. } => {
@@ -247,7 +277,12 @@ where
         widget.update(&mut end_node);
         let end_node = RwData::new(end_node);
         let identifier = widget.identifier();
-        let end_node = Node::EndNode { end_node, node_index: last_index, widget, identifier };
+        let end_node = Node::EndNode {
+            end_node,
+            node_index: last_index,
+            widget,
+            identifier,
+        };
 
         let mid_node = container.map(|container| MidNode::new_from(container, &self));
 
@@ -263,7 +298,11 @@ where
 		};
 
         children.push(new_node);
-        let insert_index = if let Side::Top | Side::Left = side { 0 } else { 1 };
+        let insert_index = if let Side::Top | Side::Left = side {
+            0
+        } else {
+            1
+        };
         children.insert(insert_index, end_node);
     }
 }
@@ -282,26 +321,36 @@ where
     U: Ui + 'static,
 {
     pub fn push_widget(
-        &mut self, constructor: Box<dyn FnOnce(&SessionManager) -> Widget<U>>, side: Side,
-        split: Split, glued: bool,
+        &mut self,
+        constructor: Box<dyn FnOnce(&SessionManager) -> Widget<U>>,
+        side: Side,
+        split: Split,
+        glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>) {
         let widget = (constructor)(self.session_manager);
-        self.window.push_widget(self.node_index, widget, side, split, glued)
+        self.window
+            .push_widget(self.node_index, widget, side, split, glued)
     }
 
     pub fn push_widget_to_node<C>(
-        &mut self, constructor: C, node_index: NodeIndex, side: Side, split: Split, glued: bool,
+        &mut self,
+        constructor: C,
+        node_index: NodeIndex,
+        side: Side,
+        split: Split,
+        glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>)
     where
         C: Fn(&SessionManager) -> Widget<U>,
     {
         let widget = (constructor)(self.session_manager);
-        self.window.push_widget(node_index, widget, side, split, glued)
+        self.window
+            .push_widget(node_index, widget, side, split, glued)
     }
 }
 
 /// A way of splitting areas.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Split {
     Locked(usize),
     Min(usize),
@@ -323,7 +372,11 @@ pub enum Axis {
 
 impl From<Side> for Axis {
     fn from(value: Side) -> Self {
-        if let Side::Top | Side::Bottom = value { Axis::Vertical } else { Axis::Horizontal }
+        if let Side::Top | Side::Bottom = value {
+            Axis::Vertical
+        } else {
+            Axis::Horizontal
+        }
     }
 }
 
@@ -345,6 +398,19 @@ impl Side {
             Side::Left => Side::Right,
             Side::Right => Side::Left,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PushSpecs {
+    pub side: Side,
+    pub split: Split,
+    pub glued: bool,
+}
+
+impl PushSpecs {
+    pub fn new(side: Side, split: Split, glued: bool) -> Self {
+        PushSpecs { side, split, glued }
     }
 }
 
@@ -375,7 +441,10 @@ pub trait Ui: Debug + 'static {
     /// assert!(some_container.is_some());
     /// ```
     fn bisect_area(
-        &mut self, area: &mut Self::Area, side: Side, split: Split,
+        &mut self,
+        area: &mut Self::Area,
+        side: Side,
+        split: Split,
     ) -> (Self::Label, Option<Self::Area>);
 
     /// Returns a `Self::Label` representing the maximum possible extent an area could have.
@@ -416,10 +485,17 @@ where
 {
     /// Returns a new instance of `NodeManager`.
     pub fn new(
-        mut ui: U, widget: Widget<U>, config: Config, session_manager: &mut SessionManager,
+        mut ui: U,
+        widget: Widget<U>,
+        config: Config,
+        session_manager: &mut SessionManager,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
     ) -> Self {
-        let mut end_node = EndNode { label: ui.maximum_label(), config, is_active: true };
+        let mut end_node = EndNode {
+            label: ui.maximum_label(),
+            config,
+            is_active: true,
+        };
         widget.update(&mut end_node);
 
         let Widget::Actionable(rw_data) = &widget else {
@@ -444,7 +520,11 @@ where
 
         let file = ro_widget.try_downcast::<FileWidget<U>>().unwrap();
 
-        let mod_node = ModNode { session_manager, window: &mut window, node_index: NodeIndex(0) };
+        let mod_node = ModNode {
+            session_manager,
+            window: &mut window,
+            node_index: NodeIndex(0),
+        };
         (constructor_hook)(mod_node, file);
 
         window
@@ -452,7 +532,12 @@ where
 
     /// Pushes a `Widget` onto an
     pub(crate) fn push_widget(
-        &mut self, node_index: NodeIndex, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        &mut self,
+        node_index: NodeIndex,
+        widget: Widget<U>,
+        side: Side,
+        split: Split,
+        glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index.0 += 1;
 
@@ -464,15 +549,19 @@ where
             let mid_node = RwData::new(mid_node);
             self.last_index.0 += 1;
 
-            // Here, I swap the `NodeIndex`es in order to keep the same node "position".
+            // Here, swap the `NodeIndex`es in order to keep the same node "position".
             let new_parent = Node::MidNode {
                 mid_node,
                 children: Vec::new(),
                 node_index: target_node.node_index(),
             };
             match target_node {
-                Node::MidNode { node_index: index, .. } => *index = self.last_index,
-                Node::EndNode { node_index: index, .. } => *index = self.last_index,
+                Node::MidNode {
+                    node_index: index, ..
+                } => *index = self.last_index,
+                Node::EndNode {
+                    node_index: index, ..
+                } => *index = self.last_index,
             }
 
             target_node.replace_with_mid(new_parent, new_child, side);
@@ -497,20 +586,35 @@ where
     }
 
     pub fn push_hooked(
-        &mut self, widget: Widget<U>, node_index: NodeIndex, side: Side, split: Split, glued: bool,
-        constructor_hook: &dyn Fn(ModNode<U>), session_manager: &mut SessionManager,
+        &mut self,
+        widget: Widget<U>,
+        node_index: NodeIndex,
+        side: Side,
+        split: Split,
+        glued: bool,
+        constructor_hook: &dyn Fn(ModNode<U>),
+        session_manager: &mut SessionManager,
     ) -> (NodeIndex, Option<NodeIndex>) {
         let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
 
-        let mod_node = ModNode { session_manager, window: self, node_index: new_node };
+        let mod_node = ModNode {
+            session_manager,
+            window: self,
+            node_index: new_node,
+        };
         (constructor_hook)(mod_node);
 
         (new_node, maybe_node)
     }
 
     pub fn push_file<C>(
-        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
-        session_manager: &mut SessionManager, constructor_hook: C,
+        &mut self,
+        widget: Widget<U>,
+        side: Side,
+        split: Split,
+        glued: bool,
+        session_manager: &mut SessionManager,
+        constructor_hook: C,
     ) -> (NodeIndex, Option<NodeIndex>)
     where
         C: Fn(ModNode<U>, RoData<FileWidget<U>>),
@@ -525,7 +629,11 @@ where
         let widget = RoData::from(widget);
         let file = widget.try_downcast::<FileWidget<U>>().unwrap();
 
-        let mod_node = ModNode { session_manager, window: self, node_index: new_index };
+        let mod_node = ModNode {
+            session_manager,
+            window: self,
+            node_index: new_index,
+        };
         (constructor_hook)(mod_node, file);
 
         (new_index, maybe_index)
@@ -534,7 +642,11 @@ where
     /// Pushes a `Widget` to the parent of all files.
     /// Pushes a `Widget` to the master node of the current window.
     pub fn push_to_master(
-        &mut self, widget: Widget<U>, side: Side, split: Split, glued: bool,
+        &mut self,
+        widget: Widget<U>,
+        side: Side,
+        split: Split,
+        glued: bool,
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.push_widget(NodeIndex(0), widget, side, split, glued)
     }
@@ -562,31 +674,39 @@ where
     }
 
     pub fn widgets(&self) -> Widgets<U> {
-        Widgets { window: self, cur_node_index: NodeIndex(0) }
+        Widgets {
+            window: self,
+            cur_node_index: NodeIndex(0),
+        }
     }
 
     pub fn actionable_widgets(&self) -> ActionableWidgets<U> {
-        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }
+        ActionableWidgets {
+            window: self,
+            cur_node_index: NodeIndex(0),
+        }
     }
 
     pub fn files(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
-        ActionableWidgets { window: self, cur_node_index: NodeIndex(0) }.filter_map(
-            |(widget, ..)| {
-                let widget = match widget.try_read() {
-                    Ok(widget) => widget,
-                    Err(_) => return None,
-                };
+        ActionableWidgets {
+            window: self,
+            cur_node_index: NodeIndex(0),
+        }
+        .filter_map(|(widget, ..)| {
+            let widget = match widget.try_read() {
+                Ok(widget) => widget,
+                Err(_) => return None,
+            };
 
-                let identifier = widget.identifier();
-                if let Some(prefix) = identifier.get(..13) {
-                    if prefix == "parsec-file: " {
-                        return Some(String::from(identifier));
-                    }
+            let identifier = widget.identifier();
+            if let Some(prefix) = identifier.get(..13) {
+                if prefix == "parsec-file: " {
+                    return Some(String::from(identifier));
                 }
+            }
 
-                None
-            },
-        )
+            None
+        })
     }
 
     pub(crate) fn print_if_layout_changed(&self) {
@@ -615,7 +735,9 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.window.find(self.cur_node_index) {
-                Some(Node::EndNode { end_node, widget, .. }) => {
+                Some(Node::EndNode {
+                    end_node, widget, ..
+                }) => {
                     self.cur_node_index.0 += 1;
                     return Some((widget, end_node));
                 }
@@ -647,7 +769,11 @@ impl<'a, U> Iterator for ActionableWidgets<'a, U>
 where
     U: Ui + 'static,
 {
-    type Item = (&'a RwData<dyn ActionableWidget<U>>, &'a str, &'a RwData<EndNode<U>>);
+    type Item = (
+        &'a RwData<dyn ActionableWidget<U>>,
+        &'a str,
+        &'a RwData<EndNode<U>>,
+    );
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
