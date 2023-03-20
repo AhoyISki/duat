@@ -5,7 +5,10 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope as AnyRope};
 
 use self::form::FormFormer;
-use crate::{ui::{Area, Label}, text::inner_text::InnerText};
+use crate::{
+    text::inner_text::InnerText,
+    ui::{Area, Label},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
@@ -99,7 +102,16 @@ impl Tags {
     }
 
     pub fn insert(&mut self, tag: Tag, lock: Lock, ch_index: usize) {
-        let (start_ch_index, tag_or_skip) = self.rope.from_width(ch_index);
+        assert!(
+            ch_index <= self.rope.width(),
+            "Char index {} too large",
+            ch_index
+        );
+        let (start_ch_index, tag_or_skip) = self
+            .rope
+            .get_from_width(ch_index)
+            .unwrap_or((0, TagOrSkip::Skip(0)));
+
         let TagOrSkip::Skip(count) = tag_or_skip else {
             self.rope.insert(ch_index, TagOrSkip::Tag(tag, lock));
             return;

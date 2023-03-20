@@ -70,11 +70,8 @@ where
     }
 }
 
-fn push_forms_and_text<U>(
-    text: &str,
-    text_builder: &mut TextBuilder<U>,
-    palette: &FormPalette,
-) where
+fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
+where
     U: Ui,
 {
     let mut prev_l_index = None;

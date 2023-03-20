@@ -19,8 +19,10 @@ use crossterm::{
 use no_deadlocks::Mutex;
 use parsec_core::{
     config::{Config, DownCastableData},
+    log_info,
+    tags::Tag,
     text::PrintStatus,
-    widgets::line_numbers::LineNumbersCfg, tags::Tag, ui::PushSpecs,
+    ui::PushSpecs,
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -589,6 +591,9 @@ impl ui::Label<Area> for Label {
     }
 
     fn start_printing(&mut self, config: &Config) {
+        self.wrap_method = Some(config.wrap_method);
+        self.tab_places = Some(config.tab_places.clone());
+
         unsafe {
             LOCK = Some(PRINTER.lock().unwrap());
         }
@@ -603,11 +608,10 @@ impl ui::Label<Area> for Label {
     }
 
     fn stop_printing(&mut self) {
-        for _ in self.cursor.y..(self.area.br().y.saturating_sub(2)) {
-            let _ = self.next_line();
-        }
+        self.wrap_method = None;
+        self.tab_places = None;
 
-        self.clear_line();
+        while let PrintStatus::NextLine = self.next_line() {}
 
         queue!(self.stdout, ResetColor, RestorePosition).unwrap();
         if unsafe { SHOW_CURSOR } {
@@ -658,7 +662,7 @@ impl ui::Label<Area> for Label {
             PrintStatus::Finished
         } else {
             self.clear_line();
-            PrintStatus::NextLine
+            PrintStatus::NextChar
         }
     }
 
@@ -753,7 +757,7 @@ impl ui::Ui for Ui {
     fn bisect_area(
         &mut self,
         area: &mut Self::Area,
-        push_specs: PushSpecs
+        push_specs: PushSpecs,
     ) -> (Self::Label, Option<Self::Area>) {
         let PushSpecs { side, split, .. } = push_specs;
         let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
@@ -1068,11 +1072,11 @@ where
 
         let builder = setup_builder(&file, &cfg);
 
-		drop(file);
+        drop(file);
         Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
             file: file_widget,
             builder,
-            cfg
+            cfg,
         }))))
     }
 
@@ -1080,14 +1084,14 @@ where
     pub fn default(mut file_widget: RoData<FileWidget<U>>) -> Widget<U> {
         let file = file_widget.read();
 
-		let cfg = VertRuleConfig::default();
+        let cfg = VertRuleConfig::default();
         let builder = setup_builder(&file, &cfg);
 
-		drop(file);
+        drop(file);
         Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
             file: file_widget,
             builder,
-            cfg
+            cfg,
         }))))
     }
 }
@@ -1146,5 +1150,3 @@ where
 
     builder
 }
-
-

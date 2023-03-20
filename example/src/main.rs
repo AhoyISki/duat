@@ -23,14 +23,12 @@ use parsec_core::{
     tags::{
         form::FormPalette,
         form::{CursorStyle, Form},
-        LineFlags, MatchManager,
     },
-    ui::{ModNode, Side, Split},
+    ui::{ModNode, PushSpecs, Side, Split},
     widgets::{
         command_line::CommandLine,
         file_widget::FileWidget,
-        line_numbers::{LineNumbers, LineNumbersConfig, Numbering},
-        status_line::StatusFormat,
+        line_numbers::{LineNumbers, LineNumbersCfg, Numbering},
     },
     Session,
 };
@@ -49,7 +47,6 @@ fn main() {
     // `FormPalette`s, by default, contain some `Form`s in them.
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that name.
-    palette.add_form("Separator", Form::new(false).cyan());
     palette.add_form("Mode", Form::new(false).dark_green());
 
     // The `Config` struct is a collection of common configuration options for the end user.
@@ -72,10 +69,12 @@ fn main() {
         // is very much a work in progress.
         config,
         Box::new(|mut mod_node, file| {
-            let config =
-                LineNumbersConfig { alignment: Alignment::Right, numbering: Numbering::Hybrid };
-            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
-            mod_node.push_widget(LineNumbers::new(file, config), push_specs);
+            //let config = LineNumbersCfg {
+            //    alignment: Alignment::Right,
+            //    numbering: Numbering::Hybrid,
+            //};
+            //let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
+            //mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
         }),
     );
 

@@ -18,7 +18,7 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use crate::text::{PrintInfo, inner_text::InnerText};
+use crate::text::{inner_text::InnerText, PrintInfo};
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]

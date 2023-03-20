@@ -379,53 +379,6 @@ where
     }
 }
 
-pub struct Printer<'a, I>
-where
-    I: Iterator<Item = (usize, Tag)>,
-{
-    chars: Peekable<Chars<'a>>,
-    tags: Peekable<I>,
-    cur_index: usize,
-    word_end: usize,
-    cur_word: String,
-    cur_tags: Vec<Tag>,
-}
-
-impl<I> Printer<'_, I>
-where
-    I: Iterator<Item = (usize, Tag)>,
-{
-    pub fn next<'iter>(&'iter mut self) -> Option<(&'iter [Tag], &'iter str, usize)> {
-        if self.cur_index == self.word_end {
-            self.cur_word.clear();
-            while let Some(ch) = self.chars.peek() {
-                self.cur_word.push(*ch);
-                if *ch != ' ' && *ch != '\t' {
-                    self.word_end += 1;
-                    self.chars.next();
-                } else {
-                    break;
-                }
-            }
-        }
-
-        self.cur_tags.clear();
-        while let Some((ch_index, tag)) = self.tags.peek() {
-            if *ch_index == self.cur_index {
-                self.cur_tags.push(*tag);
-                self.tags.next();
-            } else {
-                break;
-            }
-        }
-        self.cur_index += 1;
-
-        let word_index = self.cur_index + self.cur_word.len() - self.word_end;
-
-        Some((self.cur_tags.as_slice(), self.cur_word.as_str(), word_index))
-    }
-}
-
 /// Prints the given character, taking configuration options into account.
 fn print_ch<U>(
     ch: char,
@@ -615,25 +568,13 @@ impl PrintInfo {
     where
         U: Ui,
     {
-        let (wrap_method, tab_places) = (
-            &end_node.config().wrap_method,
-            &end_node.config().tab_places,
-        );
-        let wrap_method = end_node.config().wrap_method;
-        let (height, width) = (
-            end_node.label.area().height(),
-            end_node.label.area().width(),
-        );
-
-        let old = self.last_main;
-
-        if let WrapMethod::NoWrap = wrap_method {
+        if let WrapMethod::NoWrap = end_node.config().wrap_method {
             self.scroll_hor_to_gap(target, inner, end_node);
         }
 
-        if target < old {
+        if target < self.last_main {
             self.scroll_up_to_gap(target, inner, end_node);
-        } else {
+        } else if target > self.last_main {
             self.scroll_down_to_gap(target, inner, end_node);
         }
 

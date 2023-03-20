@@ -45,7 +45,10 @@ impl Editor {
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Char(ch), .. } => {
+            KeyEvent {
+                code: KeyCode::Char(ch),
+                ..
+            } => {
                 actor.edit_on_each_cursor(|mut editor| {
                     editor.insert(ch);
                 });
@@ -53,7 +56,10 @@ impl Editor {
                     mover.move_hor(1);
                 });
             }
-            KeyEvent { code: KeyCode::Enter, .. } => {
+            KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            } => {
                 actor.edit_on_each_cursor(|mut editor| {
                     editor.insert('\n');
                 });
@@ -61,7 +67,10 @@ impl Editor {
                     mover.move_hor(1);
                 });
             }
-            KeyEvent { code: KeyCode::Backspace, .. } => {
+            KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
                 actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
@@ -83,7 +92,10 @@ impl Editor {
                     }
                 });
             }
-            KeyEvent { code: KeyCode::Delete, .. } => {
+            KeyEvent {
+                code: KeyCode::Delete,
+                ..
+            } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
                 actor.move_each_cursor(|mut mover| {
                     let caret = mover.caret();
@@ -105,31 +117,60 @@ impl Editor {
                     }
                 });
             }
-            KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Left,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Left, 1);
             }
-            KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Right,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Right, 1);
             }
-            KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Up,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Top, 1);
             }
-            KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Down,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Left, .. } => {
+            KeyEvent {
+                code: KeyCode::Left,
+                ..
+            } => {
                 move_each(&mut actor, Side::Left, 1);
             }
-            KeyEvent { code: KeyCode::Right, .. } => {
+            KeyEvent {
+                code: KeyCode::Right,
+                ..
+            } => {
                 move_each(&mut actor, Side::Right, 1);
             }
-            KeyEvent { code: KeyCode::Up, .. } => {
+            KeyEvent {
+                code: KeyCode::Up, ..
+            } => {
                 move_each(&mut actor, Side::Top, 1);
             }
-            KeyEvent { code: KeyCode::Down, .. } => {
+            KeyEvent {
+                code: KeyCode::Down,
+                ..
+            } => {
                 move_each(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Tab, .. } => {
+            KeyEvent {
+                code: KeyCode::Tab, ..
+            } => {
                 actor.new_moment();
                 *self.cur_mode.write() = Mode::Normal;
             }
@@ -139,14 +180,21 @@ impl Editor {
 
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>,
+        &mut self,
+        key: &KeyEvent,
+        mut actor: WidgetActor<U, E>,
+        controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
             ////////// SessionControl commands.
-            KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
+            KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CONTROL,
+                ..
+            } => {
                 controls.quit();
             }
 
@@ -181,94 +229,165 @@ impl Editor {
             }
 
             ////////// Movement keys that get rid of selections.
-            KeyEvent { code: KeyCode::Char('h') | KeyCode::Left, .. } => {
+            KeyEvent {
+                code: KeyCode::Char('h') | KeyCode::Left,
+                ..
+            } => {
                 move_each(&mut actor, Side::Left, 1);
             }
-            KeyEvent { code: KeyCode::Char('j') | KeyCode::Down, .. } => {
+            KeyEvent {
+                code: KeyCode::Char('j') | KeyCode::Down,
+                ..
+            } => {
                 move_each(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Char('k') | KeyCode::Up, .. } => {
+            KeyEvent {
+                code: KeyCode::Char('k') | KeyCode::Up,
+                ..
+            } => {
                 move_each(&mut actor, Side::Top, 1);
             }
-            KeyEvent { code: KeyCode::Char('l') | KeyCode::Right, .. } => {
+            KeyEvent {
+                code: KeyCode::Char('l') | KeyCode::Right,
+                ..
+            } => {
                 move_each(&mut actor, Side::Right, 1);
             }
 
             ////////// Insertion keys.
-            KeyEvent { code: KeyCode::Char('i'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('i'),
+                ..
+            } => {
                 actor.move_each_cursor(|mut mover| mover.switch_ends());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent { code: KeyCode::Char('a'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('a'),
+                ..
+            } => {
                 actor.move_each_cursor(|mut mover| mover.set_caret_on_end());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent { code: KeyCode::Char('c'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('c'),
+                ..
+            } => {
                 actor.edit_on_each_cursor(|mut editor| editor.replace(""));
                 actor.move_each_cursor(|mut mover| mover.unset_anchor());
                 *self.cur_mode.write() = Mode::Insert;
             }
 
             ////////// Other mode changing keys.
-            KeyEvent { code: KeyCode::Char(':'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char(':'),
+                ..
+            } => {
                 if let Ok(_) = controls.switch_to_widget("parsec-command-line") {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
-            KeyEvent { code: KeyCode::Char('g'), .. } => *self.cur_mode.write() = Mode::GoTo,
+            KeyEvent {
+                code: KeyCode::Char('g'),
+                ..
+            } => *self.cur_mode.write() = Mode::GoTo,
 
             ////////// History manipulation.
-            KeyEvent { code: KeyCode::Char('u'), .. } => actor.undo(),
-            KeyEvent { code: KeyCode::Char('U'), .. } => actor.redo(),
+            KeyEvent {
+                code: KeyCode::Char('u'),
+                ..
+            } => actor.undo(),
+            KeyEvent {
+                code: KeyCode::Char('U'),
+                ..
+            } => actor.redo(),
             _ => {}
         }
     }
 
     /// Commands that are available in `Mode::Command`.
     fn match_command<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>,
+        &mut self,
+        key: &KeyEvent,
+        mut actor: WidgetActor<U, E>,
+        controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Enter, .. } => {
+            KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            } => {
                 actor.edit_on_main(|mut editor| editor.replace('\n'));
                 if let Ok(_) = controls.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }
-            KeyEvent { code: KeyCode::Char(ch), .. } => {
+            KeyEvent {
+                code: KeyCode::Char(ch),
+                ..
+            } => {
                 actor.edit_on_main(|mut editor| editor.replace(ch));
                 actor.move_main(|mut mover| mover.move_hor(1));
             }
 
-            KeyEvent { code: KeyCode::Left, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Left,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Left, 1);
             }
-            KeyEvent { code: KeyCode::Right, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Right,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Right, 1);
             }
-            KeyEvent { code: KeyCode::Up, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Up,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Top, 1);
             }
-            KeyEvent { code: KeyCode::Down, modifiers: KeyModifiers::SHIFT, .. } => {
+            KeyEvent {
+                code: KeyCode::Down,
+                modifiers: KeyModifiers::SHIFT,
+                ..
+            } => {
                 move_each_and_select(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent { code: KeyCode::Left, .. } => {
+            KeyEvent {
+                code: KeyCode::Left,
+                ..
+            } => {
                 move_each(&mut actor, Side::Left, 1);
             }
-            KeyEvent { code: KeyCode::Right, .. } => {
+            KeyEvent {
+                code: KeyCode::Right,
+                ..
+            } => {
                 move_each(&mut actor, Side::Right, 1);
             }
-            KeyEvent { code: KeyCode::Up, .. } => {
+            KeyEvent {
+                code: KeyCode::Up, ..
+            } => {
                 move_each(&mut actor, Side::Top, 1);
             }
-            KeyEvent { code: KeyCode::Down, .. } => {
+            KeyEvent {
+                code: KeyCode::Down,
+                ..
+            } => {
                 move_each(&mut actor, Side::Bottom, 1);
             }
 
-            KeyEvent { code: KeyCode::Esc, .. } => {
+            KeyEvent {
+                code: KeyCode::Esc, ..
+            } => {
                 if let Ok(_) = controls.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
@@ -279,23 +398,35 @@ impl Editor {
 
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, controls: &mut Controls<U>,
+        &mut self,
+        key: &KeyEvent,
+        mut _actor: WidgetActor<U, E>,
+        controls: &mut Controls<U>,
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized,
     {
         match key {
-            KeyEvent { code: KeyCode::Char('a'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('a'),
+                ..
+            } => {
                 if let Ok(_) = controls.switch_to_widget(&self.last_file) {
                     self.last_file = controls.active_file().to_string();
                 }
             }
-            KeyEvent { code: KeyCode::Char('n'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('n'),
+                ..
+            } => {
                 if let Ok(_) = controls.next_file() {
                     self.last_file = controls.active_file().to_string();
                 }
             }
-            KeyEvent { code: KeyCode::Char('N'), .. } => {
+            KeyEvent {
+                code: KeyCode::Char('N'),
+                ..
+            } => {
                 if let Ok(_) = controls.prev_file() {
                     self.last_file = controls.active_file().to_string();
                 }
@@ -313,7 +444,10 @@ impl Editor {
 
 impl InputScheme for Editor {
     fn process_key<U, A>(
-        &mut self, key: &KeyEvent, actor: WidgetActor<U, A>, controls: &mut Controls<U>,
+        &mut self,
+        key: &KeyEvent,
+        actor: WidgetActor<U, A>,
+        controls: &mut Controls<U>,
     ) where
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
