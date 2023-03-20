@@ -5,7 +5,7 @@ use ropey::RopeSlice;
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
-    text::{PrintStatus},
+    text::PrintStatus,
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
     SessionManager,
 };
@@ -236,18 +236,17 @@ where
 
     fn bisect(
         &self,
-        side: Side,
-        split: Split,
+        push_specs: PushSpecs,
         widget: Widget<U>,
         last_index: NodeIndex,
         ui: &mut U,
     ) -> (Node<U>, Option<MidNode<U>>) {
         let (label, container) = match self {
             Node::MidNode { mid_node, .. } => {
-                ui.bisect_area(&mut mid_node.write().area, side, split)
+                ui.bisect_area(&mut mid_node.write().area, push_specs)
             }
             Node::EndNode { end_node, .. } => {
-                ui.bisect_area(end_node.write().label.area_mut(), side, split)
+                ui.bisect_area(end_node.write().label.area_mut(), push_specs)
             }
         };
 
@@ -301,29 +300,23 @@ where
     pub fn push_widget(
         &mut self,
         constructor: Box<dyn FnOnce(&SessionManager) -> Widget<U>>,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs,
     ) -> (NodeIndex, Option<NodeIndex>) {
         let widget = (constructor)(self.session_manager);
-        self.window
-            .push_widget(self.node_index, widget, side, split, glued)
+        self.window.push_widget(self.node_index, widget, push_specs)
     }
 
     pub fn push_widget_to_node<C>(
         &mut self,
         constructor: C,
         node_index: NodeIndex,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs,
     ) -> (NodeIndex, Option<NodeIndex>)
     where
         C: Fn(&SessionManager) -> Widget<U>,
     {
         let widget = (constructor)(self.session_manager);
-        self.window
-            .push_widget(node_index, widget, side, split, glued)
+        self.window.push_widget(node_index, widget, push_specs)
     }
 }
 
@@ -421,8 +414,7 @@ pub trait Ui: Debug + 'static {
     fn bisect_area(
         &mut self,
         area: &mut Self::Area,
-        side: Side,
-        split: Split,
+        push_specs: PushSpecs,
     ) -> (Self::Label, Option<Self::Area>);
 
     /// Returns a `Self::Label` representing the maximum possible extent an area could have.
@@ -512,15 +504,13 @@ where
         &mut self,
         node_index: NodeIndex,
         widget: Widget<U>,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs,
     ) -> (NodeIndex, Option<NodeIndex>) {
         self.last_index.0 += 1;
 
         let target_node = self.main_node.find_mut(node_index).expect("Node not found");
         let (new_child, new_parent) =
-            target_node.bisect(side, split, widget, self.last_index, &mut self.ui);
+            target_node.bisect(push_specs, widget, self.last_index, &mut self.ui);
 
         if let Some(mid_node) = new_parent {
             let mid_node = RwData::new(mid_node);
@@ -541,9 +531,9 @@ where
                 } => *index = self.last_index,
             }
 
-            target_node.replace_with_mid(new_parent, new_child, side);
+            target_node.replace_with_mid(new_parent, new_child, push_specs.side);
 
-            if !glued && node_index == self.files_parent {
+            if !push_specs.glued && node_index == self.files_parent {
                 self.files_parent = self.last_index;
             }
 
@@ -551,7 +541,7 @@ where
         } else {
             drop(target_node);
             if let Some((children, pos)) = self.mut_parent_of(node_index) {
-                if let Side::Top | Side::Left = side {
+                if let Side::Top | Side::Left = push_specs.side {
                     children.insert(pos, new_child);
                 } else {
                     children.insert(pos + 1, new_child);
@@ -566,13 +556,11 @@ where
         &mut self,
         widget: Widget<U>,
         node_index: NodeIndex,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs,
         constructor_hook: &dyn Fn(ModNode<U>),
         session_manager: &mut SessionManager,
     ) -> (NodeIndex, Option<NodeIndex>) {
-        let (new_node, maybe_node) = self.push_widget(node_index, widget, side, split, glued);
+        let (new_node, maybe_node) = self.push_widget(node_index, widget, push_specs);
 
         let mod_node = ModNode {
             session_manager,
@@ -587,9 +575,7 @@ where
     pub fn push_file<C>(
         &mut self,
         widget: Widget<U>,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs,
         session_manager: &mut SessionManager,
         constructor_hook: C,
     ) -> (NodeIndex, Option<NodeIndex>)
@@ -597,7 +583,7 @@ where
         C: Fn(ModNode<U>, RoData<FileWidget<U>>),
     {
         let node_index = self.files_parent;
-        let (new_index, maybe_index) = self.push_widget(node_index, widget, side, split, glued);
+        let (new_index, maybe_index) = self.push_widget(node_index, widget, push_specs);
         let node = self.find(new_index).unwrap();
 
         let Node::EndNode { widget: Widget::Actionable(widget), .. } = node else {
@@ -621,11 +607,9 @@ where
     pub fn push_to_master(
         &mut self,
         widget: Widget<U>,
-        side: Side,
-        split: Split,
-        glued: bool,
+        push_specs: PushSpecs
     ) -> (NodeIndex, Option<NodeIndex>) {
-        self.push_widget(NodeIndex(0), widget, side, split, glued)
+        self.push_widget(NodeIndex(0), widget, push_specs)
     }
 
     /// Triggers the functions to use when the program starts.

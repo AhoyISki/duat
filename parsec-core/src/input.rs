@@ -26,7 +26,9 @@ pub trait KeyTakingWidget {
 pub trait InputScheme {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
-        &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
+        &mut self,
+        key: &KeyEvent,
+        widget_actor: WidgetActor<U, A>,
         session_control: &mut Controls<U>,
     ) where
         U: Ui + 'static,
@@ -55,9 +57,15 @@ where
     E: InputScheme,
 {
     pub fn new(
-        takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>, condition: Box<dyn Fn(&E) -> bool>,
+        takes: &Vec<KeyEvent>,
+        gives: &Vec<KeyEvent>,
+        condition: Box<dyn Fn(&E) -> bool>,
     ) -> Self {
-        Self { takes: takes.clone(), gives: gives.clone(), condition }
+        Self {
+            takes: takes.clone(),
+            gives: gives.clone(),
+            condition,
+        }
     }
 }
 
@@ -91,12 +99,16 @@ where
 
     /// Removes all remappings with the given sequence.
     pub fn unmap(&mut self, takes: &Vec<KeyEvent>, condition: &Box<dyn Fn(&E) -> bool>) {
-        self.remaps.retain(|r| condition(&self.input_scheme) || &r.takes != takes);
+        self.remaps
+            .retain(|r| condition(&self.input_scheme) || &r.takes != takes);
     }
 
     /// Maps a sequence of characters to another.
     pub fn remap(
-        &mut self, takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>, condition: Box<dyn Fn(&E) -> bool>,
+        &mut self,
+        takes: &Vec<KeyEvent>,
+        gives: &Vec<KeyEvent>,
+        condition: Box<dyn Fn(&E) -> bool>,
     ) {
         self.unmap(takes, &condition);
         self.remaps.push(InputRemap::new(takes, gives, condition));
@@ -104,15 +116,23 @@ where
 
     /// Send a given key to be processed.
     pub fn send_key_to_actionable<U, A>(
-        &mut self, key: KeyEvent, widget: &mut A, end_node: &EndNode<U>, mut controls: Controls<U>,
+        &mut self,
+        key: KeyEvent,
+        widget: &mut A,
+        end_node: &EndNode<U>,
+        mut controls: Controls<U>,
     ) where
         U: Ui + 'static,
-        A: ActionableWidget<U> + ?Sized
+        A: ActionableWidget<U> + ?Sized,
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };
 
-        let remaps = self.remaps.iter().enumerate().filter(|(i, _)| found_or_empty(*i));
+        let remaps = self
+            .remaps
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| found_or_empty(*i));
 
         let mut should_check_new = Vec::new();
 
@@ -145,12 +165,14 @@ where
 
         for key in keys_to_send {
             let widget_actor = WidgetActor::new(&mut *widget, end_node);
-            self.input_scheme.process_key(&key, widget_actor, &mut controls);
+            self.input_scheme
+                .process_key(&key, widget_actor, &mut controls);
         }
 
         if should_check_new.is_empty() {
             let widget_actor = WidgetActor::new(&mut *widget, end_node);
-            self.input_scheme.process_key(&key, widget_actor, &mut controls);
+            self.input_scheme
+                .process_key(&key, widget_actor, &mut controls);
         }
 
         self.should_check = should_check_new;

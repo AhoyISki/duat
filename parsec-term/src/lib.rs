@@ -20,7 +20,7 @@ use no_deadlocks::Mutex;
 use parsec_core::{
     config::{Config, DownCastableData},
     text::PrintStatus,
-    widgets::line_numbers::LineNumbersCfg, tags::Tag,
+    widgets::line_numbers::LineNumbersCfg, tags::Tag, ui::PushSpecs,
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -753,9 +753,9 @@ impl ui::Ui for Ui {
     fn bisect_area(
         &mut self,
         area: &mut Self::Area,
-        side: Side,
-        split: Split,
+        push_specs: PushSpecs
     ) -> (Self::Label, Option<Self::Area>) {
+        let PushSpecs { side, split, .. } = push_specs;
         let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
         if let Err(_) = area.request_len(max(resizable_len, split.len()), side) {
             panic!(

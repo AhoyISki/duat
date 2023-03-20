@@ -12,7 +12,7 @@ use std::{path::PathBuf, thread, time::Duration};
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
-use ui::{EndNode, ModNode, NodeIndex, Side, Split, Ui, Window};
+use ui::{EndNode, ModNode, NodeIndex, PushSpecs, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -88,12 +88,14 @@ where
 
     pub fn open_file(&mut self, path: PathBuf) {
         let file_widget = FileWidget::new(Some(path));
-        let (side, split) = (Side::Right, Split::Min(40));
+        let push_specs = PushSpecs {
+            side: Side::Right,
+            split: Split::Min(40),
+            glued: false,
+        };
         self.windows[self.active_window].push_file(
             file_widget,
-            side,
-            split,
-            false,
+            push_specs,
             &mut self.session_manager.write(),
             &self.constructor_hook,
         );
@@ -102,15 +104,13 @@ where
     pub fn push_widget_to_edge<C>(
         &mut self,
         constructor: C,
-        side: Side,
-        split: Split,
+        push_specs: PushSpecs,
     ) -> (NodeIndex, Option<NodeIndex>)
     where
         C: Fn(&Session<U>) -> Widget<U>,
     {
         let widget = (constructor)(self);
-        self.mut_active_window()
-            .push_to_master(widget, side, split, false)
+        self.mut_active_window().push_to_master(widget, push_specs)
     }
 
     /// Start the application, initiating a read/response loop.

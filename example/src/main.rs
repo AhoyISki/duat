@@ -54,7 +54,7 @@ fn main() {
 
     // The `Config` struct is a collection of common configuration options for the end user.
     let config = Config {
-        scrolloff: ScrollOff { d_x: 5, d_y: 5 },
+        scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
         wrap_indent: true,
         palette,
         ..Config::default()
@@ -63,55 +63,6 @@ fn main() {
     // The `Editor` (in this case, the Kakoune editor) is the thing that determines how the program
     // will be handle input to edit a file or any piece of text.
     let editor = Editor::default();
-
-    // The `form_status!` macro takes a `StatusLine` widget and formats it in the desired fashion.
-    let status_format: StatusFormat<Ui> = status_format!(
-        &config.palette,
-        // You can put text in the left, right, or center of the status line. If there is not
-        // enough space for all of the sides, some will be ommited.
-        left: "",
-        center: "",
-        // These are the symbols to format your status line:
-        // - {}: These are global variables, you must place an entry on "global_vars" for each
-        //   of these you put on the text.
-        // - (): These are file variables, they refer to information in the file that this
-        //   `StatusLine` is associated with. The file in question may change. You must place on
-        //   entry on "file_vars" for each of these you put on the text.
-        // - [<form_name>]: This will invoke <form_name> as the `Form` to be applied to the text
-        //   after this point. A second use of [<form_name_2>] will change the form again. If
-        //   a given <form_name> doesn't exist, Parsec will panic.
-        right: "[FileName]() [Mode]{} [Selections]() sel [Coords]()[Separator]:[Coords]()[Separator]/[Coords]()",
-        // Each "file_var" is essentially a method to apply to a `FileWidget` that must return
-        // either a `String` or something that implements `ToString`. As these can be closures,
-        // they permit a great level of power as to what will be show up.
-        file_vars: [
-            (|file| file.name()),
-            (|file| file.cursors().len()),
-            (|file| file.main_cursor().row()),
-            (|file| file.main_cursor().col()),
-            (|file| file.len())
-        ],
-        // Each "global_var" consists of 2 parts:
-        // - An object in the form of `RoData<T>`.
-        // - A method that returns a `String` from `M`.
-        // `RoData` is, in essence, a multithreaded struct capable of holding data that can be
-        // updated and read. It is the counterpart of `RwData`, as in, an `RwData<T>` can read
-        // and modify `M`, while an `RoData<T>`, created from `&RwData<T>`, will only be able to
-        // read `M`. These are the 2 structs that permit a great level of flexibility in sharing
-        // information without the process becoming too cumbersome.
-        global_vars: [
-            // In this case, `Editor::cur_mode()` returns an `RoData<D> where D: Display`. We
-            // don't need to provide a closure in order to return a `String`, `form_status!`
-            // will automatically assume that `D: Display`.
-            (editor.cur_mode())
-            // Assuming that, earlier in the code, we wrote this `RwData` from a tuple:
-            // let my_var = RwData::new((String::from("text"), ()));
-            // let read_only = RoData::from(&my_var);
-            //
-            // Since `read_only.0` implements `ToString`, we would write the following:
-            // (|read_only| read_only.0)
-        ]
-    );
 
     // A `Session` is essentially the application itself, it will take arguments such as a user
     // provided `Config` and `FormPalette` in order to start the program.
