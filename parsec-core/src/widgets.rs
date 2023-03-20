@@ -13,7 +13,7 @@ use std::{
 use self::command_line::CommandList;
 use crate::{
     config::{DownCastableData, RwData},
-    position::{Cursor, Editor, Mover, Pos},
+    position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
 };
@@ -348,16 +348,12 @@ where
             .editor(index, &mut edit_accum, self.end_node);
         f(editor);
 
-		let rope = self.actionable.text().rope().clone();
-        if let Some(cursors) = self.actionable.mut_cursors() {
-            for cursor in cursors.iter_mut().skip(index + 1) {
-                cursor.calibrate_on_accum(
-                    &edit_accum,
-                    &rope,
-                    self.end_node,
-                );
-            }
+		let mut new_cursors = Vec::from(&self.actionable.cursors()[(index + 1)..]);
+        for cursor in &mut new_cursors {
+            cursor.calibrate_on_accum(&edit_accum, self.actionable.text().inner());
         }
+
+        self.actionable.mut_cursors().unwrap().splice((index + 1).., new_cursors.into_iter());
     }
 
     /// Edits on the main cursor's selection.

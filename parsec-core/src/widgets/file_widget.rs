@@ -10,6 +10,7 @@ use std::{
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
+use ropey::Rope;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -52,7 +53,7 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let text = Text::from(file_contents);
+        let text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
 
         Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(FileWidget {
@@ -85,13 +86,9 @@ where
             self.text.undo_change(&change, chars);
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
-            let pos = Pos::new(new_caret_ch, self.text.rope());
+            let pos = Pos::new(new_caret_ch, self.text.inner());
             self.cursors
-                .push(Cursor::new(pos, &self.text.rope(), end_node));
-
-            //let range = TextRange { start: splice.start(), end: splice.taken_end() };
-            //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
-            //update_range(&mut self.text, range, max_line, &self.end_node.read());
+                .push(Cursor::new(pos, &self.text.inner(), end_node));
         }
     }
 
@@ -109,19 +106,15 @@ where
         for change in &moment.changes {
             self.text.apply_change(&change);
 
-            let new_pos = Pos::new(change.added_end(), self.text.rope());
+            let new_pos = Pos::new(change.added_end(), self.text.inner());
             self.cursors
-                .push(Cursor::new(new_pos, &self.text.rope(), &end_node));
-
-            //let range = TextRange { start: splice.start(), end: splice.added_end() };
-            //let max_line = max_line(&self.text, &self.print_info, &self.end_node.read());
-            //update_range(&mut self.text, range, max_line, &self.end_node.read());
+                .push(Cursor::new(new_pos, &self.text.inner(), &end_node));
         }
     }
 
     fn set_printed_lines(&mut self, end_node: &EndNode<U>) {
         let height = end_node.label.area().height();
-        let slice = self.text.rope().slice(self.print_info.first_ch..);
+        let slice = self.text.inner().slice(self.print_info.first_ch..);
         let mut lines_iter = slice.lines().enumerate();
 
         self.printed_lines.clear();
@@ -190,11 +183,11 @@ where
 
     /// The lenght of the file, in lines.
     pub fn len_chars(&self) -> usize {
-        self.text.rope().len_chars()
+        self.text.inner().len_chars()
     }
 
     pub(crate) fn len_lines(&self) -> usize {
-        self.text.rope().len_lines()
+        self.text.inner().len_lines()
     }
 
     /// The `PrintInfo` of the `FileWidget`.
@@ -226,7 +219,7 @@ where
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         self.print_info
-            .update(self.main_cursor().caret(), self.text.rope(), end_node);
+            .update(self.main_cursor().caret(), self.text.inner(), end_node);
         self.set_printed_lines(end_node);
 
         //let mut node = self.end_node.write();

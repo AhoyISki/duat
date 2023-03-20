@@ -1,14 +1,14 @@
+pub mod inner_text;
 pub mod reader;
 
 use std::{
-    cmp::min,
     iter::Peekable,
     ops::{Range, RangeInclusive},
 };
 
-use ropey::Rope;
+use ropey::{iter::Chars, Rope};
 
-use self::reader::MutTextReader;
+use self::{inner_text::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
@@ -47,13 +47,29 @@ impl<U> TextBuilder<U>
 where
     U: Ui,
 {
+    pub fn default_string() -> Self {
+        TextBuilder {
+            text: Text::default_string(),
+            ranges: Vec::new(),
+            tags: Vec::new(),
+        }
+    }
+
+    pub fn default_rope() -> Self {
+        TextBuilder {
+            text: Text::default_string(),
+            ranges: Vec::new(),
+            tags: Vec::new(),
+        }
+    }
+
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
-        let len = self.text.rope.len_chars();
+        let len = self.text.inner.len_chars();
 
         let edit = edit.as_ref().to_string();
         self.move_last_tag(edit.chars().count());
 
-        let change = Change::new(edit, len..len, &self.text.rope);
+        let change = Change::new(edit, len..len, self.text.inner());
         self.text.apply_change(&change);
     }
 
@@ -64,7 +80,7 @@ where
         let edit = edit.as_ref().to_string();
         self.move_last_tag(edit.chars().count());
 
-        let change = Change::new(edit, len..len, &self.text.rope);
+        let change = Change::new(edit, len..len, self.text.inner());
         self.text.apply_change(&change);
     }
 
@@ -73,7 +89,7 @@ where
         let edit = edit.as_ref();
         let range = self.ranges[index].clone();
 
-        let change = Change::new(edit.to_string(), range.clone(), self.text.rope());
+        let change = Change::new(edit.to_string(), range.clone(), self.text.inner());
         self.text.apply_change(&change);
 
         let range_diff = edit.chars().count() as isize - range.clone().count() as isize;
@@ -140,7 +156,7 @@ where
     }
 
     pub fn clear(&mut self) {
-        self.text.rope = Rope::new();
+        self.text.inner.clear();
         self.tags.clear();
         self.ranges.clear();
     }
@@ -149,7 +165,7 @@ where
         let trunc_start = self.ranges.get(range_index).unwrap().start;
         self.ranges.truncate(range_index);
 
-        let change = Change::new("", trunc_start.., self.text.rope());
+        let change = Change::new("", trunc_start.., self.text.inner());
         self.text.apply_change(&change);
 
         for (_, start, end, lock) in &self.tags {
@@ -173,44 +189,16 @@ where
     }
 }
 
-impl<U> Default for TextBuilder<U>
-where
-    U: Ui,
-{
-    fn default() -> Self {
-        TextBuilder {
-            ..Default::default()
-        }
-    }
-}
-
 /// The text in a given area.
 pub struct Text<U>
 where
     U: Ui,
 {
-    rope: Rope,
+    inner: InnerText,
     tags: Tags,
     lock: Lock,
-    _replacements: Vec<(Vec<String>, RangeInclusive<usize>, bool)>,
+    _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
     _readers: Vec<Box<dyn MutTextReader<U>>>,
-}
-
-impl<U> Default for Text<U>
-where
-    U: Ui,
-{
-    fn default() -> Self {
-        let mut tags = Tags::default();
-        let lock = tags.get_lock();
-        Text {
-            rope: Rope::default(),
-            tags,
-            lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new(),
-        }
-    }
 }
 
 // TODO: Properly implement _replacements.
@@ -218,28 +206,87 @@ impl<U> Text<U>
 where
     U: Ui,
 {
+    pub fn default_string() -> Self {
+        let mut tags = Tags::default();
+        let lock = tags.get_lock();
+        Text {
+            inner: InnerText::String(String::default()),
+            tags,
+            lock,
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
+        }
+    }
+
+    pub fn default_rope() -> Self {
+        let mut tags = Tags::default();
+        let lock = tags.get_lock();
+        Text {
+            inner: InnerText::Rope(Rope::default()),
+            tags,
+            lock,
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
+        }
+    }
+
+    pub fn new_string(string: impl ToString) -> Self {
+        let inner = InnerText::String(string.to_string());
+        let mut tags = Tags::new(&inner);
+        let lock = tags.get_lock();
+        Text {
+            inner,
+            tags,
+            lock,
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
+        }
+    }
+
+    pub fn new_rope(string: impl ToString) -> Self {
+        let inner = InnerText::Rope(Rope::from(string.to_string()));
+        let mut tags = Tags::new(&inner);
+        let lock = tags.get_lock();
+        Text {
+            inner,
+            tags,
+            lock,
+            _replacements: Vec::new(),
+            _readers: Vec::new(),
+        }
+    }
+
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(&self, end_node: &mut EndNode<U>, print_info: PrintInfo) {
         if end_node.is_active {
             end_node.label.set_as_active();
         }
-        end_node.label.start_printing();
-        let label = &mut end_node.label;
+
         let config = &end_node.config;
+        let label = &mut end_node.label;
 
-        let mut cur_line = self.rope.char_to_line(print_info.first_ch);
-        let line_start_ch = self.rope.line_to_char(cur_line);
+        label.start_printing(config);
 
-        let mut chars = self.rope.chars_at(line_start_ch);
+        let line_start_ch = {
+            let cur_line = self.inner.char_to_line(print_info.first_ch);
+            self.inner.line_to_char(cur_line)
+        };
+
+        let mut chars = self
+            .inner
+            .chars_at(line_start_ch)
+            .enumerate()
+            .map(|(index, ch)| (index + print_info.first_ch, ch));
+
         let mut tags = self.tags.iter_at(line_start_ch).peekable();
         let mut form_former = config.palette.form_former();
 
         let mut skip_counter = print_info.first_ch - line_start_ch;
         let mut last_ch = 'a';
-        let mut cur_byte = 0;
         let mut skip_rest_of_line = false;
-        while let Some(ch) = chars.next() {
-            trigger_on_byte::<U>(&mut tags, cur_byte, label, &mut form_former);
+
+        while let Some((index, ch)) = chars.next() {
+            trigger_on_char::<U>(&mut tags, index, label, &mut form_former);
 
             if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {
                 skip_counter = skip_counter.saturating_sub(1);
@@ -249,12 +296,8 @@ where
             }
 
             match print_ch::<U>(ch, last_ch, label, config, print_info.x_shift) {
-                PrintStatus::NextLine => {
-                    skip_rest_of_line = true;
-                    cur_byte = 0;
-                    cur_line += 1;
-                }
-                PrintStatus::NextChar => cur_byte += ch.len_utf8(),
+                PrintStatus::NextLine => skip_rest_of_line = true,
+                PrintStatus::NextChar => {}
                 PrintStatus::Finished => break,
             }
 
@@ -264,14 +307,12 @@ where
         end_node.label.stop_printing();
     }
 
-    // This is more efficient than using the `merge_edit()` function.
     /// Merges `String`s with the body of text, given a range to replace.
     fn merge_text(&mut self, edit: impl AsRef<str>, old: Range<usize>) {
         let edit = edit.as_ref();
         let new = old.start..(old.start + edit.chars().count());
 
-        self.rope.remove(old.start..old.end);
-        self.rope.insert(old.start, edit);
+        self.inner.replace(old.start..old.end, edit);
 
         self.tags.transform_range(old, new);
     }
@@ -286,12 +327,12 @@ where
         self.merge_text(&change.taken_text, start..end);
     }
 
-    pub fn rope(&self) -> &Rope {
-        &self.rope
+    pub fn inner(&self) -> &InnerText {
+        &self.inner
     }
 
     pub fn is_empty(&self) -> bool {
-        self.rope.len_chars() == 0
+        self.inner.len_chars() == 0
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
@@ -326,15 +367,62 @@ where
     }
 
     pub fn len_chars(&self) -> usize {
-        self.rope.len_chars()
+        self.inner.len_chars()
     }
 
     pub fn len_lines(&self) -> usize {
-        self.rope.len_lines()
+        self.inner.len_lines()
     }
 
     pub fn len_bytes(&self) -> usize {
-        self.rope.len_bytes()
+        self.inner.len_bytes()
+    }
+}
+
+pub struct Printer<'a, I>
+where
+    I: Iterator<Item = (usize, Tag)>,
+{
+    chars: Peekable<Chars<'a>>,
+    tags: Peekable<I>,
+    cur_index: usize,
+    word_end: usize,
+    cur_word: String,
+    cur_tags: Vec<Tag>,
+}
+
+impl<I> Printer<'_, I>
+where
+    I: Iterator<Item = (usize, Tag)>,
+{
+    pub fn next<'iter>(&'iter mut self) -> Option<(&'iter [Tag], &'iter str, usize)> {
+        if self.cur_index == self.word_end {
+            self.cur_word.clear();
+            while let Some(ch) = self.chars.peek() {
+                self.cur_word.push(*ch);
+                if *ch != ' ' && *ch != '\t' {
+                    self.word_end += 1;
+                    self.chars.next();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        self.cur_tags.clear();
+        while let Some((ch_index, tag)) = self.tags.peek() {
+            if *ch_index == self.cur_index {
+                self.cur_tags.push(*tag);
+                self.tags.next();
+            } else {
+                break;
+            }
+        }
+        self.cur_index += 1;
+
+        let word_index = self.cur_index + self.cur_word.len() - self.word_end;
+
+        Some((self.cur_tags.as_slice(), self.cur_word.as_str(), word_index))
     }
 }
 
@@ -352,18 +440,14 @@ where
     match ch {
         '\t' => label.print('\t', x_shift),
         '\n' => {
-            label.print(config.show_new_line.get_new_line_ch(last_ch), x_shift);
-            if label.next_line().is_ok() {
-                PrintStatus::NextLine
-            } else {
-                PrintStatus::Finished
-            }
+            label.print(config.new_line_char.get_new_line_ch(last_ch), x_shift);
+            label.next_line()
         }
         _ => label.print(ch, x_shift),
     }
 }
 
-fn trigger_on_byte<'a, U>(
+fn trigger_on_char<'a, U>(
     tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
     byte: usize,
     label: &mut U::Label,
@@ -377,24 +461,6 @@ fn trigger_on_byte<'a, U>(
             tags.next();
         } else {
             break;
-        }
-    }
-}
-
-impl<U> From<String> for Text<U>
-where
-    U: Ui,
-{
-    fn from(value: String) -> Self {
-        let rope = Rope::from(value);
-        let mut tags = Tags::new(&rope);
-        let lock = tags.get_lock();
-        Text {
-            rope,
-            tags,
-            lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new(),
         }
     }
 }
@@ -469,7 +535,7 @@ impl PrintInfo {
     //}
 
     /// Scrolls up.
-    fn scroll_up_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    fn scroll_up_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -478,7 +544,7 @@ impl PrintInfo {
         let min_dist = config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        let slice = rope.slice(..target.true_char());
+        let slice = inner.slice(..target.true_char());
         let mut lines = slice.lines_at(target.row()).reversed();
 
         let mut accum = 0;
@@ -498,7 +564,7 @@ impl PrintInfo {
     }
 
     /// Scrolls down.
-    fn scroll_down_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    fn scroll_down_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -507,9 +573,9 @@ impl PrintInfo {
         let max_dist = label.area().height() - config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        let slice = rope.slice(..target.true_char());
+        let slice = inner.slice(..target.true_char());
         let mut lines = slice.lines_at(target.row()).reversed();
-        let mut lines_to_top = target.true_row() - rope.char_to_line(self.first_ch);
+        let mut lines_to_top = target.true_row() - inner.char_to_line(self.first_ch);
 
         let mut accum = 0;
         while let Some(line) = lines.next() {
@@ -528,7 +594,7 @@ impl PrintInfo {
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is being used.
-    fn scroll_hor_to_gap<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    fn scroll_hor_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -537,15 +603,15 @@ impl PrintInfo {
         let max_dist = label.area().width() - config.scrolloff.x_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        let slice = rope.slice(..target.true_char());
-        let line = rope.line(target.true_row());
+        let slice = inner.slice(..target.true_char());
+        let line = inner.line(target.true_row());
 
         let target_dist = label.get_width(line, tab_places);
         self.x_shift = target_dist.saturating_sub(max_dist);
     }
 
     /// Updates the print info.
-    pub fn update<U>(&mut self, target: Pos, rope: &Rope, end_node: &EndNode<U>)
+    pub fn update<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -562,13 +628,13 @@ impl PrintInfo {
         let old = self.last_main;
 
         if let WrapMethod::NoWrap = wrap_method {
-            self.scroll_hor_to_gap(target, rope, end_node);
+            self.scroll_hor_to_gap(target, inner, end_node);
         }
 
         if target < old {
-            self.scroll_up_to_gap(target, rope, end_node);
+            self.scroll_up_to_gap(target, inner, end_node);
         } else {
-            self.scroll_down_to_gap(target, rope, end_node);
+            self.scroll_down_to_gap(target, inner, end_node);
         }
 
         self.last_main = target;

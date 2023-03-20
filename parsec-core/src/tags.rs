@@ -3,10 +3,9 @@ pub mod form;
 use std::ops::Range;
 
 use any_rope::{Measurable, Rope as AnyRope};
-use ropey::Rope as TextRope;
 
 use self::form::FormFormer;
-use crate::ui::{Area, Label};
+use crate::{ui::{Area, Label}, text::inner_text::InnerText};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
@@ -82,9 +81,9 @@ pub struct Tags {
 }
 
 impl Tags {
-    pub fn new(rope: &TextRope) -> Self {
+    pub fn new(inner: &InnerText) -> Self {
         // An empty initial rope.
-        let skip = TagOrSkip::Skip(rope.len_chars() as u32);
+        let skip = TagOrSkip::Skip(inner.len_chars() as u32);
 
         Tags {
             rope: AnyRope::from_slice(&[skip]),

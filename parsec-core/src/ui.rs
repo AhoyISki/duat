@@ -5,7 +5,7 @@ use ropey::RopeSlice;
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
-    text::PrintStatus,
+    text::{PrintStatus},
     widgets::{file_widget::FileWidget, ActionableWidget, Widget},
     SessionManager,
 };
@@ -56,7 +56,7 @@ where
     ///
     /// This function should at the very least move the cursor to the top left position in the
     /// area.
-    fn start_printing(&mut self);
+    fn start_printing(&mut self, config: &Config);
 
     /// Tell the area that printing has ended.
     ///
@@ -71,7 +71,7 @@ where
     ///
     /// This function should also make sure that there is no leftover text after the current line's
     /// end.
-    fn next_line(&mut self) -> Result<(), ()>;
+    fn next_line(&mut self) -> PrintStatus;
 
     /// Counts how many times the given string would wrap.
     fn wrap_count(
@@ -106,15 +106,6 @@ where
     config: Config,
 }
 
-impl<U: Debug> Debug for MidNode<U>
-where
-    U: Ui + ?Sized,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MidNode").field("area", &self.area).finish()
-    }
-}
-
 impl<U> MidNode<U>
 where
     U: Ui + 'static,
@@ -135,18 +126,6 @@ where
     pub label: U::Label,
     pub config: Config,
     pub(crate) is_active: bool,
-}
-
-impl<U: Debug> Debug for EndNode<U>
-where
-    U: Ui + ?Sized,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EndNode")
-            .field("label", &self.label)
-            .field("is_active", &self.is_active)
-            .finish()
-    }
 }
 
 impl<U> EndNode<U>
@@ -172,7 +151,6 @@ where
 }
 
 /// Container for middle and end nodes.
-#[derive(Debug)]
 pub enum Node<U>
 where
     U: Ui + ?Sized,
@@ -416,8 +394,8 @@ impl PushSpecs {
 
 /// All the methods that a working gui/tui will need to implement, in order to use Parsec.
 pub trait Ui: Debug + 'static {
-    type Area: Area + Debug + Clone + Display + Send + Sync;
-    type Label: Label<<Self as Ui>::Area> + Debug + Clone + Send + Sync;
+    type Area: Area + Display + Send + Sync;
+    type Label: Label<<Self as Ui>::Area> + Send + Sync;
 
     /// Bisects the `Self::Area`, returning a new `Self::Label<Self::Area>` that will occupy the
     /// region. If required, also returns a new `Self::Container<Self::Area>`, which will contain
@@ -463,11 +441,10 @@ pub trait Ui: Debug + 'static {
     fn layout_has_changed(&self) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIndex(pub(crate) usize);
 
 /// A "viewport" of Parsec. It contains a group of widgets that can be displayed at the same time.
-#[derive(Debug)]
 pub struct Window<U>
 where
     U: Ui,

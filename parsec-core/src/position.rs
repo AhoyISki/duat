@@ -1,10 +1,8 @@
 use std::{cmp::min, fmt::Display, ops::Range};
 
-use ropey::Rope;
-
 use crate::{
     history::{Change, History, Moment},
-    text::{PrintInfo, Text},
+    text::{inner_text::InnerText, PrintInfo, Text},
     ui::{EndNode, Label, Ui},
     widgets::EditAccum,
 };
@@ -20,21 +18,19 @@ pub struct Pos {
 }
 
 impl Pos {
-    pub fn calibrate(&mut self, ch_diff: isize, rope: &Rope) {
-        self.ch.saturating_add_signed(ch_diff);
-        self.byte = rope.char_to_byte(self.ch);
-        self.row = rope.char_to_line(self.ch);
-        self.col = self.ch - rope.line_to_char(self.row);
+    pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
+        self.ch = self.ch.saturating_add_signed(ch_diff);
+        self.byte = inner.char_to_byte(self.ch);
+        self.row = inner.char_to_line(self.ch);
+        self.col = inner.char_from_line_start(self.ch);
     }
 
-    pub fn new(ch: usize, rope: &Rope) -> Pos {
-        let row = rope.char_to_line(ch);
-        let row_ch = rope.line_to_char(row);
+    pub fn new(ch_index: usize, inner: &InnerText) -> Pos {
         Pos {
-            byte: rope.char_to_byte(ch),
-            ch,
-            col: ch - row_ch,
-            row,
+            byte: inner.char_to_byte(ch_index),
+            ch: ch_index,
+            col: inner.char_from_line_start(ch_index),
+            row: inner.char_to_line(ch_index),
         }
     }
 
@@ -112,11 +108,11 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, rope: &Rope, end_node: &EndNode<U>) -> Cursor
+    pub fn new<U>(pos: Pos, inner: &InnerText, end_node: &EndNode<U>) -> Cursor
     where
         U: Ui,
     {
-        let line = rope.line(pos.row);
+        let line = inner.line(pos.row);
         Cursor {
             caret: pos,
             // This should be fine.
@@ -127,7 +123,7 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver<U>(&mut self, count: isize, rope: &Rope, end_node: &EndNode<U>)
+    pub(crate) fn move_ver<U>(&mut self, count: isize, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
@@ -135,55 +131,55 @@ impl Cursor {
 
         cur.row = min(
             cur.row.saturating_add_signed(count),
-            rope.len_lines().saturating_sub(1),
+            inner.len_lines().saturating_sub(1),
         );
-        let line = rope.line(cur.row);
+        let line = inner.line(cur.row);
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
         cur.col = end_node
             .label
             .col_at_dist(line, self.desired_x, &end_node.config().tab_places);
 
-        cur.ch = rope.line_to_char(cur.row) + cur.col;
-        cur.byte = rope.char_to_byte(cur.ch);
+        cur.ch = inner.line_to_char(cur.row) + cur.col;
+        cur.byte = inner.char_to_byte(cur.ch);
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor<U>(&mut self, count: isize, rope: &Rope, end_node: &EndNode<U>)
+    pub(crate) fn move_hor<U>(&mut self, count: isize, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
         let cur = &mut self.caret;
         cur.ch = cur.ch.saturating_add_signed(count);
-        cur.byte = rope.char_to_byte(cur.ch);
-        cur.row = rope.char_to_line(cur.ch);
-        let line_ch = rope.line_to_char(cur.row);
+        cur.byte = inner.char_to_byte(cur.ch);
+        cur.row = inner.char_to_line(cur.ch);
+        let line_ch = inner.line_to_char(cur.row);
         cur.col = cur.ch - line_ch;
 
         self.desired_x = end_node
             .label
-            .get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
+            .get_width(inner.slice(line_ch..cur.ch), &end_node.config().tab_places);
 
         self.anchor = None;
     }
 
     /// Internal absolute movement function. Assumes that the `col` and `row` of th [Pos] are
     /// correct.
-    pub(crate) fn move_to<U>(&mut self, pos: Pos, rope: &Rope, end_node: &EndNode<U>)
+    pub(crate) fn move_to<U>(&mut self, pos: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
     {
         let cur = &mut self.caret;
 
-        cur.row = min(pos.row, rope.len_lines());
-        let line_ch = rope.line_to_char(pos.row);
-        cur.col = min(pos.col, rope.line(cur.row).len_chars());
-        cur.ch = rope.line_to_char(cur.row) + cur.col;
-        cur.byte = rope.char_to_byte(cur.ch);
+        cur.row = min(pos.row, inner.len_lines());
+        let line_ch = inner.line_to_char(pos.row);
+        cur.col = min(pos.col, inner.line(cur.row).len_chars());
+        cur.ch = inner.line_to_char(cur.row) + cur.col;
+        cur.byte = inner.char_to_byte(cur.ch);
 
         self.desired_x = end_node
             .label
-            .get_width(rope.slice(line_ch..cur.ch), &end_node.config().tab_places);
+            .get_width(inner.slice(line_ch..cur.ch), &end_node.config().tab_places);
 
         self.anchor = None;
     }
@@ -214,21 +210,14 @@ impl Cursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate_on_accum<U>(
-        &mut self,
-        edit_accum: &EditAccum,
-        rope: &Rope,
-        end_node: &EndNode<U>,
-    ) where
-        U: Ui,
-    {
+    pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, inner: &InnerText) {
         self.assoc_index
             .as_mut()
             .map(|i| i.saturating_add_signed(edit_accum.changes));
-        self.caret.calibrate(edit_accum.chars, rope);
+        self.caret.calibrate(edit_accum.chars, inner);
         self.anchor
             .as_mut()
-            .map(|anchor| anchor.calibrate(edit_accum.chars, rope));
+            .map(|anchor| anchor.calibrate(edit_accum.chars, inner));
     }
 
     /// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
@@ -244,10 +233,6 @@ impl Cursor {
                 self.assoc_index = None;
             }
         }
-    }
-
-    pub(crate) fn place_anchor(&mut self, pos: Pos) {
-        self.anchor = Some(pos);
     }
 
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
@@ -369,7 +354,7 @@ where
         print_info: Option<PrintInfo>,
         history: Option<&'a mut History>,
     ) -> Self {
-        cursor.calibrate_on_accum(edit_accum, text.rope(), end_node);
+        cursor.calibrate_on_accum(edit_accum, text.inner());
         Self {
             cursor,
             text,
@@ -382,26 +367,26 @@ where
 
     /// Replaces the entire selection of the `TextCursor` with new text.
     pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(edit.to_string(), self.cursor.range(), self.text.rope());
+        let change = Change::new(edit.to_string(), self.cursor.range(), self.text.inner());
         let (start, end) = (change.start, change.added_end());
 
         self.edit(change);
 
         if let Some(anchor) = &mut self.cursor.anchor {
             if anchor.ch > self.cursor.caret.ch {
-                *anchor = Pos::new(end, self.text.rope());
+                *anchor = Pos::new(end, self.text.inner());
                 return;
             }
         }
 
-        self.cursor.caret = Pos::new(end, self.text.rope());
-        self.cursor.anchor = Some(Pos::new(start, self.text.rope()));
+        self.cursor.caret = Pos::new(end, self.text.inner());
+        self.cursor.anchor = Some(Pos::new(start, self.text.inner()));
     }
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
         let range = self.cursor.caret.ch..self.cursor.caret.ch;
-        let change = Change::new(edit.to_string(), range, self.text.rope());
+        let change = Change::new(edit.to_string(), range, self.text.inner());
         let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -410,7 +395,7 @@ where
 
         if let Some(anchor) = &mut self.cursor.anchor {
             if *anchor > self.cursor.caret {
-                anchor.calibrate(ch_diff, self.text.rope());
+                anchor.calibrate(ch_diff, self.text.inner());
             }
         }
     }
@@ -463,7 +448,8 @@ where
 
     /// Moves the cursor vertically on the file. May also cause vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text.rope(), self.end_node);
+        self.cursor
+            .move_ver(count, self.text.inner(), self.end_node);
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }
@@ -471,7 +457,8 @@ where
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text.rope(), self.end_node);
+        self.cursor
+            .move_hor(count, self.text.inner(), self.end_node);
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }
@@ -482,7 +469,7 @@ where
     /// - If the position isn't valid, it will move to the "maximum" position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to(caret, self.text.rope(), self.end_node);
+        self.cursor.move_to(caret, self.text.inner(), self.end_node);
         if let Some(moment) = self.current_moment {
             self.cursor.change_range_check(moment)
         }

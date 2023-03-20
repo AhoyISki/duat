@@ -181,7 +181,7 @@ where
 {
     pub fn default(session: &Session<U>) -> Widget<U> {
         let command_line = CommandLine {
-            text: Text::default(),
+            text: Text::default_string(),
             print_info: PrintInfo::default(),
             cursor: [Cursor::default()],
             command_list: session.global_commands(),
@@ -212,10 +212,10 @@ where
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         self.print_info
-            .update(self.cursor[0].caret(), self.text.rope(), end_node);
+            .update(self.cursor[0].caret(), self.text.inner(), end_node);
 
         //self.match_scroll();
-        let lines: String = self.text.rope().chars().collect();
+        let lines: String = self.text.inner().chars_at(0).collect();
         let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
 
         let Some(command) = whole_command.next() else {
@@ -285,15 +285,15 @@ where
 
     fn on_focus(&mut self, end_node: &mut EndNode<U>) {
         self.needs_update = true;
-        self.text = Text::from(self.config.run_string.clone());
+        self.text = Text::new_string(&self.config.run_string);
         let chars = self.config.run_string.chars().count() as isize;
-        self.cursor[0].move_hor(chars, &self.text.rope(), end_node);
+        self.cursor[0].move_hor(chars, &self.text.inner(), end_node);
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
     fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {
         self.needs_update = true;
-        self.text = Text::default();
+        self.text = Text::default_string();
         self.cursor[0] = Cursor::default();
         self.text.remove_cursor_tags(self.cursor.as_slice(), 0);
     }

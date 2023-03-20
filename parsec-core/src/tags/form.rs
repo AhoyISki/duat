@@ -116,8 +116,10 @@ pub struct FormPalette {
 
 impl Default for FormPalette {
     fn default() -> Self {
-        let main_cursor =
-            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new(false).reverse());
+        let main_cursor = CursorStyle::new(
+            Some(SetCursorStyle::DefaultUserShape),
+            Form::new(false).reverse(),
+        );
         let selection_form = Form::new(false).on_dark_grey();
         let forms = vec![
             (String::from("Default"), Form::default()),
@@ -133,16 +135,17 @@ impl Default for FormPalette {
             (String::from("Separator"), Form::new(false).cyan()),
         ];
 
-        Self { main_cursor, extra_cursor: main_cursor, forms }
+        Self {
+            main_cursor,
+            extra_cursor: main_cursor,
+            forms,
+        }
     }
 }
 
 impl FormPalette {
     /// Adds a new named `Form` to the list of user added `Form`s.
-    pub fn add_form<S>(&mut self, name: S, form: Form)
-    where
-        S: ToString,
-    {
+    pub fn add_form(&mut self, name: impl ToString, form: Form) {
         let name = name.to_string();
         if let None = self.forms.iter().find(|(cmp, _)| *cmp == name) {
             self.forms.push((name.to_string(), form));
@@ -152,10 +155,7 @@ impl FormPalette {
     }
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set_form<S>(&mut self, name: S, form: Form)
-    where
-        S: ToString,
-    {
+    pub fn set_form(&mut self, name: impl ToString, form: Form) {
         let name = name.to_string();
 
         let name_match = self.forms.iter_mut().find(|(cmp, _)| *cmp == name);
@@ -167,19 +167,41 @@ impl FormPalette {
     }
 
     /// Returns the `Form` associated to a given name with the index for efficient access.
-    pub fn from_name<S>(&self, name: S) -> Option<(Form, u16)>
-    where
-        S: ToString,
-    {
-        let name = name.to_string();
+    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, u16) {
+        let name = name.as_ref();
 
-        let name_match = self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name);
-        name_match.map(|(index, &(_, form))| (form, index as u16))
+        let name_match = self
+            .forms
+            .iter()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name);
+        assert!(name_match.is_some(), "Form with name {} not found", name);
+        name_match
+            .map(|(index, &(_, form))| (form, index as u16))
+            .unwrap()
+    }
+
+    /// Non-panicking version of [`from_name()`][FormPalette::from_name]
+    pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, u16)> {
+        let name = name.as_ref();
+
+        self.forms
+            .iter()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+            .map(|(index, &(_, form))| (form, index as u16))
     }
 
     /// Returns a form, given an index.
-    pub fn get(&self, index: u16) -> Form {
-        self.forms.get(index as usize).map(|(_, form)| *form).expect("The id is not valid!")
+    pub fn from_id(&self, form_id: u16) -> Form {
+        let form = self.forms.get(form_id as usize).map(|(_, form)| *form);
+        assert!(form.is_some(), "Form with id {} not found", form_id);
+        form.unwrap()
+    }
+
+    /// Non-panicking version of [`from_id()`][Self::from_id]
+    pub fn get_from_id(&self, form_id: u16) -> Option<Form> {
+        self.forms.get(form_id as usize).map(|(_, form)| *form)
     }
 
     pub fn main_cursor(&self) -> &CursorStyle {
@@ -199,7 +221,10 @@ impl FormPalette {
     }
 
     pub(crate) fn form_former(&self) -> FormFormer {
-        FormFormer { palette: self, forms: Vec::new() }
+        FormFormer {
+            palette: self,
+            forms: Vec::new(),
+        }
     }
 }
 
@@ -211,7 +236,7 @@ pub(crate) struct FormFormer<'a> {
 impl<'a> FormFormer<'a> {
     /// Applies the `Form` with the given `id` and returns the result, given previous triggers.
     pub(super) fn apply(&mut self, id: u16) -> Form {
-        let form = self.palette.get(id);
+        let form = self.palette.from_id(id);
         self.forms.push((form, id));
         self.make_form()
     }
@@ -226,19 +251,37 @@ impl<'a> FormFormer<'a> {
             attributes: Attributes::default(),
         };
 
-        let mut form = Form { style, is_final: false };
+        let mut form = Form {
+            style,
+            is_final: false,
+        };
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
         for &(Form { style, is_final }, _) in &self.forms {
             let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
+            set_var(
+                &mut fg_done,
+                &mut form.style.foreground_color,
+                &new_foreground,
+                is_final,
+            );
 
             let new_background = style.background_color;
-            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
+            set_var(
+                &mut bg_done,
+                &mut form.style.background_color,
+                &new_background,
+                is_final,
+            );
 
             let new_underline = style.underline_color;
-            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
+            set_var(
+                &mut ul_done,
+                &mut form.style.underline_color,
+                &new_underline,
+                is_final,
+            );
 
             if !attr_done {
                 form.style.attributes.extend(style.attributes);

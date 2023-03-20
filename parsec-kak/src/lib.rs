@@ -72,9 +72,6 @@ impl Editor {
                 let mut anchors = anchors.into_iter().cycle();
                 actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
-                    if let Some(Some((anchor, true))) = anchors.next() {
-                        editor.calibrate_pos(anchor);
-                    }
                 });
                 actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
@@ -97,9 +94,6 @@ impl Editor {
                 let mut anchors = anchors.into_iter().cycle();
                 actor.edit_on_each_cursor(|mut editor| {
                     editor.replace("");
-                    if let Some(Some((anchor, true))) = anchors.next() {
-                        editor.calibrate_pos(anchor);
-                    }
                 });
                 actor.move_each_cursor(|mut mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
@@ -347,10 +341,10 @@ where
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
         match direction {
-            Side::Top => mover.move_ver(-(amount as i32)),
-            Side::Bottom => mover.move_ver(amount as i32),
-            Side::Left => mover.move_hor(-(amount as i32)),
-            Side::Right => mover.move_hor(amount as i32),
+            Side::Top => mover.move_ver(-(amount as isize)),
+            Side::Bottom => mover.move_ver(amount as isize),
+            Side::Left => mover.move_hor(-(amount as isize)),
+            Side::Right => mover.move_hor(amount as isize),
         }
     });
 }
@@ -365,10 +359,10 @@ where
             mover.set_anchor();
         }
         match direction {
-            Side::Top => mover.move_ver(-(amount as i32)),
-            Side::Bottom => mover.move_ver(amount as i32),
-            Side::Left => mover.move_hor(-(amount as i32)),
-            Side::Right => mover.move_hor(amount as i32),
+            Side::Top => mover.move_ver(-(amount as isize)),
+            Side::Bottom => mover.move_ver(amount as isize),
+            Side::Left => mover.move_hor(-(amount as isize)),
+            Side::Right => mover.move_hor(amount as isize),
         }
     });
 }

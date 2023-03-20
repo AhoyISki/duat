@@ -70,8 +70,11 @@ where
     }
 }
 
-fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
-where
+fn push_forms_and_text<U>(
+    text: &str,
+    text_builder: &mut TextBuilder<U>,
+    palette: &FormPalette,
+) where
     U: Ui,
 {
     let mut prev_l_index = None;
@@ -86,7 +89,7 @@ where
             .find(']')
             .map(|r_index| {
                 palette
-                    .from_name(&text[l_index..r_index])
+                    .get_from_name(&text[l_index..r_index])
                     .map(|form_id| (r_index, form_id))
             })
             .flatten()
@@ -120,7 +123,7 @@ where
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
+        let mut text_builder = TextBuilder::default_string();
         let mut readers = Vec::new();
         let file = file_widget.read();
         for part in status_parts.into_iter() {
@@ -138,7 +141,7 @@ where
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
+        let mut text_builder = TextBuilder::default_string();
         let mut readers = Vec::new();
         let file = file_widget.read();
         for part in status_parts.into_iter() {
@@ -177,7 +180,7 @@ where
         let lines = Reader::File(file_lines_len());
 
         let file = file_widget.read();
-        let mut text_builder = TextBuilder::default();
+        let mut text_builder = TextBuilder::default_string();
 
         text_builder.push_tag(Tag::PushForm(FILE_NAME));
         text_builder.push_swappable(name.read(&file));
@@ -196,7 +199,7 @@ where
 
         let readers = vec![name, sels, col, line, lines];
 
-		drop(file);
+        drop(file);
         StatusLine::new_fn(file_widget, text_builder, readers, true)
     }
 

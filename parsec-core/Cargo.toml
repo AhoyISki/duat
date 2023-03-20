@@ -21,6 +21,7 @@ smallvec = "1.10.0"
 no_deadlocks = { path = "../../no-deadlocks/", optional = true }
 ropey = "1.6.0"
 any-rope = "1.0.4"
+gat-std = "0.1.1"
 
 [features]
 deadlock-detection = ["dep:no_deadlocks"]

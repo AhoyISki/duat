@@ -17,13 +17,10 @@ use super::{
 use crate::{
     config::{DownCastableData, RoData, RwData},
     tags::{
-        form::{
-            Form, DEFAULT, LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS,
-            WRAPPED_MAIN_LINE_NUMBER,
-        },
+        form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag,
     },
-    text::{self, Text, TextBuilder},
+    text::{Text, TextBuilder},
     ui::{Area, EndNode, Label, PushSpecs, Side, Ui},
     SessionManager,
 };
@@ -52,7 +49,7 @@ where
         Box::new(move |_, push_specs| {
             let mut line_numbers = LineNumbers {
                 file_widget,
-                text_builder: TextBuilder::default(),
+                text_builder: TextBuilder::default_string(),
                 min_width: push_specs.split.len(),
                 cfg,
             };
@@ -69,7 +66,7 @@ where
         Box::new(move |_, push_specs| {
             let mut line_numbers = LineNumbers {
                 file_widget,
-                text_builder: TextBuilder::default(),
+                text_builder: TextBuilder::default_string(),
                 min_width: push_specs.split.len(),
                 cfg: LineNumbersCfg::default(),
             };

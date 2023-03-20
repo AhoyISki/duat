@@ -7,11 +7,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{
-    path::PathBuf,
-    thread,
-    time::Duration,
-};
+use std::{path::PathBuf, thread, time::Duration};
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
@@ -40,7 +36,9 @@ where
 {
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
-        ui: U, config: Config, constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
+        ui: U,
+        config: Config,
+        constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
         let file = std::env::args().nth(1);
         let file_widget = FileWidget::new(file.as_ref().map(|file| PathBuf::from(file)));
@@ -53,8 +51,13 @@ where
             command_list.try_add(Box::new(command)).unwrap();
         }
 
-        let window =
-            Window::new(ui, file_widget, config, &mut session_manager.write(), &constructor_hook);
+        let window = Window::new(
+            ui,
+            file_widget,
+            config,
+            &mut session_manager.write(),
+            &constructor_hook,
+        );
 
         let mut session = Session {
             windows: vec![window],
@@ -97,13 +100,17 @@ where
     }
 
     pub fn push_widget_to_edge<C>(
-        &mut self, constructor: C, side: Side, split: Split,
+        &mut self,
+        constructor: C,
+        side: Side,
+        split: Split,
     ) -> (NodeIndex, Option<NodeIndex>)
     where
         C: Fn(&Session<U>) -> Widget<U>,
     {
         let widget = (constructor)(self);
-        self.mut_active_window().push_to_master(widget, side, split, false)
+        self.mut_active_window()
+            .push_to_master(widget, side, split, false)
     }
 
     /// Start the application, initiating a read/response loop.
@@ -124,7 +131,7 @@ where
 
             self.session_loop(key_remapper);
 
-            if self.session_manager.read().should_quit || true{
+            if self.session_manager.read().should_quit || true {
                 break;
             }
         }
@@ -138,31 +145,29 @@ where
     where
         I: InputScheme,
     {
-        thread::scope(|s_0| {
-            loop {
-                self.active_window().print_if_layout_changed();
+        thread::scope(|s_0| loop {
+            self.active_window().print_if_layout_changed();
 
-                let mut session_manager = self.session_manager.write();
-                if session_manager.break_loop {
-                    session_manager.break_loop = false;
-                    break;
-                }
+            let mut session_manager = self.session_manager.write();
+            if session_manager.break_loop {
+                session_manager.break_loop = false;
+                break;
+            }
 
-                if let Ok(true) = event::poll(Duration::from_millis(5)) {
-                    let active_window = &self.windows[self.active_window];
-                    send_event(key_remapper, &mut session_manager, active_window);
-                } else {
-                    continue;
-                }
+            if let Ok(true) = event::poll(Duration::from_millis(5)) {
+                let active_window = &self.windows[self.active_window];
+                send_event(key_remapper, &mut session_manager, active_window);
+            } else {
+                continue;
+            }
 
-                for (widget, end_node) in self.windows[self.active_window].widgets() {
-                    s_0.spawn(|| {
-                        let mut end_node = end_node.write();
-                        if widget.update(&mut end_node) {
-                            widget.print(&mut end_node);
-                        }
-                    });
-                }
+            for (widget, end_node) in self.windows[self.active_window].widgets() {
+                s_0.spawn(|| {
+                    let mut end_node = end_node.write();
+                    if widget.update(&mut end_node) {
+                        widget.print(&mut end_node);
+                    }
+                });
             }
         });
     }
@@ -318,7 +323,9 @@ fn session_commands(session: RwData<SessionManager>) -> Vec<Command<SessionManag
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
 fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, session_manager: &mut SessionManager, window: &Window<U>,
+    key_remapper: &mut KeyRemapper<I>,
+    session_manager: &mut SessionManager,
+    window: &Window<U>,
 ) where
     U: Ui + 'static,
     I: InputScheme,
@@ -335,7 +342,10 @@ fn send_event<U, I>(
         let end_node = end_node.read();
         let mut widget = widget.write();
 
-        let controls = Controls { session_manager: &mut *session_manager, window };
+        let controls = Controls {
+            session_manager: &mut *session_manager,
+            window,
+        };
         blink_cursors_and_send_key(&mut *widget, &end_node, controls, key_event, key_remapper);
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
@@ -345,12 +355,15 @@ fn send_event<U, I>(
 }
 
 /// Removes the cursors, sends an event, and adds them again.
-fn blink_cursors_and_send_key<U, W, I>(
-    widget: &mut W, end_node: &EndNode<U>, controls: Controls<U>, key_event: KeyEvent,
+fn blink_cursors_and_send_key<U, A, I>(
+    widget: &mut A,
+    end_node: &EndNode<U>,
+    controls: Controls<U>,
+    key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>,
 ) where
     U: Ui + 'static,
-    W: ActionableWidget<U> + ?Sized,
+    A: ActionableWidget<U> + ?Sized,
     I: InputScheme,
 {
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
@@ -360,6 +373,21 @@ fn blink_cursors_and_send_key<U, W, I>(
 
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
+}
+
+pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(start) => *start,
+        std::ops::Bound::Excluded(start) => *start + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(end) => *end,
+        std::ops::Bound::Excluded(end) => (*end).saturating_sub(1),
+        std::ops::Bound::Unbounded => max,
+    };
+
+    (start, end)
 }
 
 //////////// Useful for testing.

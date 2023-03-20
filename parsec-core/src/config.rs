@@ -13,10 +13,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{Mutex, MutexGuard};
 
-use crate::{
-    tags::form::FormPalette,
-    ui::{Area, Label, Ui},
-};
+use crate::tags::form::FormPalette;
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -114,7 +111,7 @@ pub struct Config {
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
-    pub show_new_line: ShowNewLine,
+    pub new_line_char: ShowNewLine,
     /// The palette of forms that will be used.
     pub palette: FormPalette,
 }
@@ -151,7 +148,11 @@ where
     pub fn new_unsized(data: Arc<Mutex<T>>) -> Self {
         // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
         // `true` at least once, by copying the second value - 1.
-        RwData { data, updated_state: Arc::new(Mutex::new(1)), last_read_state: Mutex::new(1) }
+        RwData {
+            data,
+            updated_state: Arc::new(Mutex::new(1)),
+            last_read_state: Mutex::new(1),
+        }
     }
 
     /// Reads the information.
@@ -177,7 +178,9 @@ where
             *last_read_state = *updated_version;
         }
 
-        self.data.try_lock().map(|mutex_guard| RwDataReadGuard(mutex_guard))
+        self.data
+            .try_lock()
+            .map(|mutex_guard| RwDataReadGuard(mutex_guard))
     }
 
     /// Returns a writeable reference to the state.
@@ -202,14 +205,28 @@ where
     where
         U: 'static,
     {
-        let RwData { data, updated_state, last_read_state } = self;
+        let RwData {
+            data,
+            updated_state,
+            last_read_state,
+        } = self;
         let data = Arc::into_raw(data);
         if data.type_id() == TypeId::of::<Mutex<U>>() {
             let data = unsafe { Arc::from_raw(data.cast::<Mutex<U>>()) };
-            Ok(RwData { data, updated_state, last_read_state })
+            Ok(RwData {
+                data,
+                updated_state,
+                last_read_state,
+            })
         } else {
             let data = unsafe { Arc::from_raw(data) };
-            Err(RwDataCastError { rw_data: RwData { data, updated_state, last_read_state } })
+            Err(RwDataCastError {
+                rw_data: RwData {
+                    data,
+                    updated_state,
+                    last_read_state,
+                },
+            })
         }
     }
 }
@@ -304,13 +321,27 @@ where
     where
         U: 'static,
     {
-        let RoData { data, updated_state, last_read_state } = self;
+        let RoData {
+            data,
+            updated_state,
+            last_read_state,
+        } = self;
         if (&*data.lock().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<Mutex<U>>()) };
-            Ok(RoData { data, updated_state, last_read_state })
+            Ok(RoData {
+                data,
+                updated_state,
+                last_read_state,
+            })
         } else {
-            Err(RoDataCastError { ro_data: RoData { data, updated_state, last_read_state } })
+            Err(RoDataCastError {
+                ro_data: RoData {
+                    data,
+                    updated_state,
+                    last_read_state,
+                },
+            })
         }
     }
 }

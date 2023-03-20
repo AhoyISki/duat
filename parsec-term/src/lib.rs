@@ -17,17 +17,22 @@ use crossterm::{
 };
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
-use parsec_core::config::DownCastableData;
+use parsec_core::{
+    config::{Config, DownCastableData},
+    text::PrintStatus,
+    widgets::line_numbers::LineNumbersCfg, tags::Tag,
+};
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
     tags::{
         form::CursorStyle,
         form::{Form, DEFAULT},
     },
-    text::{Text, TextLine, TextBuilder},
+    text::{Text, TextBuilder},
     ui::{self, Area as UiArea, Axis, EndNode, Label as UiLabel, Side, Split},
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
 };
+use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
 
 static mut PRINTER: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -70,7 +75,11 @@ impl Display for Coords {
 
 #[derive(Clone)]
 enum Owner {
-    Parent { parent: Area, self_index: usize, split: Split },
+    Parent {
+        parent: Area,
+        self_index: usize,
+        split: Split,
+    },
     TlAnchor,
     TrAnchor,
     BlAnchor,
@@ -81,7 +90,11 @@ enum Owner {
 impl Debug for Owner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Owner::Parent { parent, self_index, split } => f
+            Owner::Parent {
+                parent,
+                self_index,
+                split,
+            } => f
                 .debug_struct("Parent")
                 .field("parent_coords", &parent.inner.read().coords)
                 .field("self_index", self_index)
@@ -98,20 +111,36 @@ impl Debug for Owner {
 
 impl Owner {
     fn clone_with_split(&self, split: Split) -> Self {
-        if let Owner::Parent { parent, self_index, .. } = self {
-            Owner::Parent { parent: parent.clone(), self_index: *self_index, split }
+        if let Owner::Parent {
+            parent, self_index, ..
+        } = self
+        {
+            Owner::Parent {
+                parent: parent.clone(),
+                self_index: *self_index,
+                split,
+            }
         } else {
             self.clone()
         }
     }
 
     fn split(&self) -> Option<Split> {
-        if let Owner::Parent { split, .. } = self { Some(*split) } else { None }
+        if let Owner::Parent { split, .. } = self {
+            Some(*split)
+        } else {
+            None
+        }
     }
 
     fn aligns(&mut self, other: Axis) -> Option<&mut Self> {
         if let Owner::Parent { parent, .. } = self {
-            if parent.lineage.read().as_ref().is_some_and(|(_, axis)| *axis == other) {
+            if parent
+                .lineage
+                .read()
+                .as_ref()
+                .is_some_and(|(_, axis)| *axis == other)
+            {
                 return Some(self);
             }
         }
@@ -138,7 +167,11 @@ impl InnerArea {
     }
 
     fn len(&self, axis: Axis) -> usize {
-        if let Axis::Horizontal = axis { self.coords.width() } else { self.coords.height() }
+        if let Axis::Horizontal = axis {
+            self.coords.width()
+        } else {
+            self.coords.height()
+        }
     }
 
     fn add_or_take(&mut self, do_add: bool, remaining: usize, side: Side) -> (Coord, usize) {
@@ -182,9 +215,15 @@ impl InnerArea {
 
     fn coord_from_side(&self, side: Side) -> Coord {
         if let Side::Top | Side::Right = side {
-            Coord { x: self.coords.br.x, y: self.coords.tl.y }
+            Coord {
+                x: self.coords.br.x,
+                y: self.coords.tl.y,
+            }
         } else {
-            Coord { x: self.coords.tl.x, y: self.coords.br.y }
+            Coord {
+                x: self.coords.tl.x,
+                y: self.coords.br.y,
+            }
         }
     }
 
@@ -212,9 +251,15 @@ pub struct Area {
 impl Area {
     fn total() -> Self {
         let (max_x, max_y) = terminal::size().unwrap();
-        let coords = Coords { tl: Coord { x: 0, y: 0 }, br: Coord { x: max_x, y: max_y } };
+        let coords = Coords {
+            tl: Coord { x: 0, y: 0 },
+            br: Coord { x: max_x, y: max_y },
+        };
 
-        Area { inner: RwData::new(InnerArea::new(coords, Owner::None)), lineage: RwData::new(None) }
+        Area {
+            inner: RwData::new(InnerArea::new(coords, Owner::None)),
+            lineage: RwData::new(None),
+        }
     }
 
     pub fn coords(&self) -> Coords {
@@ -230,7 +275,10 @@ impl Area {
     }
 
     fn new(inner: InnerArea) -> Self {
-        Area { inner: RwData::new(inner), lineage: RwData::new(None) }
+        Area {
+            inner: RwData::new(inner),
+            lineage: RwData::new(None),
+        }
     }
 
     fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
@@ -308,15 +356,25 @@ impl Area {
             };
         }
 
-        children.last_mut().map(|last| last.inner.write().coords.br = self_inner.coords.br);
+        children
+            .last_mut()
+            .map(|last| last.inner.write().coords.br = self_inner.coords.br);
     }
 
     fn resizable_len(&self, axis: Axis) -> usize {
-        if let Axis::Horizontal = axis { self.resizable_width() } else { self.resizable_height() }
+        if let Axis::Horizontal = axis {
+            self.resizable_width()
+        } else {
+            self.resizable_height()
+        }
     }
 
     fn len(&self, axis: Axis) -> usize {
-        if let Axis::Horizontal = axis { self.width() } else { self.height() }
+        if let Axis::Horizontal = axis {
+            self.width()
+        } else {
+            self.height()
+        }
     }
 
     fn resizable_width(&self) -> usize {
@@ -354,7 +412,11 @@ impl Area {
 
 impl Display for Area {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{},{}", self.inner.read().coords.tl, self.inner.read().coords.br))
+        f.write_fmt(format_args!(
+            "{},{}",
+            self.inner.read().coords.tl,
+            self.inner.read().coords.br
+        ))
     }
 }
 
@@ -377,8 +439,17 @@ impl ui::Area for Area {
         drop(inner);
 
         match owner {
-            Owner::Parent { ref mut parent, self_index, .. } => {
-                let axis = parent.lineage.read().as_ref().map(|(_, axis)| *axis).unwrap();
+            Owner::Parent {
+                ref mut parent,
+                self_index,
+                ..
+            } => {
+                let axis = parent
+                    .lineage
+                    .read()
+                    .as_ref()
+                    .map(|(_, axis)| *axis)
+                    .unwrap();
 
                 if Axis::from(side) != axis {
                     parent.request_len(len, side)
@@ -415,9 +486,10 @@ pub struct Label {
     style_before_cursor: Option<ContentStyle>,
     last_style: ContentStyle,
     is_active: bool,
-    wrap_next: bool,
     indent: usize,
     stdout: Stdout,
+    tab_places: Option<TabPlaces>,
+    wrap_method: Option<WrapMethod>,
 }
 
 impl Label {
@@ -430,8 +502,9 @@ impl Label {
             style_before_cursor: None,
             last_style: ContentStyle::default(),
             is_active: false,
-            wrap_next: false,
             indent: 0,
+            tab_places: None,
+            wrap_method: None,
         }
     }
 
@@ -457,21 +530,24 @@ impl Label {
         .unwrap();
     }
 
-    fn wrap_line(&mut self) {
+    fn wrap_line(&mut self) -> PrintStatus {
         self.clear_line();
 
-        queue!(self.stdout, MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(self.indent)))
-            .unwrap();
+        queue!(
+            self.stdout,
+            MoveTo(self.cursor.x, self.cursor.y),
+            Print(" ".repeat(self.indent))
+        )
+        .unwrap();
 
         self.cursor.x += self.indent as u16;
         self.indent = 0;
-        self.wrap_next = false;
-    }
-}
 
-impl Clone for Label {
-    fn clone(&self) -> Self {
-        Label { stdout: stdout(), area: self.area.clone(), ..*self }
+        if self.cursor.y > self.area.br().y {
+            PrintStatus::Finished
+        } else {
+            PrintStatus::NextChar
+        }
     }
 }
 
@@ -512,7 +588,7 @@ impl ui::Label<Area> for Label {
         self.is_active = true;
     }
 
-    fn start_printing(&mut self) {
+    fn start_printing(&mut self, config: &Config) {
         unsafe {
             LOCK = Some(PRINTER.lock().unwrap());
         }
@@ -543,30 +619,55 @@ impl ui::Label<Area> for Label {
         self.is_active = false;
     }
 
-    fn print(&mut self, ch: char) {
-        let len = UnicodeWidthChar::width(ch).map(|width| width as u16).unwrap_or(0);
+    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus {
+        let tab_places = self.tab_places.as_ref().unwrap();
+        let wrap_method = self.wrap_method.as_ref().unwrap();
+
+        let len = match ch {
+            '\t' => tab_places.spaces_on_col(x_shift) as u16,
+            _ => UnicodeWidthChar::width(ch).unwrap_or(0) as u16,
+        };
+
         if self.cursor.x <= self.area.br().x - len {
             self.cursor.x += len;
             queue!(self.stdout, Print(ch)).unwrap();
             if let Some(style) = self.style_before_cursor.take() {
                 queue!(self.stdout, ResetColor, SetStyle(style)).unwrap();
             }
+        } else if self.cursor.x <= self.area.br().x {
+            let width = self.area.br().x - self.cursor.x;
+            queue!(self.stdout, Print(" ".repeat(width as usize))).unwrap();
+            if let Some(style) = self.style_before_cursor.take() {
+                queue!(self.stdout, ResetColor, SetStyle(style)).unwrap();
+            }
         }
-        if self.wrap_next {
-            self.wrap_line();
+
+        if self.cursor.x == self.area.br().x {
+            if let WrapMethod::NoWrap = wrap_method {
+                PrintStatus::NextLine
+            } else {
+                self.wrap_line()
+            }
+        } else {
+            PrintStatus::NextChar
         }
     }
 
-    fn next_line(&mut self) -> Result<(), ()> {
+    fn next_line(&mut self) -> PrintStatus {
         if self.cursor.y == self.area.br().y - 1 {
-            Err(())
+            PrintStatus::Finished
         } else {
             self.clear_line();
-            Ok(())
+            PrintStatus::NextLine
         }
     }
 
-    fn wrap_count(&self, text: &str, wrap_method: WrapMethod, tab_places: &TabPlaces) -> usize {
+    fn wrap_count(
+        &self,
+        text: RopeSlice,
+        wrap_method: WrapMethod,
+        tab_places: &TabPlaces,
+    ) -> usize {
         match wrap_method {
             WrapMethod::Width => self.get_width(text, tab_places) / self.area.width(),
             WrapMethod::Capped(_) => todo!(),
@@ -575,9 +676,9 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn get_width(&self, text: &str, tab_places: &TabPlaces) -> usize {
+    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize {
         let mut width = 0;
-        for ch in text.chars() {
+        for ch in slice.chars() {
             width += match ch {
                 '\t' => tab_places.spaces_on_col(width),
                 ch => UnicodeWidthChar::width(ch).unwrap_or(0),
@@ -587,8 +688,9 @@ impl ui::Label<Area> for Label {
         width
     }
 
-    fn col_at_dist(&self, text: &str, dist: usize, tab_places: &TabPlaces) -> usize {
-        text.chars()
+    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize {
+        slice
+            .chars()
             .enumerate()
             .scan((0, false), |(width, end_reached), (index, ch)| {
                 *width += match ch {
@@ -606,6 +708,16 @@ impl ui::Label<Area> for Label {
             .last()
             .unwrap_or(0)
     }
+
+    fn col_at_wrap(
+        &self,
+        slice: RopeSlice,
+        wrap: usize,
+        wrap_method: WrapMethod,
+        tab_places: &TabPlaces,
+    ) -> usize {
+        todo!()
+    }
 }
 
 pub struct Ui {
@@ -616,7 +728,10 @@ pub struct Ui {
 impl Debug for Ui {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ui")
-            .field("layout_has_changed", &*self.layout_has_changed.lock().unwrap())
+            .field(
+                "layout_has_changed",
+                &*self.layout_has_changed.lock().unwrap(),
+            )
             .field("areas", &self.areas)
             .finish()
     }
@@ -624,7 +739,10 @@ impl Debug for Ui {
 
 impl Default for Ui {
     fn default() -> Self {
-        Ui { layout_has_changed: Mutex::new(true), areas: Vec::new() }
+        Ui {
+            layout_has_changed: Mutex::new(true),
+            areas: Vec::new(),
+        }
     }
 }
 
@@ -633,11 +751,17 @@ impl ui::Ui for Ui {
     type Label = Label;
 
     fn bisect_area(
-        &mut self, area: &mut Self::Area, side: Side, split: Split,
+        &mut self,
+        area: &mut Self::Area,
+        side: Side,
+        split: Split,
     ) -> (Self::Label, Option<Self::Area>) {
         let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
         if let Err(_) = area.request_len(max(resizable_len, split.len()), side) {
-            panic!("Resize failed:\n    {:?}, {:?}, {:?}", old_coords, side, split)
+            panic!(
+                "Resize failed:\n    {:?}, {:?}, {:?}",
+                old_coords, side, split
+            )
         }
 
         let split_coords = split_by(area, split, side);
@@ -662,8 +786,12 @@ impl ui::Ui for Ui {
         panic::set_hook(Box::new(move |panic_info| {
             let mut stdout = stdout();
 
-            execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen)
-                .unwrap();
+            execute!(
+                stdout,
+                terminal::Clear(ClearType::All),
+                terminal::LeaveAlternateScreen
+            )
+            .unwrap();
             terminal::disable_raw_mode().unwrap();
 
             orig_hook(panic_info);
@@ -678,7 +806,12 @@ impl ui::Ui for Ui {
     fn shutdown(&mut self) {
         let mut stdout = stdout();
 
-        execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen,).unwrap();
+        execute!(
+            stdout,
+            terminal::Clear(ClearType::All),
+            terminal::LeaveAlternateScreen,
+        )
+        .unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -703,45 +836,85 @@ fn split_by(area: &mut Area, split: Split, side: Side) -> Coords {
     match side {
         Side::Left => {
             coords.tl.x += split.len() as u16;
-            Coords { tl: old_tl, br: Coord { x: coords.tl.x, y: old_br.y } }
+            Coords {
+                tl: old_tl,
+                br: Coord {
+                    x: coords.tl.x,
+                    y: old_br.y,
+                },
+            }
         }
         Side::Right => {
             coords.br.x -= split.len() as u16;
-            Coords { tl: Coord { x: coords.br.x, y: old_tl.y }, br: old_br }
+            Coords {
+                tl: Coord {
+                    x: coords.br.x,
+                    y: old_tl.y,
+                },
+                br: old_br,
+            }
         }
         Side::Top => {
             coords.tl.y += split.len() as u16;
-            Coords { tl: old_tl, br: Coord { x: old_br.x, y: coords.tl.y } }
+            Coords {
+                tl: old_tl,
+                br: Coord {
+                    x: old_br.x,
+                    y: coords.tl.y,
+                },
+            }
         }
         Side::Bottom => {
             coords.br.y -= split.len() as u16;
-            Coords { tl: Coord { x: old_tl.x, y: coords.br.y }, br: old_br }
+            Coords {
+                tl: Coord {
+                    x: old_tl.x,
+                    y: coords.br.y,
+                },
+                br: old_br,
+            }
         }
     }
 }
 
 fn restructure_tree(
-    resized_area: &mut Area, old_coords: Coords, split_coords: Coords, side: Side, split: Split,
+    resized_area: &mut Area,
+    old_coords: Coords,
+    split_coords: Coords,
+    side: Side,
+    split: Split,
 ) -> (Area, Option<Area>) {
     let mut inner = resized_area.inner.write();
 
-    if let Some(Owner::Parent { parent, self_index, .. }) = inner.owner.aligns(Axis::from(side)) {
+    if let Some(Owner::Parent {
+        parent, self_index, ..
+    }) = inner.owner.aligns(Axis::from(side))
+    {
         let mut lineage = parent.lineage.write();
         let (children, _) = lineage.as_mut().unwrap();
 
-        (new_child_area(split_coords, children, side, split, *self_index), None)
+        (
+            new_child_area(split_coords, children, side, split, *self_index),
+            None,
+        )
     } else {
         let new_parent = Area::new(InnerArea::new(old_coords, inner.owner.clone()));
 
-        if let Owner::Parent { parent, self_index, .. } = &mut inner.owner {
+        if let Owner::Parent {
+            parent, self_index, ..
+        } = &mut inner.owner
+        {
             let mut lineage = parent.lineage.write();
             let lineage = lineage.as_mut().unwrap();
             lineage.0[*self_index] = new_parent.clone();
         }
 
         let resized_split = inner.owner.split().unwrap_or(Split::Min(0));
-        inner.owner =
-            Owner::Parent { parent: new_parent.clone(), self_index: 0, split: resized_split };
+        inner.owner = Owner::Parent {
+            parent: new_parent.clone(),
+            self_index: 0,
+            split: resized_split,
+        };
 
         let mut children = vec![resized_area.clone()];
         drop(inner);
@@ -753,12 +926,24 @@ fn restructure_tree(
 }
 
 fn new_child_area(
-    child_coords: Coords, children: &mut Vec<Area>, side: Side, split: Split, pushed_index: usize,
+    child_coords: Coords,
+    children: &mut Vec<Area>,
+    side: Side,
+    split: Split,
+    pushed_index: usize,
 ) -> Area {
-    let owner = children[pushed_index].inner.read().owner.clone_with_split(split);
+    let owner = children[pushed_index]
+        .inner
+        .read()
+        .owner
+        .clone_with_split(split);
     let new_child = Area::new(InnerArea::new(child_coords, owner));
 
-    let index = if let Side::Top | Side::Left = side { pushed_index } else { pushed_index + 1 };
+    let index = if let Side::Top | Side::Left = side {
+        pushed_index
+    } else {
+        pushed_index + 1
+    };
     children.insert(index, new_child.clone());
 
     for child in children.iter_mut().skip(pushed_index + 1) {
@@ -770,128 +955,98 @@ fn new_child_area(
     new_child
 }
 
-pub enum SeparatorChar {
+pub enum SepChar {
     Uniform(char),
-    DifferentOnMain(char, char),
+    TwoWay(char, char),
     ThreeWay(char, char, char),
 }
 
-impl Default for SeparatorChar {
+impl Default for SepChar {
     fn default() -> Self {
-        SeparatorChar::Uniform('│')
+        SepChar::Uniform('│')
     }
 }
 
-impl SeparatorChar {
-    fn get_char(&self, line_number: usize, main_line: usize) -> char {
+impl SepChar {
+    fn chars(&self) -> [char; 3] {
         match self {
-            SeparatorChar::Uniform(ch) => *ch,
-            SeparatorChar::DifferentOnMain(other_ch, main_ch) => {
-                if line_number == main_line {
-                    *main_ch
-                } else {
-                    *other_ch
-                }
-            }
-            SeparatorChar::ThreeWay(lower_ch, main_ch, higher_ch) => {
-                if line_number < main_line {
-                    *lower_ch
-                } else if line_number > main_line {
-                    *higher_ch
-                } else {
-                    *main_ch
-                }
-            }
+            SepChar::Uniform(uniform) => [*uniform, *uniform, *uniform],
+            SepChar::TwoWay(main, other) => [*other, *main, *other],
+            SepChar::ThreeWay(main, lower, upper) => [*upper, *main, *lower],
         }
     }
 }
 
-pub enum SeparatorForm {
-    Uniform(TextBuilder),
-    DifferentOnMain(TextBuilder, TextBuilder),
-    ThreeWay(TextBuilder, TextBuilder, TextBuilder),
+pub enum SepForm {
+    Uniform(u16),
+    TwoWay(u16, u16),
+    ThreeWay(u16, u16, u16),
 }
 
-impl Default for SeparatorForm {
+impl Default for SepForm {
     fn default() -> Self {
-        SeparatorForm::Uniform(TextBuilder::from([DEFAULT, DEFAULT]))
+        SepForm::Uniform(DEFAULT)
     }
 }
 
-impl SeparatorForm {
-    pub fn uniform<U>(node: &RwData<EndNode<U>>, name: impl ToString) -> Self
+impl SepForm {
+    pub fn uniform<U>(node: &RwData<EndNode<U>>, name: impl AsRef<str>) -> Self
     where
         U: ui::Ui,
     {
         let node = node.read();
         let (_, id) = node.config().palette.from_name(name);
 
-        SeparatorForm::Uniform(TextBuilder::from([id, DEFAULT]))
+        SepForm::Uniform(id)
     }
 
-    pub fn different_on_main<U, S>(node: &RwData<EndNode<U>>, main_name: S, other_name: S) -> Self
+    pub fn two_way<U>(
+        node: &RwData<EndNode<U>>,
+        main_name: impl AsRef<str>,
+        other_name: impl AsRef<str>,
+    ) -> Self
     where
         U: ui::Ui,
-        S: ToString,
     {
         let node = node.read();
         let palette = &node.config().palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, other_id) = palette.from_name(other_name);
 
-        SeparatorForm::DifferentOnMain(
-            TextBuilder::from([main_id, DEFAULT]),
-            TextBuilder::from([other_id, DEFAULT]),
-        )
+        SepForm::TwoWay(main_id, other_id)
     }
 
-    pub fn three_way<U, S>(
-        node: &RwData<EndNode<U>>, main_name: S, lower_name: S, higher_name: S,
+    pub fn three_way<U>(
+        node: &RwData<EndNode<U>>,
+        main_name: impl AsRef<str>,
+        lower_name: impl AsRef<str>,
+        upper_name: impl AsRef<str>,
     ) -> Self
     where
         U: ui::Ui,
-        S: ToString,
     {
         let node = node.read();
         let palette = &node.config().palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, lower_id) = palette.from_name(lower_name);
-        let (_, higher_id) = palette.from_nameigher_name);
+        let (_, upper_id) = palette.from_name(upper_name);
 
-        SeparatorForm::ThreeWay(
-            TextBuilder::from([main_id, DEFAULT]),
-            TextBuilder::from([lower_id, DEFAULT]),
-            TextBuilderfrom([higher_id, DEFAULT]),
-        )
+        SepForm::ThreeWay(main_id, lower_id, upper_id)
     }
 
-    fn form_line(&self, line_number: usize, main_line: usize, text: String) -> TextLine {
+    fn forms(&self) -> [u16; 3] {
         match self {
-            SeparatorForm::Uniform(builder) => builder.swap_rangeext),
-            SeparatorForm::DifferentOnMain(other_builder, main_builder) => {
-                if line_number == main_line {
-                    main_builder.replace_rangeext)
-                } else {
-                    other_builder.replace_rangesext)
-                }
-            }
-            SeparatorForm::ThreeWay(lower_builder, main_builder, higher_builder) => {
-                if line_number < main_line {
-                    lower_builder.iter_rangesext)
-                } else if line_number > main_line {
-                    higher_builder.replace_rangesext)
-                } else {
-                    main_builder.form_infoext)
-                }
-            }
+            SepForm::Uniform(uniform) => [*uniform, *uniform, *uniform],
+            SepForm::TwoWay(main, other) => [*other, *main, *other],
+            SepForm::ThreeWay(main, lower, upper) => [*upper, *main, *lower],
         }
     }
 }
 
 #[derive(Default)]
 pub struct VertRuleConfig {
-    pub separator_char: SeparatorChar,
-    pub separator_form: SeparatorForm,
+    pub sep_char: SepChar,
+    pub sep_form: SepForm,
 }
 
 pub struct VertRule<U>
@@ -899,8 +1054,8 @@ where
     U: ui::Ui,
 {
     file: RoData<FileWidget<U>>,
-    text: Text<U>,
-    vert_rule_config: VertRuleConfig,
+    builder: TextBuilder<U>,
+    cfg: VertRuleConfig,
 }
 
 impl<U> VertRule<U>
@@ -908,24 +1063,31 @@ where
     U: ui::Ui + 'static,
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
-    pub fn new(file_widget: RwData<FileWidget<U>>, vert_rule_config: VertRuleConfig) -> Widget<U> {
-        let file = RoData::from(&file_widget);
+    pub fn new(mut file_widget: RoData<FileWidget<U>>, cfg: VertRuleConfig) -> Widget<U> {
+        let file = file_widget.read();
 
+        let builder = setup_builder(&file, &cfg);
+
+		drop(file);
         Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
-            file,
-            text: Text::default(),
-            vert_rule_config,
+            file: file_widget,
+            builder,
+            cfg
         }))))
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
-    pub fn default(file_widget: RwData<FileWidget<U>>) -> Widget<U> {
-        let file = RoData::from(&file_widget);
+    pub fn default(mut file_widget: RoData<FileWidget<U>>) -> Widget<U> {
+        let file = file_widget.read();
 
+		let cfg = VertRuleConfig::default();
+        let builder = setup_builder(&file, &cfg);
+
+		drop(file);
         Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
-            file,
-            text: Text::default(),
-            vert_rule_config: VertRuleConfig::default(),
+            file: file_widget,
+            builder,
+            cfg
         }))))
     }
 }
@@ -951,21 +1113,6 @@ where
 
     fn update(&mut self, _end_node: &mut EndNode<U>) {
         let file = self.file.read();
-
-        let lines = file.printed_lines().iter().map(|number| *number);
-        let main_line = file.main_cursor().true_row();
-        let mut final_lines = Vec::with_capacity(lines.len());
-
-        for number in lines {
-            let ch = self.vert_rule_config.separator_char.get_char(number, main_line);
-
-            let line = String::from("[]") + String::from(ch).as_str() + "[]\n";
-            let line = self.vert_rule_config.separator_form.form_line(number, main_line, line);
-
-            final_lines.push(line);
-        }
-
-        self.text = Text::from(final_lines);
     }
 
     fn needs_update(&self) -> bool {
@@ -973,6 +1120,31 @@ where
     }
 
     fn text(&self) -> &Text<U> {
-        &self.text
+        self.builder.text()
     }
 }
+
+fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleConfig) -> TextBuilder<U>
+where
+    U: ui::Ui,
+{
+    let lines = file.printed_lines();
+    let main_line = file.main_cursor().true_row();
+    let mut builder = TextBuilder::default_string();
+    let upper = lines.iter().take_while(|&line| *line != main_line).count();
+    let lower = lines.iter().skip_while(|&line| *line <= main_line).count();
+
+    let forms = cfg.sep_form.forms();
+    let chars = cfg.sep_char.chars();
+
+    builder.push_tag(Tag::PushForm(forms[0]));
+    builder.push_swappable(chars[0].to_string().repeat(upper));
+    builder.push_tag(Tag::PushForm(forms[1]));
+    builder.push_swappable(chars[1].to_string());
+    builder.push_tag(Tag::PushForm(forms[2]));
+    builder.push_swappable(chars[2].to_string().repeat(lower));
+
+    builder
+}
+
+

@@ -107,7 +107,7 @@ where
         &mut self, key: KeyEvent, widget: &mut A, end_node: &EndNode<U>, mut controls: Controls<U>,
     ) where
         U: Ui + 'static,
-        A: ActionableWidget<U> + ?Sized,
+        A: ActionableWidget<U> + ?Sized
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };
