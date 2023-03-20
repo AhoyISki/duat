@@ -295,7 +295,7 @@ where
         self.needs_update = true;
         self.text = Text::default_string();
         self.cursor[0] = Cursor::default();
-        self.text.remove_cursor_tags(self.cursor.as_slice(), 0);
+        self.text.remove_cursor_tags(self.cursor.as_slice());
     }
 
     fn still_valid(&self) -> bool {

@@ -6,11 +6,12 @@ use any_rope::{Measurable, Rope as AnyRope};
 
 use self::form::FormFormer;
 use crate::{
+    log_info,
     text::inner_text::InnerText,
     ui::{Area, Label},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not character indexed.
@@ -61,7 +62,7 @@ impl Tag {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum TagOrSkip {
     Tag(Tag, Lock),
     Skip(u32),
@@ -77,7 +78,7 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Tags {
     rope: AnyRope<TagOrSkip>,
     last_lock: u16,
@@ -101,7 +102,7 @@ impl Tags {
         Lock(self.last_lock)
     }
 
-    pub fn insert(&mut self, tag: Tag, lock: Lock, ch_index: usize) {
+    pub fn insert(&mut self, ch_index: usize, tag: Tag, lock: Lock) {
         assert!(
             ch_index <= self.rope.width(),
             "Char index {} too large",
@@ -131,12 +132,16 @@ impl Tags {
 
             self.rope.insert_slice(start_ch_index, &insertion);
         }
+
+        log_info!("insert 1: {:?}\n", self.rope);
+        self.merge_surrounding_skips(ch_index);
+        log_info!("insert 2: {:?}\n", self.rope);
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the `ch_index`.
     pub fn remove(&mut self, ch_index: usize, lock: Lock) {
         let slice = self.rope.width_slice(ch_index..ch_index);
-        let tags = self.rope.iter_at_width(0);
+        let tags = slice.iter();
         let tags = tags
             .filter_map(|(_, tag_or_skip)| {
                 if let TagOrSkip::Tag(tag, cmp_lock) = tag_or_skip {
@@ -153,10 +158,9 @@ impl Tags {
             })
             .collect::<Vec<TagOrSkip>>();
 
-        if !tags.is_empty() {
-            self.rope.remove_inclusive(ch_index..ch_index);
-            self.rope.insert_slice(ch_index, tags.as_slice());
-        }
+        self.rope.remove_inclusive(ch_index..ch_index);
+        self.rope.insert_slice(ch_index, tags.as_slice());
+        log_info!("remove: {:?}\n", self.rope);
     }
 
     pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {
@@ -194,6 +198,47 @@ impl Tags {
                     None
                 }
             })
+    }
+
+    /// Transforms any surrounding clusters of multiple skips into a single one.
+    ///
+    /// This is crucial to prevent the gradual deterioration of the [`Rope`]'s structure.
+    fn merge_surrounding_skips(&mut self, from: usize) {
+        let mut next_tags = self
+            .rope
+            .iter_at_width(from)
+            .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
+
+        let mut total_skip = 0;
+        let mut last_width = from;
+        let mut last_skip = 0;
+        while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
+            total_skip += skip;
+            last_skip = skip as usize;
+            last_width = width;
+        }
+        if last_width != from {
+            self.rope.remove_exclusive(from..(last_width + last_skip));
+            self.rope.insert(from, TagOrSkip::Skip(total_skip));
+        }
+
+        let mut prev_tags = self
+            .rope
+            .iter_at_width(from)
+            .reversed()
+            .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
+
+        let mut total_skip = 0;
+        let mut first_width = from;
+        while let Some((width, TagOrSkip::Skip(skip))) = prev_tags.next() {
+            total_skip += skip;
+            first_width = width;
+        }
+        if first_width != from {
+            self.rope.insert(first_width, TagOrSkip::Skip(total_skip));
+            let range = (first_width + total_skip as usize)..(from + total_skip as usize);
+            self.rope.remove_exclusive(range);
+        }
     }
 
     pub fn len(&self) -> usize {

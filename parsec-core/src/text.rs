@@ -115,10 +115,10 @@ where
         let width = self.text.tags.width();
         let lock = self.text.tags.get_lock();
 
-        self.text.tags.insert(tag, lock, width);
+        self.text.tags.insert(width, tag, lock);
 
         if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.insert(inv_tag, lock, width);
+            self.text.tags.insert(width, inv_tag, lock);
         }
         self.tags.push((tag, width, width, lock));
 
@@ -130,10 +130,10 @@ where
             let new_end = *end + edit_len;
             if let (Some(inv_tag), true) = (tag.inverse(), start == end) {
                 self.text.tags.remove(*start, *lock);
-                self.text.tags.insert(*tag, *lock, *start);
+                self.text.tags.insert(*start, *tag, *lock);
                 self.text
                     .tags
-                    .insert(tag.inverse().unwrap(), *lock, new_end)
+                    .insert(new_end, tag.inverse().unwrap(), *lock)
             }
 
             *end = new_end;
@@ -149,9 +149,9 @@ where
 
         *tag = new_tag;
 
-        self.text.tags.insert(*tag, *lock, *start);
+        self.text.tags.insert(*start, *tag, *lock);
         if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.insert(*tag, *lock, *end);
+            self.text.tags.insert(*end, inv_tag, *lock);
         }
     }
 
@@ -336,7 +336,7 @@ where
     }
 
     /// Removes the tags for all the cursors, used before they are expected to move.
-    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
+    pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
@@ -350,14 +350,14 @@ where
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(tag, self.lock, pos);
+                self.tags.insert(pos, tag, self.lock);
             }
         }
     }
 
     /// Adds the tags for all the cursors, used after they are expected to have moved.
-    pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
-        for (index, cursor) in cursors.iter().enumerate() {
+    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor]) {
+        for cursor in cursors.iter() {
             let Range { start, end } = cursor.range();
 
             for ch_index in [start, end].into_iter() {
@@ -532,7 +532,7 @@ impl PrintInfo {
 
         let mut accum = 0;
         while let Some(line) = lines.next() {
-            lines_to_top -= 1;
+            lines_to_top = lines_to_top.saturating_sub(1);
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.

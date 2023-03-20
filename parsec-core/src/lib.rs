@@ -366,8 +366,9 @@ fn blink_cursors_and_send_key<U, A, I>(
     A: ActionableWidget<U> + ?Sized,
     I: InputScheme,
 {
-    let (text, cursors, main_index) = widget.members_for_cursor_tags();
-    text.remove_cursor_tags(cursors, main_index);
+    println!("here");
+    let (text, cursors, _) = widget.members_for_cursor_tags();
+    text.remove_cursor_tags(cursors);
 
     key_remapper.send_key_to_actionable(key_event, &mut *widget, end_node, controls);
 
