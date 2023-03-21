@@ -2,6 +2,7 @@ use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
     history::{Change, History, Moment},
+    log_info,
     text::{inner_text::InnerText, PrintInfo, Text},
     ui::{EndNode, Label, Ui},
     widgets::EditAccum,
@@ -150,18 +151,17 @@ impl Cursor {
     where
         U: Ui,
     {
-        let cur = &mut self.caret;
-        cur.ch = cur.ch.saturating_add_signed(count);
-        cur.byte = inner.char_to_byte(cur.ch);
-        cur.row = inner.char_to_line(cur.ch);
-        let line_ch = inner.line_to_char(cur.row);
-        cur.col = cur.ch - line_ch;
+        let caret = &mut self.caret;
+        caret.ch = caret.ch.saturating_add_signed(count);
+        caret.byte = inner.char_to_byte(caret.ch);
+        caret.row = inner.char_to_line(caret.ch);
+        let line_ch = inner.line_to_char(caret.row);
+        caret.col = caret.ch - line_ch;
 
-        self.desired_x = end_node
-            .label
-            .get_width(inner.slice(line_ch..cur.ch), &end_node.config().tab_places);
-
-        self.anchor = None;
+        self.desired_x = end_node.label.get_width(
+            inner.slice(line_ch..caret.ch),
+            &end_node.config().tab_places,
+        );
     }
 
     /// Internal absolute movement function. Assumes that the `col` and `row` of th [Pos] are
@@ -368,6 +368,7 @@ where
 
     /// Replaces the entire selection of the `TextCursor` with new text.
     pub fn replace(&mut self, edit: impl ToString) {
+        log_info!("\n{:?}, {:?}", edit.to_string(), self.cursor.range());
         let change = Change::new(edit.to_string(), self.cursor.range(), self.text.inner());
         let (start, end) = (change.start, change.added_end());
 

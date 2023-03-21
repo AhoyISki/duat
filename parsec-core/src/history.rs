@@ -15,13 +15,16 @@
 //! [Cursor]: crate::cursor::Cursor
 use std::{
     cmp::{min, Ordering},
-    ops::{Range, RangeBounds},
+    ops::{Range, RangeBounds, RangeInclusive},
 };
 
-use crate::text::{inner_text::InnerText, PrintInfo};
+use crate::{
+    log_info,
+    text::{inner_text::InnerText, PrintInfo},
+};
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
-#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The splice involving the two texts.
     pub start: usize,
@@ -58,21 +61,24 @@ impl Change {
 
     /// In this function, it is assumed that [`self`] happened _after_ [`older`][Change].
     fn try_merge(&mut self, mut older: Change) -> Result<(), Change> {
-        if older.added_range().contains(&self.start) {
-            let removed_end = min(older.added_end(), self.taken_end());
-            older
-                .added_text
-                .replace_range(older.start..removed_end, &self.added_text);
-            older.taken_text.push_str(&self.taken_text[removed_end..]);
+        if precedes(older.added_range(), self.taken_range()) {
+            let fixed_end = older.added_end().min(self.taken_end()) - older.start;
+            let range = (self.start - older.start)..fixed_end;
+            older.added_text.replace_range(range, &self.added_text);
+
+            let cut_taken = self.taken_text.get(fixed_end..).unwrap_or("");
+            older.taken_text.push_str(cut_taken);
 
             *self = older;
 
             Ok(())
-        } else if self.taken_range().contains(&older.start) {
-            let removed_end = min(self.taken_end(), older.added_end());
-            self.taken_text
-                .replace_range(older.start..removed_end, &older.taken_text);
-            self.added_text.push_str(&older.added_text[removed_end..]);
+        } else if precedes(self.taken_range(), older.added_range()) {
+            let fixed_end = self.taken_end().min(older.added_end()) - self.start;
+            let range = (older.start - self.start)..fixed_end;
+            self.taken_text.replace_range(range, &older.taken_text);
+
+            let cut_added = older.added_text.get(fixed_end..).unwrap_or("");
+            self.added_text.push_str(cut_added);
 
             Ok(())
         } else {
@@ -82,12 +88,12 @@ impl Change {
 
     /// Returns the initial [Range].
     pub fn taken_range(&self) -> Range<usize> {
-        self.start..(self.start + self.taken_text.chars().count())
+        self.start..self.taken_end()
     }
 
     /// Returns the final [Range].
     pub fn added_range(&self) -> Range<usize> {
-        self.start..(self.start + self.added_text.chars().count())
+        self.start..self.added_end()
     }
 
     /// Returns the end of the [Change], before it was applied.
@@ -113,11 +119,15 @@ impl Change {
     }
 }
 
+fn precedes(lhs: Range<usize>, rhs: Range<usize>) -> bool {
+    lhs.contains(&rhs.start) || lhs.end == rhs.start
+}
+
 /// A moment in history, which may contain changes, or may just contain selections.
 ///
 /// It also contains information about how to print the file, so that going back in time is less
 /// jaring.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Moment {
     /// Where the file was printed at the time this moment started.
     pub(crate) starting_print_info: PrintInfo,
@@ -144,13 +154,15 @@ impl Moment {
             .unwrap_or(last_index);
 
         if let Some(prev_change) = self.changes.get_mut(last_index) {
+            log_info!("{:#?}, {:#?}", change, prev_change);
             let taken_change = std::mem::take(prev_change);
             let changes_after = if let Err(taken_change) = change.try_merge(taken_change) {
                 *prev_change = taken_change;
                 self.changes.insert(last_index, change);
-                last_index + 1
+                last_index + 2
             } else {
-                last_index
+                *prev_change = change;
+                last_index + 1
             };
 
             for change in &mut self.changes[changes_after..] {
