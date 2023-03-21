@@ -668,12 +668,12 @@ impl ui::Label<Area> for Label {
 
     fn wrap_count(
         &self,
-        text: RopeSlice,
+        slice: RopeSlice,
         wrap_method: WrapMethod,
         tab_places: &TabPlaces,
     ) -> usize {
         match wrap_method {
-            WrapMethod::Width => self.get_width(text, tab_places) / self.area.width(),
+            WrapMethod::Width => self.get_width(slice, tab_places) / self.area.width(),
             WrapMethod::Capped(_) => todo!(),
             WrapMethod::Word => todo!(),
             WrapMethod::NoWrap => 0,
@@ -720,7 +720,32 @@ impl ui::Label<Area> for Label {
         wrap_method: WrapMethod,
         tab_places: &TabPlaces,
     ) -> usize {
-        todo!()
+        match wrap_method {
+            WrapMethod::Width => {
+                let dist = wrap * self.area.width();
+                slice
+                    .chars()
+                    .enumerate()
+                    .scan((0, false), |(width, end_reached), (index, ch)| {
+                        *width += match ch {
+                            '\t' => tab_places.spaces_on_col(*width),
+                            ch => UnicodeWidthChar::width(ch).unwrap_or(0),
+                        };
+                        if *end_reached {
+                            return None;
+                        }
+                        if *width >= dist {
+                            *end_reached = true
+                        }
+                        Some(index)
+                    })
+                    .last()
+                    .unwrap()
+            }
+            WrapMethod::Capped(_) => todo!(),
+            WrapMethod::Word => todo!(),
+            WrapMethod::NoWrap => 0,
+        }
     }
 }
 

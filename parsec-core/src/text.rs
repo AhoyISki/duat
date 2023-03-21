@@ -130,7 +130,7 @@ where
             let new_end = *end + edit_len;
             if let (Some(inv_tag), true) = (tag.inverse(), start == end) {
                 self.text.tags.remove(*start, *lock);
-                self.text.tags.insert(*start, *tag, *lock);
+                self.text.tags.insert(*start, inv_tag, *lock);
                 self.text
                     .tags
                     .insert(new_end, tag.inverse().unwrap(), *lock)
@@ -492,26 +492,36 @@ impl PrintInfo {
     where
         U: Ui,
     {
+        let target_ch = target.true_char();
         let label = &end_node.label;
         let config = &end_node.config();
-        let min_dist = config.scrolloff.y_gap;
+        let max_dist = config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
         let slice = inner.slice(..target.true_char());
-        let mut lines = slice.lines_at(target.row()).reversed();
+        let mut lines = slice
+            .lines_at(target.row())
+            .reversed()
+            .scan(target_ch, |ch, line| {
+                *ch -= line.len_chars();
+                Some((*ch, line))
+            });
 
         let mut accum = 0;
-        while let Some(line) = lines.next() {
+        while let Some((line_ch, line)) = lines.next() {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum >= min_dist {
+            if accum <= max_dist && line_ch < self.first_ch {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                self.first_ch = label.col_at_wrap(line, accum - min_dist, wrap_method, tab_places);
+                self.first_ch =
+                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                break;
+            } else if accum > max_dist {
                 break;
             }
         }
 
         // This means we can't scroll up anymore.
-        if accum < min_dist {
+        if accum < max_dist {
             self.first_ch = 0;
         }
     }
