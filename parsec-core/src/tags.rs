@@ -133,9 +133,7 @@ impl Tags {
             self.rope.insert_slice(start_ch_index, &insertion);
         }
 
-        log_info!("insert 1: {:?}\n", self.rope);
         self.merge_surrounding_skips(ch_index);
-        log_info!("insert 2: {:?}\n", self.rope);
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the `ch_index`.
@@ -160,7 +158,6 @@ impl Tags {
 
         self.rope.remove_inclusive(ch_index..ch_index);
         self.rope.insert_slice(ch_index, tags.as_slice());
-        log_info!("remove: {:?}\n", self.rope);
     }
 
     pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {

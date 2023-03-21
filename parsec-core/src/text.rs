@@ -12,6 +12,7 @@ use self::{inner_text::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
+    log_info,
     position::{Cursor, Pos},
     tags::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
@@ -359,8 +360,8 @@ where
     pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor]) {
         for cursor in cursors.iter() {
             let Range { start, end } = cursor.range();
-
-            for ch_index in [start, end].into_iter() {
+            let skip = if start == end { 1 } else { 0 };
+            for ch_index in [start, end].into_iter().skip(skip) {
                 self.tags.remove(ch_index, self.lock);
             }
         }
@@ -402,14 +403,14 @@ where
 
 fn trigger_on_char<'a, U>(
     tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
-    byte: usize,
+    ch_index: usize,
     label: &mut U::Label,
     form_former: &mut FormFormer,
 ) where
     U: Ui,
 {
     while let Some((tag_byte, tag)) = tags.peek() {
-        if byte == *tag_byte {
+        if ch_index == *tag_byte {
             tag.trigger(label, form_former);
             tags.next();
         } else {

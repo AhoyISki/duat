@@ -19,7 +19,6 @@ use crossterm::{
 use no_deadlocks::Mutex;
 use parsec_core::{
     config::{Config, DownCastableData},
-    log_info,
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
@@ -613,9 +612,9 @@ impl ui::Label<Area> for Label {
 
         while let PrintStatus::NextLine = self.next_line() {}
 
-        queue!(self.stdout, ResetColor, RestorePosition).unwrap();
+        execute!(self.stdout, ResetColor, RestorePosition).unwrap();
         if unsafe { SHOW_CURSOR } {
-            queue!(self.stdout, cursor::Show).unwrap();
+            execute!(self.stdout, cursor::Show).unwrap();
         }
 
         self.clear_form();
