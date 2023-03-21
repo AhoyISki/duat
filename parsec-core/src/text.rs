@@ -6,19 +6,18 @@ use std::{
     ops::{Range, RangeInclusive},
 };
 
-use ropey::{iter::Chars, Rope};
+use ropey::Rope;
 
 use self::{inner_text::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
-    log_info,
     position::{Cursor, Pos},
     tags::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, Tags,
     },
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui}, log_info,
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied to it.
@@ -269,8 +268,8 @@ where
         label.start_printing(config);
 
         let line_start_ch = {
-            let cur_line = self.inner.char_to_line(print_info.first_ch);
-            self.inner.line_to_char(cur_line)
+            let first_line = self.inner.char_to_line(print_info.first_ch);
+            self.inner.line_to_char(first_line)
         };
 
         let mut chars = self
@@ -427,7 +426,7 @@ pub enum PrintStatus {
 
 // NOTE: The defaultness in here, when it comes to `last_main`, may cause issues in the future.
 /// Information about how to print the file on the `Label`.
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
     /// The index of the first [char] that should be printed on the screen.
     pub first_ch: usize,
@@ -493,28 +492,28 @@ impl PrintInfo {
     where
         U: Ui,
     {
-        let target_ch = target.true_char();
         let label = &end_node.label;
         let config = &end_node.config();
         let max_dist = config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
         let slice = inner.slice(..target.true_char());
-        let mut lines = slice
-            .lines_at(target.row())
-            .reversed()
-            .scan(target_ch, |ch, line| {
-                *ch -= line.len_chars();
-                Some((*ch, line))
-            });
+        let mut lines =
+            slice
+                .lines_at(target.true_row())
+                .reversed()
+                .scan(target.true_char(), |ch, line| {
+                    *ch -= line.len_chars();
+                    Some((*ch, line))
+                });
 
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
             if accum <= max_dist && line_ch < self.first_ch {
-                // `accum - gap` is the amount of wraps that should be offscreen.
+                // `max_dist - accum` is the amount of wraps that should be offscreen.
                 self.first_ch =
-                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                    line_ch + label.col_at_wrap(line, max_dist - accum, wrap_method, tab_places);
                 break;
             } else if accum > max_dist {
                 break;
@@ -538,16 +537,25 @@ impl PrintInfo {
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
         let slice = inner.slice(..target.true_char());
-        let mut lines = slice.lines_at(target.row()).reversed();
+        let mut lines =
+            slice
+                .lines_at(slice.len_lines())
+                .reversed()
+                .scan(target.true_char(), |ch, line| {
+                    *ch -= line.len_chars();
+                    Some((*ch, line))
+                });
         let mut lines_to_top = target.true_row() - inner.char_to_line(self.first_ch);
 
         let mut accum = 0;
-        while let Some(line) = lines.next() {
+        while let Some((line_ch, line)) = lines.next() {
             lines_to_top = lines_to_top.saturating_sub(1);
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum >= max_dist {
+            if accum > max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                self.first_ch = label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                self.first_ch =
+                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                log_info!("\n{}", self.first_ch);
                 break;
             // We have reached the top of the screen before the accum equaled gap.
             // This means that no scrolling actually needs to take place.

@@ -10,7 +10,6 @@ use std::{
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
-use ropey::Rope;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -190,11 +189,6 @@ where
         self.text.inner().len_lines()
     }
 
-    /// The `PrintInfo` of the `FileWidget`.
-    pub fn print_info(&self) -> PrintInfo {
-        self.print_info
-    }
-
     pub fn add_reader(&mut self, reader: Box<dyn MutTextReader<U>>) {
         self.readers.push(reader);
     }
@@ -238,6 +232,10 @@ where
 
     fn scroll_vertically(&mut self, d_y: i32) {
         self.print_info.scroll_vertically(d_y, &self.text);
+    }
+
+    fn print_info(&self) -> PrintInfo {
+        self.print_info
     }
 }
 

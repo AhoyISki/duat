@@ -9,7 +9,7 @@ use crate::{
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
-#[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pos {
     byte: usize,
     ch: usize,
@@ -129,10 +129,11 @@ impl Cursor {
     {
         let cur = &mut self.caret;
 
-        cur.row = min(
-            cur.row.saturating_add_signed(count),
-            inner.len_lines().saturating_sub(1),
-        );
+        cur.row = cur
+            .row
+            .saturating_add_signed(count)
+            .min(inner.len_lines().saturating_sub(1));
+
         let line = inner.line(cur.row);
 
         // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
