@@ -353,7 +353,6 @@ where
 
     /// Replaces the entire selection of the `TextCursor` with new text.
     pub fn replace(&mut self, edit: impl ToString) {
-        log_info!("\n{:?}, {:?}", edit.to_string(), self.cursor.range());
         let change = Change::new(edit.to_string(), self.cursor.range(), self.text.inner());
         let (start, end) = (change.start, change.added_end());
 
@@ -390,6 +389,8 @@ where
     /// Edits the file with a cursor.
     fn edit(&mut self, change: Change) {
         self.text.apply_change(&change);
+
+        self.edit_accum.chars += change.added_end() as isize - change.taken_end() as isize;
 
         if let Some(history) = &mut self.history {
             let assoc_index = self.cursor.assoc_index;

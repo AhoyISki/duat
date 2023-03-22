@@ -169,7 +169,7 @@ impl Editor {
                 move_each(&mut actor, Side::Bottom, 1);
             }
             KeyEvent {
-                code: KeyCode::Tab, ..
+                code: KeyCode::Esc, ..
             } => {
                 actor.new_moment();
                 *self.cur_mode.write() = Mode::Normal;

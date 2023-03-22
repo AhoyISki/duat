@@ -82,12 +82,13 @@ where
         let mut chars = 0;
         for change in &moment.changes {
             self.text.undo_change(&change, chars);
-            chars += change.taken_end() as isize - change.added_end() as isize;
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
             self.cursors
                 .push(Cursor::new(pos, &self.text.inner(), end_node));
+
+            chars += change.taken_end() as isize - change.added_end() as isize;
         }
     }
 
