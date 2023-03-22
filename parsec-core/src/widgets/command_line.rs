@@ -260,7 +260,7 @@ where
 
     fn mover<'a>(&'a mut self, _: usize, end_node: &'a EndNode<U>) -> Mover<U> {
         self.needs_update = true;
-        Mover::new(&mut self.cursor[0], &self.text, end_node, None)
+        Mover::new(&mut self.cursor[0], &self.text, end_node)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {

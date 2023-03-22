@@ -79,10 +79,10 @@ where
 
         self.cursors.clear();
 
-        let mut chars = 0isize;
+        let mut chars = 0;
         for change in &moment.changes {
-            chars += change.added_end() as isize - change.taken_end() as isize;
             self.text.undo_change(&change, chars);
+            chars += change.taken_end() as isize - change.added_end() as isize;
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
@@ -264,7 +264,6 @@ where
             &mut self.cursors[index],
             &self.text,
             end_node,
-            self.history.current_moment(),
         )
     }
 

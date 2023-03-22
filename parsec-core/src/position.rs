@@ -1,7 +1,7 @@
 use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
-    history::{Change, History, Moment},
+    history::{Change, History},
     log_info,
     text::{inner_text::InnerText, PrintInfo, Text},
     ui::{EndNode, Label, Ui},
@@ -221,21 +221,6 @@ impl Cursor {
             .map(|anchor| anchor.calibrate(edit_accum.chars, inner));
     }
 
-    /// Checks wether or not the `TextCursor` is still intersecting its last `Change`.
-    ///
-    /// If it is not, dissassociates itself with it.
-    pub fn change_range_check(&mut self, moment: &Moment) {
-        if let Some(assoc_change) = self.assoc_index {
-            if let Some(change) = moment.changes.get(assoc_change) {
-                if !range_intersects(change.added_range(), self.range()) {
-                    self.assoc_index = None;
-                }
-            } else {
-                self.assoc_index = None;
-            }
-        }
-    }
-
     /// Sets the position of the anchor to be the same as the current cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
@@ -424,7 +409,6 @@ where
     cursor: &'a mut Cursor,
     text: &'a Text<U>,
     end_node: &'a EndNode<U>,
-    current_moment: Option<&'a Moment>,
 }
 
 impl<'a, U> Mover<'a, U>
@@ -432,17 +416,11 @@ where
     U: Ui,
 {
     /// Returns a new instance of `Mover`.
-    pub fn new(
-        cursor: &'a mut Cursor,
-        text: &'a Text<U>,
-        end_node: &'a EndNode<U>,
-        current_moment: Option<&'a Moment>,
-    ) -> Self {
+    pub fn new(cursor: &'a mut Cursor, text: &'a Text<U>, end_node: &'a EndNode<U>) -> Self {
         Self {
             cursor,
             text,
             end_node,
-            current_moment,
         }
     }
 
@@ -452,18 +430,12 @@ where
     pub fn move_ver(&mut self, count: isize) {
         self.cursor
             .move_ver(count, self.text.inner(), self.end_node);
-        if let Some(moment) = self.current_moment {
-            self.cursor.change_range_check(moment)
-        }
     }
 
     /// Moves the cursor horizontally on the file. May also cause vertical movement.
     pub fn move_hor(&mut self, count: isize) {
         self.cursor
             .move_hor(count, self.text.inner(), self.end_node);
-        if let Some(moment) = self.current_moment {
-            self.cursor.change_range_check(moment)
-        }
     }
 
     /// Moves the cursor to a position in the file.
@@ -472,9 +444,6 @@ where
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
         self.cursor.move_to(caret, self.text.inner(), self.end_node);
-        if let Some(moment) = self.current_moment {
-            self.cursor.change_range_check(moment)
-        }
     }
 
     /// Returns the anchor of the `TextCursor`.
@@ -539,8 +508,4 @@ where
 
 fn pos_intersects(left: (Pos, Pos), right: (Pos, Pos)) -> bool {
     (left.0 > right.0 && right.1 > left.0) || (right.0 > left.0 && left.1 > right.0)
-}
-
-fn range_intersects(first: Range<usize>, second: Range<usize>) -> bool {
-    first.end > second.start || second.end > first.start
 }

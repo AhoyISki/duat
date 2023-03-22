@@ -1,3 +1,5 @@
+#![feature(is_some_and)]
+
 pub mod config;
 pub mod history;
 pub mod input;

@@ -308,7 +308,7 @@ where
     }
 
     /// Merges `String`s with the body of text, given a range to replace.
-    fn merge_text(&mut self, edit: impl AsRef<str>, old: Range<usize>) {
+    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let new = old.start..(old.start + edit.chars().count());
 
@@ -318,13 +318,13 @@ where
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
-        self.merge_text(&change.added_text, change.taken_range());
+        self.replace_range(change.taken_range(), &change.added_text);
     }
 
     pub(crate) fn undo_change(&mut self, change: &Change, chars: isize) {
         let start = change.start.saturating_add_signed(chars);
         let end = change.added_end().saturating_add_signed(chars);
-        self.merge_text(&change.taken_text, start..end);
+        self.replace_range(start..end, &change.taken_text);
     }
 
     pub fn inner(&self) -> &InnerText {

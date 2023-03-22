@@ -14,8 +14,8 @@
 //!
 //! [Cursor]: crate::cursor::Cursor
 use std::{
-    cmp::{min, Ordering},
-    ops::{Range, RangeBounds, RangeInclusive},
+    cmp::Ordering,
+    ops::{Range, RangeBounds},
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
-    /// The splice involving the two texts.
+    /// The starting `ch_index` of the [`Change`]
     pub start: usize,
     /// The text that was added in this change.
     pub added_text: String,
@@ -148,13 +148,20 @@ impl Moment {
         let initial_len = self.changes.len();
         let chars_diff = change.added_end() as isize - change.taken_end() as isize;
 
-        let last_index = assoc_index.unwrap_or_else(|| self.find_last_merger(&change));
+        let last_index = if let Some(index) = assoc_index.filter(|index| {
+            self.changes
+                .get(*index)
+                .is_some_and(|cmp| intersects(cmp, &change))
+        }) {
+            index
+        } else {
+            self.find_last_merger(&change)
+        };
         let first_index = self
             .find_first_merger(&change, last_index)
             .unwrap_or(last_index);
 
         if let Some(prev_change) = self.changes.get_mut(last_index) {
-            log_info!("{:#?}, {:#?}", change, prev_change);
             let taken_change = std::mem::take(prev_change);
             let changes_after = if let Err(taken_change) = change.try_merge(taken_change) {
                 *prev_change = taken_change;
@@ -169,7 +176,7 @@ impl Moment {
                 change.start = change.start.saturating_add_signed(chars_diff);
             }
         } else {
-            self.changes.push(change);
+            self.changes.insert(last_index, change);
         };
 
         let prior_changes = self
@@ -180,6 +187,8 @@ impl Moment {
         for prior_change in prior_changes {
             let _ = added_change.try_merge(prior_change);
         }
+
+        log_info!("\n{:#?}", self);
 
         (
             first_index,
@@ -330,4 +339,9 @@ impl History {
             }
         }
     }
+}
+
+fn intersects(old: &Change, new: &Change) -> bool {
+    (old.start > new.start && new.taken_end() >= old.start)
+        || (new.start > old.start && old.added_end() >= new.start)
 }
