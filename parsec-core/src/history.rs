@@ -18,10 +18,7 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use crate::{
-    log_info,
-    text::{inner_text::InnerText, PrintInfo},
-};
+use crate::text::{inner_text::InnerText, PrintInfo};
 
 /// A change in a file, empty vectors indicate a pure insertion or deletion.
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -187,8 +184,6 @@ impl Moment {
         for prior_change in prior_changes {
             let _ = added_change.try_merge(prior_change);
         }
-
-        log_info!("\n{:#?}", self);
 
         (
             first_index,
