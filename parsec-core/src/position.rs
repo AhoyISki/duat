@@ -2,7 +2,6 @@ use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
     history::{Change, History},
-    log_info,
     text::{inner_text::InnerText, PrintInfo, Text},
     ui::{EndNode, Label, Ui},
     widgets::EditAccum,
@@ -389,7 +388,6 @@ where
     /// Edits the file with a cursor.
     fn edit(&mut self, change: Change) {
         self.text.apply_change(&change);
-
         self.edit_accum.chars += change.added_end() as isize - change.taken_end() as isize;
 
         if let Some(history) = &mut self.history {

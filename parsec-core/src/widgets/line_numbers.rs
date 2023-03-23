@@ -10,10 +10,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::Mutex;
 
-use super::{
-    file_widget::{self, FileWidget},
-    NormalWidget, Widget,
-};
+use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RoData, RwData},
     tags::{
@@ -93,20 +90,12 @@ where
     fn update_text(&mut self, width: usize) {
         let file = self.file_widget.read();
         let printed_lines = file.printed_lines();
-        let main_line = file.main_cursor().row();
+        let main_line = file.main_cursor().true_row();
 
-        let Some(first_line) = printed_lines.first() else {
-            self.text_builder.clear();
-            return;
-        };
-        let mut tag = get_tag(*first_line, main_line, false);
-        let mut text = get_text(*first_line, main_line, width, &self.cfg);
+        for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
+            let tag = get_tag(*line, main_line, *is_wrapped);
+            let text = get_text(*line, main_line, width, &self.cfg);
 
-        self.text_builder.push_tag(tag);
-        self.text_builder.push_swappable(&text);
-
-        let mut last_line = *first_line;
-        for (index, line) in printed_lines.iter().enumerate() {
             if index < self.text_builder.ranges_len() {
                 self.text_builder.swap_tag(index, tag);
                 self.text_builder.swap_range(index, &text);
@@ -115,10 +104,6 @@ where
                 self.text_builder.push_swappable(&text);
             }
 
-            tag = get_tag(*first_line, main_line, *line == last_line);
-            text = get_text(*first_line, main_line, width, &self.cfg);
-
-            last_line = *line;
         }
 
         if printed_lines.len() < self.text_builder.ranges_len() {
@@ -148,7 +133,7 @@ where
         end_node
             .label
             .area_mut()
-            .request_len(width.min(self.min_width), Side::Right)
+            .request_len(width.max(self.min_width), Side::Right)
             .unwrap();
 
         self.update_text(width);
@@ -169,7 +154,8 @@ pub enum Numbering {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Absolute,
-    /// Line numbers relative to the main cursor's line, including that line.
+    /// Line numbers relative to the main cursor's line, including
+    /// that line.
     Relative,
     /// Relative line numbers on every line, except the main cursor's.
     Hybrid,
@@ -206,10 +192,10 @@ fn get_text(line: usize, main_line: usize, width: usize, cfg: &LineNumbersCfg) -
 
     let number = match cfg.numbering {
         Numbering::Absolute => line + 1,
-        Numbering::Relative => usize::abs_diff(line, main_line) + 1,
+        Numbering::Relative => usize::abs_diff(line, main_line),
         Numbering::Hybrid => {
             if line != main_line {
-                usize::abs_diff(line, main_line) + 1
+                usize::abs_diff(line, main_line)
             } else {
                 line + 1
             }

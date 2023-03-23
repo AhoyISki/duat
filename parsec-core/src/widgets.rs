@@ -259,7 +259,7 @@ where
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let mut editor = self
+            let editor = self
                 .actionable
                 .editor(index, &mut edit_accum, self.end_node);
             f(editor);

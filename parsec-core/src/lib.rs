@@ -53,13 +53,8 @@ where
             command_list.try_add(Box::new(command)).unwrap();
         }
 
-        let window = Window::new(
-            ui,
-            file_widget,
-            config,
-            &mut session_manager.write(),
-            &constructor_hook,
-        );
+        let window =
+            Window::new(ui, file_widget, config, &mut session_manager.write(), &constructor_hook);
 
         let mut session = Session {
             windows: vec![window],
@@ -141,8 +136,8 @@ where
         self.mut_active_window().shutdown();
     }
 
-    /// The primary application loop, executed while no breaking commands have been sent to
-    /// `SessionControl`.
+    /// The primary application loop, executed while no breaking
+    /// commands have been sent to `SessionControl`.
     fn session_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme,
@@ -174,7 +169,8 @@ where
         });
     }
 
-    /// The list of commands that are considered global, as oposed to local to a file.
+    /// The list of commands that are considered global, as oposed to
+    /// local to a file.
     fn global_commands(&self) -> RwData<CommandList> {
         self.global_commands.clone()
     }
@@ -248,7 +244,8 @@ where
         Ok(())
     }
 
-    /// Switches to the next `Widget<U>` that contains a `FileWidget<U>`.
+    /// Switches to the next `Widget<U>` that contains a
+    /// `FileWidget<U>`.
     pub fn next_file(&mut self) -> Result<(), ()> {
         if self.window.files().count() < 2 {
             Err(())
@@ -265,7 +262,8 @@ where
         }
     }
 
-    /// Switches to the previous `Widget<U>` that contains a `FileWidget<U>`.
+    /// Switches to the previous `Widget<U>` that contains a
+    /// `FileWidget<U>`.
     pub fn prev_file(&mut self) -> Result<(), ()> {
         if self.window.files().count() < 2 {
             Err(())

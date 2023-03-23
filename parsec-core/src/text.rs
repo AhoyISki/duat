@@ -17,23 +17,29 @@ use crate::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, Tags,
     },
-    ui::{Area, EndNode, Label, Ui}, log_info,
+    ui::{Area, EndNode, Label, Ui},
 };
 
-/// Builds and modifies a [`Text<U>`], based on replacements applied to it.
+/// Builds and modifies a [`Text<U>`], based on replacements applied
+/// to it.
 ///
-/// The generation of text by the `TextBuilder<U>` has a few peculiarities
-/// that are convenient in the situations where it is useful:
+/// The generation of text by the `TextBuilder<U>` has a few
+/// peculiarities that are convenient in the situations where it is
+/// useful:
 ///
-/// - The user cannot insert [`Tag`]s directly, only by appending and modifying
+/// - The user cannot insert [`Tag`]s directly, only by appending and
+///   modifying
 /// existing tags.
-/// - All [`Tag`]s that are appended result in an inverse [`Tag`] being placed
-/// before the next one (e.g. [`Tag::PushForm`] would be followed a [`Tag::PopForm`]),
-/// or at the end of the [`Tags`].
-/// - You can insert swappable text with [`push_swappable()`][Self::push_swappable].
+/// - All [`Tag`]s that are appended result in an inverse [`Tag`]
+///   being placed
+/// before the next one, or at the end of the [`Tags`] (e.g.
+/// [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
+/// - You can insert swappable text with
+///   [`push_swappable()`][Self::push_swappable].
 ///
-/// These properties allow for quick and easy modification of the [`Text<U>`] within,
-/// which can then be accessed with [`text()`][Self::text()].
+/// These properties allow for quick and easy modification of the
+/// [`Text<U>`] within, which can then be accessed with
+/// [`text()`][Self::text()].
 pub struct TextBuilder<U>
 where
     U: Ui,
@@ -66,22 +72,22 @@ where
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let len = self.text.inner.len_chars();
 
-        let edit = edit.as_ref().to_string();
-        self.move_last_tag(edit.chars().count());
-
-        let change = Change::new(edit, len..len, self.text.inner());
+        let edit = edit.as_ref();
+        let change = Change::new(&edit, len..len, self.text.inner());
         self.text.apply_change(&change);
+
+        self.move_last_tag(edit.chars().count());
     }
 
     pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
         let len = self.text.len_chars();
         self.ranges.push(len..(len + edit.as_ref().len()));
 
-        let edit = edit.as_ref().to_string();
-        self.move_last_tag(edit.chars().count());
-
-        let change = Change::new(edit, len..len, self.text.inner());
+        let edit = edit.as_ref();
+        let change = Change::new(&edit, len..len, self.text.inner());
         self.text.apply_change(&change);
+
+        self.move_last_tag(edit.chars().count());
     }
 
     /// Replaces a range with a new piece of text.
@@ -109,8 +115,8 @@ where
         }
     }
 
-    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well as its
-    /// inverse at the end of the [`Text<U>`].
+    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
+    /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, tag: Tag) -> Lock {
         let width = self.text.tags.width();
         let lock = self.text.tags.get_lock();
@@ -128,12 +134,11 @@ where
     fn move_last_tag(&mut self, edit_len: usize) {
         if let Some((tag, start, end, lock)) = self.tags.last_mut() {
             let new_end = *end + edit_len;
+
             if let (Some(inv_tag), true) = (tag.inverse(), start == end) {
                 self.text.tags.remove(*start, *lock);
-                self.text.tags.insert(*start, inv_tag, *lock);
-                self.text
-                    .tags
-                    .insert(new_end, tag.inverse().unwrap(), *lock)
+                self.text.tags.insert(*start, *tag, *lock);
+                self.text.tags.insert(new_end, inv_tag, *lock)
             }
 
             *end = new_end;
@@ -166,7 +171,6 @@ where
         self.ranges.truncate(range_index);
 
         let change = Change::new("", trunc_start.., self.text.inner());
-        self.text.apply_change(&change);
 
         for (_, start, end, lock) in &self.tags {
             if *start >= trunc_start {
@@ -174,6 +178,8 @@ where
                 self.text.tags.remove(*end, *lock);
             }
         }
+
+        self.text.apply_change(&change);
     }
 
     pub fn is_default(&self) -> bool {
@@ -307,7 +313,8 @@ where
         end_node.label.stop_printing();
     }
 
-    /// Merges `String`s with the body of text, given a range to replace.
+    /// Merges `String`s with the body of text, given a range to
+    /// replace.
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let new = old.start..(old.start + edit.chars().count());
@@ -335,17 +342,15 @@ where
         self.inner.len_chars() == 0
     }
 
-    /// Removes the tags for all the cursors, used before they are expected to move.
+    /// Removes the tags for all the cursors, used before they are
+    /// expected to move.
     pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
         for (index, cursor) in cursors.iter().enumerate() {
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
-            let pos_list = [
-                (start, start_tag),
-                (end, end_tag),
-                (cursor.caret().true_char(), caret_tag),
-            ];
+            let pos_list =
+                [(start, start_tag), (end, end_tag), (cursor.caret().true_char(), caret_tag)];
 
             let no_selection = if start == end { 2 } else { 0 };
 
@@ -355,7 +360,8 @@ where
         }
     }
 
-    /// Adds the tags for all the cursors, used after they are expected to have moved.
+    /// Adds the tags for all the cursors, used after they are
+    /// expected to have moved.
     pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor]) {
         for cursor in cursors.iter() {
             let Range { start, end } = cursor.range();
@@ -379,7 +385,8 @@ where
     }
 }
 
-/// Prints the given character, taking configuration options into account.
+/// Prints the given character, taking configuration options into
+/// account.
 fn print_ch<U>(
     ch: char,
     last_ch: char,
@@ -424,11 +431,13 @@ pub enum PrintStatus {
     Finished,
 }
 
-// NOTE: The defaultness in here, when it comes to `last_main`, may cause issues in the future.
+// NOTE: The defaultness in here, when it comes to `last_main`, may
+// cause issues in the future.
 /// Information about how to print the file on the `Label`.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrintInfo {
-    /// The index of the first [char] that should be printed on the screen.
+    /// The index of the first [char] that should be printed on the
+    /// screen.
     pub first_ch: usize,
     /// How shifted the text is to the left.
     pub x_shift: usize,
@@ -437,13 +446,15 @@ pub struct PrintInfo {
 }
 
 impl PrintInfo {
-    /// Scrolls the `PrintInfo` vertically by a given amount, on a given file.
+    /// Scrolls the `PrintInfo` vertically by a given amount, on a
+    /// given file.
     pub fn scroll_vertically<U>(&mut self, mut d_y: i32, text: &Text<U>)
     where
         U: Ui,
     {
-        //if d_y > 0 {
-        //    let mut lines_iter = text.lines().iter().skip(self.top_row);
+        // if d_y > 0 {
+        //    let mut lines_iter =
+        // text.lines().iter().skip(self.top_row);
 
         //    while let Some(line) = lines_iter.next() {
         //        let wrap_count = line.iter_wraps().count();
@@ -456,7 +467,8 @@ impl PrintInfo {
         //        }
         //    }
         //} else if d_y < 0 {
-        //    let mut lines_iter = text.lines().iter().take(self.top_row).rev();
+        //    let mut lines_iter =
+        // text.lines().iter().take(self.top_row).rev();
 
         //    while let Some(line) = lines_iter.next() {
         //        let wrap_count = line.iter_wraps().count();
@@ -471,20 +483,21 @@ impl PrintInfo {
         //}
     }
 
-    //pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Rope, end_node: &EndNode<U>)
-    //where
+    // pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Rope,
+    // end_node: &EndNode<U>) where
     //    U: Ui,
     //{
     //    let mut max_d = 0;
-    //    for index in text.printed_lines(end_node.label.area().height(), self) {
-    //        let line = &text.lines()[index];
+    //    for index in text.printed_lines(end_node.label.area().height(),
+    // self) {        let line = &text.lines()[index];
     //        let line_d = end_node
     //            .label
-    //            .get_width(line.text.as_str(), &end_node.config.tab_places);
-    //        max_d = max_d.max(line_d);
+    //            .get_width(line.text.as_str(),
+    // &end_node.config.tab_places);        max_d = max_d.max(line_d);
     //    }
 
-    //    self.x_shift = min(self.x_shift.saturating_add_signed(d_x as isize), max_d);
+    //    self.x_shift = min(self.x_shift.saturating_add_signed(d_x as
+    // isize), max_d);
     //}
 
     /// Scrolls up.
@@ -555,17 +568,18 @@ impl PrintInfo {
                 // `accum - gap` is the amount of wraps that should be offscreen.
                 self.first_ch =
                     line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
-                log_info!("\n{}", self.first_ch);
                 break;
-            // We have reached the top of the screen before the accum equaled gap.
-            // This means that no scrolling actually needs to take place.
+            // We have reached the top of the screen before the accum
+            // equaled gap. This means that no scrolling
+            // actually needs to take place.
             } else if lines_to_top == 0 {
                 break;
             }
         }
     }
 
-    /// Scrolls the file horizontally, usually when no wrapping is being used.
+    /// Scrolls the file horizontally, usually when no wrapping is
+    /// being used.
     fn scroll_hor_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
@@ -601,31 +615,36 @@ impl PrintInfo {
     }
 }
 
-//pub(crate) fn update_range<U>(
-//    text: &mut Text<U>, range: TextRange, max_line: usize, node: &EndNode<U>,
+// pub(crate) fn update_range<U>(
+//    text: &mut Text<U>, range: TextRange, max_line: usize, node:
+// &EndNode<U>,
 //) where
 //    U: Ui,
 //{
 //    if let Some(match_manager) = &mut text.match_manager {
 //        let line = &text.lines[max_line];
-//        let max_pos = TextPos::default().translate(&text.lines, max_line, line.char_count());
+//        let max_pos = TextPos::default().translate(&text.lines,
+// max_line, line.char_count());
 //
 //        let start = TextPos {
 //            row: range.start.row,
 //            col: 0,
-//            byte: range.start.byte - get_byte(&text.lines[range.start.row].text(),
-//     range.start.col),    };
+//            byte: range.start.byte -
+// get_byte(&text.lines[range.start.row].text(),     range.start.col),
+// };
 //
 //        let len = text.lines[range.end.row].text().len();
 //        let end = TextPos {
 //            row: range.end.row,
 //            col: text.lines[range.end.row].char_count(),
-//            byte: range.end.byte - get_byte(&text.lines[range.end.row].text(), range.end.col) +
+//            byte: range.end.byte -
+// get_byte(&text.lines[range.end.row].text(), range.end.col) +
 //     len,    };
 //
 //        let range = TextRange { start, end };
 //
-//        let line_infos = match_manager.match_range(text.lines.as_slice(), range, max_pos);
+//        let line_infos =
+// match_manager.match_range(text.lines.as_slice(), range, max_pos);
 //
 //        for (line_info, line_num) in line_infos {
 //            text.lines[line_num].info = line_info;
@@ -636,16 +655,8 @@ impl PrintInfo {
 //
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
-        (
-            Tag::MainCursor,
-            Tag::PushForm(MAIN_SEL),
-            Tag::PopForm(MAIN_SEL),
-        )
+        (Tag::MainCursor, Tag::PushForm(MAIN_SEL), Tag::PopForm(MAIN_SEL))
     } else {
-        (
-            Tag::MainCursor,
-            Tag::PushForm(EXTRA_SEL),
-            Tag::PopForm(EXTRA_SEL),
-        )
+        (Tag::MainCursor, Tag::PushForm(EXTRA_SEL), Tag::PopForm(EXTRA_SEL))
     }
 }

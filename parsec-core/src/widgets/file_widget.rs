@@ -33,7 +33,7 @@ where
     cursors: Vec<Cursor>,
     history: History,
     readers: Vec<Box<dyn MutTextReader<U>>>,
-    printed_lines: Vec<usize>,
+    printed_lines: Vec<(usize, bool)>,
 }
 
 impl<U> FileWidget<U>
@@ -85,8 +85,7 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
-            self.cursors
-                .push(Cursor::new(pos, &self.text.inner(), end_node));
+            self.cursors.push(Cursor::new(pos, &self.text.inner(), end_node));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -107,12 +106,24 @@ where
             self.text.apply_change(&change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
-            self.cursors
-                .push(Cursor::new(new_pos, &self.text.inner(), &end_node));
+            self.cursors.push(Cursor::new(new_pos, &self.text.inner(), &end_node));
         }
     }
 
     fn set_printed_lines(&mut self, end_node: &EndNode<U>) {
+        let first_ch = self.print_info.first_ch;
+        let wrap_method = end_node.config().wrap_method;
+        let tab_places = &end_node.config().tab_places;
+
+		// The beginning of the first line may be offscreen, which would make
+		// the first line number a wrapped line.
+        let mut is_wrapped = {
+            let line = self.text.inner().char_to_line(first_ch);
+            let line_ch = self.text.inner().line_to_char(line);
+            let initial_slice = self.text.inner().slice(line_ch..first_ch);
+            end_node.label.wrap_count(initial_slice, wrap_method, tab_places) > 0
+        };
+
         let height = end_node.label.area().height();
         let slice = self.text.inner().slice(self.print_info.first_ch..);
         let mut lines_iter = slice.lines().enumerate();
@@ -122,25 +133,25 @@ where
 
         let mut accum = min(height, 1);
 
-        let wrap_method = end_node.config().wrap_method;
-        let tab_places = &end_node.config().tab_places;
-
         while let (Some((index, line)), true) = (lines_iter.next(), accum < height) {
             let wrap_count = end_node.label.wrap_count(line, wrap_method, tab_places);
             let prev_accum = accum;
             accum = min(accum + wrap_count + 1, height);
             for _ in prev_accum..accum {
-                self.printed_lines.push(index);
+                self.printed_lines.push((index, is_wrapped));
+                is_wrapped = true;
             }
+            is_wrapped = false;
         }
     }
 
     /// Returns the currently printed set of lines.
-    pub fn printed_lines(&self) -> &[usize] {
+    pub fn printed_lines(&self) -> &[(usize, bool)] {
         &self.printed_lines
     }
 
-    // TODO: Move the history to a general placement, taking in all the files.
+    // TODO: Move the history to a general placement, taking in all the
+    // files.
     /// The history associated with this file.
     pub fn history(&self) -> &History {
         &self.history
@@ -148,9 +159,7 @@ where
 
     /// Ends the current moment and starts a new one.
     pub fn new_moment(&mut self) {
-        self.cursors
-            .iter_mut()
-            .for_each(|cursor| cursor.assoc_index = None);
+        self.cursors.iter_mut().for_each(|cursor| cursor.assoc_index = None);
         self.history.new_moment(self.print_info);
     }
 
@@ -213,14 +222,13 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info
-            .update(self.main_cursor().caret(), self.text.inner(), end_node);
+        self.print_info.update(self.main_cursor().caret(), self.text.inner(), end_node);
         self.set_printed_lines(end_node);
 
-        //let mut node = self.end_node.write();
-        //self.text.update_lines(&mut node);
-        //drop(node);
-        //self.match_scroll();
+        // let mut node = self.end_node.write();
+        // self.text.update_lines(&mut node);
+        // drop(node);
+        // self.match_scroll();
     }
 
     fn needs_update(&self) -> bool {
@@ -261,11 +269,7 @@ where
     }
 
     fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U> {
-        Mover::new(
-            &mut self.cursors[index],
-            &self.text,
-            end_node,
-        )
+        Mover::new(&mut self.cursors[index], &self.text, end_node)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {

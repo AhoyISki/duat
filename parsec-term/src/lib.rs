@@ -1159,8 +1159,8 @@ where
     let lines = file.printed_lines();
     let main_line = file.main_cursor().true_row();
     let mut builder = TextBuilder::default_string();
-    let upper = lines.iter().take_while(|&line| *line != main_line).count();
-    let lower = lines.iter().skip_while(|&line| *line <= main_line).count();
+    let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
+    let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();
 
     let forms = cfg.sep_form.forms();
     let chars = cfg.sep_char.chars();

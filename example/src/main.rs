@@ -2,13 +2,14 @@
 
 use std::fmt::Alignment;
 
-// Even when not on a terminal, Parsec (for the foreseable future) will use the crossterm crate
-// in order to get a baseline access to terminal-like features, such as colors and control of
-// the cursor's shape. Such features will also be present on any other frontends, and crossterm
-// is an easy way to get access to them.
+// Even when not on a terminal, Parsec (for the foreseable future)
+// will use the crossterm crate in order to get a baseline access to
+// terminal-like features, such as colors and control of the cursor's
+// shape. Such features will also be present on any other frontends,
+// and crossterm is an easy way to get access to them.
 use crossterm::style::{ContentStyle, Stylize};
-// parsec-core is the main crate for Parsec. It handles all the functionality, with the
-// exception of frontend implementations.
+// parsec-core is the main crate for Parsec. It handles all the
+// functionality, with the exception of frontend implementations.
 use parsec_core::{
     // The config module handles the `Config` struct and the structs `RwData` and `RoData`, useful
     // for the extension  of Parsec.
@@ -36,20 +37,24 @@ use parsec_kak::Editor;
 use parsec_term::{Ui, VertRule};
 
 fn main() {
-    // `FormPalette` is a struct with all of your `Form`s and `CursorStyle`s in it.
+    // `FormPalette` is a struct with all of your `Form`s and
+    // `CursorStyle`s in it.
     let mut palette = FormPalette::default();
     palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
-    // A `CursorStyle` is a style unique to cursors. It contains a shape (bar, block,
-    // or underscore), and a `Form` to be used when printing the shape is not allowed (e.g. on a
-    // terminal, that only has one cursor).
-    // Uncomment this if you want a yellow, block like cursor.
+    // A `CursorStyle` is a style unique to cursors. It contains a shape
+    // (bar, block, or underscore), and a `Form` to be used when
+    // printing the shape is not allowed (e.g. on a terminal, that
+    // only has one cursor). Uncomment this if you want a yellow,
+    // block like cursor.
 
     // `FormPalette`s, by default, contain some `Form`s in them.
     // You can modify `Form`s by using the `set_form()` method.
-    // `add_form()` will panic if there is already a `Form` with that name.
+    // `add_form()` will panic if there is already a `Form` with that
+    // name.
     palette.add_form("Mode", Form::new(false).dark_green());
 
-    // The `Config` struct is a collection of common configuration options for the end user.
+    // The `Config` struct is a collection of common configuration options
+    // for the end user.
     let config = Config {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
         wrap_indent: true,
@@ -57,30 +62,32 @@ fn main() {
         ..Config::default()
     };
 
-    // The `Editor` (in this case, the Kakoune editor) is the thing that determines how the program
-    // will be handle input to edit a file or any piece of text.
+    // The `Editor` (in this case, the Kakoune editor) is the thing that
+    // determines how the program will be handle input to edit a file
+    // or any piece of text.
     let editor = Editor::default();
 
-    // A `Session` is essentially the application itself, it will take arguments such as a user
-    // provided `Config` and `FormPalette` in order to start the program.
+    // A `Session` is essentially the application itself, it will take
+    // arguments such as a user provided `Config` and `FormPalette` in
+    // order to start the program.
     let mut session = Session::new(
         Ui::default(),
         // The `MatchManager will eventually be the method of dynamically coloring the program. It
         // is very much a work in progress.
         config,
         Box::new(|mut mod_node, file| {
-            //let config = LineNumbersCfg {
-            //    alignment: Alignment::Right,
-            //    numbering: Numbering::Hybrid,
-            //};
-            //let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
-            //mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
+            let config = LineNumbersCfg {
+                alignment: Alignment::Right,
+                numbering: Numbering::Hybrid,
+            };
+            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
+            mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
         }),
     );
 
-    //session.push_widget_to_edge(CommandLine::default, Side::Bottom, Split::Locked(1));
-    // The `KeyRemapper` is an intermediary struct that takes the input, remaps it, and sends it to
-    // the `Editor`.
+    // session.push_widget_to_edge(CommandLine::default, Side::Bottom,
+    // Split::Locked(1)); The `KeyRemapper` is an intermediary struct
+    // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
     // Start Parsec.
