@@ -22,6 +22,7 @@ use parsec_core::{
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
+    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -64,7 +65,7 @@ impl Coords {
     }
 
     fn height(&self) -> usize {
-        (self.br.y - self.tl.y - 1) as usize
+        (self.br.y - self.tl.y) as usize
     }
 }
 
@@ -293,6 +294,7 @@ impl Area {
 
         let mut remaining = old_len.abs_diff(new_len);
         let (mut last_corner, _) = target_inner.add_or_take(old_len < new_len, remaining, side);
+        log_info!("\nbr: {}", target_inner.coords);
         drop(target_inner);
         drop(target);
 
@@ -319,6 +321,7 @@ impl Area {
                 child.regulate_children();
             }
         }
+        log_info!("\nbr: {}", children[index].inner.read().coords);
 
         drop(lineage);
 
@@ -454,7 +457,7 @@ impl ui::Area for Area {
 
                 if Axis::from(side) != axis {
                     parent.request_len(len, side)
-                } else if parent.resizable_width() < len {
+                } else if parent.resizable_len(Axis::from(side)) < len {
                     let new_parent_width = parent.width() + len - coords.width();
                     parent.request_len(new_parent_width, side)
                 } else {
@@ -496,6 +499,7 @@ pub struct Label {
 impl Label {
     fn new(area: Area) -> Self {
         let cursor = area.inner.read().coords.tl;
+        log_info!("\nbr: {}", area.coords());
         Label {
             stdout: stdout(),
             area,
@@ -544,7 +548,7 @@ impl Label {
         self.cursor.x += self.indent as u16;
         self.indent = 0;
 
-        if self.cursor.y > self.area.br().y {
+        if self.cursor.y == self.area.br().y - 1 {
             PrintStatus::Finished
         } else {
             PrintStatus::NextChar
@@ -1140,7 +1144,6 @@ where
     }
 
     fn update(&mut self, _end_node: &mut EndNode<U>) {
-        let file = self.file.read();
     }
 
     fn needs_update(&self) -> bool {

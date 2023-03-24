@@ -17,7 +17,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, NodeIndex, Ui},
+    ui::{Area, EndNode, Label, NodeIndex, Ui}, log_info,
 };
 
 /// The widget that is used to print and edit files.
@@ -114,12 +114,12 @@ where
         let first_ch = self.print_info.first_ch;
         let wrap_method = end_node.config().wrap_method;
         let tab_places = &end_node.config().tab_places;
+        let top_line = self.text.inner().char_to_line(first_ch);
 
-		// The beginning of the first line may be offscreen, which would make
-		// the first line number a wrapped line.
+        // The beginning of the first line may be offscreen, which would make
+        // the first line number a wrapped line.
         let mut is_wrapped = {
-            let line = self.text.inner().char_to_line(first_ch);
-            let line_ch = self.text.inner().line_to_char(line);
+            let line_ch = self.text.inner().line_to_char(top_line);
             let initial_slice = self.text.inner().slice(line_ch..first_ch);
             end_node.label.wrap_count(initial_slice, wrap_method, tab_places) > 0
         };
@@ -131,18 +131,23 @@ where
         self.printed_lines.clear();
         self.printed_lines.reserve_exact(height);
 
-        let mut accum = min(height, 1);
+        let mut accum = 0;
 
-        while let (Some((index, line)), true) = (lines_iter.next(), accum < height) {
+		let mut counter = 0;
+        while let (Some((index, line)), true) = (lines_iter.next(), accum <= height) {
+            let line_num = index + top_line;
             let wrap_count = end_node.label.wrap_count(line, wrap_method, tab_places);
             let prev_accum = accum;
-            accum = min(accum + wrap_count + 1, height);
+            accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
-                self.printed_lines.push((index, is_wrapped));
+                counter += 1;
+                self.printed_lines.push((line_num, is_wrapped));
                 is_wrapped = true;
             }
             is_wrapped = false;
         }
+
+        log_info!("\ncounter: {}, {}", counter, height);
     }
 
     /// Returns the currently printed set of lines.

@@ -375,21 +375,6 @@ fn blink_cursors_and_send_key<U, A, I>(
     text.add_cursor_tags(cursors, main_index);
 }
 
-pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
-    let start = match range.start_bound() {
-        std::ops::Bound::Included(start) => *start,
-        std::ops::Bound::Excluded(start) => *start + 1,
-        std::ops::Bound::Unbounded => 0,
-    };
-    let end = match range.end_bound() {
-        std::ops::Bound::Included(end) => *end,
-        std::ops::Bound::Excluded(end) => (*end).saturating_sub(1),
-        std::ops::Bound::Unbounded => max,
-    };
-
-    (start, end)
-}
-
 //////////// Useful for testing.
 #[doc(hidden)]
 pub static mut FOR_TEST: usize = 0;
