@@ -468,3 +468,40 @@ fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
         std::cmp::Ordering::Less
     }
 }
+
+#[macro_export]
+macro_rules! updaters {
+    (@ro_data) => {};
+
+    (@ro_data $updaters:ident, $item:ident) => {
+        let updater = Box::new(move || $item.has_changed());
+        $updaters.push(updater);
+    };
+
+    (@ro_data $updaters:ident, $updater:expr) => {
+        $updaters.push(Box::new($updater));
+    };
+
+    (@ro_data $updaters:ident, $item:ident, $($items:tt)*) => {
+        let updater = Box::new(move || $item.has_changed());
+        $updaters.push(updater);
+
+        updaters!(@ro_data $updaters, $($items)*);
+    };
+
+    (@ro_data $updaters:ident, $updater:expr, $($items:tt)*) => {
+        $updaters.push(Box::new($updater));
+
+        updaters!(@ro_data $updaters, $($items)*);
+    };
+
+    ($($items:tt),*) => {
+        {
+            let mut updaters: Vec<Box<dyn Fn() -> bool>> = Vec::new();
+
+            updaters!(@ro_data updaters, $($items)*);
+
+            updaters
+        }
+    }
+}

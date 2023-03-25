@@ -19,7 +19,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{Area, EndNode, Label, PushSpecs, Side, Ui},
-    SessionManager,
+    SessionManager, updaters,
 };
 
 pub struct LineNumbers<U>
@@ -55,9 +55,9 @@ where
 
             line_numbers.update_text(push_specs.split.len());
 
-            let has_changed = Box::new(move || file.has_changed());
+            let updaters = updaters!(file);
 
-            Widget::normal(Arc::new(Mutex::new(line_numbers)), vec![has_changed])
+            Widget::normal(Arc::new(Mutex::new(line_numbers)), updaters)
         })
     }
 

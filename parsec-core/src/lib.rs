@@ -120,11 +120,9 @@ where
         // The main loop.
         loop {
             for (widget, end_node) in self.active_window().widgets() {
-                if widget.needs_update() {
-                    let mut end_node = end_node.write();
-                    widget.update(&mut end_node);
-                    widget.print(&mut end_node);
-                }
+                let mut end_node = end_node.write();
+                widget.update(&mut end_node);
+                widget.print(&mut end_node);
             }
 
             self.session_loop(key_remapper);
