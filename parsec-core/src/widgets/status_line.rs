@@ -5,13 +5,13 @@ use std::{
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RoData, RwData},
+    config::{DownCastableData, RoData},
     tags::{
-        form::{Form, FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
+        form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag,
     },
     text::{Text, TextBuilder},
-    ui::{EndNode, PushSpecs, Side, Ui},
+    ui::{EndNode, PushSpecs, Ui},
     SessionManager,
 };
 
@@ -85,9 +85,7 @@ where
         if let Some((r_index, (_, form_id))) = text[(l_index + 1)..next_l_index]
             .find(']')
             .map(|r_index| {
-                palette
-                    .get_from_name(&text[l_index..r_index])
-                    .map(|form_id| (r_index, form_id))
+                palette.get_from_name(&text[l_index..r_index]).map(|form_id| (r_index, form_id))
             })
             .flatten()
         {
@@ -158,12 +156,15 @@ where
         clippable: bool,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
-            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(StatusLine {
-                file_widget,
-                text_builder,
-                readers,
-                clippable,
-            }))))
+            Widget::normal(
+                Arc::new(Mutex::new(StatusLine {
+                    file_widget,
+                    text_builder,
+                    readers,
+                    clippable,
+                })),
+                Vec::new(),
+            )
         })
     }
 
@@ -246,14 +247,6 @@ where
     Box::new(|file| file.name().to_string())
 }
 
-impl<U> DownCastableData for StatusLine<U>
-where
-    U: Ui + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
 impl<U> NormalWidget<U> for StatusLine<U>
 where
     U: Ui + 'static,
@@ -276,6 +269,15 @@ where
 
     fn text(&self) -> &Text<U> {
         &self.text_builder.text()
+    }
+}
+
+impl<U> DownCastableData for StatusLine<U>
+where
+    U: Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -351,14 +353,16 @@ macro_rules! status_format {
     };
 }
 
-/// A convenience macro to join any number of variables that can be turned into `String`s.
+/// A convenience macro to join any number of variables that can be
+/// turned into `String`s.
 ///
 /// # Examples
 ///
 /// ```
 /// use parsec_core::widgets::status_line::join;
 ///
-/// let my_text = join!["number: ", 235, String::from(", floating: "), 3.14f32];
+/// let my_text =
+///     join!["number: ", 235, String::from(", floating: "), 3.14f32];
 /// assert!(my_text == String::from("number: 235, floating: 3.14"));
 /// ```
 #[macro_export]

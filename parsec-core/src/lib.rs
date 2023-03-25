@@ -43,7 +43,7 @@ where
         constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
         let file = std::env::args().nth(1);
-        let file_widget = FileWidget::new(file.as_ref().map(|file| PathBuf::from(file)));
+        let file_widget = FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)));
         let file_name = file_widget.identifier();
 
         let session_manager = RwData::new(SessionManager::new(&file_name, &file_name));
@@ -120,8 +120,9 @@ where
         // The main loop.
         loop {
             for (widget, end_node) in self.active_window().widgets() {
-                let mut end_node = end_node.write();
-                if widget.update(&mut end_node) {
+                if widget.needs_update() {
+                    let mut end_node = end_node.write();
+                    widget.update(&mut end_node);
                     widget.print(&mut end_node);
                 }
             }
@@ -151,20 +152,21 @@ where
                 break;
             }
 
-            if let Ok(true) = event::poll(Duration::from_millis(5)) {
+            for (widget, end_node) in self.windows[self.active_window].widgets() {
+                if widget.needs_update() {
+                    s_0.spawn(|| {
+                        let mut end_node = end_node.write();
+                        widget.update(&mut end_node);
+                        widget.print(&mut end_node);
+                    });
+                }
+            }
+
+            if let Ok(true) = event::poll(Duration::from_millis(10)) {
                 let active_window = &self.windows[self.active_window];
                 send_event(key_remapper, &mut session_manager, active_window);
             } else {
                 continue;
-            }
-
-            for (widget, end_node) in self.windows[self.active_window].widgets() {
-                s_0.spawn(|| {
-                    let mut end_node = end_node.write();
-                    if widget.update(&mut end_node) {
-                        widget.print(&mut end_node);
-                    }
-                });
             }
         });
     }

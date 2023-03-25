@@ -4,15 +4,15 @@ pub mod line_numbers;
 pub mod status_line;
 
 use std::{
+    any::Any,
     cmp::Ordering,
-    fmt::Debug,
     ops::{Deref, Range},
     sync::{Arc, Mutex, MutexGuard},
 };
 
 use self::command_line::CommandList;
 use crate::{
-    config::{DownCastableData, RwData},
+    config::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
@@ -22,9 +22,10 @@ use crate::{
 /// An area where text will be printed to the screen.
 pub trait NormalWidget<U>: Send + DownCastableData
 where
-    U: Ui + 'static,
+    U: Ui + Any + 'static,
 {
-    /// Returns an identifier for this `Widget`. They may not be unique.
+    /// Returns an identifier for this `Widget`. They may not be
+    /// unique.
     fn identifier(&self) -> &str;
 
     /// Updates the widget.
@@ -42,7 +43,8 @@ where
     /// Adapts a given text to a new size for its given area.
     fn resize(&mut self, _end_node: &EndNode<U>) {}
 
-    /// If the `Widget` implements `Commandable`. Should return `Some(widget)`
+    /// If the `Widget` implements `Commandable`. Should return
+    /// `Some(widget)`
     fn command_list(&mut self) -> Option<CommandList> {
         None
     }
@@ -128,7 +130,7 @@ where
     }
 }
 
-pub enum Widget<U>
+enum InnerWidget<U>
 where
     U: Ui + ?Sized,
 {
@@ -136,52 +138,59 @@ where
     Actionable(RwData<dyn ActionableWidget<U>>),
 }
 
-impl<U> Debug for Widget<U>
+pub struct Widget<U>
 where
     U: Ui + ?Sized,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Widget::Normal(_) => f.write_fmt(format_args!("Widget::Normal")),
-            Widget::Actionable(_) => f.write_fmt(format_args!("Widget::Actionable")),
-        }
-    }
+    inner: InnerWidget<U>,
+    updaters: Vec<Box<dyn Fn() -> bool>>,
 }
 
 impl<U> Widget<U>
 where
     U: Ui + 'static,
 {
-    pub(crate) fn update(&self, end_node: &mut EndNode<U>) -> bool {
-        match self {
-            Widget::Normal(widget) => {
+    pub fn normal(
+        widget: Arc<Mutex<dyn NormalWidget<U>>>,
+        updaters: Vec<Box<dyn Fn() -> bool>>,
+    ) -> Widget<U> {
+        // assert!(updaters.len() > 0, "Without any updaters, this widget can
+        // never update");
+        Widget {
+            inner: InnerWidget::Normal(RwData::new_unsized(widget)),
+            updaters,
+        }
+    }
+    pub fn actionable(
+        widget: Arc<Mutex<dyn ActionableWidget<U>>>,
+        updaters: Vec<Box<dyn Fn() -> bool>>,
+    ) -> Widget<U> {
+        Widget {
+            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            updaters,
+        }
+    }
+
+    pub(crate) fn update(&self, end_node: &mut EndNode<U>) {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
                 let mut widget = widget.write();
-                if widget.needs_update() {
-                    widget.update(end_node);
-                    true
-                } else {
-                    false
-                }
+                widget.update(end_node);
             }
-            Widget::Actionable(widget) => {
+            InnerWidget::Actionable(widget, ..) => {
                 let mut widget = widget.write();
-                if widget.needs_update() {
-                    widget.update(end_node);
-                    true
-                } else {
-                    false
-                }
+                widget.update(end_node);
             }
         }
     }
 
     pub(crate) fn print(&self, end_node: &mut EndNode<U>) {
-        match self {
-            Widget::Normal(widget) => {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
                 let widget = widget.read();
                 widget.text().print(end_node, widget.print_info());
             }
-            Widget::Actionable(widget) => {
+            InnerWidget::Actionable(widget, ..) => {
                 let widget = widget.read();
                 widget.text().print(end_node, widget.print_info());
             }
@@ -189,12 +198,30 @@ where
     }
 
     pub(crate) fn identifier(&self) -> String {
-        match self {
-            Widget::Normal(widget) => widget.read().identifier().to_string(),
-            Widget::Actionable(widget) => widget.read().identifier().to_string(),
+        match &self.inner {
+            InnerWidget::Normal(widget) => widget.read().identifier().to_string(),
+            InnerWidget::Actionable(widget, ..) => widget.read().identifier().to_string(),
+        }
+    }
+
+    pub fn needs_update(&self) -> bool {
+        match &self.inner {
+            InnerWidget::Normal(_) => self.updaters.iter().any(|updater| updater()),
+            InnerWidget::Actionable(actionable) => {
+                actionable.has_changed() || self.updaters.iter().any(|updater| updater())
+            }
+        }
+    }
+
+    pub fn get_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
+        match &self.inner {
+            InnerWidget::Normal(_) => None,
+            InnerWidget::Actionable(widget) => Some(&widget),
         }
     }
 }
+
+unsafe impl<U> Sync for Widget<U> where U: Ui {}
 
 #[derive(Default)]
 pub struct EditAccum {
@@ -226,7 +253,8 @@ where
         }
     }
 
-    /// Removes all intersecting cursors from the list, keeping only the last from the bunch.
+    /// Removes all intersecting cursors from the list, keeping only
+    /// the last from the bunch.
     fn clear_intersections(&mut self) {
         let Some(cursors) = self.actionable.mut_cursors() else {
             return
@@ -259,9 +287,7 @@ where
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let editor = self
-                .actionable
-                .editor(index, &mut edit_accum, self.end_node);
+            let editor = self.actionable.editor(index, &mut edit_accum, self.end_node);
             f(editor);
         }
     }
@@ -343,9 +369,7 @@ where
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = self
-            .actionable
-            .editor(index, &mut edit_accum, self.end_node);
+        let editor = self.actionable.editor(index, &mut edit_accum, self.end_node);
         f(editor);
 
         let mut new_cursors = Vec::from(&self.actionable.cursors()[(index + 1)..]);
@@ -433,14 +457,14 @@ where
     }
 }
 
-/// Comparets the `left` and `right` [`Range`]s, returning an [`Ordering`],
-/// based on the intersection at the start.
+/// Comparets the `left` and `right` [`Range`]s, returning an
+/// [`Ordering`], based on the intersection at the start.
 fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
     if left.end > right.start && right.start > left.start {
-        Ordering::Equal
+        std::cmp::Ordering::Equal
     } else if left.start > right.end {
-        Ordering::Greater
+        std::cmp::Ordering::Greater
     } else {
-        Ordering::Less
+        std::cmp::Ordering::Less
     }
 }

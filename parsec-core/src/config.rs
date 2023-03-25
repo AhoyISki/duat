@@ -7,7 +7,10 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
-    sync::{Arc, TryLockError},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, TryLockError,
+    },
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -29,7 +32,8 @@ pub enum WrapMethod {
     NoWrap,
 }
 
-// Pretty much only exists because i wanted one of these with usize as its builtin type.
+// Pretty much only exists because i wanted one of these with usize as
+// its builtin type.
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
     pub y_gap: usize,
@@ -52,7 +56,8 @@ pub enum TabPlaces {
 }
 
 impl TabPlaces {
-    /// Returns the amount of spaces that a tabulation would produce in the given column.
+    /// Returns the amount of spaces that a tabulation would produce
+    /// in the given column.
     pub fn spaces_on_col(&self, x: usize) -> usize {
         match self {
             TabPlaces::Regular(step) => step - (x % step),
@@ -75,7 +80,8 @@ pub enum ShowNewLine {
     Never,
     /// Show the given character on every new line.
     Always(char),
-    /// Show the given character only when there is whitespace at end of the line.
+    /// Show the given character only when there is whitespace at end
+    /// of the line.
     AfterSpace(char),
 }
 
@@ -102,7 +108,8 @@ impl ShowNewLine {
 pub struct Config {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
-    /// The distance between the cursor and the edges of the screen when scrolling.
+    /// The distance between the cursor and the edges of the screen
+    /// when scrolling.
     pub scrolloff: ScrollOff,
     /// How to indent.
     pub tab_places: TabPlaces,
@@ -116,26 +123,33 @@ pub struct Config {
     pub palette: FormPalette,
 }
 
-pub trait DownCastableData: Any {
+pub trait DownCastableData {
     fn as_any(&self) -> &dyn Any;
 }
 
-/// A read-write reference to information, and can tell readers if said information has changed.
+pub trait DataHolder<T>
+where
+    T: Sized,
+{
+}
+
+/// A read-write reference to information, and can tell readers if
+/// said information has changed.
 pub struct RwData<T>
 where
     T: ?Sized,
 {
     data: Arc<Mutex<T>>,
-    updated_state: Arc<Mutex<usize>>,
-    last_read_state: Mutex<usize>,
+    updated_state: Arc<AtomicUsize>,
+    last_read: AtomicUsize,
 }
 
 impl<T> RwData<T> {
     pub fn new(data: T) -> Self {
         RwData {
             data: Arc::new(Mutex::new(data)),
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
+            updated_state: Arc::new(AtomicUsize::new(1)),
+            last_read: AtomicUsize::new(1),
         }
     }
 }
@@ -146,12 +160,13 @@ where
 {
     /// Returns a new instance of [RwData<T>].
     pub fn new_unsized(data: Arc<Mutex<T>>) -> Self {
-        // It's 1 here so that any `RoState`s created from this will have `has_changed()` return
-        // `true` at least once, by copying the second value - 1.
+        // It's 1 here so that any `RoState`s created from this will have
+        // `has_changed()` return `true` at least once, by copying the
+        // second value - 1.
         RwData {
             data,
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
+            updated_state: Arc::new(AtomicUsize::new(1)),
+            last_read: AtomicUsize::new(1),
         }
     }
 
@@ -159,46 +174,47 @@ where
     ///
     /// Also makes it so that [has_changed()] returns false.
     pub fn read(&self) -> RwDataReadGuard<T> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
-
-        if *updated_version > *last_read_state {
-            *last_read_state = *updated_version;
-        }
+        let last_read_state = self.last_read.load(Ordering::Relaxed);
+        self.updated_state.store(last_read_state, Ordering::Relaxed);
 
         RwDataReadGuard(self.data.lock().unwrap())
     }
 
     /// Tries to read the data immediately and returns a `Result`.
     pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
+        self.data.try_lock().map(|mutex_guard| {
+            let last_read_state = self.last_read.load(Ordering::Relaxed);
+            self.updated_state.store(last_read_state, Ordering::Relaxed);
 
-        if *updated_version > *last_read_state {
-            *last_read_state = *updated_version;
-        }
-
-        self.data
-            .try_lock()
-            .map(|mutex_guard| RwDataReadGuard(mutex_guard))
+            RwDataReadGuard(mutex_guard)
+        })
     }
 
     /// Returns a writeable reference to the state.
     ///
-    /// Also makes it so that `has_changed()` on it or any of its clones returns `true`.
+    /// Also makes it so that `has_changed()` on it or any of its
+    /// clones returns `true`.
     pub fn write(&self) -> RwDataWriteGuard<T> {
-        *self.updated_state.lock().unwrap() += 1;
+        self.updated_state.fetch_add(1, Ordering::Relaxed);
         RwDataWriteGuard(self.data.lock().unwrap())
+    }
+
+    /// Tries to return a writeable reference to the state.
+    ///
+    /// Also makes it so that `has_changed()` on it or any of its
+    /// clones returns `true`.
+    pub fn try_write(&self) -> Result<RwDataWriteGuard<T>, TryLockError<MutexGuard<T>>> {
+        self.data.try_lock().map(|lock| {
+            self.updated_state.fetch_add(1, Ordering::Relaxed);
+            RwDataWriteGuard(lock)
+        })
     }
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let last_version = self.updated_state.lock().unwrap();
-        let mut current_version = self.last_read_state.lock().unwrap();
-        let has_changed = *last_version > *current_version;
-        *current_version = *last_version;
-
-        has_changed
+        let last_version = self.updated_state.load(Ordering::Relaxed);
+        let last_read = self.last_read.swap(last_version, Ordering::Relaxed);
+        last_version > last_read
     }
 
     pub fn try_downcast<U>(self) -> Result<RwData<U>, RwDataCastError<T>>
@@ -208,7 +224,7 @@ where
         let RwData {
             data,
             updated_state,
-            last_read_state,
+            last_read: last_read_state,
         } = self;
         let data = Arc::into_raw(data);
         if data.type_id() == TypeId::of::<Mutex<U>>() {
@@ -216,7 +232,7 @@ where
             Ok(RwData {
                 data,
                 updated_state,
-                last_read_state,
+                last_read: last_read_state,
             })
         } else {
             let data = unsafe { Arc::from_raw(data) };
@@ -224,7 +240,7 @@ where
                 rw_data: RwData {
                     data,
                     updated_state,
-                    last_read_state,
+                    last_read: last_read_state,
                 },
             })
         }
@@ -248,20 +264,20 @@ where
         RwData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: Mutex::new(*self.updated_state.lock().unwrap() - 1),
+            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed) - 1),
         }
     }
 }
 
-impl<D> Default for RwData<D>
+impl<T> Default for RwData<T>
 where
-    D: Default,
+    T: Default,
 {
     fn default() -> Self {
         RwData {
-            data: Arc::new(Mutex::new(D::default())),
-            updated_state: Arc::new(Mutex::new(1)),
-            last_read_state: Mutex::new(1),
+            data: Arc::new(Mutex::new(T::default())),
+            updated_state: Arc::new(AtomicUsize::new(1)),
+            last_read: AtomicUsize::new(1),
         }
     }
 }
@@ -274,42 +290,32 @@ where
     T: ?Sized,
 {
     data: Arc<Mutex<T>>,
-    updated_state: Arc<Mutex<usize>>,
-    last_read_state: Mutex<usize>,
+    updated_state: Arc<AtomicUsize>,
+    last_read: AtomicUsize,
 }
 
 impl<T> RoData<T>
 where
-    T: ?Sized + Any,
+    T: ?Sized + Any + 'static,
 {
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
     pub fn read(&mut self) -> RwDataReadGuard<T> {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut last_read_state = self.last_read_state.lock().unwrap();
-
-        if *updated_version > *last_read_state {
-            *last_read_state = *updated_version;
-        }
+        let last_read_state = self.last_read.load(Ordering::Relaxed);
+        self.updated_state.store(last_read_state, Ordering::Relaxed);
 
         RwDataReadGuard(self.data.lock().unwrap())
     }
 
     /// Checks if the state within has changed.
     ///
-    /// If you have called `has_changed()` or `read()`, without any changes, it will return false.
+    /// If you have called `has_changed()` or `read()`, without any
+    /// changes, it will return false.
     pub fn has_changed(&self) -> bool {
-        let updated_version = self.updated_state.lock().unwrap();
-        let mut current_version = self.last_read_state.lock().unwrap();
-
-        if *updated_version > *current_version {
-            *current_version = *updated_version;
-
-            true
-        } else {
-            false
-        }
+        let last_version = self.updated_state.load(Ordering::Relaxed);
+        let last_read = self.last_read.swap(last_version, Ordering::Relaxed);
+        last_version > last_read
     }
 }
 
@@ -324,7 +330,7 @@ where
         let RoData {
             data,
             updated_state,
-            last_read_state,
+            last_read: last_read_state,
         } = self;
         if (&*data.lock().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
@@ -332,14 +338,14 @@ where
             Ok(RoData {
                 data,
                 updated_state,
-                last_read_state,
+                last_read: last_read_state,
             })
         } else {
             Err(RoDataCastError {
                 ro_data: RoData {
                     data,
                     updated_state,
-                    last_read_state,
+                    last_read: last_read_state,
                 },
             })
         }
@@ -350,16 +356,17 @@ impl<T> From<&RwData<T>> for RoData<T>
 where
     T: ?Sized,
 {
-    fn from(state: &RwData<T>) -> Self {
+    fn from(value: &RwData<T>) -> Self {
         RoData {
-            data: state.data.clone(),
-            updated_state: state.updated_state.clone(),
-            last_read_state: Mutex::new(*state.updated_state.lock().unwrap() - 1),
+            data: value.data.clone(),
+            updated_state: value.updated_state.clone(),
+            last_read: AtomicUsize::new(value.updated_state.load(Ordering::Relaxed) - 1),
         }
     }
 }
 
-// NOTE: Each `RoState` of a given state will have its own internal update counter.
+// NOTE: Each `RoState` of a given state will have its own internal
+// update counter.
 impl<T> Clone for RoData<T>
 where
     T: ?Sized,
@@ -368,7 +375,7 @@ where
         RoData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read_state: Mutex::new(*self.last_read_state.lock().unwrap()),
+            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed)),
         }
     }
 }

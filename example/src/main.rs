@@ -78,7 +78,7 @@ fn main() {
         Box::new(|mut mod_node, file| {
             let config = LineNumbersCfg {
                 alignment: Alignment::Right,
-                numbering: Numbering::Hybrid,
+                numbering: Numbering::Absolute,
             };
             let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
             mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);

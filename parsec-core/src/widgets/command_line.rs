@@ -14,7 +14,8 @@ use crate::{
     Session,
 };
 
-/// The sole purpose of this module is to prevent any external implementations of `Commander`.
+/// The sole purpose of this module is to prevent any external
+/// implementations of `Commander`.
 mod private {
     pub trait Commander {}
 }
@@ -32,8 +33,9 @@ pub trait Commander: private::Commander {
 
 /// A command that doesn't returns a `String` as a result.
 ///
-/// The command takes in two vectors of `String`s, the first one is the "flags" passed on to the
-/// command. The second one is a list of arguments passed on to the command.
+/// The command takes in two vectors of `String`s, the first one is
+/// the "flags" passed on to the command. The second one is a list of
+/// arguments passed on to the command.
 pub struct Command<C>
 where
     C: ?Sized + 'static,
@@ -42,14 +44,17 @@ where
     ///
     /// # Arguments
     ///
-    /// - 1: A `Vec<String>` representing the flags that have been passed to the function.
-    /// - 2: A `Vec<String>` representing the arguments to be read by the function.
+    /// - 1: A `Vec<String>` representing the flags that have been
+    ///   passed to the function.
+    /// - 2: A `Vec<String>` representing the arguments to be read by
+    ///   the function.
     ///
     /// # Returns
     ///
-    /// A `Result<Option<String>, String>`. `Ok(Some(String))` is an outcome that could be used to
-    /// chain multiple commands. `Err(String)` is obligatory, used to tell the user what went wrong
-    /// while running the command.
+    /// A `Result<Option<String>, String>`. `Ok(Some(String))` is an
+    /// outcome that could be used to chain multiple commands.
+    /// `Err(String)` is obligatory, used to tell the user what went
+    /// wrong while running the command.
     function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
     /// A list of `String`s that act as callers for this `Command`.
     callers: Vec<String>,
@@ -99,7 +104,8 @@ where
     }
 }
 
-/// A list of `CommandList`s, that can execute commands on any of them.
+/// A list of `CommandList`s, that can execute commands on any of
+/// them.
 #[derive(Default)]
 pub struct CommandList {
     commands: Vec<Box<dyn Commander>>,
@@ -133,7 +139,8 @@ impl CommandList {
         Err(CommandError::NotFound(cmd))
     }
 
-    /// Tries to add a new `CommandList`. Returns an error if any of its commands already exists.
+    /// Tries to add a new `CommandList`. Returns an error if any of
+    /// its commands already exists.
     pub(crate) fn try_add(&mut self, command: Box<dyn Commander>) -> Result<(), CommandError> {
         let mut new_callers = command.callers().iter();
 
@@ -189,16 +196,7 @@ where
             config: CommandLineConfig::default(),
         };
 
-        Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(command_line))))
-    }
-}
-
-impl<U> DownCastableData for CommandLine<U>
-where
-    U: Ui + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
+        Widget::actionable(Arc::new(Mutex::new(command_line)), Vec::new())
     }
 }
 
@@ -211,10 +209,9 @@ where
     }
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info
-            .update(self.cursor[0].caret(), self.text.inner(), end_node);
+        self.print_info.update(self.cursor[0].caret(), self.text.inner(), end_node);
 
-        //self.match_scroll();
+        // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
         let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
 
@@ -248,14 +245,7 @@ where
         end_node: &'a EndNode<U>,
     ) -> Editor<U> {
         self.needs_update = true;
-        Editor::new(
-            &mut self.cursor[0],
-            &mut self.text,
-            end_node,
-            edit_accum,
-            None,
-            None,
-        )
+        Editor::new(&mut self.cursor[0], &mut self.text, end_node, edit_accum, None, None)
     }
 
     fn mover<'a>(&'a mut self, _: usize, end_node: &'a EndNode<U>) -> Mover<U> {
@@ -300,6 +290,15 @@ where
 
     fn still_valid(&self) -> bool {
         !self.text.is_empty()
+    }
+}
+
+impl<U> DownCastableData for CommandLine<U>
+where
+    U: Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

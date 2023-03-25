@@ -12,7 +12,7 @@ use no_deadlocks::Mutex;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RoData, RwData},
+    config::{DownCastableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag,
@@ -43,7 +43,9 @@ where
         file_widget: RoData<FileWidget<U>>,
         cfg: LineNumbersCfg,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, push_specs| {
+        Box::new(move |_, push_specs| -> Widget<U> {
+			let file = file_widget.clone();
+
             let mut line_numbers = LineNumbers {
                 file_widget,
                 text_builder: TextBuilder::default_string(),
@@ -53,7 +55,9 @@ where
 
             line_numbers.update_text(push_specs.split.len());
 
-            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
+            let has_changed = Box::new(move || file.has_changed());
+
+            Widget::normal(Arc::new(Mutex::new(line_numbers)), vec![has_changed])
         })
     }
 
@@ -70,7 +74,7 @@ where
 
             line_numbers.update_text(push_specs.split.len());
 
-            Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(line_numbers))))
+            Widget::normal(Arc::new(Mutex::new(line_numbers)), vec![])
         })
     }
 
@@ -103,7 +107,6 @@ where
                 self.text_builder.push_tag(tag);
                 self.text_builder.push_swappable(&text);
             }
-
         }
 
         if printed_lines.len() < self.text_builder.ranges_len() {

@@ -13,11 +13,11 @@ use no_deadlocks::Mutex;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RwData},
+    config::{DownCastableData},
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, NodeIndex, Ui}, log_info,
+    ui::{Area, EndNode, Label, NodeIndex, Ui},
 };
 
 /// The widget that is used to print and edit files.
@@ -55,17 +55,20 @@ where
         let text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
 
-        Widget::Actionable(RwData::new_unsized(Arc::new(Mutex::new(FileWidget {
-            _side_widgets: None,
-            identifier: ["parsec-file: ", name.as_str()].join(""),
-            text,
-            print_info: PrintInfo::default(),
-            main_cursor: 0,
-            cursors: vec![cursor],
-            history: History::new(),
-            readers: Vec::new(),
-            printed_lines: Vec::new(),
-        }))))
+        Widget::actionable(
+            Arc::new(Mutex::new(FileWidget {
+                _side_widgets: None,
+                identifier: ["parsec-file: ", name.as_str()].join(""),
+                text,
+                print_info: PrintInfo::default(),
+                main_cursor: 0,
+                cursors: vec![cursor],
+                history: History::new(),
+                readers: Vec::new(),
+                printed_lines: Vec::new(),
+            })),
+            Vec::new(),
+        )
     }
 
     /// Undoes the last moment in history.
@@ -126,28 +129,24 @@ where
 
         let height = end_node.label.area().height();
         let slice = self.text.inner().slice(self.print_info.first_ch..);
-        let mut lines_iter = slice.lines().enumerate();
+        let mut liness = slice.lines().enumerate();
 
         self.printed_lines.clear();
         self.printed_lines.reserve_exact(height);
 
         let mut accum = 0;
 
-		let mut counter = 0;
-        while let (Some((index, line)), true) = (lines_iter.next(), accum <= height) {
+        while let (Some((index, line)), true) = (liness.next(), accum <= height) {
             let line_num = index + top_line;
             let wrap_count = end_node.label.wrap_count(line, wrap_method, tab_places);
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
-                counter += 1;
                 self.printed_lines.push((line_num, is_wrapped));
                 is_wrapped = true;
             }
             is_wrapped = false;
         }
-
-        log_info!("\ncounter: {}, {}", counter, height);
     }
 
     /// Returns the currently printed set of lines.
@@ -206,15 +205,6 @@ where
 
     pub fn add_reader(&mut self, reader: Box<dyn MutTextReader<U>>) {
         self.readers.push(reader);
-    }
-}
-
-impl<U> DownCastableData for FileWidget<U>
-where
-    U: Ui + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }
 
@@ -307,6 +297,15 @@ where
 
     fn redo(&mut self, end_node: &EndNode<U>) {
         self.redo(end_node)
+    }
+}
+
+impl<U> DownCastableData for FileWidget<U>
+where
+    U: Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

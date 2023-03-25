@@ -22,7 +22,6 @@ use parsec_core::{
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
-    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -294,7 +293,6 @@ impl Area {
 
         let mut remaining = old_len.abs_diff(new_len);
         let (mut last_corner, _) = target_inner.add_or_take(old_len < new_len, remaining, side);
-        log_info!("\nbr: {}", target_inner.coords);
         drop(target_inner);
         drop(target);
 
@@ -321,7 +319,6 @@ impl Area {
                 child.regulate_children();
             }
         }
-        log_info!("\nbr: {}", children[index].inner.read().coords);
 
         drop(lineage);
 
@@ -499,7 +496,6 @@ pub struct Label {
 impl Label {
     fn new(area: Area) -> Self {
         let cursor = area.inner.read().coords.tl;
-        log_info!("\nbr: {}", area.coords());
         Label {
             stdout: stdout(),
             area,
@@ -1101,11 +1097,11 @@ where
         let builder = setup_builder(&file, &cfg);
 
         drop(file);
-        Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
+        Widget::normal(Arc::new(Mutex::new(VertRule {
             file: file_widget,
             builder,
             cfg,
-        }))))
+        })), Vec::new())
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
@@ -1116,11 +1112,11 @@ where
         let builder = setup_builder(&file, &cfg);
 
         drop(file);
-        Widget::Normal(RwData::new_unsized(Arc::new(Mutex::new(VertRule {
+        Widget::normal(Arc::new(Mutex::new(VertRule {
             file: file_widget,
             builder,
             cfg,
-        }))))
+        })), Vec::new())
     }
 }
 
