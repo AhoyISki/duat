@@ -44,7 +44,7 @@ where
         cfg: LineNumbersCfg,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| -> Widget<U> {
-			let file = file_widget.clone();
+            let file = file_widget.clone();
 
             let mut line_numbers = LineNumbers {
                 file_widget,
@@ -115,14 +115,6 @@ where
     }
 }
 
-impl<U> DownCastableData for LineNumbers<U>
-where
-    U: Ui + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
 impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
@@ -148,6 +140,15 @@ where
 
     fn text(&self) -> &Text<U> {
         self.text_builder.text()
+    }
+}
+
+impl<U> DownCastableData for LineNumbers<U>
+where
+    U: Ui + 'static,
+{
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

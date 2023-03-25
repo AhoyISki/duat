@@ -3,7 +3,7 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{Mutex, MutexGuard};
 use std::{
-    any::{Any, TypeId},
+    any::{Any},
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
@@ -16,7 +16,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{Mutex, MutexGuard};
 
-use crate::tags::form::FormPalette;
+use crate::{tags::form::FormPalette, log_info};
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -174,8 +174,8 @@ where
     ///
     /// Also makes it so that [has_changed()] returns false.
     pub fn read(&self) -> RwDataReadGuard<T> {
-        let last_read_state = self.last_read.load(Ordering::Relaxed);
-        self.updated_state.store(last_read_state, Ordering::Relaxed);
+        let updated_state = self.updated_state.load(Ordering::Relaxed);
+        self.last_read.store(updated_state, Ordering::Relaxed);
 
         RwDataReadGuard(self.data.lock().unwrap())
     }
@@ -183,8 +183,8 @@ where
     /// Tries to read the data immediately and returns a `Result`.
     pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
         self.data.try_lock().map(|mutex_guard| {
-            let last_read_state = self.last_read.load(Ordering::Relaxed);
-            self.updated_state.store(last_read_state, Ordering::Relaxed);
+            let updated_state = self.updated_state.load(Ordering::Relaxed);
+            self.last_read.store(updated_state, Ordering::Relaxed);
 
             RwDataReadGuard(mutex_guard)
         })
@@ -212,38 +212,9 @@ where
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let last_version = self.updated_state.load(Ordering::Relaxed);
-        let last_read = self.last_read.swap(last_version, Ordering::Relaxed);
-        last_version > last_read
-    }
-
-    pub fn try_downcast<U>(self) -> Result<RwData<U>, RwDataCastError<T>>
-    where
-        U: 'static,
-    {
-        let RwData {
-            data,
-            updated_state,
-            last_read: last_read_state,
-        } = self;
-        let data = Arc::into_raw(data);
-        if data.type_id() == TypeId::of::<Mutex<U>>() {
-            let data = unsafe { Arc::from_raw(data.cast::<Mutex<U>>()) };
-            Ok(RwData {
-                data,
-                updated_state,
-                last_read: last_read_state,
-            })
-        } else {
-            let data = unsafe { Arc::from_raw(data) };
-            Err(RwDataCastError {
-                rw_data: RwData {
-                    data,
-                    updated_state,
-                    last_read: last_read_state,
-                },
-            })
-        }
+        let updated_state = self.updated_state.load(Ordering::Relaxed);
+        let last_read = self.last_read.swap(updated_state, Ordering::Relaxed);
+        updated_state > last_read
     }
 }
 
@@ -302,8 +273,8 @@ where
     ///
     /// Also makes it so that `has_changed()` returns false.
     pub fn read(&mut self) -> RwDataReadGuard<T> {
-        let last_read_state = self.last_read.load(Ordering::Relaxed);
-        self.updated_state.store(last_read_state, Ordering::Relaxed);
+        let updated_state = self.updated_state.load(Ordering::Relaxed);
+        self.last_read.store(updated_state, Ordering::Relaxed);
 
         RwDataReadGuard(self.data.lock().unwrap())
     }
@@ -313,9 +284,9 @@ where
     /// If you have called `has_changed()` or `read()`, without any
     /// changes, it will return false.
     pub fn has_changed(&self) -> bool {
-        let last_version = self.updated_state.load(Ordering::Relaxed);
-        let last_read = self.last_read.swap(last_version, Ordering::Relaxed);
-        last_version > last_read
+        let updated_state = self.updated_state.load(Ordering::Relaxed);
+        let last_read = self.last_read.swap(updated_state, Ordering::Relaxed);
+        updated_state > last_read
     }
 }
 
