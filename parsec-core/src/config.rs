@@ -3,7 +3,7 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{Mutex, MutexGuard};
 use std::{
-    any::{Any},
+    any::Any,
     error::Error,
     fmt::{Debug, Display},
     ops::{Deref, DerefMut},
@@ -16,7 +16,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{Mutex, MutexGuard};
 
-use crate::{tags::form::FormPalette, log_info};
+use crate::tags::form::FormPalette;
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -195,8 +195,10 @@ where
     /// Also makes it so that `has_changed()` on it or any of its
     /// clones returns `true`.
     pub fn write(&self) -> RwDataWriteGuard<T> {
-        self.updated_state.fetch_add(1, Ordering::Relaxed);
-        RwDataWriteGuard(self.data.lock().unwrap())
+        RwDataWriteGuard {
+            mutex: self.data.lock().unwrap(),
+            updated_state: &self.updated_state,
+        }
     }
 
     /// Tries to return a writeable reference to the state.
@@ -204,9 +206,9 @@ where
     /// Also makes it so that `has_changed()` on it or any of its
     /// clones returns `true`.
     pub fn try_write(&self) -> Result<RwDataWriteGuard<T>, TryLockError<MutexGuard<T>>> {
-        self.data.try_lock().map(|lock| {
-            self.updated_state.fetch_add(1, Ordering::Relaxed);
-            RwDataWriteGuard(lock)
+        self.data.try_lock().map(|lock| RwDataWriteGuard {
+            mutex: lock,
+            updated_state: &self.updated_state,
         })
     }
 
@@ -366,9 +368,13 @@ where
     }
 }
 
-pub struct RwDataWriteGuard<'a, T>(MutexGuard<'a, T>)
+pub struct RwDataWriteGuard<'a, T>
 where
-    T: ?Sized;
+    T: ?Sized,
+{
+    mutex: MutexGuard<'a, T>,
+    updated_state: &'a AtomicUsize,
+}
 
 impl<'a, T> Deref for RwDataWriteGuard<'a, T>
 where
@@ -377,7 +383,7 @@ where
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.mutex
     }
 }
 
@@ -386,7 +392,16 @@ where
     T: ?Sized,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.0
+        &mut *self.mutex
+    }
+}
+
+impl<'a, T> Drop for RwDataWriteGuard<'a, T>
+where
+    T: ?Sized,
+{
+    fn drop(&mut self) {
+        self.updated_state.fetch_add(1, Ordering::Relaxed);
     }
 }
 

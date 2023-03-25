@@ -523,13 +523,13 @@ impl PrintInfo {
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum <= max_dist && line_ch < self.first_ch {
+            if accum >= max_dist && line_ch >= self.first_ch  {
+                return;
+            } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
                 self.first_ch =
-                    line_ch + label.col_at_wrap(line, max_dist - accum, wrap_method, tab_places);
-                break;
-            } else if accum > max_dist {
-                break;
+                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                return;
             }
         }
 
@@ -564,7 +564,7 @@ impl PrintInfo {
         while let Some((line_ch, line)) = lines.next() {
             lines_to_top = lines_to_top.saturating_sub(1);
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum > max_dist {
+            if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
                 self.first_ch =
                     line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
