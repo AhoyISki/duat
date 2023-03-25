@@ -136,12 +136,7 @@ impl Owner {
 
     fn aligns(&mut self, other: Axis) -> Option<&mut Self> {
         if let Owner::Parent { parent, .. } = self {
-            if parent
-                .lineage
-                .read()
-                .as_ref()
-                .is_some_and(|(_, axis)| *axis == other)
-            {
+            if parent.lineage.read().as_ref().is_some_and(|(_, axis)| *axis == other) {
                 return Some(self);
             }
         }
@@ -156,10 +151,10 @@ struct InnerArea {
     owner: Owner,
 }
 
-//impl Debug for InnerArea {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//        f.debug_struct("InnerArea").field("tl", &self.coords).finish()
-//    }
+// impl Debug for InnerArea {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
+// std::fmt::Result {        f.debug_struct("InnerArea").field("tl",
+// &self.coords).finish()    }
 //}
 
 impl InnerArea {
@@ -413,11 +408,7 @@ impl Area {
 
 impl Display for Area {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{},{}",
-            self.inner.read().coords.tl,
-            self.inner.read().coords.br
-        ))
+        f.write_fmt(format_args!("{},{}", self.inner.read().coords.tl, self.inner.read().coords.br))
     }
 }
 
@@ -445,12 +436,7 @@ impl ui::Area for Area {
                 self_index,
                 ..
             } => {
-                let axis = parent
-                    .lineage
-                    .read()
-                    .as_ref()
-                    .map(|(_, axis)| *axis)
-                    .unwrap();
+                let axis = parent.lineage.read().as_ref().map(|(_, axis)| *axis).unwrap();
 
                 if Axis::from(side) != axis {
                     parent.request_len(len, side)
@@ -610,7 +596,7 @@ impl ui::Label<Area> for Label {
         self.wrap_method = None;
         self.tab_places = None;
 
-        while let PrintStatus::NextLine = self.next_line() {}
+        while let PrintStatus::NextChar = self.next_line() {}
 
         execute!(self.stdout, ResetColor, RestorePosition).unwrap();
         if unsafe { SHOW_CURSOR } {
@@ -657,7 +643,7 @@ impl ui::Label<Area> for Label {
     }
 
     fn next_line(&mut self) -> PrintStatus {
-        if self.cursor.y == self.area.br().y - 1 {
+        if self.cursor.y == self.area.br().y {
             PrintStatus::Finished
         } else {
             self.clear_line();
@@ -756,10 +742,7 @@ pub struct Ui {
 impl Debug for Ui {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ui")
-            .field(
-                "layout_has_changed",
-                &*self.layout_has_changed.lock().unwrap(),
-            )
+            .field("layout_has_changed", &*self.layout_has_changed.lock().unwrap())
             .field("areas", &self.areas)
             .finish()
     }
@@ -786,10 +769,7 @@ impl ui::Ui for Ui {
         let PushSpecs { side, split, .. } = push_specs;
         let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
         if let Err(_) = area.request_len(max(resizable_len, split.len()), side) {
-            panic!(
-                "Resize failed:\n    {:?}, {:?}, {:?}",
-                old_coords, side, split
-            )
+            panic!("Resize failed:\n    {:?}, {:?}, {:?}", old_coords, side, split)
         }
 
         let split_coords = split_by(area, split, side);
@@ -807,19 +787,16 @@ impl ui::Ui for Ui {
     }
 
     fn startup(&mut self) {
-        // This makes it so that if the application panics, the panic message is printed
-        // nicely and the terminal is left in a usable state.
+        // This makes it so that if the application panics, the panic message
+        // is printed nicely and the terminal is left in a usable
+        // state.
         use std::panic;
         let orig_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
             let mut stdout = stdout();
 
-            execute!(
-                stdout,
-                terminal::Clear(ClearType::All),
-                terminal::LeaveAlternateScreen
-            )
-            .unwrap();
+            execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen)
+                .unwrap();
             terminal::disable_raw_mode().unwrap();
 
             orig_hook(panic_info);
@@ -834,12 +811,7 @@ impl ui::Ui for Ui {
     fn shutdown(&mut self) {
         let mut stdout = stdout();
 
-        execute!(
-            stdout,
-            terminal::Clear(ClearType::All),
-            terminal::LeaveAlternateScreen,
-        )
-        .unwrap();
+        execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen,).unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -921,10 +893,7 @@ fn restructure_tree(
         let mut lineage = parent.lineage.write();
         let (children, _) = lineage.as_mut().unwrap();
 
-        (
-            new_child_area(split_coords, children, side, split, *self_index),
-            None,
-        )
+        (new_child_area(split_coords, children, side, split, *self_index), None)
     } else {
         let new_parent = Area::new(InnerArea::new(old_coords, inner.owner.clone()));
 
@@ -960,11 +929,7 @@ fn new_child_area(
     split: Split,
     pushed_index: usize,
 ) -> Area {
-    let owner = children[pushed_index]
-        .inner
-        .read()
-        .owner
-        .clone_with_split(split);
+    let owner = children[pushed_index].inner.read().owner.clone_with_split(split);
     let new_child = Area::new(InnerArea::new(child_coords, owner));
 
     let index = if let Side::Top | Side::Left = side {
@@ -1090,21 +1055,26 @@ impl<U> VertRule<U>
 where
     U: ui::Ui + 'static,
 {
-    /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a user provided config.
+    /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a
+    /// user provided config.
     pub fn new(mut file_widget: RoData<FileWidget<U>>, cfg: VertRuleConfig) -> Widget<U> {
         let file = file_widget.read();
 
         let builder = setup_builder(&file, &cfg);
 
         drop(file);
-        Widget::normal(Arc::new(Mutex::new(VertRule {
-            file: file_widget,
-            builder,
-            cfg,
-        })), Vec::new())
+        Widget::normal(
+            Arc::new(Mutex::new(VertRule {
+                file: file_widget,
+                builder,
+                cfg,
+            })),
+            Vec::new(),
+        )
     }
 
-    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the default config.
+    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
+    /// default config.
     pub fn default(mut file_widget: RoData<FileWidget<U>>) -> Widget<U> {
         let file = file_widget.read();
 
@@ -1112,11 +1082,14 @@ where
         let builder = setup_builder(&file, &cfg);
 
         drop(file);
-        Widget::normal(Arc::new(Mutex::new(VertRule {
-            file: file_widget,
-            builder,
-            cfg,
-        })), Vec::new())
+        Widget::normal(
+            Arc::new(Mutex::new(VertRule {
+                file: file_widget,
+                builder,
+                cfg,
+            })),
+            Vec::new(),
+        )
     }
 }
 
@@ -1139,8 +1112,7 @@ where
         "vertical_rule"
     }
 
-    fn update(&mut self, _end_node: &mut EndNode<U>) {
-    }
+    fn update(&mut self, _end_node: &mut EndNode<U>) {}
 
     fn needs_update(&self) -> bool {
         self.file.has_changed()
