@@ -274,7 +274,7 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&mut self) -> RwDataReadGuard<T> {
+    pub fn read(&self) -> RwDataReadGuard<T> {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         self.last_read.store(updated_state, Ordering::Relaxed);
 

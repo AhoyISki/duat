@@ -22,6 +22,7 @@ use parsec_core::{
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
+    updaters, SessionManager,
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -795,8 +796,13 @@ impl ui::Ui for Ui {
         panic::set_hook(Box::new(move |panic_info| {
             let mut stdout = stdout();
 
-            execute!(stdout, terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen)
-                .unwrap();
+            execute!(
+                stdout,
+                terminal::Clear(ClearType::All),
+                terminal::LeaveAlternateScreen,
+                cursor::Show
+            )
+            .unwrap();
             terminal::disable_raw_mode().unwrap();
 
             orig_hook(panic_info);
@@ -1037,7 +1043,7 @@ impl SepForm {
 }
 
 #[derive(Default)]
-pub struct VertRuleConfig {
+pub struct VertRuleCfg {
     pub sep_char: SepChar,
     pub sep_form: SepForm,
 }
@@ -1048,7 +1054,7 @@ where
 {
     file: RoData<FileWidget<U>>,
     builder: TextBuilder<U>,
-    cfg: VertRuleConfig,
+    cfg: VertRuleCfg,
 }
 
 impl<U> VertRule<U>
@@ -1057,7 +1063,7 @@ where
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a
     /// user provided config.
-    pub fn new(mut file_widget: RoData<FileWidget<U>>, cfg: VertRuleConfig) -> Widget<U> {
+    pub fn new(file_widget: RoData<FileWidget<U>>, cfg: VertRuleCfg) -> Widget<U> {
         let file = file_widget.read();
 
         let builder = setup_builder(&file, &cfg);
@@ -1075,21 +1081,21 @@ where
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn default(mut file_widget: RoData<FileWidget<U>>) -> Widget<U> {
-        let file = file_widget.read();
+    pub fn default_fn(
+        file: RoData<FileWidget<U>>,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        Box::new(move |_, _| {
+            let cfg = VertRuleCfg::default();
+            let file_read = file.read();
+            let builder = setup_builder(&file_read, &cfg);
 
-        let cfg = VertRuleConfig::default();
-        let builder = setup_builder(&file, &cfg);
+            let updater = file.clone();
+            let updaters = updaters![updater];
+            drop(file_read);
+            let vert_rule = VertRule { file, builder, cfg };
 
-        drop(file);
-        Widget::normal(
-            Arc::new(Mutex::new(VertRule {
-                file: file_widget,
-                builder,
-                cfg,
-            })),
-            Vec::new(),
-        )
+            Widget::normal(Arc::new(Mutex::new(vert_rule)), updaters)
+        })
     }
 }
 
@@ -1112,7 +1118,27 @@ where
         "vertical_rule"
     }
 
-    fn update(&mut self, _end_node: &mut EndNode<U>) {}
+    fn update(&mut self, _end_node: &mut EndNode<U>) {
+        let file = self.file.read();
+        let lines = file.printed_lines();
+        let builder = &mut self.builder;
+        let main_line = file.main_cursor().true_row();
+        let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
+        let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();
+
+        let forms = self.cfg.sep_form.forms();
+        let chars = self.cfg.sep_char.chars();
+
+        builder.swap_tag(0, Tag::PushForm(forms[0]));
+        builder.swap_range(0, [chars[0], '\n'].into_iter().collect::<String>().repeat(upper));
+        builder.swap_tag(1, Tag::PushForm(forms[1]));
+        builder.swap_range(1, [chars[1], '\n'].into_iter().collect::<String>());
+        builder.swap_tag(2, Tag::PushForm(forms[2]));
+        builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
+        if upper > 0 {
+            //panic!("{:#?}, {:#?}", builder.text.tags, builder.text.inner);
+        }
+    }
 
     fn needs_update(&self) -> bool {
         self.file.has_changed()
@@ -1123,7 +1149,7 @@ where
     }
 }
 
-fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleConfig) -> TextBuilder<U>
+fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder<U>
 where
     U: ui::Ui,
 {
@@ -1137,11 +1163,11 @@ where
     let chars = cfg.sep_char.chars();
 
     builder.push_tag(Tag::PushForm(forms[0]));
-    builder.push_swappable(chars[0].to_string().repeat(upper));
+    builder.push_swappable([chars[0], '\n'].into_iter().collect::<String>().repeat(upper));
     builder.push_tag(Tag::PushForm(forms[1]));
-    builder.push_swappable(chars[1].to_string());
+    builder.push_swappable([chars[1], '\n'].into_iter().collect::<String>());
     builder.push_tag(Tag::PushForm(forms[2]));
-    builder.push_swappable(chars[2].to_string().repeat(lower));
+    builder.push_swappable([chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
 
     builder
 }

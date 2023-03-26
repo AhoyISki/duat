@@ -72,8 +72,6 @@ fn main() {
     // order to start the program.
     let mut session = Session::new(
         Ui::default(),
-        // The `MatchManager will eventually be the method of dynamically coloring the program. It
-        // is very much a work in progress.
         config,
         Box::new(|mut mod_node, file| {
             let config = LineNumbersCfg {
@@ -81,7 +79,8 @@ fn main() {
                 numbering: Numbering::Absolute,
             };
             let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
-            mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
+            mod_node.push_widget(VertRule::default_fn(file.clone()), push_specs);
+            //mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
         }),
     );
 

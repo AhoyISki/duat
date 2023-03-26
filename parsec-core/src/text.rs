@@ -17,7 +17,7 @@ use crate::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, Tags,
     },
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui}, log_info,
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -44,9 +44,9 @@ pub struct TextBuilder<U>
 where
     U: Ui,
 {
-    text: Text<U>,
+    pub text: Text<U>,
     ranges: Vec<Range<usize>>,
-    tags: Vec<(Tag, usize, usize, Lock)>,
+    pub tags: Vec<(Tag, usize, usize, Lock)>,
 }
 
 impl<U> TextBuilder<U>
@@ -80,14 +80,16 @@ where
     }
 
     pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
-        let len = self.text.len_chars();
-        self.ranges.push(len..(len + edit.as_ref().len()));
-
         let edit = edit.as_ref();
+        let edit_len = edit.chars().count();
+        let len = self.text.len_chars();
+
+        self.ranges.push(len..(len + edit_len));
+
         let change = Change::new(&edit, len..len, self.text.inner());
         self.text.apply_change(&change);
 
-        self.move_last_tag(edit.chars().count());
+        self.move_last_tag(edit_len);
     }
 
     /// Replaces a range with a new piece of text.
@@ -110,7 +112,7 @@ where
         for (_, start, end, _) in self.tags.iter_mut() {
             if *start > range.start {
                 *start = start.saturating_add_signed(range_diff);
-                *end = end.saturating_add_signed(range_diff)
+                *end = end.saturating_add_signed(range_diff).min(self.text.tags.width());
             }
         }
     }
@@ -147,6 +149,7 @@ where
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
         let (tag, start, end, lock) = self.tags.get_mut(tag_index).unwrap();
+        log_info!("\nstart: {}, end: {}", start, end);
         self.text.tags.remove(*start, *lock);
         if let Some(_) = tag.inverse() {
             self.text.tags.remove(*end, *lock);
@@ -200,8 +203,8 @@ pub struct Text<U>
 where
     U: Ui,
 {
-    inner: InnerText,
-    tags: Tags,
+    pub inner: InnerText,
+    pub tags: Tags,
     lock: Lock,
     _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
     _readers: Vec<Box<dyn MutTextReader<U>>>,
