@@ -24,5 +24,4 @@ any-rope = { path = "../../any-rope/" }
 gat-std = "0.1.1"
 
 [features]
-default = ["deadlock-detection"]
 deadlock-detection = ["dep:no_deadlocks"]

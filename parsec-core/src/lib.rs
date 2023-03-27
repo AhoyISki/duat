@@ -347,6 +347,7 @@ fn send_event<U, I>(
             window,
         };
         blink_cursors_and_send_key(&mut *widget, &end_node, controls, key_event, key_remapper);
+
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
             session_manager.active_widget = session_manager.active_file.clone();

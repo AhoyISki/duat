@@ -9,7 +9,7 @@ use std::{
     any::Any,
     cmp::Ordering,
     ops::{Deref, Range},
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -156,7 +156,7 @@ where
     U: Ui + 'static,
 {
     pub fn normal(
-        widget: Arc<Mutex<dyn NormalWidget<U>>>,
+        widget: Arc<RwLock<dyn NormalWidget<U>>>,
         updaters: Vec<Box<dyn Fn() -> bool>>,
     ) -> Widget<U> {
         // assert!(updaters.len() > 0, "Without any updaters, this widget can
@@ -167,7 +167,7 @@ where
         }
     }
     pub fn actionable(
-        widget: Arc<Mutex<dyn ActionableWidget<U>>>,
+        widget: Arc<RwLock<dyn ActionableWidget<U>>>,
         updaters: Vec<Box<dyn Fn() -> bool>>,
     ) -> Widget<U> {
         Widget {

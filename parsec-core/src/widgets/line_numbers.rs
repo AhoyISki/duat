@@ -1,14 +1,14 @@
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{
     any::Any,
     cmp::max,
     fmt::{Alignment, Write},
-    sync::Arc,
+    sync::{Arc},
 };
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::Mutex;
+use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
@@ -57,7 +57,7 @@ where
 
             let updaters = updaters!(file);
 
-            Widget::normal(Arc::new(Mutex::new(line_numbers)), updaters)
+            Widget::normal(Arc::new(RwLock::new(line_numbers)), updaters)
         })
     }
 
@@ -74,7 +74,7 @@ where
 
             line_numbers.update_text(push_specs.split.len());
 
-            Widget::normal(Arc::new(Mutex::new(line_numbers)), vec![])
+            Widget::normal(Arc::new(RwLock::new(line_numbers)), vec![])
         })
     }
 

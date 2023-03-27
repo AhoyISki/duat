@@ -1,9 +1,9 @@
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{any::Any, error::Error, fmt::Display, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::Mutex;
+use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -196,7 +196,7 @@ where
             config: CommandLineConfig::default(),
         };
 
-        Widget::actionable(Arc::new(Mutex::new(command_line)), Vec::new())
+        Widget::actionable(Arc::new(RwLock::new(command_line)), Vec::new())
     }
 }
 

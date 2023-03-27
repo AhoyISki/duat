@@ -17,7 +17,7 @@ use crate::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, Tags,
     },
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, EndNode, Label, Ui}, log_info,
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -290,10 +290,13 @@ where
         let mut form_former = config.palette.form_former();
 
         let mut skip_counter = print_info.first_ch - line_start_ch;
+        // It doesn't really matter what this is at the start, as long as it's not ' '.
         let mut last_ch = 'a';
         let mut skip_rest_of_line = false;
 
+		let mut counter = 0;
         while let Some((index, ch)) = chars.next() {
+            counter += 1;
             trigger_on_char::<U>(&mut tags, index, label, &mut form_former);
 
             if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {

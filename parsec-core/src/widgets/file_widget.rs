@@ -1,15 +1,15 @@
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{
     any::Any,
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc},
 };
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::Mutex;
+use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -56,7 +56,7 @@ where
         let cursor = Cursor::default();
 
         Widget::actionable(
-            Arc::new(Mutex::new(FileWidget {
+            Arc::new(RwLock::new(FileWidget {
                 _side_widgets: None,
                 identifier: ["parsec-file: ", name.as_str()].join(""),
                 text,

@@ -1,9 +1,9 @@
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{any::Any, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::Mutex;
+use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
@@ -159,7 +159,7 @@ where
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             Widget::normal(
-                Arc::new(Mutex::new(StatusLine {
+                Arc::new(RwLock::new(StatusLine {
                     file_widget,
                     text_builder,
                     readers,

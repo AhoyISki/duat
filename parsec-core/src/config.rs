@@ -1,39 +1,34 @@
 //! Configuration options for parsec.
 
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     any::Any,
     error::Error,
     fmt::{Debug, Display},
-    ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockError,
+        Arc, TryLockResult,
     },
 };
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::{Mutex, MutexGuard};
+use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::tags::form::FormPalette;
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
 pub enum WrapMethod {
-    /// Wrap at the end of the screen.
     Width,
-    /// Wrap at a given width.
-    Capped(u16),
-    /// Wrap at the end of the screen, on word boundaries.
+    Capped(usize),
     Word,
-    /// Don't wrap at all.
     #[default]
     NoWrap,
 }
 
-// Pretty much only exists because i wanted one of these with usize as
-// its builtin type.
+// Pretty much only exists because i wanted one of these with
+// usizewrite its builtin type.
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
     pub y_gap: usize,
@@ -139,7 +134,7 @@ pub struct RwData<T>
 where
     T: ?Sized,
 {
-    data: Arc<Mutex<T>>,
+    data: Arc<RwLock<T>>,
     updated_state: Arc<AtomicUsize>,
     last_read: AtomicUsize,
 }
@@ -147,7 +142,7 @@ where
 impl<T> RwData<T> {
     pub fn new(data: T) -> Self {
         RwData {
-            data: Arc::new(Mutex::new(data)),
+            data: Arc::new(RwLock::new(data)),
             updated_state: Arc::new(AtomicUsize::new(1)),
             last_read: AtomicUsize::new(1),
         }
@@ -159,7 +154,7 @@ where
     T: ?Sized + 'static,
 {
     /// Returns a new instance of [RwData<T>].
-    pub fn new_unsized(data: Arc<Mutex<T>>) -> Self {
+    pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
         // second value - 1.
@@ -173,20 +168,20 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that [has_changed()] returns false.
-    pub fn read(&self) -> RwDataReadGuard<T> {
+    pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         self.last_read.store(updated_state, Ordering::Relaxed);
 
-        RwDataReadGuard(self.data.lock().unwrap())
+        self.data.read().unwrap()
     }
 
     /// Tries to read the data immediately and returns a `Result`.
-    pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
-        self.data.try_lock().map(|mutex_guard| {
+    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
+        self.data.try_read().map(|guard| {
             let updated_state = self.updated_state.load(Ordering::Relaxed);
             self.last_read.store(updated_state, Ordering::Relaxed);
 
-            RwDataReadGuard(mutex_guard)
+            guard
         })
     }
 
@@ -194,21 +189,19 @@ where
     ///
     /// Also makes it so that `has_changed()` on it or any of its
     /// clones returns `true`.
-    pub fn write(&self) -> RwDataWriteGuard<T> {
-        RwDataWriteGuard {
-            mutex: self.data.lock().unwrap(),
-            updated_state: &self.updated_state,
-        }
+    pub fn write(&self) -> RwLockWriteGuard<T> {
+        self.updated_state.fetch_add(1, Ordering::Relaxed);
+        self.data.write().unwrap()
     }
 
     /// Tries to return a writeable reference to the state.
     ///
     /// Also makes it so that `has_changed()` on it or any of its
     /// clones returns `true`.
-    pub fn try_write(&self) -> Result<RwDataWriteGuard<T>, TryLockError<MutexGuard<T>>> {
-        self.data.try_lock().map(|lock| RwDataWriteGuard {
-            mutex: lock,
-            updated_state: &self.updated_state,
+    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
+        self.data.try_write().map(|guard| {
+            self.updated_state.fetch_add(1, Ordering::Relaxed);
+            guard
         })
     }
 
@@ -225,7 +218,7 @@ where
     T: ?Sized + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&*self.data.lock().unwrap(), f)
+        Debug::fmt(&*self.data.read().unwrap(), f)
     }
 }
 
@@ -248,7 +241,7 @@ where
 {
     fn default() -> Self {
         RwData {
-            data: Arc::new(Mutex::new(T::default())),
+            data: Arc::new(RwLock::new(T::default())),
             updated_state: Arc::new(AtomicUsize::new(1)),
             last_read: AtomicUsize::new(1),
         }
@@ -262,7 +255,7 @@ pub struct RoData<T>
 where
     T: ?Sized,
 {
-    data: Arc<Mutex<T>>,
+    data: Arc<RwLock<T>>,
     updated_state: Arc<AtomicUsize>,
     last_read: AtomicUsize,
 }
@@ -274,20 +267,20 @@ where
     /// Reads the information.
     ///
     /// Also makes it so that `has_changed()` returns false.
-    pub fn read(&self) -> RwDataReadGuard<T> {
+    pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         self.last_read.store(updated_state, Ordering::Relaxed);
 
-        RwDataReadGuard(self.data.lock().unwrap())
+        self.data.read().unwrap()
     }
 
     /// Tries to read the data immediately and returns a `Result`.
-    pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
-        self.data.try_lock().map(|mutex_guard| {
+    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
+        self.data.try_read().map(|mutex_guard| {
             let updated_state = self.updated_state.load(Ordering::Relaxed);
             self.last_read.store(updated_state, Ordering::Relaxed);
 
-            RwDataReadGuard(mutex_guard)
+            mutex_guard
         })
     }
 
@@ -315,9 +308,9 @@ where
             updated_state,
             last_read: last_read_state,
         } = self;
-        if (&*data.lock().unwrap()).as_any().is::<U>() {
+        if (&*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
-            let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<Mutex<U>>()) };
+            let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Ok(RoData {
                 data,
                 updated_state,
@@ -360,58 +353,6 @@ where
             updated_state: self.updated_state.clone(),
             last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed)),
         }
-    }
-}
-
-pub struct RwDataReadGuard<'a, T>(MutexGuard<'a, T>)
-where
-    T: ?Sized;
-
-impl<'a, T> Deref for RwDataReadGuard<'a, T>
-where
-    T: ?Sized,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub struct RwDataWriteGuard<'a, T>
-where
-    T: ?Sized,
-{
-    mutex: MutexGuard<'a, T>,
-    updated_state: &'a AtomicUsize,
-}
-
-impl<'a, T> Deref for RwDataWriteGuard<'a, T>
-where
-    T: ?Sized,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.mutex
-    }
-}
-
-impl<'a, T> DerefMut for RwDataWriteGuard<'a, T>
-where
-    T: ?Sized,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.mutex
-    }
-}
-
-impl<'a, T> Drop for RwDataWriteGuard<'a, T>
-where
-    T: ?Sized,
-{
-    fn drop(&mut self) {
-        self.updated_state.fetch_add(1, Ordering::Relaxed);
     }
 }
 

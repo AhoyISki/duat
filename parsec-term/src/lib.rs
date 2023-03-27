@@ -1,12 +1,12 @@
 #![feature(stmt_expr_attributes, is_some_and)]
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::{
     any::Any,
     cmp::{max, min},
     fmt::{Debug, Display},
     io::{stdout, Stdout},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -16,14 +16,13 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::Mutex;
+use no_deadlocks::RwLock;
 use parsec_core::{
     config::{Config, DownCastableData},
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
     updaters, SessionManager,
-    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -341,17 +340,18 @@ impl Area {
         for child in children.iter_mut() {
             let mut inner = child.inner.write();
             let coords = &mut inner.coords;
-            coords.tl = last_tl;
 
+			let prev_last_tl = last_tl;
             (coords.br, last_tl) = if let Axis::Horizontal = axis {
                 let ratio = (coords.width() as f32) / (old_len as f32);
-                let x = coords.tl.x + (ratio * (new_len as f32)).floor() as u16;
-                (Coord { x, y: coords.br.y }, Coord { x, y: coords.tl.y })
+                let x = last_tl.x + (ratio * (new_len as f32)).ceil() as u16;
+                (Coord { x, y: coords.br.y }, Coord { x, y: last_tl.y })
             } else {
                 let ratio = (coords.height() as f32) / (old_len as f32);
-                let y = coords.tl.y + (ratio * (new_len as f32)).floor() as u16;
-                (Coord { x: coords.br.x, y }, Coord { x: coords.tl.x, y })
+                let y = last_tl.y + (ratio * (new_len as f32)).ceil() as u16;
+                (Coord { x: coords.br.x, y }, Coord { x: last_tl.x, y })
             };
+            coords.tl = prev_last_tl;
         }
 
         children
@@ -1081,7 +1081,7 @@ where
             drop(file_read);
             let vert_rule = VertRule { file, builder, cfg };
 
-            Widget::normal(Arc::new(Mutex::new(vert_rule)), updaters)
+            Widget::normal(Arc::new(RwLock::new(vert_rule)), updaters)
         })
     }
 
@@ -1100,7 +1100,7 @@ where
             drop(file_read);
             let vert_rule = VertRule { file, builder, cfg };
 
-            Widget::normal(Arc::new(Mutex::new(vert_rule)), updaters)
+            Widget::normal(Arc::new(RwLock::new(vert_rule)), updaters)
         })
     }
 }
