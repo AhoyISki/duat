@@ -1,7 +1,9 @@
-use std::{
-    any::Any,
-    sync::{Arc, Mutex},
-};
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::Mutex;
+use std::{any::Any, sync::Arc};
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::Mutex;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{

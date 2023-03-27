@@ -281,6 +281,16 @@ where
         RwDataReadGuard(self.data.lock().unwrap())
     }
 
+    /// Tries to read the data immediately and returns a `Result`.
+    pub fn try_read(&self) -> Result<RwDataReadGuard<T>, TryLockError<MutexGuard<T>>> {
+        self.data.try_lock().map(|mutex_guard| {
+            let updated_state = self.updated_state.load(Ordering::Relaxed);
+            self.last_read.store(updated_state, Ordering::Relaxed);
+
+            RwDataReadGuard(mutex_guard)
+        })
+    }
+
     /// Checks if the state within has changed.
     ///
     /// If you have called `has_changed()` or `read()`, without any

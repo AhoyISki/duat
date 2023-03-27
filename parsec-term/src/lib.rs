@@ -23,6 +23,7 @@ use parsec_core::{
     text::PrintStatus,
     ui::PushSpecs,
     updaters, SessionManager,
+    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -135,10 +136,10 @@ impl Owner {
         }
     }
 
-    fn aligns(&mut self, other: Axis) -> Option<&mut Self> {
+    fn aligns(&mut self, other: Axis) -> Option<Self> {
         if let Owner::Parent { parent, .. } = self {
             if parent.lineage.read().as_ref().is_some_and(|(_, axis)| *axis == other) {
-                return Some(self);
+                return Some(self.clone());
             }
         }
 
@@ -326,14 +327,14 @@ impl Area {
             return;
         };
 
-        let self_inner = self.inner.read();
-
-        let mut last_tl = self_inner.coords.tl;
         let (old_len, new_len) = if let Axis::Horizontal = axis {
             (self.resizable_width(), self.width())
         } else {
             (self.resizable_width(), self.height())
         };
+
+        let self_inner = self.inner.read();
+        let mut last_tl = self_inner.coords.tl;
 
         let mut lineage = self.lineage.write();
         let (children, axis) = lineage.as_mut().unwrap();
@@ -899,7 +900,9 @@ fn restructure_tree(
         let mut lineage = parent.lineage.write();
         let (children, _) = lineage.as_mut().unwrap();
 
-        (new_child_area(split_coords, children, side, split, *self_index), None)
+        drop(inner);
+        drop(resized_area);
+        (new_child_area(split_coords, children, side, split, self_index), None)
     } else {
         let new_parent = Area::new(InnerArea::new(old_coords, inner.owner.clone()));
 
@@ -971,7 +974,7 @@ impl SepChar {
         match self {
             SepChar::Uniform(uniform) => [*uniform, *uniform, *uniform],
             SepChar::TwoWay(main, other) => [*other, *main, *other],
-            SepChar::ThreeWay(main, lower, upper) => [*upper, *main, *lower],
+            SepChar::ThreeWay(main, upper, lower) => [*upper, *main, *lower],
         }
     }
 }
@@ -1063,20 +1066,23 @@ where
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a
     /// user provided config.
-    pub fn new(file_widget: RoData<FileWidget<U>>, cfg: VertRuleCfg) -> Widget<U> {
-        let file = file_widget.read();
+    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
+    /// default config.
+    pub fn config_fn(
+        file: RoData<FileWidget<U>>,
+        cfg: VertRuleCfg,
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        Box::new(move |_, _| {
+            let file_read = file.read();
+            let builder = setup_builder(&file_read, &cfg);
 
-        let builder = setup_builder(&file, &cfg);
+            let updater = file.clone();
+            let updaters = updaters![updater];
+            drop(file_read);
+            let vert_rule = VertRule { file, builder, cfg };
 
-        drop(file);
-        Widget::normal(
-            Arc::new(Mutex::new(VertRule {
-                file: file_widget,
-                builder,
-                cfg,
-            })),
-            Vec::new(),
-        )
+            Widget::normal(Arc::new(Mutex::new(vert_rule)), updaters)
+        })
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
@@ -1136,7 +1142,8 @@ where
         builder.swap_tag(2, Tag::PushForm(forms[2]));
         builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
         if upper > 0 {
-            //panic!("{:#?}, {:#?}", builder.text.tags, builder.text.inner);
+            // panic!("{:#?}, {:#?}", builder.text.tags,
+            // builder.text.inner);
         }
     }
 

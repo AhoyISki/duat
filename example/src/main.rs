@@ -34,7 +34,7 @@ use parsec_core::{
     Session,
 };
 use parsec_kak::Editor;
-use parsec_term::{Ui, VertRule};
+use parsec_term::{Ui, VertRule, VertRuleCfg, SepChar};
 
 fn main() {
     // `FormPalette` is a struct with all of your `Form`s and
@@ -74,13 +74,18 @@ fn main() {
         Ui::default(),
         config,
         Box::new(|mut mod_node, file| {
-            let config = LineNumbersCfg {
+            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
+            let cfg = VertRuleCfg {
+                sep_char: SepChar::TwoWay('▋', '┃'),
+                ..Default::default()
+            };
+            mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
+
+            let cfg = LineNumbersCfg {
                 alignment: Alignment::Right,
                 numbering: Numbering::Absolute,
             };
-            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
-            mod_node.push_widget(VertRule::default_fn(file.clone()), push_specs);
-            //mod_node.push_widget(LineNumbers::config_fn(file, config), push_specs);
+            mod_node.push_widget(LineNumbers::config_fn(file, cfg), push_specs);
         }),
     );
 

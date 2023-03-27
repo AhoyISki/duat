@@ -452,7 +452,7 @@ impl InputScheme for Editor {
         U: Ui,
         A: ActionableWidget<U> + ?Sized,
     {
-        let cur_mode = *self.cur_mode.read();
+        let cur_mode = *self.cur_mode.try_read().unwrap();
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
             Mode::Normal => self.match_normal(key, actor, controls),
@@ -463,7 +463,7 @@ impl InputScheme for Editor {
     }
 
     fn send_remapped_keys(&self) -> bool {
-        matches!(*self.cur_mode.read(), Mode::Insert)
+        matches!(*self.cur_mode.try_read().unwrap(), Mode::Insert)
     }
 }
 

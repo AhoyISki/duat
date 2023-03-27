@@ -3,16 +3,21 @@ pub mod file_widget;
 pub mod line_numbers;
 pub mod status_line;
 
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::{Mutex, MutexGuard};
 use std::{
     any::Any,
     cmp::Ordering,
     ops::{Deref, Range},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::{Mutex, MutexGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{RwData, DownCastableData},
+    config::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
@@ -174,12 +179,10 @@ where
     pub(crate) fn update(&self, end_node: &mut EndNode<U>) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
-                let mut widget = widget.write();
-                widget.update(end_node);
+                widget.write().update(end_node);
             }
             InnerWidget::Actionable(widget, ..) => {
-                let mut widget = widget.write();
-                widget.update(end_node);
+                widget.write().update(end_node);
             }
         }
     }

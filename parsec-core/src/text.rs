@@ -17,7 +17,7 @@ use crate::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, Tags,
     },
-    ui::{Area, EndNode, Label, Ui}, log_info,
+    ui::{Area, EndNode, Label, Ui},
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -149,7 +149,6 @@ where
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
         let (tag, start, end, lock) = self.tags.get_mut(tag_index).unwrap();
-        log_info!("\nstart: {}, end: {}", start, end);
         self.text.tags.remove(*start, *lock);
         if let Some(_) = tag.inverse() {
             self.text.tags.remove(*end, *lock);
@@ -618,44 +617,6 @@ impl PrintInfo {
     }
 }
 
-// pub(crate) fn update_range<U>(
-//    text: &mut Text<U>, range: TextRange, max_line: usize, node:
-// &EndNode<U>,
-//) where
-//    U: Ui,
-//{
-//    if let Some(match_manager) = &mut text.match_manager {
-//        let line = &text.lines[max_line];
-//        let max_pos = TextPos::default().translate(&text.lines,
-// max_line, line.char_count());
-//
-//        let start = TextPos {
-//            row: range.start.row,
-//            col: 0,
-//            byte: range.start.byte -
-// get_byte(&text.lines[range.start.row].text(),     range.start.col),
-// };
-//
-//        let len = text.lines[range.end.row].text().len();
-//        let end = TextPos {
-//            row: range.end.row,
-//            col: text.lines[range.end.row].char_count(),
-//            byte: range.end.byte -
-// get_byte(&text.lines[range.end.row].text(), range.end.col) +
-//     len,    };
-//
-//        let range = TextRange { start, end };
-//
-//        let line_infos =
-// match_manager.match_range(text.lines.as_slice(), range, max_pos);
-//
-//        for (line_info, line_num) in line_infos {
-//            text.lines[line_num].info = line_info;
-//            text.lines[line_num].update_line_info(node);
-//        }
-//    }
-//}
-//
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
         (Tag::MainCursor, Tag::PushForm(MAIN_SEL), Tag::PopForm(MAIN_SEL))
