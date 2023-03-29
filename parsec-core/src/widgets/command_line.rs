@@ -302,8 +302,6 @@ where
     }
 }
 
-unsafe impl<U> Send for CommandLine<U> where U: Ui {}
-
 #[derive(Debug)]
 pub enum CommandError {
     AlreadyExists(String),

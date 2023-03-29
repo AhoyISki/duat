@@ -25,7 +25,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait NormalWidget<U>: Send + DownCastableData
+pub trait NormalWidget<U>: DownCastableData
 where
     U: Ui + Any + 'static,
 {
@@ -187,19 +187,6 @@ where
         }
     }
 
-    pub(crate) fn print(&self, end_node: &mut EndNode<U>) {
-        match &self.inner {
-            InnerWidget::Normal(widget) => {
-                let widget = widget.read();
-                widget.text().print(end_node, widget.print_info());
-            }
-            InnerWidget::Actionable(widget, ..) => {
-                let widget = widget.read();
-                widget.text().print(end_node, widget.print_info());
-            }
-        }
-    }
-
     pub(crate) fn identifier(&self) -> String {
         match &self.inner {
             InnerWidget::Normal(widget) => widget.read().identifier().to_string(),
@@ -220,6 +207,21 @@ where
         match &self.inner {
             InnerWidget::Normal(_) => None,
             InnerWidget::Actionable(widget) => Some(&widget),
+        }
+    }
+
+    pub(crate) fn update_and_print(&self, end_node: &mut std::sync::RwLockWriteGuard<EndNode<U>>) {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
+                let mut widget = widget.write();
+                widget.update(end_node);
+                widget.text().print(end_node, widget.print_info());
+            }
+            InnerWidget::Actionable(widget, ..) => {
+                let mut widget = widget.write_raw();
+                widget.update(end_node);
+                widget.text().print(end_node, widget.print_info());
+            }
         }
     }
 }

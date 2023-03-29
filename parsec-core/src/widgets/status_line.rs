@@ -120,7 +120,7 @@ where
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default_string();
+        let mut text_builder = TextBuilder::default();
         let mut readers = Vec::new();
         let file = file_widget.read();
         for part in status_parts.into_iter() {
@@ -138,7 +138,7 @@ where
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default_string();
+        let mut text_builder = TextBuilder::default();
         let mut readers = Vec::new();
         let file = file_widget.read();
         for part in status_parts.into_iter() {
@@ -180,7 +180,7 @@ where
         let lines = Reader::File(file_lines_len());
 
         let file = file_widget.read();
-        let mut text_builder = TextBuilder::default_string();
+        let mut text_builder = TextBuilder::default();
 
         text_builder.push_tag(Tag::PushForm(FILE_NAME));
         text_builder.push_swappable(name.read(&file));
@@ -282,8 +282,6 @@ where
         self
     }
 }
-
-unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 
 #[macro_export]
 macro_rules! status_format {

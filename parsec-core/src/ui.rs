@@ -686,7 +686,7 @@ where
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
             for (widget, end_node) in self.widgets() {
-                widget.print(&mut end_node.write());
+                widget.update_and_print(&mut end_node.write());
             }
         }
     }

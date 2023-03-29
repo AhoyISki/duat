@@ -15,9 +15,9 @@ use crate::{
     position::{Cursor, Pos},
     tags::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
-        Lock, Tag, Tags,
+        Lock, Tag, TagOrSkip, Tags,
     },
-    ui::{Area, EndNode, Label, Ui}, log_info,
+    ui::{Area, EndNode, Label, Ui},
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -44,152 +44,177 @@ pub struct TextBuilder<U>
 where
     U: Ui,
 {
-    pub text: Text<U>,
-    ranges: Vec<Range<usize>>,
-    pub tags: Vec<(Tag, usize, usize, Lock)>,
+    text: Text<U>,
+    swappables: Vec<usize>,
+}
+
+impl<U> Default for TextBuilder<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        TextBuilder {
+            text: Text::default_string(),
+            swappables: Vec::default(),
+        }
+    }
 }
 
 impl<U> TextBuilder<U>
 where
     U: Ui,
 {
-    pub fn default_string() -> Self {
-        TextBuilder {
-            text: Text::default_string(),
-            ranges: Vec::new(),
-            tags: Vec::new(),
-        }
-    }
-
-    pub fn default_rope() -> Self {
-        TextBuilder {
-            text: Text::default_string(),
-            ranges: Vec::new(),
-            tags: Vec::new(),
-        }
-    }
-
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
-        let len = self.text.inner.len_chars();
-
         let edit = edit.as_ref();
-        let change = Change::new(&edit, len..len, self.text.inner());
-        self.text.apply_change(&change);
+        let edit_len = edit.chars().count() as u32;
+        self.text.inner.string().push_str(edit);
 
-        self.move_last_tag(edit.chars().count());
+        self.add_to_last_skip(edit_len);
     }
 
     pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
-        let edit_len = edit.chars().count();
-        let len = self.text.len_chars();
+        let edit_len = edit.chars().count() as u32;
+        let len = self.text.inner.string().chars().count();
 
-        self.ranges.push(len..(len + edit_len));
+        let last_skip = self
+            .text
+            .tags
+            .vec()
+            .iter()
+            .filter(|tag_or_skip| matches!(tag_or_skip, TagOrSkip::Skip(_)))
+            .count();
 
-        let change = Change::new(&edit, len..len, self.text.inner());
-        self.text.apply_change(&change);
+        self.swappables.push(last_skip);
+        self.text.inner.string().push_str(edit);
 
-        self.move_last_tag(edit_len);
-    }
-
-    /// Replaces a range with a new piece of text.
-    pub fn swap_range(&mut self, index: usize, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-        let range = self.ranges[index].clone();
-
-        let change = Change::new(edit.to_string(), range.clone(), self.text.inner());
-        self.text.apply_change(&change);
-
-        let range_diff = edit.chars().count() as isize - range.clone().count() as isize;
-
-        self.ranges[index].end = range.end.saturating_add_signed(range_diff);
-
-        for range in self.ranges.iter_mut().skip(index + 1) {
-            range.start = range.start.saturating_add_signed(range_diff);
-            range.end = range.end.saturating_add_signed(range_diff);
-        }
-
-        for (_, start, end, _) in self.tags.iter_mut() {
-            if *start > range.start {
-                *start = start.saturating_add_signed(range_diff);
-                *end = end.saturating_add_signed(range_diff).min(self.text.tags.width());
-            }
-        }
+        self.add_to_last_skip(edit_len);
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, tag: Tag) -> Lock {
-        let width = self.text.tags.width();
         let lock = self.text.tags.get_lock();
-
-        self.text.tags.insert(width, tag, lock);
-
+        self.text.tags.vec().push(TagOrSkip::Tag(tag, lock));
         if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.insert(width, inv_tag, lock);
+            self.text.tags.vec().push(TagOrSkip::Tag(inv_tag, lock));
         }
-        self.tags.push((tag, width, width, lock));
-
         lock
     }
 
-    fn move_last_tag(&mut self, edit_len: usize) {
-        if let Some((tag, start, end, lock)) = self.tags.last_mut() {
-            let new_end = *end + edit_len;
+    /// Replaces a range with a new piece of text.
+    pub fn swap_range(&mut self, index: usize, edit: impl AsRef<str>) {
+        let edit = edit.as_ref();
+        let swap_index = self.swappables[index];
 
-            if let (Some(inv_tag), true) = (tag.inverse(), start == end) {
-                self.text.tags.remove(*start, *lock);
-                self.text.tags.insert(*start, *tag, *lock);
-                self.text.tags.insert(new_end, inv_tag, *lock)
-            }
+        let Some((start, skip)) = self.get_mut_skip(swap_index) else {
+            return;
+        };
+        let old_skip = *skip as usize;
+        *skip = edit.chars().count() as u32;
 
-            *end = new_end;
-        }
+        self.text.replace_range(start..(start + old_skip), edit);
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
-        let (tag, start, end, lock) = self.tags.get_mut(tag_index).unwrap();
-        self.text.tags.remove(*start, *lock);
-        if let Some(_) = tag.inverse() {
-            self.text.tags.remove(*end, *lock);
+        let tags_vec = self.text.tags.vec();
+        let mut tags =
+            tags_vec
+                .iter_mut()
+                .enumerate()
+                .filter_map(|(index, tag_or_skip)| match tag_or_skip {
+                    TagOrSkip::Tag(Tag::PopForm(_), _) => None,
+                    TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
+                    TagOrSkip::Skip(_) => None,
+                });
+
+        if let Some((_, tag, lock)) = tags.nth(tag_index) {
+            *tag = new_tag;
+            if let Some(inv_tag) = tag.inverse() {
+                let Some((next_index, tag, lock)) = tags.next() else {
+                    tags_vec.push(TagOrSkip::Tag(inv_tag, lock));
+                    return;
+                };
+
+                if let Tag::PopForm(_) = tag {
+                    *tag = inv_tag;
+                } else {
+                    tags_vec.insert(next_index, TagOrSkip::Tag(inv_tag, lock));
+                }
+            }
         }
+    }
 
-        *tag = new_tag;
+    pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut u32)> {
+        self.text
+            .tags
+            .vec()
+            .iter_mut()
+            .filter_map(|tag_or_skip| match tag_or_skip {
+                TagOrSkip::Skip(skip) => Some(skip),
+                TagOrSkip::Tag(..) => None,
+            })
+            .scan(0, |accum, skip| {
+                let prev_accum = *accum;
+                *accum += *skip as usize;
+                Some((*accum, skip))
+            })
+            .nth(index)
+    }
 
-        self.text.tags.insert(*start, *tag, *lock);
-        if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.insert(*end, inv_tag, *lock);
+    fn add_to_last_skip(&mut self, edit_len: u32) {
+        let tags_vec = self.text.tags.vec();
+        let Some(tag_or_skip) = tags_vec.last_mut() else {
+            return;
+        };
+
+        match tag_or_skip {
+            TagOrSkip::Tag(Tag::PopForm(_), _) => {
+                let prev = tags_vec.len() - 1;
+                if let Some(TagOrSkip::Skip(skip)) = tags_vec.get_mut(prev) {
+                    *skip += edit_len;
+                } else {
+                    tags_vec.insert(prev, TagOrSkip::Skip(edit_len));
+                }
+            }
+            TagOrSkip::Tag(..) => tags_vec.push(TagOrSkip::Skip(edit_len)),
+            TagOrSkip::Skip(skip) => *skip += edit_len,
         }
     }
 
     pub fn clear(&mut self) {
-        self.text.inner.clear();
-        self.tags.clear();
-        self.ranges.clear();
+        self.text.clear();
+        self.swappables.clear();
     }
 
     pub fn truncate(&mut self, range_index: usize) {
-        let trunc_start = self.ranges.get(range_index).unwrap().start;
-        self.ranges.truncate(range_index);
+        let tags_vec = self.text.tags.vec();
 
-        let change = Change::new("", trunc_start.., self.text.inner());
+        let Some(swap_index) = self.swappables.get(range_index) else {
+            return;
+        };
+        let (cutoff, index) = tags_vec
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, tag_or_skip)| match tag_or_skip {
+                TagOrSkip::Skip(skip) => Some((index, skip)),
+                TagOrSkip::Tag(..) => None,
+            })
+            .scan(0, |accum, (index, skip)| {
+                let prev_accum = *accum;
+                *accum += *skip as usize;
+                Some((*accum, index))
+            })
+            .nth(*swap_index)
+            .unwrap();
 
-        for (_, start, end, lock) in &self.tags {
-            if *start >= trunc_start {
-                self.text.tags.remove(*start, *lock);
-                self.text.tags.remove(*end, *lock);
-            }
-        }
-
-        self.text.apply_change(&change);
-    }
-
-    pub fn is_default(&self) -> bool {
-        self.tags.is_empty() && self.ranges.is_empty() && self.text.is_empty()
+        self.swappables.truncate(range_index);
+        self.text.inner.string().truncate(cutoff);
+        tags_vec.truncate(index);
     }
 
     pub fn ranges_len(&self) -> usize {
-        self.ranges.len()
+        self.swappables.len()
     }
 
     pub fn text(&self) -> &Text<U> {
@@ -215,7 +240,7 @@ where
     U: Ui,
 {
     pub fn default_string() -> Self {
-        let mut tags = Tags::default();
+        let mut tags = Tags::default_vec();
         let lock = tags.get_lock();
         Text {
             inner: InnerText::String(String::default()),
@@ -227,7 +252,7 @@ where
     }
 
     pub fn default_rope() -> Self {
-        let mut tags = Tags::default();
+        let mut tags = Tags::default_rope();
         let lock = tags.get_lock();
         Text {
             inner: InnerText::Rope(Rope::default()),
@@ -290,11 +315,12 @@ where
         let mut form_former = config.palette.form_former();
 
         let mut skip_counter = print_info.first_ch - line_start_ch;
-        // It doesn't really matter what this is at the start, as long as it's not ' '.
+        // It doesn't really matter what this is at the start, as long as it's
+        // not ' '.
         let mut last_ch = 'a';
         let mut skip_rest_of_line = false;
 
-		let mut counter = 0;
+        let mut counter = 0;
         while let Some((index, ch)) = chars.next() {
             counter += 1;
             trigger_on_char::<U>(&mut tags, index, label, &mut form_former);
@@ -322,11 +348,14 @@ where
     /// replace.
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
-        let new = old.start..(old.start + edit.chars().count());
+        let edit_len = edit.chars().count();
+        let new = old.start..(old.start + edit_len);
 
         self.inner.replace(old.start..old.end, edit);
 
-        self.tags.transform_range(old, new);
+        if old != new {
+            self.tags.transform_range(old, new);
+        }
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -372,7 +401,7 @@ where
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {
-                self.tags.remove(ch_index, self.lock);
+                self.tags.remove_on(ch_index, self.lock);
             }
         }
     }
@@ -387,6 +416,11 @@ where
 
     pub fn len_bytes(&self) -> usize {
         self.inner.len_bytes()
+    }
+
+    fn clear(&mut self) {
+        self.inner.clear();
+        self.tags.clear();
     }
 }
 
@@ -528,7 +562,7 @@ impl PrintInfo {
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum >= max_dist && line_ch >= self.first_ch  {
+            if accum >= max_dist && line_ch >= self.first_ch {
                 return;
             } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.

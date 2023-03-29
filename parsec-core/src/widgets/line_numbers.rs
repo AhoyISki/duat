@@ -4,7 +4,7 @@ use std::{
     any::Any,
     cmp::max,
     fmt::{Alignment, Write},
-    sync::{Arc},
+    sync::Arc,
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -19,7 +19,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{Area, EndNode, Label, PushSpecs, Side, Ui},
-    SessionManager, updaters,
+    updaters, SessionManager,
 };
 
 pub struct LineNumbers<U>
@@ -27,12 +27,10 @@ where
     U: Ui,
 {
     file_widget: RoData<FileWidget<U>>,
-    text_builder: TextBuilder<U>,
+    builder: TextBuilder<U>,
     min_width: usize,
     cfg: LineNumbersCfg,
 }
-
-unsafe impl<U> Send for LineNumbers<U> where U: Ui {}
 
 impl<U> LineNumbers<U>
 where
@@ -48,12 +46,13 @@ where
 
             let mut line_numbers = LineNumbers {
                 file_widget,
-                text_builder: TextBuilder::default_string(),
+                builder: TextBuilder::<U>::default(),
                 min_width: push_specs.split.len(),
                 cfg,
             };
+            let width = line_numbers.calculate_width();
 
-            line_numbers.update_text(push_specs.split.len());
+            line_numbers.update_text(width);
 
             let updaters = updaters!(file);
 
@@ -67,7 +66,7 @@ where
         Box::new(move |_, push_specs| {
             let mut line_numbers = LineNumbers {
                 file_widget,
-                text_builder: TextBuilder::default_string(),
+                builder: TextBuilder::<U>::default(),
                 min_width: push_specs.split.len(),
                 cfg: LineNumbersCfg::default(),
             };
@@ -79,7 +78,7 @@ where
     }
 
     fn calculate_width(&mut self) -> usize {
-        let mut width = 1;
+        let mut width = 2;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
         let len = self.file_widget.read().text().len_lines() + 1;
@@ -96,22 +95,16 @@ where
         let printed_lines = file.printed_lines();
         let main_line = file.main_cursor().true_row();
 
-        for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
+        self.builder.clear();
+        for (line, is_wrapped) in printed_lines.iter() {
             let tag = get_tag(*line, main_line, *is_wrapped);
             let text = get_text(*line, main_line, width, &self.cfg);
 
-            if index < self.text_builder.ranges_len() {
-                self.text_builder.swap_tag(index, tag);
-                self.text_builder.swap_range(index, &text);
-            } else {
-                self.text_builder.push_tag(tag);
-                self.text_builder.push_swappable(&text);
-            }
+            self.builder.push_tag(tag);
+            self.builder.push_swappable(&text);
         }
 
-        if printed_lines.len() < self.text_builder.ranges_len() {
-            self.text_builder.truncate(printed_lines.len());
-        }
+        self.builder.truncate(printed_lines.len());
     }
 }
 
@@ -139,7 +132,7 @@ where
     }
 
     fn text(&self) -> &Text<U> {
-        self.text_builder.text()
+        &self.builder.text()
     }
 }
 

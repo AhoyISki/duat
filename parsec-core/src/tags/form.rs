@@ -9,7 +9,8 @@ use crossterm::{
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Form {
     pub style: ContentStyle,
-    /// Wether or not the `Form`s colors and attributes should override any that come after.
+    /// Wether or not the `Form`s colors and attributes should
+    /// override any that come after.
     pub is_final: bool,
 }
 
@@ -116,10 +117,8 @@ pub struct FormPalette {
 
 impl Default for FormPalette {
     fn default() -> Self {
-        let main_cursor = CursorStyle::new(
-            Some(SetCursorStyle::DefaultUserShape),
-            Form::new(false).reverse(),
-        );
+        let main_cursor =
+            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new(false).reverse());
         let selection_form = Form::new(false).on_dark_grey();
         let forms = vec![
             (String::from("Default"), Form::default()),
@@ -166,22 +165,18 @@ impl FormPalette {
         }
     }
 
-    /// Returns the `Form` associated to a given name with the index for efficient access.
+    /// Returns the `Form` associated to a given name with the index
+    /// for efficient access.
     pub fn from_name(&self, name: impl AsRef<str>) -> (Form, u16) {
         let name = name.as_ref();
 
-        let name_match = self
-            .forms
-            .iter()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name);
+        let name_match = self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name);
         assert!(name_match.is_some(), "Form with name {} not found", name);
-        name_match
-            .map(|(index, &(_, form))| (form, index as u16))
-            .unwrap()
+        name_match.map(|(index, &(_, form))| (form, index as u16)).unwrap()
     }
 
-    /// Non-panicking version of [`from_name()`][FormPalette::from_name]
+    /// Non-panicking version of
+    /// [`from_name()`][FormPalette::from_name]
     pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, u16)> {
         let name = name.as_ref();
 
@@ -234,15 +229,16 @@ pub(crate) struct FormFormer<'a> {
 }
 
 impl<'a> FormFormer<'a> {
-    /// Applies the `Form` with the given `id` and returns the result, given previous triggers.
+    /// Applies the `Form` with the given `id` and returns the result,
+    /// given previous triggers.
     pub(super) fn apply(&mut self, id: u16) -> Form {
         let form = self.palette.from_id(id);
         self.forms.push((form, id));
         self.make_form()
     }
 
-    /// Generates the form to be printed, given all the previously pushed forms in the `Form`
-    /// stack.
+    /// Generates the form to be printed, given all the previously
+    /// pushed forms in the `Form` stack.
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
             foreground_color: Some(Color::Reset),
@@ -260,28 +256,13 @@ impl<'a> FormFormer<'a> {
 
         for &(Form { style, is_final }, _) in &self.forms {
             let new_foreground = style.foreground_color;
-            set_var(
-                &mut fg_done,
-                &mut form.style.foreground_color,
-                &new_foreground,
-                is_final,
-            );
+            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
 
             let new_background = style.background_color;
-            set_var(
-                &mut bg_done,
-                &mut form.style.background_color,
-                &new_background,
-                is_final,
-            );
+            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
 
             let new_underline = style.underline_color;
-            set_var(
-                &mut ul_done,
-                &mut form.style.underline_color,
-                &new_underline,
-                is_final,
-            );
+            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
 
             if !attr_done {
                 form.style.attributes.extend(style.attributes);
@@ -298,14 +279,16 @@ impl<'a> FormFormer<'a> {
         form
     }
 
-    /// Removes the `Form` with the given `id` and returns the result, given previous triggers.
+    /// Removes the `Form` with the given `id` and returns the result,
+    /// given previous triggers.
     pub(super) fn remove(&mut self, id: u16) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
             self.make_form()
         } else {
-            panic!("The id {} has yet to be pushed.", id);
+            //panic!("The id {} has yet to be pushed.", id);
+            Form::default()
         }
     }
 

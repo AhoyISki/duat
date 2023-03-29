@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "any-rope"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "smallvec",
 ]
@@ -106,26 +106,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ae1b35a484aa10e07fe0638d02301c5ad24de82d310ccbd2f3693da5f09bf1c"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "gat-std"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e08eebf4c7afb1dbb5a68ece983498cf17a788cc076321d9fcc8a3f86da36493"
-dependencies = [
- "gat-std-proc",
-]
-
-[[package]]
-name = "gat-std-proc"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c20aeb660d16a16f6611d5be552a02b68edd5c046574d03d2e791e7446a262f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -242,9 +222,7 @@ name = "parsec-core"
 version = "0.1.0"
 dependencies = [
  "any-rope",
- "bitflags",
  "crossterm",
- "gat-std",
  "no_deadlocks",
  "regex",
  "ropey",

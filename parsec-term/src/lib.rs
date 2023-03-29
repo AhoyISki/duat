@@ -6,7 +6,10 @@ use std::{
     cmp::{max, min},
     fmt::{Debug, Display},
     io::{stdout, Stdout},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use crossterm::{
@@ -37,8 +40,7 @@ use parsec_core::{
 use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
 
-static mut PRINTER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-static mut LOCK: Option<std::sync::MutexGuard<()>> = None;
+static mut IS_PRINTING: AtomicBool = AtomicBool::new(false);
 static mut SHOW_CURSOR: bool = false;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -341,7 +343,7 @@ impl Area {
             let mut inner = child.inner.write();
             let coords = &mut inner.coords;
 
-			let prev_last_tl = last_tl;
+            let prev_last_tl = last_tl;
             (coords.br, last_tl) = if let Axis::Horizontal = axis {
                 let ratio = (coords.width() as f32) / (old_len as f32);
                 let x = last_tl.x + (ratio * (new_len as f32)).ceil() as u16;
@@ -582,7 +584,12 @@ impl ui::Label<Area> for Label {
         self.tab_places = Some(config.tab_places.clone());
 
         unsafe {
-            LOCK = Some(PRINTER.lock().unwrap());
+            while IS_PRINTING
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
+                .is_err()
+            {
+                std::thread::sleep(std::time::Duration::from_micros(500))
+            }
         }
 
         self.cursor = self.area.tl();
@@ -606,7 +613,7 @@ impl ui::Label<Area> for Label {
         }
 
         self.clear_form();
-        unsafe { LOCK = None };
+        unsafe { IS_PRINTING.store(false, Ordering::Release) };
         self.is_active = false;
     }
 
@@ -1105,8 +1112,6 @@ where
     }
 }
 
-unsafe impl<U> Send for VertRule<U> where U: ui::Ui {}
-
 impl<U> DownCastableData for VertRule<U>
 where
     U: ui::Ui + 'static,
@@ -1162,7 +1167,7 @@ where
 {
     let lines = file.printed_lines();
     let main_line = file.main_cursor().true_row();
-    let mut builder = TextBuilder::default_string();
+    let mut builder = TextBuilder::<U>::default();
     let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
     let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();
 

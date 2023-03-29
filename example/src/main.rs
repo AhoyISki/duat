@@ -41,6 +41,8 @@ fn main() {
     // `CursorStyle`s in it.
     let mut palette = FormPalette::default();
     palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
+    palette.set_form("FileName", Form::new(false).red());
+    palette.set_form("MainLineNumber", Form::new(false).dark_magenta().on_white());
     // A `CursorStyle` is a style unique to cursors. It contains a shape
     // (bar, block, or underscore), and a `Form` to be used when
     // printing the shape is not allowed (e.g. on a terminal, that

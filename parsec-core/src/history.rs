@@ -1,16 +1,20 @@
 //! Parsec's history system.
 //!
-//! The history system is comprised of 2 concepts: [Moment]s and [Change]s. A [Moment] contains any
-//! number of [Change]s, and by undoing/redoing a [Moment], all of them will be undone/redone. The
-//! [History] struct, present in each file, holds the list of [Moment]s in that file's history, and
-//! can be moved forwards or backwards in time.
+//! The history system is comprised of 2 concepts: [Moment]s and
+//! [Change]s. A [Moment] contains any number of [Change]s, and by
+//! undoing/redoing a [Moment], all of them will be undone/redone. The
+//! [History] struct, present in each file, holds the list of
+//! [Moment]s in that file's history, and can be moved forwards or
+//! backwards in time.
 //!
-//! Undoing/redoing [Moment]s also has the effect of removing all [Cursor]s and placing new ones
-//! where the [Change]s took place.
+//! Undoing/redoing [Moment]s also has the effect of removing all
+//! [Cursor]s and placing new ones where the [Change]s took place.
 //!
-//! The method by which Parsec's [History] works permits the replication of the history system of
-//! many other editors, such as Vim/Neovim, which is strictly one [Change] per [Moment], or
-//! Kakoune, where [Moment]s may contain as many [Change]s as is desired.
+//! The method by which Parsec's [History] works permits the
+//! replication of the history system of many other editors, such as
+//! Vim/Neovim, which is strictly one [Change] per [Moment], or
+//! Kakoune, where [Moment]s may contain as many [Change]s as is
+//! desired.
 //!
 //! [Cursor]: crate::cursor::Cursor
 use std::{
@@ -20,7 +24,8 @@ use std::{
 
 use crate::text::{inner_text::InnerText, PrintInfo};
 
-/// A change in a file, empty vectors indicate a pure insertion or deletion.
+/// A change in a file, empty vectors indicate a pure insertion or
+/// deletion.
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The starting `ch_index` of the [`Change`]
@@ -56,7 +61,8 @@ impl Change {
         }
     }
 
-    /// In this function, it is assumed that [`self`] happened _after_ [`older`][Change].
+    /// In this function, it is assumed that [`self`] happened _after_
+    /// [`older`][Change].
     fn try_merge(&mut self, mut older: Change) -> Result<(), Change> {
         if precedes(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end()) - older.start;
@@ -103,8 +109,8 @@ impl Change {
         self.start + self.added_text.chars().count()
     }
 
-    /// An ordering function that returns [Ordering::Equal] if [cmp][Change] has its end within
-    /// [self]'s `added_range`.
+    /// An ordering function that returns [Ordering::Equal] if
+    /// [cmp][Change] has its end within [self]'s `added_range`.
     fn contains_ord(&self, cmp: &Change) -> Ordering {
         if self.added_range().contains(&cmp.taken_end()) {
             Ordering::Equal
@@ -120,43 +126,43 @@ fn precedes(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.contains(&rhs.start) || lhs.end == rhs.start
 }
 
-/// A moment in history, which may contain changes, or may just contain selections.
+/// A moment in history, which may contain changes, or may just
+/// contain selections.
 ///
-/// It also contains information about how to print the file, so that going back in time is less
-/// jaring.
+/// It also contains information about how to print the file, so that
+/// going back in time is less jaring.
 #[derive(Default, Debug)]
 pub struct Moment {
     /// Where the file was printed at the time this moment started.
     pub(crate) starting_print_info: PrintInfo,
     /// Where the file was printed at the time this moment ended.
     pub(crate) ending_print_info: PrintInfo,
-    /// A list of actions, which may be changes, or simply selections of text.
+    /// A list of actions, which may be changes, or simply selections
+    /// of text.
     pub(crate) changes: Vec<Change>,
 }
 
 impl Moment {
-    /// First try to merge this change with as many changes as possible, then add it in.
+    /// First try to merge this change with as many changes as
+    /// possible, then add it in.
     ///
     /// # Returns
     ///
     /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during its insertion.
+    /// - The number of changes that were added or subtracted during
+    ///   its insertion.
     fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let initial_len = self.changes.len();
         let chars_diff = change.added_end() as isize - change.taken_end() as isize;
 
-        let last_index = if let Some(index) = assoc_index.filter(|index| {
-            self.changes
-                .get(*index)
-                .is_some_and(|cmp| intersects(cmp, &change))
-        }) {
+        let last_index = if let Some(index) = assoc_index
+            .filter(|index| self.changes.get(*index).is_some_and(|cmp| intersects(cmp, &change)))
+        {
             index
         } else {
             self.find_last_merger(&change)
         };
-        let first_index = self
-            .find_first_merger(&change, last_index)
-            .unwrap_or(last_index);
+        let first_index = self.find_first_merger(&change, last_index).unwrap_or(last_index);
 
         if let Some(prev_change) = self.changes.get_mut(last_index) {
             let taken_change = std::mem::take(prev_change);
@@ -176,22 +182,17 @@ impl Moment {
             self.changes.insert(last_index, change);
         };
 
-        let prior_changes = self
-            .changes
-            .drain(first_index..last_index)
-            .collect::<Vec<Change>>();
+        let prior_changes = self.changes.drain(first_index..last_index).collect::<Vec<Change>>();
         let added_change = self.changes.get_mut(last_index).unwrap();
         for prior_change in prior_changes {
             let _ = added_change.try_merge(prior_change);
         }
 
-        (
-            first_index,
-            initial_len as isize - self.changes.len() as isize,
-        )
+        (first_index, initial_len as isize - self.changes.len() as isize)
     }
 
-    /// Searches for the first [Change] that can be merged with the one inserted on [last_index].
+    /// Searches for the first [Change] that can be merged with the
+    /// one inserted on [last_index].
     fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
@@ -206,12 +207,10 @@ impl Moment {
         first_index
     }
 
-    /// Finds a [Change] inside of a [Vec<Change>] that intersects another at its end.
+    /// Finds a [Change] inside of a [Vec<Change>] that intersects
+    /// another at its end.
     fn find_last_merger(&self, change: &Change) -> usize {
-        match self
-            .changes
-            .binary_search_by(|cmp| cmp.contains_ord(change))
-        {
+        match self.changes.binary_search_by(|cmp| cmp.contains_ord(change)) {
             Ok(index) => index,
             Err(index) => index,
         }
@@ -235,7 +234,8 @@ impl History {
         }
     }
 
-    /// Gets a mutable reference to the current [Moment], if not at the very beginning.
+    /// Gets a mutable reference to the current [Moment], if not at
+    /// the very beginning.
     fn current_moment_mut(&mut self) -> Option<&mut Moment> {
         if self.current_moment > 0 {
             self.moments.get_mut(self.current_moment - 1)
@@ -244,7 +244,8 @@ impl History {
         }
     }
 
-    /// Gets a reference to the current [Moment], if not at the very beginning.
+    /// Gets a reference to the current [Moment], if not at the very
+    /// beginning.
     pub fn current_moment(&self) -> Option<&Moment> {
         if self.current_moment > 0 {
             self.moments.get(self.current_moment - 1)
@@ -253,19 +254,22 @@ impl History {
         }
     }
 
-    /// Adds a [Change] to the current [Moment], or adds it to a new one, if no [Moment] exists.
+    /// Adds a [Change] to the current [Moment], or adds it to a new
+    /// one, if no [Moment] exists.
     ///
     /// # Returns
     ///
     /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during its insertion.
+    /// - The number of changes that were added or subtracted during
+    ///   its insertion.
     pub fn add_change(
         &mut self,
         change: Change,
         assoc_index: Option<usize>,
         print_info: PrintInfo,
     ) -> (usize, isize) {
-        // Cut off any actions that take place after the current one. We don't really want trees.
+        // Cut off any actions that take place after the current one. We don't
+        // really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
         if let Some(moment) = self.current_moment_mut() {
@@ -273,23 +277,17 @@ impl History {
             moment.add_change(change, assoc_index)
         } else {
             self.new_moment(print_info);
-            self.moments
-                .last_mut()
-                .unwrap()
-                .changes
-                .push(change.clone());
+            self.moments.last_mut().unwrap().changes.push(change.clone());
 
             (0, 1)
         }
     }
 
-    /// Declares that the current [Moment] is complete and starts a new one.
+    /// Declares that the current [Moment] is complete and starts a
+    /// new one.
     pub fn new_moment(&mut self, print_info: PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
-        if self
-            .current_moment_mut()
-            .map_or(true, |m| !m.changes.is_empty())
-        {
+        if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }
@@ -304,7 +302,8 @@ impl History {
 
     /// Moves backwards in the [History], returning the last [Moment].
     ///
-    /// If The [History] is already at the end, returns [None] instead.
+    /// If The [History] is already at the end, returns [None]
+    /// instead.
     pub fn move_forward(&mut self) -> Option<&Moment> {
         if self.current_moment == self.moments.len() {
             return None;
@@ -320,7 +319,8 @@ impl History {
 
     /// Moves backwards in the [History], returning the last [Moment].
     ///
-    /// If The [History] is already at the start, returns [None] instead.
+    /// If The [History] is already at the start, returns [None]
+    /// instead.
     pub fn move_backwards(&mut self) -> Option<&Moment> {
         if self.current_moment == 0 {
             None

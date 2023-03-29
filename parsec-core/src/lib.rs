@@ -1,4 +1,4 @@
-#![feature(is_some_and)]
+#![feature(is_some_and, drain_filter)]
 
 pub mod config;
 pub mod history;
@@ -121,8 +121,7 @@ where
         loop {
             for (widget, end_node) in self.active_window().widgets() {
                 let mut end_node = end_node.write();
-                widget.update(&mut end_node);
-                widget.print(&mut end_node);
+                widget.update_and_print(&mut end_node);
             }
 
             self.session_loop(key_remapper);
@@ -142,7 +141,7 @@ where
         I: InputScheme,
     {
         thread::scope(|s_0| loop {
-            self.active_window().print_if_layout_changed();
+            //self.active_window().print_if_layout_changed();
 
             let mut session_manager = self.session_manager.write();
             if session_manager.break_loop {
@@ -154,8 +153,7 @@ where
                 if widget.needs_update() {
                     s_0.spawn(|| {
                         let mut end_node = end_node.write();
-                        widget.update(&mut end_node);
-                        widget.print(&mut end_node);
+                        widget.update_and_print(&mut end_node);
                     });
                 }
             }
@@ -339,14 +337,14 @@ fn send_event<U, I>(
             return;
         };
 
-        let end_node = end_node.read();
+        let mut end_node = end_node.write();
         let mut widget = widget.write();
 
         let controls = Controls {
             session_manager: &mut *session_manager,
             window,
         };
-        blink_cursors_and_send_key(&mut *widget, &end_node, controls, key_event, key_remapper);
+        blink_cursors_and_send_key(&mut *widget, &mut end_node, controls, key_event, key_remapper);
 
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
@@ -358,7 +356,7 @@ fn send_event<U, I>(
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, A, I>(
     widget: &mut A,
-    end_node: &EndNode<U>,
+    end_node: &mut EndNode<U>,
     controls: Controls<U>,
     key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>,
@@ -374,6 +372,10 @@ fn blink_cursors_and_send_key<U, A, I>(
 
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
+    drop((text, cursors, main_index));
+
+	widget.update(end_node);
+    widget.text().print(end_node, widget.print_info());
 }
 
 //////////// Useful for testing.

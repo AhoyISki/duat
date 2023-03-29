@@ -34,37 +34,43 @@ impl Pos {
         }
     }
 
-    /// Returns the byte (relative to the beginning of the file), indexed at 1. Intended only
-    /// for displaying by the end user. For a 0 indexed byte, see [true_byte()][Pos::true_byte].
+    /// Returns the byte (relative to the beginning of the file),
+    /// indexed at 1. Intended only for displaying by the end
+    /// user. For a 0 indexed byte, see [true_byte()][Pos::true_byte].
     pub fn byte(&self) -> usize {
         self.byte + 1
     }
 
-    /// Returns the char index (relative to the beginning of the file). Indexed at 1. Intended only
-    /// for displaying by the end user. For a 0 indexed char index, see
+    /// Returns the char index (relative to the beginning of the
+    /// file). Indexed at 1. Intended only for displaying by the
+    /// end user. For a 0 indexed char index, see
     /// [true_char()](Self::true_char()).
     pub fn char(&self) -> usize {
         self.ch + 1
     }
 
-    /// Returns the column, indexed at 1. Intended only for displaying by the end user. For
-    /// a 0 indexed column, see [true_col()](Self::true_col()).
+    /// Returns the column, indexed at 1. Intended only for displaying
+    /// by the end user. For a 0 indexed column, see
+    /// [true_col()](Self::true_col()).
     pub fn col(&self) -> usize {
         self.col + 1
     }
 
-    /// Returns the row of self. Indexed at 1. Intended only for displaying by the end user. For
-    /// a 0 indexed row, see [true_row()](Self::true_row()).
+    /// Returns the row of self. Indexed at 1. Intended only for
+    /// displaying by the end user. For a 0 indexed row, see
+    /// [true_row()](Self::true_row()).
     pub fn row(&self) -> usize {
         self.row + 1
     }
 
-    /// Returns the byte (relative to the beginning of the file) of self. Indexed at 0.
+    /// Returns the byte (relative to the beginning of the file) of
+    /// self. Indexed at 0.
     pub fn true_byte(&self) -> usize {
         self.byte
     }
 
-    /// Returns the char index (relative to the beginning of the file). Indexed at 0.
+    /// Returns the char index (relative to the beginning of the
+    /// file). Indexed at 0.
     pub fn true_char(&self) -> usize {
         self.ch
     }
@@ -86,7 +92,8 @@ impl std::fmt::Display for Pos {
     }
 }
 
-/// A cursor in the text file. This is an editing cursor, not a printing cursor.
+/// A cursor in the text file. This is an editing cursor, not a
+/// printing cursor.
 #[derive(Default, Copy)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
@@ -95,14 +102,16 @@ pub struct Cursor {
     /// An anchor for a selection.
     anchor: Option<Pos>,
 
-    /// The index to a `Change` in the current `Moment`, used for greater efficiency.
+    /// The index to a `Change` in the current `Moment`, used for
+    /// greater efficiency.
     pub(crate) assoc_index: Option<usize>,
 
     /// Column that the cursor wants to be in.
     ///
-    /// If the cursor moves to a line that is at least as wide as the desired_col,
-    /// it will be placed in the desired_col. If the line is shorter, it will be
-    /// placed in the last column of the line.
+    /// If the cursor moves to a line that is at least as wide as the
+    /// desired_col, it will be placed in the desired_col. If the
+    /// line is shorter, it will be placed in the last column of
+    /// the line.
     desired_x: usize,
 }
 
@@ -129,17 +138,13 @@ impl Cursor {
     {
         let cur = &mut self.caret;
 
-        cur.row = cur
-            .row
-            .saturating_add_signed(count)
-            .min(inner.len_lines().saturating_sub(1));
+        cur.row = cur.row.saturating_add_signed(count).min(inner.len_lines().saturating_sub(1));
 
         let line = inner.line(cur.row);
 
-        // In vertical movement, the `desired_x` dictates in what column the cursor will be placed.
-        cur.col = end_node
-            .label
-            .col_at_dist(line, self.desired_x, &end_node.config().tab_places);
+        // In vertical movement, the `desired_x` dictates in what column the
+        // cursor will be placed.
+        cur.col = end_node.label.col_at_dist(line, self.desired_x, &end_node.config().tab_places);
 
         cur.ch = inner.line_to_char(cur.row) + cur.col;
         cur.byte = inner.char_to_byte(cur.ch);
@@ -157,14 +162,13 @@ impl Cursor {
         let line_ch = inner.line_to_char(caret.row);
         caret.col = caret.ch - line_ch;
 
-        self.desired_x = end_node.label.get_width(
-            inner.slice(line_ch..caret.ch),
-            &end_node.config().tab_places,
-        );
+        self.desired_x = end_node
+            .label
+            .get_width(inner.slice(line_ch..caret.ch), &end_node.config().tab_places);
     }
 
-    /// Internal absolute movement function. Assumes that the `col` and `row` of th [Pos] are
-    /// correct.
+    /// Internal absolute movement function. Assumes that the `col`
+    /// and `row` of th [Pos] are correct.
     pub(crate) fn move_to<U>(&mut self, pos: Pos, inner: &InnerText, end_node: &EndNode<U>)
     where
         U: Ui,
@@ -211,16 +215,13 @@ impl Cursor {
 
     /// Calibrates a cursor's positions based on some splice.
     pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, inner: &InnerText) {
-        self.assoc_index
-            .as_mut()
-            .map(|i| i.saturating_add_signed(edit_accum.changes));
+        self.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
         self.caret.calibrate(edit_accum.chars, inner);
-        self.anchor
-            .as_mut()
-            .map(|anchor| anchor.calibrate(edit_accum.chars, inner));
+        self.anchor.as_mut().map(|anchor| anchor.calibrate(edit_accum.chars, inner));
     }
 
-    /// Sets the position of the anchor to be the same as the current cursor position in the file.
+    /// Sets the position of the anchor to be the same as the current
+    /// cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
@@ -238,25 +239,29 @@ impl Cursor {
         self.anchor
     }
 
-    /// The byte (relative to the beginning of the file) of the caret. Indexed at 1. Intended only
-    /// for displaying by the end user. For internal use, see `true_byte()`.
+    /// The byte (relative to the beginning of the file) of the caret.
+    /// Indexed at 1. Intended only for displaying by the end
+    /// user. For internal use, see `true_byte()`.
     pub fn byte(&self) -> usize {
         self.caret.byte + 1
     }
 
-    /// The column of the caret. Indexed at 1. Intended only for displaying by the end user. For
-    /// internal use, see `true_col()`.
+    /// The column of the caret. Indexed at 1. Intended only for
+    /// displaying by the end user. For internal use, see
+    /// `true_col()`.
     pub fn col(&self) -> usize {
         self.caret.col + 1
     }
 
-    /// The row of the caret. Indexed at 1. Intended only for displaying by the end user. For
-    /// internal use, see `true_row()`.
+    /// The row of the caret. Indexed at 1. Intended only for
+    /// displaying by the end user. For internal use, see
+    /// `true_row()`.
     pub fn row(&self) -> usize {
         self.caret.row + 1
     }
 
-    /// The byte (relative to the beginning of the file) of the caret. Indexed at 0.
+    /// The byte (relative to the beginning of the file) of the caret.
+    /// Indexed at 0.
     pub fn true_byte(&self) -> usize {
         self.caret.byte
     }
@@ -295,11 +300,7 @@ impl Cursor {
 
 impl Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{}:{}",
-            self.caret.row + 1,
-            self.caret.col + 1
-        ))
+        f.write_fmt(format_args!("{}:{}", self.caret.row + 1, self.caret.col + 1))
     }
 }
 
@@ -313,7 +314,8 @@ impl Clone for Cursor {
     }
 }
 
-/// A cursor that can edit text in its selection, but can't move the selection in any way.
+/// A cursor that can edit text in its selection, but can't move the
+/// selection in any way.
 pub struct Editor<'a, U>
 where
     U: Ui,
@@ -350,7 +352,8 @@ where
         }
     }
 
-    /// Replaces the entire selection of the `TextCursor` with new text.
+    /// Replaces the entire selection of the `TextCursor` with new
+    /// text.
     pub fn replace(&mut self, edit: impl ToString) {
         let change = Change::new(edit.to_string(), self.cursor.range(), self.text.inner());
         let (start, end) = (change.start, change.added_end());
@@ -400,7 +403,8 @@ where
     }
 }
 
-/// A cursor that can move and alter the selection, but can't edit the file.
+/// A cursor that can move and alter the selection, but can't edit the
+/// file.
 pub struct Mover<'a, U>
 where
     U: Ui,
@@ -425,21 +429,22 @@ where
 
     ////////// Public movement functions
 
-    /// Moves the cursor vertically on the file. May also cause vertical movement.
+    /// Moves the cursor vertically on the file. May also cause
+    /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor
-            .move_ver(count, self.text.inner(), self.end_node);
+        self.cursor.move_ver(count, self.text.inner(), self.end_node);
     }
 
-    /// Moves the cursor horizontally on the file. May also cause vertical movement.
+    /// Moves the cursor horizontally on the file. May also cause
+    /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor
-            .move_hor(count, self.text.inner(), self.end_node);
+        self.cursor.move_hor(count, self.text.inner(), self.end_node);
     }
 
     /// Moves the cursor to a position in the file.
     ///
-    /// - If the position isn't valid, it will move to the "maximum" position allowed.
+    /// - If the position isn't valid, it will move to the "maximum"
+    ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
         self.cursor.move_to(caret, self.text.inner(), self.end_node);
@@ -460,7 +465,8 @@ where
         self.cursor.anchor.take()
     }
 
-    /// Sets the position of the anchor to be the same as the current cursor position in the file.
+    /// Sets the position of the anchor to be the same as the current
+    /// cursor position in the file.
     ///
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {

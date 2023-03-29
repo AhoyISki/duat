@@ -5,7 +5,7 @@ use std::{
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc},
+    sync::Arc,
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -13,7 +13,7 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData},
+    config::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
@@ -52,8 +52,20 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let text = Text::new_rope(file_contents);
+        let mut text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
+
+		// let mut pushes_pops_you_cant_explain_that = true;
+		// let lock = text.tags.get_lock();
+        // for index in (0..text.len_chars()).step_by(20) {
+        //     if pushes_pops_you_cant_explain_that {
+        //         text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
+        //     } else {
+        //         text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
+        //     }
+        //     pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
+        //     
+        // }
 
         Widget::actionable(
             Arc::new(RwLock::new(FileWidget {
@@ -309,4 +321,4 @@ where
     }
 }
 
-unsafe impl<M> Send for FileWidget<M> where M: Ui {}
+//unsafe impl<M> Send for FileWidget<M> where M: Ui {}

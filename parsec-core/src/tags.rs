@@ -1,10 +1,11 @@
-    pub mod form;
+pub mod form;
+mod inner;
 
 use std::ops::Range;
 
 use any_rope::{Measurable, Rope as AnyRope};
 
-use self::form::FormFormer;
+use self::{form::FormFormer, inner::InnerTags};
 use crate::{
     text::inner_text::InnerText,
     ui::{Area, Label},
@@ -77,7 +78,7 @@ impl Tag {
 }
 
 #[derive(Clone, Copy)]
-enum TagOrSkip {
+pub enum TagOrSkip {
     Tag(Tag, Lock),
     Skip(u32),
 }
@@ -92,6 +93,7 @@ impl std::fmt::Debug for TagOrSkip {
 }
 
 impl Measurable for TagOrSkip {
+    #[inline]
     fn width(&self) -> usize {
         match self {
             TagOrSkip::Tag(..) => 0,
@@ -101,59 +103,74 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
-#[derive(Default)]
 pub struct Tags {
-    rope: AnyRope<TagOrSkip>,
-    last_lock: u16,
+    inner: InnerTags,
+    pub next_lock: u16,
 }
 
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tags")
-            .field("rope", &format_args!("{}", self.rope))
-            .field("last_lock", &format_args!("{}", self.last_lock))
+            .field("inner", &self.inner)
+            .field("last_lock", &format_args!("{}", self.next_lock))
             .finish()
     }
 }
 
 impl Tags {
-    pub fn new(inner: &InnerText) -> Self {
-        // An empty initial rope.
-        let skip = TagOrSkip::Skip(inner.len_chars() as u32);
-
+    pub fn default_vec() -> Self {
         Tags {
-            rope: AnyRope::from_slice(&[skip]),
-            last_lock: 0,
+            inner: InnerTags::Vec(Vec::new()),
+            next_lock: 0,
+        }
+    }
+
+    pub fn default_rope() -> Self {
+        Tags {
+            inner: InnerTags::Rope(AnyRope::new()),
+            next_lock: 0,
+        }
+    }
+
+    pub fn new(inner_text: &InnerText) -> Self {
+        Tags {
+            inner: InnerTags::new(inner_text),
+            next_lock: 0,
         }
     }
 
     /// Gets a unique [`Lock`], for the purpose of "private" [`Tag`]
     /// insertion and removal.
     pub fn get_lock(&mut self) -> Lock {
-        self.last_lock += 1;
-        Lock(self.last_lock)
+        self.next_lock += 1;
+        Lock(self.next_lock)
     }
 
     pub fn insert(&mut self, ch_index: usize, tag: Tag, lock: Lock) {
-        assert!(ch_index <= self.rope.width(), "Char index {} too large, {:#?}", ch_index, self.rope);
-        let Some((s_index, TagOrSkip::Skip(skip))) = self.rope.get_from_width(ch_index) else {
-            self.rope.insert(ch_index, TagOrSkip::Tag(tag, lock));
+        assert!(
+            ch_index <= self.inner.width(),
+            "Char index {} too large, {:#?}",
+            ch_index,
+            self.inner
+        );
+        let Some((start, TagOrSkip::Skip(skip))) = self.inner.get_from_ch_index(ch_index) else {
+            self.inner.insert(ch_index, TagOrSkip::Tag(tag, lock));
             return;
         };
 
         // If inserting at any of the ends, no splitting is necessary.
-        if ch_index == s_index || ch_index == (s_index + skip as usize) {
-            self.rope.insert(ch_index, TagOrSkip::Tag(tag, lock))
+        if ch_index == start || ch_index == (start + skip as usize) {
+            self.inner.insert(ch_index, TagOrSkip::Tag(tag, lock))
         } else {
-            let skip_range = s_index..(s_index + skip as usize);
-            self.rope.remove_exclusive(skip_range);
             let insertion = [
-                TagOrSkip::Skip((ch_index - s_index) as u32),
+                TagOrSkip::Skip((ch_index - start) as u32),
                 TagOrSkip::Tag(tag, lock),
-                TagOrSkip::Skip(s_index as u32 + skip - ch_index as u32),
+                TagOrSkip::Skip(start as u32 + skip - ch_index as u32),
             ];
+            self.inner.insert_slice(start, &insertion);
 
-            self.rope.insert_slice(s_index, &insertion);
+            let skip_range = (start + skip as usize)..(start + 2 * skip as usize);
+            self.inner.remove_exclusive(skip_range);
         }
 
         self.merge_surrounding_skips(ch_index);
@@ -161,46 +178,27 @@ impl Tags {
 
     /// Removes all [Tag]s associated with a given [Lock] in the
     /// `ch_index`.
-    pub fn remove(&mut self, ch_index: usize, lock: Lock) {
-        let slice = self.rope.width_slice(ch_index..ch_index);
-        let tags = slice.iter();
-        let tags = tags
-            .filter_map(|(_, tag_or_skip)| {
-                if let TagOrSkip::Tag(tag, cmp_lock) = tag_or_skip {
-                    // Take all tags with the wrong `Lock`.
-                    // Those will be kept.
-                    if cmp_lock != lock {
-                        Some(TagOrSkip::Tag(tag, cmp_lock))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<TagOrSkip>>();
-
-        self.rope.remove_inclusive(ch_index..ch_index);
-        self.rope.insert_slice(ch_index, tags.as_slice());
+    pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
+        self.inner.remove_on(ch_index, lock);
     }
 
     pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {
-        let Some((start_width, tag)) = self.rope.get_from_width(old.start) else {
+        let Some((start_width, tag_or_skip)) = self.inner.get_from_ch_index(old.start) else {
             return;
         };
 
         let removal_start = start_width.min(old.start);
-        let removal_end = old.end.max(start_width + tag.width());
+        let removal_end = old.end.max(start_width + tag_or_skip.width());
 
         let range_diff = new.count() as isize - old.count() as isize;
         let skip = (removal_end - removal_start).saturating_add_signed(range_diff) as u32;
 
-        self.rope.remove_exclusive(removal_start..removal_end);
-        self.rope.insert(start_width, TagOrSkip::Skip(skip));
+        self.inner.remove_exclusive(removal_start..removal_end);
+        self.inner.insert(start_width, TagOrSkip::Skip(skip));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        self.rope.iter().filter_map(|(width, tag_or_skip)| {
+        self.inner.iter().filter_map(|(width, tag_or_skip)| {
             if let TagOrSkip::Tag(tag, _) = tag_or_skip {
                 Some((width, tag))
             } else {
@@ -210,7 +208,7 @@ impl Tags {
     }
 
     pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        self.rope.iter_at_width(ch_index).filter_map(|(width, tag_or_skip)| {
+        self.inner.iter_at(ch_index).filter_map(|(width, tag_or_skip)| {
             if let TagOrSkip::Tag(tag, _) = tag_or_skip {
                 Some((width, tag))
             } else {
@@ -226,27 +224,28 @@ impl Tags {
     /// [`Rope`]'s structure.
     fn merge_surrounding_skips(&mut self, from: usize) {
         let mut next_tags = self
-            .rope
-            .iter_at_width(from)
+            .inner
+            .iter_at(from)
             .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
 
         let mut total_skip = 0;
         let mut last_width = from;
-        let mut last_skip = 0;
         while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
             total_skip += skip;
-            last_skip = skip as usize;
             last_width = width;
         }
+        drop(next_tags);
         if last_width != from {
-            self.rope.remove_exclusive(from..(last_width + last_skip));
-            self.rope.insert(from, TagOrSkip::Skip(total_skip));
+            // The removal happens after the insertion in order to prevent "`Tag`
+            // clustering".
+            self.inner.insert(from, TagOrSkip::Skip(total_skip));
+            let skip_range = (from + total_skip as usize)..(from + 2 * total_skip as usize);
+            self.inner.remove_exclusive(skip_range);
         }
 
         let mut prev_tags = self
-            .rope
-            .iter_at_width(from)
-            .reversed()
+            .inner
+            .iter_at_rev(from)
             .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
 
         let mut total_skip = 0;
@@ -255,19 +254,33 @@ impl Tags {
             total_skip += skip;
             first_width = width;
         }
+        drop(prev_tags);
         if first_width != from {
-            self.rope.insert(first_width, TagOrSkip::Skip(total_skip));
+            self.inner.insert(first_width, TagOrSkip::Skip(total_skip));
             let range = (first_width + total_skip as usize)..(from + total_skip as usize);
-            self.rope.remove_exclusive(range);
+            self.inner.remove_exclusive(range);
         }
     }
 
+    pub fn clear(&mut self) {
+        self.inner.clear()
+    }
+
     pub fn len(&self) -> usize {
-        self.rope.len()
+        self.inner.len()
     }
 
     pub fn width(&self) -> usize {
-        self.rope.width()
+        self.inner.width()
+    }
+
+    pub fn vec(&mut self) -> &mut Vec<TagOrSkip> {
+        match &mut self.inner {
+            InnerTags::Vec(vec) => vec,
+            InnerTags::Rope(_) => {
+                panic!("Use of vec() in a place where `InnerTags` is not guaranteed to be `Vec`.")
+            }
+        }
     }
 }
 
