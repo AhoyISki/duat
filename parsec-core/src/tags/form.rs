@@ -128,9 +128,9 @@ impl Default for FormPalette {
             (String::from("WrappedMainLineNumber"), Form::default()),
             (String::from("MainSelection"), selection_form),
             (String::from("ExtraSelection"), selection_form),
-            (String::from("FileName"), Form::new(false).yellow().italic()),
+            (String::from("FileName"), Form::new(false).dark_yellow().italic()),
             (String::from("Selections"), Form::new(false).dark_blue()),
-            (String::from("Coords"), Form::new(false).dark_yellow()),
+            (String::from("Coords"), Form::new(false).yellow()),
             (String::from("Separator"), Form::new(false).cyan()),
         ];
 

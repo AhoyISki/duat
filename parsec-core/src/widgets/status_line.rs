@@ -14,7 +14,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{EndNode, PushSpecs, Ui},
-    SessionManager,
+    updaters, SessionManager,
 };
 
 pub enum Reader<U>
@@ -116,7 +116,7 @@ where
     U: Ui,
 {
     pub fn clippable_fn(
-        mut file_widget: RoData<FileWidget<U>>,
+        file_widget: RoData<FileWidget<U>>,
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -134,7 +134,7 @@ where
     }
 
     pub fn unclippable_fn(
-        mut file_widget: RoData<FileWidget<U>>,
+        file_widget: RoData<FileWidget<U>>,
         status_parts: Vec<StatusPart<U>>,
         palette: &FormPalette,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -158,6 +158,7 @@ where
         clippable: bool,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
+            let updaters = updaters![(file_widget.clone())];
             Widget::normal(
                 Arc::new(RwLock::new(StatusLine {
                     file_widget,
@@ -165,13 +166,13 @@ where
                     readers,
                     clippable,
                 })),
-                Vec::new(),
+                updaters,
             )
         })
     }
 
     pub fn default_fn(
-        mut file_widget: RoData<FileWidget<U>>,
+        file_widget: RoData<FileWidget<U>>,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let name = Reader::File(file_name());
         let sels = Reader::File(file_selections());
@@ -184,8 +185,10 @@ where
 
         text_builder.push_tag(Tag::PushForm(FILE_NAME));
         text_builder.push_swappable(name.read(&file));
+        text_builder.push_text(" ");
         text_builder.push_tag(Tag::PushForm(SELECTIONS));
         text_builder.push_swappable(sels.read(&file));
+        text_builder.push_text(" ");
         text_builder.push_tag(Tag::PushForm(COORDS));
         text_builder.push_swappable(col.read(&file));
         text_builder.push_tag(Tag::PushForm(SEPARATOR));

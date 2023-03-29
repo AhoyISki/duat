@@ -30,19 +30,18 @@ use parsec_core::{
         command_line::CommandLine,
         file_widget::FileWidget,
         line_numbers::{LineNumbers, LineNumbersCfg, Numbering},
+        status_line::StatusLine,
     },
     Session,
 };
 use parsec_kak::Editor;
-use parsec_term::{Ui, VertRule, VertRuleCfg, SepChar};
+use parsec_term::{SepChar, Ui, VertRule, VertRuleCfg};
 
 fn main() {
     // `FormPalette` is a struct with all of your `Form`s and
     // `CursorStyle`s in it.
     let mut palette = FormPalette::default();
     palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
-    palette.set_form("FileName", Form::new(false).red());
-    palette.set_form("MainLineNumber", Form::new(false).dark_magenta().on_white());
     // A `CursorStyle` is a style unique to cursors. It contains a shape
     // (bar, block, or underscore), and a `Form` to be used when
     // printing the shape is not allowed (e.g. on a terminal, that
@@ -87,7 +86,10 @@ fn main() {
                 alignment: Alignment::Right,
                 numbering: Numbering::Absolute,
             };
-            mod_node.push_widget(LineNumbers::config_fn(file, cfg), push_specs);
+            mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
+
+            let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
+            mod_node.push_widget(StatusLine::default_fn(file), push_specs);
         }),
     );
 

@@ -26,6 +26,7 @@ use parsec_core::{
     text::PrintStatus,
     ui::PushSpecs,
     updaters, SessionManager,
+    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -331,7 +332,7 @@ impl Area {
         let (old_len, new_len) = if let Axis::Horizontal = axis {
             (self.resizable_width(), self.width())
         } else {
-            (self.resizable_width(), self.height())
+            (self.resizable_height(), self.height())
         };
 
         let self_inner = self.inner.read();
@@ -342,6 +343,7 @@ impl Area {
         for child in children.iter_mut() {
             let mut inner = child.inner.write();
             let coords = &mut inner.coords;
+            log_info!("\nbefore: {}", coords);
 
             let prev_last_tl = last_tl;
             (coords.br, last_tl) = if let Axis::Horizontal = axis {
@@ -354,6 +356,9 @@ impl Area {
                 (Coord { x: coords.br.x, y }, Coord { x: last_tl.x, y })
             };
             coords.tl = prev_last_tl;
+
+			drop(inner);
+            child.regulate_children();
         }
 
         children
@@ -585,10 +590,9 @@ impl ui::Label<Area> for Label {
 
         unsafe {
             while IS_PRINTING
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
+                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Acquire)
                 .is_err()
             {
-                std::thread::sleep(std::time::Duration::from_micros(500))
             }
         }
 

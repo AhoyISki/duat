@@ -11,7 +11,7 @@ use crate::{
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
-    Session,
+    Session, updaters,
 };
 
 /// The sole purpose of this module is to prevent any external
@@ -196,7 +196,7 @@ where
             config: CommandLineConfig::default(),
         };
 
-        Widget::actionable(Arc::new(RwLock::new(command_line)), Vec::new())
+        Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
     }
 }
 
