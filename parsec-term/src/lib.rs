@@ -485,7 +485,7 @@ impl ui::Area for Area {
     }
 
     fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()> {
-        let side_axis = Axis::from(side);
+        let req_axis = Axis::from(side);
         // If the current len is already equal to the requested len,
         // nothing needs to be done.
         if self.len(Axis::from(side)) == len {
@@ -504,10 +504,10 @@ impl ui::Area for Area {
             } => {
                 let axis = parent.lineage.read().as_ref().map(|(_, axis)| *axis).unwrap();
 
-                if side_axis != axis {
+                if req_axis != axis {
                     parent.request_len(len, side)
-                } else if parent.resizable_len(side_axis) < len {
-                    let new_parent_width = parent.len(side_axis) + len - coords.len(side_axis);
+                } else if parent.resizable_len(req_axis) < len {
+                    let new_parent_width = parent.len(req_axis) + len - coords.len(req_axis);
                     parent.request_len(new_parent_width, side)
                 } else {
                     parent.set_child_len(len, *self_index, side)
@@ -518,7 +518,7 @@ impl ui::Area for Area {
             Owner::BlAnchor => todo!(),
             Owner::BrAnchor => todo!(),
             Owner::None => {
-                if len == self.resizable_len(side_axis) {
+                if len == self.resizable_len(req_axis) {
                     Ok(())
                 } else {
                     Err(())
