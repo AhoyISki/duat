@@ -86,7 +86,7 @@ fn main() {
             let (num_node, _) =
                 mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new(Side::Right, Split::Min(1), true);
+            let push_specs = PushSpecs::new(Side::Right, Split::Locked(1), true);
             let cfg = VertRuleCfg {
                 sep_char: SepChar::TwoWay('▋', '┃'),
                 sep_form: SepForm::Uniform(id),
@@ -97,8 +97,8 @@ fn main() {
                 push_specs,
             );
 
-            //let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
-            //mod_node.push_widget(StatusLine::default_fn(file), push_specs);
+            let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
+            mod_node.push_widget(StatusLine::default_fn(file), push_specs);
         }),
     );
 
