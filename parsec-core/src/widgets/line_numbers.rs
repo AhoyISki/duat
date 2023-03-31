@@ -123,11 +123,11 @@ where
 
     fn update(&mut self, end_node: &mut EndNode<U>) {
         let width = self.calculate_width();
-        end_node
-            .label
-            .area_mut()
-            .request_len(width.max(self.min_width), Side::Right)
-            .unwrap();
+        //end_node
+        //    .label
+        //    .area_mut()
+        //    .request_len(width.max(self.min_width), Side::Right)
+        //    .unwrap();
 
         self.update_text(width);
     }

@@ -3,7 +3,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope};
 use smallvec::SmallVec;
 
-use crate::text::inner_text::InnerText;
+use crate::text::inner::InnerText;
 
 use super::{Lock, TagOrSkip};
 

@@ -35,13 +35,14 @@ use parsec_core::{
     Session,
 };
 use parsec_kak::Editor;
-use parsec_term::{SepChar, Ui, VertRule, VertRuleCfg};
+use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};
 
 fn main() {
     // `FormPalette` is a struct with all of your `Form`s and
     // `CursorStyle`s in it.
     let mut palette = FormPalette::default();
     palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
+    palette.set_form("MainLineNumber", Form::new(true).dark_magenta().on_dark_grey());
     // A `CursorStyle` is a style unique to cursors. It contains a shape
     // (bar, block, or underscore), and a `Form` to be used when
     // printing the shape is not allowed (e.g. on a terminal, that
@@ -53,6 +54,8 @@ fn main() {
     // `add_form()` will panic if there is already a `Form` with that
     // name.
     palette.add_form("Mode", Form::new(false).dark_green());
+    palette.add_form("VertRule", Form::new(false).dark_grey());
+    let (_, id) = palette.get_from_name("VertRule").unwrap();
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.
@@ -74,22 +77,28 @@ fn main() {
     let mut session = Session::new(
         Ui::default(),
         config,
-        Box::new(|mut mod_node, file| {
-            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
-            let cfg = VertRuleCfg {
-                sep_char: SepChar::TwoWay('▋', '┃'),
-                ..Default::default()
-            };
-            mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
-
+        Box::new(move |mut mod_node, file| {
+            let push_specs = PushSpecs::new(Side::Left, Split::Min(6), true);
             let cfg = LineNumbersCfg {
                 alignment: Alignment::Right,
                 numbering: Numbering::Absolute,
             };
-            mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
+            let (num_node, _) =
+                mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
-            mod_node.push_widget(StatusLine::default_fn(file), push_specs);
+            let push_specs = PushSpecs::new(Side::Right, Split::Min(1), true);
+            let cfg = VertRuleCfg {
+                sep_char: SepChar::TwoWay('▋', '┃'),
+                sep_form: SepForm::Uniform(id),
+            };
+            mod_node.push_widget_to_node(
+                VertRule::config_fn(file.clone(), cfg),
+                num_node,
+                push_specs,
+            );
+
+            //let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
+            //mod_node.push_widget(StatusLine::default_fn(file), push_specs);
         }),
     );
 

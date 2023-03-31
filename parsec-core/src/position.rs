@@ -2,7 +2,7 @@ use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
     history::{Change, History},
-    text::{inner_text::InnerText, PrintInfo, Text},
+    text::{inner::InnerText, PrintInfo, Text},
     ui::{EndNode, Label, Ui},
     widgets::EditAccum,
 };

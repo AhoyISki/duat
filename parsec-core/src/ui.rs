@@ -304,23 +304,20 @@ where
 {
     pub fn push_widget(
         &mut self,
-        constructor: Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>>,
+        constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
         push_specs: PushSpecs,
     ) -> (NodeIndex, Option<NodeIndex>) {
         let widget = (constructor)(self.session_manager, push_specs);
         self.window.push_widget(self.node_index, widget, push_specs)
     }
 
-    pub fn push_widget_to_node<C>(
+    pub fn push_widget_to_node(
         &mut self,
-        constructor: C,
+        constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
         node_index: NodeIndex,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>)
-    where
-        C: Fn(&SessionManager) -> Widget<U>,
-    {
-        let widget = (constructor)(self.session_manager);
+    ) -> (NodeIndex, Option<NodeIndex>) {
+        let widget = (constructor)(self.session_manager, push_specs);
         self.window.push_widget(node_index, widget, push_specs)
     }
 }

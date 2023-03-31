@@ -22,7 +22,7 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use crate::text::{inner_text::InnerText, PrintInfo};
+use crate::text::{inner::InnerText, PrintInfo};
 
 /// A change in a file, empty vectors indicate a pure insertion or
 /// deletion.

@@ -22,11 +22,11 @@ use crossterm::{
 use no_deadlocks::RwLock;
 use parsec_core::{
     config::{Config, DownCastableData},
+    log_info,
     tags::Tag,
     text::PrintStatus,
     ui::PushSpecs,
     updaters, SessionManager,
-    log_info
 };
 use parsec_core::{
     config::{RoData, RwData, TabPlaces, WrapMethod},
@@ -69,6 +69,26 @@ impl Coords {
 
     fn height(&self) -> usize {
         (self.br.y - self.tl.y) as usize
+    }
+
+    fn len(&self, axis: Axis) -> usize {
+        match axis {
+            Axis::Horizontal => self.width(),
+            Axis::Vertical => self.height(),
+        }
+    }
+
+    fn ortho_corner(&self, axis: Axis) -> Coord {
+        match axis {
+            Axis::Horizontal => Coord {
+                x: self.br.x,
+                y: self.tl.y,
+            },
+            Axis::Vertical => Coord {
+                x: self.tl.x,
+                y: self.br.y,
+            },
+        }
     }
 }
 
@@ -282,88 +302,46 @@ impl Area {
     }
 
     fn set_child_len(&mut self, new_len: usize, index: usize, side: Side) -> Result<(), ()> {
+        let axis = Axis::from(side);
         let mut lineage = self.lineage.write();
         let Some((children, ..)) = &mut *lineage else {
             return Err(());
         };
 
         let target = children.get_mut(index).unwrap();
-        let (old_len, mut target_inner) = (target.width(), target.inner.write());
+        let old_len = target.len(axis);
+        let mut target_inner = target.inner.write();
 
-        let mut remaining = old_len.abs_diff(new_len);
-        let (mut last_corner, _) = target_inner.add_or_take(old_len < new_len, remaining, side);
+        let remaining = old_len.abs_diff(new_len);
+        target_inner.add_or_take(old_len < new_len, remaining, side);
+        let target_coords = target_inner.coords;
         drop(target_inner);
         drop(target);
 
-        if let Side::Right | Side::Bottom = side {
-            let mut children = children.iter_mut().skip(index + 1);
+        let len_diff = new_len as i16 - old_len as i16;
 
-            while let (Some(child), true) = (children.next(), remaining > 0) {
-                let mut inner = child.inner.write();
-                inner.set_tl(last_corner);
-                (last_corner, remaining) = inner.add_or_take(old_len > new_len, remaining, side);
-                drop(inner);
-
-                child.regulate_children();
-            }
+        let (children, last_tl) = if let Side::Right | Side::Bottom = side {
+            (&mut children[(index + 1)..], target_coords.ortho_corner(axis))
         } else {
-            let mut children = children.iter_mut().take(index);
+            (&mut children[..index], self.tl())
+        };
 
-            while let (Some(child), true) = (children.next(), remaining > 0) {
-                let mut inner = child.inner.write();
-                inner.set_br(last_corner);
-                (last_corner, remaining) = inner.add_or_take(old_len > new_len, remaining, side);
-                drop(inner);
-
-                child.regulate_children();
-            }
-        }
+        let new_lens = scale_children(children, len_diff, axis);
+        normalize_from_tl(children, new_lens, last_tl, axis);
 
         drop(lineage);
 
         Ok(())
     }
 
-    fn regulate_children(&mut self) {
-        let Some((_, axis)) = *self.lineage.write() else {
+    fn regulate_children(&mut self, len_diff: i16) {
+        let mut lineage = self.lineage.write();
+        let Some((children, axis)) = &mut *lineage else {
             return;
         };
 
-        let (old_len, new_len) = if let Axis::Horizontal = axis {
-            (self.resizable_width(), self.width())
-        } else {
-            (self.resizable_height(), self.height())
-        };
-
-        let self_inner = self.inner.read();
-        let mut last_tl = self_inner.coords.tl;
-
-        let mut lineage = self.lineage.write();
-        let (children, axis) = lineage.as_mut().unwrap();
-        for child in children.iter_mut() {
-            let mut inner = child.inner.write();
-            let coords = &mut inner.coords;
-            log_info!("\nbefore: {}", coords);
-
-            let prev_last_tl = last_tl;
-            (coords.br, last_tl) = if let Axis::Horizontal = axis {
-                let ratio = (coords.width() as f32) / (old_len as f32);
-                let x = last_tl.x + (ratio * (new_len as f32)).ceil() as u16;
-                (Coord { x, y: coords.br.y }, Coord { x, y: last_tl.y })
-            } else {
-                let ratio = (coords.height() as f32) / (old_len as f32);
-                let y = last_tl.y + (ratio * (new_len as f32)).ceil() as u16;
-                (Coord { x: coords.br.x, y }, Coord { x: last_tl.x, y })
-            };
-            coords.tl = prev_last_tl;
-
-			drop(inner);
-            child.regulate_children();
-        }
-
-        children
-            .last_mut()
-            .map(|last| last.inner.write().coords.br = self_inner.coords.br);
+        let new_lens = scale_children(children, len_diff, *axis);
+        normalize_from_tl(children, new_lens, self.tl(), *axis);
     }
 
     fn resizable_len(&self, axis: Axis) -> usize {
@@ -415,6 +393,82 @@ impl Area {
     }
 }
 
+fn stretch_br(coords: Coords, len: u16, axis: Axis) -> Coord {
+    if let Axis::Horizontal = axis {
+        let x = coords.tl.x + len;
+        Coord { x, y: coords.br.y }
+    } else {
+        let y = coords.tl.y + len;
+        Coord { x: coords.br.x, y }
+    }
+}
+
+fn normalize_from_tl(children: &mut [Area], lens: Vec<u16>, tl: Coord, axis: Axis) {
+    let mut last_tl = tl;
+    let mut new_lens = lens.iter();
+
+    for child in children.iter_mut() {
+        let mut inner = child.inner.write();
+        let len = if let Split::Locked(len) = inner.owner.split().unwrap() {
+            len as u16
+        } else {
+            *new_lens.next().unwrap()
+        };
+
+        let old_len = inner.len(axis);
+        inner.coords.tl = last_tl;
+        inner.coords.br = stretch_br(inner.coords, len, axis);
+
+        last_tl = inner.coords.ortho_corner(axis);
+
+        drop(inner);
+        child.regulate_children(len as i16 - old_len as i16);
+    }
+}
+
+fn scale_children(children: &[Area], len_diff: i16, axis: Axis) -> Vec<u16> {
+    let mut lens = children
+        .iter()
+        .filter_map(|child| {
+            if let Split::Min(_) = child.inner.read().owner.split().unwrap() {
+                Some(child.len(axis) as u16)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<u16>>();
+
+    let old_len = lens.iter().sum::<u16>();
+
+    let diff_array = {
+        let abs_diff = len_diff.abs() as usize;
+        let mut vec = Vec::with_capacity(abs_diff);
+        for element in 0..abs_diff {
+            let ratio = element as f32 / abs_diff as f32;
+            vec.push((ratio * old_len as f32).round() as u16);
+        }
+
+        vec
+    };
+
+    let mut accum = 0;
+    let mut last_diff = 0;
+    for len in lens.iter_mut() {
+        let next_accum = accum + *len;
+
+        for diff in &diff_array[last_diff..] {
+            if (accum..(accum + *len)).contains(diff) {
+                *len = len.saturating_add_signed(len_diff.signum());
+                last_diff += 1;
+            }
+        }
+
+        accum = next_accum
+    }
+
+    lens
+}
+
 impl Display for Area {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{},{}", self.inner.read().coords.tl, self.inner.read().coords.br))
@@ -431,6 +485,9 @@ impl ui::Area for Area {
     }
 
     fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()> {
+        let side_axis = Axis::from(side);
+        // If the current len is already equal to the requested len,
+        // nothing needs to be done.
         if self.len(Axis::from(side)) == len {
             return Ok(());
         };
@@ -447,10 +504,10 @@ impl ui::Area for Area {
             } => {
                 let axis = parent.lineage.read().as_ref().map(|(_, axis)| *axis).unwrap();
 
-                if Axis::from(side) != axis {
+                if side_axis != axis {
                     parent.request_len(len, side)
-                } else if parent.resizable_len(Axis::from(side)) < len {
-                    let new_parent_width = parent.width() + len - coords.width();
+                } else if parent.resizable_len(side_axis) < len {
+                    let new_parent_width = parent.len(side_axis) + len - coords.len(side_axis);
                     parent.request_len(new_parent_width, side)
                 } else {
                     parent.set_child_len(len, *self_index, side)
@@ -461,7 +518,7 @@ impl ui::Area for Area {
             Owner::BlAnchor => todo!(),
             Owner::BrAnchor => todo!(),
             Owner::None => {
-                if len == self.resizable_len(Axis::from(side)) {
+                if len == self.resizable_len(side_axis) {
                     Ok(())
                 } else {
                     Err(())
@@ -592,8 +649,7 @@ impl ui::Label<Area> for Label {
             while IS_PRINTING
                 .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Acquire)
                 .is_err()
-            {
-            }
+            {}
         }
 
         self.cursor = self.area.tl();
@@ -780,12 +836,18 @@ impl ui::Ui for Ui {
         push_specs: PushSpecs,
     ) -> (Self::Label, Option<Self::Area>) {
         let PushSpecs { side, split, .. } = push_specs;
-        let (old_coords, resizable_len) = (area.coords(), area.resizable_len(Axis::from(side)));
+        let axis = Axis::from(side);
+        let (old_coords, resizable_len) = (area.coords(), area.resizable_len(axis));
+
         if let Err(_) = area.request_len(max(resizable_len, split.len()), side) {
             panic!("Resize failed:\n    {:?}, {:?}, {:?}", old_coords, side, split)
         }
 
+        let old_len = area.len(axis);
         let split_coords = split_by(area, split, side);
+        log_info!("\nsplit_coords: {:?}", split_coords);
+        let new_len = area.len(axis);
+        area.regulate_children(new_len as i16 - old_len as i16);
         let (split_area, resized_area) =
             restructure_tree(area, old_coords, split_coords, side, split);
 
@@ -847,7 +909,7 @@ impl ui::Ui for Ui {
 }
 
 fn split_by(area: &mut Area, split: Split, side: Side) -> Coords {
-    let (old_tl, old_br) = (area.tl(), area.br());
+    let (tl, br) = (area.tl(), area.br());
     let mut inner = area.inner.write();
     let coords = &mut inner.coords;
 
@@ -855,41 +917,29 @@ fn split_by(area: &mut Area, split: Split, side: Side) -> Coords {
         Side::Left => {
             coords.tl.x += split.len() as u16;
             Coords {
-                tl: old_tl,
-                br: Coord {
-                    x: coords.tl.x,
-                    y: old_br.y,
-                },
+                tl,
+                br: coords.ortho_corner(Axis::Vertical),
             }
         }
         Side::Right => {
             coords.br.x -= split.len() as u16;
             Coords {
-                tl: Coord {
-                    x: coords.br.x,
-                    y: old_tl.y,
-                },
-                br: old_br,
+                tl: coords.ortho_corner(Axis::Horizontal),
+                br,
             }
         }
         Side::Top => {
             coords.tl.y += split.len() as u16;
             Coords {
-                tl: old_tl,
-                br: Coord {
-                    x: old_br.x,
-                    y: coords.tl.y,
-                },
+                tl,
+                br: coords.ortho_corner(Axis::Horizontal),
             }
         }
         Side::Bottom => {
             coords.br.y -= split.len() as u16;
             Coords {
-                tl: Coord {
-                    x: old_tl.x,
-                    y: coords.br.y,
-                },
-                br: old_br,
+                tl: coords.ortho_corner(Axis::Vertical),
+                br,
             }
         }
     }

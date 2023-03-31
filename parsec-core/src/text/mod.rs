@@ -1,4 +1,4 @@
-pub mod inner_text;
+pub mod inner;
 pub mod reader;
 
 use std::{
@@ -8,7 +8,7 @@ use std::{
 
 use ropey::Rope;
 
-use self::{inner_text::InnerText, reader::MutTextReader};
+use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
