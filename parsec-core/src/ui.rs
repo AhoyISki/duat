@@ -390,7 +390,7 @@ impl PushSpecs {
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
-pub trait Ui: Debug + 'static {
+pub trait Ui: 'static {
     type Area: Area + Display + Send + Sync;
     type Label: Label<<Self as Ui>::Area> + Send + Sync;
 

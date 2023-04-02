@@ -11,7 +11,7 @@ use crate::{
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::{EndNode, Ui},
-    Session, updaters,
+    Session,
 };
 
 /// The sole purpose of this module is to prevent any external

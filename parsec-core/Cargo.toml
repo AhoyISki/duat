@@ -22,4 +22,5 @@ ropey = "1.6.0"
 any-rope = { path = "../../any-rope/" }
 
 [features]
+#default = ["deadlock-detection"]
 deadlock-detection = ["dep:no_deadlocks"]

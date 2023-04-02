@@ -4,16 +4,16 @@ pub mod line_numbers;
 pub mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{RwLock, RwLockWriteGuard};
 use std::{
     any::Any,
     cmp::Ordering,
     ops::{Deref, Range},
-    sync::{Arc, RwLock},
+    sync::{Arc},
 };
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::{Mutex, MutexGuard};
+use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
@@ -107,34 +107,6 @@ where
     }
 }
 
-pub struct RoMutexGuard<'a, T>(MutexGuard<'a, T>)
-where
-    T: ?Sized + 'a;
-
-impl<T> Deref for RoMutexGuard<'_, T>
-where
-    T: ?Sized,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub struct RoMutex<T>(Arc<Mutex<T>>)
-where
-    T: ?Sized;
-
-impl<T> From<Arc<Mutex<T>>> for RoMutex<T>
-where
-    T: ?Sized,
-{
-    fn from(value: Arc<Mutex<T>>) -> Self {
-        RoMutex(value.clone())
-    }
-}
-
 enum InnerWidget<U>
 where
     U: Ui + ?Sized,
@@ -210,7 +182,7 @@ where
         }
     }
 
-    pub(crate) fn update_and_print(&self, end_node: &mut std::sync::RwLockWriteGuard<EndNode<U>>) {
+    pub(crate) fn update_and_print(&self, end_node: &mut EndNode<U>) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
                 let mut widget = widget.write();

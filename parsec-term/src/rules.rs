@@ -1,11 +1,14 @@
-use std::{
-    any::Any,
-    sync::{Arc, RwLock},
-};
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::RwLock;
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::RwLock;
+
+use std::{any::Any, sync::Arc};
 
 use parsec_core::{
     config::{DownCastableData, RoData, RwData},
-    tags::{Tag, form::DEFAULT},
+    tags::{form::DEFAULT, Tag},
     text::{Text, TextBuilder},
     ui::{EndNode, PushSpecs, Ui},
     updaters,
