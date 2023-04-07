@@ -13,12 +13,17 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 
-use parsec_core::{config::Config, text::PrintStatus, ui::{PushSpecs, Node}, widgets::Widget};
+use parsec_core::{
+    config::Config,
+    text::PrintStatus,
+    ui::{Node, PushSpecs},
+    widgets::Widget,
+};
 use parsec_core::{
     config::{RwData, TabPlaces, WrapMethod},
+    log_info,
     tags::{form::CursorStyle, form::Form},
     ui::{self, Area as UiArea, Axis, Label as UiLabel, Side, Split},
-    log_info
 };
 use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
@@ -230,6 +235,7 @@ impl InnerArea {
 pub struct Area {
     inner: RwData<InnerArea>,
     lineage: RwData<Option<(Vec<Area>, Axis)>>,
+    index: usize,
 }
 
 impl Debug for Area {
@@ -248,22 +254,24 @@ impl Debug for Area {
 }
 
 impl Area {
-    fn new(inner: InnerArea, lineage: Option<(Vec<Area>, Axis)>) -> Self {
+    fn new(inner: InnerArea, lineage: Option<(Vec<Area>, Axis)>, index: usize) -> Self {
         Self {
             inner: RwData::new(inner),
             lineage: RwData::new(lineage),
+            index,
         }
     }
 
     /// Returns the maximum possible [`Area`], engulfing the entire
     /// window.
-    fn total() -> Self {
+    fn total(index: usize) -> Self {
         let (max_x, max_y) = terminal::size().unwrap();
         let coords = Coords::new(Coord { x: 0, y: 0 }, Coord { x: max_x, y: max_y });
 
         Area {
             inner: RwData::new(InnerArea::new(coords, None)),
             lineage: RwData::new(None),
+            index,
         }
     }
 
@@ -373,26 +381,26 @@ impl Area {
         }
     }
 
-    fn insert_new_area(&mut self, index: usize, split: Split, side: Side) -> Area {
+    fn insert_new_area(&mut self, child: usize, split: Split, side: Side, index: usize) {
         let mut lineage = self.lineage.write();
         let (children, _) = lineage.as_mut().unwrap();
 
         let coords = children
-            .get(index)
+            .get(child)
             .map(|area| area.coords())
             .unwrap_or(self.coords())
             .empty_on(side);
 
         let self_index = match side {
-            Side::Bottom | Side::Right => index + 1,
-            Side::Top | Side::Left => index,
+            Side::Bottom | Side::Right => child + 1,
+            Side::Top | Side::Left => child,
         };
         let owner = Owner::Parent {
             parent: self.clone(),
             self_index,
             split,
         };
-        let area = Area::new(InnerArea::new(coords, Some(owner)), None);
+        let area = Area::new(InnerArea::new(coords, Some(owner)), None, index);
 
         for child in children.get_mut(self_index..).into_iter().flatten() {
             let mut inner = child.inner.write();
@@ -408,8 +416,6 @@ impl Area {
         drop(children);
         drop(lineage);
         self.set_child_len(self_index, split.len() as u16, side).unwrap();
-
-        area
     }
 
     // NOTE: This function will only be called once it is known that the
@@ -458,18 +464,9 @@ impl Area {
         let tl = children.get(index).unwrap().coords().ortho_corner(*axis);
         normalize_from_tl(&mut children[(index + 1)..], aft_lens, tl, side);
 
-		log_info!("\nchildren: {:#?}, index: {}", children, index);
+        log_info!("\nchildren: {:#?}, index: {}", children, index);
 
         Ok(())
-    }
-}
-
-impl From<InnerArea> for Area {
-    fn from(value: InnerArea) -> Self {
-        Area {
-            inner: RwData::new(value),
-            lineage: RwData::new(None),
-        }
     }
 }
 
@@ -581,7 +578,7 @@ impl ui::Area for Area {
         self.inner.read().coords.height()
     }
 
-    fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()> {
+    fn request_len(&self, len: usize, side: Side) -> Result<(), ()> {
         let req_axis = Axis::from(side);
         // If the current len is already equal to the requested len,
         // nothing needs to be done.
@@ -634,7 +631,7 @@ impl ui::Area for Area {
         }
     }
 
-    fn request_width_to_fit(&mut self, _text: &str) -> Result<(), ()> {
+    fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {
         todo!()
     }
 }
@@ -715,16 +712,16 @@ impl ui::Label<Area> for Label {
         &self.area
     }
 
-    fn set_form(&mut self, form: Form) {
+    fn set_form(&self, form: Form) {
         self.last_style = form.style;
         queue!(self.stdout, ResetColor, SetStyle(self.last_style)).unwrap();
     }
 
-    fn clear_form(&mut self) {
+    fn clear_form(&self) {
         queue!(self.stdout, ResetColor).unwrap();
     }
 
-    fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
+    fn place_main_cursor(&self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
             queue!(self.stdout, caret, SavePosition).unwrap();
             unsafe { SHOW_CURSOR = true }
@@ -734,16 +731,16 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
+    fn place_extra_cursor(&self, cursor_style: CursorStyle) {
         self.style_before_cursor = Some(self.last_style);
         queue!(self.stdout, SetStyle(cursor_style.form.style)).unwrap();
     }
 
-    fn set_as_active(&mut self) {
+    fn set_as_active(&self) {
         self.is_active = true;
     }
 
-    fn start_printing(&mut self, config: &Config) {
+    fn start_printing(&self, config: &Config) {
         self.wrap_method = Some(config.wrap_method);
         self.tab_places = Some(config.tab_places.clone());
 
@@ -763,7 +760,7 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn stop_printing(&mut self) {
+    fn stop_printing(&self) {
         self.wrap_method = None;
         self.tab_places = None;
 
@@ -779,7 +776,7 @@ impl ui::Label<Area> for Label {
         self.is_active = false;
     }
 
-    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus {
+    fn print(&self, ch: char, x_shift: usize) -> PrintStatus {
         let tab_places = self.tab_places.as_ref().unwrap();
         let wrap_method = self.wrap_method.as_ref().unwrap();
 
@@ -813,7 +810,7 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn next_line(&mut self) -> PrintStatus {
+    fn next_line(&self) -> PrintStatus {
         if self.area.br().y > self.cursor.y + 1 {
             self.clear_line();
             PrintStatus::NextChar
@@ -907,19 +904,18 @@ impl ui::Label<Area> for Label {
 
 pub struct Ui {
     layout_has_changed: AtomicBool,
-    nodes: Vec<Node<Ui>>,
-    next_node_index: usize
+    areas: Vec<Area>,
+    next_index: usize,
 }
 
-impl Ui {
-}
+impl Ui {}
 
 impl Default for Ui {
     fn default() -> Self {
         Ui {
             layout_has_changed: AtomicBool::new(true),
             areas: Vec::new(),
-            next_node_index: 0
+            next_index: 0,
         }
     }
 }
@@ -927,16 +923,11 @@ impl Default for Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type Label = Label;
-    type NodeIndex = NodeIndex;
-    type Widgets<'a> = Widgets<'a>;
 
-    fn bisect_area(
-        &mut self,
-        area: &mut Self::Area,
-        push_specs: PushSpecs,
-    ) -> (Self::Label, Option<Self::Area>) {
+    fn bisect_area(&mut self, area_index: usize, push_specs: PushSpecs) -> (usize, Option<usize>) {
         let PushSpecs { side, split, .. } = push_specs;
         let axis = Axis::from(side);
+        let area = self.get_area(area_index).unwrap();
 
         let resizable_len = area.resizable_len(axis);
         if let Err(_) = area.request_len(resizable_len.max(split.len()), side) {
@@ -951,10 +942,13 @@ impl ui::Ui for Ui {
                 Side::Top | Side::Left => 0,
             };
 
+            area.insert_new_area(self_index, split, side, self.next_index);
+            self.next_index += 1;
             drop(children);
             drop(lineage);
             drop(inner);
-            (Label::new(area.insert_new_area(self_index, split, side)), None)
+
+            (self.next_index - 1, None)
         } else if let Some(Owner::Parent {
             mut parent,
             self_index,
@@ -963,13 +957,16 @@ impl ui::Ui for Ui {
         {
             drop(lineage);
 
-            (Label::new(parent.insert_new_area(self_index, split, side)), None)
+            parent.insert_new_area(self_index, split, side, self.next_index);
+            self.next_index += 1;
+            (self.next_index - 1, None)
         } else {
             drop(lineage);
 
             let lineage = (vec![area.clone()], Axis::from(side));
             let parent_inner = InnerArea::new(inner.coords, inner.owner.clone());
-            let mut parent = Area::new(parent_inner, Some(lineage));
+            let mut parent = Area::new(parent_inner, Some(lineage), self.next_index);
+            self.next_index += 1;
 
             inner.owner = Some(Owner::Parent {
                 parent: parent.clone(),
@@ -978,15 +975,17 @@ impl ui::Ui for Ui {
             });
 
             drop(inner);
-            let area = parent.insert_new_area(0, split, side);
+            let area = parent.insert_new_area(0, split, side, self.next_index);
+            self.next_index += 1;
 
-            (Label::new(area), Some(parent))
+            (self.next_index - 1, Some(self.next_index - 2))
         }
     }
 
     fn maximum_label(&mut self) -> Self::Label {
         self.layout_has_changed.store(true, Ordering::Relaxed);
-        Label::new(Area::total())
+        self.next_index += 1;
+        Label::new(Area::total(self.next_index - 1))
     }
 
     fn startup(&mut self) {
@@ -1029,34 +1028,11 @@ impl ui::Ui for Ui {
         self.layout_has_changed.swap(false, Ordering::Relaxed)
     }
 
-    fn widgets(&self) -> Self::Widgets<'_> {
-        Widgets { ui: self, cur_node_index: NodeIndex(0) }
+    fn get_area(&self, area_index: usize) -> &Option<Self::Area> {
+        todo!()
     }
-}
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct NodeIndex(usize);
-
-struct Widgets<'a> {
-    ui: &'a Ui,
-    cur_node_index: NodeIndex,
-}
-
-impl<'a> Iterator for Widgets<'a> {
-    type Item = (&'a Widget<Ui>, &'a RwData<EndNode<Ui>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.ui.main_node.find(self.cur_node_index) {
-                Some(Node::EndNode {
-                    end_node, widget, ..
-                }) => {
-                    self.cur_node_index.0 += 1;
-                    return Some((widget, end_node));
-                }
-                None => return None,
-                _ => self.cur_node_index.0 += 1,
-            };
-        }
+    fn get_label(&self, area_index: usize) -> Option<&Self::Label> {
+        todo!()
     }
 }

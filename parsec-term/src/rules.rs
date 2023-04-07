@@ -7,10 +7,10 @@ use no_deadlocks::RwLock;
 use std::{any::Any, sync::Arc};
 
 use parsec_core::{
-    config::{DownCastableData, RoData, RwData},
+    config::{Config, DownCastableData, RoData, RwData},
     tags::{form::DEFAULT, Tag},
     text::{Text, TextBuilder},
-    ui::{EndNode, PushSpecs, Ui},
+    ui::{PushSpecs, Ui},
     updaters,
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
     SessionManager,
@@ -51,43 +51,33 @@ impl Default for SepForm {
 }
 
 impl SepForm {
-    pub fn uniform<U>(node: &RwData<EndNode<U>>, name: impl AsRef<str>) -> Self
-    where
-        U: Ui,
-    {
-        let node = node.read();
-        let (_, id) = node.config().palette.from_name(name);
+    pub fn uniform(config: &RwData<Config>, name: impl AsRef<str>) -> Self {
+        let (_, id) = config.read().palette.from_name(name);
 
         SepForm::Uniform(id)
     }
 
-    pub fn two_way<U>(
-        node: &RwData<EndNode<U>>,
+    pub fn two_way(
+        config: &RwData<Config>,
         main_name: impl AsRef<str>,
         other_name: impl AsRef<str>,
-    ) -> Self
-    where
-        U: Ui,
-    {
-        let node = node.read();
-        let palette = &node.config().palette;
+    ) -> Self {
+        let config = config.read();
+        let palette = &config.palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, other_id) = palette.from_name(other_name);
 
         SepForm::TwoWay(main_id, other_id)
     }
 
-    pub fn three_way<U>(
-        node: &RwData<EndNode<U>>,
+    pub fn three_way(
+        config: &RwData<Config>,
         main_name: impl AsRef<str>,
         lower_name: impl AsRef<str>,
         upper_name: impl AsRef<str>,
-    ) -> Self
-    where
-        U: Ui,
-    {
-        let node = node.read();
-        let palette = &node.config().palette;
+    ) -> Self {
+        let config = config.read();
+        let palette = &config.palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, lower_id) = palette.from_name(lower_name);
         let (_, upper_id) = palette.from_name(upper_name);
@@ -181,7 +171,7 @@ where
         "vertical_rule"
     }
 
-    fn update(&mut self, _end_node: &mut EndNode<U>) {
+    fn update(&mut self, _label: &U::Label, _config: &Config) {
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;
