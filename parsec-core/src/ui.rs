@@ -18,11 +18,11 @@ pub trait Area {
     fn height(&self) -> usize;
 
     /// Requests a new width to the widget.
-    fn request_len(&mut self, len: usize, side: Side) -> Result<(), ()>;
+    fn request_len(&self, len: usize, side: Side) -> Result<(), ()>;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&mut self, text: &str) -> Result<(), ()>;
+    fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 }
 
 /// A label that prints text to screen. Any area that prints will be a
@@ -31,52 +31,49 @@ pub trait Label<A>
 where
     A: Area,
 {
-    /// Returns a mutable reference to the area of `self`.
-    fn area_mut(&mut self) -> &mut A;
-
     /// Returns a reference to the area of `self`.
     fn area(&self) -> &A;
 
     //////////////////// Forms
     /// Changes the form for subsequent characters.
-    fn set_form(&mut self, form: Form);
+    fn set_form(&self, form: Form);
 
     /// Clears the current form.
-    fn clear_form(&mut self);
+    fn clear_form(&self);
 
     /// Places the primary cursor on the current printing position.
-    fn place_main_cursor(&mut self, style: CursorStyle);
+    fn place_main_cursor(&self, style: CursorStyle);
 
     /// Places an extra cursor on the current printing position.
-    fn place_extra_cursor(&mut self, style: CursorStyle);
+    fn place_extra_cursor(&self, style: CursorStyle);
 
-    /// Tells the `UiManager` that this `Label` is the one that is
+    /// Tells the [`Ui`] that this [`Label`] is the one that is
     /// currently focused.
-    fn set_as_active(&mut self);
+    fn set_as_active(&self);
 
     //////////////////// Printing
     /// Tell the area that printing has begun.
     ///
     /// This function should at the very least move the cursor to the
     /// top left position in the area.
-    fn start_printing(&mut self, config: &Config);
+    fn start_printing(&self, config: &Config);
 
     /// Tell the area that printing has ended.
     ///
     /// This function should clear the lines below the last printed
     /// line, and flush the contents if necessary.
-    fn stop_printing(&mut self);
+    fn stop_printing(&self);
 
     /// Prints a character at the current position and moves the
     /// printing position forward.
-    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
+    fn print(&self, ch: char, x_shift: usize) -> PrintStatus;
 
     /// Moves to the next line. If succesful, returns `Ok(())`,
     /// otherwise, returns `Err(())`.
     ///
     /// This function should also make sure that there is no leftover
     /// text after the current line's end.
-    fn next_line(&mut self) -> PrintStatus;
+    fn next_line(&self) -> PrintStatus;
 
     /// Counts how many times the given string would wrap.
     fn wrap_count(
@@ -103,189 +100,28 @@ where
     fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
 }
 
-/// A node that contains other nodes.
-pub struct MidNode<U>
-where
-    U: Ui + ?Sized,
-{
-    area: U::Area,
-    config: Config,
-}
-
-impl<U> MidNode<U>
-where
-    U: Ui + 'static,
-{
-    fn new_from(container: U::Area, node: &Node<U>) -> Self {
-        MidNode {
-            area: container,
-            config: node.config(),
-        }
-    }
-}
-
-/// Node that contains a `Label`.
-pub struct EndNode<U>
-where
-    U: Ui + ?Sized,
-{
-    pub label: U::Label,
-    pub config: Config,
-    pub(crate) is_active: bool,
-}
-
-impl<U> EndNode<U>
-where
-    U: Ui + 'static,
-{
-    fn new_from(label: U::Label, node: &Node<U>) -> Self {
-        EndNode {
-            label: label,
-            config: node.config(),
-            is_active: false,
-        }
-    }
-
-    /// Returns a reference to the `Config` of the node.
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    pub(crate) fn get_width(&self, text: RopeSlice) -> usize {
-        self.label.get_width(text, &self.config.tab_places)
-    }
-}
-
 /// Container for middle and end nodes.
-pub enum Node<U>
+pub struct Node<U>
 where
-    U: Ui + ?Sized,
+    U: Ui,
 {
-    MidNode {
-        mid_node: RwData<MidNode<U>>,
-        children: Vec<Node<U>>,
-        node_index: NodeIndex,
-    },
-    EndNode {
-        end_node: RwData<EndNode<U>>,
-        widget: Widget<U>,
-        identifier: String,
-        node_index: NodeIndex,
-    },
+    widget: Widget<U>,
+    config: RwData<Config>,
+    area_index: usize,
 }
 
 impl<U> Node<U>
 where
-    U: Ui + 'static,
+    U: Ui,
 {
-    fn config(&self) -> Config {
-        match self {
-            Node::MidNode { mid_node, .. } => mid_node.read().config.clone(),
-            Node::EndNode { end_node, .. } => end_node.read().config.clone(),
+    pub(crate) fn update_and_print(&self, label: &U::Label) {
+        let config = self.config.read();
+        self.widget.update(label, &config);
+        if self.widget.is_active() {
+            label.set_as_active()
         }
-    }
 
-    fn node_index(&self) -> NodeIndex {
-        match self {
-            Node::MidNode { node_index, .. } => *node_index,
-            Node::EndNode { node_index, .. } => *node_index,
-        }
-    }
-
-    pub(crate) fn find(&self, node_index: NodeIndex) -> Option<&Node<U>> {
-        if self.node_index() == node_index {
-            return Some(self);
-        } else if let Node::MidNode { children, .. } = self {
-            for child in children {
-                if let Some(node) = child.find(node_index) {
-                    return Some(node);
-                }
-            }
-        }
-        None
-    }
-
-    fn find_mut(&mut self, node_index: NodeIndex) -> Option<&mut Node<U>> {
-        if self.node_index() == node_index {
-            return Some(self);
-        } else if let Node::MidNode { children, .. } = self {
-            for child in children {
-                if let Some(node) = child.find_mut(node_index) {
-                    return Some(node);
-                }
-            }
-        }
-        None
-    }
-
-    /// Returns `Some((self, split_of_node))` if it is the parent of
-    /// the given `NodeIndex`.
-    fn find_mut_siblings(&mut self, node_index: NodeIndex) -> Option<(&mut Vec<Node<U>>, usize)> {
-        let Node::MidNode { children, .. } = self else {
-            return None;
-        };
-
-        if let Some(pos) = children.iter().position(|child| child.node_index() == node_index) {
-            Some((children, pos))
-        } else {
-            for child in children {
-                if let Some((mid_node, pos)) = child.find_mut_siblings(node_index) {
-                    return Some((mid_node, pos));
-                }
-            }
-
-            None
-        }
-    }
-
-    fn bisect(
-        &self,
-        push_specs: PushSpecs,
-        widget: Widget<U>,
-        last_index: NodeIndex,
-        ui: &mut U,
-    ) -> (Node<U>, Option<MidNode<U>>) {
-        let (label, container) = match self {
-            Node::MidNode { mid_node, .. } => {
-                ui.bisect_area(&mut mid_node.write().area, push_specs)
-            }
-            Node::EndNode { end_node, .. } => {
-                ui.bisect_area(end_node.write().label.area_mut(), push_specs)
-            }
-        };
-
-        let mut end_node = EndNode::new_from(label, &self);
-        widget.update(&mut end_node);
-        let end_node = RwData::new(end_node);
-        let identifier = widget.identifier();
-        let end_node = Node::EndNode {
-            end_node,
-            node_index: last_index,
-            widget,
-            identifier,
-        };
-
-        let mid_node = container.map(|container| MidNode::new_from(container, &self));
-
-        (end_node, mid_node)
-    }
-
-    /// Rebranches a tree, assuming that the parent of a given `Node`
-    /// has been changed.
-    fn replace_with_mid(&mut self, mut new_node: Node<U>, end_node: Node<U>, side: Side) {
-        std::mem::swap(self, &mut new_node);
-
-        let Node::MidNode { children, .. } = self else {
-    		unreachable!();
-		};
-
-        children.push(new_node);
-        let insert_index = if let Side::Top | Side::Left = side {
-            0
-        } else {
-            1
-        };
-        children.insert(insert_index, end_node);
+        self.widget.print(label, &config);
     }
 }
 
@@ -295,7 +131,7 @@ where
 {
     session_manager: &'a mut SessionManager,
     window: &'a mut Window<U>,
-    node_index: NodeIndex,
+    area_index: usize,
 }
 
 impl<'a, U> ModNode<'a, U>
@@ -306,19 +142,19 @@ where
         &mut self,
         constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>) {
+    ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(self.node_index, widget, push_specs)
+        self.window.push_widget(self.area_index, widget, push_specs, false)
     }
 
-    pub fn push_widget_to_node(
+    pub fn push_widget_to_area(
         &mut self,
         constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
-        node_index: NodeIndex,
+        area_index: usize,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>) {
+    ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(node_index, widget, push_specs)
+        self.window.push_widget(area_index, widget, push_specs, false)
     }
 }
 
@@ -383,8 +219,20 @@ pub struct PushSpecs {
 }
 
 impl PushSpecs {
-    pub fn new(side: Side, split: Split, glued: bool) -> Self {
-        PushSpecs { side, split, glued }
+    pub fn new(side: Side, split: Split) -> Self {
+        PushSpecs {
+            side,
+            split,
+            glued: false,
+        }
+    }
+
+    pub fn new_glued(side: Side, split: Split) -> Self {
+        PushSpecs {
+            side,
+            split,
+            glued: true,
+        }
     }
 }
 
@@ -392,7 +240,7 @@ impl PushSpecs {
 /// order to use Parsec.
 pub trait Ui: 'static {
     type Area: Area + Display + Send + Sync;
-    type Label: Label<<Self as Ui>::Area> + Send + Sync;
+    type Label: Label<Self::Area> + Send + Sync;
 
     /// Bisects the `Self::Area`, returning a new
     /// `Self::Label<Self::Area>` that will occupy the region. If
@@ -417,11 +265,7 @@ pub trait Ui: 'static {
     /// let (_, some_container) = ui.bisect_area(&mut area, Side::Top, split);
     /// assert!(some_container.is_some());
     /// ```
-    fn bisect_area(
-        &mut self,
-        area: &mut Self::Area,
-        push_specs: PushSpecs,
-    ) -> (Self::Label, Option<Self::Area>);
+    fn bisect_area(&mut self, area_index: usize, push_specs: PushSpecs) -> (usize, Option<usize>);
 
     /// Returns a `Self::Label` representing the maximum possible
     /// extent an area could have.
@@ -439,10 +283,11 @@ pub trait Ui: 'static {
     /// Wether or not the layout of the `Ui` (size of widgets, their
     /// positions, etc) has changed.
     fn layout_has_changed(&self) -> bool;
-}
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NodeIndex(pub(crate) usize);
+    fn get_area(&self, area_index: usize) -> &Option<Self::Area>;
+
+    fn get_label(&self, area_index: usize) -> Option<&Self::Label>;
+}
 
 /// A "viewport" of Parsec. It contains a group of widgets that can be
 /// displayed at the same time.
@@ -451,10 +296,10 @@ where
     U: Ui,
 {
     ui: U,
-    main_node: Node<U>,
-    _floating_nodes: Vec<Node<U>>,
-    last_index: NodeIndex,
-    files_parent: NodeIndex,
+    nodes: Vec<Node<U>>,
+    last_index: usize,
+    files_parent: usize,
+    config: RwData<Config>,
 }
 
 impl<U> Window<U>
@@ -469,31 +314,25 @@ where
         session_manager: &mut SessionManager,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
     ) -> Self {
-        let mut end_node = EndNode {
-            label: ui.maximum_label(),
-            config,
-            is_active: true,
-        };
-        widget.update(&mut end_node);
+        let mut label = ui.maximum_label();
+        widget.update(&mut label, &config);
+        let config = RwData::new(config);
 
-        let Some(actionable) = widget.get_actionable() else {
-            unreachable!();
-        };
+        let actionable = widget.get_actionable().unwrap();
         let ro_widget = RoData::from(actionable);
 
         let identifier = widget.identifier();
-        let main_node = Node::EndNode {
-            end_node: RwData::new(end_node),
+        let main_node = Node {
             widget,
-            identifier,
-            node_index: NodeIndex(0),
+            config: config.clone(),
+            area_index: 0,
         };
         let mut window = Window {
             ui,
-            main_node,
-            _floating_nodes: Vec::new(),
-            last_index: NodeIndex(0),
-            files_parent: NodeIndex(0),
+            nodes: vec![main_node],
+            last_index: 0,
+            files_parent: 0,
+            config,
         };
 
         let file = ro_widget.try_downcast::<FileWidget<U>>().unwrap();
@@ -501,7 +340,7 @@ where
         let mod_node = ModNode {
             session_manager,
             window: &mut window,
-            node_index: NodeIndex(0),
+            area_index: 0,
         };
         (constructor_hook)(mod_node, file);
 
@@ -509,77 +348,47 @@ where
     }
 
     /// Pushes a `Widget` onto an
-    pub(crate) fn push_widget(
+    fn push_widget(
         &mut self,
-        node_index: NodeIndex,
+        area_index: usize,
         widget: Widget<U>,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>) {
-        self.last_index.0 += 1;
+        is_active: bool,
+    ) -> (usize, Option<usize>) {
+        self.last_index += 1;
 
-        let target_node = self.main_node.find_mut(node_index).expect("Node not found");
-        let (new_child, new_parent) =
-            target_node.bisect(push_specs, widget, self.last_index, &mut self.ui);
+        let (new_area, opt_parent) = self.ui.bisect_area(area_index, push_specs);
+        let label = self.ui.get_label(new_area).unwrap();
+        widget.update(&label, &self.config.read());
 
-        if let Some(mid_node) = new_parent {
-            let mid_node = RwData::new(mid_node);
-            self.last_index.0 += 1;
+        let node = Node {
+            widget,
+            config: self.config.clone(),
+            area_index,
+        };
+        self.nodes.push(node);
 
-            // Here, swap the `NodeIndex`es in order to keep the same node
-            // "position".
-            let new_parent = Node::MidNode {
-                mid_node,
-                children: Vec::new(),
-                node_index: target_node.node_index(),
-            };
-            match target_node {
-                Node::MidNode {
-                    node_index: index, ..
-                } => *index = self.last_index,
-                Node::EndNode {
-                    node_index: index, ..
-                } => *index = self.last_index,
-            }
-
-            target_node.replace_with_mid(new_parent, new_child, push_specs.side);
-
-            if !push_specs.glued && node_index == self.files_parent {
-                self.files_parent = self.last_index;
-            }
-
-            (NodeIndex(self.last_index.0 - 1), Some(self.last_index))
-        } else {
-            drop(target_node);
-            if let Some((children, pos)) = self.mut_parent_of(node_index) {
-                if let Side::Top | Side::Left = push_specs.side {
-                    children.insert(pos, new_child);
-                } else {
-                    children.insert(pos + 1, new_child);
-                }
-            }
-
-            (self.last_index, None)
-        }
+        (new_area, opt_parent)
     }
 
     pub fn push_hooked(
         &mut self,
         widget: Widget<U>,
-        node_index: NodeIndex,
+        area_index: usize,
         push_specs: PushSpecs,
         constructor_hook: &dyn Fn(ModNode<U>),
         session_manager: &mut SessionManager,
-    ) -> (NodeIndex, Option<NodeIndex>) {
-        let (new_node, maybe_node) = self.push_widget(node_index, widget, push_specs);
+    ) -> (usize, Option<usize>) {
+        let (new_area, opt_parent) = self.push_widget(area_index, widget, push_specs, false);
 
         let mod_node = ModNode {
             session_manager,
             window: self,
-            node_index: new_node,
+            area_index: new_area,
         };
         (constructor_hook)(mod_node);
 
-        (new_node, maybe_node)
+        (new_area, opt_parent)
     }
 
     pub fn push_file<C>(
@@ -588,18 +397,19 @@ where
         push_specs: PushSpecs,
         session_manager: &mut SessionManager,
         constructor_hook: C,
-    ) -> (NodeIndex, Option<NodeIndex>)
+    ) -> (usize, Option<usize>)
     where
         C: Fn(ModNode<U>, RoData<FileWidget<U>>),
     {
         let node_index = self.files_parent;
-        let (new_index, maybe_index) = self.push_widget(node_index, widget, push_specs);
-        let node = self.main_node.find(new_index).unwrap();
+        let (new_index, opt_parent) = self.push_widget(node_index, widget, push_specs, true);
+        let node = self
+            .nodes
+            .iter()
+            .find(|Node { area_index, .. }| *area_index == new_index)
+            .unwrap();
 
-        let Node::EndNode { widget, .. } = node else {
-            unreachable!();
-        };
-        let Some(actionable) = widget.get_actionable() else {
+        let Some(actionable) = node.widget.get_actionable() else {
             unreachable!();
         };
 
@@ -609,11 +419,11 @@ where
         let mod_node = ModNode {
             session_manager,
             window: self,
-            node_index: new_index,
+            area_index: new_index,
         };
         (constructor_hook)(mod_node, file);
 
-        (new_index, maybe_index)
+        (new_index, opt_parent)
     }
 
     /// Pushes a `Widget` to the parent of all files.
@@ -622,8 +432,8 @@ where
         &mut self,
         widget: Widget<U>,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>) {
-        self.push_widget(NodeIndex(0), widget, push_specs)
+    ) -> (usize, Option<usize>) {
+        self.push_widget(0, widget, push_specs, false)
     }
 
     /// Triggers the functions to use when the program starts.
@@ -636,181 +446,65 @@ where
         self.ui.shutdown();
     }
 
-    /// Returns the parent of a given `NodeIndex`, if it exists.
-    fn mut_parent_of(&mut self, node_index: NodeIndex) -> Option<(&mut Vec<Node<U>>, usize)> {
-        if let Some(node) = self.main_node.find_mut_siblings(node_index) {
-            return Some(node);
-        }
-        None
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, &U::Label, &RwData<Config>)> + '_ {
+        self.nodes.iter().map(
+            |Node {
+                 widget,
+                 config,
+                 area_index,
+                 ..
+             }| {
+                let label = self.ui.get_label(*area_index).unwrap();
+                (widget, label, config)
+            },
+        )
     }
 
-    pub fn widgets(&self) -> Widgets<U> {
-        Widgets {
-            window: self,
-            cur_node_index: NodeIndex(0),
-        }
+    pub fn actionable_widgets(
+        &self,
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, &U::Label, &RwData<Config>)> + '_
+    {
+        self.nodes.iter().filter_map(
+            |Node {
+                 widget,
+                 config,
+                 area_index,
+                 ..
+             }| {
+                widget.get_actionable().map(|widget| {
+                    let label = self.ui.get_label(*area_index).unwrap();
+                    (widget, label, config)
+                })
+            },
+        )
     }
 
-    pub fn actionable_widgets(&self) -> ActionableWidgets<U> {
-        ActionableWidgets {
-            window: self,
-            cur_node_index: NodeIndex(0),
-        }
-    }
+    pub fn file_names(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
+        self.nodes.iter().filter_map(|Node { widget, .. }| {
+            widget
+                .get_actionable()
+                .map(|widget| {
+                    if let Ok(widget) = widget.try_read() {
+                        let identifier = widget.identifier();
+                        if let Some(prefix) = identifier.get(..13) {
+                            if prefix == "parsec-file: " {
+                                return Some(String::from(identifier));
+                            }
+                        }
+                    };
 
-    pub fn files(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
-        ActionableWidgets {
-            window: self,
-            cur_node_index: NodeIndex(0),
-        }
-        .filter_map(|(widget, ..)| {
-            let widget = match widget.try_read() {
-                Ok(widget) => widget,
-                Err(_) => return None,
-            };
-
-            let identifier = widget.identifier();
-            if let Some(prefix) = identifier.get(..13) {
-                if prefix == "parsec-file: " {
-                    return Some(String::from(identifier));
-                }
-            }
-
-            None
+                    None
+                })
+                .flatten()
         })
     }
 
     pub(crate) fn print_if_layout_changed(&self) {
         if self.ui.layout_has_changed() {
-            for (widget, end_node) in self.widgets() {
-                widget.update_and_print(&mut end_node.write());
+            for node in &self.nodes {
+                let label = self.ui.get_label(node.area_index).unwrap();
+                node.update_and_print(label);
             }
-        }
-    }
-}
-
-pub struct Widgets<'a, U>
-where
-    U: Ui,
-{
-    window: &'a Window<U>,
-    cur_node_index: NodeIndex,
-}
-
-impl<'a, U> Iterator for Widgets<'a, U>
-where
-    U: Ui + 'static,
-{
-    type Item = (&'a Widget<U>, &'a RwData<EndNode<U>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.window.main_node.find(self.cur_node_index) {
-                Some(Node::EndNode {
-                    end_node, widget, ..
-                }) => {
-                    self.cur_node_index.0 += 1;
-                    return Some((widget, end_node));
-                }
-                None => return None,
-                _ => self.cur_node_index.0 += 1,
-            };
-        }
-    }
-}
-
-pub struct ActionableWidgets<'a, U>
-where
-    U: Ui,
-{
-    window: &'a Window<U>,
-    cur_node_index: NodeIndex,
-}
-
-impl<'a, U> Clone for ActionableWidgets<'a, U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        ActionableWidgets { ..*self }
-    }
-}
-
-impl<'a, U> Iterator for ActionableWidgets<'a, U>
-where
-    U: Ui + 'static,
-{
-    type Item = (&'a RwData<dyn ActionableWidget<U>>, &'a str, &'a RwData<EndNode<U>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.window.main_node.find(self.cur_node_index) {
-                Some(Node::EndNode {
-                    end_node,
-                    widget,
-                    identifier,
-                    ..
-                }) => {
-                    self.cur_node_index.0 += 1;
-                    if let Some(actionable) = widget.get_actionable() {
-                        return Some((actionable, &identifier, &end_node));
-                    }
-                }
-                None => return None,
-                _ => self.cur_node_index.0 += 1,
-            };
-        }
-    }
-
-    fn find<P>(&mut self, mut predicate: P) -> Option<Self::Item>
-    where
-        Self: Sized,
-        P: FnMut(&Self::Item) -> bool,
-    {
-        loop {
-            match self.window.main_node.find(self.cur_node_index) {
-                Some(Node::EndNode {
-                    end_node,
-                    widget,
-                    identifier,
-                    ..
-                }) => {
-                    self.cur_node_index.0 += 1;
-                    if let Some(actionable) = widget.get_actionable() {
-                        if predicate(&(actionable, identifier, end_node)) {
-                            return Some((actionable, &identifier, &end_node));
-                        }
-                    }
-                }
-                None => return None,
-                _ => self.cur_node_index.0 += 1,
-            };
-        }
-    }
-}
-
-impl<'a, U> DoubleEndedIterator for ActionableWidgets<'a, U>
-where
-    U: Ui + 'static,
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        loop {
-            let node_index = NodeIndex(self.window.last_index.0 - self.cur_node_index.0);
-            match self.window.main_node.find(node_index) {
-                Some(Node::EndNode {
-                    end_node,
-                    widget,
-                    identifier,
-                    ..
-                }) => {
-                    self.cur_node_index.0 += 1;
-                    if let Some(actionable) = widget.get_actionable() {
-                        return Some((actionable, &identifier, &end_node));
-                    }
-                }
-                None => return None,
-                _ => self.cur_node_index.0 += 1,
-            };
         }
     }
 }

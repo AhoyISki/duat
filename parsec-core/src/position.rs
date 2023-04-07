@@ -1,9 +1,10 @@
 use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
+    config::Config,
     history::{Change, History},
     text::{inner::InnerText, PrintInfo, Text},
-    ui::{EndNode, Label, Ui},
+    ui::{Label, Ui},
     widgets::EditAccum,
 };
 
@@ -117,7 +118,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, inner: &InnerText, end_node: &EndNode<U>) -> Cursor
+    pub fn new<U>(pos: Pos, inner: &InnerText, label: &U::Label, config: &Config) -> Cursor
     where
         U: Ui,
     {
@@ -127,13 +128,18 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: end_node.get_width(line.slice(0..pos.col)),
+            desired_x: label.get_width(line.slice(0..pos.col), &config.tab_places),
         }
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver<U>(&mut self, count: isize, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    pub(crate) fn move_ver<U>(
+        &mut self,
+        count: isize,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
         let cur = &mut self.caret;
@@ -144,15 +150,20 @@ impl Cursor {
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        cur.col = end_node.label.col_at_dist(line, self.desired_x, &end_node.config().tab_places);
+        cur.col = label.col_at_dist(line, self.desired_x, &config.tab_places);
 
         cur.ch = inner.line_to_char(cur.row) + cur.col;
         cur.byte = inner.char_to_byte(cur.ch);
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor<U>(&mut self, count: isize, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    pub(crate) fn move_hor<U>(
+        &mut self,
+        count: isize,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
         let caret = &mut self.caret;
@@ -162,15 +173,18 @@ impl Cursor {
         let line_ch = inner.line_to_char(caret.row);
         caret.col = caret.ch - line_ch;
 
-        self.desired_x = end_node
-            .label
-            .get_width(inner.slice(line_ch..caret.ch), &end_node.config().tab_places);
+        self.desired_x = label.get_width(inner.slice(line_ch..caret.ch), &config.tab_places);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `row` of th [Pos] are correct.
-    pub(crate) fn move_to<U>(&mut self, pos: Pos, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    pub(crate) fn move_to<U>(
+        &mut self,
+        pos: Pos,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
         let cur = &mut self.caret;
@@ -181,9 +195,7 @@ impl Cursor {
         cur.ch = inner.line_to_char(cur.row) + cur.col;
         cur.byte = inner.char_to_byte(cur.ch);
 
-        self.desired_x = end_node
-            .label
-            .get_width(inner.slice(line_ch..cur.ch), &end_node.config().tab_places);
+        self.desired_x = label.get_width(inner.slice(line_ch..cur.ch), &config.tab_places);
 
         self.anchor = None;
     }
@@ -322,7 +334,8 @@ where
 {
     cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
-    end_node: &'a EndNode<U>,
+    label: &'a U::Label,
+    config: &'a Config,
     edit_accum: &'a mut EditAccum,
     print_info: Option<PrintInfo>,
     history: Option<&'a mut History>,
@@ -336,7 +349,8 @@ where
     pub fn new(
         cursor: &'a mut Cursor,
         text: &'a mut Text<U>,
-        end_node: &'a EndNode<U>,
+        label: &'a U::Label,
+        config: &'a Config,
         edit_accum: &'a mut EditAccum,
         print_info: Option<PrintInfo>,
         history: Option<&'a mut History>,
@@ -345,7 +359,8 @@ where
         Self {
             cursor,
             text,
-            end_node,
+            label,
+            config,
             edit_accum,
             print_info,
             history,
@@ -411,7 +426,8 @@ where
 {
     cursor: &'a mut Cursor,
     text: &'a Text<U>,
-    end_node: &'a EndNode<U>,
+    label: &'a U::Label,
+    config: &'a Config,
 }
 
 impl<'a, U> Mover<'a, U>
@@ -419,11 +435,17 @@ where
     U: Ui,
 {
     /// Returns a new instance of `Mover`.
-    pub fn new(cursor: &'a mut Cursor, text: &'a Text<U>, end_node: &'a EndNode<U>) -> Self {
+    pub fn new(
+        cursor: &'a mut Cursor,
+        text: &'a Text<U>,
+        label: &'a U::Label,
+        config: &'a Config,
+    ) -> Self {
         Self {
             cursor,
             text,
-            end_node,
+            label,
+            config,
         }
     }
 
@@ -432,13 +454,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text.inner(), self.end_node);
+        self.cursor.move_ver::<U>(count, self.text.inner(), self.label, self.config);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text.inner(), self.end_node);
+        self.cursor.move_hor::<U>(count, self.text.inner(), self.label, self.config);
     }
 
     /// Moves the cursor to a position in the file.
@@ -447,7 +469,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to(caret, self.text.inner(), self.end_node);
+        self.cursor.move_to::<U>(caret, self.text.inner(), self.label, self.config);
     }
 
     /// Returns the anchor of the `TextCursor`.

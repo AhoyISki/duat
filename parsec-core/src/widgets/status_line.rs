@@ -7,13 +7,13 @@ use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RoData},
+    config::{DownCastableData, RoData, Config},
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag,
     },
     text::{Text, TextBuilder},
-    ui::{EndNode, PushSpecs, Ui},
+    ui::{PushSpecs, Ui},
     updaters, SessionManager,
 };
 
@@ -260,7 +260,7 @@ where
         "parsec-status-line"
     }
 
-    fn update(&mut self, _end_node: &mut EndNode<U>) {
+    fn update(&mut self, _label: &U::Label, _config: &Config) {
         let file = self.file_widget.read();
 
         for (index, reader) in self.readers.iter().enumerate() {

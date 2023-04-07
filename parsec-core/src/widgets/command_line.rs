@@ -7,10 +7,10 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RwData},
+    config::{Config, DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
-    ui::{EndNode, Ui},
+    ui::Ui,
     Session,
 };
 
@@ -172,7 +172,7 @@ impl Default for CommandLineConfig {
 
 pub struct CommandLine<U>
 where
-    U: Ui,
+    U: Ui + ?Sized,
 {
     text: Text<U>,
     print_info: PrintInfo,
@@ -208,8 +208,9 @@ where
         "parsec-command-line"
     }
 
-    fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info.update(self.cursor[0].caret(), self.text.inner(), end_node);
+    fn update(&mut self, label: &U::Label, config: &Config) {
+        self.print_info
+            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, config);
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
@@ -242,15 +243,16 @@ where
         &'a mut self,
         _: usize,
         edit_accum: &'a mut EditAccum,
-        end_node: &'a EndNode<U>,
+        label: &'a U::Label,
+        config: &'a Config,
     ) -> Editor<U> {
         self.needs_update = true;
-        Editor::new(&mut self.cursor[0], &mut self.text, end_node, edit_accum, None, None)
+        Editor::new(&mut self.cursor[0], &mut self.text, label, config, edit_accum, None, None)
     }
 
-    fn mover<'a>(&'a mut self, _: usize, end_node: &'a EndNode<U>) -> Mover<U> {
+    fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label, config: &'a Config) -> Mover<U> {
         self.needs_update = true;
-        Mover::new(&mut self.cursor[0], &self.text, end_node)
+        Mover::new(&mut self.cursor[0], &self.text, label, config)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -273,15 +275,15 @@ where
         None
     }
 
-    fn on_focus(&mut self, end_node: &mut EndNode<U>) {
+    fn on_focus(&mut self, label: &U::Label, config: &Config) {
         self.needs_update = true;
         self.text = Text::new_string(&self.config.run_string);
         let chars = self.config.run_string.chars().count() as isize;
-        self.cursor[0].move_hor(chars, &self.text.inner(), end_node);
+        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, config);
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {
+    fn on_unfocus(&mut self, _label: &U::Label, _config: &Config) {
         self.needs_update = true;
         self.text = Text::default_string();
         self.cursor[0] = Cursor::default();

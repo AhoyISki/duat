@@ -1,9 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    ui::{EndNode, Ui},
+    ui::Ui,
     widgets::{ActionableWidget, WidgetActor},
-    Controls,
+    Controls, config::Config,
 };
 
 /// A widget that can receive and process input.
@@ -124,7 +124,8 @@ where
         &mut self,
         key: KeyEvent,
         widget: &mut A,
-        end_node: &EndNode<U>,
+        label: &U::Label,
+        config: &Config,
         mut controls: Controls<U>,
     ) where
         U: Ui + 'static,
@@ -168,12 +169,12 @@ where
         }
 
         for key in keys_to_send {
-            let widget_actor = WidgetActor::new(&mut *widget, end_node);
+            let widget_actor = WidgetActor::new(&mut *widget, label, config);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
         if should_check_new.is_empty() {
-            let widget_actor = WidgetActor::new(&mut *widget, end_node);
+            let widget_actor = WidgetActor::new(&mut *widget, label, config);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 

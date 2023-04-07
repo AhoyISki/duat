@@ -14,7 +14,7 @@ use std::{path::PathBuf, thread, time::Duration};
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
-use ui::{EndNode, ModNode, NodeIndex, PushSpecs, Side, Split, Ui, Window};
+use ui::{ModNode, PushSpecs, Side, Split, Ui, Window};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -102,7 +102,7 @@ where
         &mut self,
         constructor: C,
         push_specs: PushSpecs,
-    ) -> (NodeIndex, Option<NodeIndex>)
+    ) -> (usize, Option<usize>)
     where
         C: Fn(&Session<U>) -> Widget<U>,
     {
@@ -119,9 +119,10 @@ where
 
         // The main loop.
         loop {
-            for (widget, end_node) in self.active_window().widgets() {
-                let mut end_node = end_node.write();
-                widget.update_and_print(&mut end_node);
+            for (widget, label, config) in self.active_window().widgets() {
+                let config = config.read();
+                widget.update(label, &config);
+                widget.print(label, &config);
             }
 
             self.session_loop(key_remapper);
@@ -141,7 +142,7 @@ where
         I: InputScheme,
     {
         thread::scope(|s_0| loop {
-            //self.active_window().print_if_layout_changed();
+            // self.active_window().print_if_layout_changed();
 
             let mut session_manager = self.session_manager.write();
             if session_manager.break_loop {
@@ -149,11 +150,12 @@ where
                 break;
             }
 
-            for (widget, end_node) in self.windows[self.active_window].widgets() {
+            for (widget, label, config) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
                     s_0.spawn(|| {
-                        let mut end_node = end_node.write();
-                        widget.update_and_print(&mut end_node);
+                        let config = config.read();
+                        widget.update(label, &config);
+                        widget.print(label, &config);
                     });
                 }
             }
@@ -214,13 +216,14 @@ where
 
     /// Switches to a `Widget<U>` with the given identifier.
     pub fn switch_to_widget(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
-        let (widget, _, end_node) = self
+        let (widget, label, config) = self
             .window
             .actionable_widgets()
             .find(|(widget, ..)| widget.read().identifier() == target.as_ref())
             .ok_or(())?;
         let mut widget = widget.write();
-        widget.on_focus(&mut end_node.write());
+        let config = config.read();
+        widget.on_focus(label, &config);
 
         let (widget, _, end_node) = self
             .window
@@ -231,7 +234,7 @@ where
             .ok_or(())?;
 
         let mut widget = widget.write();
-        widget.on_unfocus(&mut end_node.write());
+        widget.on_unfocus(label, &config);
 
         if &target.as_ref()[..13] == "parsec-file: " {
             self.session_manager.active_file = target.as_ref().to_string();
@@ -245,12 +248,12 @@ where
     /// Switches to the next `Widget<U>` that contains a
     /// `FileWidget<U>`.
     pub fn next_file(&mut self) -> Result<(), ()> {
-        if self.window.files().count() < 2 {
+        if self.window.file_names().count() < 2 {
             Err(())
         } else {
             let widget = self
                 .window
-                .files()
+                .file_names()
                 .cycle()
                 .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
                 .nth(1)
@@ -263,12 +266,12 @@ where
     /// Switches to the previous `Widget<U>` that contains a
     /// `FileWidget<U>`.
     pub fn prev_file(&mut self) -> Result<(), ()> {
-        if self.window.files().count() < 2 {
+        if self.window.file_names().count() < 2 {
             Err(())
         } else {
             let widget = self
                 .window
-                .files()
+                .file_names()
                 .rev()
                 .cycle()
                 .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
@@ -329,22 +332,22 @@ fn send_event<U, I>(
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let actionable_widget = window
-            .actionable_widgets()
-            .find(|(_, identifier, _)| *identifier == session_manager.active_widget.as_str());
+        let actionable_widget = window.actionable_widgets().find(|(widget, ..)| {
+            widget.read().identifier() == session_manager.active_widget.as_str()
+        });
 
-        let Some((widget, _, end_node)) = actionable_widget else {
+        let Some((widget, label, config)) = actionable_widget else {
             return;
         };
+        let config = config.read();
 
-        let mut end_node = end_node.write();
         let mut widget = widget.write();
 
         let controls = Controls {
             session_manager: &mut *session_manager,
             window,
         };
-        blink_cursors_and_send_key(&mut *widget, &mut end_node, controls, key_event, key_remapper);
+        blink_cursors_and_send_key(&mut *widget, label, &config, controls, key_event, key_remapper);
 
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
@@ -356,7 +359,8 @@ fn send_event<U, I>(
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, A, I>(
     widget: &mut A,
-    end_node: &mut EndNode<U>,
+    label: &U::Label,
+    config: &Config,
     controls: Controls<U>,
     key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>,
@@ -368,14 +372,14 @@ fn blink_cursors_and_send_key<U, A, I>(
     let (text, cursors, _) = widget.members_for_cursor_tags();
     text.remove_cursor_tags(cursors);
 
-    key_remapper.send_key_to_actionable(key_event, &mut *widget, end_node, controls);
+    key_remapper.send_key_to_actionable(key_event, &mut *widget, label, config, controls);
 
     let (text, cursors, main_index) = widget.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
     drop((text, cursors, main_index));
 
-	widget.update(end_node);
-    widget.text().print(end_node, widget.print_info());
+    widget.update(label, config);
+    widget.text().print(label, config, widget.print_info());
 }
 
 //////////// Useful for testing.

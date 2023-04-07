@@ -12,13 +12,13 @@ use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RoData},
+    config::{Config, DownCastableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag,
     },
     text::{Text, TextBuilder},
-    ui::{Area, EndNode, Label, PushSpecs, Side, Ui},
+    ui::{Area, Label, PushSpecs, Side, Ui},
     updaters, SessionManager,
 };
 
@@ -121,13 +121,9 @@ where
         "parsec-line-numbers"
     }
 
-    fn update(&mut self, end_node: &mut EndNode<U>) {
+    fn update(&mut self, label: &U::Label, config: &Config) {
         let width = self.calculate_width();
-        end_node
-            .label
-            .area_mut()
-            .request_len(width.max(self.min_width), Side::Right)
-            .unwrap();
+        label.area().request_len(width.max(self.min_width), Side::Right).unwrap();
 
         self.update_text(width);
     }

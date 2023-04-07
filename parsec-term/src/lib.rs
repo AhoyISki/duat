@@ -13,7 +13,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 
-use parsec_core::{config::Config, text::PrintStatus, ui::PushSpecs};
+use parsec_core::{config::Config, text::PrintStatus, ui::{PushSpecs, Node}, widgets::Widget};
 use parsec_core::{
     config::{RwData, TabPlaces, WrapMethod},
     tags::{form::CursorStyle, form::Form},
@@ -430,7 +430,6 @@ impl Area {
             0
         };
 
-		log_info!("\nchildren: {:#?}, index: {}", children, index);
         let old_len = children.get(index).unwrap().len(*axis);
         let len_diff = new_len as i16 - old_len as i16;
 
@@ -459,6 +458,7 @@ impl Area {
         let tl = children.get(index).unwrap().coords().ortho_corner(*axis);
         normalize_from_tl(&mut children[(index + 1)..], aft_lens, tl, side);
 
+		log_info!("\nchildren: {:#?}, index: {}", children, index);
 
         Ok(())
     }
@@ -601,7 +601,7 @@ impl ui::Area for Area {
             }) => {
                 let &(_, axis) = parent.lineage.read().as_ref().unwrap();
 
-                if req_axis != axis {
+                let ret = if req_axis != axis {
                     parent.request_len(len, side)
                 } else if parent.resizable_len(req_axis) < len {
                     let new_parent_width = parent.len(req_axis) + len - {
@@ -614,7 +614,11 @@ impl ui::Area for Area {
                     parent.request_len(new_parent_width, side)
                 } else {
                     parent.set_child_len(*self_index, len as u16, side)
-                }
+                };
+
+                log_info!("\nchildren {:#?}", parent.lineage.read().as_ref().unwrap().0);
+
+                ret
             }
             Some(Owner::TlAnchor) => todo!(),
             Some(Owner::TrAnchor) => todo!(),
@@ -707,10 +711,6 @@ impl Label {
 }
 
 impl ui::Label<Area> for Label {
-    fn area_mut(&mut self) -> &mut Area {
-        &mut self.area
-    }
-
     fn area(&self) -> &Area {
         &self.area
     }
@@ -907,7 +907,11 @@ impl ui::Label<Area> for Label {
 
 pub struct Ui {
     layout_has_changed: AtomicBool,
-    areas: Vec<Area>,
+    nodes: Vec<Node<Ui>>,
+    next_node_index: usize
+}
+
+impl Ui {
 }
 
 impl Default for Ui {
@@ -915,6 +919,7 @@ impl Default for Ui {
         Ui {
             layout_has_changed: AtomicBool::new(true),
             areas: Vec::new(),
+            next_node_index: 0
         }
     }
 }
@@ -922,6 +927,8 @@ impl Default for Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type Label = Label;
+    type NodeIndex = NodeIndex;
+    type Widgets<'a> = Widgets<'a>;
 
     fn bisect_area(
         &mut self,
@@ -1020,5 +1027,36 @@ impl ui::Ui for Ui {
 
     fn layout_has_changed(&self) -> bool {
         self.layout_has_changed.swap(false, Ordering::Relaxed)
+    }
+
+    fn widgets(&self) -> Self::Widgets<'_> {
+        Widgets { ui: self, cur_node_index: NodeIndex(0) }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct NodeIndex(usize);
+
+struct Widgets<'a> {
+    ui: &'a Ui,
+    cur_node_index: NodeIndex,
+}
+
+impl<'a> Iterator for Widgets<'a> {
+    type Item = (&'a Widget<Ui>, &'a RwData<EndNode<Ui>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.ui.main_node.find(self.cur_node_index) {
+                Some(Node::EndNode {
+                    end_node, widget, ..
+                }) => {
+                    self.cur_node_index.0 += 1;
+                    return Some((widget, end_node));
+                }
+                None => return None,
+                _ => self.cur_node_index.0 += 1,
+            };
+        }
     }
 }

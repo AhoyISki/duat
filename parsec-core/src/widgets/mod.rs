@@ -4,37 +4,32 @@ pub mod line_numbers;
 pub mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{RwLock, RwLockWriteGuard};
-use std::{
-    any::Any,
-    cmp::Ordering,
-    ops::{Deref, Range},
-    sync::{Arc},
-};
+use std::sync::RwLock;
+use std::{any::Any, cmp::Ordering, ops::Range, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{DownCastableData, RwData},
+    config::{Config, DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
-    ui::{EndNode, Ui},
+    ui::Ui,
 };
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
 pub trait NormalWidget<U>: DownCastableData
 where
-    U: Ui + Any + 'static,
+    U: Ui + ?Sized + 'static,
 {
     /// Returns an identifier for this `Widget`. They may not be
     /// unique.
     fn identifier(&self) -> &str;
 
     /// Updates the widget.
-    fn update(&mut self, end_node: &mut EndNode<U>);
+    fn update(&mut self, label: &U::Label, config: &Config);
 
     /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
@@ -44,9 +39,6 @@ where
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, _d_y: i32) {}
-
-    /// Adapts a given text to a new size for its given area.
-    fn resize(&mut self, _end_node: &EndNode<U>) {}
 
     /// If the `Widget` implements `Commandable`. Should return
     /// `Some(widget)`
@@ -71,10 +63,11 @@ where
         &'a mut self,
         index: usize,
         edit_accum: &'a mut EditAccum,
-        end_node: &'a EndNode<U>,
+        label: &'a U::Label,
+        config: &'a Config,
     ) -> Editor<U>;
 
-    fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U>;
+    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label, config: &'a Config) -> Mover<U>;
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize);
 
@@ -90,17 +83,17 @@ where
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn undo(&mut self, _end_node: &EndNode<U>) {
+    fn undo<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn redo(&mut self, _end_node: &EndNode<U>) {
+    fn redo<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn on_focus(&mut self, _end_node: &mut EndNode<U>) {}
+    fn on_focus<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {}
 
-    fn on_unfocus(&mut self, _end_node: &mut EndNode<U>) {}
+    fn on_unfocus<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {}
 
     fn still_valid(&self) -> bool {
         true
@@ -112,12 +105,15 @@ where
     U: Ui + ?Sized,
 {
     Normal(RwData<dyn NormalWidget<U>>),
-    Actionable(RwData<dyn ActionableWidget<U>>),
+    Actionable {
+        widget: RwData<dyn ActionableWidget<U>>,
+        is_active: bool,
+    },
 }
 
 pub struct Widget<U>
 where
-    U: Ui + ?Sized,
+    U: Ui,
 {
     inner: InnerWidget<U>,
     needs_update: Box<dyn Fn() -> bool>,
@@ -143,18 +139,49 @@ where
         updater: Box<dyn Fn() -> bool>,
     ) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            inner: InnerWidget::Actionable {
+                widget: RwData::new_unsized(widget),
+                is_active: false,
+            },
             needs_update: updater,
         }
     }
 
-    pub(crate) fn update(&self, end_node: &mut EndNode<U>) {
+    pub fn active_actionable(
+        widget: Arc<RwLock<dyn ActionableWidget<U>>>,
+        updater: Box<dyn Fn() -> bool>,
+    ) -> Widget<U> {
+        Widget {
+            inner: InnerWidget::Actionable {
+                widget: RwData::new_unsized(widget),
+                is_active: true,
+            },
+            needs_update: updater,
+        }
+    }
+
+    pub(crate) fn update(&self, label: &U::Label, config: &Config) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
-                widget.write().update(end_node);
+                widget.write().update(label, config);
             }
-            InnerWidget::Actionable(widget, ..) => {
-                widget.write().update(end_node);
+            InnerWidget::Actionable { widget, .. } => {
+                widget.write().update(label, config);
+            }
+        }
+    }
+
+    pub(crate) fn print(&self, label: &U::Label, config: &Config) {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
+                let widget = widget.read();
+                let print_info = widget.print_info();
+                widget.text().print(label, config, print_info);
+            }
+            InnerWidget::Actionable { widget, .. } => {
+                let widget = widget.read();
+                let print_info = widget.print_info();
+                widget.text().print(label, config, print_info);
             }
         }
     }
@@ -162,38 +189,28 @@ where
     pub(crate) fn identifier(&self) -> String {
         match &self.inner {
             InnerWidget::Normal(widget) => widget.read().identifier().to_string(),
-            InnerWidget::Actionable(widget, ..) => widget.read().identifier().to_string(),
+            InnerWidget::Actionable { widget, .. } => widget.read().identifier().to_string(),
         }
     }
 
     pub fn needs_update(&self) -> bool {
         match &self.inner {
             InnerWidget::Normal(_) => (self.needs_update)(),
-            InnerWidget::Actionable(actionable) => {
-                actionable.has_changed() || (self.needs_update)()
-            }
+            InnerWidget::Actionable { widget, .. } => widget.has_changed() || (self.needs_update)(),
         }
     }
 
     pub fn get_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
         match &self.inner {
             InnerWidget::Normal(_) => None,
-            InnerWidget::Actionable(widget) => Some(&widget),
+            InnerWidget::Actionable { widget, .. } => Some(&widget),
         }
     }
 
-    pub(crate) fn update_and_print(&self, end_node: &mut EndNode<U>) {
-        match &self.inner {
-            InnerWidget::Normal(widget) => {
-                let mut widget = widget.write();
-                widget.update(end_node);
-                widget.text().print(end_node, widget.print_info());
-            }
-            InnerWidget::Actionable(widget, ..) => {
-                let mut widget = widget.write_raw();
-                widget.update(end_node);
-                widget.text().print(end_node, widget.print_info());
-            }
+    pub(crate) fn is_active(&self) -> bool {
+        match self.inner {
+            InnerWidget::Normal(_) => false,
+            InnerWidget::Actionable { is_active, .. } => is_active,
         }
     }
 }
@@ -213,7 +230,8 @@ where
 {
     clearing_needed: bool,
     actionable: &'a mut E,
-    end_node: &'a EndNode<U>,
+    label: &'a U::Label,
+    config: &'a Config,
 }
 
 impl<'a, U, E> WidgetActor<'a, U, E>
@@ -222,11 +240,12 @@ where
     E: ActionableWidget<U> + ?Sized,
 {
     /// Returns a new instace of `WidgetActor<U, E>`.
-    pub(crate) fn new(actionable: &'a mut E, end_node: &'a EndNode<U>) -> Self {
+    pub(crate) fn new(actionable: &'a mut E, label: &'a U::Label, config: &'a Config) -> Self {
         WidgetActor {
             clearing_needed: false,
             actionable,
-            end_node,
+            label,
+            config,
         }
     }
 
@@ -264,7 +283,7 @@ where
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let editor = self.actionable.editor(index, &mut edit_accum, self.end_node);
+            let editor = self.actionable.editor(index, &mut edit_accum, self.label, self.config);
             f(editor);
         }
     }
@@ -275,7 +294,7 @@ where
         F: FnMut(Mover<U>),
     {
         for index in 0..self.actionable.cursors().len() {
-            let mover = self.actionable.mover(index, self.end_node);
+            let mover = self.actionable.mover(index, self.label, self.config);
             f(mover);
         }
 
@@ -291,7 +310,7 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let mover = self.actionable.mover(index, self.end_node);
+        let mover = self.actionable.mover(index, self.label, self.config);
         f(mover);
 
         if let Some(cursors) = self.actionable.mut_cursors() {
@@ -346,7 +365,7 @@ where
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = self.actionable.editor(index, &mut edit_accum, self.end_node);
+        let editor = self.actionable.editor(index, &mut edit_accum, self.label, self.config);
         f(editor);
 
         let mut new_cursors = Vec::from(&self.actionable.cursors()[(index + 1)..]);
@@ -426,11 +445,11 @@ where
     }
 
     pub fn undo(&mut self) {
-        self.actionable.undo(self.end_node);
+        self.actionable.undo(self.label, self.config);
     }
 
     pub fn redo(&mut self) {
-        self.actionable.redo(self.end_node);
+        self.actionable.redo(self.label, self.config);
     }
 }
 

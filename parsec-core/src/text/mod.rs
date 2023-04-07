@@ -12,12 +12,13 @@ use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
+    log_info,
     position::{Cursor, Pos},
     tags::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags,
     },
-    ui::{Area, EndNode, Label, Ui},
+    ui::{Area, Label, Ui},
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -230,7 +231,7 @@ where
 /// The text in a given area.
 pub struct Text<U>
 where
-    U: Ui,
+    U: Ui + ?Sized,
 {
     pub inner: InnerText,
     pub tags: Tags,
@@ -295,15 +296,10 @@ where
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print(&self, end_node: &mut EndNode<U>, print_info: PrintInfo) {
-        if end_node.is_active {
-            end_node.label.set_as_active();
-        }
-
-        let config = &end_node.config;
-        let label = &mut end_node.label;
-
+    pub(crate) fn print(&self, label: &U::Label, config: &Config, print_info: PrintInfo) {
         label.start_printing(config);
+
+        log_info!("\nwidth: {}, height: {}", label.area().width(), label.area().height());
 
         let line_start_ch = {
             let first_line = self.inner.char_to_line(print_info.first_ch);
@@ -325,9 +321,7 @@ where
         let mut last_ch = 'a';
         let mut skip_rest_of_line = false;
 
-        let mut counter = 0;
         while let Some((index, ch)) = chars.next() {
-            counter += 1;
             trigger_on_char::<U>(&mut tags, index, label, &mut form_former);
 
             if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {
@@ -346,7 +340,7 @@ where
             last_ch = ch;
         }
 
-        end_node.label.stop_printing();
+        label.stop_printing();
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -434,12 +428,12 @@ where
 fn print_ch<U>(
     ch: char,
     last_ch: char,
-    label: &mut U::Label,
+    label: &U::Label,
     config: &Config,
     x_shift: usize,
 ) -> PrintStatus
 where
-    U: Ui,
+    U: Ui + ?Sized,
 {
     match ch {
         '\t' => label.print('\t', x_shift),
@@ -454,14 +448,14 @@ where
 fn trigger_on_char<'a, U>(
     tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
     ch_index: usize,
-    label: &mut U::Label,
+    label: &U::Label,
     form_former: &mut FormFormer,
 ) where
     U: Ui,
 {
     while let Some((tag_byte, tag)) = tags.peek() {
         if ch_index == *tag_byte {
-            tag.trigger(label, form_former);
+            tag.trigger::<U>(label, form_former);
             tags.next();
         } else {
             break;
@@ -545,12 +539,15 @@ impl PrintInfo {
     //}
 
     /// Scrolls up.
-    fn scroll_up_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    fn scroll_up_to_gap<U>(
+        &mut self,
+        target: Pos,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
-        let label = &end_node.label;
-        let config = &end_node.config();
         let max_dist = config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
@@ -584,12 +581,15 @@ impl PrintInfo {
     }
 
     /// Scrolls down.
-    fn scroll_down_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    fn scroll_down_to_gap<U>(
+        &mut self,
+        target: Pos,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
-        let label = &end_node.label;
-        let config = &end_node.config();
         let max_dist = label.area().height() - config.scrolloff.y_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
@@ -624,12 +624,15 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
-    where
+    fn scroll_hor_to_gap<U>(
+        &mut self,
+        target: Pos,
+        inner: &InnerText,
+        label: &U::Label,
+        config: &Config,
+    ) where
         U: Ui,
     {
-        let label = &end_node.label;
-        let config = end_node.config();
         let max_dist = label.area().width() - config.scrolloff.x_gap;
         let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
@@ -641,18 +644,18 @@ impl PrintInfo {
     }
 
     /// Updates the print info.
-    pub fn update<U>(&mut self, target: Pos, inner: &InnerText, end_node: &EndNode<U>)
+    pub fn update<U>(&mut self, target: Pos, inner: &InnerText, label: &U::Label, config: &Config)
     where
         U: Ui,
     {
-        if let WrapMethod::NoWrap = end_node.config().wrap_method {
-            self.scroll_hor_to_gap(target, inner, end_node);
+        if let WrapMethod::NoWrap = config.wrap_method {
+            self.scroll_hor_to_gap::<U>(target, inner, label, config);
         }
 
         if target < self.last_main {
-            self.scroll_up_to_gap(target, inner, end_node);
+            self.scroll_up_to_gap::<U>(target, inner, label, config);
         } else if target > self.last_main {
-            self.scroll_down_to_gap(target, inner, end_node);
+            self.scroll_down_to_gap::<U>(target, inner, label, config);
         }
 
         self.last_main = target;

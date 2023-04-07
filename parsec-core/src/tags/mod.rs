@@ -8,7 +8,7 @@ use any_rope::{Measurable, Rope as AnyRope};
 use self::{form::FormFormer, inner::InnerTags};
 use crate::{
     text::inner::InnerText,
-    ui::{Area, Label},
+    ui::{Area, Label, Ui},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,10 +52,9 @@ impl std::fmt::Debug for Tag {
 }
 
 impl Tag {
-    pub(crate) fn trigger<L, A>(&self, label: &mut L, form_former: &mut FormFormer)
+    pub(crate) fn trigger<U>(&self, label: &U::Label, form_former: &mut FormFormer)
     where
-        L: Label<A>,
-        A: Area,
+        U: Ui
     {
         match self {
             Tag::PushForm(id) => label.set_form(form_former.apply(*id)),

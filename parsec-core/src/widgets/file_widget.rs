@@ -13,11 +13,11 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::DownCastableData,
+    config::{Config, DownCastableData},
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, EndNode, Label, NodeIndex, Ui},
+    ui::{Area, Label, Ui},
 };
 
 /// The widget that is used to print and edit files.
@@ -25,7 +25,7 @@ pub struct FileWidget<U>
 where
     U: Ui,
 {
-    pub(crate) _side_widgets: Option<(NodeIndex, Vec<NodeIndex>)>,
+    pub(crate) _side_widgets: Option<(usize, Vec<usize>)>,
     identifier: String,
     text: Text<U>,
     print_info: PrintInfo,
@@ -85,7 +85,7 @@ where
     }
 
     /// Undoes the last moment in history.
-    pub fn undo(&mut self, end_node: &EndNode<U>) {
+    pub fn undo(&mut self, label: &U::Label, config: &Config) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
             None => return,
@@ -101,14 +101,14 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
-            self.cursors.push(Cursor::new(pos, &self.text.inner(), end_node));
+            self.cursors.push(Cursor::new::<U>(pos, &self.text.inner(), label, config));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
     }
 
     /// Redoes the last moment in history.
-    pub fn redo(&mut self, end_node: &EndNode<U>) {
+    pub fn redo(&mut self, label: &U::Label, config: &Config) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return,
@@ -122,14 +122,14 @@ where
             self.text.apply_change(&change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
-            self.cursors.push(Cursor::new(new_pos, &self.text.inner(), &end_node));
+            self.cursors.push(Cursor::new::<U>(new_pos, &self.text.inner(), label, config));
         }
     }
 
-    fn set_printed_lines(&mut self, end_node: &EndNode<U>) {
+    fn set_printed_lines(&mut self, label: &U::Label, config: &Config) {
         let first_ch = self.print_info.first_ch;
-        let wrap_method = end_node.config().wrap_method;
-        let tab_places = &end_node.config().tab_places;
+        let wrap_method = config.wrap_method;
+        let tab_places = &config.tab_places;
         let top_line = self.text.inner().char_to_line(first_ch);
 
         // The beginning of the first line may be offscreen, which would make
@@ -137,10 +137,10 @@ where
         let mut is_wrapped = {
             let line_ch = self.text.inner().line_to_char(top_line);
             let initial_slice = self.text.inner().slice(line_ch..first_ch);
-            end_node.label.wrap_count(initial_slice, wrap_method, tab_places) > 0
+            label.wrap_count(initial_slice, wrap_method, tab_places) > 0
         };
 
-        let height = end_node.label.area().height();
+        let height = label.area().height();
         let slice = self.text.inner().slice(self.print_info.first_ch..);
         let mut liness = slice.lines().enumerate();
 
@@ -151,7 +151,7 @@ where
 
         while let (Some((index, line)), true) = (liness.next(), accum <= height) {
             let line_num = index + top_line;
-            let wrap_count = end_node.label.wrap_count(line, wrap_method, tab_places);
+            let wrap_count = label.wrap_count(line, wrap_method, tab_places);
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
@@ -229,9 +229,10 @@ where
         self.identifier.as_str()
     }
 
-    fn update(&mut self, end_node: &mut EndNode<U>) {
-        self.print_info.update(self.main_cursor().caret(), self.text.inner(), end_node);
-        self.set_printed_lines(end_node);
+    fn update(&mut self, label: &U::Label, config: &Config) {
+        self.print_info
+            .update::<U>(self.main_cursor().caret(), self.text.inner(), label, config);
+        self.set_printed_lines(label, config);
 
         // let mut node = self.end_node.write();
         // self.text.update_lines(&mut node);
@@ -264,20 +265,22 @@ where
         &'a mut self,
         index: usize,
         edit_accum: &'a mut EditAccum,
-        end_node: &'a EndNode<U>,
+        label: &'a U::Label,
+        config: &'a Config,
     ) -> Editor<U> {
         Editor::new(
             &mut self.cursors[index],
             &mut self.text,
-            end_node,
+            label,
+            config,
             edit_accum,
             Some(self.print_info),
             Some(&mut self.history),
         )
     }
 
-    fn mover<'a>(&'a mut self, index: usize, end_node: &'a EndNode<U>) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, end_node)
+    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label, config: &'a Config) -> Mover<U> {
+        Mover::new(&mut self.cursors[index], &self.text, label, config)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -304,12 +307,12 @@ where
         self.new_moment();
     }
 
-    fn undo(&mut self, end_node: &EndNode<U>) {
-        self.undo(end_node)
+    fn undo(&mut self, label: &'_ U::Label, config: &'_ Config) {
+        self.undo(label, config)
     }
 
-    fn redo(&mut self, end_node: &EndNode<U>) {
-        self.redo(end_node)
+    fn redo(&mut self, label: &'_ U::Label, config: &'_ Config) {
+        self.redo(label, config)
     }
 }
 
