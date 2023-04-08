@@ -114,10 +114,10 @@ impl<U> Node<U>
 where
     U: Ui,
 {
-    pub(crate) fn update_and_print(&self, label: &U::Label) {
+    pub(crate) fn update_and_print(&self, label: &U::Label, is_active: bool) {
         let config = self.config.read();
         self.widget.update(label, &config);
-        if self.widget.is_active() {
+        if is_active {
             label.set_as_active()
         }
 
@@ -144,7 +144,7 @@ where
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(self.area_index, widget, push_specs, false)
+        self.window.push_widget(self.area_index, widget, push_specs)
     }
 
     pub fn push_widget_to_area(
@@ -154,7 +154,7 @@ where
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(area_index, widget, push_specs, false)
+        self.window.push_widget(area_index, widget, push_specs)
     }
 }
 
@@ -297,6 +297,7 @@ where
 {
     ui: U,
     nodes: Vec<Node<U>>,
+    active_area: usize,
     last_index: usize,
     files_parent: usize,
     config: RwData<Config>,
@@ -321,7 +322,6 @@ where
         let actionable = widget.get_actionable().unwrap();
         let ro_widget = RoData::from(actionable);
 
-        let identifier = widget.identifier();
         let main_node = Node {
             widget,
             config: config.clone(),
@@ -330,6 +330,7 @@ where
         let mut window = Window {
             ui,
             nodes: vec![main_node],
+            active_area: 0,
             last_index: 0,
             files_parent: 0,
             config,
@@ -353,7 +354,6 @@ where
         area_index: usize,
         widget: Widget<U>,
         push_specs: PushSpecs,
-        is_active: bool,
     ) -> (usize, Option<usize>) {
         self.last_index += 1;
 
@@ -379,7 +379,7 @@ where
         constructor_hook: &dyn Fn(ModNode<U>),
         session_manager: &mut SessionManager,
     ) -> (usize, Option<usize>) {
-        let (new_area, opt_parent) = self.push_widget(area_index, widget, push_specs, false);
+        let (new_area, opt_parent) = self.push_widget(area_index, widget, push_specs);
 
         let mod_node = ModNode {
             session_manager,
@@ -402,7 +402,7 @@ where
         C: Fn(ModNode<U>, RoData<FileWidget<U>>),
     {
         let node_index = self.files_parent;
-        let (new_index, opt_parent) = self.push_widget(node_index, widget, push_specs, true);
+        let (new_index, opt_parent) = self.push_widget(node_index, widget, push_specs);
         let node = self
             .nodes
             .iter()
@@ -423,6 +423,8 @@ where
         };
         (constructor_hook)(mod_node, file);
 
+        self.active_area = new_index;
+
         (new_index, opt_parent)
     }
 
@@ -433,7 +435,7 @@ where
         widget: Widget<U>,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
-        self.push_widget(0, widget, push_specs, false)
+        self.push_widget(0, widget, push_specs)
     }
 
     /// Triggers the functions to use when the program starts.
@@ -503,7 +505,7 @@ where
         if self.ui.layout_has_changed() {
             for node in &self.nodes {
                 let label = self.ui.get_label(node.area_index).unwrap();
-                node.update_and_print(label);
+                node.update_and_print(label, node.area_index == self.active_area);
             }
         }
     }

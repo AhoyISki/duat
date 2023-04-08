@@ -105,10 +105,7 @@ where
     U: Ui + ?Sized,
 {
     Normal(RwData<dyn NormalWidget<U>>),
-    Actionable {
-        widget: RwData<dyn ActionableWidget<U>>,
-        is_active: bool,
-    },
+    Actionable(RwData<dyn ActionableWidget<U>>),
 }
 
 pub struct Widget<U>
@@ -139,10 +136,7 @@ where
         updater: Box<dyn Fn() -> bool>,
     ) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Actionable {
-                widget: RwData::new_unsized(widget),
-                is_active: false,
-            },
+            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
             needs_update: updater,
         }
     }
@@ -152,10 +146,7 @@ where
         updater: Box<dyn Fn() -> bool>,
     ) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Actionable {
-                widget: RwData::new_unsized(widget),
-                is_active: true,
-            },
+            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
             needs_update: updater,
         }
     }
@@ -165,7 +156,7 @@ where
             InnerWidget::Normal(widget) => {
                 widget.write().update(label, config);
             }
-            InnerWidget::Actionable { widget, .. } => {
+            InnerWidget::Actionable(widget) => {
                 widget.write().update(label, config);
             }
         }
@@ -178,7 +169,7 @@ where
                 let print_info = widget.print_info();
                 widget.text().print(label, config, print_info);
             }
-            InnerWidget::Actionable { widget, .. } => {
+            InnerWidget::Actionable(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 widget.text().print(label, config, print_info);
@@ -189,28 +180,21 @@ where
     pub(crate) fn identifier(&self) -> String {
         match &self.inner {
             InnerWidget::Normal(widget) => widget.read().identifier().to_string(),
-            InnerWidget::Actionable { widget, .. } => widget.read().identifier().to_string(),
+            InnerWidget::Actionable(widget) => widget.read().identifier().to_string(),
         }
     }
 
     pub fn needs_update(&self) -> bool {
         match &self.inner {
             InnerWidget::Normal(_) => (self.needs_update)(),
-            InnerWidget::Actionable { widget, .. } => widget.has_changed() || (self.needs_update)(),
+            InnerWidget::Actionable(widget) => widget.has_changed() || (self.needs_update)(),
         }
     }
 
     pub fn get_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
         match &self.inner {
             InnerWidget::Normal(_) => None,
-            InnerWidget::Actionable { widget, .. } => Some(&widget),
-        }
-    }
-
-    pub(crate) fn is_active(&self) -> bool {
-        match self.inner {
-            InnerWidget::Normal(_) => false,
-            InnerWidget::Actionable { is_active, .. } => is_active,
+            InnerWidget::Actionable(widget) => Some(&widget),
         }
     }
 }
