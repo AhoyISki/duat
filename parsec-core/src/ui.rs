@@ -20,6 +20,8 @@ pub trait Area {
     /// Requests a new width to the widget.
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()>;
 
+    fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>);
+
     /// Requests that the width be enough to fit a certain piece of
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
@@ -130,7 +132,7 @@ where
     U: Ui,
 {
     session_manager: &'a mut SessionManager,
-    window: &'a mut Window<U>,
+    window: &'a mut ParsecWindow<U>,
     area_index: usize,
 }
 
@@ -163,6 +165,12 @@ where
 pub enum Split {
     Locked(usize),
     Min(usize),
+}
+
+impl Default for Split {
+    fn default() -> Self {
+        Split::Min(0)
+    }
 }
 
 impl Split {
@@ -236,87 +244,62 @@ impl PushSpecs {
     }
 }
 
+pub trait Window: 'static {
+    type Area: Area + Clone + Display + Send + Sync;
+    type Label: Label<Self::Area> + Clone + Send + Sync;
+
+    fn get_area(&self, area_index: usize) -> Option<Self::Area>;
+
+    fn get_label(&self, area_index: usize) -> Option<Self::Label>;
+
+    /// Wether or not the layout of the `Ui` (size of widgets, their
+    /// positions, etc) has changed.
+    fn layout_has_changed(&self) -> bool;
+}
+
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: 'static {
-    type Area: Area + Display + Send + Sync;
-    type Label: Label<Self::Area> + Send + Sync;
+    type Area: Area + Clone + Display + Send + Sync;
+    type Label: Label<Self::Area> + Clone + Send + Sync;
+    type Window: Window<Area = Self::Area, Label = Self::Label> + Clone;
 
-    /// Bisects the `Self::Area`, returning a new
-    /// `Self::Label<Self::Area>` that will occupy the region. If
-    /// required, also returns a new `Self::Container<Self::Area>`,
-    /// which will contain both the old `Self::Area` and the new
-    /// `Self::Label`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crate::ui::Ui;
-    /// let mut ui: Self = foo();
-    /// // A container with a horizontal axis.
-    /// let mut container: Self::Container = bar(Side::Left);
-    /// let split: Split = baz();
-    ///
-    /// // A new container is not needed here, since the split is parallel to the container's axis.
-    /// let (_, none_container) = ui.bisect_area(&mut container.mut_area(), Side::Right, split);
-    /// assert!(none_container.is_none());
-    ///
-    /// // A new container is needed here, since the split is perpendicular to the container's axis.
-    /// let (_, some_container) = ui.bisect_area(&mut area, Side::Top, split);
-    /// assert!(some_container.is_some());
-    /// ```
-    fn bisect_area(&mut self, area_index: usize, push_specs: PushSpecs) -> (usize, Option<usize>);
-
-    /// Returns a `Self::Label` representing the maximum possible
-    /// extent an area could have.
-    fn maximum_label(&mut self) -> Self::Label;
+    fn new_window(&mut self) -> (Self::Window, Self::Label);
 
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
 
     /// Functions to trigger when the program ends.
     fn shutdown(&mut self);
-
-    /// Functions to trigger once every `Label` has been printed.
-    fn finish_all_printing(&mut self);
-
-    /// Wether or not the layout of the `Ui` (size of widgets, their
-    /// positions, etc) has changed.
-    fn layout_has_changed(&self) -> bool;
-
-    fn get_area(&self, area_index: usize) -> &Option<Self::Area>;
-
-    fn get_label(&self, area_index: usize) -> Option<&Self::Label>;
 }
 
 /// A "viewport" of Parsec. It contains a group of widgets that can be
 /// displayed at the same time.
-pub struct Window<U>
+pub struct ParsecWindow<U>
 where
     U: Ui,
 {
-    ui: U,
+    window: U::Window,
     nodes: Vec<Node<U>>,
     active_area: usize,
-    last_index: usize,
     files_parent: usize,
     config: RwData<Config>,
 }
 
-impl<U> Window<U>
+impl<U> ParsecWindow<U>
 where
     U: Ui + 'static,
 {
     /// Returns a new instance of `NodeManager`.
     pub fn new(
-        mut ui: U,
+        ui: &mut U,
         widget: Widget<U>,
         config: Config,
         session_manager: &mut SessionManager,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
     ) -> Self {
-        let mut label = ui.maximum_label();
-        widget.update(&mut label, &config);
+        let (window, mut initial_label) = ui.new_window();
+        widget.update(&mut initial_label, &config);
         let config = RwData::new(config);
 
         let actionable = widget.get_actionable().unwrap();
@@ -327,11 +310,10 @@ where
             config: config.clone(),
             area_index: 0,
         };
-        let mut window = Window {
-            ui,
+        let mut parsec_window = ParsecWindow {
+            window,
             nodes: vec![main_node],
             active_area: 0,
-            last_index: 0,
             files_parent: 0,
             config,
         };
@@ -340,12 +322,12 @@ where
 
         let mod_node = ModNode {
             session_manager,
-            window: &mut window,
+            window: &mut parsec_window,
             area_index: 0,
         };
         (constructor_hook)(mod_node, file);
 
-        window
+        parsec_window
     }
 
     /// Pushes a `Widget` onto an
@@ -355,16 +337,15 @@ where
         widget: Widget<U>,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
-        self.last_index += 1;
-
-        let (new_area, opt_parent) = self.ui.bisect_area(area_index, push_specs);
-        let label = self.ui.get_label(new_area).unwrap();
+        let mut area = self.window.get_area(area_index).unwrap();
+        let (new_area, opt_parent) = area.bisect(push_specs);
+        let label = self.window.get_label(new_area).unwrap();
         widget.update(&label, &self.config.read());
 
         let node = Node {
             widget,
             config: self.config.clone(),
-            area_index,
+            area_index: new_area,
         };
         self.nodes.push(node);
 
@@ -438,17 +419,7 @@ where
         self.push_widget(0, widget, push_specs)
     }
 
-    /// Triggers the functions to use when the program starts.
-    pub(crate) fn startup(&mut self) {
-        self.ui.startup();
-    }
-
-    /// Triggers the functions to use when the program ends.
-    pub(crate) fn shutdown(&mut self) {
-        self.ui.shutdown();
-    }
-
-    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, &U::Label, &RwData<Config>)> + '_ {
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, &RwData<Config>)> + '_ {
         self.nodes.iter().map(
             |Node {
                  widget,
@@ -456,7 +427,7 @@ where
                  area_index,
                  ..
              }| {
-                let label = self.ui.get_label(*area_index).unwrap();
+                let label = self.window.get_label(*area_index).unwrap();
                 (widget, label, config)
             },
         )
@@ -464,7 +435,7 @@ where
 
     pub fn actionable_widgets(
         &self,
-    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, &U::Label, &RwData<Config>)> + '_
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label, &RwData<Config>)> + '_
     {
         self.nodes.iter().filter_map(
             |Node {
@@ -474,7 +445,7 @@ where
                  ..
              }| {
                 widget.get_actionable().map(|widget| {
-                    let label = self.ui.get_label(*area_index).unwrap();
+                    let label = self.window.get_label(*area_index).unwrap();
                     (widget, label, config)
                 })
             },
@@ -502,10 +473,10 @@ where
     }
 
     pub(crate) fn print_if_layout_changed(&self) {
-        if self.ui.layout_has_changed() {
+        if self.window.layout_has_changed() {
             for node in &self.nodes {
-                let label = self.ui.get_label(node.area_index).unwrap();
-                node.update_and_print(label, node.area_index == self.active_area);
+                let label = self.window.get_label(node.area_index).unwrap();
+                node.update_and_print(&label, node.area_index == self.active_area);
             }
         }
     }

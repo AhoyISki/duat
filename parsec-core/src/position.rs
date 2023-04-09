@@ -334,8 +334,6 @@ where
 {
     cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
-    label: &'a U::Label,
-    config: &'a Config,
     edit_accum: &'a mut EditAccum,
     print_info: Option<PrintInfo>,
     history: Option<&'a mut History>,
@@ -349,8 +347,6 @@ where
     pub fn new(
         cursor: &'a mut Cursor,
         text: &'a mut Text<U>,
-        label: &'a U::Label,
-        config: &'a Config,
         edit_accum: &'a mut EditAccum,
         print_info: Option<PrintInfo>,
         history: Option<&'a mut History>,
@@ -359,8 +355,6 @@ where
         Self {
             cursor,
             text,
-            label,
-            config,
             edit_accum,
             print_info,
             history,

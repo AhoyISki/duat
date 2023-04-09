@@ -76,7 +76,6 @@ where
     pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count() as u32;
-        let len = self.text.inner.string().chars().count();
 
         let last_skip = self
             .text
@@ -209,7 +208,7 @@ where
             .scan(0, |accum, (index, skip)| {
                 let prev_accum = *accum;
                 *accum += *skip as usize;
-                Some((*accum, index))
+                Some((prev_accum, index))
             })
             .nth(*swap_index)
             .unwrap();
@@ -486,7 +485,7 @@ pub struct PrintInfo {
 impl PrintInfo {
     /// Scrolls the `PrintInfo` vertically by a given amount, on a
     /// given file.
-    pub fn scroll_vertically<U>(&mut self, mut d_y: i32, text: &Text<U>)
+    pub fn scroll_vertically<U>(&mut self, mut _d_y: i32, _text: &Text<U>)
     where
         U: Ui,
     {

@@ -8,7 +8,7 @@ use any_rope::{Measurable, Rope as AnyRope};
 use self::{form::FormFormer, inner::InnerTags};
 use crate::{
     text::inner::InnerText,
-    ui::{Area, Label, Ui},
+    ui::{Label, Ui},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -243,11 +243,9 @@ where
         &'a mut self,
         _: usize,
         edit_accum: &'a mut EditAccum,
-        label: &'a U::Label,
-        config: &'a Config,
     ) -> Editor<U> {
         self.needs_update = true;
-        Editor::new(&mut self.cursor[0], &mut self.text, label, config, edit_accum, None, None)
+        Editor::new(&mut self.cursor[0], &mut self.text, edit_accum, None, None)
     }
 
     fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label, config: &'a Config) -> Mover<U> {

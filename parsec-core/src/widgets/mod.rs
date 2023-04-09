@@ -59,13 +59,7 @@ pub trait ActionableWidget<U>: NormalWidget<U>
 where
     U: Ui + 'static,
 {
-    fn editor<'a>(
-        &'a mut self,
-        index: usize,
-        edit_accum: &'a mut EditAccum,
-        label: &'a U::Label,
-        config: &'a Config,
-    ) -> Editor<U>;
+    fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U>;
 
     fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label, config: &'a Config) -> Mover<U>;
 
@@ -267,7 +261,7 @@ where
         let cursors = self.actionable.cursors();
 
         for index in 0..cursors.len() {
-            let editor = self.actionable.editor(index, &mut edit_accum, self.label, self.config);
+            let editor = self.actionable.editor(index, &mut edit_accum);
             f(editor);
         }
     }
@@ -349,7 +343,7 @@ where
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = self.actionable.editor(index, &mut edit_accum, self.label, self.config);
+        let editor = self.actionable.editor(index, &mut edit_accum);
         f(editor);
 
         let mut new_cursors = Vec::from(&self.actionable.cursors()[(index + 1)..]);

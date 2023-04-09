@@ -265,14 +265,10 @@ where
         &'a mut self,
         index: usize,
         edit_accum: &'a mut EditAccum,
-        label: &'a U::Label,
-        config: &'a Config,
     ) -> Editor<U> {
         Editor::new(
             &mut self.cursors[index],
             &mut self.text,
-            label,
-            config,
             edit_accum,
             Some(self.print_info),
             Some(&mut self.history),

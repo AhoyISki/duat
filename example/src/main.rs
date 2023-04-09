@@ -78,14 +78,14 @@ fn main() {
         Ui::default(),
         config,
         Box::new(move |mut mod_node, file| {
-            let push_specs = PushSpecs::new(Side::Left, Split::Locked(1), true);
+            let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
             let cfg = VertRuleCfg {
                 sep_char: SepChar::TwoWay('▋', '┃'),
                 sep_form: SepForm::Uniform(id),
             };
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new(Side::Left, Split::Min(1), true);
+            let push_specs = PushSpecs::new_glued(Side::Left, Split::Min(1));
             let cfg = LineNumbersCfg {
                 alignment: Alignment::Right,
                 numbering: Numbering::Absolute,
@@ -106,7 +106,7 @@ fn main() {
             //};
             //mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new(Side::Bottom, Split::Min(1), true);
+            let push_specs = PushSpecs::new_glued(Side::Bottom, Split::Min(1));
             mod_node.push_widget(StatusLine::default_fn(file), push_specs);
         }),
     );

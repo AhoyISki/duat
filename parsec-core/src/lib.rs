@@ -1,4 +1,4 @@
-#![feature(is_some_and, drain_filter)]
+#![feature(drain_filter)]
 
 pub mod config;
 pub mod history;
@@ -14,7 +14,7 @@ use std::{path::PathBuf, thread, time::Duration};
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
-use ui::{ModNode, PushSpecs, Side, Split, Ui, Window};
+use ui::{ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
 use widgets::{
     command_line::{Command, CommandList},
     file_widget::FileWidget,
@@ -25,7 +25,8 @@ pub struct Session<U>
 where
     U: Ui,
 {
-    windows: Vec<Window<U>>,
+    ui: U,
+    windows: Vec<ParsecWindow<U>>,
     active_window: usize,
     pub constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     session_manager: RwData<SessionManager>,
@@ -38,7 +39,7 @@ where
 {
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
-        ui: U,
+        mut ui: U,
         config: Config,
         constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
@@ -53,10 +54,16 @@ where
             command_list.try_add(Box::new(command)).unwrap();
         }
 
-        let window =
-            Window::new(ui, file_widget, config, &mut session_manager.write(), &constructor_hook);
+        let window = ParsecWindow::new(
+            &mut ui,
+            file_widget,
+            config,
+            &mut session_manager.write(),
+            &constructor_hook,
+        );
 
         let mut session = Session {
+            ui,
             windows: vec![window],
             active_window: 0,
             constructor_hook,
@@ -69,11 +76,11 @@ where
         session
     }
 
-    fn mut_active_window(&mut self) -> &mut Window<U> {
+    fn mut_active_window(&mut self) -> &mut ParsecWindow<U> {
         self.windows.get_mut(self.active_window).unwrap()
     }
 
-    fn active_window(&self) -> &Window<U> {
+    fn active_window(&self) -> &ParsecWindow<U> {
         self.windows.get(self.active_window).unwrap()
     }
 
@@ -115,14 +122,14 @@ where
     where
         I: InputScheme,
     {
-        self.mut_active_window().startup();
+        self.ui.startup();
 
         // The main loop.
         loop {
             for (widget, label, config) in self.active_window().widgets() {
                 let config = config.read();
-                widget.update(label, &config);
-                widget.print(label, &config);
+                widget.update(&label, &config);
+                widget.print(&label, &config);
             }
 
             self.session_loop(key_remapper);
@@ -132,7 +139,7 @@ where
             }
         }
 
-        self.mut_active_window().shutdown();
+        self.ui.shutdown();
     }
 
     /// The primary application loop, executed while no breaking
@@ -152,10 +159,10 @@ where
 
             for (widget, label, config) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
-                    s_0.spawn(|| {
+                    s_0.spawn(move || {
                         let config = config.read();
-                        widget.update(label, &config);
-                        widget.print(label, &config);
+                        widget.update(&label, &config);
+                        widget.print(&label, &config);
                     });
                 }
             }
@@ -201,7 +208,7 @@ where
     U: Ui,
 {
     session_manager: &'a mut SessionManager,
-    window: &'a Window<U>,
+    window: &'a ParsecWindow<U>,
 }
 
 impl<'a, U> Controls<'a, U>
@@ -223,9 +230,9 @@ where
             .ok_or(())?;
         let mut widget = widget.write();
         let config = config.read();
-        widget.on_focus(label, &config);
+        widget.on_focus(&label, &config);
 
-        let (widget, _, end_node) = self
+        let (widget, ..) = self
             .window
             .actionable_widgets()
             .find(|(widget, ..)| {
@@ -234,7 +241,7 @@ where
             .ok_or(())?;
 
         let mut widget = widget.write();
-        widget.on_unfocus(label, &config);
+        widget.on_unfocus(&label, &config);
 
         if &target.as_ref()[..13] == "parsec-file: " {
             self.session_manager.active_file = target.as_ref().to_string();
@@ -326,7 +333,7 @@ fn session_commands(session: RwData<SessionManager>) -> Vec<Command<SessionManag
 fn send_event<U, I>(
     key_remapper: &mut KeyRemapper<I>,
     session_manager: &mut SessionManager,
-    window: &Window<U>,
+    window: &ParsecWindow<U>,
 ) where
     U: Ui + 'static,
     I: InputScheme,
@@ -347,7 +354,14 @@ fn send_event<U, I>(
             session_manager: &mut *session_manager,
             window,
         };
-        blink_cursors_and_send_key(&mut *widget, label, &config, controls, key_event, key_remapper);
+        blink_cursors_and_send_key(
+            &mut *widget,
+            &label,
+            &config,
+            controls,
+            key_event,
+            key_remapper,
+        );
 
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
