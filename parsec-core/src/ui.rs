@@ -38,44 +38,41 @@ where
 
     //////////////////// Forms
     /// Changes the form for subsequent characters.
-    fn set_form(&self, form: Form);
-
-    /// Clears the current form.
-    fn clear_form(&self);
+    fn set_form(&mut self, form: Form);
 
     /// Places the primary cursor on the current printing position.
-    fn place_main_cursor(&self, style: CursorStyle);
+    fn place_main_cursor(&mut self, style: CursorStyle);
 
     /// Places an extra cursor on the current printing position.
-    fn place_extra_cursor(&self, style: CursorStyle);
+    fn place_extra_cursor(&mut self, style: CursorStyle);
 
     /// Tells the [`Ui`] that this [`Label`] is the one that is
     /// currently focused.
-    fn set_as_active(&self);
+    fn set_as_active(&mut self);
 
     //////////////////// Printing
     /// Tell the area that printing has begun.
     ///
     /// This function should at the very least move the cursor to the
     /// top left position in the area.
-    fn start_printing(&self, config: &Config);
+    fn start_printing(&mut self, config: &Config);
 
     /// Tell the area that printing has ended.
     ///
     /// This function should clear the lines below the last printed
     /// line, and flush the contents if necessary.
-    fn stop_printing(&self);
+    fn stop_printing(&mut self);
 
     /// Prints a character at the current position and moves the
     /// printing position forward.
-    fn print(&self, ch: char, x_shift: usize) -> PrintStatus;
+    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
 
     /// Moves to the next line. If succesful, returns `Ok(())`,
     /// otherwise, returns `Err(())`.
     ///
     /// This function should also make sure that there is no leftover
     /// text after the current line's end.
-    fn next_line(&self) -> PrintStatus;
+    fn next_line(&mut self) -> PrintStatus;
 
     /// Counts how many times the given string would wrap.
     fn wrap_count(
@@ -116,7 +113,7 @@ impl<U> Node<U>
 where
     U: Ui,
 {
-    pub(crate) fn update_and_print(&self, label: &U::Label, is_active: bool) {
+    pub(crate) fn update_and_print(&self, label: &mut U::Label, is_active: bool) {
         let config = self.config.read();
         self.widget.update(label, &config);
         if is_active {
@@ -161,10 +158,19 @@ where
 }
 
 /// A way of splitting areas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Split {
     Locked(usize),
     Min(usize),
+}
+
+impl Debug for Split {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    	match self {
+        Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
+        Split::Min(len) => f.write_fmt(format_args!("Locked({})", len))
+    }
+	}
 }
 
 impl Default for Split {
@@ -338,9 +344,17 @@ where
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let mut area = self.window.get_area(area_index).unwrap();
-        let (new_area, opt_parent) = area.bisect(push_specs);
+        let (new_area, pushed_area) = area.bisect(push_specs);
         let label = self.window.get_label(new_area).unwrap();
         widget.update(&label, &self.config.read());
+
+        if let Some(new_area_index) = pushed_area {
+            self.nodes.iter_mut().for_each(|node| {
+                if node.area_index == area_index {
+                    node.area_index = new_area_index
+                }
+            });
+        }
 
         let node = Node {
             widget,
@@ -349,7 +363,7 @@ where
         };
         self.nodes.push(node);
 
-        (new_area, opt_parent)
+        (new_area, pushed_area)
     }
 
     pub fn push_hooked(
@@ -475,8 +489,8 @@ where
     pub(crate) fn print_if_layout_changed(&self) {
         if self.window.layout_has_changed() {
             for node in &self.nodes {
-                let label = self.window.get_label(node.area_index).unwrap();
-                node.update_and_print(&label, node.area_index == self.active_area);
+                let mut label = self.window.get_label(node.area_index).unwrap();
+                node.update_and_print(&mut label, node.area_index == self.active_area);
             }
         }
     }

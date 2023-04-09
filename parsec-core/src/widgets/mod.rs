@@ -156,7 +156,7 @@ where
         }
     }
 
-    pub(crate) fn print(&self, label: &U::Label, config: &Config) {
+    pub(crate) fn print(&self, label: &mut U::Label, config: &Config) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
                 let widget = widget.read();

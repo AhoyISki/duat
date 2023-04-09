@@ -126,10 +126,10 @@ where
 
         // The main loop.
         loop {
-            for (widget, label, config) in self.active_window().widgets() {
+            for (widget, mut label, config) in self.active_window().widgets() {
                 let config = config.read();
-                widget.update(&label, &config);
-                widget.print(&label, &config);
+                widget.update(&mut label, &config);
+                widget.print(&mut label, &config);
             }
 
             self.session_loop(key_remapper);
@@ -157,12 +157,12 @@ where
                 break;
             }
 
-            for (widget, label, config) in self.windows[self.active_window].widgets() {
+            for (widget, mut label, config) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
                     s_0.spawn(move || {
                         let config = config.read();
-                        widget.update(&label, &config);
-                        widget.print(&label, &config);
+                        widget.update(&mut label, &config);
+                        widget.print(&mut label, &config);
                     });
                 }
             }
@@ -343,7 +343,7 @@ fn send_event<U, I>(
             widget.read().identifier() == session_manager.active_widget.as_str()
         });
 
-        let Some((widget, label, config)) = actionable_widget else {
+        let Some((widget, mut label, config)) = actionable_widget else {
             return;
         };
         let config = config.read();
@@ -356,7 +356,7 @@ fn send_event<U, I>(
         };
         blink_cursors_and_send_key(
             &mut *widget,
-            &label,
+            &mut label,
             &config,
             controls,
             key_event,
@@ -373,7 +373,7 @@ fn send_event<U, I>(
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, A, I>(
     widget: &mut A,
-    label: &U::Label,
+    label: &mut U::Label,
     config: &Config,
     controls: Controls<U>,
     key_event: KeyEvent,

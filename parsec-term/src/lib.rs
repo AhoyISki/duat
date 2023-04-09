@@ -2,8 +2,7 @@
 
 use std::{
     fmt::{Debug, Display},
-    io::{self, Stdout},
-    mem::MaybeUninit,
+    io::{self, stdout},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -20,9 +19,8 @@ use crossterm::{
 use parsec_core::{config::Config, text::PrintStatus, ui::PushSpecs};
 use parsec_core::{
     config::{RwData, TabPlaces, WrapMethod},
-    log_info,
     tags::{form::CursorStyle, form::Form},
-    ui::{self, Area as UiArea, Axis, Label as UiLabel, Side, Split},
+    ui::{self, Area as UiArea, Axis, Side, Split},
 };
 use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
@@ -35,25 +33,7 @@ pub use rules::VertRuleCfg;
 
 // Static variables, used solely for printing.
 static IS_PRINTING: AtomicBool = AtomicBool::new(false);
-
-static mut CURSOR: Coord = Coord { x: 0, y: 0 };
-static mut IS_ACTIVE: bool = false;
-static mut SHOW_CURSOR: bool = false;
-
-static mut LAST_STYLE: Option<ContentStyle> = None;
-static mut STYLE_BEFORE_CURSOR: Option<ContentStyle> = None;
-
-static mut WRAP_METHOD: WrapMethod = WrapMethod::NoWrap;
-static mut TAB_PLACES: TabPlaces = TabPlaces::Regular(4);
-static mut INDENT: usize = 0;
-
-static mut STDOUT: MaybeUninit<Stdout> = MaybeUninit::uninit();
-
-/// Very unsafe stdout function, simply for shorter lines.
-#[doc(hidden)]
-unsafe fn stdout() -> &'static mut Stdout {
-    STDOUT.assume_init_mut()
-}
+static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Coord {
@@ -136,7 +116,7 @@ impl Coords {
     fn add_to_side(&mut self, side: Side, len_diff: i16) {
         match side {
             Side::Top => self.tl.y = self.tl.y.saturating_add_signed(-len_diff),
-            Side::Left => self.tl.y = self.tl.y.saturating_add_signed(-len_diff),
+            Side::Left => self.tl.x = self.tl.x.saturating_add_signed(-len_diff),
             Side::Bottom => self.br.y = self.br.y.saturating_add_signed(len_diff),
             Side::Right => self.br.x = self.br.x.saturating_add_signed(len_diff),
         }
@@ -324,24 +304,18 @@ impl ui::Area for Area {
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()> {
         let req_axis = Axis::from(side);
         let window = self.window.read();
-        let Some((child_index, parent)) = window.find_parent(self.index) else {
-            return if self.len(req_axis) == len {
-                Ok(())
-            } else {
-                Err(())
-            }
-        };
+        let (child_index, parent) = window.find_parent(self.index).ok_or(())?;
 
         let (children, axis) = parent.lineage.as_ref().unwrap();
         let (child, _) = &children[child_index];
 
         // If the current len is already equal to the requested len,
         // nothing needs to be done.
-        if child.area.len(req_axis) == len {
+        if child.resizable_len(req_axis, &window) == len {
             return Ok(());
         };
 
-        if req_axis != *axis {
+        let ret = if req_axis != *axis {
             let area = parent.area.clone();
             drop(window);
             area.request_len(len, side)
@@ -357,8 +331,14 @@ impl ui::Area for Area {
             drop(window);
             area.request_len(new_parent_width, side)
         } else {
-            parent.set_child_len(child_index, len as u16, side)
-        }
+            let ret = parent.set_child_len(child_index, len as u16, side);
+            drop(window);
+            ret
+        };
+
+		let window = self.window.write();
+
+        ret
     }
 
     fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
@@ -371,8 +351,8 @@ impl ui::Area for Area {
         drop(node);
         drop(window);
 
-        if let Err(_) = self.request_len(resizable_len.max(split.len()), side) {
-            panic!();
+        if resizable_len < split.len() {
+            self.request_len(resizable_len.max(split.len()), side).unwrap();
         }
 
         let mut window = self.window.write();
@@ -401,11 +381,12 @@ impl ui::Area for Area {
         } else {
             let new_child_index = window.next_index.fetch_add(1, Ordering::Acquire);
             // NOTE: ???????
-            let area = Area::new(self.coords(), new_area_index, self.window.clone());
+            let area = Area::new(self.coords(), self.index, self.window.clone());
             let new_parent = Node::new(area, None);
 
             let swapped_parent = window.find_mut_node(self.index).unwrap();
-            let node = std::mem::replace(swapped_parent, new_parent);
+            let mut node = std::mem::replace(swapped_parent, new_parent);
+            node.area.index = new_area_index;
 
             swapped_parent.lineage = Some((vec![(node, Split::default())], axis));
 
@@ -425,54 +406,67 @@ impl ui::Area for Area {
 #[derive(Clone)]
 pub struct Label {
     area: Area,
+
+    cursor: Coord,
+    is_active: bool,
+
+    last_style: Option<ContentStyle>,
+    style_before_cursor: Option<ContentStyle>,
+
+    wrap_method: WrapMethod,
+    tab_places: TabPlaces,
+    indent: usize,
 }
 
 impl Label {
     fn new(area: Area) -> Self {
-        Label { area }
-    }
-
-    fn clear_line(&self) {
-        unsafe {
-            if CURSOR.x < self.area.br().x {
-                self.clear_form();
-
-                // The rest of the line is featureless.
-                let padding_count = (self.area.br().x - CURSOR.x) as usize;
-                let padding = " ".repeat(padding_count);
-                queue!(stdout(), Print(padding)).unwrap();
-            }
-        }
-
-        unsafe {
-            CURSOR.x = self.area.tl().x;
-            CURSOR.y += 1;
-            queue!(
-                stdout(),
-                ResetColor,
-                MoveTo(CURSOR.x, CURSOR.y),
-                SetStyle(LAST_STYLE.unwrap_or_default())
-            )
-            .unwrap();
+        let cursor = area.tl();
+        Label {
+            area,
+            cursor,
+            is_active: false,
+            last_style: None,
+            style_before_cursor: None,
+            wrap_method: WrapMethod::NoWrap,
+            tab_places: TabPlaces::default(),
+            indent: 0,
         }
     }
 
-    fn wrap_line(&self) -> PrintStatus {
+    fn clear_line(&mut self) {
+        if self.cursor.x < self.area.br().x {
+            queue!(stdout(), ResetColor).unwrap();
+
+            // The rest of the line is featureless.
+            let padding_count = (self.area.br().x - self.cursor.x) as usize;
+            let padding = " ".repeat(padding_count);
+            queue!(stdout(), Print(padding)).unwrap();
+        }
+
+        self.cursor.x = self.area.tl().x;
+        self.cursor.y += 1;
+        queue!(
+            stdout(),
+            ResetColor,
+            MoveTo(self.cursor.x, self.cursor.y),
+            SetStyle(self.last_style.unwrap_or_default())
+        )
+        .unwrap();
+    }
+
+    fn wrap_line(&mut self) -> PrintStatus {
         self.clear_line();
 
-        unsafe {
-            queue!(stdout(), MoveTo(CURSOR.x, CURSOR.y), Print(" ".repeat(INDENT))).unwrap();
+        queue!(stdout(), MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(self.indent)))
+            .unwrap();
 
-            CURSOR.x += INDENT as u16;
-            INDENT = 0;
-        }
+        self.cursor.x += self.indent as u16;
+        self.indent = 0;
 
-        unsafe {
-            if CURSOR.y == self.area.br().y - 1 {
-                PrintStatus::Finished
-            } else {
-                PrintStatus::NextChar
-            }
+        if self.cursor.y == self.area.br().y - 1 {
+            PrintStatus::Finished
+        } else {
+            PrintStatus::NextChar
         }
     }
 }
@@ -482,107 +476,81 @@ impl ui::Label<Area> for Label {
         &self.area
     }
 
-    fn set_form(&self, form: Form) {
-        unsafe {
-            LAST_STYLE = Some(form.style);
-            queue!(stdout(), ResetColor, SetStyle(form.style)).unwrap();
-        };
+    fn set_form(&mut self, form: Form) {
+        self.last_style = Some(form.style);
+        queue!(stdout(), ResetColor, SetStyle(form.style)).unwrap();
     }
 
-    fn clear_form(&self) {
-        unsafe {
-            queue!(stdout(), ResetColor).unwrap();
-        }
-    }
-
-    fn place_main_cursor(&self, cursor_style: CursorStyle) {
-        unsafe {
-            if let (Some(caret), true) = (cursor_style.caret, IS_ACTIVE) {
-                queue!(stdout(), caret, SavePosition).unwrap();
-                SHOW_CURSOR = true
-            } else {
-                STYLE_BEFORE_CURSOR = LAST_STYLE;
-                queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
-            }
-        }
-    }
-
-    fn place_extra_cursor(&self, cursor_style: CursorStyle) {
-        unsafe {
-            STYLE_BEFORE_CURSOR = LAST_STYLE;
+    fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
+        if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
+            queue!(stdout(), caret, SavePosition).unwrap();
+            SHOW_CURSOR.store(true, Ordering::Release)
+        } else {
+            self.style_before_cursor = self.last_style;
             queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
         }
     }
 
-    fn set_as_active(&self) {
-        unsafe { IS_ACTIVE = true }
+    fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
+        self.style_before_cursor = self.last_style;
+        queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
     }
 
-    fn start_printing(&self, config: &Config) {
-        unsafe {
-            WRAP_METHOD = config.wrap_method;
-            TAB_PLACES = config.tab_places.clone();
-
-            while IS_PRINTING
-                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Acquire)
-                .is_err()
-            {}
-        }
-
-        unsafe {
-            CURSOR = self.area.tl();
-            queue!(stdout(), MoveTo(self.area.tl().x, self.area.tl().y)).unwrap();
-            execute!(stdout(), cursor::Hide).unwrap();
-        }
-
-        unsafe {
-            if IS_ACTIVE {
-                SHOW_CURSOR = false
-            }
-        }
+    fn set_as_active(&mut self) {
+        self.is_active = true;
+        SHOW_CURSOR.store(false, Ordering::Release)
     }
 
-    fn stop_printing(&self) {
+    fn start_printing(&mut self, config: &Config) {
+        self.wrap_method = config.wrap_method;
+        self.tab_places = config.tab_places.clone();
+
+        while IS_PRINTING
+            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Acquire)
+            .is_err()
+        {}
+
+        queue!(stdout(), MoveTo(self.area.tl().x, self.area.tl().y)).unwrap();
+        execute!(stdout(), cursor::Hide).unwrap();
+    }
+
+    fn stop_printing(&mut self) {
         while let PrintStatus::NextChar = self.next_line() {}
 
-        unsafe {
-            if SHOW_CURSOR {
-                execute!(stdout(), ResetColor, RestorePosition).unwrap();
-                execute!(stdout(), cursor::Show).unwrap();
-            }
+        if SHOW_CURSOR.load(Ordering::Acquire) {
+            execute!(stdout(), ResetColor, RestorePosition).unwrap();
+            execute!(stdout(), cursor::Show).unwrap();
         }
 
-        self.clear_form();
-        unsafe {
-            IS_PRINTING.store(false, Ordering::Release);
-            IS_ACTIVE = false;
+        {
+            queue!(stdout(), ResetColor).unwrap();
         };
+
+        IS_PRINTING.store(false, Ordering::Release);
     }
 
-    fn print(&self, ch: char, x_shift: usize) -> PrintStatus {
+    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus {
         let len = match ch {
-            '\t' => unsafe { TAB_PLACES.spaces_on_col(x_shift) as u16 },
+            '\t' => self.tab_places.spaces_on_col(x_shift) as u16,
             _ => UnicodeWidthChar::width(ch).unwrap_or(0) as u16,
         };
 
-        unsafe {
-            if CURSOR.x <= self.area.br().x - len {
-                CURSOR.x += len;
-                queue!(stdout(), Print(ch)).unwrap();
-                if let Some(style) = STYLE_BEFORE_CURSOR.take() {
-                    queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
-                }
-            } else if CURSOR.x <= self.area.br().x {
-                let width = self.area.br().x - CURSOR.x;
-                queue!(stdout(), Print(" ".repeat(width as usize))).unwrap();
-                if let Some(style) = STYLE_BEFORE_CURSOR.take() {
-                    queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
-                }
+        if self.cursor.x <= self.area.br().x - len {
+            self.cursor.x += len;
+            queue!(stdout(), Print(ch)).unwrap();
+            if let Some(style) = self.style_before_cursor.take() {
+                queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
+            }
+        } else if self.cursor.x <= self.area.br().x {
+            let width = self.area.br().x - self.cursor.x;
+            queue!(stdout(), Print(" ".repeat(width as usize))).unwrap();
+            if let Some(style) = self.style_before_cursor.take() {
+                queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
             }
         }
 
-        if unsafe { CURSOR.x == self.area.br().x } {
-            if let WrapMethod::NoWrap = unsafe { WRAP_METHOD } {
+        if self.cursor.x == self.area.br().x {
+            if let WrapMethod::NoWrap = self.wrap_method {
                 PrintStatus::NextLine
             } else {
                 self.wrap_line()
@@ -592,8 +560,8 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn next_line(&self) -> PrintStatus {
-        if unsafe { CURSOR.y + 1 < self.area.br().y } {
+    fn next_line(&mut self) -> PrintStatus {
+        if self.cursor.y + 1 < self.area.br().y {
             self.clear_line();
             PrintStatus::NextChar
         } else {
@@ -928,7 +896,7 @@ impl Node {
         };
 
         let area = Area::new(coords, node_index, self.area.window.clone());
-        children.insert(child_index, (Node::new(area, None), split));
+        children.insert(self_index, (Node::new(area, None), split));
 
         self.set_child_len(self_index, split.len() as u16, side).unwrap();
     }
@@ -949,7 +917,7 @@ impl Node {
             let new_lens = scale_children(children, len_diff, *axis);
             normalize_from_tl(children, new_lens, self.area.tl(), side);
         } else {
-            for (node, split) in children {
+            for (node, _) in children {
                 let mut coords = node.area.coords.write();
                 coords.add_to_side(side, len_diff);
             }
@@ -960,19 +928,9 @@ impl Node {
 impl Debug for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Area")
-            .field("inner.coords", &self.area.coords())
-            .field(
-                "lineage",
-                &self.lineage.as_ref().map(|(areas, axis)| {
-                    (
-                        areas
-                            .iter()
-                            .map(|(node, split)| (node.area.coords(), *split))
-                            .collect::<Vec<(Coords, Split)>>(),
-                        axis,
-                    )
-                }),
-            )
+            .field("coords", &self.area.coords())
+            .field("index", &self.area.index)
+            .field("lineage", &self.lineage)
             .finish()
     }
 }
@@ -1102,7 +1060,6 @@ impl ui::Ui for Ui {
     }
 
     fn startup(&mut self) {
-        unsafe { STDOUT = MaybeUninit::new(io::stdout()) };
         // This makes it so that if the application panics, the panic message
         // is printed nicely and the terminal is left in a usable
         // state.

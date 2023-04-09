@@ -52,7 +52,7 @@ impl std::fmt::Debug for Tag {
 }
 
 impl Tag {
-    pub(crate) fn trigger<U>(&self, label: &U::Label, form_former: &mut FormFormer)
+    pub(crate) fn trigger<U>(&self, label: &mut U::Label, form_former: &mut FormFormer)
     where
         U: Ui
     {

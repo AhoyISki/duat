@@ -12,7 +12,6 @@ use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     config::{Config, WrapMethod},
     history::Change,
-    log_info,
     position::{Cursor, Pos},
     tags::{
         form::{FormFormer, EXTRA_SEL, MAIN_SEL},
@@ -295,10 +294,8 @@ where
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print(&self, label: &U::Label, config: &Config, print_info: PrintInfo) {
+    pub(crate) fn print(&self, label: &mut U::Label, config: &Config, print_info: PrintInfo) {
         label.start_printing(config);
-
-        log_info!("\nwidth: {}, height: {}", label.area().width(), label.area().height());
 
         let line_start_ch = {
             let first_line = self.inner.char_to_line(print_info.first_ch);
@@ -427,7 +424,7 @@ where
 fn print_ch<U>(
     ch: char,
     last_ch: char,
-    label: &U::Label,
+    label: &mut U::Label,
     config: &Config,
     x_shift: usize,
 ) -> PrintStatus
@@ -447,7 +444,7 @@ where
 fn trigger_on_char<'a, U>(
     tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
     ch_index: usize,
-    label: &U::Label,
+    label: &mut U::Label,
     form_former: &mut FormFormer,
 ) where
     U: Ui,
