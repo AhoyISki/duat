@@ -2,7 +2,7 @@
 
 use std::{
     fmt::{Debug, Display},
-    io::{self, stdout},
+    io::{self, stdout, Stdout, StdoutLock, Write},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -16,7 +16,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 
-use parsec_core::{config::Config, text::PrintStatus, ui::PushSpecs};
+use parsec_core::{config::Config, tags::form, text::PrintStatus, ui::PushSpecs};
 use parsec_core::{
     config::{RwData, TabPlaces, WrapMethod},
     tags::{form::CursorStyle, form::Form},
@@ -403,9 +403,9 @@ impl ui::Area for Area {
     }
 }
 
-#[derive(Clone)]
 pub struct Label {
     area: Area,
+    stdout_lock: StdoutLock<'static>,
 
     cursor: Coord,
     is_active: bool,
@@ -421,8 +421,10 @@ pub struct Label {
 impl Label {
     fn new(area: Area) -> Self {
         let cursor = area.tl();
+        let stdout_lock = stdout().lock();
         Label {
             area,
+            stdout_lock,
             cursor,
             is_active: false,
             last_style: ContentStyle::default(),
@@ -434,31 +436,42 @@ impl Label {
     }
 
     fn clear_line(&mut self) {
-        if self.cursor.x < self.area.br().x {
-            queue!(stdout(), ResetColor).unwrap();
+        let _ = self.stdout_lock.write_all(b"\x1b[0m");
+        // queue!(stdout(), ResetColor).unwrap();
 
+        if self.cursor.x < self.area.br().x {
             // The rest of the line is featureless.
             let padding_count = (self.area.br().x - self.cursor.x) as usize;
             let padding = " ".repeat(padding_count);
-            queue!(stdout(), Print(padding)).unwrap();
+            let _ = self.stdout_lock.write_all(padding.as_bytes());
+            // queue!(stdout(), Print(padding)).unwrap();
         }
 
         self.cursor.x = self.area.tl().x;
         self.cursor.y += 1;
-        queue!(
-            stdout(),
-            ResetColor,
-            MoveTo(self.cursor.x, self.cursor.y),
-            SetStyle(self.last_style)
-        )
-        .unwrap();
+
+        let _ = self
+            .stdout_lock
+            .write_fmt(format_args!("\x1b[{};{}H", self.cursor.y, self.cursor.x));
+
+        // queue!(
+        //    stdout(),
+        //    ResetColor,
+        //    MoveTo(self.cursor.x, self.cursor.y),
+        //    SetStyle(self.last_style)
+        //)
+        //.unwrap();
     }
 
     fn wrap_line(&mut self) -> PrintStatus {
         self.clear_line();
 
-        queue!(stdout(), MoveTo(self.cursor.x, self.cursor.y), Print(" ".repeat(self.indent)))
-            .unwrap();
+        let _ = self
+            .stdout_lock
+            .write_fmt(format_args!("\x1b[{};{}H", self.cursor.y, self.cursor.x));
+        let _ = self.stdout_lock.write_all(" ".repeat(self.indent).as_bytes());
+        // queue!(stdout(), MoveTo(self.cursor.x, self.cursor.y), Print("
+        // ".repeat(self.indent)))    .unwrap();
 
         self.cursor.x += self.indent as u16;
         self.indent = 0;
@@ -478,22 +491,26 @@ impl ui::Label<Area> for Label {
 
     fn set_form(&mut self, form: Form) {
         self.last_style = form.style;
-        queue!(stdout(), ResetColor, SetStyle(form.style)).unwrap();
+        // queue!(stdout(), ResetColor,
+        // SetStyle(form.style)).unwrap();
     }
 
     fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
-            queue!(stdout(), caret, SavePosition).unwrap();
+            let _ = self.stdout_lock.write_all(b"\x1b[7");
+            // queue!(stdout(), caret, SavePosition).unwrap();
             SHOW_CURSOR.store(true, Ordering::Relaxed)
         } else {
             self.style_before_cursor = Some(self.last_style);
-            queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
+            // queue!(stdout(),
+            // SetStyle(cursor_style.form.style)).unwrap();
         }
     }
 
     fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
         self.style_before_cursor = Some(self.last_style);
-        queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
+        // queue!(stdout(),
+        // SetStyle(cursor_style.form.style)).unwrap();
     }
 
     fn set_as_active(&mut self) {
@@ -512,21 +529,32 @@ impl ui::Label<Area> for Label {
             std::thread::sleep(std::time::Duration::from_micros(500));
         }
 
-        queue!(stdout(), MoveTo(self.area.tl().x, self.area.tl().y)).unwrap();
-        execute!(stdout(), cursor::Hide).unwrap();
+        let _ = self.stdout_lock.write_fmt(format_args!(
+            "\x1b[{};{}H",
+            self.area.tl().y,
+            self.area.tl().x
+        ));
+        let _ = self.stdout_lock.write_all(b"\x1b[?25l");
+        let _ = self.stdout_lock.flush();
+
+        // queue!(stdout(), MoveTo(self.area.tl().x,
+        // self.area.tl().y)).unwrap(); execute!(stdout(),
+        // cursor::Hide).unwrap();
     }
 
     fn stop_printing(&mut self) {
         while let PrintStatus::NextChar = self.next_line() {}
 
+        let _ = self.stdout_lock.write_all(b"\x1b[0m");
+
         if SHOW_CURSOR.load(Ordering::Relaxed) {
-            execute!(stdout(), ResetColor, RestorePosition).unwrap();
-            execute!(stdout(), cursor::Show).unwrap();
+            let _ = self.stdout_lock.write_all(b"\x1b[8\x1b[?25h");
+
+            // execute!(stdout(), ResetColor, RestorePosition);
+            // execute!(stdout(), cursor::Show).unwrap();
         }
 
-        {
-            queue!(stdout(), ResetColor).unwrap();
-        };
+        let _ = self.stdout_lock.flush();
 
         IS_PRINTING.store(false, Ordering::Relaxed);
     }
@@ -539,15 +567,22 @@ impl ui::Label<Area> for Label {
 
         if self.cursor.x <= self.area.br().x - len {
             self.cursor.x += len;
-            queue!(stdout(), Print(ch)).unwrap();
+            let _ = {
+                let mut temp = [b'a'; 4];
+                self.stdout_lock.write_all(ch.encode_utf8(&mut temp).as_bytes())
+            };
+            // queue!(stdout(), Print(ch)).unwrap();
             if let Some(style) = self.style_before_cursor.take() {
-                queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
+                // queue!(stdout(), ResetColor,
+                // SetStyle(style)).unwrap();
             }
         } else if self.cursor.x <= self.area.br().x {
             let width = self.area.br().x - self.cursor.x;
-            queue!(stdout(), Print(" ".repeat(width as usize))).unwrap();
+            let _ = self.stdout_lock.write_all(" ".repeat(width as usize).as_bytes());
+            //queue!(stdout(), Print(" ".repeat(width as usize).as_bytes())).unwrap();
             if let Some(style) = self.style_before_cursor.take() {
-                queue!(stdout(), ResetColor, SetStyle(style)).unwrap();
+                // queue!(stdout(), ResetColor,
+                // SetStyle(style)).unwrap();
             }
         }
 
