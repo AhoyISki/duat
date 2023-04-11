@@ -315,7 +315,7 @@ impl ui::Area for Area {
             return Ok(());
         };
 
-        let ret = if req_axis != *axis {
+        if req_axis != *axis {
             let area = parent.area.clone();
             drop(window);
             area.request_len(len, side)
@@ -334,11 +334,7 @@ impl ui::Area for Area {
             let ret = parent.set_child_len(child_index, len as u16, side);
             drop(window);
             ret
-        };
-
-        let window = self.window.write();
-
-        ret
+        }
     }
 
     fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
@@ -436,42 +432,33 @@ impl Label {
     }
 
     fn clear_line(&mut self) {
-        let _ = self.stdout_lock.write_all(b"\x1b[0m");
-        // queue!(stdout(), ResetColor).unwrap();
+        let _ = queue!(self.stdout_lock, ResetColor);
 
         if self.cursor.x < self.area.br().x {
             // The rest of the line is featureless.
             let padding_count = (self.area.br().x - self.cursor.x) as usize;
-            let padding = " ".repeat(padding_count);
-            let _ = self.stdout_lock.write_all(padding.as_bytes());
-            // queue!(stdout(), Print(padding)).unwrap();
+            queue!(self.stdout_lock, Print(" ".repeat(padding_count))).unwrap();
         }
 
         self.cursor.x = self.area.tl().x;
         self.cursor.y += 1;
 
-        let _ = self
-            .stdout_lock
-            .write_fmt(format_args!("\x1b[{};{}H", self.cursor.y, self.cursor.x));
-
-        // queue!(
-        //    stdout(),
-        //    ResetColor,
-        //    MoveTo(self.cursor.x, self.cursor.y),
-        //    SetStyle(self.last_style)
-        //)
-        //.unwrap();
+        let _ = queue!(
+            self.stdout_lock,
+            ResetColor,
+            MoveTo(self.cursor.x, self.cursor.y),
+            SetStyle(self.last_style)
+        );
     }
 
     fn wrap_line(&mut self) -> PrintStatus {
         self.clear_line();
 
-        let _ = self
-            .stdout_lock
-            .write_fmt(format_args!("\x1b[{};{}H", self.cursor.y, self.cursor.x));
-        let _ = self.stdout_lock.write_all(" ".repeat(self.indent).as_bytes());
-        // queue!(stdout(), MoveTo(self.cursor.x, self.cursor.y), Print("
-        // ".repeat(self.indent)))    .unwrap();
+        let _ = queue!(
+            self.stdout_lock,
+            MoveTo(self.cursor.x, self.cursor.y),
+            Print(" ".repeat(self.indent))
+        );
 
         self.cursor.x += self.indent as u16;
         self.indent = 0;
@@ -491,26 +478,22 @@ impl ui::Label<Area> for Label {
 
     fn set_form(&mut self, form: Form) {
         self.last_style = form.style;
-        // queue!(stdout(), ResetColor,
-        // SetStyle(form.style)).unwrap();
+        let _ = queue!(self.stdout_lock, ResetColor, SetStyle(form.style));
     }
 
     fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
-            let _ = self.stdout_lock.write_all(b"\x1b[7");
-            // queue!(stdout(), caret, SavePosition).unwrap();
+            let _ = queue!(self.stdout_lock, caret, SavePosition);
             SHOW_CURSOR.store(true, Ordering::Relaxed)
         } else {
             self.style_before_cursor = Some(self.last_style);
-            // queue!(stdout(),
-            // SetStyle(cursor_style.form.style)).unwrap();
+            let _ = queue!(self.stdout_lock, SetStyle(cursor_style.form.style));
         }
     }
 
     fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
         self.style_before_cursor = Some(self.last_style);
-        // queue!(stdout(),
-        // SetStyle(cursor_style.form.style)).unwrap();
+        let _ = queue!(self.stdout_lock, SetStyle(cursor_style.form.style));
     }
 
     fn set_as_active(&mut self) {
@@ -529,32 +512,20 @@ impl ui::Label<Area> for Label {
             std::thread::sleep(std::time::Duration::from_micros(500));
         }
 
-        let _ = self.stdout_lock.write_fmt(format_args!(
-            "\x1b[{};{}H",
-            self.area.tl().y,
-            self.area.tl().x
-        ));
-        let _ = self.stdout_lock.write_all(b"\x1b[?25l");
-        let _ = self.stdout_lock.flush();
-
-        // queue!(stdout(), MoveTo(self.area.tl().x,
-        // self.area.tl().y)).unwrap(); execute!(stdout(),
-        // cursor::Hide).unwrap();
+        let _ = queue!(self.stdout_lock, MoveTo(self.area.tl().x, self.area.tl().y));
+        let _ = execute!(self.stdout_lock, cursor::Hide);
     }
 
     fn stop_printing(&mut self) {
         while let PrintStatus::NextChar = self.next_line() {}
 
-        let _ = self.stdout_lock.write_all(b"\x1b[0m");
+        let _ = execute!(self.stdout_lock, ResetColor);
 
         if SHOW_CURSOR.load(Ordering::Relaxed) {
             let _ = self.stdout_lock.write_all(b"\x1b[8\x1b[?25h");
 
-            // execute!(stdout(), ResetColor, RestorePosition);
-            // execute!(stdout(), cursor::Show).unwrap();
+            let _ = execute!(self.stdout_lock, RestorePosition, cursor::Show);
         }
-
-        let _ = self.stdout_lock.flush();
 
         IS_PRINTING.store(false, Ordering::Relaxed);
     }
@@ -571,18 +542,14 @@ impl ui::Label<Area> for Label {
                 let mut temp = [b'a'; 4];
                 self.stdout_lock.write_all(ch.encode_utf8(&mut temp).as_bytes())
             };
-            // queue!(stdout(), Print(ch)).unwrap();
             if let Some(style) = self.style_before_cursor.take() {
-                // queue!(stdout(), ResetColor,
-                // SetStyle(style)).unwrap();
+                let _ = queue!(self.stdout_lock, ResetColor, SetStyle(style));
             }
         } else if self.cursor.x <= self.area.br().x {
             let width = self.area.br().x - self.cursor.x;
-            let _ = self.stdout_lock.write_all(" ".repeat(width as usize).as_bytes());
-            //queue!(stdout(), Print(" ".repeat(width as usize).as_bytes())).unwrap();
+            let _ = queue!(self.stdout_lock, Print(" ".repeat(width as usize)));
             if let Some(style) = self.style_before_cursor.take() {
-                // queue!(stdout(), ResetColor,
-                // SetStyle(style)).unwrap();
+                let _ = queue!(self.stdout_lock, ResetColor, SetStyle(style));
             }
         }
 
@@ -1103,26 +1070,30 @@ impl ui::Ui for Ui {
         use std::panic;
         let orig_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
-            execute!(
+            let _ = execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
                 terminal::LeaveAlternateScreen,
                 cursor::Show
-            )
-            .unwrap();
+            );
+
             terminal::disable_raw_mode().unwrap();
 
             orig_hook(panic_info);
             std::process::exit(1)
         }));
 
-        execute!(io::stdout(), terminal::EnterAlternateScreen).unwrap();
+        let _ = execute!(io::stdout(), terminal::EnterAlternateScreen);
         terminal::enable_raw_mode().unwrap();
     }
 
     fn shutdown(&mut self) {
-        execute!(io::stdout(), terminal::Clear(ClearType::All), terminal::LeaveAlternateScreen,)
-            .unwrap();
+        let _ = execute!(
+            io::stdout(),
+            terminal::Clear(ClearType::All),
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        );
         terminal::disable_raw_mode().unwrap();
     }
 }
