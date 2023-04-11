@@ -9,7 +9,11 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{path::PathBuf, thread, time::Duration};
+use std::{
+    path::PathBuf,
+    thread,
+    time::Duration,
+};
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
@@ -45,9 +49,8 @@ where
     ) -> Self {
         let file = std::env::args().nth(1);
         let file_widget = FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)));
-        let file_name = file_widget.identifier();
 
-        let session_manager = RwData::new(SessionManager::new(&file_name, &file_name));
+        let session_manager = RwData::new(SessionManager::new(0, 0));
 
         let mut command_list = CommandList::default();
         for command in session_commands(session_manager.clone()) {
@@ -159,11 +162,11 @@ where
 
             for (widget, mut label, config) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
-                    s_0.spawn(move || {
+                    //s_0.spawn(move || {
                         let config = config.read();
                         widget.update(&mut label, &config);
                         widget.print(&mut label, &config);
-                    });
+                    //});
                 }
             }
 
@@ -185,23 +188,26 @@ where
 
 pub struct SessionManager {
     files_to_open: Vec<PathBuf>,
-    active_file: String,
-    active_widget: String,
+    anchor_file: usize,
+    active_widget: usize,
     break_loop: bool,
     should_quit: bool,
 }
 
 impl SessionManager {
-    fn new(active_file: impl ToString, active_widget: impl ToString) -> Self {
+    fn new(anchor_file: usize, active_widget: usize) -> Self {
         SessionManager {
             files_to_open: Vec::new(),
-            active_file: active_file.to_string(),
-            active_widget: active_widget.to_string(),
+            anchor_file,
+            active_widget,
             break_loop: false,
             should_quit: false,
         }
     }
 }
+
+unsafe impl Send for SessionManager {}
+unsafe impl Sync for SessionManager {}
 
 pub struct Controls<'a, U>
 where
@@ -222,32 +228,18 @@ where
     }
 
     /// Switches to a `Widget<U>` with the given identifier.
-    pub fn switch_to_widget(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
-        let (widget, label, config) = self
+    pub fn switch_to_file(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
+        let target = target.as_ref();
+        let (file_index, (widget_index, _)) = self
             .window
-            .actionable_widgets()
-            .find(|(widget, ..)| widget.read().identifier() == target.as_ref())
-            .ok_or(())?;
-        let mut widget = widget.write();
-        let config = config.read();
-        widget.on_focus(&label, &config);
-
-        let (widget, ..) = self
-            .window
-            .actionable_widgets()
-            .find(|(widget, ..)| {
-                widget.read().identifier() == self.session_manager.active_widget.as_str()
-            })
+            .file_names()
+            .enumerate()
+            .find(|(_, (_, name))| name == target)
             .ok_or(())?;
 
-        let mut widget = widget.write();
-        widget.on_unfocus(&label, &config);
+        self.session_manager.anchor_file = file_index;
 
-        if &target.as_ref()[..13] == "parsec-file: " {
-            self.session_manager.active_file = target.as_ref().to_string();
-        }
-
-        self.session_manager.active_widget = target.as_ref().to_string();
+        self.switch_to_widget(widget_index);
 
         Ok(())
     }
@@ -258,15 +250,18 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
-            let widget = self
+            let (file_index, (widget_index, _)) = self
                 .window
                 .file_names()
+                .enumerate()
                 .cycle()
-                .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
-                .nth(1)
+                .skip(self.session_manager.anchor_file)
+                .next()
                 .ok_or(())?;
 
-            self.switch_to_widget(widget)
+            self.session_manager.anchor_file = file_index;
+
+            self.switch_to_widget(widget_index)
         }
     }
 
@@ -276,31 +271,51 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
-            let widget = self
+            let (file_index, (widget_index, _)) = self
                 .window
                 .file_names()
-                .rev()
-                .cycle()
-                .skip_while(|identifier| identifier.as_str() != self.session_manager.active_file)
-                .nth(1)
+                .enumerate()
+                .take(self.session_manager.anchor_file.wrapping_sub(1))
+                .last()
                 .ok_or(())?;
 
-            self.switch_to_widget(widget)
+            self.session_manager.anchor_file = file_index;
+
+            self.switch_to_widget(widget_index)
         }
     }
 
-    /// The identifier of the active file.
-    pub fn active_file(&self) -> &str {
-        self.session_manager.active_file.as_str()
+    fn switch_to_widget(&mut self, index: usize) -> Result<(), ()> {
+        let (widget, label, config) = self.window.actionable_widgets().nth(index).ok_or(())?;
+
+        let mut widget = widget.write();
+        let config = config.read();
+        widget.on_focus(&label, &config);
+
+        let (widget, ..) = self
+            .window
+            .actionable_widgets()
+            .nth(self.session_manager.active_widget)
+            .ok_or(())?;
+
+        let mut widget = widget.write();
+        widget.on_unfocus(&label, &config);
+
+        self.session_manager.active_widget = index;
+
+        Ok(())
     }
 
-    /// The identifier of the active widget.
-    pub fn active_widget(&self) -> &str {
-        self.session_manager.active_widget.as_str()
+    /// The identifier of the active file.
+    pub fn active_file(&self) -> String {
+        self.window.file_names().nth(self.session_manager.anchor_file).unwrap().1
     }
 
     pub fn return_to_file(&mut self) -> Result<(), ()> {
-        self.switch_to_widget(self.session_manager.active_file.clone())
+        let (widget_index, _) =
+            self.window.file_names().nth(self.session_manager.anchor_file).ok_or(())?;
+
+        self.switch_to_widget(widget_index)
     }
 }
 
@@ -339,9 +354,7 @@ fn send_event<U, I>(
     I: InputScheme,
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let actionable_widget = window.actionable_widgets().find(|(widget, ..)| {
-            widget.read().identifier() == session_manager.active_widget.as_str()
-        });
+        let actionable_widget = window.actionable_widgets().nth(session_manager.active_widget);
 
         let Some((widget, mut label, config)) = actionable_widget else {
             return;
@@ -366,7 +379,7 @@ fn send_event<U, I>(
 
         // If the widget is no longer valid, return to the file.
         if !widget.still_valid() {
-            session_manager.active_widget = session_manager.active_file.clone();
+            session_manager.active_widget = session_manager.anchor_file.clone();
         }
     }
 }

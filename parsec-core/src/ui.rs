@@ -466,24 +466,18 @@ where
         )
     }
 
-    pub fn file_names(&self) -> impl Iterator<Item = String> + DoubleEndedIterator + Clone + '_ {
-        self.nodes.iter().filter_map(|Node { widget, .. }| {
-            widget
-                .get_actionable()
-                .map(|widget| {
-                    if let Ok(widget) = widget.try_read() {
-                        let identifier = widget.identifier();
-                        if let Some(prefix) = identifier.get(..13) {
-                            if prefix == "parsec-file: " {
-                                return Some(String::from(identifier));
-                            }
-                        }
-                    };
-
-                    None
-                })
-                .flatten()
-        })
+    pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
+        self.nodes
+            .iter()
+            .filter_map(|Node { widget, .. }| widget.get_actionable())
+            .enumerate()
+            .filter_map(|(index, widget)| {
+                widget
+                    .read()
+                    .as_any()
+                    .downcast_ref::<FileWidget<U>>()
+                    .map(|file_widget| (index, file_widget.name().to_string()))
+            })
     }
 
     pub(crate) fn print_if_layout_changed(&self) {

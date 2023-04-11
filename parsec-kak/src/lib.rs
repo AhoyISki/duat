@@ -283,7 +283,7 @@ impl Editor {
                 code: KeyCode::Char(':'),
                 ..
             } => {
-                if let Ok(_) = controls.switch_to_widget("parsec-command-line") {
+                if let Ok(_) = controls.switch_to_file("parsec-command-line") {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
@@ -411,7 +411,7 @@ impl Editor {
                 code: KeyCode::Char('a'),
                 ..
             } => {
-                if let Ok(_) = controls.switch_to_widget(&self.last_file) {
+                if let Ok(_) = controls.switch_to_file(&self.last_file) {
                     self.last_file = controls.active_file().to_string();
                 }
             }
