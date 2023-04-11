@@ -252,7 +252,7 @@ impl PushSpecs {
 
 pub trait Window: 'static {
     type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<Self::Area> + Clone + Send + Sync;
+    type Label: Label<Self::Area>;
 
     fn get_area(&self, area_index: usize) -> Option<Self::Area>;
 
@@ -267,7 +267,7 @@ pub trait Window: 'static {
 /// order to use Parsec.
 pub trait Ui: 'static {
     type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<Self::Area> + Clone + Send + Sync;
+    type Label: Label<Self::Area>;
     type Window: Window<Area = Self::Area, Label = Self::Label> + Clone;
 
     fn new_window(&mut self) -> (Self::Window, Self::Label);

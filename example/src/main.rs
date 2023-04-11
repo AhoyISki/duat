@@ -41,7 +41,7 @@ fn main() {
     // `FormPalette` is a struct with all of your `Form`s and
     // `CursorStyle`s in it.
     let mut palette = FormPalette::default();
-    palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
+    //palette.set_main_cursor(CursorStyle::new(None, Form::new(true).black().on_yellow()));
     palette.set_form("MainLineNumber", Form::new(true).dark_magenta().on_dark_grey());
     // A `CursorStyle` is a style unique to cursors. It contains a shape
     // (bar, block, or underscore), and a `Form` to be used when
