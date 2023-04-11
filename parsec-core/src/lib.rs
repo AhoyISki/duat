@@ -354,6 +354,7 @@ fn send_event<U, I>(
             session_manager: &mut *session_manager,
             window,
         };
+
         blink_cursors_and_send_key(
             &mut *widget,
             &mut label,

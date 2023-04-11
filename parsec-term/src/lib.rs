@@ -336,7 +336,7 @@ impl ui::Area for Area {
             ret
         };
 
-		let window = self.window.write();
+        let window = self.window.write();
 
         ret
     }
@@ -356,7 +356,7 @@ impl ui::Area for Area {
         }
 
         let mut window = self.window.write();
-        let new_area_index = window.next_index.fetch_add(1, Ordering::Acquire);
+        let new_area_index = window.next_index.fetch_add(1, Ordering::Relaxed);
 
         let node = window.find_mut_node(self.index).unwrap();
 
@@ -379,7 +379,7 @@ impl ui::Area for Area {
 
             (new_area_index, None)
         } else {
-            let new_child_index = window.next_index.fetch_add(1, Ordering::Acquire);
+            let new_child_index = window.next_index.fetch_add(1, Ordering::Relaxed);
             // NOTE: ???????
             let area = Area::new(self.coords(), self.index, self.window.clone());
             let new_parent = Node::new(area, None);
@@ -410,7 +410,7 @@ pub struct Label {
     cursor: Coord,
     is_active: bool,
 
-    last_style: Option<ContentStyle>,
+    last_style: ContentStyle,
     style_before_cursor: Option<ContentStyle>,
 
     wrap_method: WrapMethod,
@@ -425,7 +425,7 @@ impl Label {
             area,
             cursor,
             is_active: false,
-            last_style: None,
+            last_style: ContentStyle::default(),
             style_before_cursor: None,
             wrap_method: WrapMethod::NoWrap,
             tab_places: TabPlaces::default(),
@@ -449,7 +449,7 @@ impl Label {
             stdout(),
             ResetColor,
             MoveTo(self.cursor.x, self.cursor.y),
-            SetStyle(self.last_style.unwrap_or_default())
+            SetStyle(self.last_style)
         )
         .unwrap();
     }
@@ -477,28 +477,28 @@ impl ui::Label<Area> for Label {
     }
 
     fn set_form(&mut self, form: Form) {
-        self.last_style = Some(form.style);
+        self.last_style = form.style;
         queue!(stdout(), ResetColor, SetStyle(form.style)).unwrap();
     }
 
     fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
         if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
             queue!(stdout(), caret, SavePosition).unwrap();
-            SHOW_CURSOR.store(true, Ordering::Release)
+            SHOW_CURSOR.store(true, Ordering::Relaxed)
         } else {
-            self.style_before_cursor = self.last_style;
+            self.style_before_cursor = Some(self.last_style);
             queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
         }
     }
 
     fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
-        self.style_before_cursor = self.last_style;
+        self.style_before_cursor = Some(self.last_style);
         queue!(stdout(), SetStyle(cursor_style.form.style)).unwrap();
     }
 
     fn set_as_active(&mut self) {
         self.is_active = true;
-        SHOW_CURSOR.store(false, Ordering::Release)
+        SHOW_CURSOR.store(false, Ordering::Relaxed)
     }
 
     fn start_printing(&mut self, config: &Config) {
@@ -506,9 +506,11 @@ impl ui::Label<Area> for Label {
         self.tab_places = config.tab_places.clone();
 
         while IS_PRINTING
-            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Acquire)
+            .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_err()
-        {}
+        {
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
 
         queue!(stdout(), MoveTo(self.area.tl().x, self.area.tl().y)).unwrap();
         execute!(stdout(), cursor::Hide).unwrap();
@@ -517,7 +519,7 @@ impl ui::Label<Area> for Label {
     fn stop_printing(&mut self) {
         while let PrintStatus::NextChar = self.next_line() {}
 
-        if SHOW_CURSOR.load(Ordering::Acquire) {
+        if SHOW_CURSOR.load(Ordering::Relaxed) {
             execute!(stdout(), ResetColor, RestorePosition).unwrap();
             execute!(stdout(), cursor::Show).unwrap();
         }
@@ -526,7 +528,7 @@ impl ui::Label<Area> for Label {
             queue!(stdout(), ResetColor).unwrap();
         };
 
-        IS_PRINTING.store(false, Ordering::Release);
+        IS_PRINTING.store(false, Ordering::Relaxed);
     }
 
     fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus {

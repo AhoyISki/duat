@@ -165,12 +165,12 @@ pub enum Split {
 }
 
 impl Debug for Split {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    	match self {
-        Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
-        Split::Min(len) => f.write_fmt(format_args!("Locked({})", len))
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
+            Split::Min(len) => f.write_fmt(format_args!("Locked({})", len)),
+        }
     }
-	}
 }
 
 impl Default for Split {

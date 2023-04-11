@@ -194,13 +194,6 @@ where
         self.data.write().unwrap()
     }
 
-    /// Returns a writeable reference to the state.
-    ///
-    /// Does not consider this to be an update to the state.
-    pub fn write_raw(&self) -> RwLockWriteGuard<T> {
-        self.data.write().unwrap()
-    }
-
     /// Tries to return a writeable reference to the state.
     ///
     /// Also makes it so that `has_changed()` on it or any of its

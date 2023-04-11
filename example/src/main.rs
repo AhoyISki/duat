@@ -55,7 +55,9 @@ fn main() {
     // name.
     palette.add_form("Mode", Form::new(false).dark_green());
     palette.add_form("VertRule", Form::new(false).dark_grey());
-    let (_, id) = palette.get_from_name("VertRule").unwrap();
+    palette.add_form("VertRuleInv", Form::new(false).dark_grey().reverse());
+    let (_, vert_rule_id) = palette.get_from_name("VertRule").unwrap();
+    let (_, vert_rule_inv_id) = palette.get_from_name("VertRuleInv").unwrap();
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.
@@ -81,7 +83,7 @@ fn main() {
             let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
             let cfg = VertRuleCfg {
                 sep_char: SepChar::TwoWay('▋', '┃'),
-                sep_form: SepForm::Uniform(id),
+                sep_form: SepForm::Uniform(vert_rule_id),
             };
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
@@ -94,14 +96,14 @@ fn main() {
 
             let push_specs = PushSpecs::new_glued(Side::Right, Split::Locked(1));
             let cfg = VertRuleCfg {
-                sep_char: SepChar::TwoWay('▋', '┃'),
-                sep_form: SepForm::Uniform(id),
+                sep_char: SepChar::TwoWay('▍', '┃'),
+                sep_form: SepForm::TwoWay(vert_rule_inv_id, vert_rule_id)
             };
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
             let push_specs = PushSpecs::new_glued(Side::Right, Split::Min(1));
             let cfg = LineNumbersCfg {
-                alignment: Alignment::Right,
+                alignment: Alignment::Left,
                 numbering: Numbering::Absolute,
             };
             mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);

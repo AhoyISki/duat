@@ -135,16 +135,6 @@ where
         }
     }
 
-    pub fn active_actionable(
-        widget: Arc<RwLock<dyn ActionableWidget<U>>>,
-        updater: Box<dyn Fn() -> bool>,
-    ) -> Widget<U> {
-        Widget {
-            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
-            needs_update: updater,
-        }
-    }
-
     pub(crate) fn update(&self, label: &U::Label, config: &Config) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
