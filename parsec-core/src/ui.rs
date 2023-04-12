@@ -10,6 +10,11 @@ use crate::{
     SessionManager,
 };
 
+/// A representation of part of Parsec's window.
+///
+/// This is an abstract region of space that can be a [`Label`], which may
+/// print [`Text<U>`], or it may contain other `Area`s, which may be [`Label`]s
+/// themselves.
 pub trait Area {
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -27,15 +32,14 @@ pub trait Area {
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 }
 
-/// A label that prints text to screen. Any area that prints will be a
-/// `Label` in the `Ui`.
+/// An [`Area`] that supports printing [`Text<U>`].
+///
+/// These represent the entire GUI of Parsec, the only parts of the screen
+/// where text may be printed.
 pub trait Label<A>
 where
     A: Area,
 {
-    /// Returns a reference to the area of `self`.
-    fn area(&self) -> &A;
-
     //////////////////// Forms
     /// Changes the form for subsequent characters.
     fn set_form(&mut self, form: Form);
@@ -51,6 +55,17 @@ where
     fn set_as_active(&mut self);
 
     //////////////////// Printing
+    /// Prints a character at the current position and moves the
+    /// printing position forward.
+    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
+
+    /// Moves to the next line. If succesful, returns `Ok(())`,
+    /// otherwise, returns `Err(())`.
+    ///
+    /// This function should also make sure that there is no leftover
+    /// text after the current line's end.
+    fn next_line(&mut self) -> PrintStatus;
+
     /// Tell the area that printing has begun.
     ///
     /// This function should at the very least move the cursor to the
@@ -62,17 +77,10 @@ where
     /// This function should clear the lines below the last printed
     /// line, and flush the contents if necessary.
     fn stop_printing(&mut self);
-
-    /// Prints a character at the current position and moves the
-    /// printing position forward.
-    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
-
-    /// Moves to the next line. If succesful, returns `Ok(())`,
-    /// otherwise, returns `Err(())`.
-    ///
-    /// This function should also make sure that there is no leftover
-    /// text after the current line's end.
-    fn next_line(&mut self) -> PrintStatus;
+    
+	//////////////////// Queries
+    /// Returns a reference to the area of [`self`].
+    fn area(&self) -> &A;
 
     /// Counts how many times the given string would wrap.
     fn wrap_count(
@@ -109,21 +117,22 @@ where
     area_index: usize,
 }
 
-impl<U> Node<U>
-where
-    U: Ui,
-{
-    pub(crate) fn update_and_print(&self, label: &mut U::Label, is_active: bool) {
-        let config = self.config.read();
-        self.widget.update(label, &config);
-        if is_active {
-            label.set_as_active()
-        }
-
-        self.widget.print(label, &config);
-    }
-}
-
+/// A constructor helper for [`Widget<U>`]s.
+///
+/// When pushing [`Widget`]s to the layout, this struct can be used to
+/// further actions to be taken. It is used in contexts where a widget has
+/// just been inserted to the screen, inside closures.
+///
+/// # Examples
+///
+/// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed to the
+/// left of a widget (which in this case is a [`FileWidget<U>`]
+/// ```rust
+/// let file_fn = Box::new(move |mut mod_node: ModNode<U>, file: RoData<FileWidget<U>>| {
+/// 	let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
+/// 	mod_node.push_widget(LineNumbers::default_fn(file), push_specs);
+/// })
+/// ```
 pub struct ModNode<'a, U>
 where
     U: Ui,

@@ -209,39 +209,6 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize {
-        let mut width = 0;
-        for ch in slice.chars() {
-            width += match ch {
-                '\t' => tab_places.spaces_on_col(width),
-                ch => UnicodeWidthChar::width(ch).unwrap_or(0),
-            }
-        }
-
-        width
-    }
-
-    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize {
-        slice
-            .chars()
-            .enumerate()
-            .scan((0, false), |(width, end_reached), (index, ch)| {
-                *width += match ch {
-                    '\t' => tab_places.spaces_on_col(*width),
-                    ch => UnicodeWidthChar::width(ch).unwrap_or(0),
-                };
-                if *end_reached {
-                    return None;
-                }
-                if *width >= dist {
-                    *end_reached = true
-                }
-                Some(index)
-            })
-            .last()
-            .unwrap_or(0)
-    }
-
     fn col_at_wrap(
         &self,
         slice: RopeSlice,
@@ -275,6 +242,39 @@ impl ui::Label<Area> for Label {
             WrapMethod::Word => todo!(),
             WrapMethod::NoWrap => 0,
         }
+    }
+
+    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize {
+        let mut width = 0;
+        for ch in slice.chars() {
+            width += match ch {
+                '\t' => tab_places.spaces_on_col(width),
+                ch => UnicodeWidthChar::width(ch).unwrap_or(0),
+            }
+        }
+
+        width
+    }
+
+    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize {
+        slice
+            .chars()
+            .enumerate()
+            .scan((0, false), |(width, end_reached), (index, ch)| {
+                *width += match ch {
+                    '\t' => tab_places.spaces_on_col(*width),
+                    ch => UnicodeWidthChar::width(ch).unwrap_or(0),
+                };
+                if *end_reached {
+                    return None;
+                }
+                if *width >= dist {
+                    *end_reached = true
+                }
+                Some(index)
+            })
+            .last()
+            .unwrap_or(0)
     }
 }
 
