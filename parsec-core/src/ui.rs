@@ -155,6 +155,15 @@ where
         let widget = (constructor)(self.session_manager, push_specs);
         self.window.push_widget(area_index, widget, push_specs)
     }
+
+    pub fn config(&self) -> &RwData<Config> {
+        self.window
+            .nodes
+            .iter()
+            .find(|node| node.area_index == self.area_index)
+            .map(|Node { config, .. }| config)
+            .unwrap_or(&self.window.config)
+    }
 }
 
 /// A way of splitting areas.
