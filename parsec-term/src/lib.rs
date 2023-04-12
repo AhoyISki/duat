@@ -656,6 +656,9 @@ impl ui::Label<Area> for Label {
     }
 }
 
+unsafe impl Send for Label {}
+unsafe impl Sync for Label {}
+
 pub enum Anchor {
     TopLeft,
     TopRight,

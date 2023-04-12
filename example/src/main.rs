@@ -94,19 +94,19 @@ fn main() {
             };
             mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new_glued(Side::Right, Split::Locked(1));
-            let cfg = VertRuleCfg {
-                sep_char: SepChar::TwoWay('▍', '┃'),
-                sep_form: SepForm::TwoWay(vert_rule_inv_id, vert_rule_id)
-            };
-            mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
+            //let push_specs = PushSpecs::new_glued(Side::Right, Split::Locked(1));
+            //let cfg = VertRuleCfg {
+            //    sep_char: SepChar::TwoWay('▍', '┃'),
+            //    sep_form: SepForm::TwoWay(vert_rule_inv_id, vert_rule_id)
+            //};
+            //mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new_glued(Side::Right, Split::Min(1));
-            let cfg = LineNumbersCfg {
-                alignment: Alignment::Left,
-                numbering: Numbering::Absolute,
-            };
-            mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
+            //let push_specs = PushSpecs::new_glued(Side::Right, Split::Min(1));
+            //let cfg = LineNumbersCfg {
+            //    alignment: Alignment::Left,
+            //    numbering: Numbering::Absolute,
+            //};
+            //mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
             let push_specs = PushSpecs::new_glued(Side::Bottom, Split::Min(1));
             mod_node.push_widget(StatusLine::default_fn(file), push_specs);

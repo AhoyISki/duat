@@ -107,6 +107,7 @@ where
     U: Ui,
 {
     inner: InnerWidget<U>,
+    is_slow: bool,
     needs_update: Box<dyn Fn() -> bool>,
 }
 
@@ -122,6 +123,7 @@ where
         // never update");
         Widget {
             inner: InnerWidget::Normal(RwData::new_unsized(widget)),
+            is_slow: false,
             needs_update: updater,
         }
     }
@@ -131,6 +133,30 @@ where
     ) -> Widget<U> {
         Widget {
             inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            is_slow: false,
+            needs_update: updater,
+        }
+    }
+
+    pub fn slow_normal(
+        widget: Arc<RwLock<dyn NormalWidget<U>>>,
+        updater: Box<dyn Fn() -> bool>,
+    ) -> Widget<U> {
+        // assert!(updaters.len() > 0, "Without any updaters, this widget can
+        // never update");
+        Widget {
+            inner: InnerWidget::Normal(RwData::new_unsized(widget)),
+            is_slow: true,
+            needs_update: updater,
+        }
+    }
+    pub fn slow_actionable(
+        widget: Arc<RwLock<dyn ActionableWidget<U>>>,
+        updater: Box<dyn Fn() -> bool>,
+    ) -> Widget<U> {
+        Widget {
+            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            is_slow: true,
             needs_update: updater,
         }
     }
@@ -161,13 +187,6 @@ where
         }
     }
 
-    pub(crate) fn identifier(&self) -> String {
-        match &self.inner {
-            InnerWidget::Normal(widget) => widget.read().identifier().to_string(),
-            InnerWidget::Actionable(widget) => widget.read().identifier().to_string(),
-        }
-    }
-
     pub fn needs_update(&self) -> bool {
         match &self.inner {
             InnerWidget::Normal(_) => (self.needs_update)(),
@@ -180,6 +199,10 @@ where
             InnerWidget::Normal(_) => None,
             InnerWidget::Actionable(widget) => Some(&widget),
         }
+    }
+
+    pub fn is_slow(&self) -> bool {
+        self.is_slow
     }
 }
 

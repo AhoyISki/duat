@@ -1,9 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
+    config::Config,
     ui::Ui,
     widgets::{ActionableWidget, WidgetActor},
-    Controls, config::Config,
+    Controls,
 };
 
 /// A widget that can receive and process input.
@@ -24,7 +25,7 @@ pub trait KeyTakingWidget {
 }
 
 /// A method of editing a file.
-pub trait InputScheme {
+pub trait InputScheme: Send + Sync {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
         &mut self,
@@ -51,18 +52,18 @@ where
     gives: Vec<KeyEvent>,
     /// A condition to ask the `InputScheme`, if it returns `true`,
     /// then we remap.
-    condition: Box<dyn Fn(&E) -> bool>,
+    condition: Box<dyn Fn(&E) -> bool + Send + Sync>,
 }
 
 // TODO: Add the ability to send keys to an arbitrary object.
-impl<E> InputRemap<E>
+impl<I> InputRemap<I>
 where
-    E: InputScheme,
+    I: InputScheme,
 {
     pub fn new(
         takes: &Vec<KeyEvent>,
         gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&E) -> bool>,
+        condition: Box<dyn Fn(&I) -> bool + Send + Sync>,
     ) -> Self {
         Self {
             takes: takes.clone(),
@@ -73,28 +74,28 @@ where
 }
 
 /// The structure responsible for remapping sequences of characters.
-pub struct KeyRemapper<E>
+pub struct KeyRemapper<I>
 where
-    E: InputScheme,
+    I: InputScheme,
 {
     /// The list of remapped sequences to be used with the
     /// `EditingScheme`.
-    remaps: Vec<InputRemap<E>>,
+    remaps: Vec<InputRemap<I>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
     current_sequence: Vec<KeyEvent>,
     /// How these characters should modify the file.
-    input_scheme: E,
+    input_scheme: I,
     /// A list of sequences that have been at least partially matched
     /// with `current_sequence`.
     should_check: Vec<usize>,
 }
 
-impl<E> KeyRemapper<E>
+impl<I> KeyRemapper<I>
 where
-    E: InputScheme,
+    I: InputScheme,
 {
-    pub fn new(editing_scheme: E) -> Self {
+    pub fn new(editing_scheme: I) -> Self {
         KeyRemapper {
             remaps: Vec::new(),
             current_sequence: Vec::new(),
@@ -104,7 +105,11 @@ where
     }
 
     /// Removes all remappings with the given sequence.
-    pub fn unmap(&mut self, takes: &Vec<KeyEvent>, condition: &Box<dyn Fn(&E) -> bool>) {
+    pub fn unmap(
+        &mut self,
+        takes: &Vec<KeyEvent>,
+        condition: &Box<dyn Fn(&I) -> bool + Send + Sync>,
+    ) {
         self.remaps.retain(|r| condition(&self.input_scheme) || &r.takes != takes);
     }
 
@@ -113,7 +118,7 @@ where
         &mut self,
         takes: &Vec<KeyEvent>,
         gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&E) -> bool>,
+        condition: Box<dyn Fn(&I) -> bool + Send + Sync>,
     ) {
         self.unmap(takes, &condition);
         self.remaps.push(InputRemap::new(takes, gives, condition));

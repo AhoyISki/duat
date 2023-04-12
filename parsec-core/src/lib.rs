@@ -9,11 +9,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{
-    path::PathBuf,
-    thread,
-    time::Duration,
-};
+use std::{path::PathBuf, thread, time::Duration};
 
 use config::{Config, RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
@@ -151,7 +147,7 @@ where
     where
         I: InputScheme,
     {
-        thread::scope(|s_0| loop {
+        thread::scope(|scope| loop {
             // self.active_window().print_if_layout_changed();
 
             let mut session_manager = self.session_manager.write();
@@ -162,11 +158,17 @@ where
 
             for (widget, mut label, config) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
-                    //s_0.spawn(move || {
+                    if widget.is_slow() {
+                        scope.spawn(move || {
+                            let config = config.read();
+                            widget.update(&mut label, &config);
+                            widget.print(&mut label, &config);
+                        });
+                    } else {
                         let config = config.read();
                         widget.update(&mut label, &config);
                         widget.print(&mut label, &config);
-                    //});
+                    }
                 }
             }
 
@@ -239,9 +241,7 @@ where
 
         self.session_manager.anchor_file = file_index;
 
-        self.switch_to_widget(widget_index);
-
-        Ok(())
+        self.switch_to_widget(widget_index)
     }
 
     /// Switches to the next `Widget<U>` that contains a
