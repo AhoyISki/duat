@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{
+    any::TypeId,
+    fmt::{Debug, Display},
+};
 
 use ropey::RopeSlice;
 
@@ -6,15 +9,15 @@ use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
     text::PrintStatus,
-    widgets::{file_widget::FileWidget, ActionableWidget, Widget},
+    widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager,
 };
 
 /// A representation of part of Parsec's window.
 ///
-/// This is an abstract region of space that can be a [`Label`], which may
-/// print [`Text<U>`], or it may contain other `Area`s, which may be [`Label`]s
-/// themselves.
+/// This is an abstract region of space that can be a [`Label`], which
+/// may print [`Text<U>`], or it may contain other `Area`s, which may
+/// be [`Label`]s themselves.
 pub trait Area {
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -34,8 +37,8 @@ pub trait Area {
 
 /// An [`Area`] that supports printing [`Text<U>`].
 ///
-/// These represent the entire GUI of Parsec, the only parts of the screen
-/// where text may be printed.
+/// These represent the entire GUI of Parsec, the only parts of the
+/// screen where text may be printed.
 pub trait Label<A>
 where
     A: Area,
@@ -77,8 +80,8 @@ where
     /// This function should clear the lines below the last printed
     /// line, and flush the contents if necessary.
     fn stop_printing(&mut self);
-    
-	//////////////////// Queries
+
+    //////////////////// Queries
     /// Returns a reference to the area of [`self`].
     fn area(&self) -> &A;
 
@@ -107,8 +110,8 @@ where
     fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
 }
 
-/// Container for middle and end nodes.
-pub struct Node<U>
+/// Elements related to the [`Widget<U>`]s.
+struct Node<U>
 where
     U: Ui,
 {
@@ -120,13 +123,13 @@ where
 /// A constructor helper for [`Widget<U>`]s.
 ///
 /// When pushing [`Widget`]s to the layout, this struct can be used to
-/// further actions to be taken. It is used in contexts where a widget has
-/// just been inserted to the screen, inside closures.
+/// further actions to be taken. It is used in contexts where a widget
+/// has just been inserted to the screen, inside closures.
 ///
 /// # Examples
 ///
-/// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed to the
-/// left of a widget (which in this case is a [`FileWidget<U>`]
+/// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed
+/// to the left of a widget (which in this case is a [`FileWidget<U>`]
 /// ```rust
 /// let file_fn = Box::new(move |mut mod_node: ModNode<U>, file: RoData<FileWidget<U>>| {
 /// 	let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
@@ -146,15 +149,70 @@ impl<'a, U> ModNode<'a, U>
 where
     U: Ui + 'static,
 {
+    /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
+    /// constructor function.
+    ///
+    /// Do note that this function will should change the index of
+    /// [`self`], such that subsequent pushes are targeted at the
+    /// parent.
+    ///
+    /// # Returns
+    ///
+    /// The first element is the `area_index` of the newly created
+    /// [`Widget<U>`], you can use it to push new [`Widget<U>`]s.
+    /// The second element, of type [`Option<usize>`] is
+    /// [`Some(..)`] only when a new parent was created to
+    /// accomodate the new [`Widget<U>`], and represents the new
+    /// `area_index` of the old [`Widget<U>`], which has now
+    /// become a child.
+    ///
+    /// # Examples
+    ///
+    /// Pushing on [`Side::Left`], when [`self`] has an index of `0`:
+    ///
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │                 │     │╭──2───╮╭───1───╮│
+    /// │                 │ --> ││      ││       ││
+    /// │                 │     ││      ││       ││
+    /// │                 │     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    ///
+    /// So a subsequent use of [`push_widget`][Self::push_widget] on
+    /// [`Side::Bottom`] would push to the bottom of "both 1 and 2":
+    ///
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
+    /// ││      ││       ││ --> │╰──────╯╰───────╯│
+    /// ││      ││       ││     │╭───────3───────╮│
+    /// │╰──────╯╰───────╯│     │╰───────────────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    ///
+    /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
+    /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
         &mut self,
         constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(self.area_index, widget, push_specs)
+        self.window.push_widget(widget, self.area_index, push_specs)
     }
 
+    /// Pushes a [`Widget<U>`] to a specific `area`, given
+    /// [`PushSpecs`] and a constructor function.
+    ///
+    /// # Examples
+    ///
+    /// Given that [`self`] has an index of `0`, and other widgets
+    /// have already been pushed, one can push to a specific
+    /// [`Widget<U>`], given an area index.
+    ///
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
+    /// ││      ││       ││ --> ││      │╰───────╯│
+    /// ││      ││       ││     ││      │╭───3───╮│
+    /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
         &mut self,
         constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
@@ -162,9 +220,13 @@ where
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(area_index, widget, push_specs)
+        self.window.push_widget(widget, area_index, push_specs)
     }
 
+    /// The [`Config`] of [`self`].
+    ///
+    /// If [`self`] is a parent, returns the global [`Config`] of the
+    /// window.
     pub fn config(&self) -> &RwData<Config> {
         self.window
             .nodes
@@ -175,7 +237,7 @@ where
     }
 }
 
-/// A way of splitting areas.
+/// How an [`Area`] is pushed onto another.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Split {
     Locked(usize),
@@ -198,6 +260,7 @@ impl Default for Split {
 }
 
 impl Split {
+    /// The length of this [`Split`].
     pub fn len(&self) -> usize {
         match self {
             Split::Locked(len) | Split::Min(len) => *len,
@@ -205,6 +268,7 @@ impl Split {
     }
 }
 
+/// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     Horizontal,
@@ -221,7 +285,7 @@ impl From<Side> for Axis {
     }
 }
 
-/// A direction, where a `Widget<U>` will be placed in relation to
+/// A direction, where a [`Widget<U>`] will be placed in relation to
 /// another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -243,6 +307,10 @@ impl Side {
     }
 }
 
+/// Information on how a [`Widget<U>`] should be pushed onto another.
+///
+/// The `glued` member indicates wether or not a [`Widget<U>`] should
+/// "stick together" in case of movement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PushSpecs {
     pub side: Side,
@@ -251,6 +319,7 @@ pub struct PushSpecs {
 }
 
 impl PushSpecs {
+    /// Returns a new instance of [`PushSpecs`] that is not glued.
     pub fn new(side: Side, split: Split) -> Self {
         PushSpecs {
             side,
@@ -259,6 +328,7 @@ impl PushSpecs {
         }
     }
 
+    /// Returns a new instance of [`PushSpecs`] that is glued.
     pub fn new_glued(side: Side, split: Split) -> Self {
         PushSpecs {
             side,
@@ -268,12 +338,23 @@ impl PushSpecs {
     }
 }
 
+/// An abstract representation of a "viewport" of Parsec.
+///
+/// Only one [`Window`] may be shown at a time, and they contain all
+/// [`Widget<U>`]s that should be displayed, both static and floating.
 pub trait Window: 'static {
     type Area: Area + Clone + Display + Send + Sync;
     type Label: Label<Self::Area> + Send + Sync;
 
+    /// Gets the [`Area`][Window::Area] associated with a given
+    /// `area_index`.
     fn get_area(&self, area_index: usize) -> Option<Self::Area>;
 
+    /// Gets the [`Label`][Window::Label] associated with a given
+    /// `area_index`.
+    ///
+    /// If the [`Area`][Window::Area] in question is not a
+    /// [`Label`][Window::Label], then returns [`None`].
     fn get_label(&self, area_index: usize) -> Option<Self::Label>;
 
     /// Wether or not the layout of the `Ui` (size of widgets, their
@@ -288,6 +369,10 @@ pub trait Ui: 'static {
     type Label: Label<Self::Area> + Send + Sync;
     type Window: Window<Area = Self::Area, Label = Self::Label> + Clone + Send + Sync;
 
+    /// Initiates and returns a new [`Window`][Ui::Window].
+    ///
+    /// Also returns the newly created [`Label`][Ui::Label] of that
+    /// [`Window`][Ui::Window].
     fn new_window(&mut self) -> (Self::Window, Self::Label);
 
     /// Functions to trigger when the program begins.
@@ -297,8 +382,7 @@ pub trait Ui: 'static {
     fn shutdown(&mut self);
 }
 
-/// A "viewport" of Parsec. It contains a group of widgets that can be
-/// displayed at the same time.
+/// A container for a [`Window`] in Parsec.
 pub struct ParsecWindow<U>
 where
     U: Ui,
@@ -354,11 +438,11 @@ where
         parsec_window
     }
 
-    /// Pushes a `Widget` onto an
+    /// Pushes a [`Widget<U>`] onto an existing one.
     fn push_widget(
         &mut self,
-        area_index: usize,
         widget: Widget<U>,
+        area_index: usize,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let mut area = self.window.get_area(area_index).unwrap();
@@ -384,71 +468,71 @@ where
         (new_area, pushed_area)
     }
 
-    pub fn push_hooked(
+    /// Pushes a [`Widget<U>`] onto an existing one and activates a
+    /// hook function.
+    pub fn push_hooked<W>(
         &mut self,
         widget: Widget<U>,
         area_index: usize,
         push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>),
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
         session_manager: &mut SessionManager,
-    ) -> (usize, Option<usize>) {
-        let (new_area, opt_parent) = self.push_widget(area_index, widget, push_specs);
+    ) -> (usize, Option<usize>)
+    where
+        W: NormalWidget<U> + 'static,
+    {
+        let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
+
+        let node = self
+            .nodes
+            .iter()
+            .find(|Node { area_index, .. }| *area_index == new_area)
+            .unwrap();
+
+        let Some(widget) = node.widget.try_downcast::<W>() else {
+            panic!("The widget is not of type {}", std::any::type_name::<W>());
+        };
 
         let mod_node = ModNode {
             session_manager,
             window: self,
             area_index: new_area,
         };
-        (constructor_hook)(mod_node);
+
+        (constructor_hook)(mod_node, widget);
 
         (new_area, opt_parent)
     }
 
-    pub fn push_file<C>(
+    /// Pushes a [`FileWidget<U>`] to another [`Widget<U>`], and then
+    /// activates a special  
+    pub fn push_file(
         &mut self,
         widget: Widget<U>,
         push_specs: PushSpecs,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
         session_manager: &mut SessionManager,
-        constructor_hook: C,
-    ) -> (usize, Option<usize>)
-    where
-        C: Fn(ModNode<U>, RoData<FileWidget<U>>),
-    {
+    ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
-        let (new_index, opt_parent) = self.push_widget(node_index, widget, push_specs);
-        let node = self
-            .nodes
-            .iter()
-            .find(|Node { area_index, .. }| *area_index == new_index)
-            .unwrap();
 
-        let Some(actionable) = node.widget.get_actionable() else {
-            unreachable!();
-        };
-
-        let widget = RoData::from(actionable);
-        let file = widget.try_downcast::<FileWidget<U>>().unwrap();
-
-        let mod_node = ModNode {
+        let (new_index, opt_parent) = self.push_hooked::<FileWidget<U>>(
+            widget,
+            node_index,
+            push_specs,
+            constructor_hook,
             session_manager,
-            window: self,
-            area_index: new_index,
-        };
-        (constructor_hook)(mod_node, file);
-
-        self.active_area = new_index;
+        );
 
         (new_index, opt_parent)
     }
 
-    /// Pushes a `Widget` to the parent of all files.
     /// Pushes a `Widget` to the master node of the current window.
     pub fn push_to_master(
         &mut self,
         widget: Widget<U>,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
-        self.push_widget(0, widget, push_specs)
+        self.push_widget(widget, 0, push_specs)
     }
 
     pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, &RwData<Config>)> + '_ {
@@ -502,7 +586,8 @@ where
         if self.window.layout_has_changed() {
             for node in &self.nodes {
                 let mut label = self.window.get_label(node.area_index).unwrap();
-                node.update_and_print(&mut label, node.area_index == self.active_area);
+                node.widget.update(&mut label, &self.config.read());
+                node.widget.print(&mut label, &self.config.read());
             }
         }
     }

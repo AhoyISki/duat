@@ -12,7 +12,7 @@ use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{Config, DownCastableData, RwData},
+    config::{Config, DownCastableData, RwData, RoData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::Ui,
@@ -198,6 +198,22 @@ where
         match &self.inner {
             InnerWidget::Normal(_) => None,
             InnerWidget::Actionable(widget) => Some(&widget),
+        }
+    }
+
+    pub fn try_downcast<W>(&self) -> Option<RoData<W>>
+    where
+        W: NormalWidget<U> + 'static,
+    {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
+                let widget = RoData::from(widget);
+                widget.try_downcast::<W>().ok()
+            }
+            InnerWidget::Actionable(widget) => {
+                let widget = RoData::from(widget);
+                widget.try_downcast::<W>().ok()
+            }
         }
     }
 

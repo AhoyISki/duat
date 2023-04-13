@@ -99,8 +99,8 @@ where
         self.windows[self.active_window].push_file(
             file_widget,
             push_specs,
-            &mut self.session_manager.write(),
             &self.constructor_hook,
+            &mut self.session_manager.write(),
         );
     }
 
