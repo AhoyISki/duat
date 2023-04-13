@@ -256,7 +256,7 @@ where
                 .file_names()
                 .enumerate()
                 .cycle()
-                .skip(self.session_manager.anchor_file)
+                .skip(self.session_manager.anchor_file + 1)
                 .next()
                 .ok_or(())?;
 
