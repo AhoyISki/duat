@@ -4,7 +4,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
-    log_info,
     ui::{Side, Ui},
     widgets::{ActionableWidget, WidgetActor},
     Controls,
@@ -434,9 +433,7 @@ impl Editor {
             }
             _ => {}
         }
-        log_info!("\ngot here lolololol 1");
         *self.cur_mode.write() = Mode::Normal;
-        log_info!("\ngot here lolololol");
     }
 
     /// A readable state of which mode is currently active.
@@ -456,7 +453,6 @@ impl InputScheme for Editor {
         AW: ActionableWidget<U> + ?Sized,
     {
         let cur_mode = *self.cur_mode.read();
-        log_info!("\nkey read");
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
             Mode::Normal => self.match_normal(key, actor, controls),

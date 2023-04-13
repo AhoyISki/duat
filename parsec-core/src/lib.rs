@@ -249,8 +249,6 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
-            log_info!("pre iter");
-
             let (file_index, (widget_index, _)) = self
                 .window
                 .file_names()
@@ -260,15 +258,9 @@ where
                 .next()
                 .ok_or(())?;
 
-            log_info!("post iter");
-
             self.session_manager.anchor_file = file_index;
 
-            let ret = self.switch_to_widget(widget_index);
-                
-            log_info!("post switch");
-
-            ret
+            self.switch_to_widget(widget_index)
         }
     }
 
