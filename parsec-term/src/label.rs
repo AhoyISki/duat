@@ -1,15 +1,15 @@
 use std::{
-    io::{stdout, StdoutLock, Write},
-    sync::atomic::{Ordering, AtomicBool},
+    io::{stdout, StdoutLock},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use crossterm::{
-    cursor::{MoveTo, SavePosition, self, RestorePosition},
-    queue,
-    style::{ContentStyle, Print, ResetColor, SetStyle}, execute,
+    cursor::{self, MoveTo, RestorePosition, SavePosition},
+    execute, queue,
+    style::{ContentStyle, Print, ResetColor, SetStyle},
 };
 use parsec_core::{
-    config::{TabPlaces, WrapMethod, Config},
+    config::{Config, TabPlaces, WrapMethod},
     tags::form::{CursorStyle, Form},
     text::PrintStatus,
     ui::{self, Area as UiArea},
@@ -160,10 +160,7 @@ impl ui::Label<Area> for Label {
 
         if self.cursor.x <= self.area.br().x - len {
             self.cursor.x += len;
-            let _ = {
-                let mut temp = [b'a'; 4];
-                self.stdout_lock.write_all(ch.encode_utf8(&mut temp).as_bytes())
-            };
+            let _ = queue!(self.stdout_lock, Print(ch));
             if let Some(style) = self.style_before_cursor.take() {
                 let _ = queue!(self.stdout_lock, ResetColor, SetStyle(style));
             }

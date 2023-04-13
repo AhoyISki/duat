@@ -16,9 +16,14 @@ use parsec_core::{
     SessionManager,
 };
 
+/// The [`char`]s that should be printed above, equal to, and below
+/// the main line.
+#[derive(Clone)]
 pub enum SepChar {
     Uniform(char),
+    /// Order: main line, other lines.
     TwoWay(char, char),
+    /// Order: main line, above main line, below main line.
     ThreeWay(char, char, char),
 }
 
@@ -29,6 +34,8 @@ impl Default for SepChar {
 }
 
 impl SepChar {
+    /// The [`char`]s above, equal to, and below the main line,
+    /// respectively.
     fn chars(&self) -> [char; 3] {
         match self {
             SepChar::Uniform(uniform) => [*uniform, *uniform, *uniform],
@@ -38,9 +45,14 @@ impl SepChar {
     }
 }
 
+/// The `form_id`s that should be printed above, equal to, and below
+/// the main line.
+#[derive(Clone)]
 pub enum SepForm {
     Uniform(u16),
+    /// Order: main line, other lines.
     TwoWay(u16, u16),
+    /// Order: main line, above main line, below main line.
     ThreeWay(u16, u16, u16),
 }
 
@@ -51,12 +63,17 @@ impl Default for SepForm {
 }
 
 impl SepForm {
+    /// Returns a new instance of [`SepForm`], with one `form_name`
+    /// for all lines.
     pub fn uniform(config: &RwData<Config>, name: impl AsRef<str>) -> Self {
         let (_, id) = config.read().palette.from_name(name);
 
         SepForm::Uniform(id)
     }
 
+    /// Returns a new instance of [`SepForm`], with one `form_name`
+    /// for the main line and another `form_name` for other lines,
+    /// respectively.
     pub fn two_way(
         config: &RwData<Config>,
         main_name: impl AsRef<str>,
@@ -70,21 +87,26 @@ impl SepForm {
         SepForm::TwoWay(main_id, other_id)
     }
 
+    /// Returns a new instance of [`SepForm`], with one `form_name`
+    /// for the main line, one for lines above, and one for lines
+    /// below, respectively.
     pub fn three_way(
         config: &RwData<Config>,
         main_name: impl AsRef<str>,
-        lower_name: impl AsRef<str>,
         upper_name: impl AsRef<str>,
+        lower_name: impl AsRef<str>,
     ) -> Self {
         let config = config.read();
         let palette = &config.palette;
         let (_, main_id) = palette.from_name(main_name);
-        let (_, lower_id) = palette.from_name(lower_name);
         let (_, upper_id) = palette.from_name(upper_name);
+        let (_, lower_id) = palette.from_name(lower_name);
 
-        SepForm::ThreeWay(main_id, lower_id, upper_id)
+        SepForm::ThreeWay(main_id, upper_id, lower_id)
     }
 
+    /// The `form_id`s above, equal to, and below the main line,
+    /// respectively.
     fn forms(&self) -> [u16; 3] {
         match self {
             SepForm::Uniform(uniform) => [*uniform, *uniform, *uniform],
@@ -94,12 +116,23 @@ impl SepForm {
     }
 }
 
-#[derive(Default)]
+/// The configurations for the [`VertRule`] widget.
+#[derive(Default, Clone)]
 pub struct VertRuleCfg {
     pub sep_char: SepChar,
     pub sep_form: SepForm,
 }
 
+impl VertRuleCfg {
+    /// Returns a new instance of [`VertRuleCfg`].
+    pub fn new(sep_char: SepChar, sep_form: SepForm) -> Self {
+        Self { sep_char, sep_form }
+    }
+}
+
+/// A vertical line on screen, useful, for example, for the separation
+/// of a [`FileWidget<U>`] and
+/// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
 pub struct VertRule<U>
 where
     U: Ui,
@@ -188,10 +221,6 @@ where
         builder.swap_range(1, [chars[1], '\n'].into_iter().collect::<String>());
         builder.swap_tag(2, Tag::PushForm(forms[2]));
         builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
-        if upper > 0 {
-            // panic!("{:#?}, {:#?}", builder.text.tags,
-            // builder.text.inner);
-        }
     }
 
     fn needs_update(&self) -> bool {
@@ -203,6 +232,7 @@ where
     }
 }
 
+/// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.
 fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder<U>
 where
     U: Ui,

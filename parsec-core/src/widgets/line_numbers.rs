@@ -1,11 +1,6 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::{
-    any::Any,
-    cmp::max,
-    fmt::{Alignment, Write},
-    sync::Arc,
-};
+use std::{any::Any, cmp::max, fmt::Write, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
@@ -121,7 +116,7 @@ where
         "parsec-line-numbers"
     }
 
-    fn update(&mut self, label: &U::Label, config: &Config) {
+    fn update(&mut self, label: &U::Label, _config: &Config) {
         let width = self.calculate_width();
         label.area().request_len(width.max(self.min_width), Side::Right).unwrap();
 
@@ -159,21 +154,33 @@ pub enum Numbering {
     Hybrid,
 }
 
-#[derive(Clone, Copy)]
+/// How to show the line numbers on screen.
+#[derive(Default, Debug, Copy, Clone)]
+pub enum Alignment {
+    #[default]
+    Right,
+    Left,
+    Center,
+}
+
+/// Configuration options for the [`LineNumbers<U>`] widget.
+#[derive(Default, Clone, Copy)]
 pub struct LineNumbersCfg {
     pub numbering: Numbering,
     pub alignment: Alignment,
 }
 
-impl Default for LineNumbersCfg {
-    fn default() -> Self {
+impl LineNumbersCfg {
+    /// Returns a new instance of [`LineNumbersCfg`].
+    pub fn new(numbering: Numbering, alignment: Alignment) -> Self {
         Self {
-            alignment: Alignment::Left,
-            numbering: Numbering::default(),
+            numbering,
+            alignment,
         }
     }
 }
 
+/// Gets the [`Tag`], according to line positioning.
 fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
     let tag = Tag::PushForm(match (line == main_line, is_wrapped) {
         (false, false) => LINE_NUMBERS,
@@ -185,6 +192,7 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
     tag
 }
 
+/// Writes the text of the line number to a given [`String`].
 fn write_text(
     text: &mut String,
     line: usize,

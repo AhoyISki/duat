@@ -148,7 +148,7 @@ where
         I: InputScheme,
     {
         thread::scope(|scope| loop {
-            // self.active_window().print_if_layout_changed();
+            self.active_window().print_if_layout_changed();
 
             let mut session_manager = self.session_manager.write();
             if session_manager.break_loop {

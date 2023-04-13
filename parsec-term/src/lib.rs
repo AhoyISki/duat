@@ -465,8 +465,7 @@ impl ui::Window for Window {
     type Label = Label;
 
     fn layout_has_changed(&self) -> bool {
-        todo!(); // self.layout_has_changed.swap(false,
-                 // Ordering::Relaxed)
+        self.inner.has_changed()
     }
 
     fn get_area(&self, area_index: usize) -> Option<Self::Area> {
@@ -483,7 +482,6 @@ impl ui::Window for Window {
 }
 
 pub struct Ui {
-    layout_has_changed: AtomicBool,
     windows: Vec<Window>,
     next_index: Arc<AtomicUsize>,
 }
@@ -491,7 +489,6 @@ pub struct Ui {
 impl Default for Ui {
     fn default() -> Self {
         Ui {
-            layout_has_changed: AtomicBool::new(true),
             windows: Vec::new(),
             next_index: Arc::new(AtomicUsize::new(0)),
         }

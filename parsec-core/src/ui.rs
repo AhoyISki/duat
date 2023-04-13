@@ -1,7 +1,4 @@
-use std::{
-    any::TypeId,
-    fmt::{Debug, Display},
-};
+use std::fmt::{Debug, Display};
 
 use ropey::RopeSlice;
 
@@ -398,7 +395,7 @@ impl<U> ParsecWindow<U>
 where
     U: Ui + 'static,
 {
-    /// Returns a new instance of `NodeManager`.
+    /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new(
         ui: &mut U,
         widget: Widget<U>,
@@ -504,8 +501,13 @@ where
         (new_area, opt_parent)
     }
 
-    /// Pushes a [`FileWidget<U>`] to another [`Widget<U>`], and then
-    /// activates a special  
+    /// Pushes a [`FileWidget<U>`] to another, and then activates a
+    /// special hook.
+    ///
+    /// This function will push to the edge of `self.files_parent`.
+    /// This is an area, usually in the center, that contains all
+    /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
+    /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self,
         widget: Widget<U>,
@@ -526,7 +528,8 @@ where
         (new_index, opt_parent)
     }
 
-    /// Pushes a `Widget` to the master node of the current window.
+    /// Pushes a [`Widget<U>`] to the master node of the current
+    /// window.
     pub fn push_to_master(
         &mut self,
         widget: Widget<U>,
@@ -535,6 +538,7 @@ where
         self.push_widget(widget, 0, push_specs)
     }
 
+    /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
     pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, &RwData<Config>)> + '_ {
         self.nodes.iter().map(
             |Node {
@@ -549,6 +553,8 @@ where
         )
     }
 
+    /// Returns an [`Iterator`] over the [`ActionableWidget`]s of
+    /// [`self`].
     pub fn actionable_widgets(
         &self,
     ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label, &RwData<Config>)> + '_
@@ -568,6 +574,8 @@ where
         )
     }
 
+    /// Returns an [`Iterator`] over the file names of open
+    /// [`FileWidget<U>`]s.
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
             .iter()
@@ -582,6 +590,9 @@ where
             })
     }
 
+    /// if the layout of [`Window<U>`] has changed (areas resized, new
+    /// areas opened, etc), updates and prints all [`Widget<U>`]s on
+    /// the [`Window`].
     pub(crate) fn print_if_layout_changed(&self) {
         if self.window.layout_has_changed() {
             for node in &self.nodes {

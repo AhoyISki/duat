@@ -164,6 +164,17 @@ impl Area {
             self.height()
         }
     }
+
+	/// Conforms a [`Split::Locked`] to a given length.
+    fn conform_locked_split(&self, len: usize) {
+        let mut window = self.window.write();
+        let (child_index, parent) = window.find_mut_parent(self.index).unwrap();
+        let (children, _) = parent.lineage.as_mut().unwrap();
+        let (_, split) = &mut children[child_index];
+        if let Split::Locked(_) = split {
+            *split = Split::Locked(len);
+        }
+    }
 }
 
 impl Display for Area {
@@ -213,11 +224,14 @@ impl ui::Area for Area {
         } else {
             let ret = parent.set_child_len(child_index, len as u16, side);
             drop(window);
+            self.conform_locked_split(len);
             ret
         }
     }
 
     fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
+        // To signal to other readers that the `InnerWindow` has changed.
+        drop(self.window.write());
         let window = self.window.read();
         let PushSpecs { side, split, .. } = push_specs;
         let axis = Axis::from(side);
