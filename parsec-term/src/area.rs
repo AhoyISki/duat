@@ -6,6 +6,7 @@ use std::{
 use crossterm::terminal;
 use parsec_core::{
     config::RwData,
+    log_info,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split},
 };
 
@@ -165,7 +166,7 @@ impl Area {
         }
     }
 
-	/// Conforms a [`Split::Locked`] to a given length.
+    /// Conforms a [`Split::Locked`] to a given length.
     fn conform_locked_split(&self, len: usize) {
         let mut window = self.window.write();
         let (child_index, parent) = window.find_mut_parent(self.index).unwrap();
@@ -206,7 +207,7 @@ impl ui::Area for Area {
             return Ok(());
         };
 
-        if req_axis != *axis {
+        let ret = if req_axis != *axis {
             let area = parent.area.clone();
             drop(window);
             area.request_len(len, side)
@@ -226,14 +227,18 @@ impl ui::Area for Area {
             drop(window);
             self.conform_locked_split(len);
             ret
-        }
+        };
+
+        log_info!("\nafter resize: {:#?}", self.window.read().main_node);
+
+        ret
     }
 
     fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
         // To signal to other readers that the `InnerWindow` has changed.
         drop(self.window.write());
         let window = self.window.read();
-        let PushSpecs { side, split, .. } = push_specs;
+        let PushSpecs { side, split, glued } = push_specs;
         let axis = Axis::from(side);
 
         let node = window.find_node(self.index).unwrap();
@@ -261,10 +266,15 @@ impl ui::Area for Area {
             node.insert_new_area(self_index, split, side, new_area_index);
 
             (new_area_index, None)
-        } else if let Some((child_index, parent)) = window
-            .find_mut_parent(self.index)
-            .filter(|(_, parent)| parent.lineage.as_ref().is_some_and(|(_, other)| *other == axis))
-        {
+        } else if let Some((child_index, parent)) = {
+            if !glued {
+                window.find_mut_parent(self.index).filter(|(_, parent)| {
+                    parent.lineage.as_ref().is_some_and(|(_, other)| *other == axis)
+                })
+            } else {
+                None
+            }
+        } {
             parent.insert_new_area(child_index, split, side, new_area_index);
 
             (new_area_index, None)
@@ -284,6 +294,8 @@ impl ui::Area for Area {
 
             (new_child_index, Some(new_area_index))
         };
+
+        log_info!("\nafter bisect: {:#?}", window.main_node);
 
         ret
     }

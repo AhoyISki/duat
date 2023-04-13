@@ -17,7 +17,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, Label, Ui},
+    ui::{Area, Label, Ui}, tags::{form::FILE_NAME, Tag},
 };
 
 /// The widget that is used to print and edit files.
@@ -52,8 +52,19 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let text = Text::new_rope(file_contents);
+        let mut text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
+        let mut pushes_pops_you_cant_explain_that = true;
+        let lock = text.tags.get_lock();
+
+        for index in (0..text.len_chars()).step_by(20) {
+            if pushes_pops_you_cant_explain_that {
+                text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
+            } else {
+                text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
+            }
+            pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
+        }
 
         Widget::actionable(
             Arc::new(RwLock::new(FileWidget {
@@ -248,11 +259,7 @@ impl<U> ActionableWidget<U> for FileWidget<U>
 where
     U: Ui + 'static,
 {
-    fn editor<'a>(
-        &'a mut self,
-        index: usize,
-        edit_accum: &'a mut EditAccum,
-    ) -> Editor<U> {
+    fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
         Editor::new(
             &mut self.cursors[index],
             &mut self.text,
