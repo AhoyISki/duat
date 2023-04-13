@@ -286,12 +286,17 @@ impl Node {
             (-bef_diff, -aft_diff)
         };
 
+        let parent_coords = self.area.coords();
+
         let bef_lens = scale_children(&children[..child_index], bef_diff, *axis);
-        normalize_from_tl(&children[..child_index], bef_lens, self.area.tl(), side);
+        let br = children.get(child_index).unwrap().0.area.coords().ortho_corner(axis.perp());
+        let coords = Coords::new(parent_coords.tl, br);
+        normalize_to_coords(&children[..child_index], bef_lens, coords, Axis::from(side));
 
         let aft_lens = scale_children(&children[(child_index + 1)..], aft_diff, *axis);
         let tl = children.get(child_index).unwrap().0.area.coords().ortho_corner(*axis);
-        normalize_from_tl(&children[(child_index + 1)..], aft_lens, tl, side);
+        let coords = Coords::new(tl, parent_coords.br);
+        normalize_to_coords(&children[(child_index + 1)..], aft_lens, coords, Axis::from(side));
 
         Ok(())
     }
@@ -323,21 +328,17 @@ impl Node {
     /// the [`Coords`] of its children still reflect the old
     /// [`Coords`] from their parent. This function's purpose is
     /// to adjust them to the new [`Coords`] of their parent.
-    fn normalize_children(&self, len_diff: i16, side: Side) {
-        let Some((children, axis)) = &self.lineage else {
+    fn normalize_children(&self, len_diff: i16, axis: Axis, perp_len_diff: i16) {
+        let Some((children, self_axis)) = &self.lineage else {
             return;
         };
 
-        if Axis::from(side) == *axis {
-            let new_lens = scale_children(children, len_diff, *axis);
-            normalize_from_tl(children, new_lens, self.area.tl(), side);
+        if *self_axis == axis {
+            let new_lens = scale_children(children, len_diff, axis);
+            normalize_to_coords(children, new_lens, self.area.coords(), axis);
         } else {
-            for (node, _) in children {
-                let mut coords = node.area.coords.write();
-                coords.add_to_side(side, len_diff);
-                drop(coords);
-                node.normalize_children(len_diff, side);
-            }
+            let new_lens = scale_children(children, perp_len_diff, axis.perp());
+            normalize_to_coords(children, new_lens, self.area.coords(), axis.perp());
         }
     }
 }
@@ -352,9 +353,8 @@ impl Debug for Node {
     }
 }
 
-fn normalize_from_tl(children: &[(Node, Split)], lens: Vec<u16>, tl: Coord, side: Side) {
-    let axis = Axis::from(side);
-    let mut last_tl = tl;
+fn normalize_to_coords(children: &[(Node, Split)], lens: Vec<u16>, parent: Coords, axis: Axis) {
+    let mut last_tl = parent.tl;
     let mut new_lens = lens.iter();
 
     for (node, split) in children.iter() {
@@ -366,23 +366,19 @@ fn normalize_from_tl(children: &[(Node, Split)], lens: Vec<u16>, tl: Coord, side
         };
 
         let old_len = coords.len(axis);
+        let perp_old_len = coords.len(axis.perp()) as i16;
         coords.tl = last_tl;
-        coords.br = stretch_br(*coords, len, axis);
+        coords.br = match axis {
+            Axis::Horizontal => Coord::new(last_tl.x + len, parent.br.y),
+            Axis::Vertical => Coord::new(parent.br.x, last_tl.y + len),
+        };
 
         last_tl = coords.ortho_corner(axis);
 
-        drop(coords);
-        node.normalize_children(len as i16 - old_len as i16, side);
-    }
-}
+        let perp_len_diff = coords.len(axis.perp()) as i16 - perp_old_len;
 
-fn stretch_br(coords: Coords, len: u16, axis: Axis) -> Coord {
-    if let Axis::Horizontal = axis {
-        let x = coords.tl.x + len;
-        Coord { x, y: coords.br.y }
-    } else {
-        let y = coords.tl.y + len;
-        Coord { x: coords.br.x, y }
+        drop(coords);
+        node.normalize_children(len as i16 - old_len as i16, axis, perp_len_diff);
     }
 }
 

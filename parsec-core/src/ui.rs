@@ -272,6 +272,15 @@ pub enum Axis {
     Vertical,
 }
 
+impl Axis {
+    pub fn perp(&self) -> Self {
+        match self {
+            Axis::Horizontal => Axis::Vertical,
+            Axis::Vertical => Axis::Horizontal,
+        }
+    }
+}
+
 impl From<Side> for Axis {
     fn from(value: Side) -> Self {
         if let Side::Top | Side::Bottom = value {
