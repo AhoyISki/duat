@@ -73,7 +73,7 @@ where
     }
 
     fn calculate_width(&mut self) -> usize {
-        let mut width = 2;
+        let mut width = 1;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
         let len = self.file_widget.read().text().len_lines() + 1;
