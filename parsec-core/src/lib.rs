@@ -94,7 +94,6 @@ where
         let push_specs = PushSpecs {
             side: Side::Right,
             split: Split::Min(40),
-            glued: false,
         };
         self.windows[self.active_window].push_file(
             file_widget,

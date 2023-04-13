@@ -25,7 +25,7 @@ pub trait Area {
     /// Requests a new width to the widget.
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()>;
 
-    fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>);
+    fn bisect(&mut self, push_specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>);
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
@@ -192,7 +192,7 @@ where
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
-        self.window.push_widget(widget, self.area_index, push_specs)
+        self.window.push_glued_widget(widget, self.area_index, push_specs)
     }
 
     /// Pushes a [`Widget<U>`] to a specific `area`, given
@@ -312,26 +312,12 @@ impl Side {
 pub struct PushSpecs {
     pub side: Side,
     pub split: Split,
-    pub glued: bool,
 }
 
 impl PushSpecs {
     /// Returns a new instance of [`PushSpecs`] that is not glued.
     pub fn new(side: Side, split: Split) -> Self {
-        PushSpecs {
-            side,
-            split,
-            glued: false,
-        }
-    }
-
-    /// Returns a new instance of [`PushSpecs`] that is glued.
-    pub fn new_glued(side: Side, split: Split) -> Self {
-        PushSpecs {
-            side,
-            split,
-            glued: true,
-        }
+        PushSpecs { side, split }
     }
 }
 
@@ -436,14 +422,34 @@ where
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    fn push_widget(
+    pub fn push_widget(
         &mut self,
         widget: Widget<U>,
         area_index: usize,
         push_specs: PushSpecs,
     ) -> (usize, Option<usize>) {
+        self.inner_push_widget(area_index, push_specs, false, widget)
+    }
+
+    /// Pushes a [`Widget<U>`] onto an existing one.
+    pub fn push_glued_widget(
+        &mut self,
+        widget: Widget<U>,
+        area_index: usize,
+        push_specs: PushSpecs,
+    ) -> (usize, Option<usize>) {
+        self.inner_push_widget(area_index, push_specs, true, widget)
+    }
+
+    fn inner_push_widget(
+        &mut self,
+        area_index: usize,
+        push_specs: PushSpecs,
+        is_glued: bool,
+        widget: Widget<U>,
+    ) -> (usize, Option<usize>) {
         let mut area = self.window.get_area(area_index).unwrap();
-        let (new_area, pushed_area) = area.bisect(push_specs);
+        let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
         let label = self.window.get_label(new_area).unwrap();
         widget.update(&label, &self.config.read());
 
@@ -461,13 +467,12 @@ where
             area_index: new_area,
         };
         self.nodes.push(node);
-
         (new_area, pushed_area)
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one and activates a
     /// hook function.
-    pub fn push_hooked<W>(
+    pub fn push_hooked_widget<W>(
         &mut self,
         widget: Widget<U>,
         area_index: usize,
@@ -480,6 +485,39 @@ where
     {
         let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
 
+        self.activate_hook(new_area, session_manager, constructor_hook);
+
+        (new_area, opt_parent)
+    }
+
+    /// Pushes a [`Widget<U>`] onto an existing one and activates a
+    /// hook function.
+    pub fn push_glued_hooked_widget<W>(
+        &mut self,
+        widget: Widget<U>,
+        area_index: usize,
+        push_specs: PushSpecs,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
+        session_manager: &mut SessionManager,
+    ) -> (usize, Option<usize>)
+    where
+        W: NormalWidget<U> + 'static,
+    {
+        let (new_area, opt_parent) = self.push_glued_widget(widget, area_index, push_specs);
+
+        self.activate_hook(new_area, session_manager, constructor_hook);
+
+        (new_area, opt_parent)
+    }
+
+    fn activate_hook<W>(
+        &mut self,
+        new_area: usize,
+        session_manager: &mut SessionManager,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
+    ) where
+        W: NormalWidget<U> + 'static,
+    {
         let node = self
             .nodes
             .iter()
@@ -497,8 +535,6 @@ where
         };
 
         (constructor_hook)(mod_node, widget);
-
-        (new_area, opt_parent)
     }
 
     /// Pushes a [`FileWidget<U>`] to another, and then activates a
@@ -517,7 +553,7 @@ where
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 
-        let (new_index, opt_parent) = self.push_hooked::<FileWidget<U>>(
+        let (new_index, opt_parent) = self.push_hooked_widget::<FileWidget<U>>(
             widget,
             node_index,
             push_specs,

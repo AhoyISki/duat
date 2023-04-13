@@ -229,11 +229,11 @@ impl ui::Area for Area {
         }
     }
 
-    fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
+    fn bisect(&mut self, push_specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>) {
         // To signal to other readers that the `InnerWindow` has changed.
         drop(self.window.write());
         let window = self.window.read();
-        let PushSpecs { side, split, glued } = push_specs;
+        let PushSpecs { side, split } = push_specs;
         let axis = Axis::from(side);
 
         let node = window.find_node(self.index).unwrap();
@@ -260,7 +260,7 @@ impl ui::Area for Area {
 
             (new_area_index, None)
         } else if let Some((child_index, parent)) = {
-            if !glued {
+            if !is_glued {
                 window.find_mut_parent(self.index).filter(|(_, parent)| {
                     parent.lineage.as_ref().is_some_and(|(_, other)| *other == axis)
                 })
