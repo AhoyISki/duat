@@ -6,7 +6,6 @@ use std::{
 use crossterm::terminal;
 use parsec_core::{
     config::RwData,
-    log_info,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split},
 };
 
@@ -207,7 +206,7 @@ impl ui::Area for Area {
             return Ok(());
         };
 
-        let ret = if req_axis != *axis {
+        if req_axis != *axis {
             let area = parent.area.clone();
             drop(window);
             area.request_len(len, side)
@@ -227,11 +226,7 @@ impl ui::Area for Area {
             drop(window);
             self.conform_locked_split(len);
             ret
-        };
-
-        log_info!("\nafter resize: {:#?}", self.window.read().main_node);
-
-        ret
+        }
     }
 
     fn bisect(&mut self, push_specs: PushSpecs) -> (usize, Option<usize>) {
@@ -255,9 +250,7 @@ impl ui::Area for Area {
 
         let node = window.find_mut_node(self.index).unwrap();
 
-        let ret = if let Some((children, _)) =
-            node.lineage.as_ref().filter(|(_, other)| *other == axis)
-        {
+        if let Some((children, _)) = node.lineage.as_ref().filter(|(_, other)| *other == axis) {
             let self_index = match side {
                 Side::Bottom | Side::Right => children.len() - 1,
                 Side::Top | Side::Left => 0,
@@ -293,11 +286,7 @@ impl ui::Area for Area {
             swapped_parent.insert_new_area(0, split, side, new_child_index);
 
             (new_child_index, Some(new_area_index))
-        };
-
-        log_info!("\nafter bisect: {:#?}", window.main_node);
-
-        ret
+        }
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {

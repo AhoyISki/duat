@@ -78,10 +78,10 @@ fn main() {
             let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
-            let push_specs = PushSpecs::new_glued(Side::Left, Split::Min(1));
+            let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
-            let push_specs = PushSpecs::new_glued(Side::Bottom, Split::Min(1));
+            let push_specs = PushSpecs::new_glued(Side::Bottom, Split::Locked(1));
             mod_node.push_widget(StatusLine::default_fn(file), push_specs);
         }),
     );

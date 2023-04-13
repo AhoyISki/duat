@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     io,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -55,7 +55,7 @@ fn scale_children(children: &[(Node, Split)], len_diff: i16, axis: Axis) -> Vec<
         let next_accum = accum + *len;
 
         for diff in &diff_array[last_diff..] {
-            if (accum..(accum + *len)).contains(diff) {
+            if (accum..next_accum).contains(diff) {
                 *len = len.saturating_add_signed(len_diff.signum());
                 last_diff += 1;
             }
@@ -335,6 +335,8 @@ impl Node {
             for (node, _) in children {
                 let mut coords = node.area.coords.write();
                 coords.add_to_side(side, len_diff);
+                drop(coords);
+                node.normalize_children(len_diff, side);
             }
         }
     }
