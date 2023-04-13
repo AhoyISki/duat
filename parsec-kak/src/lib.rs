@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     config::{RoData, RwData},
     input::InputScheme,
+    log_info,
     ui::{Side, Ui},
     widgets::{ActionableWidget, WidgetActor},
     Controls,
@@ -39,10 +40,10 @@ pub struct Editor {
 
 impl Editor {
     /// Commands that are available in `Mode::Insert`.
-    fn match_insert<U, E>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>)
+    fn match_insert<U, AW>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>)
     where
         U: Ui,
-        E: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent {
@@ -179,14 +180,14 @@ impl Editor {
     }
 
     /// Commands that are available in `Mode::Normal`.
-    fn match_normal<U, E>(
+    fn match_normal<U, AW>(
         &mut self,
         key: &KeyEvent,
-        mut actor: WidgetActor<U, E>,
+        mut actor: WidgetActor<U, AW>,
         controls: &mut Controls<U>,
     ) where
         U: Ui,
-        E: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized,
     {
         match key {
             ////////// SessionControl commands.
@@ -306,14 +307,14 @@ impl Editor {
     }
 
     /// Commands that are available in `Mode::Command`.
-    fn match_command<U, E>(
+    fn match_command<U, AW>(
         &mut self,
         key: &KeyEvent,
-        mut actor: WidgetActor<U, E>,
+        mut actor: WidgetActor<U, AW>,
         controls: &mut Controls<U>,
     ) where
         U: Ui,
-        E: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized,
     {
         match key {
             KeyEvent {
@@ -433,7 +434,9 @@ impl Editor {
             }
             _ => {}
         }
+        log_info!("\ngot here lolololol 1");
         *self.cur_mode.write() = Mode::Normal;
+        log_info!("\ngot here lolololol");
     }
 
     /// A readable state of which mode is currently active.
@@ -443,16 +446,17 @@ impl Editor {
 }
 
 impl InputScheme for Editor {
-    fn process_key<U, A>(
+    fn process_key<U, AW>(
         &mut self,
         key: &KeyEvent,
-        actor: WidgetActor<U, A>,
+        actor: WidgetActor<U, AW>,
         controls: &mut Controls<U>,
     ) where
         U: Ui,
-        A: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized,
     {
-        let cur_mode = *self.cur_mode.try_read().unwrap();
+        let cur_mode = *self.cur_mode.read();
+        log_info!("\nkey read");
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
             Mode::Normal => self.match_normal(key, actor, controls),

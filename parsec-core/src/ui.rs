@@ -481,7 +481,7 @@ where
         session_manager: &mut SessionManager,
     ) -> (usize, Option<usize>)
     where
-        W: NormalWidget<U> + 'static,
+        W: NormalWidget<U>,
     {
         let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
 
@@ -501,7 +501,7 @@ where
         session_manager: &mut SessionManager,
     ) -> (usize, Option<usize>)
     where
-        W: NormalWidget<U> + 'static,
+        W: NormalWidget<U>,
     {
         let (new_area, opt_parent) = self.push_glued_widget(widget, area_index, push_specs);
 
@@ -516,7 +516,7 @@ where
         session_manager: &mut SessionManager,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
     ) where
-        W: NormalWidget<U> + 'static,
+        W: NormalWidget<U>,
     {
         let node = self
             .nodes

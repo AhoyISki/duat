@@ -12,7 +12,7 @@ use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{Config, DownCastableData, RwData, RoData},
+    config::{Config, DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintInfo, Text},
     ui::Ui,
@@ -20,7 +20,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait NormalWidget<U>: DownCastableData
+pub trait NormalWidget<U>: DownCastableData + 'static
 where
     U: Ui + ?Sized + 'static,
 {
@@ -55,7 +55,7 @@ where
     }
 }
 
-pub trait ActionableWidget<U>: NormalWidget<U>
+pub trait ActionableWidget<U>: NormalWidget<U> + 'static
 where
     U: Ui + 'static,
 {
@@ -230,27 +230,27 @@ pub struct EditAccum {
     pub changes: isize,
 }
 
-pub struct WidgetActor<'a, U, E>
+pub struct WidgetActor<'a, U, AW>
 where
     U: Ui + 'static,
-    E: ActionableWidget<U> + ?Sized,
+    AW: ActionableWidget<U> + ?Sized,
 {
     clearing_needed: bool,
-    actionable: &'a mut E,
+    widget: &'a RwData<AW>,
     label: &'a U::Label,
     config: &'a Config,
 }
 
-impl<'a, U, E> WidgetActor<'a, U, E>
+impl<'a, U, AW> WidgetActor<'a, U, AW>
 where
     U: Ui,
-    E: ActionableWidget<U> + ?Sized,
+    AW: ActionableWidget<U> + ?Sized + 'static,
 {
     /// Returns a new instace of `WidgetActor<U, E>`.
-    pub(crate) fn new(actionable: &'a mut E, label: &'a U::Label, config: &'a Config) -> Self {
+    pub(crate) fn new(actionable: &'a RwData<AW>, label: &'a U::Label, config: &'a Config) -> Self {
         WidgetActor {
             clearing_needed: false,
-            actionable,
+            widget: actionable,
             label,
             config,
         }
@@ -259,7 +259,8 @@ where
     /// Removes all intersecting cursors from the list, keeping only
     /// the last from the bunch.
     fn clear_intersections(&mut self) {
-        let Some(cursors) = self.actionable.mut_cursors() else {
+        let mut widget = self.widget.write();
+        let Some(cursors) = widget.mut_cursors() else {
             return
         };
 
@@ -286,11 +287,12 @@ where
         F: FnMut(Editor<U>),
     {
         self.clear_intersections();
+        let mut widget = self.widget.write();
         let mut edit_accum = EditAccum::default();
-        let cursors = self.actionable.cursors();
+        let cursors = widget.cursors();
 
         for index in 0..cursors.len() {
-            let editor = self.actionable.editor(index, &mut edit_accum);
+            let editor = widget.editor(index, &mut edit_accum);
             f(editor);
         }
     }
@@ -300,13 +302,14 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        for index in 0..self.actionable.cursors().len() {
-            let mover = self.actionable.mover(index, self.label, self.config);
+        let mut widget = self.widget.write();
+        for index in 0..widget.cursors().len() {
+            let mover = widget.mover(index, self.label, self.config);
             f(mover);
         }
 
         // TODO: Figure out a better way to sort.
-        self.actionable.mut_cursors().map(|cursors| {
+        widget.mut_cursors().map(|cursors| {
             cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
         });
         self.clearing_needed = true;
@@ -317,10 +320,11 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let mover = self.actionable.mover(index, self.label, self.config);
+        let mut widget = self.widget.write();
+        let mover = widget.mover(index, self.label, self.config);
         f(mover);
 
-        if let Some(cursors) = self.actionable.mut_cursors() {
+        if let Some(cursors) = widget.mut_cursors() {
             let cursor = cursors.remove(index);
             let range = cursor.range();
             let new_index = match cursors.binary_search_by(|j| at_start_ord(&j.range(), &range)) {
@@ -329,7 +333,7 @@ where
             };
             cursors.insert(new_index, cursor);
 
-            if let Some(main_cursor) = self.actionable.mut_main_cursor_index() {
+            if let Some(main_cursor) = widget.mut_main_cursor_index() {
                 if index == *main_cursor {
                     *main_cursor = new_index;
                 }
@@ -344,7 +348,7 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let main_index = self.actionable.main_cursor_index();
+        let main_index = self.widget.read().main_cursor_index();
         self.move_nth(f, main_index);
     }
 
@@ -353,10 +357,8 @@ where
     where
         F: FnMut(Mover<U>),
     {
-        let cursors = &self.actionable.cursors();
-        if !cursors.is_empty() {
-            let len = cursors.len();
-            drop(cursors);
+        let len = self.cursors_len();
+        if len > 0 {
             self.move_nth(f, len - 1);
         }
     }
@@ -366,24 +368,22 @@ where
     where
         F: FnMut(Editor<U>),
     {
+        let mut widget = self.widget.write();
         if self.clearing_needed {
             self.clear_intersections();
             self.clearing_needed = false;
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = self.actionable.editor(index, &mut edit_accum);
+        let editor = widget.editor(index, &mut edit_accum);
         f(editor);
 
-        let mut new_cursors = Vec::from(&self.actionable.cursors()[(index + 1)..]);
+        let mut new_cursors = Vec::from(&widget.cursors()[(index + 1)..]);
         for cursor in &mut new_cursors {
-            cursor.calibrate_on_accum(&edit_accum, self.actionable.text().inner());
+            cursor.calibrate_on_accum(&edit_accum, widget.text().inner());
         }
 
-        self.actionable
-            .mut_cursors()
-            .unwrap()
-            .splice((index + 1).., new_cursors.into_iter());
+        widget.mut_cursors().unwrap().splice((index + 1).., new_cursors.into_iter());
     }
 
     /// Edits on the main cursor's selection.
@@ -391,7 +391,7 @@ where
     where
         F: FnMut(Editor<U>),
     {
-        let main_cursor = self.actionable.main_cursor_index();
+        let main_cursor = self.widget.read().main_cursor_index();
         self.edit_on_nth(f, main_cursor);
     }
 
@@ -400,17 +400,15 @@ where
     where
         F: FnMut(Editor<U>),
     {
-        let cursors = &self.actionable.cursors();
-        if !cursors.is_empty() {
-            let len = cursors.len();
-            drop(cursors);
+        let len = self.cursors_len();
+        if len > 0 {
             self.edit_on_nth(f, len - 1);
         }
     }
 
     /// The main cursor index.
     pub fn main_cursor_index(&self) -> usize {
-        self.actionable.main_cursor_index()
+        self.widget.read().main_cursor_index()
     }
 
     pub fn rotate_main_forward(&mut self) {
@@ -419,7 +417,7 @@ where
             return;
         }
 
-        self.actionable.mut_main_cursor_index().map(|main_index| {
+        self.widget.write().mut_main_cursor_index().map(|main_index| {
             *main_index = if *main_index == cursors_len - 1 {
                 0
             } else {
@@ -434,7 +432,7 @@ where
             return;
         }
 
-        self.actionable.mut_main_cursor_index().map(|main_index| {
+        self.widget.write().mut_main_cursor_index().map(|main_index| {
             *main_index = if *main_index == 0 {
                 cursors_len - 1
             } else {
@@ -444,19 +442,19 @@ where
     }
 
     pub fn cursors_len(&self) -> usize {
-        self.actionable.cursors().len()
+        self.widget.read().cursors().len()
     }
 
     pub fn new_moment(&mut self) {
-        self.actionable.new_moment();
+        self.widget.write().new_moment();
     }
 
     pub fn undo(&mut self) {
-        self.actionable.undo(self.label, self.config);
+        self.widget.write().undo(self.label, self.config);
     }
 
     pub fn redo(&mut self) {
-        self.actionable.redo(self.label, self.config);
+        self.widget.write().redo(self.label, self.config);
     }
 }
 

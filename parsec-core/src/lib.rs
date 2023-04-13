@@ -249,6 +249,8 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
+            log_info!("pre iter");
+
             let (file_index, (widget_index, _)) = self
                 .window
                 .file_names()
@@ -258,9 +260,15 @@ where
                 .next()
                 .ok_or(())?;
 
+            log_info!("post iter");
+
             self.session_manager.anchor_file = file_index;
 
-            self.switch_to_widget(widget_index)
+            let ret = self.switch_to_widget(widget_index);
+                
+            log_info!("post switch");
+
+            ret
         }
     }
 
@@ -290,6 +298,7 @@ where
         let mut widget = widget.write();
         let config = config.read();
         widget.on_focus(&label, &config);
+        drop(widget);
 
         let (widget, ..) = self
             .window
@@ -360,15 +369,13 @@ fn send_event<U, I>(
         };
         let config = config.read();
 
-        let mut widget = widget.write();
-
         let controls = Controls {
             session_manager: &mut *session_manager,
             window,
         };
 
         blink_cursors_and_send_key(
-            &mut *widget,
+            &widget,
             &mut label,
             &config,
             controls,
@@ -377,15 +384,15 @@ fn send_event<U, I>(
         );
 
         // If the widget is no longer valid, return to the file.
-        if !widget.still_valid() {
+        if !widget.read().still_valid() {
             session_manager.active_widget = session_manager.anchor_file.clone();
         }
     }
 }
 
 /// Removes the cursors, sends an event, and adds them again.
-fn blink_cursors_and_send_key<U, A, I>(
-    widget: &mut A,
+fn blink_cursors_and_send_key<U, AW, I>(
+    widget: &RwData<AW>,
     label: &mut U::Label,
     config: &Config,
     controls: Controls<U>,
@@ -393,20 +400,23 @@ fn blink_cursors_and_send_key<U, A, I>(
     key_remapper: &mut KeyRemapper<I>,
 ) where
     U: Ui + 'static,
-    A: ActionableWidget<U> + ?Sized,
+    AW: ActionableWidget<U> + ?Sized + 'static,
     I: InputScheme,
 {
-    let (text, cursors, _) = widget.members_for_cursor_tags();
+    let mut widget_lock = widget.write();
+    let (text, cursors, _) = widget_lock.members_for_cursor_tags();
     text.remove_cursor_tags(cursors);
+    drop(widget_lock);
 
-    key_remapper.send_key_to_actionable(key_event, &mut *widget, label, config, controls);
+    key_remapper.send_key_to_actionable(key_event, widget, label, config, controls);
 
-    let (text, cursors, main_index) = widget.members_for_cursor_tags();
+    let mut widget_lock = widget.write();
+    let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
     drop((text, cursors, main_index));
 
-    widget.update(label, config);
-    widget.text().print(label, config, widget.print_info());
+    widget_lock.update(label, config);
+    widget_lock.text().print(label, config, widget_lock.print_info());
 }
 
 //////////// Useful for testing.

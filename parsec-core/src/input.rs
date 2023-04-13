@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    config::Config,
+    config::{Config, RwData},
     ui::Ui,
     widgets::{ActionableWidget, WidgetActor},
     Controls,
@@ -128,7 +128,7 @@ where
     pub fn send_key_to_actionable<U, A>(
         &mut self,
         key: KeyEvent,
-        widget: &mut A,
+        widget: &RwData<A>,
         label: &U::Label,
         config: &Config,
         mut controls: Controls<U>,
@@ -174,12 +174,12 @@ where
         }
 
         for key in keys_to_send {
-            let widget_actor = WidgetActor::new(&mut *widget, label, config);
+            let widget_actor = WidgetActor::new(widget, label, config);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
         if should_check_new.is_empty() {
-            let widget_actor = WidgetActor::new(&mut *widget, label, config);
+            let widget_actor = WidgetActor::new(widget, label, config);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
