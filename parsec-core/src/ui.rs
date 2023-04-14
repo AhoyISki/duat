@@ -4,8 +4,8 @@ use ropey::RopeSlice;
 
 use crate::{
     config::{Config, RoData, RwData, TabPlaces, WrapMethod},
-    tags::form::{CursorStyle, Form},
-    text::PrintStatus,
+    tags::Tag,
+    text::{PrintInfo, TextIter},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager,
 };
@@ -40,43 +40,16 @@ pub trait Label<A>
 where
     A: Area,
 {
-    //////////////////// Forms
-    /// Changes the form for subsequent characters.
-    fn set_form(&mut self, form: Form);
-
-    /// Places the primary cursor on the current printing position.
-    fn place_main_cursor(&mut self, style: CursorStyle);
-
-    /// Places an extra cursor on the current printing position.
-    fn place_extra_cursor(&mut self, style: CursorStyle);
+    /// Prints a character at the current position and moves the
+    /// printing position forward.
+    fn print<CI, TI>(&mut self, text: TextIter<CI, TI>, print_info: PrintInfo, config: &Config)
+    where
+        CI: Iterator<Item = char>,
+        TI: Iterator<Item = (usize, Tag)>;
 
     /// Tells the [`Ui`] that this [`Label`] is the one that is
     /// currently focused.
     fn set_as_active(&mut self);
-
-    //////////////////// Printing
-    /// Prints a character at the current position and moves the
-    /// printing position forward.
-    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus;
-
-    /// Moves to the next line. If succesful, returns `Ok(())`,
-    /// otherwise, returns `Err(())`.
-    ///
-    /// This function should also make sure that there is no leftover
-    /// text after the current line's end.
-    fn next_line(&mut self) -> PrintStatus;
-
-    /// Tell the area that printing has begun.
-    ///
-    /// This function should at the very least move the cursor to the
-    /// top left position in the area.
-    fn start_printing(&mut self, config: &Config);
-
-    /// Tell the area that printing has ended.
-    ///
-    /// This function should clear the lines below the last printed
-    /// line, and flush the contents if necessary.
-    fn stop_printing(&mut self);
 
     //////////////////// Queries
     /// Returns a reference to the area of [`self`].
@@ -381,7 +354,6 @@ where
 {
     window: U::Window,
     nodes: Vec<Node<U>>,
-    active_area: usize,
     files_parent: usize,
     config: RwData<Config>,
 }
@@ -413,7 +385,6 @@ where
         let mut parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
-            active_area: 0,
             files_parent: 0,
             config,
         };

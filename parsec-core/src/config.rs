@@ -74,18 +74,18 @@ pub enum ShowNewLine {
     /// Never show new lines.
     Never,
     /// Show the given character on every new line.
-    Always(char),
+    AlwaysAs(char),
     /// Show the given character only when there is whitespace at end
     /// of the line.
-    AfterSpace(char),
+    AfterSpaceAs(char),
 }
 
 impl ShowNewLine {
     pub fn get_new_line_ch(&self, last_ch: char) -> char {
         match self {
             ShowNewLine::Never => ' ',
-            ShowNewLine::Always(ch) => *ch,
-            ShowNewLine::AfterSpace(ch) => {
+            ShowNewLine::AlwaysAs(ch) => *ch,
+            ShowNewLine::AfterSpaceAs(ch) => {
                 if last_ch.is_whitespace() {
                     *ch
                 } else {
@@ -113,7 +113,7 @@ pub struct Config {
     /// Wether to convert tabs to spaces.
     pub tabs_as_spaces: bool,
     /// Wether (and how) to show new lines.
-    pub new_line_char: ShowNewLine,
+    pub show_new_line: ShowNewLine,
     /// The palette of forms that will be used.
     pub palette: FormPalette,
 }

@@ -14,7 +14,7 @@ use crate::{
     history::Change,
     position::{Cursor, Pos},
     tags::{
-        form::{FormFormer, EXTRA_SEL, MAIN_SEL},
+        form::{EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags,
     },
     ui::{Area, Label, Ui},
@@ -295,48 +295,21 @@ where
 
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(&self, label: &mut U::Label, config: &Config, print_info: PrintInfo) {
-        label.start_printing(config);
-
-        let line_start_ch = {
-            let first_line = self.inner.char_to_line(print_info.first_ch);
+        let cur_char = {
+            let first_line = self.inner.char_to_line(print_info.first_char);
             self.inner.line_to_char(first_line)
         };
 
-        let mut chars = self
-            .inner
-            .chars_at(line_start_ch)
-            .enumerate()
-            .map(|(index, ch)| (index + print_info.first_ch, ch));
+        let chars = self.inner.chars_at(cur_char);
+        let tags = self.tags.iter_at(cur_char).peekable();
 
-        let mut tags = self.tags.iter_at(line_start_ch).peekable();
-        let mut form_former = config.palette.form_former();
+        let text_iter = TextIter {
+            chars,
+            tags,
+            cur_char,
+        };
 
-        let mut skip_counter = print_info.first_ch - line_start_ch;
-        // It doesn't really matter what this is at the start, as long as it's
-        // not ' '.
-        let mut last_ch = 'a';
-        let mut skip_rest_of_line = false;
-
-        while let Some((index, ch)) = chars.next() {
-            trigger_on_char::<U>(&mut tags, index, label, &mut form_former);
-
-            if skip_counter > 0 || (skip_rest_of_line && ch != '\n') {
-                skip_counter = skip_counter.saturating_sub(1);
-                continue;
-            } else {
-                skip_rest_of_line = false;
-            }
-
-            match print_ch::<U>(ch, last_ch, label, config, print_info.x_shift) {
-                PrintStatus::NextLine => skip_rest_of_line = true,
-                PrintStatus::NextChar => {}
-                PrintStatus::Finished => break,
-            }
-
-            last_ch = ch;
-        }
-
-        label.stop_printing();
+        label.print(text_iter, print_info, config);
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -419,50 +392,45 @@ where
     }
 }
 
-/// Prints the given character, taking configuration options into
-/// account.
-fn print_ch<U>(
-    ch: char,
-    last_ch: char,
-    label: &mut U::Label,
-    config: &Config,
-    x_shift: usize,
-) -> PrintStatus
+/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+pub enum TextBit {
+    Tag(Tag),
+    Char(char),
+}
+
+/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
+///
+/// This is useful for both printing and measurement of [`Text`], and
+/// can incorporate string replacements as part of its design.
+pub struct TextIter<CI, TI>
 where
-    U: Ui + ?Sized,
+    CI: Iterator<Item = char>,
+    TI: Iterator<Item = (usize, Tag)>,
 {
-    match ch {
-        '\t' => label.print('\t', x_shift),
-        '\n' => {
-            label.print(config.new_line_char.get_new_line_ch(last_ch), x_shift);
-            label.next_line()
-        }
-        _ => label.print(ch, x_shift),
-    }
+    chars: CI,
+    tags: Peekable<TI>,
+    cur_char: usize,
 }
 
-fn trigger_on_char<'a, U>(
-    tags: &mut Peekable<impl Iterator<Item = (usize, Tag)>>,
-    ch_index: usize,
-    label: &mut U::Label,
-    form_former: &mut FormFormer,
-) where
-    U: Ui,
+impl<CI, TI> Iterator for TextIter<CI, TI>
+where
+    CI: Iterator<Item = char>,
+    TI: Iterator<Item = (usize, Tag)>,
 {
-    while let Some((tag_byte, tag)) = tags.peek() {
-        if ch_index == *tag_byte {
-            tag.trigger::<U>(label, form_former);
-            tags.next();
+    type Item = (usize, TextBit);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // `<=` because some `Tag`s may be triggered before printing.
+        if let Some(&(index, tag)) = self.tags.peek().filter(|(index, _)| *index <= self.cur_char) {
+            self.tags.next();
+            Some((index, TextBit::Tag(tag)))
+        } else if let Some(char) = self.chars.next() {
+            self.cur_char += 1;
+            Some((self.cur_char, TextBit::Char(char)))
         } else {
-            break;
+            None
         }
     }
-}
-
-pub enum PrintStatus {
-    NextLine,
-    NextChar,
-    Finished,
 }
 
 // NOTE: The defaultness in here, when it comes to `last_main`, may
@@ -472,7 +440,7 @@ pub enum PrintStatus {
 pub struct PrintInfo {
     /// The index of the first [char] that should be printed on the
     /// screen.
-    pub first_ch: usize,
+    pub first_char: usize,
     /// How shifted the text is to the left.
     pub x_shift: usize,
     /// The last position of the main cursor.
@@ -480,61 +448,8 @@ pub struct PrintInfo {
 }
 
 impl PrintInfo {
-    /// Scrolls the `PrintInfo` vertically by a given amount, on a
-    /// given file.
-    pub fn scroll_vertically<U>(&mut self, mut _d_y: i32, _text: &Text<U>)
-    where
-        U: Ui,
-    {
-        // if d_y > 0 {
-        //    let mut lines_iter =
-        // text.lines().iter().skip(self.top_row);
-
-        //    while let Some(line) = lines_iter.next() {
-        //        let wrap_count = line.iter_wraps().count();
-        //        if (wrap_count + 1) as i32 > d_y {
-        //            self.top_wraps = d_y as usize;
-        //            break;
-        //        } else {
-        //            self.top_row += 1;
-        //            d_y -= (wrap_count + 1) as i32;
-        //        }
-        //    }
-        //} else if d_y < 0 {
-        //    let mut lines_iter =
-        // text.lines().iter().take(self.top_row).rev();
-
-        //    while let Some(line) = lines_iter.next() {
-        //        let wrap_count = line.iter_wraps().count();
-        //        if ((wrap_count + 1) as i32) < d_y {
-        //            self.top_wraps = -d_y as usize;
-        //            break;
-        //        } else {
-        //            self.top_row -= 1;
-        //            d_y += (wrap_count + 1) as i32;
-        //        }
-        //    }
-        //}
-    }
-
-    // pub fn scroll_horizontally<U>(&mut self, d_x: i32, text: &Rope,
-    // end_node: &EndNode<U>) where
-    //    U: Ui,
-    //{
-    //    let mut max_d = 0;
-    //    for index in text.printed_lines(end_node.label.area().height(),
-    // self) {        let line = &text.lines()[index];
-    //        let line_d = end_node
-    //            .label
-    //            .get_width(line.text.as_str(),
-    // &end_node.config.tab_places);        max_d = max_d.max(line_d);
-    //    }
-
-    //    self.x_shift = min(self.x_shift.saturating_add_signed(d_x as
-    // isize), max_d);
-    //}
-
-    /// Scrolls up.
+    /// Scrolls up until the gap between the main cursor and the top
+    /// of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_up_to_gap<U>(
         &mut self,
         target: Pos,
@@ -560,11 +475,11 @@ impl PrintInfo {
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
-            if accum >= max_dist && line_ch >= self.first_ch {
+            if accum >= max_dist && line_ch >= self.first_char {
                 return;
             } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
-                self.first_ch =
+                self.first_char =
                     line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
                 return;
             }
@@ -572,11 +487,12 @@ impl PrintInfo {
 
         // This means we can't scroll up anymore.
         if accum < max_dist {
-            self.first_ch = 0;
+            self.first_char = 0;
         }
     }
 
-    /// Scrolls down.
+    /// Scrolls down until the gap between the main cursor and the
+    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_down_to_gap<U>(
         &mut self,
         target: Pos,
@@ -598,7 +514,7 @@ impl PrintInfo {
                     *ch -= line.len_chars();
                     Some((*ch, line))
                 });
-        let mut lines_to_top = target.true_row() - inner.char_to_line(self.first_ch);
+        let mut lines_to_top = target.true_row() - inner.char_to_line(self.first_char);
 
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
@@ -606,7 +522,7 @@ impl PrintInfo {
             accum += 1 + label.wrap_count(line, wrap_method, tab_places);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                self.first_ch =
+                self.first_char =
                     line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
                 break;
             // We have reached the top of the screen before the accum
@@ -630,16 +546,17 @@ impl PrintInfo {
         U: Ui,
     {
         let max_dist = label.area().width() - config.scrolloff.x_gap;
-        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
+        let (_wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
 
-        let slice = inner.slice(..target.true_char());
+        let _slice = inner.slice(..target.true_char());
         let line = inner.line(target.true_row());
 
         let target_dist = label.get_width(line, tab_places);
         self.x_shift = target_dist.saturating_sub(max_dist);
     }
 
-    /// Updates the print info.
+    /// Updates the print info, according to a [`Config`]'s
+    /// specifications.
     pub fn update<U>(&mut self, target: Pos, inner: &InnerText, label: &U::Label, config: &Config)
     where
         U: Ui,

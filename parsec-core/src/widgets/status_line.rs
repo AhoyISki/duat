@@ -108,7 +108,7 @@ where
     file_widget: RoData<FileWidget<U>>,
     text_builder: TextBuilder<U>,
     readers: Vec<Reader<U>>,
-    clippable: bool,
+    _clippable: bool,
 }
 
 impl<U> StatusLine<U>
@@ -155,7 +155,7 @@ where
         file_widget: RoData<FileWidget<U>>,
         text_builder: TextBuilder<U>,
         readers: Vec<Reader<U>>,
-        clippable: bool,
+        _clippable: bool,
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let updaters = updaters![(file_widget.clone())];
@@ -164,7 +164,7 @@ where
                     file_widget,
                     text_builder,
                     readers,
-                    clippable,
+                    _clippable,
                 })),
                 updaters,
             )

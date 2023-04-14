@@ -5,7 +5,7 @@ pub mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::{any::Any, cmp::Ordering, ops::Range, sync::Arc};
+use std::{cmp::Ordering, ops::Range, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockWriteGuard};
@@ -77,17 +77,17 @@ where
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn undo<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {
+    fn undo<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn redo<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {
+    fn redo<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn on_focus<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {}
+    fn on_focus<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {}
 
-    fn on_unfocus<'a>(&'a mut self, label: &'a U::Label, config: &'a Config) {}
+    fn on_unfocus<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {}
 
     fn still_valid(&self) -> bool {
         true

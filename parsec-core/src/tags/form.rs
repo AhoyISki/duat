@@ -215,7 +215,7 @@ impl FormPalette {
         self.extra_cursor = style;
     }
 
-    pub(crate) fn form_former(&self) -> FormFormer {
+    pub fn form_former(&self) -> FormFormer {
         FormFormer {
             palette: self,
             forms: Vec::new(),
@@ -223,7 +223,7 @@ impl FormPalette {
     }
 }
 
-pub(crate) struct FormFormer<'a> {
+pub struct FormFormer<'a> {
     palette: &'a FormPalette,
     forms: Vec<(Form, u16)>,
 }
@@ -231,7 +231,7 @@ pub(crate) struct FormFormer<'a> {
 impl<'a> FormFormer<'a> {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
-    pub(super) fn apply(&mut self, id: u16) -> Form {
+    pub fn apply(&mut self, id: u16) -> Form {
         let form = self.palette.from_id(id);
         self.forms.push((form, id));
         self.make_form()
@@ -281,7 +281,7 @@ impl<'a> FormFormer<'a> {
 
     /// Removes the `Form` with the given `id` and returns the result,
     /// given previous triggers.
-    pub(super) fn remove(&mut self, id: u16) -> Form {
+    pub fn remove(&mut self, id: u16) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);

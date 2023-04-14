@@ -125,7 +125,7 @@ where
     }
 
     fn set_printed_lines(&mut self, label: &U::Label, config: &Config) {
-        let first_ch = self.print_info.first_ch;
+        let first_ch = self.print_info.first_char;
         let wrap_method = config.wrap_method;
         let tab_places = &config.tab_places;
         let top_line = self.text.inner().char_to_line(first_ch);
@@ -139,7 +139,7 @@ where
         };
 
         let height = label.area().height();
-        let slice = self.text.inner().slice(self.print_info.first_ch..);
+        let slice = self.text.inner().slice(self.print_info.first_char..);
         let mut liness = slice.lines().enumerate();
 
         self.printed_lines.clear();
@@ -246,8 +246,8 @@ where
         &self.text
     }
 
-    fn scroll_vertically(&mut self, d_y: i32) {
-        self.print_info.scroll_vertically(d_y, &self.text);
+    fn scroll_vertically(&mut self, _d_y: i32) {
+        //self.print_info.scroll_vertically(d_y, &self.text);
     }
 
     fn print_info(&self) -> PrintInfo {

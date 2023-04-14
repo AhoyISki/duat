@@ -5,11 +5,8 @@ use std::ops::Range;
 
 use any_rope::{Measurable, Rope as AnyRope};
 
-use self::{form::FormFormer, inner::InnerTags};
-use crate::{
-    text::inner::InnerText,
-    ui::{Label, Ui},
-};
+use self::inner::InnerTags;
+use crate::text::inner::InnerText;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
@@ -52,20 +49,6 @@ impl std::fmt::Debug for Tag {
 }
 
 impl Tag {
-    pub(crate) fn trigger<U>(&self, label: &mut U::Label, form_former: &mut FormFormer)
-    where
-        U: Ui
-    {
-        match self {
-            Tag::PushForm(id) => label.set_form(form_former.apply(*id)),
-            Tag::PopForm(id) => label.set_form(form_former.remove(*id)),
-
-            Tag::MainCursor => label.place_main_cursor(form_former.main_cursor()),
-            Tag::ExtraCursor => label.place_extra_cursor(form_former.extra_cursor()),
-            _ => {}
-        }
-    }
-
     pub fn inverse(&self) -> Option<Tag> {
         match self {
             Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),

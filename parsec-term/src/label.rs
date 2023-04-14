@@ -1,195 +1,121 @@
-use std::{
-    io::{stdout, StdoutLock},
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::io::{stdout, StdoutLock};
 
 use crossterm::{
-    cursor::{self, MoveTo, RestorePosition, SavePosition},
-    execute, queue,
+    cursor::{self, MoveTo, SavePosition},
+    queue,
     style::{ContentStyle, Print, ResetColor, SetStyle},
 };
 use parsec_core::{
-    config::{Config, TabPlaces, WrapMethod},
-    tags::form::{CursorStyle, Form},
-    text::PrintStatus,
+    config::{Config, ShowNewLine, TabPlaces, WrapMethod},
+    tags::{form::FormFormer, Tag},
+    text::{PrintInfo, TextBit, TextIter},
     ui::{self, Area as UiArea},
 };
 use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
 
-use crate::{Area, Coord};
-
-// Static variables, used solely for printing.
-static IS_PRINTING: AtomicBool = AtomicBool::new(false);
-static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
+use crate::{Area, Coord, Coords};
 
 pub struct Label {
     area: Area,
-    stdout_lock: StdoutLock<'static>,
-
-    cursor: Coord,
     is_active: bool,
-
-    last_style: ContentStyle,
-    style_before_cursor: Option<ContentStyle>,
-
-    wrap_method: WrapMethod,
-    tab_places: TabPlaces,
-    indent: usize,
 }
 
 impl Label {
     pub fn new(area: Area) -> Self {
-        let cursor = area.tl();
-        let stdout_lock = stdout().lock();
         Label {
             area,
-            stdout_lock,
-            cursor,
             is_active: false,
-            last_style: ContentStyle::default(),
-            style_before_cursor: None,
-            wrap_method: WrapMethod::NoWrap,
-            tab_places: TabPlaces::default(),
-            indent: 0,
-        }
-    }
-
-    fn clear_line(&mut self) {
-        let _ = queue!(self.stdout_lock, ResetColor);
-
-        if self.cursor.x < self.area.br().x {
-            // The rest of the line is featureless.
-            let padding_count = (self.area.br().x - self.cursor.x) as usize;
-            queue!(self.stdout_lock, Print(" ".repeat(padding_count))).unwrap();
-        }
-
-        self.cursor.x = self.area.tl().x;
-        self.cursor.y += 1;
-
-        let _ = queue!(
-            self.stdout_lock,
-            ResetColor,
-            MoveTo(self.cursor.x, self.cursor.y),
-            SetStyle(self.last_style)
-        );
-    }
-
-    fn wrap_line(&mut self) -> PrintStatus {
-        self.clear_line();
-
-        let _ = queue!(
-            self.stdout_lock,
-            MoveTo(self.cursor.x, self.cursor.y),
-            Print(" ".repeat(self.indent))
-        );
-
-        self.cursor.x += self.indent as u16;
-        self.indent = 0;
-
-        if self.cursor.y == self.area.br().y - 1 {
-            PrintStatus::Finished
-        } else {
-            PrintStatus::NextChar
         }
     }
 }
 
 impl ui::Label<Area> for Label {
-    fn area(&self) -> &Area {
-        &self.area
-    }
+    fn print<CI, TI>(&mut self, mut text: TextIter<CI, TI>, print_info: PrintInfo, config: &Config)
+    where
+        CI: Iterator<Item = char>,
+        TI: Iterator<Item = (usize, Tag)>,
+    {
+        let mut stdout = stdout().lock();
+        let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
-    fn set_form(&mut self, form: Form) {
-        self.last_style = form.style;
-        let _ = queue!(self.stdout_lock, ResetColor, SetStyle(form.style));
-    }
+        let mut cursor = self.area.tl();
+        let coords = self.area.coords();
+        let PrintInfo {
+            first_char,
+            x_shift,
+            ..
+        } = print_info;
 
-    fn place_main_cursor(&mut self, cursor_style: CursorStyle) {
-        if let (Some(caret), true) = (cursor_style.caret, self.is_active) {
-            let _ = queue!(self.stdout_lock, caret, SavePosition);
-            SHOW_CURSOR.store(true, Ordering::Relaxed)
-        } else {
-            self.style_before_cursor = Some(self.last_style);
-            let _ = queue!(self.stdout_lock, SetStyle(cursor_style.form.style));
+        let mut form_former = config.palette.form_former();
+        let mut style_bef_cursor = None;
+        let mut til_nl = false;
+        let mut show_cursor = false;
+        let mut indent = 0;
+        let mut add_to_indent = true;
+        let mut last_char = 'a';
+
+        while let Some((index, text_bit)) = text.next() {
+            if let TextBit::Char(char) = text_bit {
+                if add_to_indent {
+                    indent += match char {
+                        ' ' => 1,
+                        '\t' => config.tab_places.spaces_on_col(x_shift + cursor.x as usize) as u16,
+                        _ => {
+                            add_to_indent = false;
+                            0
+                        }
+                    }
+                }
+
+                if index < first_char || (til_nl && last_char != '\n') {
+                    last_char = char;
+                    continue;
+                }
+
+                print_char(char, last_char, config, x_shift, &mut cursor, coords.br, &mut stdout);
+                last_char = char;
+
+                if char == '\n' {
+                    let style = form_former.make_form().style;
+                    next_line(&mut cursor, coords, &mut stdout, style);
+                }
+
+                til_nl = wrap_line(&mut cursor, coords, &form_former, &mut stdout, config, indent);
+
+                if let Some(style) = style_bef_cursor.take() {
+                    let _ = queue!(stdout, ResetColor, SetStyle(style));
+                }
+
+                if cursor.y == coords.br.y {
+                    break;
+                }
+            } else if let TextBit::Tag(tag) = text_bit {
+                show_cursor |= trigger_tag(
+                    tag,
+                    self.is_active,
+                    &mut style_bef_cursor,
+                    &mut form_former,
+                    &mut stdout,
+                );
+            }
         }
-    }
 
-    fn place_extra_cursor(&mut self, cursor_style: CursorStyle) {
-        self.style_before_cursor = Some(self.last_style);
-        let _ = queue!(self.stdout_lock, SetStyle(cursor_style.form.style));
+        while cursor.y < coords.br.y {
+            next_line(&mut cursor, coords, &mut stdout, ContentStyle::default());
+        }
+
+        if show_cursor {
+            let _ = queue!(stdout, cursor::Show);
+        }
     }
 
     fn set_as_active(&mut self) {
         self.is_active = true;
-        SHOW_CURSOR.store(false, Ordering::Relaxed)
     }
 
-    fn start_printing(&mut self, config: &Config) {
-        self.wrap_method = config.wrap_method;
-        self.tab_places = config.tab_places.clone();
-
-        while IS_PRINTING
-            .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
-        {
-            std::thread::sleep(std::time::Duration::from_micros(500));
-        }
-
-        let _ = queue!(self.stdout_lock, MoveTo(self.area.tl().x, self.area.tl().y));
-        let _ = execute!(self.stdout_lock, cursor::Hide);
-    }
-
-    fn stop_printing(&mut self) {
-        while let PrintStatus::NextChar = self.next_line() {}
-
-        let _ = execute!(self.stdout_lock, ResetColor);
-
-        if SHOW_CURSOR.load(Ordering::Relaxed) {
-            let _ = execute!(self.stdout_lock, RestorePosition, cursor::Show);
-        }
-
-        IS_PRINTING.store(false, Ordering::Relaxed);
-    }
-
-    fn print(&mut self, ch: char, x_shift: usize) -> PrintStatus {
-        let len = match ch {
-            '\t' => self.tab_places.spaces_on_col(x_shift) as u16,
-            _ => UnicodeWidthChar::width(ch).unwrap_or(0) as u16,
-        };
-
-        if self.cursor.x <= self.area.br().x - len {
-            self.cursor.x += len;
-            let _ = queue!(self.stdout_lock, Print(ch));
-            if let Some(style) = self.style_before_cursor.take() {
-                let _ = queue!(self.stdout_lock, ResetColor, SetStyle(style));
-            }
-        } else if self.cursor.x <= self.area.br().x {
-            let width = self.area.br().x - self.cursor.x;
-            let _ = queue!(self.stdout_lock, Print(" ".repeat(width as usize)));
-            if let Some(style) = self.style_before_cursor.take() {
-                let _ = queue!(self.stdout_lock, ResetColor, SetStyle(style));
-            }
-        }
-
-        if self.cursor.x == self.area.br().x {
-            if let WrapMethod::NoWrap = self.wrap_method {
-                PrintStatus::NextLine
-            } else {
-                self.wrap_line()
-            }
-        } else {
-            PrintStatus::NextChar
-        }
-    }
-
-    fn next_line(&mut self) -> PrintStatus {
-        if self.cursor.y + 1 < self.area.br().y {
-            self.clear_line();
-            PrintStatus::NextChar
-        } else {
-            PrintStatus::Finished
-        }
+    fn area(&self) -> &Area {
+        &self.area
     }
 
     fn wrap_count(
@@ -273,6 +199,123 @@ impl ui::Label<Area> for Label {
             .last()
             .unwrap_or(0)
     }
+}
+
+fn trigger_tag(
+    tag: Tag,
+    is_active: bool,
+    style_bef_cursor: &mut Option<ContentStyle>,
+    form_former: &mut FormFormer,
+    stdout: &mut StdoutLock,
+) -> bool {
+    match tag {
+        Tag::PushForm(id) => {
+            let _ = queue!(stdout, SetStyle(form_former.apply(id).style));
+        }
+        Tag::PopForm(id) => {
+            let _ = queue!(stdout, SetStyle(form_former.remove(id).style));
+        }
+        Tag::MainCursor => {
+            let cursor = form_former.main_cursor();
+            if let (Some(caret), true) = (cursor.caret, is_active) {
+                let _ = queue!(stdout, caret, SavePosition);
+                return true;
+            } else {
+                *style_bef_cursor = Some(form_former.make_form().style);
+                let _ = queue!(stdout, SetStyle(cursor.form.style));
+            }
+        }
+        Tag::ExtraCursor => {
+            let _ = queue!(stdout, SetStyle(form_former.extra_cursor().form.style));
+        }
+        Tag::HoverBound => todo!(),
+        Tag::PermanentConceal { .. } => todo!(),
+    }
+
+    false
+}
+
+fn print_char(
+    char: char,
+    last_char: char,
+    config: &Config,
+    x_shift: usize,
+    cursor: &mut Coord,
+    br: Coord,
+    stdout: &mut StdoutLock,
+) {
+    let char = match char {
+        '\n' => match config.show_new_line {
+            ShowNewLine::Never => ' ',
+            ShowNewLine::AlwaysAs(char) => char,
+            ShowNewLine::AfterSpaceAs(char) => {
+                if last_char == ' ' {
+                    char
+                } else {
+                    ' '
+                }
+            }
+        },
+        char => char,
+    };
+
+    let len = match char {
+        '\t' => config.tab_places.spaces_on_col(x_shift + cursor.x as usize) as u16,
+        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16,
+    };
+
+    if cursor.x <= br.x - len {
+        cursor.x += len;
+        let _ = match char {
+            '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
+            char => queue!(stdout, Print(char)),
+        };
+    } else if cursor.x < br.x {
+        let width = br.x - cursor.x;
+        cursor.x += width;
+        let _ = queue!(stdout, Print(" ".repeat(width as usize)));
+    }
+}
+
+fn wrap_line(
+    cursor: &mut Coord,
+    coords: Coords,
+    form_former: &FormFormer,
+    stdout: &mut StdoutLock,
+    config: &Config,
+    indent: u16,
+) -> bool {
+    if cursor.x == coords.br.x {
+        let style = form_former.make_form().style;
+        next_line(cursor, coords, stdout, style);
+        match config.wrap_method {
+            WrapMethod::Width => {
+                if config.wrap_indent {
+                    cursor.x += indent;
+                }
+            }
+            WrapMethod::NoWrap => return true,
+            WrapMethod::Capped(_) => todo!(),
+            WrapMethod::Word => todo!(),
+        }
+    }
+
+    false
+}
+
+fn next_line(cursor: &mut Coord, coords: Coords, stdout: &mut StdoutLock, style: ContentStyle) {
+    let _ = queue!(stdout, ResetColor);
+
+    if cursor.x < coords.br.x {
+        // The rest of the line is featureless.
+        let padding_count = (coords.br.x - cursor.x) as usize;
+        queue!(stdout, Print(" ".repeat(padding_count))).unwrap();
+    }
+
+    cursor.y += 1;
+    cursor.x = coords.tl.x;
+
+    let _ = queue!(stdout, ResetColor, MoveTo(cursor.x, cursor.y), SetStyle(style));
 }
 
 unsafe impl Send for Label {}
