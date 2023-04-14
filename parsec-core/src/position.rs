@@ -1,9 +1,8 @@
 use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
-    config::Config,
     history::{Change, History},
-    text::{inner::InnerText, PrintInfo, Text},
+    text::{inner::InnerText, PrintCfg, PrintInfo, Text},
     ui::{Label, Ui},
     widgets::EditAccum,
 };
@@ -118,7 +117,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, inner: &InnerText, label: &U::Label, config: &Config) -> Cursor
+    pub fn new<U>(pos: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg) -> Cursor
     where
         U: Ui,
     {
@@ -128,7 +127,7 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: label.get_width(line.slice(0..pos.col), &config.tab_places),
+            desired_x: label.get_width(line.slice(0..pos.col), cfg),
         }
     }
 
@@ -138,7 +137,7 @@ impl Cursor {
         count: isize,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
@@ -150,7 +149,7 @@ impl Cursor {
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        cur.col = label.col_at_dist(line, self.desired_x, &config.tab_places);
+        cur.col = label.col_at_dist(line, self.desired_x, cfg);
 
         cur.ch = inner.line_to_char(cur.row) + cur.col;
         cur.byte = inner.char_to_byte(cur.ch);
@@ -162,7 +161,7 @@ impl Cursor {
         count: isize,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
@@ -173,7 +172,7 @@ impl Cursor {
         let line_ch = inner.line_to_char(caret.row);
         caret.col = caret.ch - line_ch;
 
-        self.desired_x = label.get_width(inner.slice(line_ch..caret.ch), &config.tab_places);
+        self.desired_x = label.get_width(inner.slice(line_ch..caret.ch), cfg);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
@@ -183,7 +182,7 @@ impl Cursor {
         pos: Pos,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
@@ -195,7 +194,7 @@ impl Cursor {
         cur.ch = inner.line_to_char(cur.row) + cur.col;
         cur.byte = inner.char_to_byte(cur.ch);
 
-        self.desired_x = label.get_width(inner.slice(line_ch..cur.ch), &config.tab_places);
+        self.desired_x = label.get_width(inner.slice(line_ch..cur.ch), cfg);
 
         self.anchor = None;
     }
@@ -421,7 +420,7 @@ where
     cursor: &'a mut Cursor,
     text: &'a Text<U>,
     label: &'a U::Label,
-    config: &'a Config,
+    print_cfg: PrintCfg,
 }
 
 impl<'a, U> Mover<'a, U>
@@ -433,13 +432,13 @@ where
         cursor: &'a mut Cursor,
         text: &'a Text<U>,
         label: &'a U::Label,
-        config: &'a Config,
+        print_cfg: PrintCfg,
     ) -> Self {
         Self {
             cursor,
             text,
             label,
-            config,
+            print_cfg,
         }
     }
 
@@ -448,13 +447,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver::<U>(count, self.text.inner(), self.label, self.config);
+        self.cursor.move_ver::<U>(count, self.text.inner(), self.label, &self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor::<U>(count, self.text.inner(), self.label, self.config);
+        self.cursor.move_hor::<U>(count, self.text.inner(), self.label, &self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -463,7 +462,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to::<U>(caret, self.text.inner(), self.label, self.config);
+        self.cursor.move_to::<U>(caret, self.text.inner(), self.label, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

@@ -11,9 +11,11 @@ pub mod widgets;
 
 use std::{path::PathBuf, thread, time::Duration};
 
-use config::{Config, RoData, RwData};
+use config::{RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
+use tags::form::FormPalette;
+use text::PrintCfg;
 use ui::{ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
 use widgets::{
     command_line::{Command, CommandList},
@@ -31,6 +33,7 @@ where
     pub constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     session_manager: RwData<SessionManager>,
     global_commands: RwData<CommandList>,
+    print_cfg: RwData<PrintCfg>,
 }
 
 impl<U> Session<U>
@@ -40,13 +43,15 @@ where
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
         mut ui: U,
-        config: Config,
+        print_cfg: PrintCfg,
+        palette: FormPalette,
         constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
         let file = std::env::args().nth(1);
-        let file_widget = FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)));
+        let file_widget =
+            FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)), print_cfg.clone());
 
-        let session_manager = RwData::new(SessionManager::new(0, 0));
+        let session_manager = RwData::new(SessionManager::new(0, 0, palette));
 
         let mut command_list = CommandList::default();
         for command in session_commands(session_manager.clone()) {
@@ -56,7 +61,6 @@ where
         let window = ParsecWindow::new(
             &mut ui,
             file_widget,
-            config,
             &mut session_manager.write(),
             &constructor_hook,
         );
@@ -68,6 +72,7 @@ where
             constructor_hook,
             session_manager,
             global_commands: RwData::new(command_list),
+            print_cfg: RwData::new(print_cfg),
         };
 
         session.open_arg_files();
@@ -90,7 +95,7 @@ where
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
-        let file_widget = FileWidget::new(Some(path));
+        let file_widget = FileWidget::new(Some(path), *self.print_cfg.read());
         let push_specs = PushSpecs {
             side: Side::Right,
             split: Split::Min(40),
@@ -124,11 +129,14 @@ where
 
         // The main loop.
         loop {
-            for (widget, mut label, config) in self.active_window().widgets() {
-                let config = config.read();
-                widget.update(&mut label, &config);
-                widget.print(&mut label, &config);
+            let session_manager = self.session_manager.read();
+            let palette = &session_manager.palette;
+            for (widget, mut label) in self.active_window().widgets() {
+                widget.update(&mut label);
+                widget.print(&mut label, &palette);
             }
+            drop(palette);
+            drop(session_manager);
 
             self.session_loop(key_remapper);
 
@@ -146,8 +154,9 @@ where
     where
         I: InputScheme,
     {
+        let palette = self.session_manager.read().palette.clone();
         thread::scope(|scope| loop {
-            self.active_window().print_if_layout_changed();
+            self.active_window().print_if_layout_changed(&palette);
 
             let mut session_manager = self.session_manager.write();
             if session_manager.break_loop {
@@ -155,25 +164,24 @@ where
                 break;
             }
 
-            for (widget, mut label, config) in self.windows[self.active_window].widgets() {
+            for (widget, mut label) in self.windows[self.active_window].widgets() {
                 if widget.needs_update() {
                     if widget.is_slow() {
+                        let palette = &palette;
                         scope.spawn(move || {
-                            let config = config.read();
-                            widget.update(&mut label, &config);
-                            widget.print(&mut label, &config);
+                            widget.update(&mut label);
+                            widget.print(&mut label, palette);
                         });
                     } else {
-                        let config = config.read();
-                        widget.update(&mut label, &config);
-                        widget.print(&mut label, &config);
+                        widget.update(&mut label);
+                        widget.print(&mut label, &palette);
                     }
                 }
             }
 
             if let Ok(true) = event::poll(Duration::from_millis(10)) {
                 let active_window = &self.windows[self.active_window];
-                send_event(key_remapper, &mut session_manager, active_window);
+                send_event(key_remapper, &mut session_manager, active_window, &palette);
             } else {
                 continue;
             }
@@ -193,16 +201,18 @@ pub struct SessionManager {
     active_widget: usize,
     break_loop: bool,
     should_quit: bool,
+    pub palette: FormPalette
 }
 
 impl SessionManager {
-    fn new(anchor_file: usize, active_widget: usize) -> Self {
+    fn new(anchor_file: usize, active_widget: usize, palette: FormPalette) -> Self {
         SessionManager {
             files_to_open: Vec::new(),
             anchor_file,
             active_widget,
             break_loop: false,
             should_quit: false,
+            palette
         }
     }
 }
@@ -285,11 +295,10 @@ where
     }
 
     fn switch_to_widget(&mut self, index: usize) -> Result<(), ()> {
-        let (widget, label, config) = self.window.actionable_widgets().nth(index).ok_or(())?;
+        let (widget, label) = self.window.actionable_widgets().nth(index).ok_or(())?;
 
         let mut widget = widget.write();
-        let config = config.read();
-        widget.on_focus(&label, &config);
+        widget.on_focus(&label);
         drop(widget);
 
         let (widget, ..) = self
@@ -299,7 +308,7 @@ where
             .ok_or(())?;
 
         let mut widget = widget.write();
-        widget.on_unfocus(&label, &config);
+        widget.on_unfocus(&label);
 
         self.session_manager.active_widget = index;
 
@@ -349,6 +358,7 @@ fn send_event<U, I>(
     key_remapper: &mut KeyRemapper<I>,
     session_manager: &mut SessionManager,
     window: &ParsecWindow<U>,
+    palette: &FormPalette,
 ) where
     U: Ui + 'static,
     I: InputScheme,
@@ -356,24 +366,16 @@ fn send_event<U, I>(
     if let Event::Key(key_event) = event::read().unwrap() {
         let actionable_widget = window.actionable_widgets().nth(session_manager.active_widget);
 
-        let Some((widget, mut label, config)) = actionable_widget else {
+        let Some((widget, mut label)) = actionable_widget else {
             return;
         };
-        let config = config.read();
 
         let controls = Controls {
             session_manager: &mut *session_manager,
             window,
         };
 
-        blink_cursors_and_send_key(
-            &widget,
-            &mut label,
-            &config,
-            controls,
-            key_event,
-            key_remapper,
-        );
+        blink_cursors_and_send_key(&widget, &mut label, controls, key_event, key_remapper, palette);
 
         // If the widget is no longer valid, return to the file.
         if !widget.read().still_valid() {
@@ -386,10 +388,10 @@ fn send_event<U, I>(
 fn blink_cursors_and_send_key<U, AW, I>(
     widget: &RwData<AW>,
     label: &mut U::Label,
-    config: &Config,
     controls: Controls<U>,
     key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>,
+    palette: &FormPalette,
 ) where
     U: Ui + 'static,
     AW: ActionableWidget<U> + ?Sized + 'static,
@@ -400,15 +402,17 @@ fn blink_cursors_and_send_key<U, AW, I>(
     text.remove_cursor_tags(cursors);
     drop(widget_lock);
 
-    key_remapper.send_key_to_actionable(key_event, widget, label, config, controls);
+    key_remapper.send_key_to_actionable(key_event, widget, label, controls);
 
     let mut widget_lock = widget.write();
     let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
     drop((text, cursors, main_index));
 
-    widget_lock.update(label, config);
-    widget_lock.text().print(label, config, widget_lock.print_info());
+    widget_lock.update(label);
+    widget_lock
+        .text()
+        .print(label, widget_lock.print_info(), widget_lock.print_cfg(), palette);
 }
 
 //////////// Useful for testing.

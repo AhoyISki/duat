@@ -6,9 +6,11 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle},
 };
 use parsec_core::{
-    config::{Config, ShowNewLine, TabPlaces, WrapMethod},
-    tags::{form::FormFormer, Tag},
-    text::{PrintInfo, TextBit, TextIter},
+    tags::{
+        form::{FormFormer, FormPalette},
+        Tag,
+    },
+    text::{NewLine, PrintCfg, PrintInfo, TextBit, TextIter, WrapMethod},
     ui::{self, Area as UiArea},
 };
 use ropey::RopeSlice;
@@ -31,8 +33,13 @@ impl Label {
 }
 
 impl ui::Label<Area> for Label {
-    fn print<CI, TI>(&mut self, mut text: TextIter<CI, TI>, print_info: PrintInfo, config: &Config)
-    where
+    fn print<CI, TI>(
+        &mut self,
+        mut text: TextIter<CI, TI>,
+        print_info: PrintInfo,
+        cfg: PrintCfg,
+        palette: &FormPalette,
+    ) where
         CI: Iterator<Item = char>,
         TI: Iterator<Item = (usize, Tag)>,
     {
@@ -41,13 +48,10 @@ impl ui::Label<Area> for Label {
 
         let mut cursor = self.area.tl();
         let coords = self.area.coords();
-        let PrintInfo {
-            first_char,
-            x_shift,
-            ..
-        } = print_info;
+        let first_char = print_info.first_char();
+        let x_shift = print_info.x_shift();
 
-        let mut form_former = config.palette.form_former();
+        let mut form_former = palette.form_former();
         let mut style_bef_cursor = None;
         let mut til_nl = false;
         let mut show_cursor = false;
@@ -60,7 +64,7 @@ impl ui::Label<Area> for Label {
                 if add_to_indent {
                     indent += match char {
                         ' ' => 1,
-                        '\t' => config.tab_places.spaces_on_col(x_shift + cursor.x as usize) as u16,
+                        '\t' => tab_len(&cfg, cursor.x + x_shift as u16),
                         _ => {
                             add_to_indent = false;
                             0
@@ -73,19 +77,20 @@ impl ui::Label<Area> for Label {
                     continue;
                 }
 
-                print_char(char, last_char, config, x_shift, &mut cursor, coords.br, &mut stdout);
+                print_char(char, last_char, x_shift, coords.br, &mut cursor, &mut stdout, &cfg);
                 last_char = char;
-
-                if char == '\n' {
-                    let style = form_former.make_form().style;
-                    next_line(&mut cursor, coords, &mut stdout, style);
-                }
-
-                til_nl = wrap_line(&mut cursor, coords, &form_former, &mut stdout, config, indent);
 
                 if let Some(style) = style_bef_cursor.take() {
                     let _ = queue!(stdout, ResetColor, SetStyle(style));
                 }
+
+                til_nl = if char == '\n' {
+                    let style = form_former.make_form().style;
+                    next_line(&mut cursor, coords, &mut stdout, style);
+                    false
+                } else {
+                    maybe_wrap(coords, &form_former, indent, &mut cursor, &mut stdout, &cfg)
+                };
 
                 if cursor.y == coords.br.y {
                     break;
@@ -121,11 +126,10 @@ impl ui::Label<Area> for Label {
     fn wrap_count(
         &self,
         slice: RopeSlice,
-        wrap_method: WrapMethod,
-        tab_places: &TabPlaces,
+        print_cfg: &PrintCfg
     ) -> usize {
-        match wrap_method {
-            WrapMethod::Width => self.get_width(slice, tab_places) / self.area.width(),
+        match print_cfg.wrap_method {
+            WrapMethod::Width => self.get_width(slice, print_cfg) / self.area.width(),
             WrapMethod::Capped(_) => todo!(),
             WrapMethod::Word => todo!(),
             WrapMethod::NoWrap => 0,
@@ -136,10 +140,9 @@ impl ui::Label<Area> for Label {
         &self,
         slice: RopeSlice,
         wrap: usize,
-        wrap_method: WrapMethod,
-        tab_places: &TabPlaces,
+        print_cfg: &PrintCfg
     ) -> usize {
-        match wrap_method {
+        match print_cfg.wrap_method {
             WrapMethod::Width => {
                 let dist = wrap * self.area.width();
                 slice
@@ -147,7 +150,7 @@ impl ui::Label<Area> for Label {
                     .enumerate()
                     .scan((0, false), |(width, end_reached), (index, ch)| {
                         *width += match ch {
-                            '\t' => tab_places.spaces_on_col(*width),
+                            '\t' => tab_len(print_cfg, *width as u16) as usize,
                             ch => UnicodeWidthChar::width(ch).unwrap_or(0),
                         };
                         if *end_reached {
@@ -167,11 +170,11 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize {
+    fn get_width(&self, slice: RopeSlice, print_cfg: &PrintCfg) -> usize {
         let mut width = 0;
         for ch in slice.chars() {
             width += match ch {
-                '\t' => tab_places.spaces_on_col(width),
+                '\t' => tab_len(print_cfg, width as u16) as usize,
                 ch => UnicodeWidthChar::width(ch).unwrap_or(0),
             }
         }
@@ -179,13 +182,13 @@ impl ui::Label<Area> for Label {
         width
     }
 
-    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize {
+    fn col_at_dist(&self, slice: RopeSlice, dist: usize, print_cfg: &PrintCfg) -> usize {
         slice
             .chars()
             .enumerate()
             .scan((0, false), |(width, end_reached), (index, ch)| {
                 *width += match ch {
-                    '\t' => tab_places.spaces_on_col(*width),
+                    '\t' => tab_len(print_cfg, *width as u16) as usize,
                     ch => UnicodeWidthChar::width(ch).unwrap_or(0),
                 };
                 if *end_reached {
@@ -198,6 +201,10 @@ impl ui::Label<Area> for Label {
             })
             .last()
             .unwrap_or(0)
+    }
+
+    fn area_index(&self) -> usize {
+        self.area.index
     }
 }
 
@@ -238,29 +245,16 @@ fn trigger_tag(
 fn print_char(
     char: char,
     last_char: char,
-    config: &Config,
     x_shift: usize,
-    cursor: &mut Coord,
     br: Coord,
+    cursor: &mut Coord,
     stdout: &mut StdoutLock,
+    print_cfg: &PrintCfg,
 ) {
-    let char = match char {
-        '\n' => match config.show_new_line {
-            ShowNewLine::Never => ' ',
-            ShowNewLine::AlwaysAs(char) => char,
-            ShowNewLine::AfterSpaceAs(char) => {
-                if last_char == ' ' {
-                    char
-                } else {
-                    ' '
-                }
-            }
-        },
-        char => char,
-    };
+    let char = mod_char(char, print_cfg, last_char);
 
     let len = match char {
-        '\t' => config.tab_places.spaces_on_col(x_shift + cursor.x as usize) as u16,
+        '\t' => tab_len(print_cfg, cursor.x + x_shift as u16),
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16,
     };
 
@@ -277,20 +271,38 @@ fn print_char(
     }
 }
 
-fn wrap_line(
-    cursor: &mut Coord,
+fn mod_char(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
+    let char = match char {
+        '\n' => match print_cfg.new_line {
+            NewLine::Blank => ' ',
+            NewLine::AlwaysAs(char) => char,
+            NewLine::AfterSpaceAs(char) => {
+                if last_char == ' ' {
+                    char
+                } else {
+                    ' '
+                }
+            }
+        },
+        char => char,
+    };
+    char
+}
+
+fn maybe_wrap(
     coords: Coords,
     form_former: &FormFormer,
-    stdout: &mut StdoutLock,
-    config: &Config,
     indent: u16,
+    cursor: &mut Coord,
+    stdout: &mut StdoutLock,
+    print_cfg: &PrintCfg,
 ) -> bool {
     if cursor.x == coords.br.x {
         let style = form_former.make_form().style;
         next_line(cursor, coords, stdout, style);
-        match config.wrap_method {
+        match print_cfg.wrap_method {
             WrapMethod::Width => {
-                if config.wrap_indent {
+                if print_cfg.wrap_indent {
                     cursor.x += indent;
                 }
             }
@@ -316,6 +328,10 @@ fn next_line(cursor: &mut Coord, coords: Coords, stdout: &mut StdoutLock, style:
     cursor.x = coords.tl.x;
 
     let _ = queue!(stdout, ResetColor, MoveTo(cursor.x, cursor.y), SetStyle(style));
+}
+
+fn tab_len(print_cfg: &PrintCfg, x: u16) -> u16 {
+    print_cfg.tab_stop as u16 - x % print_cfg.tab_stop as u16
 }
 
 unsafe impl Send for Label {}

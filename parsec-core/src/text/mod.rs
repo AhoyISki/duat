@@ -10,11 +10,10 @@ use ropey::Rope;
 
 use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
-    config::{Config, WrapMethod},
     history::Change,
     position::{Cursor, Pos},
     tags::{
-        form::{EXTRA_SEL, MAIN_SEL},
+        form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags,
     },
     ui::{Area, Label, Ui},
@@ -238,6 +237,19 @@ where
     _readers: Vec<Box<dyn MutTextReader<U>>>,
 }
 
+impl<U> std::fmt::Debug for Text<U>
+where
+    U: Ui + ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("inner", &self.inner)
+            .field("tags", &self.tags)
+            .field("lock", &self.lock)
+            .finish()
+    }
+}
+
 // TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
@@ -294,7 +306,13 @@ where
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print(&self, label: &mut U::Label, config: &Config, print_info: PrintInfo) {
+    pub(crate) fn print(
+        &self,
+        label: &mut U::Label,
+        print_info: PrintInfo,
+        print_cfg: PrintCfg,
+        palette: &FormPalette,
+    ) {
         let cur_char = {
             let first_line = self.inner.char_to_line(print_info.first_char);
             self.inner.line_to_char(first_line)
@@ -309,7 +327,7 @@ where
             cur_char,
         };
 
-        label.print(text_iter, print_info, config);
+        label.print(text_iter, print_info, print_cfg, palette);
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -436,15 +454,15 @@ where
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.
 /// Information about how to print the file on the `Label`.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct PrintInfo {
     /// The index of the first [char] that should be printed on the
     /// screen.
-    pub first_char: usize,
+    first_char: usize,
     /// How shifted the text is to the left.
-    pub x_shift: usize,
+    x_shift: usize,
     /// The last position of the main cursor.
-    pub last_main: Pos,
+    last_main: Pos,
 }
 
 impl PrintInfo {
@@ -455,12 +473,11 @@ impl PrintInfo {
         target: Pos,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
-        let max_dist = config.scrolloff.y_gap;
-        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
+        let max_dist = cfg.scrolloff.y_gap;
 
         let slice = inner.slice(..target.true_char());
         let mut lines =
@@ -474,13 +491,12 @@ impl PrintInfo {
 
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
-            accum += 1 + label.wrap_count(line, wrap_method, tab_places);
+            accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist && line_ch >= self.first_char {
                 return;
             } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
-                self.first_char =
-                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                self.first_char = line_ch + label.col_at_wrap(line, accum - max_dist, cfg);
                 return;
             }
         }
@@ -498,12 +514,11 @@ impl PrintInfo {
         target: Pos,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
-        let max_dist = label.area().height() - config.scrolloff.y_gap;
-        let (wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
+        let max_dist = label.area().height() - cfg.scrolloff.y_gap;
 
         let slice = inner.slice(..target.true_char());
         let mut lines =
@@ -519,11 +534,10 @@ impl PrintInfo {
         let mut accum = 0;
         while let Some((line_ch, line)) = lines.next() {
             lines_to_top = lines_to_top.saturating_sub(1);
-            accum += 1 + label.wrap_count(line, wrap_method, tab_places);
+            accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                self.first_char =
-                    line_ch + label.col_at_wrap(line, accum - max_dist, wrap_method, tab_places);
+                self.first_char = line_ch + label.col_at_wrap(line, accum - max_dist, cfg);
                 break;
             // We have reached the top of the screen before the accum
             // equaled gap. This means that no scrolling
@@ -541,37 +555,53 @@ impl PrintInfo {
         target: Pos,
         inner: &InnerText,
         label: &U::Label,
-        config: &Config,
+        cfg: &PrintCfg,
     ) where
         U: Ui,
     {
-        let max_dist = label.area().width() - config.scrolloff.x_gap;
-        let (_wrap_method, tab_places) = (config.wrap_method, &config.tab_places);
+        let max_dist = label.area().width() - cfg.scrolloff.x_gap;
 
         let _slice = inner.slice(..target.true_char());
         let line = inner.line(target.true_row());
 
-        let target_dist = label.get_width(line, tab_places);
+        let target_dist = label.get_width(line, cfg);
         self.x_shift = target_dist.saturating_sub(max_dist);
     }
 
     /// Updates the print info, according to a [`Config`]'s
     /// specifications.
-    pub fn update<U>(&mut self, target: Pos, inner: &InnerText, label: &U::Label, config: &Config)
-    where
+    pub fn update<U>(
+        &mut self,
+        target: Pos,
+        inner: &InnerText,
+        label: &U::Label,
+        print_cfg: &PrintCfg,
+    ) where
         U: Ui,
     {
-        if let WrapMethod::NoWrap = config.wrap_method {
-            self.scroll_hor_to_gap::<U>(target, inner, label, config);
+        if let WrapMethod::NoWrap = print_cfg.wrap_method {
+            self.scroll_hor_to_gap::<U>(target, inner, label, print_cfg);
         }
 
         if target < self.last_main {
-            self.scroll_up_to_gap::<U>(target, inner, label, config);
+            self.scroll_up_to_gap::<U>(target, inner, label, print_cfg);
         } else if target > self.last_main {
-            self.scroll_down_to_gap::<U>(target, inner, label, config);
+            self.scroll_down_to_gap::<U>(target, inner, label, print_cfg);
         }
 
         self.last_main = target;
+    }
+
+    pub fn first_char(&self) -> usize {
+        self.first_char
+    }
+
+    pub fn x_shift(&self) -> usize {
+        self.x_shift
+    }
+
+    pub fn last_main(&self) -> Pos {
+        self.last_main
     }
 }
 
@@ -580,5 +610,91 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
         (Tag::MainCursor, Tag::PushForm(MAIN_SEL), Tag::PopForm(MAIN_SEL))
     } else {
         (Tag::MainCursor, Tag::PushForm(EXTRA_SEL), Tag::PopForm(EXTRA_SEL))
+    }
+}
+
+/// If and how to wrap lines at the end of the screen.
+#[derive(Default, Debug, Copy, Clone)]
+pub enum WrapMethod {
+    Width,
+    Capped(usize),
+    Word,
+    #[default]
+    NoWrap,
+}
+
+/// Where the tabs are placed on screen, can be regular or varied.
+#[derive(Debug, Clone)]
+pub enum TabStops {
+    /// The same lenght for every tab.
+    Regular(usize),
+    /// Varying lenghts for different tabs.
+    Varied(Vec<usize>),
+}
+
+impl Default for TabStops {
+    fn default() -> Self {
+        TabStops::Regular(4)
+    }
+}
+
+/// Wheter to show the new line or not.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum NewLine {
+    #[default]
+    /// Never show new lines.
+    Blank,
+    /// Show the given character on every new line.
+    AlwaysAs(char),
+    /// Show the given character only when there is whitespace at end
+    /// of the line.
+    AfterSpaceAs(char),
+}
+
+impl NewLine {}
+
+// Pretty much only exists because i wanted one of these with
+// usize as its builtin type.
+#[derive(Debug, Copy, Clone)]
+pub struct ScrollOff {
+    pub y_gap: usize,
+    pub x_gap: usize,
+}
+
+impl Default for ScrollOff {
+    fn default() -> Self {
+        ScrollOff { y_gap: 3, x_gap: 3 }
+    }
+}
+
+/// Configuration options for printing.
+#[derive(Default, Clone, Copy)]
+pub struct PrintCfg {
+    /// How to wrap the file.
+    pub wrap_method: WrapMethod,
+    /// Wether to indent wrapped lines or not.
+    pub wrap_indent: bool,
+    /// Wether (and how) to show new lines.
+    pub new_line: NewLine,
+    /// Which places are considered a "tab stop".
+    pub tab_stop: usize,
+    /// Thetab_len_atzontal and vertical gaps between the main
+    /// cursor and the edges of a [`Label`][crate::ui::Label]
+    pub scrolloff: ScrollOff,
+}
+
+impl PrintCfg {
+    pub fn new_line_char(&self, last_ch: char) -> char {
+        match self.new_line {
+            NewLine::Blank => ' ',
+            NewLine::AlwaysAs(ch) => ch,
+            NewLine::AfterSpaceAs(ch) => {
+                if last_ch.is_whitespace() {
+                    ch
+                } else {
+                    ' '
+                }
+            }
+        }
     }
 }

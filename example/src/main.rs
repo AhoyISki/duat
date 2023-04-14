@@ -10,7 +10,7 @@ use crossterm::style::{ContentStyle, Stylize};
 use parsec_core::{
     // The config module handles the `Config` struct and the structs `RwData` and `RoData`, useful
     // for the extension  of Parsec.
-    config::{Config, RoData, RwData, ScrollOff, WrapMethod},
+    config::{RoData, RwData},
     // The input module handles remapping and input methods. Remapping will always be done in the
     // same way, and is not implemented individually for every editing method.
     input::KeyRemapper,
@@ -22,6 +22,7 @@ use parsec_core::{
         form::FormPalette,
         form::{CursorStyle, Form},
     },
+    text::{PrintCfg, ScrollOff, WrapMethod},
     ui::{ModNode, PushSpecs, Side, Split},
     widgets::{
         command_line::CommandLine,
@@ -54,11 +55,11 @@ fn main() {
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.
-    let config = Config {
+    let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
+        wrap_method: WrapMethod::Width,
         wrap_indent: true,
-        palette,
-        ..Config::default()
+        ..PrintCfg::default()
     };
 
     // The `Editor` (in this case, the Kakoune editor) is the thing that
@@ -71,10 +72,11 @@ fn main() {
     // when a new file is opened.
     let mut session = Session::new(
         Ui::default(),
-        config,
+        print_cfg,
+        palette,
         Box::new(move |mut mod_node, file| {
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            let sep_form = SepForm::uniform(mod_node.config(), "VertRule");
+            let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
             let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 

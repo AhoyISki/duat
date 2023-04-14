@@ -3,9 +3,9 @@ use std::fmt::{Debug, Display};
 use ropey::RopeSlice;
 
 use crate::{
-    config::{Config, RoData, RwData, TabPlaces, WrapMethod},
-    tags::Tag,
-    text::{PrintInfo, TextIter},
+    config::{RoData, RwData},
+    tags::{form::FormPalette, Tag},
+    text::{PrintCfg, PrintInfo, TextIter},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager,
 };
@@ -42,8 +42,13 @@ where
 {
     /// Prints a character at the current position and moves the
     /// printing position forward.
-    fn print<CI, TI>(&mut self, text: TextIter<CI, TI>, print_info: PrintInfo, config: &Config)
-    where
+    fn print<CI, TI>(
+        &mut self,
+        text: TextIter<CI, TI>,
+        print_info: PrintInfo,
+        print_cfg: PrintCfg,
+        palette: &FormPalette,
+    ) where
         CI: Iterator<Item = char>,
         TI: Iterator<Item = (usize, Tag)>;
 
@@ -56,28 +61,20 @@ where
     fn area(&self) -> &A;
 
     /// Counts how many times the given string would wrap.
-    fn wrap_count(
-        &self,
-        slice: RopeSlice,
-        wrap_method: WrapMethod,
-        tab_places: &TabPlaces,
-    ) -> usize;
+    fn wrap_count(&self, slice: RopeSlice, cfg: &PrintCfg) -> usize;
 
     /// Returns the column that comes after the [slice][RopeSlice]
     /// wraps `wrap` times.
-    fn col_at_wrap(
-        &self,
-        slice: RopeSlice,
-        wrap: usize,
-        wrap_method: WrapMethod,
-        tab_places: &TabPlaces,
-    ) -> usize;
+    fn col_at_wrap(&self, slice: RopeSlice, wrap: usize, cfg: &PrintCfg) -> usize;
 
     /// Gets the visual width to a given column.
-    fn get_width(&self, slice: RopeSlice, tab_places: &TabPlaces) -> usize;
+    fn get_width(&self, slice: RopeSlice, cfg: &PrintCfg) -> usize;
 
     /// Gets the column at the given distance from the left side.
-    fn col_at_dist(&self, slice: RopeSlice, dist: usize, tab_places: &TabPlaces) -> usize;
+    fn col_at_dist(&self, slice: RopeSlice, dist: usize, cfg: &PrintCfg) -> usize;
+
+    /// A unique identifier to this [`Label`].
+    fn area_index(&self) -> usize;
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -86,7 +83,6 @@ where
     U: Ui,
 {
     widget: Widget<U>,
-    config: RwData<Config>,
     area_index: usize,
 }
 
@@ -193,17 +189,8 @@ where
         self.window.push_widget(widget, area_index, push_specs)
     }
 
-    /// The [`Config`] of [`self`].
-    ///
-    /// If [`self`] is a parent, returns the global [`Config`] of the
-    /// window.
-    pub fn config(&self) -> &RwData<Config> {
-        self.window
-            .nodes
-            .iter()
-            .find(|node| node.area_index == self.area_index)
-            .map(|Node { config, .. }| config)
-            .unwrap_or(&self.window.config)
+    pub fn palette(&self) -> &FormPalette {
+        &self.session_manager.palette
     }
 }
 
@@ -355,7 +342,6 @@ where
     window: U::Window,
     nodes: Vec<Node<U>>,
     files_parent: usize,
-    config: RwData<Config>,
 }
 
 impl<U> ParsecWindow<U>
@@ -363,40 +349,31 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new(
+    pub fn new<W>(
         ui: &mut U,
         widget: Widget<U>,
-        config: Config,
         session_manager: &mut SessionManager,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
-    ) -> Self {
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
+    ) -> Self
+    where
+        W: NormalWidget<U>,
+    {
         let (window, mut initial_label) = ui.new_window();
-        widget.update(&mut initial_label, &config);
-        let config = RwData::new(config);
+        widget.update(&mut initial_label);
 
         let actionable = widget.get_actionable().unwrap();
-        let ro_widget = RoData::from(actionable);
 
         let main_node = Node {
             widget,
-            config: config.clone(),
-            area_index: 0,
+            area_index: initial_label.area_index(),
         };
         let mut parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
             files_parent: 0,
-            config,
         };
 
-        let file = ro_widget.try_downcast::<FileWidget<U>>().unwrap();
-
-        let mod_node = ModNode {
-            session_manager,
-            window: &mut parsec_window,
-            area_index: 0,
-        };
-        (constructor_hook)(mod_node, file);
+        parsec_window.activate_hook(initial_label.area_index(), session_manager, constructor_hook);
 
         parsec_window
     }
@@ -431,7 +408,7 @@ where
         let mut area = self.window.get_area(area_index).unwrap();
         let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
         let label = self.window.get_label(new_area).unwrap();
-        widget.update(&label, &self.config.read());
+        widget.update(&label);
 
         if let Some(new_area_index) = pushed_area {
             self.nodes.iter_mut().for_each(|node| {
@@ -443,7 +420,6 @@ where
 
         let node = Node {
             widget,
-            config: self.config.clone(),
             area_index: new_area,
         };
         self.nodes.push(node);
@@ -555,16 +531,13 @@ where
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
-    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, &RwData<Config>)> + '_ {
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label)> + '_ {
         self.nodes.iter().map(
             |Node {
-                 widget,
-                 config,
-                 area_index,
-                 ..
+                 widget, area_index, ..
              }| {
                 let label = self.window.get_label(*area_index).unwrap();
-                (widget, label, config)
+                (widget, label)
             },
         )
     }
@@ -573,18 +546,14 @@ where
     /// [`self`].
     pub fn actionable_widgets(
         &self,
-    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label, &RwData<Config>)> + '_
-    {
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label)> + '_ {
         self.nodes.iter().filter_map(
             |Node {
-                 widget,
-                 config,
-                 area_index,
-                 ..
+                 widget, area_index, ..
              }| {
                 widget.get_actionable().map(|widget| {
                     let label = self.window.get_label(*area_index).unwrap();
-                    (widget, label, config)
+                    (widget, label)
                 })
             },
         )
@@ -609,12 +578,12 @@ where
     /// if the layout of [`Window<U>`] has changed (areas resized, new
     /// areas opened, etc), updates and prints all [`Widget<U>`]s on
     /// the [`Window`].
-    pub(crate) fn print_if_layout_changed(&self) {
+    pub(crate) fn print_if_layout_changed(&self, palette: &FormPalette) {
         if self.window.layout_has_changed() {
             for node in &self.nodes {
                 let mut label = self.window.get_label(node.area_index).unwrap();
-                node.widget.update(&mut label, &self.config.read());
-                node.widget.print(&mut label, &self.config.read());
+                node.widget.update(&mut label);
+                node.widget.print(&mut label, &palette);
             }
         }
     }

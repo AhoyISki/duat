@@ -7,9 +7,9 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{Config, DownCastableData, RwData},
+    config::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
-    text::{PrintInfo, Text},
+    text::{PrintCfg, PrintInfo, Text},
     ui::Ui,
     Session,
 };
@@ -156,14 +156,14 @@ impl CommandList {
     }
 }
 
-pub struct CommandLineConfig {
+pub struct CommandLineCfg {
     run_string: String,
     _cmd_replacements: Vec<(String, String)>,
 }
 
-impl Default for CommandLineConfig {
+impl Default for CommandLineCfg {
     fn default() -> Self {
-        CommandLineConfig {
+        CommandLineCfg {
             run_string: String::from(':'),
             _cmd_replacements: Vec::new(),
         }
@@ -179,7 +179,7 @@ where
     cursor: [Cursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
-    config: CommandLineConfig,
+    cfg: CommandLineCfg,
 }
 
 impl<U> CommandLine<U>
@@ -193,7 +193,7 @@ where
             cursor: [Cursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
-            config: CommandLineConfig::default(),
+            cfg: CommandLineCfg::default(),
         };
 
         Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
@@ -204,13 +204,9 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui + 'static,
 {
-    fn identifier(&self) -> &str {
-        "parsec-command-line"
-    }
-
-    fn update(&mut self, label: &U::Label, config: &Config) {
+    fn update(&mut self, label: &U::Label) {
         self.print_info
-            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, config);
+            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, &self.print_cfg());
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
@@ -239,18 +235,15 @@ impl<U> ActionableWidget<U> for CommandLine<U>
 where
     U: Ui + 'static,
 {
-    fn editor<'a>(
-        &'a mut self,
-        _: usize,
-        edit_accum: &'a mut EditAccum,
-    ) -> Editor<U> {
+    fn editor<'a>(&'a mut self, _: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
         self.needs_update = true;
         Editor::new(&mut self.cursor[0], &mut self.text, edit_accum, None, None)
     }
 
-    fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label, config: &'a Config) -> Mover<U> {
+    fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label) -> Mover<U> {
         self.needs_update = true;
-        Mover::new(&mut self.cursor[0], &self.text, label, config)
+        let print_cfg = PrintCfg::default();
+        Mover::new(&mut self.cursor[0], &self.text, label, print_cfg)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -273,15 +266,15 @@ where
         None
     }
 
-    fn on_focus(&mut self, label: &U::Label, config: &Config) {
+    fn on_focus(&mut self, label: &U::Label) {
         self.needs_update = true;
-        self.text = Text::new_string(&self.config.run_string);
-        let chars = self.config.run_string.chars().count() as isize;
-        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, config);
+        self.text = Text::new_string(&self.cfg.run_string);
+        let chars = self.cfg.run_string.chars().count() as isize;
+        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, &self.print_cfg());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self, _label: &U::Label, _config: &Config) {
+    fn on_unfocus(&mut self, _label: &U::Label) {
         self.needs_update = true;
         self.text = Text::default_string();
         self.cursor[0] = Cursor::default();

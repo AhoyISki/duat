@@ -13,11 +13,11 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{Config, DownCastableData},
+    config::{DownCastableData},
     history::History,
     position::{Cursor, Editor, Mover, Pos},
-    text::{reader::MutTextReader, PrintInfo, Text},
-    ui::{Area, Label, Ui}, tags::{form::FILE_NAME, Tag},
+    text::{reader::MutTextReader, PrintCfg, PrintInfo, Text},
+    ui::{Area, Label, Ui},
 };
 
 /// The widget that is used to print and edit files.
@@ -34,6 +34,7 @@ where
     history: History,
     readers: Vec<Box<dyn MutTextReader<U>>>,
     printed_lines: Vec<(usize, bool)>,
+    print_cfg: PrintCfg,
 }
 
 impl<U> FileWidget<U>
@@ -41,7 +42,7 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of `FileWidget`.
-    pub fn new(path: Option<PathBuf>) -> Widget<U> {
+    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
         // TODO: Allow the creation of a new file.
         let file_contents = path
             .as_ref()
@@ -52,19 +53,8 @@ where
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
             .unwrap_or(String::from("scratch_file"));
 
-        let mut text = Text::new_rope(file_contents);
+        let text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
-        let mut pushes_pops_you_cant_explain_that = true;
-        let lock = text.tags.get_lock();
-
-        for index in (0..text.len_chars()).step_by(20) {
-            if pushes_pops_you_cant_explain_that {
-                text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
-            } else {
-                text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
-            }
-            pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
-        }
 
         Widget::actionable(
             Arc::new(RwLock::new(FileWidget {
@@ -77,13 +67,14 @@ where
                 history: History::new(),
                 readers: Vec::new(),
                 printed_lines: Vec::new(),
+                print_cfg,
             })),
             Box::new(|| false),
         )
     }
 
     /// Undoes the last moment in history.
-    pub fn undo(&mut self, label: &U::Label, config: &Config) {
+    pub fn undo(&mut self, label: &U::Label) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
             None => return,
@@ -99,14 +90,15 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
-            self.cursors.push(Cursor::new::<U>(pos, &self.text.inner(), label, config));
+            self.cursors
+                .push(Cursor::new::<U>(pos, &self.text.inner(), label, &self.print_cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
     }
 
     /// Redoes the last moment in history.
-    pub fn redo(&mut self, label: &U::Label, config: &Config) {
+    pub fn redo(&mut self, label: &U::Label) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return,
@@ -120,14 +112,17 @@ where
             self.text.apply_change(&change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
-            self.cursors.push(Cursor::new::<U>(new_pos, &self.text.inner(), label, config));
+            self.cursors.push(Cursor::new::<U>(
+                new_pos,
+                &self.text.inner(),
+                label,
+                &self.print_cfg,
+            ));
         }
     }
 
-    fn set_printed_lines(&mut self, label: &U::Label, config: &Config) {
-        let first_ch = self.print_info.first_char;
-        let wrap_method = config.wrap_method;
-        let tab_places = &config.tab_places;
+    fn set_printed_lines(&mut self, label: &U::Label) {
+        let first_ch = self.print_info.first_char();
         let top_line = self.text.inner().char_to_line(first_ch);
 
         // The beginning of the first line may be offscreen, which would make
@@ -135,11 +130,11 @@ where
         let mut is_wrapped = {
             let line_ch = self.text.inner().line_to_char(top_line);
             let initial_slice = self.text.inner().slice(line_ch..first_ch);
-            label.wrap_count(initial_slice, wrap_method, tab_places) > 0
+            label.wrap_count(initial_slice, &self.print_cfg) > 0
         };
 
         let height = label.area().height();
-        let slice = self.text.inner().slice(self.print_info.first_char..);
+        let slice = self.text.inner().slice(self.print_info.first_char()..);
         let mut liness = slice.lines().enumerate();
 
         self.printed_lines.clear();
@@ -149,7 +144,7 @@ where
 
         while let (Some((index, line)), true) = (liness.next(), accum <= height) {
             let line_num = index + top_line;
-            let wrap_count = label.wrap_count(line, wrap_method, tab_places);
+            let wrap_count = label.wrap_count(line, &self.print_cfg);
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
@@ -223,19 +218,14 @@ impl<U> NormalWidget<U> for FileWidget<U>
 where
     U: Ui + 'static,
 {
-    fn identifier(&self) -> &str {
-        self.identifier.as_str()
-    }
-
-    fn update(&mut self, label: &U::Label, config: &Config) {
-        self.print_info
-            .update::<U>(self.main_cursor().caret(), self.text.inner(), label, config);
-        self.set_printed_lines(label, config);
-
-        // let mut node = self.end_node.write();
-        // self.text.update_lines(&mut node);
-        // drop(node);
-        // self.match_scroll();
+    fn update(&mut self, label: &U::Label) {
+        self.print_info.update::<U>(
+            self.main_cursor().caret(),
+            self.text.inner(),
+            label,
+            &self.print_cfg,
+        );
+        self.set_printed_lines(label);
     }
 
     fn needs_update(&self) -> bool {
@@ -247,11 +237,15 @@ where
     }
 
     fn scroll_vertically(&mut self, _d_y: i32) {
-        //self.print_info.scroll_vertically(d_y, &self.text);
+        // self.print_info.scroll_vertically(d_y, &self.text);
     }
 
     fn print_info(&self) -> PrintInfo {
         self.print_info
+    }
+
+    fn print_cfg(&self) -> PrintCfg {
+        self.print_cfg
     }
 }
 
@@ -269,8 +263,12 @@ where
         )
     }
 
-    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label, config: &'a Config) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, label, config)
+    fn mover<'a>(
+        &'a mut self,
+        index: usize,
+        label: &'a U::Label,
+    ) -> Mover<U> {
+        Mover::new(&mut self.cursors[index], &self.text, label, self.print_cfg)
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -297,12 +295,12 @@ where
         self.new_moment();
     }
 
-    fn undo(&mut self, label: &'_ U::Label, config: &'_ Config) {
-        self.undo(label, config)
+    fn undo(&mut self, label: &'_ U::Label) {
+        self.undo(label)
     }
 
-    fn redo(&mut self, label: &'_ U::Label, config: &'_ Config) {
-        self.redo(label, config)
+    fn redo(&mut self, label: &'_ U::Label) {
+        self.redo(label)
     }
 }
 
@@ -314,5 +312,3 @@ where
         self
     }
 }
-
-// unsafe impl<M> Send for FileWidget<M> where M: Ui {}

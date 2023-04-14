@@ -12,10 +12,10 @@ use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{Config, DownCastableData, RoData, RwData},
+    config::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
-    text::{PrintInfo, Text},
-    ui::Ui,
+    text::{PrintCfg, PrintInfo, Text},
+    ui::Ui, tags::form::FormPalette,
 };
 
 // TODO: Maybe set up the ability to print images as well.
@@ -24,12 +24,8 @@ pub trait NormalWidget<U>: DownCastableData + 'static
 where
     U: Ui + ?Sized + 'static,
 {
-    /// Returns an identifier for this `Widget`. They may not be
-    /// unique.
-    fn identifier(&self) -> &str;
-
     /// Updates the widget.
-    fn update(&mut self, label: &U::Label, config: &Config);
+    fn update(&mut self, label: &U::Label);
 
     /// Wether or not the widget needs to be updated.
     fn needs_update(&self) -> bool;
@@ -53,6 +49,10 @@ where
     fn print_info(&self) -> PrintInfo {
         PrintInfo::default()
     }
+
+    fn print_cfg(&self) -> PrintCfg {
+        PrintCfg::default()
+    }
 }
 
 pub trait ActionableWidget<U>: NormalWidget<U> + 'static
@@ -61,7 +61,7 @@ where
 {
     fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U>;
 
-    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label, config: &'a Config) -> Mover<U>;
+    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label) -> Mover<U>;
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize);
 
@@ -77,17 +77,17 @@ where
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn undo<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {
+    fn undo(&mut self, _label: &U::Label) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn redo<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {
+    fn redo(&mut self, _label: &U::Label) {
         panic!("This implementation of Editable does not have a History of its own.")
     }
 
-    fn on_focus<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {}
+    fn on_focus(&mut self, _label: &U::Label) {}
 
-    fn on_unfocus<'a>(&'a mut self, _label: &'a U::Label, _config: &'a Config) {}
+    fn on_unfocus(&mut self, _label: &U::Label) {}
 
     fn still_valid(&self) -> bool {
         true
@@ -161,28 +161,30 @@ where
         }
     }
 
-    pub(crate) fn update(&self, label: &U::Label, config: &Config) {
+    pub(crate) fn update(&self, label: &U::Label) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
-                widget.write().update(label, config);
+                widget.write().update(label);
             }
             InnerWidget::Actionable(widget) => {
-                widget.write().update(label, config);
+                widget.write().update(label);
             }
         }
     }
 
-    pub(crate) fn print(&self, label: &mut U::Label, config: &Config) {
+    pub(crate) fn print(&self, label: &mut U::Label, palette: &FormPalette) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
-                widget.text().print(label, config, print_info);
+                let print_cfg = widget.print_cfg();
+                widget.text().print(label, print_info, print_cfg, palette);
             }
             InnerWidget::Actionable(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
-                widget.text().print(label, config, print_info);
+                let print_cfg = widget.print_cfg();
+                widget.text().print(label, print_info, print_cfg, palette);
             }
         }
     }
@@ -238,7 +240,6 @@ where
     clearing_needed: bool,
     widget: &'a RwData<AW>,
     label: &'a U::Label,
-    config: &'a Config,
 }
 
 impl<'a, U, AW> WidgetActor<'a, U, AW>
@@ -247,12 +248,11 @@ where
     AW: ActionableWidget<U> + ?Sized + 'static,
 {
     /// Returns a new instace of `WidgetActor<U, E>`.
-    pub(crate) fn new(actionable: &'a RwData<AW>, label: &'a U::Label, config: &'a Config) -> Self {
+    pub(crate) fn new(actionable: &'a RwData<AW>, label: &'a U::Label) -> Self {
         WidgetActor {
             clearing_needed: false,
             widget: actionable,
             label,
-            config,
         }
     }
 
@@ -304,7 +304,7 @@ where
     {
         let mut widget = self.widget.write();
         for index in 0..widget.cursors().len() {
-            let mover = widget.mover(index, self.label, self.config);
+            let mover = widget.mover(index, self.label);
             f(mover);
         }
 
@@ -321,7 +321,7 @@ where
         F: FnMut(Mover<U>),
     {
         let mut widget = self.widget.write();
-        let mover = widget.mover(index, self.label, self.config);
+        let mover = widget.mover(index, self.label);
         f(mover);
 
         if let Some(cursors) = widget.mut_cursors() {
@@ -450,11 +450,11 @@ where
     }
 
     pub fn undo(&mut self) {
-        self.widget.write().undo(self.label, self.config);
+        self.widget.write().undo(self.label);
     }
 
     pub fn redo(&mut self) {
-        self.widget.write().redo(self.label, self.config);
+        self.widget.write().redo(self.label);
     }
 }
 

@@ -7,8 +7,11 @@ use no_deadlocks::RwLock;
 use std::{any::Any, sync::Arc};
 
 use parsec_core::{
-    config::{Config, DownCastableData, RoData, RwData},
-    tags::{form::DEFAULT, Tag},
+    config::{DownCastableData, RoData},
+    tags::{
+        form::{FormPalette, DEFAULT},
+        Tag,
+    },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
     updaters,
@@ -65,8 +68,8 @@ impl Default for SepForm {
 impl SepForm {
     /// Returns a new instance of [`SepForm`], with one `form_name`
     /// for all lines.
-    pub fn uniform(config: &RwData<Config>, name: impl AsRef<str>) -> Self {
-        let (_, id) = config.read().palette.from_name(name);
+    pub fn uniform(palette: &FormPalette, name: impl AsRef<str>) -> Self {
+        let (_, id) = palette.from_name(name);
 
         SepForm::Uniform(id)
     }
@@ -75,12 +78,10 @@ impl SepForm {
     /// for the main line and another `form_name` for other lines,
     /// respectively.
     pub fn two_way(
-        config: &RwData<Config>,
+        palette: &FormPalette,
         main_name: impl AsRef<str>,
         other_name: impl AsRef<str>,
     ) -> Self {
-        let config = config.read();
-        let palette = &config.palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, other_id) = palette.from_name(other_name);
 
@@ -91,13 +92,11 @@ impl SepForm {
     /// for the main line, one for lines above, and one for lines
     /// below, respectively.
     pub fn three_way(
-        config: &RwData<Config>,
+        palette: &FormPalette,
         main_name: impl AsRef<str>,
         upper_name: impl AsRef<str>,
         lower_name: impl AsRef<str>,
     ) -> Self {
-        let config = config.read();
-        let palette = &config.palette;
         let (_, main_id) = palette.from_name(main_name);
         let (_, upper_id) = palette.from_name(upper_name);
         let (_, lower_id) = palette.from_name(lower_name);
@@ -200,11 +199,7 @@ impl<U> NormalWidget<U> for VertRule<U>
 where
     U: Ui + 'static,
 {
-    fn identifier(&self) -> &str {
-        "vertical_rule"
-    }
-
-    fn update(&mut self, _label: &U::Label, _config: &Config) {
+    fn update(&mut self, _label: &U::Label) {
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;

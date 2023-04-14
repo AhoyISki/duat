@@ -7,7 +7,8 @@ use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{Config, DownCastableData, RoData},
+    config::{DownCastableData, RoData},
+    log_info,
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag,
@@ -112,15 +113,13 @@ impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static,
 {
-    fn identifier(&self) -> &str {
-        "parsec-line-numbers"
-    }
-
-    fn update(&mut self, label: &U::Label, _config: &Config) {
+    fn update(&mut self, label: &U::Label) {
         let width = self.calculate_width();
         label.area().request_len(width.max(self.min_width), Side::Right).unwrap();
 
         self.update_text(width);
+
+        log_info!("{:#?}", self.builder.text());
     }
 
     fn needs_update(&self) -> bool {
