@@ -267,8 +267,6 @@ fn print_word_wrap(
     let mut cursor = state.coords.tl;
     let mut end_cursor = cursor;
     let mut cur_word = Vec::new();
-    // 0 before starting, 1 while being printed, 2 after finishing.
-    let mut first_word_status = 0;
 
     while let Some((indent, index, bit)) = iter.next() {
         cur_word.push(bit);
@@ -280,16 +278,10 @@ fn print_word_wrap(
             if state.cfg.is_word_char(char) && char != '\n' {
                 let x = cursor.x as usize + state.info.x_shift();
                 end_cursor.x += len_of(char, &state.cfg.tab_stops, x);
-                first_word_status = first_word_status.max(1);
             } else {
-                if end_cursor.x > state.coords.br.x && first_word_status == 2 {
+                let start_x = state.coords.tl.x + indent;
+                if end_cursor.x > state.coords.br.x && cursor.x > start_x {
                     cursor = clear_to_next_line(cursor, char, indent, &state, stdout);
-                } else if first_word_status == 1 {
-                    first_word_status = 2;
-                }
-
-                if char == '\n' {
-                    first_word_status = 0;
                 }
 
                 let drained_bits = cur_word.drain(..);
