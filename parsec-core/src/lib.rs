@@ -95,7 +95,7 @@ where
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
-        let file_widget = FileWidget::new(Some(path), *self.print_cfg.read());
+        let file_widget = FileWidget::new(Some(path), self.print_cfg.read().clone());
         let push_specs = PushSpecs {
             side: Side::Right,
             split: Split::Min(40),

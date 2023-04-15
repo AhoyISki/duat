@@ -10,7 +10,7 @@ use parsec_core::{
         form::{FormFormer, FormPalette},
         Tag
     },
-    text::{NewLine, PrintCfg, PrintInfo, TextBit, TextIter, WrapMethod},
+    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, TextIter, WrapMethod},
     ui::{self, Area as UiArea}
 };
 use ropey::RopeSlice;
@@ -51,10 +51,10 @@ impl ui::Label<Area> for Label {
             cfg
         };
 
-        let (mut cursor, show_cursor) = match cfg.wrap_method {
+        let (mut cursor, show_cursor) = match print_opts.cfg.wrap_method {
             WrapMethod::NoWrap => print_no_wrap(iter, self.area.coords(), print_opts),
             WrapMethod::Width => {
-                let iter = width_wrap_iter(iter, info.x_shift() as u16, &cfg, self.area.br().x);
+                let iter = width_wrap_iter(iter, info.x_shift(), &print_opts.cfg, self.area.br().x);
                 print_wrap_width(iter, self.area.coords(), print_opts)
             }
             WrapMethod::Capped(_) => todo!(),
@@ -70,9 +70,13 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn set_as_active(&mut self) { self.is_active = true; }
+    fn set_as_active(&mut self) {
+        self.is_active = true;
+    }
 
-    fn area(&self) -> &Area { &self.area }
+    fn area(&self) -> &Area {
+        &self.area
+    }
 
     fn wrap_count(&self, slice: RopeSlice, print_cfg: &PrintCfg) -> usize {
         match print_cfg.wrap_method {
@@ -91,7 +95,7 @@ impl ui::Label<Area> for Label {
                     .chars()
                     .enumerate()
                     .scan((0, false), |(width, end_reached), (index, char)| {
-                        *width += len_of(char, print_cfg.tab_stop, *width as u16) as usize;
+                        *width += len_of(char, &print_cfg.tab_stops, *width) as usize;
                         if *end_reached {
                             return None;
                         }
@@ -112,7 +116,7 @@ impl ui::Label<Area> for Label {
     fn get_width(&self, slice: RopeSlice, print_cfg: &PrintCfg) -> usize {
         slice
             .chars()
-            .scan(0, |width, char| Some(len_of(char, print_cfg.tab_stop, *width as u16) as usize))
+            .scan(0, |width, char| Some(len_of(char, &print_cfg.tab_stops, *width) as usize))
             .sum()
     }
 
@@ -121,7 +125,7 @@ impl ui::Label<Area> for Label {
             .chars()
             .enumerate()
             .scan((0, false), |(width, end_reached), (index, char)| {
-                *width += len_of(char, print_cfg.tab_stop, *width as u16) as usize;
+                *width += len_of(char, &print_cfg.tab_stops, *width) as usize;
                 if *end_reached {
                     return None;
                 }
@@ -134,7 +138,9 @@ impl ui::Label<Area> for Label {
             .unwrap_or(0)
     }
 
-    fn area_index(&self) -> usize { self.area.index }
+    fn area_index(&self) -> usize {
+        self.area.index
+    }
 }
 
 struct PrintOpts<'a> {
@@ -144,16 +150,18 @@ struct PrintOpts<'a> {
     cfg: PrintCfg
 }
 
-fn width_wrap_iter<'a>(
-    iter: impl Iterator<Item = (usize, TextBit)> + 'a, x_shift: u16, cfg: &'a PrintCfg,
+fn width_wrap_iter<'a, 'b>(
+    iter: impl Iterator<Item = (usize, TextBit)> + 'a, x_shift: usize, cfg: &'b PrintCfg,
     barrier: u16
 ) -> impl Iterator<Item = (u16, usize, TextBit)> + 'a {
+    let tab_stops = cfg.tab_stops.clone();
+    let indent_wrap = cfg.indent_wrap;
     iter.scan((0, true), move |(indent, add_to_indent), (index, text_bit)| {
-        if cfg.indent_wrap {
+        if indent_wrap {
             if *add_to_indent {
                 if let TextBit::Char(char) = text_bit {
                     if char == ' ' || char == '\t' {
-                        *indent += len_of(char, cfg.tab_stop, x_shift);
+                        *indent += len_of(char, &tab_stops, x_shift);
                     } else {
                         *add_to_indent = false;
                     }
@@ -270,6 +278,54 @@ fn print_wrap_width(
     (cursor, show_cursor)
 }
 
+fn print_word_wrap(
+    mut iter: impl Iterator<Item = (u16, usize, TextBit)>, coords: Coords,
+    mut print_opts: PrintOpts
+) -> (Coord, bool) {
+    let mut stdout = stdout().lock();
+    let mut cursor = coords.tl;
+    let mut last_char = 'a';
+    let mut style_bef_cursor = None;
+    let mut show_cursor = false;
+
+    while let Some((indent, index, text_bit)) = iter.next() {
+        if let TextBit::Char(char) = text_bit {
+            if index < print_opts.info.first_char() {
+                continue;
+            }
+
+            cursor = print_char(char, last_char, coords.br, cursor, &mut stdout, &print_opts);
+            last_char = char;
+
+            if let Some(style) = style_bef_cursor.take() {
+                let _ = queue!(stdout, ResetColor, SetStyle(style));
+            }
+
+            if char == '\n' {
+                let style = print_opts.form_former.make_form().style;
+                cursor = clear_line(cursor, coords, &mut stdout, style)
+            } else if cursor.x == coords.br.x {
+                let style = print_opts.form_former.make_form().style;
+                cursor = next_line(cursor, coords, &mut stdout, style);
+                if indent > 0 {
+                    let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
+                    cursor.x += indent;
+                }
+            }
+
+            if cursor.y == coords.br.y {
+                break;
+            }
+        } else if let TextBit::Tag(tag) = text_bit {
+            let (cursor_printed, style) = trigger_tag(tag, &mut stdout, &mut print_opts);
+            show_cursor |= cursor_printed;
+            style_bef_cursor = style;
+        }
+    }
+
+    (cursor, show_cursor)
+}
+
 fn trigger_tag(
     tag: Tag, stdout: &mut StdoutLock, printer: &mut PrintOpts
 ) -> (bool, Option<ContentStyle>) {
@@ -307,7 +363,7 @@ fn print_char(
 ) -> Coord {
     let char = mod_char(char, &printer.cfg, last_char);
 
-    let len = len_of(char, printer.cfg.tab_stop, cursor.x + printer.info.x_shift() as u16);
+    let len = len_of(char, &printer.cfg.tab_stops, cursor.x as usize + printer.info.x_shift());
 
     if cursor.x <= br.x - len {
         cursor.x += len;
@@ -372,10 +428,10 @@ fn clear_line(
     cursor
 }
 
-fn len_of(char: char, tab_stop: usize, x: u16) -> u16 {
+fn len_of(char: char, tab_stops: &TabStops, x: usize) -> u16 {
     match char {
         ' ' => 1,
-        '\t' => tab_stop as u16 - x % tab_stop as u16,
+        '\t' => tab_stops.spaces_at(x) as u16,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
 }

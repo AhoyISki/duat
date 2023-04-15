@@ -205,8 +205,9 @@ where
     U: Ui + 'static,
 {
     fn update(&mut self, label: &U::Label) {
+        let print_cfg = PrintCfg::default();
         self.print_info
-            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, &self.print_cfg());
+            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, &print_cfg);
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
@@ -242,8 +243,7 @@ where
 
     fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label) -> Mover<U> {
         self.needs_update = true;
-        let print_cfg = PrintCfg::default();
-        Mover::new(&mut self.cursor[0], &self.text, label, print_cfg)
+        Mover::new(&mut self.cursor[0], &self.text, label, PrintCfg::default())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -270,7 +270,7 @@ where
         self.needs_update = true;
         self.text = Text::new_string(&self.cfg.run_string);
         let chars = self.cfg.run_string.chars().count() as isize;
-        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, &self.print_cfg());
+        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 

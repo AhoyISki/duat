@@ -3,7 +3,7 @@ pub mod reader;
 
 use std::{
     iter::Peekable,
-    ops::{Range, RangeInclusive},
+    ops::{Range, RangeInclusive}
 };
 
 use ropey::Rope;
@@ -14,9 +14,9 @@ use crate::{
     position::{Cursor, Pos},
     tags::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
-        Lock, Tag, TagOrSkip, Tags,
+        Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui},
+    ui::{Area, Label, Ui}
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -41,27 +41,27 @@ use crate::{
 /// [`text()`][Self::text()].
 pub struct TextBuilder<U>
 where
-    U: Ui,
+    U: Ui
 {
     text: Text<U>,
-    swappables: Vec<usize>,
+    swappables: Vec<usize>
 }
 
 impl<U> Default for TextBuilder<U>
 where
-    U: Ui,
+    U: Ui
 {
     fn default() -> Self {
         TextBuilder {
             text: Text::default_string(),
-            swappables: Vec::default(),
+            swappables: Vec::default()
         }
     }
 }
 
 impl<U> TextBuilder<U>
 where
-    U: Ui,
+    U: Ui
 {
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
@@ -123,7 +123,7 @@ where
                 .filter_map(|(index, tag_or_skip)| match tag_or_skip {
                     TagOrSkip::Tag(Tag::PopForm(_), _) => None,
                     TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
-                    TagOrSkip::Skip(_) => None,
+                    TagOrSkip::Skip(_) => None
                 });
 
         if let Some((index, tag, lock)) = tags.nth(tag_index) {
@@ -134,7 +134,7 @@ where
             if let Some(new_inv_tag) = new_tag.inverse() {
                 let forward = match &tags_vec[index + 1] {
                     TagOrSkip::Tag(_, _) => 1,
-                    TagOrSkip::Skip(_) => 2,
+                    TagOrSkip::Skip(_) => 2
                 };
 
                 if let Some(_) = inv_tag {
@@ -155,7 +155,7 @@ where
             .iter_mut()
             .filter_map(|tag_or_skip| match tag_or_skip {
                 TagOrSkip::Skip(skip) => Some(skip),
-                TagOrSkip::Tag(..) => None,
+                TagOrSkip::Tag(..) => None
             })
             .scan(0, |accum, skip| {
                 let prev_accum = *accum;
@@ -181,7 +181,7 @@ where
                 }
             }
             TagOrSkip::Tag(..) => tags_vec.push(TagOrSkip::Skip(edit_len)),
-            TagOrSkip::Skip(skip) => *skip += edit_len,
+            TagOrSkip::Skip(skip) => *skip += edit_len
         }
     }
 
@@ -201,7 +201,7 @@ where
             .enumerate()
             .filter_map(|(index, tag_or_skip)| match tag_or_skip {
                 TagOrSkip::Skip(skip) => Some((index, skip)),
-                TagOrSkip::Tag(..) => None,
+                TagOrSkip::Tag(..) => None
             })
             .scan(0, |accum, (index, skip)| {
                 let prev_accum = *accum;
@@ -228,18 +228,18 @@ where
 /// The text in a given area.
 pub struct Text<U>
 where
-    U: Ui + ?Sized,
+    U: Ui + ?Sized
 {
     pub inner: InnerText,
     pub tags: Tags,
     lock: Lock,
     _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
-    _readers: Vec<Box<dyn MutTextReader<U>>>,
+    _readers: Vec<Box<dyn MutTextReader<U>>>
 }
 
 impl<U> std::fmt::Debug for Text<U>
 where
-    U: Ui + ?Sized,
+    U: Ui + ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
@@ -253,7 +253,7 @@ where
 // TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
-    U: Ui,
+    U: Ui
 {
     pub fn default_string() -> Self {
         let mut tags = Tags::default_vec();
@@ -263,7 +263,7 @@ where
             tags,
             lock,
             _replacements: Vec::new(),
-            _readers: Vec::new(),
+            _readers: Vec::new()
         }
     }
 
@@ -275,7 +275,7 @@ where
             tags,
             lock,
             _replacements: Vec::new(),
-            _readers: Vec::new(),
+            _readers: Vec::new()
         }
     }
 
@@ -288,7 +288,7 @@ where
             tags,
             lock,
             _replacements: Vec::new(),
-            _readers: Vec::new(),
+            _readers: Vec::new()
         }
     }
 
@@ -301,17 +301,14 @@ where
             tags,
             lock,
             _replacements: Vec::new(),
-            _readers: Vec::new(),
+            _readers: Vec::new()
         }
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(
-        &self,
-        label: &mut U::Label,
-        print_info: PrintInfo,
-        print_cfg: PrintCfg,
-        palette: &FormPalette,
+        &self, label: &mut U::Label, print_info: PrintInfo, print_cfg: PrintCfg,
+        palette: &FormPalette
     ) {
         let cur_char = {
             let first_line = self.inner.char_to_line(print_info.first_char);
@@ -324,7 +321,7 @@ where
         let text_iter = TextIter {
             chars,
             tags,
-            cur_char,
+            cur_char
         };
 
         label.print(text_iter, print_info, print_cfg, palette);
@@ -413,7 +410,7 @@ where
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 pub enum TextBit {
     Tag(Tag),
-    Char(char),
+    Char(char)
 }
 
 /// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
@@ -423,17 +420,17 @@ pub enum TextBit {
 pub struct TextIter<CI, TI>
 where
     CI: Iterator<Item = char>,
-    TI: Iterator<Item = (usize, Tag)>,
+    TI: Iterator<Item = (usize, Tag)>
 {
     chars: CI,
     tags: Peekable<TI>,
-    cur_char: usize,
+    cur_char: usize
 }
 
 impl<CI, TI> Iterator for TextIter<CI, TI>
 where
     CI: Iterator<Item = char>,
-    TI: Iterator<Item = (usize, Tag)>,
+    TI: Iterator<Item = (usize, Tag)>
 {
     type Item = (usize, TextBit);
 
@@ -462,20 +459,16 @@ pub struct PrintInfo {
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.
-    last_main: Pos,
+    last_main: Pos
 }
 
 impl PrintInfo {
     /// Scrolls up until the gap between the main cursor and the top
     /// of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_up_to_gap<U>(
-        &mut self,
-        target: Pos,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let max_dist = cfg.scrolloff.y_gap;
 
@@ -510,13 +503,9 @@ impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_down_to_gap<U>(
-        &mut self,
-        target: Pos,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let max_dist = label.area().height() - cfg.scrolloff.y_gap;
 
@@ -551,13 +540,9 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_to_gap<U>(
-        &mut self,
-        target: Pos,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let max_dist = label.area().width() - cfg.scrolloff.x_gap;
 
@@ -571,13 +556,9 @@ impl PrintInfo {
     /// Updates the print info, according to a [`Config`]'s
     /// specifications.
     pub fn update<U>(
-        &mut self,
-        target: Pos,
-        inner: &InnerText,
-        label: &U::Label,
-        print_cfg: &PrintCfg,
+        &mut self, target: Pos, inner: &InnerText, label: &U::Label, print_cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         if let WrapMethod::NoWrap = print_cfg.wrap_method {
             self.scroll_hor_to_gap::<U>(target, inner, label, print_cfg);
@@ -620,7 +601,7 @@ pub enum WrapMethod {
     Capped(usize),
     Word,
     #[default]
-    NoWrap,
+    NoWrap
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.
@@ -629,7 +610,16 @@ pub enum TabStops {
     /// The same lenght for every tab.
     Regular(usize),
     /// Varying lenghts for different tabs.
-    Varied(Vec<usize>),
+    Varied(Vec<usize>)
+}
+
+impl TabStops {
+    pub fn spaces_at(&self, x: usize) -> usize {
+        match self {
+            TabStops::Regular(step) => step - (x % step),
+            TabStops::Varied(steps) => steps.iter().find(|&s| *s > x).expect("Not enough steps") - x
+        }
+    }
 }
 
 impl Default for TabStops {
@@ -648,17 +638,31 @@ pub enum NewLine {
     AlwaysAs(char),
     /// Show the given character only when there is whitespace at end
     /// of the line.
-    AfterSpaceAs(char),
+    AfterSpaceAs(char)
 }
 
-impl NewLine {}
+impl NewLine {
+    pub fn new_line_char(&self, last_ch: char) -> char {
+        match self {
+            NewLine::Blank => ' ',
+            NewLine::AlwaysAs(char) => *char,
+            NewLine::AfterSpaceAs(char) => {
+                if last_ch.is_whitespace() {
+                    *char
+                } else {
+                    ' '
+                }
+            }
+        }
+    }
+}
 
 // Pretty much only exists because i wanted one of these with
 // usize as its builtin type.
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
     pub y_gap: usize,
-    pub x_gap: usize,
+    pub x_gap: usize
 }
 
 impl Default for ScrollOff {
@@ -668,7 +672,7 @@ impl Default for ScrollOff {
 }
 
 /// Configuration options for printing.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PrintCfg {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
@@ -677,10 +681,13 @@ pub struct PrintCfg {
     /// Wether (and how) to show new lines.
     pub new_line: NewLine,
     /// Which places are considered a "tab stop".
-    pub tab_stop: usize,
+    pub tab_stops: TabStops,
     /// Thetab_len_atzontal and vertical gaps between the main
-    /// cursor and the edges of a [`Label`][crate::ui::Label]
+    /// cursor and the edges of a [`Label`][crate::ui::Label].
     pub scrolloff: ScrollOff,
+    // NOTE: This is relevant for printing with `WrapMethod::Word`.
+    /// Characters that are considered to be part of a word.
+    pub word_chars: Vec<RangeInclusive<char>>
 }
 
 impl Default for PrintCfg {
@@ -689,24 +696,19 @@ impl Default for PrintCfg {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
             new_line: NewLine::default(),
-            tab_stop: 4,
+            tab_stops: TabStops::Regular(4),
             scrolloff: ScrollOff::default(),
+            word_chars: vec!['A'..='Z', 'a'..='z', '_'..='_']
         }
     }
 }
 
 impl PrintCfg {
+    pub fn spaces_at(&self, x: usize) -> usize {
+        self.tab_stops.spaces_at(x)
+    }
+
     pub fn new_line_char(&self, last_ch: char) -> char {
-        match self.new_line {
-            NewLine::Blank => ' ',
-            NewLine::AlwaysAs(ch) => ch,
-            NewLine::AfterSpaceAs(ch) => {
-                if last_ch.is_whitespace() {
-                    ch
-                } else {
-                    ' '
-                }
-            }
-        }
+        self.new_line.new_line_char(last_ch)
     }
 }

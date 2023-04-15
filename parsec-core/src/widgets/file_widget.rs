@@ -245,7 +245,7 @@ where
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        self.print_cfg
+        self.print_cfg.clone()
     }
 }
 
@@ -268,7 +268,7 @@ where
         index: usize,
         label: &'a U::Label,
     ) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, label, self.print_cfg)
+        Mover::new(&mut self.cursors[index], &self.text, label, self.print_cfg.clone())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
