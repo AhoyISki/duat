@@ -294,23 +294,21 @@ fn print_word_wrap(
                 continue;
             }
 
-            if opts.cfg.is_word_char(last_char) && last_char != '\n' {
+            if opts.cfg.is_word_char(char) && char != '\n' {
                 let x = cursor.x as usize + opts.info.x_shift();
-                let len = len_of(last_char, &opts.cfg.tab_stops, x);
-                // If '\n' is a word char, this whole thing goes outta wack.
-                if end_cursor.x + len <= coords.br.x {
-                    end_cursor.x += len;
-                } else {
+                end_cursor.x += len_of(char, &opts.cfg.tab_stops, x);
+                cur_word.push(bit);
+            } else {
+                if end_cursor.x > coords.br.x {
                     let style = opts.form_former.make_form().style;
                     cursor = next_line(cursor, coords, &mut stdout, style);
                     if indent > 0 {
                         let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
                         cursor.x += indent;
                     }
-                    end_cursor = cursor;
                 }
-            } else {
-                let drain = cur_word.drain(..);
+
+                let drain = cur_word.drain(..).chain(std::iter::once(bit));
                 let (new_cursor, cursor_printed, style) = print_bits(
                     drain,
                     cursor,
@@ -334,10 +332,10 @@ fn print_word_wrap(
             if cursor.y == coords.br.y {
                 break;
             }
+        }else {
+                cur_word.push(bit);
         }
-
-        cur_word.push(bit);
-    }
+    } 
 
     (cursor, show_cursor)
 }
