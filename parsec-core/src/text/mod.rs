@@ -704,11 +704,18 @@ impl Default for PrintCfg {
 }
 
 impl PrintCfg {
+    /// Wether or not the given [`char`] is considered part of a word.
+    pub fn is_word_char(&self, char: char) -> bool {
+        self.word_chars.iter().any(|char_range| char_range.contains(&char))
+    }
+
+	/// How many ` `s would be inserted by a tab at the given position.
     pub fn spaces_at(&self, x: usize) -> usize {
         self.tab_stops.spaces_at(x)
     }
 
-    pub fn new_line_char(&self, last_ch: char) -> char {
-        self.new_line.new_line_char(last_ch)
+	/// The [`char`] chosen to replace '\n', given a `last_char`.
+    pub fn new_line_char(&self, last_char: char) -> char {
+        self.new_line.new_line_char(last_char)
     }
 }
