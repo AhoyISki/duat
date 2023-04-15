@@ -260,19 +260,6 @@ fn print_wrap_width(
     (cursor, state.show_cursor)
 }
 
-fn clear_to_next_line(
-    mut cursor: Coord, char: char, indent: u16, state: &PrintState, stdout: &mut StdoutLock
-) -> Coord {
-    let style = state.form_former.make_form().style;
-    cursor = next_line(cursor, state.coords, stdout, style);
-    if char != '\n' && indent > 0 {
-        let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
-        cursor.x += indent;
-    }
-
-    cursor
-}
-
 fn print_word_wrap(
     mut iter: impl Iterator<Item = (u16, usize, TextBit)>, mut state: PrintState,
     stdout: &mut StdoutLock
@@ -280,9 +267,12 @@ fn print_word_wrap(
     let mut cursor = state.coords.tl;
     let mut end_cursor = cursor;
     let mut cur_word = Vec::new();
+    // 0 before starting, 1 while being printed, 2 after finishing.
+    let mut first_word_status = 0;
 
     while let Some((indent, index, bit)) = iter.next() {
-        if let TextBit::Char(char) = bit {
+        cur_word.push(bit);
+        if let TextBit::Char(char) = *cur_word.last().unwrap() {
             if index < state.info.first_char() {
                 continue;
             }
@@ -290,13 +280,19 @@ fn print_word_wrap(
             if state.cfg.is_word_char(char) && char != '\n' {
                 let x = cursor.x as usize + state.info.x_shift();
                 end_cursor.x += len_of(char, &state.cfg.tab_stops, x);
-                cur_word.push(bit);
+                first_word_status = first_word_status.max(1);
             } else {
-                if end_cursor.x > state.coords.br.x {
+                if end_cursor.x > state.coords.br.x && first_word_status == 2 {
                     cursor = clear_to_next_line(cursor, char, indent, &state, stdout);
+                } else if first_word_status == 1 {
+                    first_word_status = 2;
                 }
 
-                let drained_bits = cur_word.drain(..).chain(std::iter::once(bit));
+                if char == '\n' {
+                    first_word_status = 0;
+                }
+
+                let drained_bits = cur_word.drain(..);
                 cursor = print_bits(drained_bits, cursor, indent, &mut state, stdout);
 
                 end_cursor = cursor;
@@ -307,8 +303,6 @@ fn print_word_wrap(
             if cursor.y == state.coords.br.y {
                 break;
             }
-        } else {
-            cur_word.push(bit);
         }
     }
 
@@ -346,7 +340,7 @@ fn print_bits(
 fn print_char(
     mut cursor: Coord, char: char, state: &PrintState, stdout: &mut StdoutLock
 ) -> (Coord, char) {
-    let char = mod_char(char, &state.cfg, state.last_char);
+    let char = real_char_from(char, &state.cfg, state.last_char);
 
     let len = len_of(char, &state.cfg.tab_stops, cursor.x as usize + state.info.x_shift());
 
@@ -395,7 +389,7 @@ fn trigger_tag(tag: Tag, state: &mut PrintState, stdout: &mut StdoutLock) {
     }
 }
 
-fn mod_char(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
+fn real_char_from(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
     let char = match char {
         '\n' => match print_cfg.new_line {
             NewLine::Blank => ' ',
@@ -411,6 +405,19 @@ fn mod_char(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
         char => char
     };
     char
+}
+
+fn clear_to_next_line(
+    mut cursor: Coord, char: char, indent: u16, state: &PrintState, stdout: &mut StdoutLock
+) -> Coord {
+    let style = state.form_former.make_form().style;
+    cursor = next_line(cursor, state.coords, stdout, style);
+    if char != '\n' && indent > 0 {
+        let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
+        cursor.x += indent;
+    }
+
+    cursor
 }
 
 fn next_line(
