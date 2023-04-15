@@ -1,7 +1,7 @@
 use std::io::{stdout, StdoutLock};
 
 use crossterm::{
-    cursor::{self, MoveTo, SavePosition, Show},
+    cursor::{self, MoveTo, SavePosition},
     queue,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
@@ -188,10 +188,12 @@ fn width_wrap_iter<'a, 'b>(
 fn print_no_wrap(
     mut iter: impl Iterator<Item = (usize, TextBit)>, coords: Coords, mut opts: PrintOpts
 ) -> (Coord, bool) {
+    let opts = &mut opts;
     let mut stdout = stdout().lock();
+    let stdout = &mut stdout;
     let mut cursor = coords.tl;
     let mut last_char = 'a';
-    let mut style_bef_cursor = None;
+    let mut prev_stl = None;
     let mut show_cursor = false;
     let mut skip_til_nl = false;
 
@@ -208,24 +210,19 @@ fn print_no_wrap(
                 break;
             }
 
-            cursor = print_char(char, last_char, coords.br, cursor, &mut stdout, &opts);
-            last_char = char;
-
-            if let Some(style) = style_bef_cursor.take() {
-                let _ = queue!(stdout, ResetColor, SetStyle(style));
-            }
+            (cursor, last_char, prev_stl) =
+                print_char(cursor, char, last_char, coords, prev_stl, stdout, opts);
 
             if char == '\n' || cursor.x == coords.br.x {
-                let style = opts.form_former.make_form().style;
-                cursor = next_line(cursor, coords, &mut stdout, style);
+                cursor = clear_to_next_line(cursor, coords, char, 0, stdout, opts);
                 if char != '\n' {
                     skip_til_nl = true;
                 }
             }
         } else if let TextBit::Tag(tag) = text_bit {
-            let (cursor_printed, style) = trigger_tag(tag, &mut stdout, &mut opts);
+            let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
             show_cursor |= cursor_printed;
-            style_bef_cursor = style;
+            prev_stl = style;
         }
     }
 
@@ -235,10 +232,13 @@ fn print_no_wrap(
 fn print_wrap_width(
     mut iter: impl Iterator<Item = (u16, usize, TextBit)>, coords: Coords, mut opts: PrintOpts
 ) -> (Coord, bool) {
+    let opts = &mut opts;
     let mut stdout = stdout().lock();
+    let stdout = &mut stdout;
+
     let mut cursor = coords.tl;
     let mut last_char = 'a';
-    let mut style_bef_cursor = None;
+    let mut prev_style = None;
     let mut show_cursor = false;
 
     while let Some((indent, index, text_bit)) = iter.next() {
@@ -247,33 +247,38 @@ fn print_wrap_width(
                 continue;
             }
 
-            cursor = print_char(char, last_char, coords.br, cursor, &mut stdout, &opts);
-            last_char = char;
-
-            if let Some(style) = style_bef_cursor.take() {
-                let _ = queue!(stdout, ResetColor, SetStyle(style));
-            }
+            (cursor, last_char, prev_style) =
+                print_char(cursor, char, last_char, coords, prev_style, stdout, opts);
 
             if char == '\n' || cursor.x == coords.br.x {
-                let style = opts.form_former.make_form().style;
-                cursor = next_line(cursor, coords, &mut stdout, style);
-                if char != '\n' && indent > 0 {
-                    let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
-                    cursor.x += indent;
-                }
+                cursor = clear_to_next_line(cursor, coords, char, indent, stdout, &opts);
             }
 
             if cursor.y == coords.br.y {
                 break;
             }
         } else if let TextBit::Tag(tag) = text_bit {
-            let (cursor_printed, style) = trigger_tag(tag, &mut stdout, &mut opts);
+            let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
             show_cursor |= cursor_printed;
-            style_bef_cursor = style;
+            prev_style = style;
         }
     }
 
     (cursor, show_cursor)
+}
+
+fn clear_to_next_line(
+    mut cursor: Coord, coords: Coords, char: char, indent: u16, stdout: &mut StdoutLock,
+    opts: &PrintOpts
+) -> Coord {
+    let style = opts.form_former.make_form().style;
+    cursor = next_line(cursor, coords, stdout, style);
+    if char != '\n' && indent > 0 {
+        let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
+        cursor.x += indent;
+    }
+
+    cursor
 }
 
 fn print_word_wrap(
@@ -300,12 +305,7 @@ fn print_word_wrap(
                 cur_word.push(bit);
             } else {
                 if end_cursor.x > coords.br.x {
-                    let style = opts.form_former.make_form().style;
-                    cursor = next_line(cursor, coords, &mut stdout, style);
-                    if indent > 0 {
-                        let _ = queue!(stdout, Print(" ".repeat(indent as usize)));
-                        cursor.x += indent;
-                    }
+                    cursor = clear_to_next_line(cursor, coords, char, indent, &mut stdout, &opts);
                 }
 
                 let drain = cur_word.drain(..).chain(std::iter::once(bit));
@@ -332,29 +332,25 @@ fn print_word_wrap(
             if cursor.y == coords.br.y {
                 break;
             }
-        }else {
-                cur_word.push(bit);
+        } else {
+            cur_word.push(bit);
         }
-    } 
+    }
 
     (cursor, show_cursor)
 }
 
 fn print_bits(
     bits: impl Iterator<Item = TextBit>, mut cursor: Coord, coords: Coords, mut last_char: char,
-    mut style_bef_cursor: Option<ContentStyle>, indent: u16, stdout: &mut StdoutLock,
+    mut prev_style: Option<ContentStyle>, indent: u16, stdout: &mut StdoutLock,
     opts: &mut PrintOpts
 ) -> (Coord, bool, Option<ContentStyle>) {
     let mut show_cursor = false;
 
     for bit in bits {
         if let TextBit::Char(char) = bit {
-            cursor = print_char(char, last_char, coords.br, cursor, stdout, opts);
-            last_char = char;
-
-            if let Some(style) = style_bef_cursor.take() {
-                let _ = queue!(stdout, ResetColor, SetStyle(style));
-            }
+            (cursor, last_char, prev_style) =
+                print_char(cursor, char, last_char, coords, prev_style, stdout, opts);
 
             if char == '\n' || cursor.x == coords.br.x {
                 let style = opts.form_former.make_form().style;
@@ -371,11 +367,38 @@ fn print_bits(
         } else if let TextBit::Tag(tag) = bit {
             let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
             show_cursor |= cursor_printed;
-            style_bef_cursor = style;
+            prev_style = style;
         }
     }
 
-    (cursor, show_cursor, style_bef_cursor)
+    (cursor, show_cursor, prev_style)
+}
+
+fn print_char(
+    mut cursor: Coord, char: char, last_char: char, coords: Coords,
+    mut prev_style: Option<ContentStyle>, stdout: &mut StdoutLock, opts: &mut PrintOpts
+) -> (Coord, char, Option<ContentStyle>) {
+    let char = mod_char(char, &opts.cfg, last_char);
+
+    let len = len_of(char, &opts.cfg.tab_stops, cursor.x as usize + opts.info.x_shift());
+
+    if cursor.x <= coords.br.x - len {
+        cursor.x += len;
+        let _ = match char {
+            '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
+            char => queue!(stdout, Print(char))
+        };
+    } else if cursor.x < coords.br.x {
+        let width = coords.br.x - cursor.x;
+        cursor.x += width;
+        let _ = queue!(stdout, Print(" ".repeat(width as usize)));
+    }
+
+    if let Some(style) = prev_style.take() {
+        let _ = queue!(stdout, ResetColor, SetStyle(style));
+    }
+
+    (cursor, char, prev_style)
 }
 
 fn trigger_tag(
@@ -407,29 +430,6 @@ fn trigger_tag(
     }
 
     (false, style_bef_cursor)
-}
-
-fn print_char(
-    char: char, last_char: char, br: Coord, mut cursor: Coord, stdout: &mut StdoutLock,
-    printer: &PrintOpts
-) -> Coord {
-    let char = mod_char(char, &printer.cfg, last_char);
-
-    let len = len_of(char, &printer.cfg.tab_stops, cursor.x as usize + printer.info.x_shift());
-
-    if cursor.x <= br.x - len {
-        cursor.x += len;
-        let _ = match char {
-            '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
-            char => queue!(stdout, Print(char))
-        };
-    } else if cursor.x < br.x {
-        let width = br.x - cursor.x;
-        cursor.x += width;
-        let _ = queue!(stdout, Print(" ".repeat(width as usize)));
-    }
-
-    cursor
 }
 
 fn mod_char(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
