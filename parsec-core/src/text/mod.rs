@@ -668,12 +668,12 @@ impl Default for ScrollOff {
 }
 
 /// Configuration options for printing.
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct PrintCfg {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
     /// Wether to indent wrapped lines or not.
-    pub wrap_indent: bool,
+    pub indent_wrap: bool,
     /// Wether (and how) to show new lines.
     pub new_line: NewLine,
     /// Which places are considered a "tab stop".
@@ -681,6 +681,18 @@ pub struct PrintCfg {
     /// Thetab_len_atzontal and vertical gaps between the main
     /// cursor and the edges of a [`Label`][crate::ui::Label]
     pub scrolloff: ScrollOff,
+}
+
+impl Default for PrintCfg {
+    fn default() -> Self {
+        PrintCfg {
+            wrap_method: WrapMethod::default(),
+            indent_wrap: true,
+            new_line: NewLine::default(),
+            tab_stop: 4,
+            scrolloff: ScrollOff::default(),
+        }
+    }
 }
 
 impl PrintCfg {

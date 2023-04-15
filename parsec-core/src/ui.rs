@@ -361,8 +361,6 @@ where
         let (window, mut initial_label) = ui.new_window();
         widget.update(&mut initial_label);
 
-        let actionable = widget.get_actionable().unwrap();
-
         let main_node = Node {
             widget,
             area_index: initial_label.area_index(),
