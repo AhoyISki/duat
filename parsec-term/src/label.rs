@@ -1,7 +1,7 @@
 use std::io::{stdout, StdoutLock};
 
 use crossterm::{
-    cursor::{self, MoveTo, SavePosition},
+    cursor::{self, MoveTo, SavePosition, Show},
     queue,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
@@ -193,7 +193,7 @@ fn print_no_wrap(
     let stdout = &mut stdout;
     let mut cursor = coords.tl;
     let mut last_char = 'a';
-    let mut prev_stl = None;
+    let mut prev_style = None;
     let mut show_cursor = false;
     let mut skip_til_nl = false;
 
@@ -210,8 +210,8 @@ fn print_no_wrap(
                 break;
             }
 
-            (cursor, last_char, prev_stl) =
-                print_char(cursor, char, last_char, coords, prev_stl, stdout, opts);
+            (cursor, last_char, prev_style) =
+                print_char(cursor, char, last_char, coords, prev_style, stdout, opts);
 
             if char == '\n' || cursor.x == coords.br.x {
                 cursor = clear_to_next_line(cursor, coords, char, 0, stdout, opts);
@@ -220,9 +220,7 @@ fn print_no_wrap(
                 }
             }
         } else if let TextBit::Tag(tag) = text_bit {
-            let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
-            show_cursor |= cursor_printed;
-            prev_stl = style;
+            (show_cursor, prev_style) = trigger_tag(tag, show_cursor, stdout, opts);
         }
     }
 
@@ -258,9 +256,7 @@ fn print_wrap_width(
                 break;
             }
         } else if let TextBit::Tag(tag) = text_bit {
-            let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
-            show_cursor |= cursor_printed;
-            prev_style = style;
+            (show_cursor, prev_style) = trigger_tag(tag, show_cursor, stdout, opts);
         }
     }
 
@@ -365,9 +361,7 @@ fn print_bits(
                 break;
             }
         } else if let TextBit::Tag(tag) = bit {
-            let (cursor_printed, style) = trigger_tag(tag, stdout, opts);
-            show_cursor |= cursor_printed;
-            prev_style = style;
+            (show_cursor, prev_style) = trigger_tag(tag, show_cursor, stdout, opts);
         }
     }
 
@@ -402,9 +396,10 @@ fn print_char(
 }
 
 fn trigger_tag(
-    tag: Tag, stdout: &mut StdoutLock, printer: &mut PrintOpts
+    tag: Tag, show_cursor: bool, stdout: &mut StdoutLock,
+    printer: &mut PrintOpts
 ) -> (bool, Option<ContentStyle>) {
-    let mut style_bef_cursor = None;
+    let mut prev_style = None;
     match tag {
         Tag::PushForm(id) => {
             let _ = queue!(stdout, SetStyle(printer.form_former.apply(id).style));
@@ -418,7 +413,7 @@ fn trigger_tag(
                 let _ = queue!(stdout, caret, SavePosition);
                 return (true, None);
             } else {
-                style_bef_cursor = Some(printer.form_former.make_form().style);
+                prev_style = Some(printer.form_former.make_form().style);
                 let _ = queue!(stdout, SetStyle(cursor.form.style));
             }
         }
@@ -429,7 +424,7 @@ fn trigger_tag(
         Tag::PermanentConceal { .. } => todo!()
     }
 
-    (false, style_bef_cursor)
+    (show_cursor || false, prev_style)
 }
 
 fn mod_char(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
