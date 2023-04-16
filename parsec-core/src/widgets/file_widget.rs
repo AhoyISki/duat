@@ -5,7 +5,7 @@ use std::{
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::Arc
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -13,17 +13,17 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData},
+    config::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{reader::MutTextReader, PrintCfg, PrintInfo, Text},
-    ui::{Area, Label, Ui},
+    ui::{Area, Label, Ui}
 };
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
 where
-    U: Ui,
+    U: Ui
 {
     pub(crate) _side_widgets: Option<(usize, Vec<usize>)>,
     identifier: String,
@@ -34,12 +34,12 @@ where
     history: History,
     readers: Vec<Box<dyn MutTextReader<U>>>,
     printed_lines: Vec<(usize, bool)>,
-    print_cfg: PrintCfg,
+    print_cfg: PrintCfg
 }
 
 impl<U> FileWidget<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     /// Returns a new instance of `FileWidget`.
     pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
@@ -67,9 +67,9 @@ where
                 history: History::new(),
                 readers: Vec::new(),
                 printed_lines: Vec::new(),
-                print_cfg,
+                print_cfg
             })),
-            Box::new(|| false),
+            Box::new(|| false)
         )
     }
 
@@ -77,7 +77,7 @@ where
     pub fn undo(&mut self, label: &U::Label) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
-            None => return,
+            None => return
         };
 
         self.print_info = moment.starting_print_info;
@@ -90,8 +90,7 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
-            self.cursors
-                .push(Cursor::new::<U>(pos, &self.text.inner(), label, &self.print_cfg));
+            self.cursors.push(Cursor::new::<U>(pos, &self.text, label, &self.print_cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -101,7 +100,7 @@ where
     pub fn redo(&mut self, label: &U::Label) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
-            None => return,
+            None => return
         };
 
         self.print_info = moment.ending_print_info;
@@ -112,38 +111,31 @@ where
             self.text.apply_change(&change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
-            self.cursors.push(Cursor::new::<U>(
-                new_pos,
-                &self.text.inner(),
-                label,
-                &self.print_cfg,
-            ));
+            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, label, &self.print_cfg));
         }
     }
 
     fn set_printed_lines(&mut self, label: &U::Label) {
-        let first_ch = self.print_info.first_char();
-        let top_line = self.text.inner().char_to_line(first_ch);
+        let first_char = self.print_info.first_char();
+        let mut line_num = self.text.inner().char_to_line(first_char);
 
         // The beginning of the first line may be offscreen, which would make
         // the first line number a wrapped line.
-        let mut is_wrapped = {
-            let line_ch = self.text.inner().line_to_char(top_line);
-            let initial_slice = self.text.inner().slice(line_ch..first_ch);
-            label.wrap_count(initial_slice, &self.print_cfg) > 0
+        let (mut is_wrapped, mut skip) = {
+            let line_char = self.text.inner().line_to_char(line_num);
+            let line = self.text.iter_range(line_char..first_char);
+            (label.wrap_count(line, &self.print_cfg) > 0, first_char - line_char)
         };
 
         let height = label.area().height();
-        let slice = self.text.inner().slice(self.print_info.first_char()..);
-        let mut liness = slice.lines().enumerate();
 
         self.printed_lines.clear();
         self.printed_lines.reserve_exact(height);
 
         let mut accum = 0;
 
-        while let (Some((index, line)), true) = (liness.next(), accum <= height) {
-            let line_num = index + top_line;
+        while accum <= height {
+            let line = self.text.iter_line(line_num).skip(skip);
             let wrap_count = label.wrap_count(line, &self.print_cfg);
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
@@ -152,6 +144,8 @@ where
                 is_wrapped = true;
             }
             is_wrapped = false;
+            line_num += 1;
+            skip = 0;
         }
     }
 
@@ -216,14 +210,14 @@ where
 
 impl<U> NormalWidget<U> for FileWidget<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn update(&mut self, label: &U::Label) {
         self.print_info.update::<U>(
             self.main_cursor().caret(),
-            self.text.inner(),
+            &self.text,
             label,
-            &self.print_cfg,
+            &self.print_cfg
         );
         self.set_printed_lines(label);
     }
@@ -251,7 +245,7 @@ where
 
 impl<U> ActionableWidget<U> for FileWidget<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
         Editor::new(
@@ -259,15 +253,11 @@ where
             &mut self.text,
             edit_accum,
             Some(self.print_info),
-            Some(&mut self.history),
+            Some(&mut self.history)
         )
     }
 
-    fn mover<'a>(
-        &'a mut self,
-        index: usize,
-        label: &'a U::Label,
-    ) -> Mover<U> {
+    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label) -> Mover<U> {
         Mover::new(&mut self.cursors[index], &self.text, label, self.print_cfg.clone())
     }
 
@@ -306,7 +296,7 @@ where
 
 impl<U> DownCastableData for FileWidget<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn as_any(&self) -> &dyn Any {
         self

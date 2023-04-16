@@ -11,7 +11,7 @@ use crate::{
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, PrintInfo, Text},
     ui::Ui,
-    Session,
+    Session
 };
 
 /// The sole purpose of this module is to prevent any external
@@ -22,10 +22,7 @@ mod private {
 
 pub trait Commander: private::Commander {
     fn try_exec(
-        &mut self,
-        cmd: &String,
-        flags: &[String],
-        args: &[String],
+        &mut self, cmd: &String, flags: &[String], args: &[String]
     ) -> Result<Option<String>, CommandError>;
 
     fn callers(&self) -> &[String];
@@ -38,7 +35,7 @@ pub trait Commander: private::Commander {
 /// arguments passed on to the command.
 pub struct Command<C>
 where
-    C: ?Sized + 'static,
+    C: ?Sized + 'static
 {
     /// A command that may mutate the `Commandable` struct.
     ///
@@ -59,22 +56,21 @@ where
     /// A list of `String`s that act as callers for this `Command`.
     callers: Vec<String>,
     /// The object that will be affected by `self.function`.
-    commandable: RwData<C>,
+    commandable: RwData<C>
 }
 
 impl<C> Command<C>
 where
-    C: ?Sized,
+    C: ?Sized
 {
     pub fn new(
         function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
-        callers: Vec<String>,
-        commandable: RwData<C>,
+        callers: Vec<String>, commandable: RwData<C>
     ) -> Self {
         Self {
             function,
             callers,
-            commandable,
+            commandable
         }
     }
 }
@@ -83,13 +79,10 @@ impl<C> private::Commander for Command<C> where C: ?Sized {}
 
 impl<C> Commander for Command<C>
 where
-    C: ?Sized,
+    C: ?Sized
 {
     fn try_exec(
-        &mut self,
-        cmd: &String,
-        flags: &[String],
-        args: &[String],
+        &mut self, cmd: &String, flags: &[String], args: &[String]
     ) -> Result<Option<String>, CommandError> {
         if self.callers.contains(&cmd) {
             return (self.function)(&mut self.commandable.write(), flags, args)
@@ -108,26 +101,23 @@ where
 /// them.
 #[derive(Default)]
 pub struct CommandList {
-    commands: Vec<Box<dyn Commander>>,
+    commands: Vec<Box<dyn Commander>>
 }
 
 impl CommandList {
     /// Returns a new instance of `CommandListList`.
     pub fn new<C>(command: Box<C>) -> Self
     where
-        C: Commander + 'static,
+        C: Commander + 'static
     {
         CommandList {
-            commands: vec![command],
+            commands: vec![command]
         }
     }
 
     /// Tries to execute a given command on any of its lists.
     pub(crate) fn try_exec(
-        &mut self,
-        cmd: String,
-        flags: Vec<String>,
-        args: Vec<String>,
+        &mut self, cmd: String, flags: Vec<String>, args: Vec<String>
     ) -> Result<Option<String>, CommandError> {
         for command in &mut self.commands {
             let result = command.try_exec(&cmd, flags.as_slice(), args.as_slice());
@@ -158,33 +148,33 @@ impl CommandList {
 
 pub struct CommandLineCfg {
     run_string: String,
-    _cmd_replacements: Vec<(String, String)>,
+    _cmd_replacements: Vec<(String, String)>
 }
 
 impl Default for CommandLineCfg {
     fn default() -> Self {
         CommandLineCfg {
             run_string: String::from(':'),
-            _cmd_replacements: Vec::new(),
+            _cmd_replacements: Vec::new()
         }
     }
 }
 
 pub struct CommandLine<U>
 where
-    U: Ui + ?Sized,
+    U: Ui + ?Sized
 {
     text: Text<U>,
     print_info: PrintInfo,
     cursor: [Cursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
-    cfg: CommandLineCfg,
+    cfg: CommandLineCfg
 }
 
 impl<U> CommandLine<U>
 where
-    U: Ui + Default + 'static,
+    U: Ui + Default + 'static
 {
     pub fn default(session: &Session<U>) -> Widget<U> {
         let command_line = CommandLine {
@@ -193,7 +183,7 @@ where
             cursor: [Cursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
-            cfg: CommandLineCfg::default(),
+            cfg: CommandLineCfg::default()
         };
 
         Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
@@ -202,12 +192,12 @@ where
 
 impl<U> NormalWidget<U> for CommandLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn update(&mut self, label: &U::Label) {
         let print_cfg = PrintCfg::default();
         self.print_info
-            .update::<U>(self.cursor[0].caret(), self.text.inner(), label, &print_cfg);
+            .update::<U>(self.cursor[0].caret(), &self.text, label, &print_cfg);
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
@@ -234,7 +224,7 @@ where
 
 impl<U> ActionableWidget<U> for CommandLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn editor<'a>(&'a mut self, _: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
         self.needs_update = true;
@@ -270,7 +260,7 @@ where
         self.needs_update = true;
         self.text = Text::new_string(&self.cfg.run_string);
         let chars = self.cfg.run_string.chars().count() as isize;
-        self.cursor[0].move_hor::<U>(chars, &self.text.inner(), label, &PrintCfg::default());
+        self.cursor[0].move_hor::<U>(chars, &self.text, label, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
@@ -288,7 +278,7 @@ where
 
 impl<U> DownCastableData for CommandLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -299,7 +289,7 @@ where
 pub enum CommandError {
     AlreadyExists(String),
     NotFound(String),
-    Failed(String),
+    Failed(String)
 }
 
 impl Display for CommandError {
@@ -311,7 +301,7 @@ impl Display for CommandError {
             CommandError::NotFound(cmd) => {
                 f.write_fmt(format_args!("The command \"{}\" was not found!", cmd))
             }
-            CommandError::Failed(failure) => f.write_fmt(format_args!("{}", failure)),
+            CommandError::Failed(failure) => f.write_fmt(format_args!("{}", failure))
         }
     }
 }

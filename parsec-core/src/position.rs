@@ -2,9 +2,10 @@ use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
     history::{Change, History},
-    text::{inner::InnerText, PrintCfg, PrintInfo, Text},
+    tags::Tag,
+    text::{inner::InnerText, PrintCfg, PrintInfo, Text, TextIter},
     ui::{Label, Ui},
-    widgets::EditAccum,
+    widgets::EditAccum
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -12,25 +13,25 @@ use crate::{
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pos {
     byte: usize,
-    ch: usize,
+    char: usize,
     pub(crate) col: usize,
-    pub(crate) row: usize,
+    pub(crate) row: usize
 }
 
 impl Pos {
     pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
-        self.ch = self.ch.saturating_add_signed(ch_diff);
-        self.byte = inner.char_to_byte(self.ch);
-        self.row = inner.char_to_line(self.ch);
-        self.col = inner.char_from_line_start(self.ch);
+        self.char = self.char.saturating_add_signed(ch_diff);
+        self.byte = inner.char_to_byte(self.char);
+        self.row = inner.char_to_line(self.char);
+        self.col = inner.char_from_line_start(self.char);
     }
 
     pub fn new(ch_index: usize, inner: &InnerText) -> Pos {
         Pos {
             byte: inner.char_to_byte(ch_index),
-            ch: ch_index,
+            char: ch_index,
             col: inner.char_from_line_start(ch_index),
-            row: inner.char_to_line(ch_index),
+            row: inner.char_to_line(ch_index)
         }
     }
 
@@ -46,7 +47,7 @@ impl Pos {
     /// end user. For a 0 indexed char index, see
     /// [true_char()](Self::true_char()).
     pub fn char(&self) -> usize {
-        self.ch + 1
+        self.char + 1
     }
 
     /// Returns the column, indexed at 1. Intended only for displaying
@@ -72,7 +73,7 @@ impl Pos {
     /// Returns the char index (relative to the beginning of the
     /// file). Indexed at 0.
     pub fn true_char(&self) -> usize {
-        self.ch
+        self.char
     }
 
     /// Returns the column. Indexed at 0.
@@ -112,89 +113,77 @@ pub struct Cursor {
     /// desired_col, it will be placed in the desired_col. If the
     /// line is shorter, it will be placed in the last column of
     /// the line.
-    desired_x: usize,
+    desired_x: usize
 }
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg) -> Cursor
+    pub fn new<U>(pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg) -> Cursor
     where
-        U: Ui,
+        U: Ui
     {
-        let line = inner.line(pos.row);
+        let line = text.iter_line(pos.row);
         Cursor {
             caret: pos,
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: label.get_width(line.slice(0..pos.col), cfg),
+            desired_x: label.get_width(line.take(pos.true_col()), cfg)
         }
     }
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver<U>(
-        &mut self,
-        count: isize,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, count: isize, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let cur = &mut self.caret;
 
-        cur.row = cur.row.saturating_add_signed(count).min(inner.len_lines().saturating_sub(1));
+        cur.row = cur.row.saturating_add_signed(count).min(text.len_lines().saturating_sub(1));
 
-        let line = inner.line(cur.row);
+        let line = text.iter_line(cur.row);
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
         cur.col = label.col_at_dist(line, self.desired_x, cfg);
 
-        cur.ch = inner.line_to_char(cur.row) + cur.col;
-        cur.byte = inner.char_to_byte(cur.ch);
+        cur.char = text.inner.line_to_char(cur.row) + cur.col;
+        cur.byte = text.inner.char_to_byte(cur.char);
     }
 
     /// Internal horizontal movement function.
     pub(crate) fn move_hor<U>(
-        &mut self,
-        count: isize,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, count: isize, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let caret = &mut self.caret;
-        caret.ch = caret.ch.saturating_add_signed(count);
-        caret.byte = inner.char_to_byte(caret.ch);
-        caret.row = inner.char_to_line(caret.ch);
-        let line_ch = inner.line_to_char(caret.row);
-        caret.col = caret.ch - line_ch;
+        caret.char = caret.char.saturating_add_signed(count);
+        caret.byte = text.inner.char_to_byte(caret.char);
+        caret.row = text.inner.char_to_line(caret.char);
+        let line_ch = text.inner.line_to_char(caret.row);
+        caret.col = caret.char - line_ch;
 
-        self.desired_x = label.get_width(inner.slice(line_ch..caret.ch), cfg);
+        self.desired_x = label.get_width(text.iter_range(line_ch..caret.char), cfg);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `row` of th [Pos] are correct.
     pub(crate) fn move_to<U>(
-        &mut self,
-        pos: Pos,
-        inner: &InnerText,
-        label: &U::Label,
-        cfg: &PrintCfg,
+        &mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
     ) where
-        U: Ui,
+        U: Ui
     {
         let cur = &mut self.caret;
 
-        cur.row = min(pos.row, inner.len_lines());
-        let line_ch = inner.line_to_char(pos.row);
-        cur.col = min(pos.col, inner.line(cur.row).len_chars());
-        cur.ch = inner.line_to_char(cur.row) + cur.col;
-        cur.byte = inner.char_to_byte(cur.ch);
+        cur.row = min(pos.row, text.len_lines());
+        let line_char = text.inner.line_to_char(pos.row);
+        cur.col = min(pos.col, text.inner.line(cur.row).len_chars());
+        cur.char = text.inner.line_to_char(cur.row) + cur.col;
+        cur.byte = text.inner.char_to_byte(cur.char);
 
-        self.desired_x = label.get_width(inner.slice(line_ch..cur.ch), cfg);
+        self.desired_x = label.get_width(text.iter_range(line_char..cur.char), cfg);
 
         self.anchor = None;
     }
@@ -205,9 +194,9 @@ impl Cursor {
     pub fn range(&self) -> Range<usize> {
         let anchor = self.anchor.unwrap_or(self.caret);
         if anchor < self.caret {
-            anchor.ch..self.caret.ch
+            anchor.char..self.caret.char
         } else {
-            self.caret.ch..anchor.ch
+            self.caret.char..anchor.char
         }
     }
 
@@ -329,26 +318,23 @@ impl Clone for Cursor {
 /// selection in any way.
 pub struct Editor<'a, U>
 where
-    U: Ui,
+    U: Ui
 {
     cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
     edit_accum: &'a mut EditAccum,
     print_info: Option<PrintInfo>,
-    history: Option<&'a mut History>,
+    history: Option<&'a mut History>
 }
 
 impl<'a, U> Editor<'a, U>
 where
-    U: Ui,
+    U: Ui
 {
     /// Returns a new instance of `Editor`.
     pub fn new(
-        cursor: &'a mut Cursor,
-        text: &'a mut Text<U>,
-        edit_accum: &'a mut EditAccum,
-        print_info: Option<PrintInfo>,
-        history: Option<&'a mut History>,
+        cursor: &'a mut Cursor, text: &'a mut Text<U>, edit_accum: &'a mut EditAccum,
+        print_info: Option<PrintInfo>, history: Option<&'a mut History>
     ) -> Self {
         cursor.calibrate_on_accum(edit_accum, text.inner());
         Self {
@@ -356,7 +342,7 @@ where
             text,
             edit_accum,
             print_info,
-            history,
+            history
         }
     }
 
@@ -369,7 +355,7 @@ where
         self.edit(change);
 
         if let Some(anchor) = &mut self.cursor.anchor {
-            if anchor.ch > self.cursor.caret.ch {
+            if anchor.char > self.cursor.caret.char {
                 *anchor = Pos::new(end, self.text.inner());
                 return;
             }
@@ -381,7 +367,7 @@ where
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.caret.ch..self.cursor.caret.ch;
+        let range = self.cursor.caret.char..self.cursor.caret.char;
         let change = Change::new(edit.to_string(), range, self.text.inner());
         let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
@@ -415,30 +401,27 @@ where
 /// file.
 pub struct Mover<'a, U>
 where
-    U: Ui,
+    U: Ui
 {
     cursor: &'a mut Cursor,
     text: &'a Text<U>,
     label: &'a U::Label,
-    print_cfg: PrintCfg,
+    print_cfg: PrintCfg
 }
 
 impl<'a, U> Mover<'a, U>
 where
-    U: Ui,
+    U: Ui
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut Cursor,
-        text: &'a Text<U>,
-        label: &'a U::Label,
-        print_cfg: PrintCfg,
+        cursor: &'a mut Cursor, text: &'a Text<U>, label: &'a U::Label, print_cfg: PrintCfg
     ) -> Self {
         Self {
             cursor,
             text,
             label,
-            print_cfg,
+            print_cfg
         }
     }
 
@@ -447,13 +430,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver::<U>(count, self.text.inner(), self.label, &self.print_cfg);
+        self.cursor.move_ver::<U>(count, &self.text, self.label, &self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor::<U>(count, self.text.inner(), self.label, &self.print_cfg);
+        self.cursor.move_hor::<U>(count, &self.text, self.label, &self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -462,7 +445,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to::<U>(caret, self.text.inner(), self.label, &self.print_cfg);
+        self.cursor.move_to::<U>(caret, &self.text, self.label, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

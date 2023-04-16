@@ -728,7 +728,7 @@ impl Tags {
 //    pos: TagPos,
 //}
 //
-///// The object responsible for matching `TextLine`s on `Text`.
+///// The object responsible for matching `TextLine`s on `InnerText`.
 //#[derive(Clone)]
 // pub struct MatchManager {
 //    // NOTE: This exists pretty much only for performance reasons.

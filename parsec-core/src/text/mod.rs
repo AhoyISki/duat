@@ -3,7 +3,7 @@ pub mod reader;
 
 use std::{
     iter::Peekable,
-    ops::{Range, RangeInclusive}
+    ops::{Range, RangeBounds, RangeInclusive}
 };
 
 use ropey::Rope;
@@ -315,14 +315,7 @@ where
             self.inner.line_to_char(first_line)
         };
 
-        let chars = self.inner.chars_at(cur_char);
-        let tags = self.tags.iter_at(cur_char).peekable();
-
-        let text_iter = TextIter {
-            chars,
-            tags,
-            cur_char
-        };
+        let text_iter = self.iter_range(cur_char..);
 
         label.print(text_iter, print_info, print_cfg, palette);
     }
@@ -407,6 +400,49 @@ where
     }
 }
 
+// Iterator methods.
+impl<U> Text<U>
+where
+    U: Ui + ?Sized
+{
+    pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+        let chars = self.inner.chars_at(0);
+        let tags = self.tags.iter_at(0).peekable();
+
+        TextIter::new(self, chars, tags, 0)
+    }
+
+    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+        let start = self.inner.line_to_char(line);
+        let end = self.inner.line_to_char(line + 1);
+        let chars = self.inner.chars_at(start).take(end - start);
+        let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
+
+        TextIter::new(self, chars, tags, start)
+    }
+
+    pub fn iter_range(
+        &self, range: impl RangeBounds<usize>
+    ) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+        let start = match range.start_bound() {
+            std::ops::Bound::Included(start) => *start,
+            std::ops::Bound::Excluded(start) => *start + 1,
+            std::ops::Bound::Unbounded => 0
+        };
+
+        let end = match range.end_bound() {
+            std::ops::Bound::Included(end) => end + 1,
+            std::ops::Bound::Excluded(end) => *end,
+            std::ops::Bound::Unbounded => self.inner.len_chars()
+        };
+
+        let chars = self.inner.chars_at(start).take(end - start);
+        let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
+
+        TextIter::new(self, chars, tags, start)
+    }
+}
+
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 pub enum TextBit {
     Tag(Tag),
@@ -417,18 +453,37 @@ pub enum TextBit {
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
-pub struct TextIter<CI, TI>
+pub struct TextIter<'a, U, Ci, Ti>
 where
-    CI: Iterator<Item = char>,
-    TI: Iterator<Item = (usize, Tag)>
+    U: Ui + ?Sized,
+    Ci: Iterator<Item = char> + 'a,
+    Ti: Iterator<Item = (usize, Tag)> + 'a
 {
-    chars: CI,
-    tags: Peekable<TI>,
+    text: &'a Text<U>,
+    chars: Ci,
+    tags: Peekable<Ti>,
     cur_char: usize
 }
 
-impl<CI, TI> Iterator for TextIter<CI, TI>
+impl<'a, U, Ci, Ti> TextIter<'a, U, Ci, Ti>
 where
+    U: Ui + ?Sized,
+    Ci: Iterator<Item = char> + 'a,
+    Ti: Iterator<Item = (usize, Tag)> + 'a
+{
+    pub fn new(text: &'a Text<U>, chars: Ci, tags: Peekable<Ti>, cur_char: usize) -> Self {
+        Self {
+            text,
+            chars,
+            tags,
+            cur_char
+        }
+    }
+}
+
+impl<U, CI, TI> Iterator for TextIter<'_, U, CI, TI>
+where
+    U: Ui + ?Sized,
     CI: Iterator<Item = char>,
     TI: Iterator<Item = (usize, Tag)>
 {
@@ -444,6 +499,22 @@ where
             Some((self.cur_char, TextBit::Char(char)))
         } else {
             None
+        }
+    }
+}
+
+impl<'a, U, Ci, Ti> Clone for TextIter<'a, U, Ci, Ti>
+where
+    U: Ui + ?Sized,
+    Ci: Iterator<Item = char> + Clone + 'a,
+    Ti: Iterator<Item = (usize, Tag)> + Clone + 'a
+{
+    fn clone(&self) -> Self {
+        TextIter {
+            text: &self.text,
+            chars: self.chars.clone(),
+            tags: self.tags.clone(),
+            cur_char: self.cur_char
         }
     }
 }
@@ -465,31 +536,25 @@ pub struct PrintInfo {
 impl PrintInfo {
     /// Scrolls up until the gap between the main cursor and the top
     /// of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_up_to_gap<U>(
-        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
-    ) where
+    fn scroll_up_to_gap<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    where
         U: Ui
     {
         let max_dist = cfg.scrolloff.y_gap;
 
-        let slice = inner.slice(..target.true_char());
-        let mut lines =
-            slice
-                .lines_at(target.true_row())
-                .reversed()
-                .scan(target.true_char(), |ch, line| {
-                    *ch -= line.len_chars();
-                    Some((*ch, line))
-                });
-
         let mut accum = 0;
-        while let Some((line_ch, line)) = lines.next() {
+        for index in (0..=target.true_row()).rev() {
+            let line_char = text.inner.line_to_char(target.true_row());
+            // After the first line, will always be whole.
+            let line = text.iter_line(index).take(target.true_char() - line_char);
+
             accum += 1 + label.wrap_count(line, cfg);
-            if accum >= max_dist && line_ch >= self.first_char {
+            if accum >= max_dist && line_char >= self.first_char {
                 return;
             } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
-                self.first_char = line_ch + label.col_at_wrap(line, accum - max_dist, cfg);
+                let line = text.iter_line(index).take(target.true_char() - line_char);
+                self.first_char = line_char + label.col_at_wrap(line, accum - max_dist, cfg);
                 return;
             }
         }
@@ -503,30 +568,25 @@ impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_down_to_gap<U>(
-        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
+        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
     ) where
         U: Ui
     {
         let max_dist = label.area().height() - cfg.scrolloff.y_gap;
-
-        let slice = inner.slice(..target.true_char());
-        let mut lines =
-            slice
-                .lines_at(slice.len_lines())
-                .reversed()
-                .scan(target.true_char(), |ch, line| {
-                    *ch -= line.len_chars();
-                    Some((*ch, line))
-                });
-        let mut lines_to_top = target.true_row() - inner.char_to_line(self.first_char);
+        let mut lines_to_top = target.true_row() - text.inner.char_to_line(self.first_char);
 
         let mut accum = 0;
-        while let Some((line_ch, line)) = lines.next() {
+        for index in 0..=target.true_row() {
+            let line_char = text.inner.line_to_char(target.true_row());
+            // After the first line, will always be whole.
+            let line = text.iter_line(index).take(target.true_char() - line_char);
+
             lines_to_top = lines_to_top.saturating_sub(1);
             accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                self.first_char = line_ch + label.col_at_wrap(line, accum - max_dist, cfg);
+                let line = text.iter_line(index).take(target.true_char() - line_char);
+                self.first_char = line_char + label.col_at_wrap(line, accum - max_dist, cfg);
                 break;
             // We have reached the top of the screen before the accum
             // equaled gap. This means that no scrolling
@@ -540,14 +600,14 @@ impl PrintInfo {
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
     fn scroll_hor_to_gap<U>(
-        &mut self, target: Pos, inner: &InnerText, label: &U::Label, cfg: &PrintCfg
+        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
     ) where
         U: Ui
     {
         let max_dist = label.area().width() - cfg.scrolloff.x_gap;
 
-        let _slice = inner.slice(..target.true_char());
-        let line = inner.line(target.true_row());
+        let line_char = text.inner.line_to_char(target.true_row());
+        let line = text.iter_line(target.true_row()).take(target.true_char() - line_char);
 
         let target_dist = label.get_width(line, cfg);
         self.x_shift = target_dist.saturating_sub(max_dist);
@@ -556,18 +616,18 @@ impl PrintInfo {
     /// Updates the print info, according to a [`Config`]'s
     /// specifications.
     pub fn update<U>(
-        &mut self, target: Pos, inner: &InnerText, label: &U::Label, print_cfg: &PrintCfg
+        &mut self, target: Pos, text: &Text<U>, label: &U::Label, print_cfg: &PrintCfg
     ) where
         U: Ui
     {
         if let WrapMethod::NoWrap = print_cfg.wrap_method {
-            self.scroll_hor_to_gap::<U>(target, inner, label, print_cfg);
+            self.scroll_hor_to_gap::<U>(target, text, label, print_cfg);
         }
 
         if target < self.last_main {
-            self.scroll_up_to_gap::<U>(target, inner, label, print_cfg);
+            self.scroll_up_to_gap::<U>(target, text, label, print_cfg);
         } else if target > self.last_main {
-            self.scroll_down_to_gap::<U>(target, inner, label, print_cfg);
+            self.scroll_down_to_gap::<U>(target, text, label, print_cfg);
         }
 
         self.last_main = target;
@@ -709,12 +769,13 @@ impl PrintCfg {
         self.word_chars.iter().any(|char_range| char_range.contains(&char))
     }
 
-	/// How many ` `s would be inserted by a tab at the given position.
+    /// How many ` `s would be inserted by a tab at the given
+    /// position.
     pub fn spaces_at(&self, x: usize) -> usize {
         self.tab_stops.spaces_at(x)
     }
 
-	/// The [`char`] chosen to replace '\n', given a `last_char`.
+    /// The [`char`] chosen to replace '\n', given a `last_char`.
     pub fn new_line_char(&self, last_char: char) -> char {
         self.new_line.new_line_char(last_char)
     }

@@ -5,9 +5,9 @@ use ropey::RopeSlice;
 use crate::{
     config::{RoData, RwData},
     tags::{form::FormPalette, Tag},
-    text::{PrintCfg, PrintInfo, TextIter},
+    text::{PrintCfg, PrintInfo, TextBit, TextIter},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
-    SessionManager,
+    SessionManager
 };
 
 /// A representation of part of Parsec's window.
@@ -38,40 +38,39 @@ pub trait Area {
 /// screen where text may be printed.
 pub trait Label<A>
 where
-    A: Area,
+    A: Area
 {
-    /// Prints a character at the current position and moves the
-    /// printing position forward.
-    fn print<CI, TI>(
-        &mut self,
-        text: TextIter<CI, TI>,
-        print_info: PrintInfo,
-        print_cfg: PrintCfg,
-        palette: &FormPalette,
-    ) where
-        CI: Iterator<Item = char>,
-        TI: Iterator<Item = (usize, Tag)>;
-
     /// Tells the [`Ui`] that this [`Label`] is the one that is
     /// currently focused.
     fn set_as_active(&mut self);
 
+    /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
+    fn print(
+        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: PrintInfo, cfg: PrintCfg,
+        palette: &FormPalette
+    );
+
     //////////////////// Queries
+    /// Counts how many times the given [`Iterator`] would wrap.
+    fn wrap_count(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
+
+    /// Returns the positional index of the char that comes after the
+    /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
+    /// times.
+    fn col_at_wrap(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
+    ) -> usize;
+
+    /// Gets the visual width of the [`Iterator`].
+    fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
+
+    /// Gets the column at `dist` from the left side on [`Iterator`].
+    fn col_at_dist(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
+    ) -> usize;
+
     /// Returns a reference to the area of [`self`].
     fn area(&self) -> &A;
-
-    /// Counts how many times the given string would wrap.
-    fn wrap_count(&self, slice: RopeSlice, cfg: &PrintCfg) -> usize;
-
-    /// Returns the column that comes after the [slice][RopeSlice]
-    /// wraps `wrap` times.
-    fn col_at_wrap(&self, slice: RopeSlice, wrap: usize, cfg: &PrintCfg) -> usize;
-
-    /// Gets the visual width to a given column.
-    fn get_width(&self, slice: RopeSlice, cfg: &PrintCfg) -> usize;
-
-    /// Gets the column at the given distance from the left side.
-    fn col_at_dist(&self, slice: RopeSlice, dist: usize, cfg: &PrintCfg) -> usize;
 
     /// A unique identifier to this [`Label`].
     fn area_index(&self) -> usize;
@@ -80,10 +79,10 @@ where
 /// Elements related to the [`Widget<U>`]s.
 struct Node<U>
 where
-    U: Ui,
+    U: Ui
 {
     widget: Widget<U>,
-    area_index: usize,
+    area_index: usize
 }
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -104,16 +103,16 @@ where
 /// ```
 pub struct ModNode<'a, U>
 where
-    U: Ui,
+    U: Ui
 {
     session_manager: &'a mut SessionManager,
     window: &'a mut ParsecWindow<U>,
-    area_index: usize,
+    area_index: usize
 }
 
 impl<'a, U> ModNode<'a, U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
     /// constructor function.
@@ -156,9 +155,8 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
-        &mut self,
-        constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
-        push_specs: PushSpecs,
+        &mut self, constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
+        push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
         self.window.push_glued_widget(widget, self.area_index, push_specs)
@@ -180,10 +178,8 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &mut self,
-        constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
-        area_index: usize,
-        push_specs: PushSpecs,
+        &mut self, constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
+        area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.session_manager, push_specs);
         self.window.push_widget(widget, area_index, push_specs)
@@ -198,14 +194,14 @@ where
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Split {
     Locked(usize),
-    Min(usize),
+    Min(usize)
 }
 
 impl Debug for Split {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
-            Split::Min(len) => f.write_fmt(format_args!("Locked({})", len)),
+            Split::Min(len) => f.write_fmt(format_args!("Locked({})", len))
         }
     }
 }
@@ -220,7 +216,7 @@ impl Split {
     /// The length of this [`Split`].
     pub fn len(&self) -> usize {
         match self {
-            Split::Locked(len) | Split::Min(len) => *len,
+            Split::Locked(len) | Split::Min(len) => *len
         }
     }
 }
@@ -229,14 +225,14 @@ impl Split {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     Horizontal,
-    Vertical,
+    Vertical
 }
 
 impl Axis {
     pub fn perp(&self) -> Self {
         match self {
             Axis::Horizontal => Axis::Vertical,
-            Axis::Vertical => Axis::Horizontal,
+            Axis::Vertical => Axis::Horizontal
         }
     }
 }
@@ -258,7 +254,7 @@ pub enum Side {
     Top,
     Right,
     Bottom,
-    Left,
+    Left
 }
 
 impl Side {
@@ -268,7 +264,7 @@ impl Side {
             Side::Top => Side::Bottom,
             Side::Bottom => Side::Top,
             Side::Left => Side::Right,
-            Side::Right => Side::Left,
+            Side::Right => Side::Left
         }
     }
 }
@@ -280,7 +276,7 @@ impl Side {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PushSpecs {
     pub side: Side,
-    pub split: Split,
+    pub split: Split
 }
 
 impl PushSpecs {
@@ -337,38 +333,36 @@ pub trait Ui: 'static {
 /// A container for a [`Window`] in Parsec.
 pub struct ParsecWindow<U>
 where
-    U: Ui,
+    U: Ui
 {
     window: U::Window,
     nodes: Vec<Node<U>>,
-    files_parent: usize,
+    files_parent: usize
 }
 
 impl<U> ParsecWindow<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new<W>(
-        ui: &mut U,
-        widget: Widget<U>,
-        session_manager: &mut SessionManager,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
+        ui: &mut U, widget: Widget<U>, session_manager: &mut SessionManager,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>)
     ) -> Self
     where
-        W: NormalWidget<U>,
+        W: NormalWidget<U>
     {
         let (window, mut initial_label) = ui.new_window();
         widget.update(&mut initial_label);
 
         let main_node = Node {
             widget,
-            area_index: initial_label.area_index(),
+            area_index: initial_label.area_index()
         };
         let mut parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
-            files_parent: 0,
+            files_parent: 0
         };
 
         parsec_window.activate_hook(initial_label.area_index(), session_manager, constructor_hook);
@@ -378,30 +372,20 @@ where
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push_widget(
-        &mut self,
-        widget: Widget<U>,
-        area_index: usize,
-        push_specs: PushSpecs,
+        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         self.inner_push_widget(area_index, push_specs, false, widget)
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push_glued_widget(
-        &mut self,
-        widget: Widget<U>,
-        area_index: usize,
-        push_specs: PushSpecs,
+        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         self.inner_push_widget(area_index, push_specs, true, widget)
     }
 
     fn inner_push_widget(
-        &mut self,
-        area_index: usize,
-        push_specs: PushSpecs,
-        is_glued: bool,
-        widget: Widget<U>,
+        &mut self, area_index: usize, push_specs: PushSpecs, is_glued: bool, widget: Widget<U>
     ) -> (usize, Option<usize>) {
         let mut area = self.window.get_area(area_index).unwrap();
         let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
@@ -418,7 +402,7 @@ where
 
         let node = Node {
             widget,
-            area_index: new_area,
+            area_index: new_area
         };
         self.nodes.push(node);
         (new_area, pushed_area)
@@ -427,15 +411,11 @@ where
     /// Pushes a [`Widget<U>`] onto an existing one and activates a
     /// hook function.
     pub fn push_hooked_widget<W>(
-        &mut self,
-        widget: Widget<U>,
-        area_index: usize,
-        push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
-        session_manager: &mut SessionManager,
+        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
     ) -> (usize, Option<usize>)
     where
-        W: NormalWidget<U>,
+        W: NormalWidget<U>
     {
         let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
 
@@ -447,15 +427,11 @@ where
     /// Pushes a [`Widget<U>`] onto an existing one and activates a
     /// hook function.
     pub fn push_glued_hooked_widget<W>(
-        &mut self,
-        widget: Widget<U>,
-        area_index: usize,
-        push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
-        session_manager: &mut SessionManager,
+        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
     ) -> (usize, Option<usize>)
     where
-        W: NormalWidget<U>,
+        W: NormalWidget<U>
     {
         let (new_area, opt_parent) = self.push_glued_widget(widget, area_index, push_specs);
 
@@ -465,12 +441,10 @@ where
     }
 
     fn activate_hook<W>(
-        &mut self,
-        new_area: usize,
-        session_manager: &mut SessionManager,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>),
+        &mut self, new_area: usize, session_manager: &mut SessionManager,
+        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>)
     ) where
-        W: NormalWidget<U>,
+        W: NormalWidget<U>
     {
         let node = self
             .nodes
@@ -485,7 +459,7 @@ where
         let mod_node = ModNode {
             session_manager,
             window: self,
-            area_index: new_area,
+            area_index: new_area
         };
 
         (constructor_hook)(mod_node, widget);
@@ -499,11 +473,9 @@ where
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
-        &mut self,
-        widget: Widget<U>,
-        push_specs: PushSpecs,
+        &mut self, widget: Widget<U>, push_specs: PushSpecs,
         constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
-        session_manager: &mut SessionManager,
+        session_manager: &mut SessionManager
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 
@@ -512,7 +484,7 @@ where
             node_index,
             push_specs,
             constructor_hook,
-            session_manager,
+            session_manager
         );
 
         (new_index, opt_parent)
@@ -521,9 +493,7 @@ where
     /// Pushes a [`Widget<U>`] to the master node of the current
     /// window.
     pub fn push_to_master(
-        &mut self,
-        widget: Widget<U>,
-        push_specs: PushSpecs,
+        &mut self, widget: Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         self.push_widget(widget, 0, push_specs)
     }
@@ -536,14 +506,14 @@ where
              }| {
                 let label = self.window.get_label(*area_index).unwrap();
                 (widget, label)
-            },
+            }
         )
     }
 
     /// Returns an [`Iterator`] over the [`ActionableWidget`]s of
     /// [`self`].
     pub fn actionable_widgets(
-        &self,
+        &self
     ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label)> + '_ {
         self.nodes.iter().filter_map(
             |Node {
@@ -553,7 +523,7 @@ where
                     let label = self.window.get_label(*area_index).unwrap();
                     (widget, label)
                 })
-            },
+            }
         )
     }
 
