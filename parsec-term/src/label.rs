@@ -10,10 +10,9 @@ use parsec_core::{
         form::{FormFormer, FormPalette},
         Tag
     },
-    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, TextIter, WrapMethod},
+    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, WrapMethod},
     ui::{self, Area as UiArea}
 };
-use ropey::RopeSlice;
 use unicode_width::UnicodeWidthChar;
 
 use crate::{Area, Coord, Coords};
@@ -33,12 +32,10 @@ impl Label {
 }
 
 impl ui::Label<Area> for Label {
-    fn print<CI, TI>(
-        &mut self, iter: TextIter<CI, TI>, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette
-    ) where
-        CI: Iterator<Item = char>,
-        TI: Iterator<Item = (usize, Tag)>
-    {
+    fn print(
+        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: PrintInfo, cfg: PrintCfg,
+        palette: &FormPalette
+    ) {
         let mut stdout = io::stdout().lock();
         let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
@@ -58,11 +55,11 @@ impl ui::Label<Area> for Label {
         let (mut cursor, show_cursor) = match state.cfg.wrap_method {
             WrapMethod::NoWrap => print_no_wrap(iter, state, &mut stdout),
             WrapMethod::Width => {
-                let iter = width_wrap_iter(iter, info.x_shift(), &state.cfg, self.area.br().x);
+                let iter = barrier_wrap_iter(iter, info.x_shift(), self.area.br().x, &state.cfg);
                 print_wrap_width(iter, state, &mut stdout)
             }
             WrapMethod::Word => {
-                let iter = width_wrap_iter(iter, info.x_shift(), &state.cfg, self.area.br().x);
+                let iter = barrier_wrap_iter(iter, info.x_shift(), self.area.br().x, &state.cfg);
                 print_word_wrap(iter, state, &mut stdout)
             }
             WrapMethod::Capped(_) => todo!()
@@ -86,63 +83,67 @@ impl ui::Label<Area> for Label {
         &self.area
     }
 
-    fn wrap_count(&self, slice: RopeSlice, print_cfg: &PrintCfg) -> usize {
-        match print_cfg.wrap_method {
-            WrapMethod::Width => self.get_width(slice, print_cfg) / self.area.width(),
-            WrapMethod::Capped(_) => todo!(),
-            WrapMethod::Word => self.get_width(slice, print_cfg) / self.area.width(),
+    fn wrap_count(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
+        match cfg.wrap_method {
+            WrapMethod::Width => {
+                width_sum_iter(iter, self.area.width() as u16, cfg)
+                    .map(|(v_sum, ..)| v_sum as usize)
+                    .last()
+                    .unwrap_or(0)
+                    / self.area.width()
+            }
+            WrapMethod::Capped(cap) => {
+                width_sum_iter(iter, cap as u16, cfg)
+                    .map(|(v_sum, ..)| v_sum as usize)
+                    .last()
+                    .unwrap_or(0)
+                    / self.area.width()
+            }
+            WrapMethod::Word => self.get_width(iter, cfg) / self.area.width(),
             WrapMethod::NoWrap => 0
         }
     }
 
-    fn col_at_wrap(&self, slice: RopeSlice, wrap: usize, print_cfg: &PrintCfg) -> usize {
-        match print_cfg.wrap_method {
+    fn col_at_wrap(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
+    ) -> usize {
+        match cfg.wrap_method {
             WrapMethod::Width => {
-                let dist = wrap * self.area.width();
-                slice
-                    .chars()
+                let total_width = (self.area.width() * wrap) as u16;
+                width_sum_iter(iter, self.area.width() as u16, cfg)
                     .enumerate()
-                    .scan((0, false), |(width, end_reached), (index, char)| {
-                        *width += len_of(char, &print_cfg.tab_stops, *width) as usize;
-                        if *end_reached {
-                            return None;
-                        }
-                        if *width >= dist {
-                            *end_reached = true
-                        }
-                        Some(index)
-                    })
-                    .last()
-                    .unwrap()
+                    .find(|(_, (v_sum, ..))| *v_sum >= total_width)
+                    .map(|(count, ..)| count)
+                    .unwrap_or(0)
             }
-            WrapMethod::Capped(_) => todo!(),
+            WrapMethod::Capped(cap) => {
+                let total_width = (cap * wrap) as u16;
+                width_sum_iter(iter, cap as u16, cfg)
+                    .enumerate()
+                    .find(|(_, (v_sum, ..))| *v_sum >= total_width)
+                    .map(|(count, ..)| count)
+                    .unwrap_or(0)
+            }
+
             WrapMethod::Word => todo!(),
             WrapMethod::NoWrap => 0
         }
     }
 
-    fn get_width(&self, slice: RopeSlice, print_cfg: &PrintCfg) -> usize {
-        slice
-            .chars()
-            .scan(0, |width, char| Some(len_of(char, &print_cfg.tab_stops, *width) as usize))
-            .sum()
+    fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
+        width_sum_iter(iter, self.area.width() as u16, cfg)
+            .map(|(_, sum, ..)| sum as usize)
+            .last()
+            .unwrap_or(0)
     }
 
-    fn col_at_dist(&self, slice: RopeSlice, dist: usize, print_cfg: &PrintCfg) -> usize {
-        slice
-            .chars()
+    fn col_at_dist(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
+    ) -> usize {
+        width_sum_iter(iter, self.area.width() as u16, cfg)
             .enumerate()
-            .scan((0, false), |(width, end_reached), (index, char)| {
-                *width += len_of(char, &print_cfg.tab_stops, *width) as usize;
-                if *end_reached {
-                    return None;
-                }
-                if *width >= dist {
-                    *end_reached = true
-                }
-                Some(index)
-            })
-            .last()
+            .find(|(_, (_, sum, ..))| *sum as usize >= dist)
+            .map(|(count, ..)| count)
             .unwrap_or(0)
     }
 
@@ -162,24 +163,55 @@ struct PrintState<'a> {
     show_cursor: bool
 }
 
-fn width_wrap_iter<'a, 'b>(
-    iter: impl Iterator<Item = (usize, TextBit)> + 'a, x_shift: usize, cfg: &'b PrintCfg,
-    barrier: u16
-) -> impl Iterator<Item = (u16, usize, TextBit)> + 'a {
+/// Returns an [`Iterator`] that counts the width sum of [`char`]s.
+///
+/// This [`Iterator`]'s [`Item`][Iterator::Item] tuple is read,
+/// respectively, as:
+/// - The visual width sum, which includes indent wraps.
+/// - The actual width sum, which doesn't.
+/// - The index of the [`char`], relative to the beginning of the
+///   file.
+/// - The [`char`] in question.
+///
+/// The returned widths represent the *START* of a character, not
+/// where it'll end.
+fn width_sum_iter<'a>(
+    iter: impl Iterator<Item = (usize, TextBit)> + 'a, barrier: u16, cfg: &PrintCfg
+) -> impl Iterator<Item = (u16, u16, usize)> + 'a {
+    let tab_stops = cfg.tab_stops.clone();
+    barrier_wrap_iter(iter, 0, barrier, cfg)
+        .filter_map(|(indent, x, index, bit)| bit.as_char().map(|char| (indent, x, index, *char)))
+        .scan((barrier, 0, 0), move |(next_barrier, v_sum, sum), (indent, x, index, char)| {
+            if *v_sum >= *next_barrier {
+                *v_sum += indent;
+                *next_barrier += barrier;
+            }
+
+            let len = len_of(char, &tab_stops, x as usize);
+            *v_sum += len;
+            *sum += len;
+            Some((*v_sum - len, *sum - len, index))
+        })
+}
+
+fn barrier_wrap_iter<'a>(
+    iter: impl Iterator<Item = (usize, TextBit)> + 'a, x_shift: usize, barrier: u16, cfg: &PrintCfg
+) -> impl Iterator<Item = (u16, u16, usize, TextBit)> + 'a {
     let tab_stops = cfg.tab_stops.clone();
     let indent_wrap = cfg.indent_wrap;
-    iter.scan((0, true), move |(indent, add_to_indent), (index, text_bit)| {
-        if indent_wrap {
-            if *add_to_indent {
-                if let TextBit::Char(char) = text_bit {
+    iter.scan((0, true, x_shift as u16), move |(indent, add_to_indent, x), (index, bit)| {
+        let old_x = *x;
+        if let TextBit::Char(char) = bit {
+            *x += len_of(char, &tab_stops, *x as usize) as u16;
+            if indent_wrap {
+                if *add_to_indent {
                     if char == ' ' || char == '\t' {
-                        *indent += len_of(char, &tab_stops, x_shift);
+                        *indent = *x;
                     } else {
                         *add_to_indent = false;
                     }
-                }
-            } else {
-                if let TextBit::Char('\n') = text_bit {
+                } else if char == '\n' {
+                    *x = 0;
                     *indent = 0;
                     *add_to_indent = true;
                 }
@@ -187,9 +219,9 @@ fn width_wrap_iter<'a, 'b>(
         }
 
         if *indent >= barrier {
-            Some((0, index, text_bit))
+            Some((0, old_x, index, bit))
         } else {
-            Some((*indent, index, text_bit))
+            Some((*indent, old_x, index, bit))
         }
     })
 }
@@ -231,12 +263,12 @@ fn print_no_wrap(
 }
 
 fn print_wrap_width(
-    mut iter: impl Iterator<Item = (u16, usize, TextBit)>, mut state: PrintState,
+    mut iter: impl Iterator<Item = (u16, u16, usize, TextBit)>, mut state: PrintState,
     stdout: &mut StdoutLock
 ) -> (Coord, bool) {
     let mut cursor = state.coords.tl;
 
-    while let Some((indent, index, text_bit)) = iter.next() {
+    while let Some((indent, _, index, text_bit)) = iter.next() {
         if let TextBit::Char(char) = text_bit {
             if index < state.info.first_char() {
                 continue;
@@ -261,14 +293,14 @@ fn print_wrap_width(
 }
 
 fn print_word_wrap(
-    mut iter: impl Iterator<Item = (u16, usize, TextBit)>, mut state: PrintState,
+    mut iter: impl Iterator<Item = (u16, u16, usize, TextBit)>, mut state: PrintState,
     stdout: &mut StdoutLock
 ) -> (Coord, bool) {
     let mut cursor = state.coords.tl;
     let mut end_cursor = cursor;
     let mut cur_word = Vec::new();
 
-    while let Some((indent, index, bit)) = iter.next() {
+    while let Some((indent, _, index, bit)) = iter.next() {
         cur_word.push(bit);
         if let TextBit::Char(char) = *cur_word.last().unwrap() {
             if index < state.info.first_char() {

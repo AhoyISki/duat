@@ -1,11 +1,9 @@
 use std::fmt::{Debug, Display};
 
-use ropey::RopeSlice;
-
 use crate::{
     config::{RoData, RwData},
-    tags::{form::FormPalette, Tag},
-    text::{PrintCfg, PrintInfo, TextBit, TextIter},
+    tags::{form::FormPalette},
+    text::{PrintCfg, PrintInfo, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager
 };

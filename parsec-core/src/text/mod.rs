@@ -449,6 +449,16 @@ pub enum TextBit {
     Char(char)
 }
 
+impl TextBit {
+    pub fn as_char(&self) -> Option<&char> {
+        if let Self::Char(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 /// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
