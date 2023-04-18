@@ -162,6 +162,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "parsec-core",
+ "smallvec",
  "unicode-width",
 ]
 

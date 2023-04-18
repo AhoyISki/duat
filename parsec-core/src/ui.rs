@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 
 use crate::{
     config::{RoData, RwData},
-    tags::{form::FormPalette},
+    tags::form::FormPalette,
     text::{PrintCfg, PrintInfo, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager
@@ -55,9 +55,9 @@ where
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
     /// times.
-    fn col_at_wrap(
+    fn char_at_wrap(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
-    ) -> usize;
+    ) -> Option<usize>;
 
     /// Gets the visual width of the [`Iterator`].
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;

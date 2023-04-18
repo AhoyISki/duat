@@ -244,6 +244,7 @@ dependencies = [
  "crossterm",
  "no_deadlocks",
  "parsec-core",
+ "smallvec",
  "unicode-width",
 ]
 

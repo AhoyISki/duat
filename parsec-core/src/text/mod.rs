@@ -449,6 +449,15 @@ pub enum TextBit {
     Char(char)
 }
 
+impl std::fmt::Debug for TextBit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TextBit::Char(char) => f.write_fmt(format_args!("Char({})", char)),
+            TextBit::Tag(tag) => f.write_fmt(format_args!("Tag({:?})", tag))
+        }
+    }
+}
+
 impl TextBit {
     pub fn as_char(&self) -> Option<&char> {
         if let Self::Char(v) = self {
@@ -564,7 +573,7 @@ impl PrintInfo {
             } else if accum >= max_dist {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
                 let line = text.iter_line(index).take(target.true_char() - line_char);
-                self.first_char = line_char + label.col_at_wrap(line, accum - max_dist, cfg);
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 return;
             }
         }
@@ -596,7 +605,7 @@ impl PrintInfo {
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
                 let line = text.iter_line(index).take(target.true_char() - line_char);
-                self.first_char = line_char + label.col_at_wrap(line, accum - max_dist, cfg);
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             // We have reached the top of the screen before the accum
             // equaled gap. This means that no scrolling
@@ -625,9 +634,8 @@ impl PrintInfo {
 
     /// Updates the print info, according to a [`Config`]'s
     /// specifications.
-    pub fn update<U>(
-        &mut self, target: Pos, text: &Text<U>, label: &U::Label, print_cfg: &PrintCfg
-    ) where
+    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, print_cfg: &PrintCfg)
+    where
         U: Ui
     {
         if let WrapMethod::NoWrap = print_cfg.wrap_method {
@@ -672,6 +680,16 @@ pub enum WrapMethod {
     Word,
     #[default]
     NoWrap
+}
+
+impl WrapMethod {
+    /// Returns `true` if the wrap method is [`NoWrap`].
+    ///
+    /// [`NoWrap`]: WrapMethod::NoWrap
+    #[must_use]
+    pub fn is_no_wrap(&self) -> bool {
+        matches!(self, Self::NoWrap)
+    }
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.

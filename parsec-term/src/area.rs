@@ -1,25 +1,31 @@
 use std::{
     fmt::{Debug, Display},
-    sync::atomic::Ordering,
+    sync::atomic::Ordering
 };
 
 use crossterm::terminal;
 use parsec_core::{
     config::RwData,
-    ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split},
+    ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split}
 };
 
 use crate::{InnerWindow, Node};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Coord {
     pub x: u16,
-    pub y: u16,
+    pub y: u16
 }
 
 impl Coord {
     pub fn new(x: u16, y: u16) -> Self {
         Self { x, y }
+    }
+}
+
+impl Debug for Coord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.y, self.x))
     }
 }
 
@@ -32,13 +38,7 @@ impl Display for Coord {
 #[derive(Clone, Copy)]
 pub struct Coords {
     pub tl: Coord,
-    pub br: Coord,
-}
-
-impl Debug for Coords {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{},{}:{}", self.tl.x, self.tl.y, self.br.x, self.br.y))
-    }
+    pub br: Coord
 }
 
 impl Coords {
@@ -55,14 +55,14 @@ impl Coords {
             Side::Top => Coords::new(self.tl, tr),
             Side::Right => Coords::new(tr, self.br),
             Side::Bottom => Coords::new(bl, self.br),
-            Side::Left => Coords::new(self.tl, bl),
+            Side::Left => Coords::new(self.tl, bl)
         }
     }
 
     pub fn len(&self, axis: Axis) -> usize {
         match axis {
             Axis::Horizontal => self.width(),
-            Axis::Vertical => self.height(),
+            Axis::Vertical => self.height()
         }
     }
 
@@ -78,12 +78,12 @@ impl Coords {
         match axis {
             Axis::Horizontal => Coord {
                 x: self.br.x,
-                y: self.tl.y,
+                y: self.tl.y
             },
             Axis::Vertical => Coord {
                 x: self.tl.x,
-                y: self.br.y,
-            },
+                y: self.br.y
+            }
         }
     }
 
@@ -92,8 +92,21 @@ impl Coords {
             Side::Top => self.tl.y = self.tl.y.saturating_add_signed(-len_diff),
             Side::Left => self.tl.x = self.tl.x.saturating_add_signed(-len_diff),
             Side::Bottom => self.br.y = self.br.y.saturating_add_signed(len_diff),
-            Side::Right => self.br.x = self.br.x.saturating_add_signed(len_diff),
+            Side::Right => self.br.x = self.br.x.saturating_add_signed(len_diff)
         }
+    }
+
+    pub fn from_tl(&self, width: usize, height: usize) -> Self {
+        Coords {
+            tl: self.tl,
+            br: Coord::new(self.tl.x + width as u16, self.tl.y + height as u16)
+        }
+    }
+}
+
+impl Debug for Coords {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{},{}:{}", self.tl.x, self.tl.y, self.br.x, self.br.y))
     }
 }
 
@@ -116,7 +129,7 @@ impl Display for Coords {
 pub struct Area {
     pub(crate) coords: RwData<Coords>,
     pub(crate) window: RwData<InnerWindow>,
-    pub(crate) index: usize,
+    pub(crate) index: usize
 }
 
 impl Area {
@@ -124,7 +137,7 @@ impl Area {
         Self {
             coords: RwData::new(coords),
             window,
-            index,
+            index
         }
     }
 
@@ -137,7 +150,7 @@ impl Area {
         Area {
             coords: RwData::new(coords),
             window,
-            index,
+            index
         }
     }
 
@@ -214,7 +227,7 @@ impl ui::Area for Area {
             let new_parent_width = parent.area.len(req_axis) + len - {
                 match req_axis {
                     Axis::Horizontal => child.area.width(),
-                    Axis::Vertical => child.area.height(),
+                    Axis::Vertical => child.area.height()
                 }
             };
 
@@ -253,7 +266,7 @@ impl ui::Area for Area {
         if let Some((children, _)) = node.lineage.as_ref().filter(|(_, other)| *other == axis) {
             let self_index = match side {
                 Side::Bottom | Side::Right => children.len() - 1,
-                Side::Top | Side::Left => 0,
+                Side::Top | Side::Left => 0
             };
 
             node.insert_new_area(self_index, split, side, new_area_index);
