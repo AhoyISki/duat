@@ -20,7 +20,7 @@ use parsec_core::{
     // folding zones.
     tags::{
         form::FormPalette,
-        form::{CursorStyle, Form},
+        form::{CursorStyle, Form}
     },
     text::{PrintCfg, ScrollOff, WrapMethod},
     ui::{ModNode, PushSpecs, Side, Split},
@@ -28,9 +28,9 @@ use parsec_core::{
         command_line::CommandLine,
         file_widget::FileWidget,
         line_numbers::{Alignment, LineNumbers, LineNumbersCfg, Numbering},
-        status_line::StatusLine,
+        status_line::StatusLine
     },
-    Session,
+    Session
 };
 use parsec_kak::Editor;
 use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};
@@ -57,13 +57,13 @@ fn main() {
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::NoWrap,
+        wrap_method: WrapMethod::Word,
         ..PrintCfg::default()
     };
 
-    // The `Editor` (in this case, the Kakoune editor) is the thing that
-    // determines how the program will be handle input to edit a file
-    // or any piece of text.
+    // The `Editor` (in this case, the Kakoune editor) determines how the
+    // program will be handle input to edit a file or any piece of
+    // text.
     let editor = Editor::default();
 
     // A `Session` is essentially the application itself, it takes a
@@ -74,17 +74,24 @@ fn main() {
         print_cfg,
         palette,
         Box::new(move |mut mod_node, file| {
-            //let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            //let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
-            //let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
-            //mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
+            // let push_specs = PushSpecs::new(Side::Left,
+            // Split::Locked(1)); let sep_form =
+            // SepForm::uniform(mod_node.palette(), "VertRule");
+            // let cfg = VertRuleCfg::new(SepChar::Uniform('┃'),
+            // sep_form);
+            // mod_node.push_widget(VertRule::config_fn(file.clone(),
+            // cfg), push_specs);
 
-            //let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            //mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
+            // let push_specs = PushSpecs::new(Side::Left,
+            // Split::Locked(1));
+            // mod_node.push_widget(LineNumbers::default_fn(file.
+            // clone()), push_specs);
 
-            //let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-            //mod_node.push_widget(StatusLine::default_fn(file), push_specs);
-        }),
+            // let push_specs = PushSpecs::new(Side::Bottom,
+            // Split::Locked(1));
+            // mod_node.push_widget(StatusLine::default_fn(file),
+            // push_specs);
+        })
     );
 
     // session.push_widget_to_edge(CommandLine::default, Side::Bottom,

@@ -1,6 +1,5 @@
 use std::{
     io::{self, StdoutLock, Write},
-    iter::repeat_with,
     ops::RangeInclusive
 };
 
@@ -10,6 +9,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
+    log_info,
     tags::{
         form::{FormFormer, FormPalette},
         Tag
@@ -17,7 +17,7 @@ use parsec_core::{
     text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, WrapMethod},
     ui::{self, Area as UiArea}
 };
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use unicode_width::UnicodeWidthChar;
 
 use crate::{Area, Coord, Coords};
@@ -46,22 +46,15 @@ impl ui::Label<Area> for Label {
 
         let coords = self.area.coords();
 
-        let state = PrintState {
-            coords: self.area.coords(),
-            is_active: self.is_active,
-            form_former: palette.form_former(),
-            info,
-            cfg,
-            last_char: 'a',
-            prev_style: None,
-            show_cursor: false
-        };
-
-        let (mut cursor, show_cursor) = match state.cfg.wrap_method {
-            WrapMethod::NoWrap | WrapMethod::Width => print(iter, state, &mut stdout),
+        let form_former = palette.form_former();
+        let indents = indents(iter, &cfg.tab_stops, self.area.width());
+        let (mut cursor, show_cursor) = match cfg.wrap_method {
+            WrapMethod::NoWrap | WrapMethod::Width => {
+                print(indents, coords, self.is_active, info, &cfg, form_former, &mut stdout)
+            }
             WrapMethod::Word => {
-                let iter = words(iter, state.cfg.word_chars.clone());
-                print(iter, state, &mut stdout)
+                let words = words(indents, &cfg.word_chars, self.area.width());
+                print(words, coords, self.is_active, info, &cfg, form_former, &mut stdout)
             }
             WrapMethod::Capped(_) => todo!()
         };
@@ -93,17 +86,18 @@ impl ui::Label<Area> for Label {
             _ => self.area.coords()
         };
         let top_y = self.area.tl().y;
-        let tab_stops = cfg.tab_stops.clone();
 
+        let indents = indents(iter, &cfg.tab_stops, self.area.width());
         let bottom_y = match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                coords_iter(iter, coords, 0, tab_stops, cfg.indent_wrap, false)
+                coords_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .last()
                     .map(|(coord, ..)| coord.y)
             }
             WrapMethod::Word => {
-                let words = words(iter, cfg.word_chars.clone());
-                coords_iter(words, coords, 0, tab_stops, cfg.indent_wrap, false)
+                let mut words = words(indents, &cfg.word_chars, self.area.width());
+                words.next();
+                coords_iter(words, coords, 0, &cfg.tab_stops, false)
                     .last()
                     .map(|(coord, ..)| coord.y)
             }
@@ -114,35 +108,36 @@ impl ui::Label<Area> for Label {
     }
 
     fn char_at_wrap(
-        &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
         let coords = match cfg.wrap_method {
             WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
             _ => self.area.coords()
         };
         let top_y = self.area.tl().y;
-        let tab_stops = cfg.tab_stops.clone();
+        let mut indents = indents(iter, &cfg.tab_stops, self.area.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                coords_iter(iter, coords, 0, tab_stops, cfg.indent_wrap, false)
+                coords_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .flat_map(|(coord, once)| once.bits().map(move |inner| (coord, inner)))
                     .find(|(coord, ..)| coord.y == top_y + wrap as u16)
-                    .map(|(_, (index, _))| index)
+                    .map(|(_, (_, index, _))| index)
             }
 
             WrapMethod::Word => {
-                let words = words(iter, cfg.word_chars.clone());
-                coords_iter(words, coords, 0, tab_stops, cfg.indent_wrap, false)
+                let words = words(indents, &cfg.word_chars, self.area.width());
+                coords_iter(words, coords, 0, &cfg.tab_stops, false)
                     .flat_map(|(coord, word)| word.bits().map(move |inner| (coord, inner)))
                     .find(|(coord, ..)| coord.y == top_y + wrap as u16)
-                    .map(|(_, (index, _))| index)
+                    .map(|(_, (_, index, _))| index)
             }
-            WrapMethod::NoWrap => iter.next().map(|(index, _)| index)
+            WrapMethod::NoWrap => indents.next().map(|(_, index, _)| index)
         }
     }
 
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
-        coords_iter(iter, self.area.coords(), 0, cfg.tab_stops.clone(), false, true)
+        let indents = indents(iter, &cfg.tab_stops, self.area.width());
+        coords_iter(indents, self.area.coords(), 0, &cfg.tab_stops, true)
             .last()
             .map(|(coord, ..)| coord.x as usize)
             .unwrap_or(0)
@@ -151,7 +146,8 @@ impl ui::Label<Area> for Label {
     fn col_at_dist(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
     ) -> usize {
-        coords_iter(iter, self.area.coords(), 0, cfg.tab_stops.clone(), false, true)
+        let indents = indents(iter, &cfg.tab_stops, self.area.width());
+        coords_iter(indents, self.area.coords(), 0, &cfg.tab_stops, true)
             .enumerate()
             .find(|(_, (coord, ..))| coord.x as usize >= dist)
             .map(|(count, ..)| count)
@@ -166,95 +162,86 @@ impl ui::Label<Area> for Label {
 unsafe impl Send for Label {}
 unsafe impl Sync for Label {}
 
-struct PrintState<'a> {
-    coords: Coords,
-    is_active: bool,
-    form_former: FormFormer<'a>,
-    info: PrintInfo,
-    cfg: PrintCfg,
-    last_char: char,
-    prev_style: Option<ContentStyle>,
-    show_cursor: bool
-}
-
-fn end_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
+fn len_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
     match char {
-        '\t' => start + tab_stops.spaces_at(start as usize + x_shift) as u16,
-        _ => start + UnicodeWidthChar::width(char).unwrap_or(0) as u16
+        '\t' => tab_stops.spaces_at(start as usize + x_shift) as u16,
+        '\n' => 1,
+        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
 }
 
 fn indent_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
     match char {
-        '\t' | ' ' => end_from(char, start, x_shift, tab_stops),
-        _ => start
+        '\t' | ' ' => len_from(char, start, x_shift, tab_stops),
+        _ => 0
     }
 }
 
 trait TextIterable {
-    type Iterator: Iterator<Item = (usize, TextBit)>;
-    fn end_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16;
+    type Iterator: Iterator<Item = (u16, usize, TextBit)>;
+    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16;
 
     fn is_new_line(&self) -> bool;
 
     fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16>;
 
     fn bits(self) -> Self::Iterator;
+
+    fn first_indent(&self) -> u16;
 }
 
-impl TextIterable for (usize, TextBit) {
-    type Iterator = std::iter::Once<(usize, TextBit)>;
+impl TextIterable for (u16, usize, TextBit) {
+    type Iterator = std::iter::Once<(u16, usize, TextBit)>;
 
-    fn end_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
-        self.1
+    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
+        self.2
             .as_char()
-            .map(|char| end_from(*char, start, x_shift, tab_stops))
-            .unwrap_or(start)
+            .map(|char| len_from(*char, start, x_shift, tab_stops))
+            .unwrap_or(0)
     }
 
     fn is_new_line(&self) -> bool {
-        self.1.as_char().is_some_and(|char| *char == '\n')
+        self.2.as_char().is_some_and(|char| *char == '\n')
     }
 
     fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16> {
-        self.1.as_char().map(|char| indent_from(*char, start, x_shift, tab_stops))
+        self.2.as_char().map(|char| indent_from(*char, start, x_shift, tab_stops))
     }
 
     fn bits(self) -> Self::Iterator {
         std::iter::once(self)
     }
+
+    fn first_indent(&self) -> u16 {
+        self.0
+    }
 }
 
-impl TextIterable for SmallVec<[(usize, TextBit); 32]> {
-    type Iterator = smallvec::IntoIter<[(usize, TextBit); 32]>;
+impl TextIterable for SmallVec<[(u16, usize, TextBit); 32]> {
+    type Iterator = smallvec::IntoIter<[(u16, usize, TextBit); 32]>;
 
-    fn end_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
+    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
         self.iter()
-            .filter_map(|(_, bit)| bit.as_char())
-            .scan(start, |x, char| {
-                *x = end_from(*char, *x, x_shift, tab_stops);
+            .filter_map(|(_, _, bit)| bit.as_char())
+            .scan(0, |x, char| {
+                *x += len_from(*char, start + *x, x_shift, tab_stops);
                 Some(*x)
             })
             .last()
-            .unwrap_or(start)
+            .unwrap_or(0)
     }
 
     fn is_new_line(&self) -> bool {
         self.first()
-            .is_some_and(|(_, bit)| bit.as_char().is_some_and(|char| *char == '\n'))
+            .is_some_and(|(_, _, bit)| bit.as_char().is_some_and(|char| *char == '\n'))
     }
 
     fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16> {
         self.iter()
-            .filter_map(|(_, bit)| bit.as_char())
-            .scan(start, |x, char| {
-                let end = indent_from(*char, *x, x_shift, tab_stops);
-                if end > *x {
-                    *x = end;
-                    Some(*x)
-                } else {
-                    None
-                }
+            .filter_map(|(_, _, bit)| bit.as_char())
+            .scan(0, |x, char| {
+                *x = indent_from(*char, start + *x, x_shift, tab_stops);
+                Some(*x)
             })
             .last()
     }
@@ -262,171 +249,212 @@ impl TextIterable for SmallVec<[(usize, TextBit); 32]> {
     fn bits(self) -> Self::Iterator {
         self.into_iter()
     }
+
+    fn first_indent(&self) -> u16 {
+        self.first().map(|(indent, ..)| *indent).unwrap_or(0)
+    }
+}
+
+fn indents<'a>(
+    iter: impl Iterator<Item = (usize, TextBit)> + 'a, tab_stops: &'a TabStops, width: usize
+) -> impl Iterator<Item = (u16, usize, TextBit)> + 'a {
+    iter.scan((0, true), move |(indent, on_indent), (index, bit)| {
+        let old_indent = if *indent < width { *indent } else { 0 };
+        (*indent, *on_indent) = match (&bit, *on_indent) {
+            (&TextBit::Char('\t'), true) => (*indent + tab_stops.spaces_at(*indent), true),
+            (&TextBit::Char(' '), true) => (*indent + 1, true),
+            (&TextBit::Char('\n'), _) => (0, true),
+            (&TextBit::Char(_), _) => (*indent, false),
+            (&TextBit::Tag(_), on_indent) => (*indent, on_indent)
+        };
+
+        Some((old_indent as u16, index, bit))
+    })
 }
 
 fn words<'a>(
-    iter: impl Iterator<Item = (usize, TextBit)> + 'a, word_chars: Vec<RangeInclusive<char>>
-) -> impl Iterator<Item = SmallVec<[(usize, TextBit); 32]>> + 'a {
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a,
+    word_chars: &'a Vec<RangeInclusive<char>>, width: usize
+) -> impl Iterator<Item = SmallVec<[(u16, usize, TextBit); 32]>> + 'a {
     let mut iter = iter.peekable();
-    repeat_with(move || {
-        let mut word = SmallVec::<[(usize, TextBit); 32]>::new();
-        while let Some((_, bit)) = iter.peek() {
-            if let &TextBit::Char(char) = bit {
-                if char != '\n' || !word_chars.iter().any(|chars| chars.contains(&char)) {
-                    if word.is_empty() {
+    let mut word_bits = Vec::new();
+    let width = width as u16;
+    std::iter::from_fn(move || {
+        if let Some(word) = word_bits.pop().map(|insides| smallvec![insides]) {
+            Some(word)
+        } else {
+            let mut len = 0;
+            let mut word = SmallVec::new();
+            while let Some((indent, _, bit)) = iter.peek() {
+                if let &TextBit::Char(char) = bit {
+                    if char == '\n' || !word_chars.iter().any(|chars| chars.contains(&char)) {
+                        if word.is_empty() {
+                            word.push(iter.next().unwrap());
+                        }
+                        break;
+                    // Case where the word will not fit, no matter
+                    // what.
+                    } else if len >= width - indent {
+                        word_bits = word.drain(..).rev().collect();
+                        word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
+                        break;
+                    } else {
+                        len += UnicodeWidthChar::width(char).unwrap_or(0) as u16;
                         word.push(iter.next().unwrap());
                     }
-                    break;
                 } else {
-                    word.push(iter.next().unwrap());
+                    if len >= width - indent {
+                        word_bits = word.drain(..).rev().collect();
+                        word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
+                        break;
+                    }
+                        word.push(iter.next().unwrap());
                 }
             }
+
+            if word.is_empty() { None } else { Some(word) }
         }
-        if !word.is_empty() { Some(word) } else { None }
     })
-    .flatten()
 }
 
 fn coords_iter<'a, T>(
-    iter: impl Iterator<Item = T> + 'a, coords: Coords, x_shift: usize, tab_stops: TabStops,
-    indent_wrap: bool, no_wraps: bool
-) -> impl Iterator<Item = (Coord, T)>
+    iter: impl Iterator<Item = T> + 'a, coords: Coords, x_shift: usize, tab_stops: &'a TabStops,
+    no_wraps: bool
+) -> impl Iterator<Item = (Coord, T)> + 'a
 where
     T: TextIterable
 {
-    let indent = coords.tl.x;
-    iter.scan((coords.tl, indent, true), move |(cursor, indent, on_indent), measurable| {
-        let is_new_line = measurable.is_new_line();
-        if indent_wrap {
-            if *on_indent {
-                if let Some(new_indent) = measurable.indent_from(cursor.x, x_shift, &tab_stops) {
-                    if new_indent > coords.br.x {
-                        *indent = coords.tl.x;
-                        *on_indent = false;
-                    } else if new_indent > *indent {
-                        *indent = new_indent;
-                    } else {
-                        *on_indent = false;
-                    }
-                }
-            } else if is_new_line {
-                *indent = coords.tl.x;
-                *on_indent = true;
-            }
-        }
+    iter.scan(coords.tl, move |cursor, ti| {
+        let is_new_line = ti.is_new_line();
 
         let mut start = *cursor;
-        cursor.x = measurable.end_from(cursor.x, x_shift, &tab_stops);
+        let len = ti.len_from(cursor.x, x_shift, &tab_stops);
+        let indent = ti.first_indent();
+        cursor.x += len;
+        if !no_wraps && cursor.x > coords.br.x {
+            if start.x > indent {
+                start = Coord::new(coords.tl.x + indent, cursor.y + 1);
+            }
+
+            *cursor = Coord::new(coords.tl.x + indent + len, cursor.y + 1);
+        }
         if is_new_line {
-            *cursor = Coord::new(*indent, cursor.y + 1);
-        } else if cursor.x > coords.br.x && !no_wraps {
-            let x = cursor.x - start.x;
-            start = Coord::new(*indent, cursor.y + 1);
-            *cursor = Coord::new(*indent + x, cursor.y + 1);
+            *cursor = Coord::new(coords.tl.x + indent, cursor.y + 1);
         }
 
-        Some((start, measurable))
+        Some((start, ti))
     })
 }
 
 fn print<T>(
-    iter: impl Iterator<Item = T>, mut state: PrintState, stdout: &mut StdoutLock
+    iter: impl Iterator<Item = T>, coords: Coords, is_active: bool, info: PrintInfo,
+    cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> (Coord, bool)
 where
     T: TextIterable
 {
-    let tab_stops = state.cfg.tab_stops.clone();
-    let indent_wrap = state.cfg.indent_wrap;
-    let no_wraps = state.cfg.wrap_method.is_no_wrap();
-    let mut iter =
-        coords_iter(iter, state.coords, state.info.x_shift(), tab_stops, indent_wrap, no_wraps)
-            .take_while(move |(cursor, ..)| cursor.y < state.coords.br.y);
+    let no_wraps = cfg.wrap_method.is_no_wrap();
+    let mut iter = coords_iter(iter, coords, info.x_shift(), &cfg.tab_stops, no_wraps)
+        .take_while(move |(cursor, ..)| cursor.y < coords.br.y);
 
-    let first_char = state.info.first_char();
-    let mut final_cursor = state.coords.tl;
+    let first_char = info.first_char();
+    let mut final_cursor = coords.tl;
+    let mut last_char = 'a';
+
+    let mut show_cursor = false;
+    let mut prev_style = None;
+
     while let Some((mut cursor, text_iterable)) = iter.next() {
         if final_cursor.y < cursor.y {
-            clear_line(final_cursor, state.coords, stdout);
-            let style = state.form_former.make_form().style;
+            clear_line(final_cursor, coords, stdout);
+            let style = form_former.make_form().style;
             queue!(
                 stdout,
                 ResetColor,
-                MoveTo(state.coords.tl.x, cursor.y),
-                Print(" ".repeat((cursor.x - state.coords.tl.x) as usize)),
+                MoveTo(coords.tl.x, cursor.y),
+                Print(" ".repeat((cursor.x - coords.tl.x) as usize)),
                 SetStyle(style)
             )
             .unwrap();
         }
 
-        for (index, bit) in text_iterable.bits() {
-            final_cursor = cursor;
-
-            if let TextBit::Char(char) = bit {
-                if index < first_char {
-                    continue;
+        for (_, index, bit) in text_iterable.bits() {
+            if let (&TextBit::Char(char), true) = (&bit, index >= first_char) {
+                let char = real_char_from(char, &cfg.new_line, last_char);
+                let len = print_char(cursor, char, coords, info.x_shift(), &cfg.tab_stops, stdout);
+                if let Some(style) = prev_style {
+                    let _ = queue!(stdout, ResetColor, SetStyle(style));
                 }
-
-                print_char(cursor, char, &state, stdout);
-                cursor.x = end_from(char, cursor.x, state.info.x_shift(), &state.cfg.tab_stops);
-                state.last_char = char;
-                state.prev_style = None;
+                cursor.x += len;
+                last_char = char;
+                prev_style = None;
             } else if let TextBit::Tag(tag) = bit {
-                trigger_tag(tag, &mut state, stdout);
+                (show_cursor, prev_style) =
+                    trigger_tag(tag, show_cursor, is_active, &mut form_former, stdout);
             }
         }
+        final_cursor = cursor;
     }
 
-    (final_cursor, state.show_cursor)
+    (final_cursor, show_cursor)
 }
 
-fn print_char(cursor: Coord, char: char, state: &PrintState, stdout: &mut StdoutLock) {
-    let char = real_char_from(char, &state.cfg, state.last_char);
-    let end = end_from(char, cursor.x, state.info.x_shift(), &state.cfg.tab_stops);
+fn print_char(
+    cursor: Coord, char: char, coords: Coords, x_shift: usize, tab_stops: &TabStops,
+    stdout: &mut StdoutLock
+) -> u16 {
+    let len = len_from(char, cursor.x, x_shift, tab_stops);
 
-    if end <= state.coords.br.x {
+    if cursor.x + len <= coords.br.x {
         let _ = match char {
-            '\t' => queue!(stdout, Print(" ".repeat((end - cursor.x) as usize))),
+            '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
             char => queue!(stdout, Print(char))
         };
-    } else if cursor.x < state.coords.br.x {
-        let width = state.coords.br.x - cursor.x;
+    } else if cursor.x < coords.br.x {
+        let width = coords.br.x - cursor.x;
         let _ = queue!(stdout, Print(" ".repeat(width as usize)));
     }
 
-    if let Some(style) = state.prev_style {
-        let _ = queue!(stdout, ResetColor, SetStyle(style));
-    }
+    len
 }
 
-fn trigger_tag(tag: Tag, state: &mut PrintState, stdout: &mut StdoutLock) {
+fn trigger_tag(
+    tag: Tag, show_cursor: bool, is_active: bool, form_former: &mut FormFormer,
+    stdout: &mut StdoutLock
+) -> (bool, Option<ContentStyle>) {
+    let mut prev_style = None;
+    let mut cursor_shown = false;
+
     match tag {
         Tag::PushForm(id) => {
-            let _ = queue!(stdout, SetStyle(state.form_former.apply(id).style));
+            let _ = queue!(stdout, SetStyle(form_former.apply(id).style));
         }
         Tag::PopForm(id) => {
-            let _ = queue!(stdout, SetStyle(state.form_former.remove(id).style));
+            let _ = queue!(stdout, SetStyle(form_former.remove(id).style));
         }
         Tag::MainCursor => {
-            let cursor = state.form_former.main_cursor();
-            if let (Some(caret), true) = (cursor.caret, state.is_active) {
+            let cursor = form_former.main_cursor();
+            if let (Some(caret), true) = (cursor.caret, is_active) {
                 let _ = queue!(stdout, caret, SavePosition);
-                state.show_cursor = true;
+                cursor_shown = true || show_cursor;
             } else {
-                state.prev_style = Some(state.form_former.make_form().style);
+                prev_style = Some(form_former.make_form().style);
                 let _ = queue!(stdout, SetStyle(cursor.form.style));
             }
         }
         Tag::ExtraCursor => {
-            let _ = queue!(stdout, SetStyle(state.form_former.extra_cursor().form.style));
+            let _ = queue!(stdout, SetStyle(form_former.extra_cursor().form.style));
         }
         Tag::HoverBound => todo!(),
         Tag::PermanentConceal { .. } => todo!()
     }
+
+    (cursor_shown, prev_style)
 }
 
-fn real_char_from(char: char, print_cfg: &PrintCfg, last_char: char) -> char {
+fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
     match char {
-        '\n' => match print_cfg.new_line {
+        '\n' => match *new_line {
             NewLine::Blank => ' ',
             NewLine::AlwaysAs(char) => char,
             NewLine::AfterSpaceAs(char) => {
@@ -445,7 +473,7 @@ fn clear_line(cursor: Coord, coords: Coords, stdout: &mut StdoutLock) {
     queue!(
         stdout,
         ResetColor,
-        Print(" ".repeat(coords.br.x.saturating_sub(cursor.x + 1) as usize))
+        Print(" ".repeat(coords.br.x.saturating_sub(cursor.x) as usize))
     )
     .unwrap();
 }
