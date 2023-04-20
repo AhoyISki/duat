@@ -759,6 +759,26 @@ impl Default for ScrollOff {
     }
 }
 
+#[derive(Clone)]
+pub struct WordChars(Vec<RangeInclusive<char>>);
+
+impl WordChars {
+    pub fn new(ranges: Vec<RangeInclusive<char>>) -> Self {
+        let word_chars = WordChars(ranges);
+
+        assert!(
+            ![' ', '\t', '\n'].into_iter().any(|char| word_chars.contains(char)),
+            "WordChars cannot contain ' ', '\\n' or '\\t'."
+        );
+
+        word_chars
+    }
+
+    pub fn contains(&self, char: char) -> bool {
+        self.0.iter().any(|chars| chars.contains(&char))
+    }
+}
+
 /// Configuration options for printing.
 #[derive(Clone)]
 pub struct PrintCfg {
@@ -766,16 +786,16 @@ pub struct PrintCfg {
     pub wrap_method: WrapMethod,
     /// Wether to indent wrapped lines or not.
     pub indent_wrap: bool,
-    /// Wether (and how) to show new lines.
-    pub new_line: NewLine,
     /// Which places are considered a "tab stop".
     pub tab_stops: TabStops,
-    /// Thetab_len_atzontal and vertical gaps between the main
+    /// Wether (and how) to show new lines.
+    pub new_line: NewLine,
+    /// The horizontal and vertical gaps between the main
     /// cursor and the edges of a [`Label`][crate::ui::Label].
     pub scrolloff: ScrollOff,
     // NOTE: This is relevant for printing with `WrapMethod::Word`.
     /// Characters that are considered to be part of a word.
-    pub word_chars: Vec<RangeInclusive<char>>
+    pub word_chars: WordChars
 }
 
 impl Default for PrintCfg {
@@ -786,25 +806,7 @@ impl Default for PrintCfg {
             new_line: NewLine::default(),
             tab_stops: TabStops::Regular(4),
             scrolloff: ScrollOff::default(),
-            word_chars: vec!['A'..='Z', 'a'..='z', '_'..='_']
+            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '_'..='_'])
         }
-    }
-}
-
-impl PrintCfg {
-    /// Wether or not the given [`char`] is considered part of a word.
-    pub fn is_word_char(&self, char: char) -> bool {
-        self.word_chars.iter().any(|char_range| char_range.contains(&char))
-    }
-
-    /// How many ` `s would be inserted by a tab at the given
-    /// position.
-    pub fn spaces_at(&self, x: usize) -> usize {
-        self.tab_stops.spaces_at(x)
-    }
-
-    /// The [`char`] chosen to replace '\n', given a `last_char`.
-    pub fn new_line_char(&self, last_char: char) -> char {
-        self.new_line.new_line_char(last_char)
     }
 }

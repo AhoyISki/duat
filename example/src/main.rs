@@ -57,7 +57,7 @@ fn main() {
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::Word,
+        wrap_method: WrapMethod::NoWrap,
         ..PrintCfg::default()
     };
 
@@ -74,23 +74,23 @@ fn main() {
         print_cfg,
         palette,
         Box::new(move |mut mod_node, file| {
-            // let push_specs = PushSpecs::new(Side::Left,
-            // Split::Locked(1)); let sep_form =
-            // SepForm::uniform(mod_node.palette(), "VertRule");
-            // let cfg = VertRuleCfg::new(SepChar::Uniform('┃'),
-            // sep_form);
-            // mod_node.push_widget(VertRule::config_fn(file.clone(),
-            // cfg), push_specs);
+            let push_specs = PushSpecs::new(Side::Left,
+            Split::Locked(1)); let sep_form =
+            SepForm::uniform(mod_node.palette(), "VertRule");
+            let cfg = VertRuleCfg::new(SepChar::Uniform('┃'),
+            sep_form);
+            mod_node.push_widget(VertRule::config_fn(file.clone(),
+            cfg), push_specs);
 
-            // let push_specs = PushSpecs::new(Side::Left,
-            // Split::Locked(1));
-            // mod_node.push_widget(LineNumbers::default_fn(file.
-            // clone()), push_specs);
+            let push_specs = PushSpecs::new(Side::Left,
+            Split::Locked(1));
+            mod_node.push_widget(LineNumbers::default_fn(file.
+            clone()), push_specs);
 
-            // let push_specs = PushSpecs::new(Side::Bottom,
-            // Split::Locked(1));
-            // mod_node.push_widget(StatusLine::default_fn(file),
-            // push_specs);
+            let push_specs = PushSpecs::new(Side::Bottom,
+            Split::Locked(1));
+            mod_node.push_widget(StatusLine::default_fn(file),
+            push_specs);
         })
     );
 
