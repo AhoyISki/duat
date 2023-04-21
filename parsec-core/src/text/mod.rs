@@ -16,7 +16,7 @@ use crate::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui}
+    ui::{Area, Label, Ui}, log_info
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -515,7 +515,7 @@ where
             Some((index, TextBit::Tag(tag)))
         } else if let Some(char) = self.chars.next() {
             self.cur_char += 1;
-            Some((self.cur_char, TextBit::Char(char)))
+            Some((self.cur_char - 1, TextBit::Char(char)))
         } else {
             None
         }
@@ -559,22 +559,22 @@ impl PrintInfo {
     where
         U: Ui
     {
-        let max_dist = cfg.scrolloff.y_gap;
+        let max_dist = cfg.scrolloff.y_gap + 1;
 
         let mut accum = 0;
         for index in (0..=target.true_row()).rev() {
-            let line_char = text.inner.line_to_char(target.true_row());
+            let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
             let line = text.iter_line(index).take(target.true_char() - line_char);
 
             accum += 1 + label.wrap_count(line, cfg);
-            if accum >= max_dist && line_char >= self.first_char {
-                return;
-            } else if accum >= max_dist {
+            if accum >= max_dist && line_char < self.first_char {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index).take(target.true_char() - line_char);
+                let line = text.iter_line(index).take((target.true_char() - line_char).max(1));
                 self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
-                return;
+                break;
+            } else if accum >= max_dist {
+                break;
             }
         }
 
@@ -592,25 +592,23 @@ impl PrintInfo {
         U: Ui
     {
         let max_dist = label.area().height() - cfg.scrolloff.y_gap;
-        let mut lines_to_top = target.true_row() - text.inner.char_to_line(self.first_char);
 
         let mut accum = 0;
-        for index in 0..=target.true_row() {
-            let line_char = text.inner.line_to_char(target.true_row());
+        for index in (0..=target.true_row()).rev() {
+            let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
             let line = text.iter_line(index).take(target.true_char() - line_char);
 
-            lines_to_top = lines_to_top.saturating_sub(1);
             accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index).take(target.true_char() - line_char);
+                let line = text.iter_line(index).take((target.true_char() - line_char).max(1));
                 self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             // We have reached the top of the screen before the accum
             // equaled gap. This means that no scrolling
             // actually needs to take place.
-            } else if lines_to_top == 0 {
+            } else if line_char < self.first_char {
                 break;
             }
         }
@@ -634,18 +632,18 @@ impl PrintInfo {
 
     /// Updates the print info, according to a [`Config`]'s
     /// specifications.
-    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, print_cfg: &PrintCfg)
+    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
     where
         U: Ui
     {
-        if let WrapMethod::NoWrap = print_cfg.wrap_method {
-            self.scroll_hor_to_gap::<U>(target, text, label, print_cfg);
+        if let WrapMethod::NoWrap = cfg.wrap_method {
+            self.scroll_hor_to_gap::<U>(target, text, label, cfg);
         }
 
         if target < self.last_main {
-            self.scroll_up_to_gap::<U>(target, text, label, print_cfg);
+            self.scroll_up_to_gap::<U>(target, text, label, cfg);
         } else if target > self.last_main {
-            self.scroll_down_to_gap::<U>(target, text, label, print_cfg);
+            self.scroll_down_to_gap::<U>(target, text, label, cfg);
         }
 
         self.last_main = target;

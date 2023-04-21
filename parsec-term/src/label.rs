@@ -43,6 +43,8 @@ impl ui::Label<Area> for Label {
         let coords = self.area.coords();
 
         let form_former = palette.form_former();
+        let iter =
+            iter.filter(|(index, bit)| *index >= info.first_char() || bit.as_char().is_none());
         let indents = indents(iter, &cfg.tab_stops, self.area.width());
         let (mut cursor, show_cursor) = match cfg.wrap_method {
             WrapMethod::NoWrap | WrapMethod::Width => {
@@ -83,7 +85,7 @@ impl ui::Label<Area> for Label {
         };
         let top_y = self.area.tl().y;
 
-        let indents = indents(iter, &cfg.tab_stops, self.area.width());
+        let indents = indents(iter, &cfg.tab_stops, coords.width());
         let bottom_y = match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 coords_iter(indents, coords, 0, &cfg.tab_stops, false)
@@ -91,8 +93,7 @@ impl ui::Label<Area> for Label {
                     .map(|(coord, ..)| coord.y)
             }
             WrapMethod::Word => {
-                let mut words = words(indents, &cfg.word_chars, self.area.width());
-                words.next();
+                let words = words(indents, &cfg.word_chars, coords.width());
                 coords_iter(words, coords, 0, &cfg.tab_stops, false)
                     .last()
                     .map(|(coord, ..)| coord.y)
@@ -113,7 +114,7 @@ impl ui::Label<Area> for Label {
         let top_y = self.area.tl().y;
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                let indents = indents(iter, &cfg.tab_stops, self.area.width());
+                let indents = indents(iter, &cfg.tab_stops, coords.width());
                 coords_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .flat_map(|(coord, once)| once.bits().map(move |inner| (coord, inner)))
                     .find(|(coord, ..)| coord.y == top_y + wrap as u16)
@@ -121,8 +122,8 @@ impl ui::Label<Area> for Label {
             }
 
             WrapMethod::Word => {
-                let indents = indents(iter, &cfg.tab_stops, self.area.width());
-                let words = words(indents, &cfg.word_chars, self.area.width());
+                let indents = indents(iter, &cfg.tab_stops, coords.width());
+                let words = words(indents, &cfg.word_chars, coords.width());
                 coords_iter(words, coords, 0, &cfg.tab_stops, false)
                     .flat_map(|(coord, word)| word.bits().map(move |inner| (coord, inner)))
                     .find(|(coord, ..)| coord.y == top_y + wrap as u16)
