@@ -40,21 +40,23 @@ impl ui::Label<Area> for Label {
         let mut stdout = io::stdout().lock();
         let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
-        let coords = self.area.coords();
+        let coords = match cfg.wrap_method {
+            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
+            _ => self.area.coords()
+        };
 
         let form_former = palette.form_former();
         let iter =
             iter.filter(|(index, bit)| *index >= info.first_char() || bit.as_char().is_none());
         let indents = indents(iter, &cfg.tab_stops, self.area.width());
         let (mut cursor, show_cursor) = match cfg.wrap_method {
-            WrapMethod::NoWrap | WrapMethod::Width => {
+            WrapMethod::NoWrap | WrapMethod::Width | WrapMethod::Capped(_) => {
                 print(indents, coords, self.is_active, info, &cfg, form_former, &mut stdout)
             }
             WrapMethod::Word => {
                 let words = words(indents, &cfg.word_chars, self.area.width());
                 print(words, coords, self.is_active, info, &cfg, form_former, &mut stdout)
             }
-            WrapMethod::Capped(_) => todo!()
         };
 
         let mut stdout = io::stdout().lock();
