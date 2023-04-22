@@ -51,15 +51,15 @@ impl ui::Label<Area> for Label {
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, &cfg.word_chars, self.area.width());
-            let iter = coords_iter(words, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
+            let iter = width_iter(words, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
             print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = coords_iter(indents, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
+            let iter = width_iter(indents, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
             print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
         let mut stdout = io::stdout().lock();
-        while mod_coords.br.y > cursor.y + 1 {
+        while mod_coords.br.y >= cursor.y {
             clear_line(cursor, mod_coords, &mut stdout);
             cursor.y += 1;
         }
@@ -87,13 +87,13 @@ impl ui::Label<Area> for Label {
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                coords_iter(indents, coords, 0, &cfg.tab_stops, false)
+                width_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, _)| new_line)
                     .count() - 1
             }
             WrapMethod::Word => {
                 let words = words(indents, &cfg.word_chars, coords.width());
-                coords_iter(words, coords, 0, &cfg.tab_stops, false)
+                width_iter(words, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, _)| new_line)
                     .count() - 1
             }
@@ -111,7 +111,7 @@ impl ui::Label<Area> for Label {
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
-                coords_iter(indents, coords, 0, &cfg.tab_stops, false)
+                width_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, ti)| new_line.map(|_| ti))
                     .nth(wrap)
                     .map(|ti| ti.bits().next().map(|(index, _)| index))
@@ -121,7 +121,7 @@ impl ui::Label<Area> for Label {
             WrapMethod::Word => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
                 let words = words(indents, &cfg.word_chars, coords.width());
-                coords_iter(words, coords, 0, &cfg.tab_stops, false)
+                width_iter(words, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, ti)| new_line.map(|_| ti))
                     .nth(wrap)
                     .map(|ti| ti.bits().next().map(|(index, _)| index))
@@ -314,7 +314,7 @@ fn words<'a>(
     })
 }
 
-fn coords_iter<'a, T>(
+fn width_iter<'a, T>(
     iter: impl Iterator<Item = (u16, T)> + 'a, coords: Coords, x_shift: usize,
     tab_stops: &'a TabStops, no_wraps: bool
 ) -> impl Iterator<Item = (Option<u16>, T)> + 'a
