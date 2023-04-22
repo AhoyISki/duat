@@ -133,8 +133,9 @@ where
         self.printed_lines.reserve_exact(height);
 
         let mut accum = 0;
+        let lines_len = self.text.len_lines();
 
-        while accum <= height {
+        while accum <= height && line_num < lines_len {
             let line = self.text.iter_line(line_num).skip(skip);
             let wrap_count = label.wrap_count(line, &self.print_cfg);
             let prev_accum = accum;
@@ -213,12 +214,8 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, label: &U::Label) {
-        self.print_info.update::<U>(
-            self.main_cursor().caret(),
-            &self.text,
-            label,
-            &self.print_cfg
-        );
+        self.print_info
+            .update::<U>(self.main_cursor().caret(), &self.text, label, &self.print_cfg);
         self.set_printed_lines(label);
     }
 

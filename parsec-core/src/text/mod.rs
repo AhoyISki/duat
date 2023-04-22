@@ -16,7 +16,7 @@ use crate::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui}, log_info
+    ui::{Area, Label, Ui}
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -459,9 +459,9 @@ impl std::fmt::Debug for TextBit {
 }
 
 impl TextBit {
-    pub fn as_char(&self) -> Option<&char> {
+    pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {
-            Some(v)
+            Some(*v)
         } else {
             None
         }
