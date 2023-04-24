@@ -16,8 +16,7 @@ use crate::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui}
-};
+    ui::{Area, Label, Ui}};
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
 /// to it.

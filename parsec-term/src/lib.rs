@@ -1,4 +1,4 @@
-#![feature(stmt_expr_attributes, option_as_slice)]
+#![feature(result_option_inspect)]
 
 use std::{
     fmt::Debug,

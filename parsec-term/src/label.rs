@@ -89,13 +89,15 @@ impl ui::Label<Area> for Label {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 width_iter(indents, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, _)| new_line)
-                    .count() - 1
+                    .count()
+                    - 1
             }
             WrapMethod::Word => {
                 let words = words(indents, &cfg.word_chars, coords.width());
                 width_iter(words, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, _)| new_line)
-                    .count() - 1
+                    .count()
+                    - 1
             }
             WrapMethod::NoWrap => 0
         }
@@ -112,10 +114,11 @@ impl ui::Label<Area> for Label {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
                 width_iter(indents, coords, 0, &cfg.tab_stops, false)
-                    .filter_map(|(new_line, ti)| new_line.map(|_| ti))
-                    .nth(wrap)
-                    .map(|ti| ti.bits().next().map(|(index, _)| index))
+                    .filter_map(|(new_line, ti)| {
+                        new_line.map(|_| ti.bits().next().map(|(index, _)| index))
+                    })
                     .flatten()
+                    .nth(wrap)
             }
 
             WrapMethod::Word => {
@@ -324,20 +327,20 @@ where
     iter.scan((coords.tl.x, true), move |(x, new_line), (indent, ti)| {
         let is_new_line = ti.is_new_line();
 
-        let start = *x;
         let len = ti.len_from(*x, x_shift, &tab_stops);
         *x += len;
         // A tag (with `len == 0`) at the end of a line should be wrapped.
         if !no_wraps && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
-            *new_line = start > indent;
+            *new_line = *x - len > coords.tl.x + indent;
             *x = coords.tl.x + indent + len;
         }
 
         let ret = if *new_line {
+            *x = coords.tl.x + indent + len;
             *new_line = false;
-            Some((Some(indent), ti))
+            (Some(indent), ti)
         } else {
-            Some((None, ti))
+            (None, ti)
         };
 
         if is_new_line {
@@ -345,7 +348,7 @@ where
             *new_line = true;
         }
 
-        ret
+        Some(ret)
     })
 }
 
@@ -357,12 +360,11 @@ where
     T: TextIterable
 {
     let first_char = info.first_char();
+    let x_shift = info.x_shift();
     let mut last_char = 'a';
     let mut cursor = coords.tl;
-
     let mut show_cursor = false;
     let mut prev_style = None;
-
     while let Some((new_line, text_iterable)) = iter.next() {
         if let Some(indent) = new_line {
             clear_line(cursor, coords, stdout);
@@ -374,8 +376,7 @@ where
         for (index, bit) in text_iterable.bits() {
             if let (&TextBit::Char(char), true) = (&bit, index >= first_char) {
                 last_char = real_char_from(char, &cfg.new_line, last_char);
-                cursor.x +=
-                    print_char(cursor, last_char, coords, info.x_shift(), &cfg.tab_stops, stdout);
+                cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
                 if let Some(style) = prev_style.take() {
                     let _ = queue!(stdout, ResetColor, SetStyle(style));
                 }
