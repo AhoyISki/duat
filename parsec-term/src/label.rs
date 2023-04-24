@@ -60,7 +60,7 @@ impl ui::Label<Area> for Label {
 
         let mut stdout = io::stdout().lock();
         while mod_coords.br.y >= cursor.y {
-            clear_line(cursor, mod_coords, &mut stdout);
+            clear_line(cursor, mod_coords, 0, &mut stdout);
             cursor.y += 1;
         }
 
@@ -135,9 +135,22 @@ impl ui::Label<Area> for Label {
     }
 
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
-        iter.filter_map(|(_, bit)| bit.as_char()).fold(0, |width, char| {
-            width + len_from(char, width as u16, 0, &cfg.tab_stops) as usize
-        })
+        let coords = match cfg.wrap_method {
+            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
+            _ => self.area.coords()
+        };
+        let indents = indents(iter, &cfg.tab_stops, coords.width());
+        let iter = width_iter(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
+        iter.fold(0, |mut width, (new_line, (_, bit))| {
+            if let Some(indent) = new_line {
+                width = indent;
+            }
+            if let TextBit::Char(char) = bit {
+                width += len_from(char, width, 0, &cfg.tab_stops)
+            }
+
+            width
+        }) as usize
     }
 
     fn col_at_dist(
@@ -367,7 +380,7 @@ where
     let mut prev_style = None;
     while let Some((new_line, text_iterable)) = iter.next() {
         if let Some(indent) = new_line {
-            clear_line(cursor, coords, stdout);
+            clear_line(cursor, coords, info.x_shift(), stdout);
             cursor.x = coords.tl.x + indent;
             indent_line(&form_former, cursor, coords, stdout);
             cursor.y += 1;
@@ -407,12 +420,15 @@ fn print_char(
 ) -> u16 {
     let len = len_from(char, cursor.x, x_shift, tab_stops);
 
-    if cursor.x + len <= coords.br.x {
+    if cursor.x < coords.tl.x + x_shift as u16 {
+        let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
+        let _ = queue!(stdout, Print(" ".repeat(len)));
+    } else if cursor.x + len <= coords.br.x + x_shift as u16 {
         let _ = match char {
             '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
             char => queue!(stdout, Print(char))
         };
-    } else if cursor.x < coords.br.x {
+    } else if cursor.x < coords.br.x + x_shift as u16 {
         let width = coords.br.x - cursor.x;
         let _ = queue!(stdout, Print(" ".repeat(width as usize)));
     }
@@ -471,11 +487,7 @@ fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
     }
 }
 
-fn clear_line(cursor: Coord, coords: Coords, stdout: &mut StdoutLock) {
-    queue!(
-        stdout,
-        ResetColor,
-        Print(" ".repeat(coords.br.x.saturating_sub(cursor.x) as usize))
-    )
-    .unwrap();
+fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
+    let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
+    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width())))).unwrap();
 }

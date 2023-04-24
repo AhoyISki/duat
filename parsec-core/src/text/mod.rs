@@ -16,7 +16,8 @@ use crate::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui}};
+    ui::{Area, Label, Ui}
+};
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
 /// to it.
@@ -621,11 +622,9 @@ impl PrintInfo {
         U: Ui
     {
         let max_dist = label.area().width() - cfg.scrolloff.x_gap;
-
-        let line_char = text.inner.line_to_char(target.true_row());
-        let line = text.iter_line(target.true_row()).take(target.true_char() - line_char);
-
+        let line = text.iter_line(target.true_row()).take(target.true_col());
         let target_dist = label.get_width(line, cfg);
+
         self.x_shift = target_dist.saturating_sub(max_dist);
     }
 
