@@ -162,10 +162,9 @@ impl ui::Label<Area> for Label {
             .scan(0, |width, (index, char)| {
                 let old_width = *width as usize;
                 *width += len_from(char, *width, 0, &cfg.tab_stops);
-                Some((index, old_width))
+                if old_width < dist { Some(index) } else { None }
             })
-            .find(|(_, width)| *width >= dist)
-            .map(|(index, _)| index)
+            .last()
             .unwrap_or(0)
     }
 
@@ -297,6 +296,7 @@ fn words<'a>(
             while let Some((new_indent, (_, bit))) = iter.peek() {
                 indent = *new_indent;
                 if let &TextBit::Char(char) = bit {
+                    len += UnicodeWidthChar::width(char).unwrap_or(0) as u16;
                     if char == '\n' || !word_chars.contains(char) {
                         if word.is_empty() {
                             word.push(iter.next().map(|(_, insides)| insides).unwrap());
@@ -304,16 +304,16 @@ fn words<'a>(
                         break;
                     // Case where the word will not fit, no matter
                     // what.
-                    } else if len >= width - indent {
+                    } else if len > width - indent {
                         word_bits = std::mem::take(&mut word);
+                        word_bits.reverse();
                         word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
                         break;
                     } else {
-                        len += UnicodeWidthChar::width(char).unwrap_or(0) as u16;
                         word.push(iter.next().map(|(_, insides)| insides).unwrap());
                     }
                 } else {
-                    if len >= width - indent {
+                    if len > width - indent {
                         word_bits = word.drain(..).rev().collect();
                         word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
                         break;

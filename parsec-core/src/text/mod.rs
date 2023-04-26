@@ -605,10 +605,10 @@ impl PrintInfo {
                 let line = text.iter_line(index).take(1 + target.true_char() - line_char);
                 self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
-            // We have reached the top of the screen before the accum
-            // equaled gap. This means that no scrolling
+            // We have reached the top of the screen before `accum`
+            // equaled `max_dist`. This means that no scrolling
             // actually needs to take place.
-            } else if line_char < self.first_char {
+            } else if line_char <= self.first_char {
                 break;
             }
         }

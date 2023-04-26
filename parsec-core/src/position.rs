@@ -161,10 +161,10 @@ impl Cursor {
         caret.char = caret.char.saturating_add_signed(count);
         caret.byte = text.inner.char_to_byte(caret.char);
         caret.row = text.inner.char_to_line(caret.char);
-        let line_ch = text.inner.line_to_char(caret.row);
-        caret.col = caret.char - line_ch;
+        let line_char = text.inner.line_to_char(caret.row);
+        caret.col = caret.char - line_char;
 
-        self.desired_x = label.get_width(text.iter_range(line_ch..caret.char), cfg);
+        self.desired_x = label.get_width(text.iter_range(line_char..=caret.char), cfg);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
