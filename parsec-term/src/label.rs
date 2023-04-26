@@ -141,10 +141,11 @@ impl ui::Label<Area> for Label {
         };
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         let iter = width_iter(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
-        iter.fold(0, |mut width, (new_line, (_, bit))| {
-            if let Some(indent) = new_line {
+        iter.fold(0, |mut width, (cr, (_, bit))| {
+            if let Some(indent) = cr {
                 width = indent;
-            }
+            };
+
             if let TextBit::Char(char) = bit {
                 width += len_from(char, width, 0, &cfg.tab_stops)
             }
@@ -344,16 +345,16 @@ where
         *x += len;
         // A tag (with `len == 0`) at the end of a line should be wrapped.
         if !no_wraps && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
-            *new_line = *x - len > coords.tl.x + indent;
+            *new_line =  *x - len > coords.tl.x + indent;
             *x = coords.tl.x + indent + len;
         }
 
-        let ret = if *new_line {
+        let cr = if *new_line {
             *x = coords.tl.x + indent + len;
             *new_line = false;
-            (Some(indent), ti)
+            Some(indent)
         } else {
-            (None, ti)
+            None
         };
 
         if is_new_line {
@@ -361,7 +362,7 @@ where
             *new_line = true;
         }
 
-        Some(ret)
+        Some((cr, ti))
     })
 }
 
@@ -378,11 +379,11 @@ where
     let mut cursor = coords.tl;
     let mut show_cursor = false;
     let mut prev_style = None;
-    while let Some((new_line, text_iterable)) = iter.next() {
-        if let Some(indent) = new_line {
+    while let Some((cr, text_iterable)) = iter.next() {
+        if let Some(indent) = cr {
             clear_line(cursor, coords, info.x_shift(), stdout);
             cursor.x = coords.tl.x + indent;
-            indent_line(&form_former, cursor, coords, stdout);
+            indent_line(&form_former, cursor, coords, x_shift, stdout);
             cursor.y += 1;
         }
 
@@ -407,9 +408,12 @@ where
     (cursor, show_cursor)
 }
 
-fn indent_line(form_former: &FormFormer, cursor: Coord, coords: Coords, stdout: &mut StdoutLock) {
+fn indent_line(
+    form_former: &FormFormer, cursor: Coord, coords: Coords, x_shift: usize,
+    stdout: &mut StdoutLock
+) {
     let prev_style = form_former.make_form().style;
-    let indent = " ".repeat((cursor.x - coords.tl.x) as usize);
+    let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
     let (x, y) = (coords.tl.x, cursor.y);
     let _ = queue!(stdout, ResetColor, MoveTo(x, y), Print(indent), SetStyle(prev_style));
 }

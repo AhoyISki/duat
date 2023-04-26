@@ -621,11 +621,15 @@ impl PrintInfo {
     ) where
         U: Ui
     {
-        let max_dist = label.area().width() - cfg.scrolloff.x_gap;
         let line = text.iter_line(target.true_row()).take(target.true_col());
         let target_dist = label.get_width(line, cfg);
-
-        self.x_shift = target_dist.saturating_sub(max_dist);
+        let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
+        let min_dist = self.x_shift + cfg.scrolloff.x_gap;
+        if target_dist > self.x_shift + max_dist {
+            self.x_shift = target_dist - max_dist;
+        } else if target_dist < min_dist {
+            self.x_shift = self.x_shift.saturating_sub(min_dist - target_dist);
+        }
     }
 
     /// Updates the print info, according to a [`Config`]'s
@@ -634,10 +638,7 @@ impl PrintInfo {
     where
         U: Ui
     {
-        if let WrapMethod::NoWrap = cfg.wrap_method {
-            self.scroll_hor_to_gap::<U>(target, text, label, cfg);
-        }
-
+        self.scroll_hor_to_gap::<U>(target, text, label, cfg);
         if target < self.last_main {
             self.scroll_up_to_gap::<U>(target, text, label, cfg);
         } else if target > self.last_main {
