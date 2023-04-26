@@ -312,12 +312,9 @@ fn words<'a>(
                     } else {
                         word.push(iter.next().map(|(_, insides)| insides).unwrap());
                     }
+                } else if len >= width - indent {
+                    break;
                 } else {
-                    if len > width - indent {
-                        word_bits = word.drain(..).rev().collect();
-                        word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
-                        break;
-                    }
                     word.push(iter.next().map(|(_, insides)| insides).unwrap());
                 }
             }
