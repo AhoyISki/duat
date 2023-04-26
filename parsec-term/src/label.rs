@@ -345,7 +345,7 @@ where
         *x += len;
         // A tag (with `len == 0`) at the end of a line should be wrapped.
         if !no_wraps && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
-            *new_line =  *x - len > coords.tl.x + indent;
+            *new_line = *x - len > coords.tl.x + indent;
             *x = coords.tl.x + indent + len;
         }
 
@@ -382,6 +382,9 @@ where
     while let Some((cr, text_iterable)) = iter.next() {
         if let Some(indent) = cr {
             clear_line(cursor, coords, info.x_shift(), stdout);
+            if cursor.y + 1 > coords.br.y {
+                break;
+            }
             cursor.x = coords.tl.x + indent;
             indent_line(&form_former, cursor, coords, x_shift, stdout);
             cursor.y += 1;
@@ -398,10 +401,6 @@ where
                 (show_cursor, prev_style) =
                     trigger_tag(tag, show_cursor, is_active, &mut form_former, stdout);
             }
-        }
-
-        if cursor.y > coords.br.y {
-            break;
         }
     }
 
