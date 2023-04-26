@@ -11,6 +11,7 @@ use ropey::Rope;
 use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     history::Change,
+    log_info,
     position::{Cursor, Pos},
     tags::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
@@ -307,17 +308,16 @@ where
 
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(
-        &self, label: &mut U::Label, print_info: PrintInfo, print_cfg: PrintCfg,
-        palette: &FormPalette
+        &self, label: &mut U::Label, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette
     ) {
         let cur_char = {
-            let first_line = self.inner.char_to_line(print_info.first_char);
+            let first_line = self.inner.char_to_line(info.first_char);
             self.inner.line_to_char(first_line)
         };
 
         let text_iter = self.iter_range(cur_char..);
 
-        label.print(text_iter, print_info, print_cfg, palette);
+        label.print(text_iter, info, cfg, palette);
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -621,7 +621,19 @@ impl PrintInfo {
     ) where
         U: Ui
     {
-        
+        let max_x_shift = match cfg.wrap_method {
+            WrapMethod::Width | WrapMethod::Word => return,
+            WrapMethod::Capped(cap) => {
+                let width = label.area().width();
+                if cap > width {
+                    cap - label.area().width()
+                } else {
+                    return;
+                }
+            }
+            WrapMethod::NoWrap => usize::MAX
+        };
+
         let line = text.iter_line(target.true_row()).take(target.true_col() + 1);
         let target_dist = label.get_width(line, cfg);
         let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
@@ -631,6 +643,8 @@ impl PrintInfo {
         } else if target_dist > self.x_shift + max_dist {
             self.x_shift = target_dist - max_dist;
         }
+
+        self.x_shift = self.x_shift.min(max_x_shift);
     }
 
     /// Updates the print info, according to a [`Config`]'s

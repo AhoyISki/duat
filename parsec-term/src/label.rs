@@ -30,6 +30,13 @@ impl Label {
             is_active: false
         }
     }
+
+    fn wrapping_coords(&self, cfg: &PrintCfg) -> Coords {
+        match cfg.wrap_method {
+            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
+            _ => self.area.coords()
+        }
+    }
 }
 
 impl ui::Label<Area> for Label {
@@ -41,11 +48,8 @@ impl ui::Label<Area> for Label {
         let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
-        let mod_coords = match cfg.wrap_method {
-            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
-            _ => self.area.coords()
-        };
-        let indents = indents(iter, &cfg.tab_stops, self.area.width())
+        let mod_coords = self.wrapping_coords(&cfg);
+        let indents = indents(iter, &cfg.tab_stops, mod_coords.width())
             .filter(|(_, (index, bit))| *index >= info.first_char() || bit.as_char().is_none());
 
         let form_former = palette.form_former();
@@ -59,7 +63,7 @@ impl ui::Label<Area> for Label {
         };
 
         let mut stdout = io::stdout().lock();
-        while mod_coords.br.y >= cursor.y {
+        while mod_coords.br.y > cursor.y {
             clear_line(cursor, mod_coords, 0, &mut stdout);
             cursor.y += 1;
         }
@@ -80,10 +84,7 @@ impl ui::Label<Area> for Label {
     }
 
     fn wrap_count(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
-        let coords = match cfg.wrap_method {
-            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
-            _ => self.area.coords()
-        };
+        let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
@@ -106,10 +107,7 @@ impl ui::Label<Area> for Label {
     fn char_at_wrap(
         &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
-        let coords = match cfg.wrap_method {
-            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
-            _ => self.area.coords()
-        };
+        let coords = self.wrapping_coords(cfg);
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
@@ -135,10 +133,7 @@ impl ui::Label<Area> for Label {
     }
 
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
-        let coords = match cfg.wrap_method {
-            WrapMethod::Capped(cap) => self.area.coords().from_tl(cap, self.area.height()),
-            _ => self.area.coords()
-        };
+        let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         let iter = width_iter(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
         iter.fold(0, |mut width, (cr, (_, bit))| {
@@ -370,15 +365,16 @@ fn print<T>(
 where
     T: TextIterable
 {
-    let first_char = info.first_char();
     let x_shift = info.x_shift();
     let mut last_char = 'a';
     let mut cursor = coords.tl;
     let mut show_cursor = false;
     let mut prev_style = None;
+
     while let Some((cr, text_iterable)) = iter.next() {
         if let Some(indent) = cr {
             clear_line(cursor, coords, info.x_shift(), stdout);
+
             if cursor.y + 1 > coords.br.y {
                 break;
             }
@@ -387,8 +383,8 @@ where
             cursor.y += 1;
         }
 
-        for (index, bit) in text_iterable.bits() {
-            if let (&TextBit::Char(char), true) = (&bit, index >= first_char) {
+        for (_, bit) in text_iterable.bits() {
+            if let &TextBit::Char(char) = &bit {
                 last_char = real_char_from(char, &cfg.new_line, last_char);
                 cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
                 if let Some(style) = prev_style.take() {
@@ -411,7 +407,7 @@ fn indent_line(
     let prev_style = form_former.make_form().style;
     let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
     let (x, y) = (coords.tl.x, cursor.y);
-    let _ = queue!(stdout, ResetColor, MoveTo(x, y), Print(indent), SetStyle(prev_style));
+    let _ = queue!(stdout, MoveTo(x, y), Print(indent), SetStyle(prev_style));
 }
 
 fn print_char(
