@@ -6,14 +6,14 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
+    log_info,
     tags::{
         form::{FormFormer, FormPalette},
         Tag
     },
-    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, WordChars, WrapMethod},
+    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, WrapMethod},
     ui::{self, Area as UiArea}
 };
-use smallvec::{smallvec, SmallVec};
 use unicode_width::UnicodeWidthChar;
 
 use crate::{Area, Coord, Coords};
@@ -49,16 +49,16 @@ impl ui::Label<Area> for Label {
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
         let mod_coords = self.wrapping_coords(&cfg);
+        let first_char = info.first_char();
         let indents = indents(iter, &cfg.tab_stops, mod_coords.width())
-            .filter(|(_, (index, bit))| *index >= info.first_char() || bit.as_char().is_none());
+            .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
 
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
-            let words = words(indents, &cfg.word_chars, self.area.width());
-            let iter = width_iter(words, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
-            print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
+            let words = words(indents, &cfg, self.area.width(), info.x_shift());
+            print(words, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = width_iter(indents, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
+            let iter = bits(indents, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
             print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
@@ -88,14 +88,13 @@ impl ui::Label<Area> for Label {
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                width_iter(indents, coords, 0, &cfg.tab_stops, false)
+                bits(indents, coords, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, _)| new_line)
                     .count()
                     - 1
             }
             WrapMethod::Word => {
-                let words = words(indents, &cfg.word_chars, coords.width());
-                width_iter(words, coords, 0, &cfg.tab_stops, false)
+                words(indents, &cfg, coords.width(), 0)
                     .filter_map(|(new_line, _)| new_line)
                     .count()
                     - 1
@@ -104,29 +103,26 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn char_at_wrap(
+    fn col_at_wrap(
         &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
         let coords = self.wrapping_coords(cfg);
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
-                width_iter(indents, coords, 0, &cfg.tab_stops, false)
-                    .filter_map(|(new_line, ti)| {
-                        new_line.map(|_| ti.bits().next().map(|(index, _)| index))
-                    })
-                    .flatten()
+                bits(indents, coords, 0, &cfg.tab_stops, false)
+                    .filter_map(|(new_line, bit)| bit.as_char().map(|_| new_line))
+                    .enumerate()
+                    .filter_map(|(index, new_line)| new_line.map(|_| index))
                     .nth(wrap)
             }
-
             WrapMethod::Word => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
-                let words = words(indents, &cfg.word_chars, coords.width());
-                width_iter(words, coords, 0, &cfg.tab_stops, false)
-                    .filter_map(|(new_line, ti)| new_line.map(|_| ti))
+                words(indents, cfg, coords.width(), 0)
+                    .filter_map(|(new_line, bit)| bit.as_char().map(|_| new_line))
+                    .enumerate()
+                    .filter_map(|(index, new_line)| new_line.map(|_| index))
                     .nth(wrap)
-                    .map(|ti| ti.bits().next().map(|(index, _)| index))
-                    .flatten()
             }
             WrapMethod::NoWrap => iter.next().map(|(index, _)| index)
         }
@@ -135,9 +131,9 @@ impl ui::Label<Area> for Label {
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
-        let iter = width_iter(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
-        iter.fold(0, |mut width, (cr, (_, bit))| {
-            if let Some(indent) = cr {
+        let iter = bits(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
+        iter.fold(0, |mut width, (new_line, bit)| {
+            if let Some(indent) = new_line {
                 width = indent;
             };
 
@@ -179,86 +175,11 @@ fn len_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16
     }
 }
 
-fn indent_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
-    match char {
-        '\t' | ' ' => len_from(char, start, x_shift, tab_stops),
-        _ => 0
-    }
-}
-
-trait TextIterable {
-    type Iterator: Iterator<Item = (usize, TextBit)>;
-    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16;
-
-    fn is_new_line(&self) -> bool;
-
-    fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16>;
-
-    fn bits(self) -> Self::Iterator;
-}
-
-impl TextIterable for (usize, TextBit) {
-    type Iterator = std::iter::Once<(usize, TextBit)>;
-
-    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
-        self.1
-            .as_char()
-            .map(|char| len_from(char, start, x_shift, tab_stops))
-            .unwrap_or(0)
-    }
-
-    fn is_new_line(&self) -> bool {
-        self.1.as_char().is_some_and(|char| char == '\n')
-    }
-
-    fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16> {
-        self.1.as_char().map(|char| indent_from(char, start, x_shift, tab_stops))
-    }
-
-    fn bits(self) -> Self::Iterator {
-        std::iter::once(self)
-    }
-}
-
-impl TextIterable for SmallVec<[(usize, TextBit); 32]> {
-    type Iterator = smallvec::IntoIter<[(usize, TextBit); 32]>;
-
-    fn len_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
-        self.iter()
-            .filter_map(|(_, bit)| bit.as_char())
-            .scan(0, |x, char| {
-                *x += len_from(char, start + *x, x_shift, tab_stops);
-                Some(*x)
-            })
-            .last()
-            .unwrap_or(0)
-    }
-
-    fn is_new_line(&self) -> bool {
-        self.first()
-            .is_some_and(|(_, bit)| bit.as_char().is_some_and(|char| char == '\n'))
-    }
-
-    fn indent_from(&self, start: u16, x_shift: usize, tab_stops: &TabStops) -> Option<u16> {
-        self.iter()
-            .filter_map(|(_, bit)| bit.as_char())
-            .scan(0, |x, char| {
-                *x = indent_from(char, start + *x, x_shift, tab_stops);
-                Some(*x)
-            })
-            .last()
-    }
-
-    fn bits(self) -> Self::Iterator {
-        self.into_iter()
-    }
-}
-
 /// Returns an [`Iterator`] that also shows the current level of
 /// indentation.
 fn indents<'a>(
     iter: impl Iterator<Item = (usize, TextBit)> + 'a, tab_stops: &'a TabStops, width: usize
-) -> impl Iterator<Item = (u16, (usize, TextBit))> + 'a {
+) -> impl Iterator<Item = (u16, usize, TextBit)> + 'a {
     iter.scan((0, true), move |(indent, on_indent), (index, bit)| {
         let old_indent = if *indent < width { *indent } else { 0 };
         (*indent, *on_indent) = match (&bit, *on_indent) {
@@ -269,110 +190,119 @@ fn indents<'a>(
             (&TextBit::Tag(_), on_indent) => (*indent, on_indent)
         };
 
-        Some((old_indent as u16, (index, bit)))
+        Some((old_indent as u16, index, bit))
     })
 }
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 fn words<'a>(
-    iter: impl Iterator<Item = (u16, (usize, TextBit))> + 'a, word_chars: &'a WordChars,
-    width: usize
-) -> impl Iterator<Item = (u16, SmallVec<[(usize, TextBit); 32]>)> + 'a {
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, cfg: &'a PrintCfg, width: usize,
+    x_shift: usize
+) -> impl Iterator<Item = (Option<u16>, TextBit)> + 'a {
     let mut iter = iter.peekable();
-    let mut word_bits = SmallVec::new();
     let width = width as u16;
     let mut indent = 0;
+    let mut word = Vec::new();
+    let mut finished_word = Vec::<TextBit>::new();
+    let mut x = 0;
+    let mut next_line = true;
     std::iter::from_fn(move || {
-        if let Some(word) = word_bits.pop().map(|insides| smallvec![insides]) {
-            Some((indent, word))
-        } else {
-            let mut len = 0;
-            let mut word = SmallVec::new();
-            while let Some((new_indent, (_, bit))) = iter.peek() {
+        if let Some(bit) = finished_word.pop() {
+            let nl = if let TextBit::Char(char) = bit {
+                let len = len_from(char, x, x_shift, &cfg.tab_stops);
+                let ret = if x + len > width { Some(indent) } else { None };
+                x = ret.map(|indent| indent + len).unwrap_or(x + len);
+                ret
+            } else if x >= width {
+                x = indent;
+                Some(indent)
+            } else {
+                None
+            };
+
+            return Some((nl, bit));
+        }
+
+        let mut word_len = 0;
+        while let Some((new_indent, _, bit)) = iter.peek() {
+            if let &TextBit::Char(char) = bit {
+                let is_word_char = cfg.word_chars.contains(char);
                 indent = *new_indent;
-                if let &TextBit::Char(char) = bit {
-                    len += UnicodeWidthChar::width(char).unwrap_or(0) as u16;
-                    if char == '\n' || !word_chars.contains(char) {
-                        if word.is_empty() {
-                            word.push(iter.next().map(|(_, insides)| insides).unwrap());
-                        }
-                        break;
-                    // Case where the word will not fit, no matter
-                    // what.
-                    } else if len > width - indent {
-                        word_bits = std::mem::take(&mut word);
-                        word_bits.reverse();
-                        word = word_bits.pop().map(|insides| smallvec![insides]).unwrap();
-                        break;
-                    } else {
-                        word.push(iter.next().map(|(_, insides)| insides).unwrap());
-                    }
-                } else if len >= width - indent {
+                if word.is_empty() || is_word_char {
+                    word_len += len_from(char, x + word_len, x_shift, &cfg.tab_stops)
+                }
+                if !is_word_char {
                     break;
-                } else {
-                    word.push(iter.next().map(|(_, insides)| insides).unwrap());
                 }
             }
+            word.push(iter.next().map(|(.., bit)| bit).unwrap());
+        }
 
-            if word.is_empty() {
-                None
-            } else {
-                Some((indent, word))
-            }
+        let nl = if next_line || x + word_len > width {
+            next_line = false;
+            x = indent;
+            Some(indent)
+        // Wrapping not necessary.
+        } else {
+            None
+        };
+
+        if word.is_empty() {
+            iter.next().map(|(.., bit)| {
+                x += word_len;
+                next_line = matches!(bit, TextBit::Char('\n'));
+                (nl, bit)
+            })
+        } else {
+            std::mem::swap(&mut word, &mut finished_word);
+            finished_word.reverse();
+            finished_word.pop().map(|bit| {
+                if let TextBit::Char(char) = bit {
+                    x += len_from(char, x, x_shift, &cfg.tab_stops);
+                }
+                (nl, bit)
+            })
         }
     })
 }
 
-fn width_iter<'a, T>(
-    iter: impl Iterator<Item = (u16, T)> + 'a, coords: Coords, x_shift: usize,
-    tab_stops: &'a TabStops, no_wraps: bool
-) -> impl Iterator<Item = (Option<u16>, T)> + 'a
-where
-    T: TextIterable
-{
-    iter.scan((coords.tl.x, true), move |(x, new_line), (indent, ti)| {
-        let is_new_line = ti.is_new_line();
-
-        let len = ti.len_from(*x, x_shift, &tab_stops);
+fn bits<'a>(
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, coords: Coords, x_shift: usize,
+    tab_stops: &'a TabStops, no_wrap: bool
+) -> impl Iterator<Item = (Option<u16>, TextBit)> + 'a {
+    iter.scan((coords.tl.x, true), move |(x, ret_char), (indent, _, bit)| {
+        let len = bit.as_char().map(|char| len_from(char, *x, x_shift, tab_stops)).unwrap_or(0);
         *x += len;
-        // A tag (with `len == 0`) at the end of a line should be wrapped.
-        if !no_wraps && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
-            *new_line = *x - len > coords.tl.x + indent;
-            *x = coords.tl.x + indent + len;
-        }
 
-        let cr = if *new_line {
+        let nl = if *ret_char || !no_wrap && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
             *x = coords.tl.x + indent + len;
-            *new_line = false;
+            *ret_char = false;
             Some(indent)
         } else {
             None
         };
 
-        if is_new_line {
+        if let TextBit::Char('\n') = bit {
             *x = coords.tl.x;
-            *new_line = true;
+            *ret_char = true;
         }
 
-        Some((cr, ti))
+        Some((nl, bit))
     })
 }
 
-fn print<T>(
-    mut iter: impl Iterator<Item = (Option<u16>, T)>, coords: Coords, is_active: bool,
+fn print(
+    mut iter: impl Iterator<Item = (Option<u16>, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
-) -> (Coord, bool)
-where
-    T: TextIterable
-{
+) -> (Coord, bool) {
     let x_shift = info.x_shift();
     let mut last_char = 'a';
     let mut cursor = coords.tl;
     let mut show_cursor = false;
     let mut prev_style = None;
 
-    while let Some((cr, text_iterable)) = iter.next() {
-        if let Some(indent) = cr {
+    while let Some((nl, bit)) = iter.next() {
+        if let Some(indent) = nl {
             clear_line(cursor, coords, info.x_shift(), stdout);
 
             if cursor.y + 1 > coords.br.y {
@@ -383,17 +313,15 @@ where
             cursor.y += 1;
         }
 
-        for (_, bit) in text_iterable.bits() {
-            if let &TextBit::Char(char) = &bit {
-                last_char = real_char_from(char, &cfg.new_line, last_char);
-                cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
-                if let Some(style) = prev_style.take() {
-                    let _ = queue!(stdout, ResetColor, SetStyle(style));
-                }
-            } else if let TextBit::Tag(tag) = bit {
-                (show_cursor, prev_style) =
-                    trigger_tag(tag, show_cursor, is_active, &mut form_former, stdout);
+        if let &TextBit::Char(char) = &bit {
+            last_char = real_char_from(char, &cfg.new_line, last_char);
+            cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
+            if let Some(style) = prev_style.take() {
+                let _ = queue!(stdout, ResetColor, SetStyle(style));
             }
+        } else if let TextBit::Tag(tag) = bit {
+            (show_cursor, prev_style) =
+                trigger_tag(tag, show_cursor, is_active, &mut form_former, stdout);
         }
     }
 

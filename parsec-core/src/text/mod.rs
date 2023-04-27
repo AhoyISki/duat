@@ -565,13 +565,14 @@ impl PrintInfo {
         for index in (0..=target.true_row()).rev() {
             let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
-            let line = text.iter_line(index).take(1 + target.true_char() - line_char);
+            let line = text.iter_line(index).take_while(|(index, _)| *index <= target.true_char());
 
             accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist && line_char < self.first_char {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index).take(1 + target.true_char() - line_char);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
+                let line = text.iter_line(index);
+                self.first_char =
+                    line_char + label.col_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             } else if accum >= max_dist {
                 break;
@@ -597,13 +598,14 @@ impl PrintInfo {
         for index in (0..=target.true_row()).rev() {
             let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
-            let line = text.iter_line(index).take(1 + target.true_char() - line_char);
+            let line = text.iter_line(index).take_while(|(index, _)| *index <= target.true_char());
 
             accum += 1 + label.wrap_count(line, cfg);
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index).take(1 + target.true_char() - line_char);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
+                let line = text.iter_line(index);
+                self.first_char =
+                    line_char + label.col_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             // We have reached the top of the screen before `accum`
             // equaled `max_dist`. This means that no scrolling
@@ -659,6 +661,8 @@ impl PrintInfo {
         } else if target > self.last_main {
             self.scroll_down_to_gap::<U>(target, text, label, cfg);
         }
+
+        log_info!("\nfirst_char: {}", self.first_char);
 
         self.last_main = target;
     }

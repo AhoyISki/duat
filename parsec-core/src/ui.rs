@@ -55,7 +55,7 @@ where
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
     /// times.
-    fn char_at_wrap(
+    fn col_at_wrap(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize>;
 
