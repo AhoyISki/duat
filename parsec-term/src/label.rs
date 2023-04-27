@@ -6,7 +6,6 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    log_info,
     tags::{
         form::{FormFormer, FormPalette},
         Tag
@@ -83,19 +82,23 @@ impl ui::Label<Area> for Label {
         &self.area
     }
 
-    fn wrap_count(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
+    fn wrap_count(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
+    ) -> usize {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 bits(indents, coords, 0, &cfg.tab_stops, false)
-                    .filter_map(|(new_line, _)| new_line)
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .take_while(|index| *index <= max_index)
                     .count()
                     - 1
             }
             WrapMethod::Word => {
                 words(indents, &cfg, coords.width(), 0)
-                    .filter_map(|(new_line, _)| new_line)
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .take_while(|index| *index <= max_index)
                     .count()
                     - 1
             }
@@ -103,7 +106,7 @@ impl ui::Label<Area> for Label {
         }
     }
 
-    fn col_at_wrap(
+    fn char_at_wrap(
         &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
         let coords = self.wrapping_coords(cfg);
@@ -111,17 +114,13 @@ impl ui::Label<Area> for Label {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
                 bits(indents, coords, 0, &cfg.tab_stops, false)
-                    .filter_map(|(new_line, bit)| bit.as_char().map(|_| new_line))
-                    .enumerate()
-                    .filter_map(|(index, new_line)| new_line.map(|_| index))
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
             WrapMethod::Word => {
                 let indents = indents(iter, &cfg.tab_stops, coords.width());
                 words(indents, cfg, coords.width(), 0)
-                    .filter_map(|(new_line, bit)| bit.as_char().map(|_| new_line))
-                    .enumerate()
-                    .filter_map(|(index, new_line)| new_line.map(|_| index))
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
             WrapMethod::NoWrap => iter.next().map(|(index, _)| index)
@@ -132,7 +131,7 @@ impl ui::Label<Area> for Label {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         let iter = bits(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
-        iter.fold(0, |mut width, (new_line, bit)| {
+        iter.fold(0, |mut width, (new_line, _, bit)| {
             if let Some(indent) = new_line {
                 width = indent;
             };
@@ -198,16 +197,16 @@ fn indents<'a>(
 fn words<'a>(
     iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, cfg: &'a PrintCfg, width: usize,
     x_shift: usize
-) -> impl Iterator<Item = (Option<u16>, TextBit)> + 'a {
+) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let mut iter = iter.peekable();
     let width = width as u16;
     let mut indent = 0;
     let mut word = Vec::new();
-    let mut finished_word = Vec::<TextBit>::new();
+    let mut finished_word = Vec::new();
     let mut x = 0;
     let mut next_line = true;
     std::iter::from_fn(move || {
-        if let Some(bit) = finished_word.pop() {
+        if let Some((index, bit)) = finished_word.pop() {
             let nl = if let TextBit::Char(char) = bit {
                 let len = len_from(char, x, x_shift, &cfg.tab_stops);
                 let ret = if x + len > width { Some(indent) } else { None };
@@ -220,7 +219,7 @@ fn words<'a>(
                 None
             };
 
-            return Some((nl, bit));
+            return Some((nl, index, bit));
         }
 
         let mut word_len = 0;
@@ -235,7 +234,7 @@ fn words<'a>(
                     break;
                 }
             }
-            word.push(iter.next().map(|(.., bit)| bit).unwrap());
+            word.push(iter.next().map(|(_, index, bit)| (index, bit)).unwrap());
         }
 
         let nl = if next_line || x + word_len > width {
@@ -248,19 +247,19 @@ fn words<'a>(
         };
 
         if word.is_empty() {
-            iter.next().map(|(.., bit)| {
+            iter.next().map(|(_, index, bit)| {
                 x += word_len;
                 next_line = matches!(bit, TextBit::Char('\n'));
-                (nl, bit)
+                (nl, index, bit)
             })
         } else {
             std::mem::swap(&mut word, &mut finished_word);
             finished_word.reverse();
-            finished_word.pop().map(|bit| {
+            finished_word.pop().map(|(index, bit)| {
                 if let TextBit::Char(char) = bit {
                     x += len_from(char, x, x_shift, &cfg.tab_stops);
                 }
-                (nl, bit)
+                (nl, index, bit)
             })
         }
     })
@@ -269,8 +268,8 @@ fn words<'a>(
 fn bits<'a>(
     iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, coords: Coords, x_shift: usize,
     tab_stops: &'a TabStops, no_wrap: bool
-) -> impl Iterator<Item = (Option<u16>, TextBit)> + 'a {
-    iter.scan((coords.tl.x, true), move |(x, ret_char), (indent, _, bit)| {
+) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
+    iter.scan((coords.tl.x, true), move |(x, ret_char), (indent, index, bit)| {
         let len = bit.as_char().map(|char| len_from(char, *x, x_shift, tab_stops)).unwrap_or(0);
         *x += len;
 
@@ -287,12 +286,12 @@ fn bits<'a>(
             *ret_char = true;
         }
 
-        Some((nl, bit))
+        Some((nl, index, bit))
     })
 }
 
 fn print(
-    mut iter: impl Iterator<Item = (Option<u16>, TextBit)>, coords: Coords, is_active: bool,
+    mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> (Coord, bool) {
     let x_shift = info.x_shift();
@@ -301,7 +300,7 @@ fn print(
     let mut show_cursor = false;
     let mut prev_style = None;
 
-    while let Some((nl, bit)) = iter.next() {
+    while let Some((nl, _, bit)) = iter.next() {
         if let Some(indent) = nl {
             clear_line(cursor, coords, info.x_shift(), stdout);
 

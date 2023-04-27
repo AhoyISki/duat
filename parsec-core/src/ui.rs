@@ -50,12 +50,14 @@ where
 
     //////////////////// Queries
     /// Counts how many times the given [`Iterator`] would wrap.
-    fn wrap_count(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
+    fn wrap_count(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
+    ) -> usize;
 
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
     /// times.
-    fn col_at_wrap(
+    fn char_at_wrap(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize>;
 

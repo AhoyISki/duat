@@ -565,14 +565,13 @@ impl PrintInfo {
         for index in (0..=target.true_row()).rev() {
             let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
-            let line = text.iter_line(index).take_while(|(index, _)| *index <= target.true_char());
+            let line = text.iter_line(index);
 
-            accum += 1 + label.wrap_count(line, cfg);
+            accum += 1 + label.wrap_count(line, cfg, target.true_char());
             if accum >= max_dist && line_char < self.first_char {
                 // `max_dist - accum` is the amount of wraps that should be offscreen.
                 let line = text.iter_line(index);
-                self.first_char =
-                    line_char + label.col_at_wrap(line, accum - max_dist, cfg).unwrap();
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             } else if accum >= max_dist {
                 break;
@@ -598,14 +597,13 @@ impl PrintInfo {
         for index in (0..=target.true_row()).rev() {
             let line_char = text.inner.line_to_char(index);
             // After the first line, will always be whole.
-            let line = text.iter_line(index).take_while(|(index, _)| *index <= target.true_char());
+            let line = text.iter_line(index);
 
-            accum += 1 + label.wrap_count(line, cfg);
+            accum += 1 + label.wrap_count(line, cfg, target.true_char());
             if accum >= max_dist {
                 // `accum - gap` is the amount of wraps that should be offscreen.
                 let line = text.iter_line(index);
-                self.first_char =
-                    line_char + label.col_at_wrap(line, accum - max_dist, cfg).unwrap();
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
                 break;
             // We have reached the top of the screen before `accum`
             // equaled `max_dist`. This means that no scrolling

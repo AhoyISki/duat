@@ -124,7 +124,7 @@ where
         let (mut is_wrapped, mut skip) = {
             let line_char = self.text.inner().line_to_char(line_num);
             let line = self.text.iter_range(line_char..first_char);
-            (label.wrap_count(line, &self.print_cfg) > 0, first_char - line_char)
+            (label.wrap_count(line, &self.print_cfg, usize::MAX) > 0, first_char - line_char)
         };
 
         let height = label.area().height();
@@ -137,7 +137,7 @@ where
 
         while accum <= height && line_num < lines_len {
             let line = self.text.iter_line(line_num).skip(skip);
-            let wrap_count = label.wrap_count(line, &self.print_cfg);
+            let wrap_count = label.wrap_count(line, &self.print_cfg, usize::MAX);
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
