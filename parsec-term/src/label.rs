@@ -6,12 +6,13 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
+    position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
         Tag
     },
-    text::{NewLine, PrintCfg, PrintInfo, TabStops, TextBit, WrapMethod},
-    ui::{self, Area as UiArea}
+    text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
+    ui::{self, Area as UiArea, Label as UiLabel, Ui}
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -38,7 +39,10 @@ impl Label {
     }
 }
 
-impl ui::Label<Area> for Label {
+impl ui::Label for Label {
+    type Area = Area;
+    type PrintInfo = PrintInfo;
+
     fn print(
         &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: PrintInfo, cfg: PrintCfg,
         palette: &FormPalette
@@ -48,16 +52,16 @@ impl ui::Label<Area> for Label {
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
         let mod_coords = self.wrapping_coords(&cfg);
-        let first_char = info.first_char();
+        let first_char = info.first_char;
         let indents = indents(iter, &cfg.tab_stops, mod_coords.width())
             .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
 
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
-            let words = words(indents, &cfg, self.area.width(), info.x_shift());
+            let words = words(indents, &cfg, self.area.width(), info.x_shift);
             print(words, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = bits(indents, mod_coords, info.x_shift(), &cfg.tab_stops, no_wraps);
+            let iter = bits(indents, mod_coords, info.x_shift, &cfg.tab_stops, no_wraps);
             print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
@@ -165,6 +169,139 @@ impl ui::Label<Area> for Label {
 
 unsafe impl Send for Label {}
 unsafe impl Sync for Label {}
+
+// NOTE: The defaultness in here, when it comes to `last_main`, may
+// cause issues in the future.
+/// Information about how to print the file on the `Label`.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct PrintInfo {
+    /// The index of the first [char] that should be printed on the
+    /// screen.
+    first_char: usize,
+    /// How shifted the text is to the left.
+    x_shift: usize,
+    /// The last position of the main cursor.
+    last_main: Pos
+}
+
+impl PrintInfo {
+    /// Scrolls up until the gap between the main cursor and the top
+    /// of the widget is equal to `config.scrolloff.y_gap`.
+    fn scroll_up_to_gap<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    where
+        U: Ui
+    {
+        let max_dist = cfg.scrolloff.y_gap + 1;
+
+        let mut accum = 0;
+        for index in (0..=target.true_row()).rev() {
+            let line_char = text.inner.line_to_char(index);
+            // After the first line, will always be whole.
+            let line = text.iter_line(index);
+
+            accum += 1 + label.wrap_count(line, cfg, target.true_char());
+            if accum >= max_dist && line_char < self.first_char {
+                // `max_dist - accum` is the amount of wraps that should be offscreen.
+                let line = text.iter_line(index);
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
+                break;
+            } else if accum >= max_dist {
+                break;
+            }
+        }
+
+        // This means we can't scroll up anymore.
+        if accum < max_dist {
+            self.first_char = 0;
+        }
+    }
+
+    /// Scrolls down until the gap between the main cursor and the
+    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
+    fn scroll_down_to_gap<U>(
+        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
+    ) where
+        U: Ui
+    {
+        let max_dist = label.area().height() - cfg.scrolloff.y_gap;
+
+        let mut accum = 0;
+        for index in (0..=target.true_row()).rev() {
+            let line_char = text.inner.line_to_char(index);
+            // After the first line, will always be whole.
+            let line = text.iter_line(index);
+
+            accum += 1 + label.wrap_count(line, cfg, target.true_char());
+            if accum >= max_dist {
+                // `accum - gap` is the amount of wraps that should be offscreen.
+                let line = text.iter_line(index);
+                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
+                break;
+            // We have reached the top of the screen before `accum`
+            // equaled `max_dist`. This means that no scrolling
+            // actually needs to take place.
+            } else if line_char <= self.first_char {
+                break;
+            }
+        }
+    }
+
+    /// Scrolls the file horizontally, usually when no wrapping is
+    /// being used.
+    fn scroll_hor_to_gap<U>(
+        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
+    ) where
+        U: Ui
+    {
+        let max_x_shift = match cfg.wrap_method {
+            WrapMethod::Width | WrapMethod::Word => return,
+            WrapMethod::Capped(cap) => {
+                let width = label.area().width();
+                if cap > width {
+                    cap - label.area().width()
+                } else {
+                    return;
+                }
+            }
+            WrapMethod::NoWrap => usize::MAX
+        };
+
+        let line = text.iter_line(target.true_row()).take(target.true_col() + 1);
+        let target_dist = label.get_width(line, cfg);
+        let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
+        let min_dist = self.x_shift + cfg.scrolloff.x_gap;
+        if target_dist < min_dist {
+            self.x_shift = self.x_shift.saturating_sub(min_dist - target_dist);
+        } else if target_dist > self.x_shift + max_dist {
+            self.x_shift = target_dist - max_dist;
+        }
+
+        self.x_shift = self.x_shift.min(max_x_shift);
+    }
+}
+
+impl ui::PrintInfo for PrintInfo {
+    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, label: &U::Label, cfg: &PrintCfg)
+    where
+        U: Ui
+    {
+        self.scroll_hor_to_gap::<U>(pos, text, label, cfg);
+        if pos < self.last_main {
+            self.scroll_up_to_gap::<U>(pos, text, label, cfg);
+        } else if pos > self.last_main {
+            self.scroll_down_to_gap::<U>(pos, text, label, cfg);
+        }
+
+        self.last_main = pos;
+    }
+
+    fn first_char<U>(&self, _text: &Text<U>) -> usize
+    where
+        U: Ui
+    {
+        self.first_char
+    }
+}
 
 fn len_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
     match char {
@@ -294,7 +431,7 @@ fn print(
     mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> (Coord, bool) {
-    let x_shift = info.x_shift();
+    let x_shift = info.x_shift;
     let mut last_char = 'a';
     let mut cursor = coords.tl;
     let mut show_cursor = false;
@@ -302,7 +439,7 @@ fn print(
 
     while let Some((nl, _, bit)) = iter.next() {
         if let Some(indent) = nl {
-            clear_line(cursor, coords, info.x_shift(), stdout);
+            clear_line(cursor, coords, info.x_shift, stdout);
 
             if cursor.y + 1 > coords.br.y {
                 break;

@@ -2,8 +2,9 @@ use std::fmt::{Debug, Display};
 
 use crate::{
     config::{RoData, RwData},
+    position::Pos,
     tags::form::FormPalette,
-    text::{PrintCfg, PrintInfo, TextBit},
+    text::{PrintCfg, Text, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     SessionManager
 };
@@ -30,22 +31,37 @@ pub trait Area {
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 }
 
+// TODO: Add a general scrolling function.
+pub trait PrintInfo: Default {
+    /// Scrolls the [`Text<U>`] (up or down) until the main cursor is
+    /// within the [`ScrollOff`][crate::text::ScrollOff] range.
+    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, label: &U::Label, cfg: &PrintCfg)
+    where
+        U: Ui;
+
+    /// Returns the character index of the first character that would
+    /// be printed.
+    fn first_char<U>(&self, text: &Text<U>) -> usize
+    where
+        U: Ui;
+}
+
 /// An [`Area`] that supports printing [`Text<U>`].
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Label<A>
-where
-    A: Area
-{
+pub trait Label {
+    type Area: Area + Clone + Display + Send + Sync;
+    type PrintInfo: PrintInfo + Clone + Copy;
+
     /// Tells the [`Ui`] that this [`Label`] is the one that is
     /// currently focused.
     fn set_as_active(&mut self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
     fn print(
-        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: PrintInfo, cfg: PrintCfg,
-        palette: &FormPalette
+        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: Self::PrintInfo,
+        cfg: PrintCfg, palette: &FormPalette
     );
 
     //////////////////// Queries
@@ -70,7 +86,7 @@ where
     ) -> usize;
 
     /// Returns a reference to the area of [`self`].
-    fn area(&self) -> &A;
+    fn area(&self) -> &Self::Area;
 
     /// A unique identifier to this [`Label`].
     fn area_index(&self) -> usize;
@@ -292,7 +308,7 @@ impl PushSpecs {
 /// [`Widget<U>`]s that should be displayed, both static and floating.
 pub trait Window: 'static {
     type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<Self::Area> + Send + Sync;
+    type Label: Label<Area = Self::Area> + Send + Sync;
 
     /// Gets the [`Area`][Window::Area] associated with a given
     /// `area_index`.
@@ -314,7 +330,8 @@ pub trait Window: 'static {
 /// order to use Parsec.
 pub trait Ui: 'static {
     type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<Self::Area> + Send + Sync;
+    type PrintInfo: PrintInfo + Clone + Copy;
+    type Label: Label<Area = Self::Area, PrintInfo = Self::PrintInfo> + Send + Sync;
     type Window: Window<Area = Self::Area, Label = Self::Label> + Clone + Send + Sync;
 
     /// Initiates and returns a new [`Window`][Ui::Window].

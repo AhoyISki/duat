@@ -11,13 +11,12 @@ use ropey::Rope;
 use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     history::Change,
-    log_info,
-    position::{Cursor, Pos},
+    position::{Cursor},
     tags::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Label, Ui}
+    ui::{Label, Ui}
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -308,16 +307,9 @@ where
 
     /// Prints the contents of a given area in a given `EndNode`.
     pub(crate) fn print(
-        &self, label: &mut U::Label, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette
+        &self, label: &mut U::Label, info: U::PrintInfo, cfg: PrintCfg, palette: &FormPalette
     ) {
-        let cur_char = {
-            let first_line = self.inner.char_to_line(info.first_char);
-            self.inner.line_to_char(first_line)
-        };
-
-        let text_iter = self.iter_range(cur_char..);
-
-        label.print(text_iter, info, cfg, palette);
+        label.print(self.iter(), info, cfg, palette);
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -535,146 +527,6 @@ where
             tags: self.tags.clone(),
             cur_char: self.cur_char
         }
-    }
-}
-
-// NOTE: The defaultness in here, when it comes to `last_main`, may
-// cause issues in the future.
-/// Information about how to print the file on the `Label`.
-#[derive(Default, Debug, Clone, Copy)]
-pub struct PrintInfo {
-    /// The index of the first [char] that should be printed on the
-    /// screen.
-    first_char: usize,
-    /// How shifted the text is to the left.
-    x_shift: usize,
-    /// The last position of the main cursor.
-    last_main: Pos
-}
-
-impl PrintInfo {
-    /// Scrolls up until the gap between the main cursor and the top
-    /// of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_up_to_gap<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
-        let max_dist = cfg.scrolloff.y_gap + 1;
-
-        let mut accum = 0;
-        for index in (0..=target.true_row()).rev() {
-            let line_char = text.inner.line_to_char(index);
-            // After the first line, will always be whole.
-            let line = text.iter_line(index);
-
-            accum += 1 + label.wrap_count(line, cfg, target.true_char());
-            if accum >= max_dist && line_char < self.first_char {
-                // `max_dist - accum` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
-                break;
-            } else if accum >= max_dist {
-                break;
-            }
-        }
-
-        // This means we can't scroll up anymore.
-        if accum < max_dist {
-            self.first_char = 0;
-        }
-    }
-
-    /// Scrolls down until the gap between the main cursor and the
-    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_down_to_gap<U>(
-        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
-    ) where
-        U: Ui
-    {
-        let max_dist = label.area().height() - cfg.scrolloff.y_gap;
-
-        let mut accum = 0;
-        for index in (0..=target.true_row()).rev() {
-            let line_char = text.inner.line_to_char(index);
-            // After the first line, will always be whole.
-            let line = text.iter_line(index);
-
-            accum += 1 + label.wrap_count(line, cfg, target.true_char());
-            if accum >= max_dist {
-                // `accum - gap` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
-                break;
-            // We have reached the top of the screen before `accum`
-            // equaled `max_dist`. This means that no scrolling
-            // actually needs to take place.
-            } else if line_char <= self.first_char {
-                break;
-            }
-        }
-    }
-
-    /// Scrolls the file horizontally, usually when no wrapping is
-    /// being used.
-    fn scroll_hor_to_gap<U>(
-        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
-    ) where
-        U: Ui
-    {
-        let max_x_shift = match cfg.wrap_method {
-            WrapMethod::Width | WrapMethod::Word => return,
-            WrapMethod::Capped(cap) => {
-                let width = label.area().width();
-                if cap > width {
-                    cap - label.area().width()
-                } else {
-                    return;
-                }
-            }
-            WrapMethod::NoWrap => usize::MAX
-        };
-
-        let line = text.iter_line(target.true_row()).take(target.true_col() + 1);
-        let target_dist = label.get_width(line, cfg);
-        let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
-        let min_dist = self.x_shift + cfg.scrolloff.x_gap;
-        if target_dist < min_dist {
-            self.x_shift = self.x_shift.saturating_sub(min_dist - target_dist);
-        } else if target_dist > self.x_shift + max_dist {
-            self.x_shift = target_dist - max_dist;
-        }
-
-        self.x_shift = self.x_shift.min(max_x_shift);
-    }
-
-    /// Updates the print info, according to a [`Config`]'s
-    /// specifications.
-    pub fn update<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
-        self.scroll_hor_to_gap::<U>(target, text, label, cfg);
-        if target < self.last_main {
-            self.scroll_up_to_gap::<U>(target, text, label, cfg);
-        } else if target > self.last_main {
-            self.scroll_down_to_gap::<U>(target, text, label, cfg);
-        }
-
-        log_info!("\nfirst_char: {}", self.first_char);
-
-        self.last_main = target;
-    }
-
-    pub fn first_char(&self) -> usize {
-        self.first_char
-    }
-
-    pub fn x_shift(&self) -> usize {
-        self.x_shift
-    }
-
-    pub fn last_main(&self) -> Pos {
-        self.last_main
     }
 }
 

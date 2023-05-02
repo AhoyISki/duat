@@ -14,7 +14,7 @@ use self::command_line::CommandList;
 use crate::{
     config::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
-    text::{PrintCfg, PrintInfo, Text},
+    text::{PrintCfg, Text},
     ui::Ui, tags::form::FormPalette,
 };
 
@@ -46,8 +46,8 @@ where
         None
     }
 
-    fn print_info(&self) -> PrintInfo {
-        PrintInfo::default()
+    fn print_info(&self) -> U::PrintInfo {
+        U::PrintInfo::default()
     }
 
     fn print_cfg(&self) -> PrintCfg {

@@ -15,6 +15,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 
+use label::PrintInfo;
 use parsec_core::{
     config::RwData,
     ui::{self, Area as UiArea, Axis, Side, Split},
@@ -496,6 +497,7 @@ impl Default for Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type Label = Label;
+    type PrintInfo = PrintInfo;
     type Window = Window;
 
     fn new_window(&mut self) -> (Self::Window, Self::Label) {

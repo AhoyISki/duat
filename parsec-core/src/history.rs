@@ -19,10 +19,13 @@
 //! [Cursor]: crate::cursor::Cursor
 use std::{
     cmp::Ordering,
-    ops::{Range, RangeBounds},
+    ops::{Range, RangeBounds}
 };
 
-use crate::text::{inner::InnerText, PrintInfo};
+use crate::{
+    text::{inner::InnerText},
+    ui::Ui
+};
 
 /// A change in a file, empty vectors indicate a pure insertion or
 /// deletion.
@@ -33,7 +36,7 @@ pub struct Change {
     /// The text that was added in this change.
     pub added_text: String,
     /// The text that was replaced in this change.
-    pub taken_text: String,
+    pub taken_text: String
 }
 
 impl Change {
@@ -43,13 +46,13 @@ impl Change {
         let start = match range.start_bound() {
             std::ops::Bound::Included(&pos) => pos,
             std::ops::Bound::Excluded(&pos) => pos + 1,
-            std::ops::Bound::Unbounded => 0,
+            std::ops::Bound::Unbounded => 0
         };
 
         let end = match range.end_bound() {
             std::ops::Bound::Included(&pos) => pos + 1,
             std::ops::Bound::Excluded(&pos) => pos,
-            std::ops::Bound::Unbounded => backing.len_chars(),
+            std::ops::Bound::Unbounded => backing.len_chars()
         };
 
         let taken_text: String = backing.chars_at(start).take(end - start).collect();
@@ -57,7 +60,7 @@ impl Change {
         Change {
             start,
             added_text: edit,
-            taken_text,
+            taken_text
         }
     }
 
@@ -132,17 +135,23 @@ fn precedes(lhs: Range<usize>, rhs: Range<usize>) -> bool {
 /// It also contains information about how to print the file, so that
 /// going back in time is less jaring.
 #[derive(Default, Debug)]
-pub struct Moment {
+pub struct Moment<U>
+where
+    U: Ui
+{
     /// Where the file was printed at the time this moment started.
-    pub(crate) starting_print_info: PrintInfo,
+    pub(crate) starting_print_info: U::PrintInfo,
     /// Where the file was printed at the time this moment ended.
-    pub(crate) ending_print_info: PrintInfo,
+    pub(crate) ending_print_info: U::PrintInfo,
     /// A list of actions, which may be changes, or simply selections
     /// of text.
-    pub(crate) changes: Vec<Change>,
+    pub(crate) changes: Vec<Change>
 }
 
-impl Moment {
+impl<U> Moment<U>
+where
+    U: Ui
+{
     /// First try to merge this change with as many changes as
     /// possible, then add it in.
     ///
@@ -212,31 +221,34 @@ impl Moment {
     fn find_last_merger(&self, change: &Change) -> usize {
         match self.changes.binary_search_by(|cmp| cmp.contains_ord(change)) {
             Ok(index) => index,
-            Err(index) => index,
+            Err(index) => index
         }
     }
 }
 
 /// The history of edits, contains all moments.
-pub struct History {
+pub struct History<U>
+where
+    U: Ui
+{
     /// The list of moments in this file's editing history.
-    moments: Vec<Moment>,
+    moments: Vec<Moment<U>>,
     /// The currently active moment.
-    current_moment: usize,
+    current_moment: usize
 }
 
-impl History {
+impl<U> History<U> where U: Ui {
     /// Returns a new instance of [History].
-    pub fn new() -> History {
+    pub fn new() -> Self {
         History {
             moments: Vec::new(),
-            current_moment: 0,
+            current_moment: 0
         }
     }
 
     /// Gets a mutable reference to the current [Moment], if not at
     /// the very beginning.
-    fn current_moment_mut(&mut self) -> Option<&mut Moment> {
+    fn current_moment_mut(&mut self) -> Option<&mut Moment<U>> {
         if self.current_moment > 0 {
             self.moments.get_mut(self.current_moment - 1)
         } else {
@@ -246,7 +258,7 @@ impl History {
 
     /// Gets a reference to the current [Moment], if not at the very
     /// beginning.
-    pub fn current_moment(&self) -> Option<&Moment> {
+    pub fn current_moment(&self) -> Option<&Moment<U>> {
         if self.current_moment > 0 {
             self.moments.get(self.current_moment - 1)
         } else {
@@ -263,10 +275,7 @@ impl History {
     /// - The number of changes that were added or subtracted during
     ///   its insertion.
     pub fn add_change(
-        &mut self,
-        change: Change,
-        assoc_index: Option<usize>,
-        print_info: PrintInfo,
+        &mut self, change: Change, assoc_index: Option<usize>, print_info: U::PrintInfo
     ) -> (usize, isize) {
         // Cut off any actions that take place after the current one. We don't
         // really want trees.
@@ -285,7 +294,7 @@ impl History {
 
     /// Declares that the current [Moment] is complete and starts a
     /// new one.
-    pub fn new_moment(&mut self, print_info: PrintInfo) {
+    pub fn new_moment(&mut self, print_info: U::PrintInfo) {
         // If the last moment in history is empty, we can keep using it.
         if self.current_moment_mut().map_or(true, |m| !m.changes.is_empty()) {
             unsafe {
@@ -294,7 +303,7 @@ impl History {
             self.moments.push(Moment {
                 starting_print_info: print_info,
                 ending_print_info: print_info,
-                changes: Vec::new(),
+                changes: Vec::new()
             });
             self.current_moment += 1;
         }
@@ -304,7 +313,7 @@ impl History {
     ///
     /// If The [History] is already at the end, returns [None]
     /// instead.
-    pub fn move_forward(&mut self) -> Option<&Moment> {
+    pub fn move_forward(&mut self) -> Option<&Moment<U>> {
         if self.current_moment == self.moments.len() {
             return None;
         } else {
@@ -321,7 +330,7 @@ impl History {
     ///
     /// If The [History] is already at the start, returns [None]
     /// instead.
-    pub fn move_backwards(&mut self) -> Option<&Moment> {
+    pub fn move_backwards(&mut self) -> Option<&Moment<U>> {
         if self.current_moment == 0 {
             None
         } else {

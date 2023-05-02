@@ -16,22 +16,22 @@ use crate::{
     config::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
-    text::{reader::MutTextReader, PrintCfg, PrintInfo, Text},
-    ui::{Area, Label, Ui}
+    text::{reader::MutTextReader, PrintCfg, Text},
+    ui::{Area, Label, Ui, PrintInfo}
 };
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
 where
-    U: Ui
+    U: Ui + 'static
 {
     pub(crate) _side_widgets: Option<(usize, Vec<usize>)>,
     identifier: String,
     text: Text<U>,
-    print_info: PrintInfo,
+    print_info: U::PrintInfo,
     main_cursor: usize,
     cursors: Vec<Cursor>,
-    history: History,
+    history: History<U>,
     readers: Vec<Box<dyn MutTextReader<U>>>,
     printed_lines: Vec<(usize, bool)>,
     print_cfg: PrintCfg
@@ -61,7 +61,7 @@ where
                 _side_widgets: None,
                 identifier: ["parsec-file: ", name.as_str()].join(""),
                 text,
-                print_info: PrintInfo::default(),
+                print_info: U::PrintInfo::default(),
                 main_cursor: 0,
                 cursors: vec![cursor],
                 history: History::new(),
@@ -116,7 +116,7 @@ where
     }
 
     fn set_printed_lines(&mut self, label: &U::Label) {
-        let first_char = self.print_info.first_char();
+        let first_char = self.print_info.first_char(&self.text);
         let mut line_num = self.text.inner().char_to_line(first_char);
 
         // The beginning of the first line may be offscreen, which would make
@@ -158,7 +158,7 @@ where
     // TODO: Move the history to a general placement, taking in all the
     // files.
     /// The history associated with this file.
-    pub fn history(&self) -> &History {
+    pub fn history(&self) -> &History<U> {
         &self.history
     }
 
@@ -215,7 +215,7 @@ where
 {
     fn update(&mut self, label: &U::Label) {
         self.print_info
-            .update::<U>(self.main_cursor().caret(), &self.text, label, &self.print_cfg);
+            .scroll_to_gap(&self.text, self.main_cursor().caret(), label, &self.print_cfg);
         self.set_printed_lines(label);
     }
 
@@ -231,7 +231,7 @@ where
         // self.print_info.scroll_vertically(d_y, &self.text);
     }
 
-    fn print_info(&self) -> PrintInfo {
+    fn print_info(&self) -> U::PrintInfo {
         self.print_info
     }
 

@@ -9,8 +9,8 @@ use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
-    text::{PrintCfg, PrintInfo, Text},
-    ui::Ui,
+    text::{PrintCfg, Text},
+    ui::{PrintInfo, Ui},
     Session
 };
 
@@ -165,7 +165,7 @@ where
     U: Ui + ?Sized
 {
     text: Text<U>,
-    print_info: PrintInfo,
+    print_info: U::PrintInfo,
     cursor: [Cursor; 1],
     command_list: RwData<CommandList>,
     needs_update: bool,
@@ -179,7 +179,7 @@ where
     pub fn default(session: &Session<U>) -> Widget<U> {
         let command_line = CommandLine {
             text: Text::default_string(),
-            print_info: PrintInfo::default(),
+            print_info: U::PrintInfo::default(),
             cursor: [Cursor::default()],
             command_list: session.global_commands(),
             needs_update: false,
@@ -196,8 +196,7 @@ where
 {
     fn update(&mut self, label: &U::Label) {
         let print_cfg = PrintCfg::default();
-        self.print_info
-            .update::<U>(self.cursor[0].caret(), &self.text, label, &print_cfg);
+        self.print_info.scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();

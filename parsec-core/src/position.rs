@@ -2,7 +2,7 @@ use std::{cmp::min, fmt::Display, ops::Range};
 
 use crate::{
     history::{Change, History},
-    text::{inner::InnerText, PrintCfg, PrintInfo, Text},
+    text::{inner::InnerText, PrintCfg, Text},
     ui::{Label, Ui},
     widgets::EditAccum
 };
@@ -322,8 +322,8 @@ where
     cursor: &'a mut Cursor,
     text: &'a mut Text<U>,
     edit_accum: &'a mut EditAccum,
-    print_info: Option<PrintInfo>,
-    history: Option<&'a mut History>
+    print_info: Option<U::PrintInfo>,
+    history: Option<&'a mut History<U>>
 }
 
 impl<'a, U> Editor<'a, U>
@@ -333,7 +333,7 @@ where
     /// Returns a new instance of `Editor`.
     pub fn new(
         cursor: &'a mut Cursor, text: &'a mut Text<U>, edit_accum: &'a mut EditAccum,
-        print_info: Option<PrintInfo>, history: Option<&'a mut History>
+        print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
         cursor.calibrate_on_accum(edit_accum, text.inner());
         Self {
