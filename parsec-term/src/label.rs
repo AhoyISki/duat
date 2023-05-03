@@ -6,6 +6,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
+    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -51,23 +52,23 @@ impl ui::Label for Label {
         let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
-        let mod_coords = self.wrapping_coords(&cfg);
+        let coords = self.wrapping_coords(&cfg);
         let first_char = info.first_char;
-        let indents = indents(iter, &cfg.tab_stops, mod_coords.width())
+        let indents = indents(iter, &cfg.tab_stops, coords.width())
             .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
 
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
-            let words = words(indents, &cfg, self.area.width(), info.x_shift);
+            let words = words(indents, coords.width(), info.x_shift, &cfg);
             print(words, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = bits(indents, mod_coords, info.x_shift, &cfg.tab_stops, no_wraps);
+            let iter = bits(indents, coords.width(), info.x_shift, &cfg.tab_stops, no_wraps);
             print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
         let mut stdout = io::stdout().lock();
-        while mod_coords.br.y > cursor.y {
-            clear_line(cursor, mod_coords, 0, &mut stdout);
+        while coords.br.y > cursor.y {
+            clear_line(cursor, coords, 0, &mut stdout);
             cursor.y += 1;
         }
 
@@ -93,14 +94,14 @@ impl ui::Label for Label {
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                bits(indents, coords, 0, &cfg.tab_stops, false)
+                bits(indents, coords.width(), 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
                     .count()
                     - 1
             }
             WrapMethod::Word => {
-                words(indents, &cfg, coords.width(), 0)
+                words(indents, coords.width(), 0, &cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
                     .count()
@@ -113,17 +114,17 @@ impl ui::Label for Label {
     fn char_at_wrap(
         &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
-        let coords = self.wrapping_coords(cfg);
+        let width = cfg.wrap_method.wrapping_cap(self.area.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                let indents = indents(iter, &cfg.tab_stops, coords.width());
-                bits(indents, coords, 0, &cfg.tab_stops, false)
+                let indents = indents(iter, &cfg.tab_stops, width);
+                bits(indents, width, 0, &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
             WrapMethod::Word => {
-                let indents = indents(iter, &cfg.tab_stops, coords.width());
-                words(indents, cfg, coords.width(), 0)
+                let indents = indents(iter, &cfg.tab_stops, width);
+                words(indents, width, 0, cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
@@ -132,9 +133,9 @@ impl ui::Label for Label {
     }
 
     fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
-        let coords = self.wrapping_coords(cfg);
-        let indents = indents(iter, &cfg.tab_stops, coords.width());
-        let iter = bits(indents, coords, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
+        let width = cfg.wrap_method.wrapping_cap(self.area().width());
+        let indents = indents(iter, &cfg.tab_stops, width);
+        let iter = bits(indents, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
         iter.fold(0, |mut width, (new_line, _, bit)| {
             if let Some(indent) = new_line {
                 width = indent;
@@ -185,63 +186,48 @@ pub struct PrintInfo {
 }
 
 impl PrintInfo {
-    /// Scrolls up until the gap between the main cursor and the top
-    /// of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_up_to_gap<U>(&mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    /// Scrolls down until the gap between the main cursor and the
+    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
+    fn scroll_ver_to_gap<U>(&mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
     where
         U: Ui
     {
-        let max_dist = cfg.scrolloff.y_gap + 1;
+        let width = cfg.wrap_method.wrapping_cap(label.area().width());
+        let limit = if self.last_main > pos {
+            cfg.scrolloff.y_gap
+        } else {
+            label.area().height().saturating_sub(cfg.scrolloff.y_gap + 1)
+        };
 
-        let mut accum = 0;
-        for index in (0..=target.true_row()).rev() {
-            let line_char = text.inner.line_to_char(index);
-            // After the first line, will always be whole.
-            let line = text.iter_line(index);
+        let mut indices = Vec::with_capacity(limit);
+        let mut col_limit = pos.true_col();
+        let mut line_indices = Vec::new();
+        for line_index in (0..=pos.true_row()).rev() {
+            let line = text.iter_line(line_index).take(col_limit);
+            let iter = indents(line, &cfg.tab_stops, width);
+            if let WrapMethod::Word = cfg.wrap_method {
+                words(iter, width, 0, &cfg)
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .collect_into(&mut line_indices);
+            } else {
+                bits(iter, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap())
+                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .collect_into(&mut line_indices);
+            };
 
-            accum += 1 + label.wrap_count(line, cfg, target.true_char());
-            if accum >= max_dist && line_char < self.first_char {
-                // `max_dist - accum` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
-                break;
-            } else if accum >= max_dist {
+            line_indices.reverse();
+            indices.append(&mut line_indices);
+            col_limit = usize::MAX;
+            if indices.len() >= limit {
                 break;
             }
         }
 
-        // This means we can't scroll up anymore.
-        if accum < max_dist {
-            self.first_char = 0;
-        }
-    }
-
-    /// Scrolls down until the gap between the main cursor and the
-    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_down_to_gap<U>(
-        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
-    ) where
-        U: Ui
-    {
-        let max_dist = label.area().height() - cfg.scrolloff.y_gap;
-
-        let mut accum = 0;
-        for index in (0..=target.true_row()).rev() {
-            let line_char = text.inner.line_to_char(index);
-            // After the first line, will always be whole.
-            let line = text.iter_line(index);
-
-            accum += 1 + label.wrap_count(line, cfg, target.true_char());
-            if accum >= max_dist {
-                // `accum - gap` is the amount of wraps that should be offscreen.
-                let line = text.iter_line(index);
-                self.first_char = label.char_at_wrap(line, accum - max_dist, cfg).unwrap();
-                break;
-            // We have reached the top of the screen before `accum`
-            // equaled `max_dist`. This means that no scrolling
-            // actually needs to take place.
-            } else if line_char <= self.first_char {
-                break;
+        if let Some(&index) = indices.get(limit - 1) {
+            if (index < self.first_char && self.last_main > pos)
+                || (index > self.first_char && self.last_main < pos)
+            {
+                self.first_char = index;
             }
         }
     }
@@ -285,14 +271,11 @@ impl ui::PrintInfo for PrintInfo {
     where
         U: Ui
     {
-        self.scroll_hor_to_gap::<U>(pos, text, label, cfg);
-        if pos < self.last_main {
-            self.scroll_up_to_gap::<U>(pos, text, label, cfg);
-        } else if pos > self.last_main {
-            self.scroll_down_to_gap::<U>(pos, text, label, cfg);
+        if self.last_main != pos {
+            self.scroll_hor_to_gap::<U>(pos, text, label, cfg);
+            self.scroll_ver_to_gap::<U>(pos, text, label, cfg);
+            self.last_main = pos;
         }
-
-        self.last_main = pos;
     }
 
     fn first_char<U>(&self, _text: &Text<U>) -> usize
@@ -330,10 +313,36 @@ fn indents<'a>(
     })
 }
 
+fn bits<'a>(
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, x_shift: usize,
+    tab_stops: &'a TabStops, no_wrap: bool
+) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
+    let width = width as u16;
+    iter.scan((0, true), move |(x, ret_char), (indent, index, bit)| {
+        let len = bit.as_char().map(|char| len_from(char, *x, x_shift, tab_stops)).unwrap_or(0);
+        *x += len;
+
+        let nl = if *ret_char || !no_wrap && (*x > width || (*x == width && len == 0)) {
+            *x = indent + len;
+            *ret_char = false;
+            Some(indent)
+        } else {
+            None
+        };
+
+        if let TextBit::Char('\n') = bit {
+            *x = 0;
+            *ret_char = true;
+        }
+
+        Some((nl, index, bit))
+    })
+}
+
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 fn words<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, cfg: &'a PrintCfg, width: usize,
-    x_shift: usize
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, x_shift: usize,
+    cfg: &'a PrintCfg
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let mut iter = iter.peekable();
     let width = width as u16;
@@ -399,31 +408,6 @@ fn words<'a>(
                 (nl, index, bit)
             })
         }
-    })
-}
-
-fn bits<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, coords: Coords, x_shift: usize,
-    tab_stops: &'a TabStops, no_wrap: bool
-) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
-    iter.scan((coords.tl.x, true), move |(x, ret_char), (indent, index, bit)| {
-        let len = bit.as_char().map(|char| len_from(char, *x, x_shift, tab_stops)).unwrap_or(0);
-        *x += len;
-
-        let nl = if *ret_char || !no_wrap && (*x > coords.br.x || (*x == coords.br.x && len == 0)) {
-            *x = coords.tl.x + indent + len;
-            *ret_char = false;
-            Some(indent)
-        } else {
-            None
-        };
-
-        if let TextBit::Char('\n') = bit {
-            *x = coords.tl.x;
-            *ret_char = true;
-        }
-
-        Some((nl, index, bit))
     })
 }
 

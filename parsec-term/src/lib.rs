@@ -1,4 +1,4 @@
-#![feature(result_option_inspect)]
+#![feature(result_option_inspect, iter_collect_into)]
 
 use std::{
     fmt::Debug,

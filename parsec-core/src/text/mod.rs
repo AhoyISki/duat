@@ -11,7 +11,7 @@ use ropey::Rope;
 use self::{inner::InnerText, reader::MutTextReader};
 use crate::{
     history::Change,
-    position::{Cursor},
+    position::Cursor,
     tags::{
         form::{FormPalette, EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
@@ -555,6 +555,13 @@ impl WrapMethod {
     #[must_use]
     pub fn is_no_wrap(&self) -> bool {
         matches!(self, Self::NoWrap)
+    }
+
+    pub fn wrapping_cap(&self, width: usize) -> usize {
+        match self {
+            WrapMethod::Capped(cap) => *cap,
+            _ => width
+        }
     }
 }
 

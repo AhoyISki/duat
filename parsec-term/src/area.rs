@@ -102,6 +102,13 @@ impl Coords {
             br: Coord::new(self.tl.x + width as u16, self.tl.y + height as u16)
         }
     }
+
+    pub fn from_origin(width: usize, height: usize) -> Self {
+        Coords {
+            tl: Coord::new(0, 0),
+            br: Coord::new(width as u16, height as u16)
+        }
+    }
 }
 
 impl Debug for Coords {
