@@ -117,14 +117,13 @@ where
 
     fn set_printed_lines(&mut self, label: &U::Label) {
         let first_char = self.print_info.first_char(&self.text);
-        let mut line_num = self.text.inner().char_to_line(first_char);
+        let mut line_num = self.text.char_to_line(first_char);
 
         // The beginning of the first line may be offscreen, which would make
         // the first line number a wrapped line.
-        let (mut is_wrapped, mut skip) = {
-            let line_char = self.text.inner().line_to_char(line_num);
-            let line = self.text.iter_range(line_char..first_char);
-            (label.wrap_count(line, &self.print_cfg, usize::MAX) > 0, first_char - line_char)
+        let mut is_wrapped = {
+            let line = self.text.iter_line(line_num);
+            label.wrap_count(line, &self.print_cfg, first_char) > 0
         };
 
         let height = label.area().height();
@@ -134,10 +133,13 @@ where
 
         let mut accum = 0;
         let lines_len = self.text.len_lines();
-
         while accum <= height && line_num < lines_len {
-            let line = self.text.iter_line(line_num).skip(skip);
-            let wrap_count = label.wrap_count(line, &self.print_cfg, usize::MAX);
+            let line = self.text.iter_line(line_num);
+            let mut wrap_count = label.wrap_count(line, &self.print_cfg, usize::MAX);
+            if accum == 0 {
+                let line = self.text.iter_line(line_num);
+                wrap_count -= label.wrap_count(line, &self.print_cfg, first_char);
+            }
             let prev_accum = accum;
             accum = min(accum + wrap_count, height) + 1;
             for _ in prev_accum..accum {
@@ -146,7 +148,6 @@ where
             }
             is_wrapped = false;
             line_num += 1;
-            skip = 0;
         }
     }
 

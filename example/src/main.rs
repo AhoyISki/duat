@@ -52,7 +52,8 @@ fn main() {
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
     palette.set_form("VertRuleInv", Form::new().dark_grey().reverse());
-    palette.set_form("WrappedLineNumber", Form::new());
+    palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
+    palette.set_form("MainLineNumber", Form::new_final().dark_yellow().bold());
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.

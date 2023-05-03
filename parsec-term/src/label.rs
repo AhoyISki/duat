@@ -2,7 +2,7 @@ use std::io::{self, StdoutLock};
 
 use crossterm::{
     cursor::{self, MoveTo, SavePosition},
-    execute, queue,
+    execute, queue as crossterm_queue,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
@@ -39,6 +39,12 @@ impl Label {
     }
 }
 
+macro_rules! queue {
+    ($writer:expr $(, $command:expr)* $(,)?) => {
+        unsafe { crossterm_queue!($writer $(, $command)*).unwrap_unchecked() }
+    }
+}
+
 impl ui::Label for Label {
     type Area = Area;
     type PrintInfo = PrintInfo;
@@ -48,7 +54,7 @@ impl ui::Label for Label {
         U: Ui
     {
         let mut stdout = io::stdout().lock();
-        let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
+        queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
         let coords = self.wrapping_coords(&cfg);
@@ -75,10 +81,10 @@ impl ui::Label for Label {
         }
 
         if show_cursor {
-            let _ = queue!(stdout, cursor::Show);
+            queue!(stdout, cursor::Show);
         }
 
-        let _ = execute!(stdout, ResetColor);
+        execute!(stdout, ResetColor).unwrap();
     }
 
     fn set_as_active(&mut self) {
@@ -214,7 +220,7 @@ impl PrintInfo {
             } else {
                 bits(iter, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap())
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
-                    .take_while(|index| *index <= pos.true_col() + 1)
+                    .take_while(|index| *index <= pos.true_col())
                     .collect_into(&mut line_indices);
             };
 
@@ -440,7 +446,7 @@ fn print(
             last_char = real_char_from(char, &cfg.new_line, last_char);
             cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
             if let Some(style) = prev_style.take() {
-                let _ = queue!(stdout, ResetColor, SetStyle(style));
+                queue!(stdout, ResetColor, SetStyle(style));
             }
         } else if let TextBit::Tag(tag) = bit {
             (show_cursor, prev_style) =
@@ -457,7 +463,7 @@ fn indent_line(
 ) {
     let prev_style = form_former.make_form().style;
     let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
-    let _ = queue!(stdout, Print(indent), SetStyle(prev_style));
+    queue!(stdout, Print(indent), SetStyle(prev_style));
 }
 
 fn print_char(
@@ -468,15 +474,15 @@ fn print_char(
 
     if cursor.x < coords.tl.x + x_shift as u16 {
         let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
-        let _ = queue!(stdout, Print(" ".repeat(len)));
+        queue!(stdout, Print(" ".repeat(len)));
     } else if cursor.x + len <= coords.br.x + x_shift as u16 {
-        let _ = match char {
+        match char {
             '\t' => queue!(stdout, Print(" ".repeat(len as usize))),
             char => queue!(stdout, Print(char))
         };
     } else if cursor.x < coords.br.x + x_shift as u16 {
         let width = coords.br.x - cursor.x;
-        let _ = queue!(stdout, Print(" ".repeat(width as usize)));
+        queue!(stdout, Print(" ".repeat(width as usize)));
     }
 
     len
@@ -491,23 +497,23 @@ fn trigger_tag(
 
     match tag {
         Tag::PushForm(id) => {
-            let _ = queue!(stdout, SetStyle(form_former.apply(id).style));
+            queue!(stdout, SetStyle(form_former.apply(id).style));
         }
         Tag::PopForm(id) => {
-            let _ = queue!(stdout, SetStyle(form_former.remove(id).style));
+            queue!(stdout, SetStyle(form_former.remove(id).style));
         }
         Tag::MainCursor => {
             let cursor = form_former.main_cursor();
             if let (Some(caret), true) = (cursor.caret, is_active) {
-                let _ = queue!(stdout, caret, SavePosition);
+                queue!(stdout, caret, SavePosition);
                 cursor_shown = true || show_cursor;
             } else {
                 prev_style = Some(form_former.make_form().style);
-                let _ = queue!(stdout, SetStyle(cursor.form.style));
+                queue!(stdout, SetStyle(cursor.form.style));
             }
         }
         Tag::ExtraCursor => {
-            let _ = queue!(stdout, SetStyle(form_former.extra_cursor().form.style));
+            queue!(stdout, SetStyle(form_former.extra_cursor().form.style));
         }
         Tag::HoverBound => todo!(),
         Tag::PermanentConceal { .. } => todo!()
@@ -536,5 +542,5 @@ fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
     let (x, y) = (coords.tl.x, cursor.y);
-    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), MoveTo(x, y)).unwrap();
+    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), MoveTo(x, y));
 }
