@@ -226,6 +226,7 @@ where
 }
 
 /// The text in a given area.
+/// log_info!("\ncur_char: {}", self.cur_char);
 pub struct Text<U>
 where
     U: Ui + ?Sized
@@ -309,7 +310,7 @@ where
     pub(crate) fn print(
         &self, label: &mut U::Label, info: U::PrintInfo, cfg: PrintCfg, palette: &FormPalette
     ) {
-        label.print(self.iter(), info, cfg, palette);
+        label.print(self, info, cfg, palette);
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -389,6 +390,14 @@ where
     fn clear(&mut self) {
         self.inner.clear();
         self.tags.clear();
+    }
+
+    pub fn char_to_line(&self, char: usize) -> usize {
+        self.inner.char_to_line(char)
+    }
+
+    pub fn line_to_char(&self, line: usize) -> usize {
+        self.inner.line_to_char(line)
     }
 }
 

@@ -59,10 +59,10 @@ pub trait Label {
     fn set_as_active(&mut self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(
-        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: Self::PrintInfo,
-        cfg: PrintCfg, palette: &FormPalette
-    );
+    fn print<U>(
+        &mut self, text: &Text<U>, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette
+    ) where
+        U: Ui;
 
     //////////////////// Queries
     /// Counts how many times the given [`Iterator`] would wrap.

@@ -6,7 +6,6 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -44,16 +43,18 @@ impl ui::Label for Label {
     type Area = Area;
     type PrintInfo = PrintInfo;
 
-    fn print(
-        &mut self, iter: impl Iterator<Item = (usize, TextBit)>, info: PrintInfo, cfg: PrintCfg,
-        palette: &FormPalette
-    ) {
+    fn print<U>(&mut self, text: &Text<U>, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette)
+    where
+        U: Ui
+    {
         let mut stdout = io::stdout().lock();
         let _ = queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
         let coords = self.wrapping_coords(&cfg);
         let first_char = info.first_char;
+        let line_char = text.line_to_char(text.char_to_line(first_char));
+        let iter = text.iter_range(line_char..);
         let indents = indents(iter, &cfg.tab_stops, coords.width())
             .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
 
@@ -67,9 +68,10 @@ impl ui::Label for Label {
         };
 
         let mut stdout = io::stdout().lock();
-        while coords.br.y > cursor.y {
+        while coords.br.y >= cursor.y {
             clear_line(cursor, coords, 0, &mut stdout);
             cursor.y += 1;
+            cursor.x = coords.tl.x;
         }
 
         if show_cursor {
@@ -194,13 +196,13 @@ impl PrintInfo {
     {
         let width = cfg.wrap_method.wrapping_cap(label.area().width());
         let limit = if self.last_main > pos {
-            cfg.scrolloff.y_gap
+            cfg.scrolloff.y_gap + 1
         } else {
-            label.area().height().saturating_sub(cfg.scrolloff.y_gap + 1)
+            label.area().height().saturating_sub(cfg.scrolloff.y_gap)
         };
 
         let mut indices = Vec::with_capacity(limit);
-        let mut col_limit = pos.true_col();
+        let mut col_limit = pos.true_col() + 1;
         let mut line_indices = Vec::new();
         for line_index in (0..=pos.true_row()).rev() {
             let line = text.iter_line(line_index).take(col_limit);
@@ -433,6 +435,7 @@ fn print(
             cursor.y += 1;
         }
 
+        // std::thread::sleep(std::time::Duration::from_micros(300));
         if let &TextBit::Char(char) = &bit {
             last_char = real_char_from(char, &cfg.new_line, last_char);
             cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
@@ -454,8 +457,7 @@ fn indent_line(
 ) {
     let prev_style = form_former.make_form().style;
     let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
-    let (x, y) = (coords.tl.x, cursor.y);
-    let _ = queue!(stdout, MoveTo(x, y), Print(indent), SetStyle(prev_style));
+    let _ = queue!(stdout, Print(indent), SetStyle(prev_style));
 }
 
 fn print_char(
@@ -533,5 +535,6 @@ fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
 
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
-    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width())))).unwrap();
+    let (x, y) = (coords.tl.x, cursor.y);
+    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), MoveTo(x, y)).unwrap();
 }

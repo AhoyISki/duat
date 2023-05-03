@@ -10,13 +10,13 @@ use parsec_core::{
     config::{DownCastableData, RoData},
     tags::{
         form::{FormPalette, DEFAULT},
-        Tag,
+        Tag
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
     updaters,
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
-    SessionManager,
+    SessionManager
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -27,7 +27,7 @@ pub enum SepChar {
     /// Order: main line, other lines.
     TwoWay(char, char),
     /// Order: main line, above main line, below main line.
-    ThreeWay(char, char, char),
+    ThreeWay(char, char, char)
 }
 
 impl Default for SepChar {
@@ -43,7 +43,7 @@ impl SepChar {
         match self {
             SepChar::Uniform(uniform) => [*uniform, *uniform, *uniform],
             SepChar::TwoWay(main, other) => [*other, *main, *other],
-            SepChar::ThreeWay(main, upper, lower) => [*upper, *main, *lower],
+            SepChar::ThreeWay(main, upper, lower) => [*upper, *main, *lower]
         }
     }
 }
@@ -56,7 +56,7 @@ pub enum SepForm {
     /// Order: main line, other lines.
     TwoWay(u16, u16),
     /// Order: main line, above main line, below main line.
-    ThreeWay(u16, u16, u16),
+    ThreeWay(u16, u16, u16)
 }
 
 impl Default for SepForm {
@@ -78,9 +78,7 @@ impl SepForm {
     /// for the main line and another `form_name` for other lines,
     /// respectively.
     pub fn two_way(
-        palette: &FormPalette,
-        main_name: impl AsRef<str>,
-        other_name: impl AsRef<str>,
+        palette: &FormPalette, main_name: impl AsRef<str>, other_name: impl AsRef<str>
     ) -> Self {
         let (_, main_id) = palette.from_name(main_name);
         let (_, other_id) = palette.from_name(other_name);
@@ -92,10 +90,8 @@ impl SepForm {
     /// for the main line, one for lines above, and one for lines
     /// below, respectively.
     pub fn three_way(
-        palette: &FormPalette,
-        main_name: impl AsRef<str>,
-        upper_name: impl AsRef<str>,
-        lower_name: impl AsRef<str>,
+        palette: &FormPalette, main_name: impl AsRef<str>, upper_name: impl AsRef<str>,
+        lower_name: impl AsRef<str>
     ) -> Self {
         let (_, main_id) = palette.from_name(main_name);
         let (_, upper_id) = palette.from_name(upper_name);
@@ -110,7 +106,7 @@ impl SepForm {
         match self {
             SepForm::Uniform(uniform) => [*uniform, *uniform, *uniform],
             SepForm::TwoWay(main, other) => [*other, *main, *other],
-            SepForm::ThreeWay(main, lower, upper) => [*upper, *main, *lower],
+            SepForm::ThreeWay(main, lower, upper) => [*upper, *main, *lower]
         }
     }
 }
@@ -119,7 +115,7 @@ impl SepForm {
 #[derive(Default, Clone)]
 pub struct VertRuleCfg {
     pub sep_char: SepChar,
-    pub sep_form: SepForm,
+    pub sep_form: SepForm
 }
 
 impl VertRuleCfg {
@@ -134,24 +130,23 @@ impl VertRuleCfg {
 /// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
 pub struct VertRule<U>
 where
-    U: Ui,
+    U: Ui
 {
     file: RoData<FileWidget<U>>,
     builder: TextBuilder<U>,
-    cfg: VertRuleCfg,
+    cfg: VertRuleCfg
 }
 
 impl<U> VertRule<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a
     /// user provided config.
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
     pub fn config_fn(
-        file: RoData<FileWidget<U>>,
-        cfg: VertRuleCfg,
+        file: RoData<FileWidget<U>>, cfg: VertRuleCfg
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let file_read = file.read();
@@ -169,7 +164,7 @@ where
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
     pub fn default_fn(
-        file: RoData<FileWidget<U>>,
+        file: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let cfg = VertRuleCfg::default();
@@ -188,7 +183,7 @@ where
 
 impl<U> DownCastableData for VertRule<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -197,7 +192,7 @@ where
 
 impl<U> NormalWidget<U> for VertRule<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn update(&mut self, _label: &U::Label) {
         let file = self.file.read();
@@ -230,7 +225,7 @@ where
 /// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.
 fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder<U>
 where
-    U: Ui,
+    U: Ui
 {
     let lines = file.printed_lines();
     let main_line = file.main_cursor().true_row();
