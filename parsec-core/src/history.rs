@@ -10,11 +10,10 @@
 //! Undoing/redoing [Moment]s also has the effect of removing all
 //! [Cursor]s and placing new ones where the [Change]s took place.
 //!
-//! The method by which Parsec's [History] works permits the
-//! replication of the history system of many other editors, such as
-//! Vim/Neovim, which is strictly one [Change] per [Moment], or
-//! Kakoune, where [Moment]s may contain as many [Change]s as is
-//! desired.
+//! Parsec's [History] system is designed to allow the replication of
+//! the history system of many other editors, such as Vim/Neovim,
+//! which is strictly one [Change] per [Moment], or Kakoune, where
+//! [Moment]s may contain as many [Change]s as is desired.
 //!
 //! [Cursor]: crate::cursor::Cursor
 use std::{
@@ -22,10 +21,7 @@ use std::{
     ops::{Range, RangeBounds}
 };
 
-use crate::{
-    text::{inner::InnerText},
-    ui::Ui
-};
+use crate::{log_info, text::inner::InnerText, ui::Ui};
 
 /// A change in a file, empty vectors indicate a pure insertion or
 /// deletion.
@@ -68,22 +64,22 @@ impl Change {
     /// [`older`][Change].
     fn try_merge(&mut self, mut older: Change) -> Result<(), Change> {
         if precedes(older.added_range(), self.taken_range()) {
-            let fixed_end = older.added_end().min(self.taken_end()) - older.start;
-            let range = (self.start - older.start)..fixed_end;
+            let fixed_end = older.added_end().min(self.taken_end());
+            let range = (self.start - older.start)..(fixed_end - older.start);
             older.added_text.replace_range(range, &self.added_text);
 
-            let cut_taken = self.taken_text.get(fixed_end..).unwrap_or("");
+            let cut_taken = self.taken_text.get((fixed_end - self.start)..).unwrap_or("");
             older.taken_text.push_str(cut_taken);
 
             *self = older;
 
             Ok(())
         } else if precedes(self.taken_range(), older.added_range()) {
-            let fixed_end = self.taken_end().min(older.added_end()) - self.start;
-            let range = (older.start - self.start)..fixed_end;
+            let fixed_end = self.taken_end().min(older.added_end());
+            let range = (older.start - self.start)..(fixed_end - self.start);
             self.taken_text.replace_range(range, &older.taken_text);
 
-            let cut_added = older.added_text.get(fixed_end..).unwrap_or("");
+            let cut_added = older.added_text.get((fixed_end - older.start)..).unwrap_or("");
             self.added_text.push_str(cut_added);
 
             Ok(())
@@ -134,7 +130,7 @@ fn precedes(lhs: Range<usize>, rhs: Range<usize>) -> bool {
 ///
 /// It also contains information about how to print the file, so that
 /// going back in time is less jaring.
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Moment<U>
 where
     U: Ui
@@ -146,6 +142,15 @@ where
     /// A list of actions, which may be changes, or simply selections
     /// of text.
     pub(crate) changes: Vec<Change>
+}
+
+impl<U> std::fmt::Debug for Moment<U>
+where
+    U: Ui
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Moment").field("changes", &self.changes).finish()
+    }
 }
 
 impl<U> Moment<U>
@@ -192,16 +197,16 @@ where
         };
 
         let prior_changes = self.changes.drain(first_index..last_index).collect::<Vec<Change>>();
-        let added_change = self.changes.get_mut(last_index).unwrap();
+        let added_change = self.changes.get_mut(first_index).unwrap();
         for prior_change in prior_changes {
-            let _ = added_change.try_merge(prior_change);
+            added_change.try_merge(prior_change).unwrap();
         }
 
         (first_index, initial_len as isize - self.changes.len() as isize)
     }
 
-    /// Searches for the first [Change] that can be merged with the
-    /// one inserted on [last_index].
+    /// Searches for the first [`Change`] that can be merged with the
+    /// one inserted on `last_index`.
     fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
@@ -237,7 +242,22 @@ where
     current_moment: usize
 }
 
-impl<U> History<U> where U: Ui {
+impl<U> std::fmt::Debug for History<U>
+where
+    U: Ui
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("History")
+            .field("moments", &self.moments)
+            .field("current_moment", &self.current_moment)
+            .finish()
+    }
+}
+
+impl<U> History<U>
+where
+    U: Ui
+{
     /// Returns a new instance of [History].
     pub fn new() -> Self {
         History {
@@ -277,11 +297,12 @@ impl<U> History<U> where U: Ui {
     pub fn add_change(
         &mut self, change: Change, assoc_index: Option<usize>, print_info: U::PrintInfo
     ) -> (usize, isize) {
+        log_info!("\nchange: {:?}", change);
         // Cut off any actions that take place after the current one. We don't
         // really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
 
-        if let Some(moment) = self.current_moment_mut() {
+        let ret = if let Some(moment) = self.current_moment_mut() {
             moment.ending_print_info = print_info;
             moment.add_change(change, assoc_index)
         } else {
@@ -289,7 +310,11 @@ impl<U> History<U> where U: Ui {
             self.moments.last_mut().unwrap().changes.push(change.clone());
 
             (0, 1)
-        }
+        };
+
+        log_info!("\n{:#?}", self);
+
+        ret
     }
 
     /// Declares that the current [Moment] is complete and starts a
