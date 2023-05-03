@@ -54,12 +54,13 @@ fn main() {
     palette.set_form("VertRuleInv", Form::new().dark_grey().reverse());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
     palette.set_form("MainLineNumber", Form::new_final().dark_yellow().bold());
+    palette.set_form("WrappedMainLineNumber", Form::new().yellow().italic());
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::Word,
+        wrap_method: WrapMethod::Capped(100),
         ..PrintCfg::default()
     };
 

@@ -6,6 +6,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
+    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -57,20 +58,21 @@ impl ui::Label for Label {
         queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
         let no_wraps = cfg.wrap_method.is_no_wrap();
-        let coords = self.wrapping_coords(&cfg);
+        let coords = self.area.coords();
+        let width = cfg.wrap_method.wrapping_cap(self.area.width());
         let first_char = info.first_char;
         let line_char = text.line_to_char(text.char_to_line(first_char));
         let iter = text.iter_range(line_char..);
-        let indents = indents(iter, &cfg.tab_stops, coords.width())
+        let indents = indents(iter, &cfg.tab_stops, width)
             .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
 
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
-            let words = words(indents, coords.width(), info.x_shift, &cfg);
-            print(words, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
+            let words = words(indents, width, &cfg);
+            print(words, coords, self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = bits(indents, coords.width(), info.x_shift, &cfg.tab_stops, no_wraps);
-            print(iter, self.area.coords(), self.is_active, info, &cfg, form_former, &mut stdout)
+            let iter = bits(indents, width, &cfg.tab_stops, no_wraps);
+            print(iter, coords, self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
         let mut stdout = io::stdout().lock();
@@ -102,14 +104,14 @@ impl ui::Label for Label {
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
-                bits(indents, coords.width(), 0, &cfg.tab_stops, false)
+                bits(indents, coords.width(), &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
                     .count()
                     - 1
             }
             WrapMethod::Word => {
-                words(indents, coords.width(), 0, &cfg)
+                words(indents, coords.width(), &cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
                     .count()
@@ -126,13 +128,13 @@ impl ui::Label for Label {
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 let indents = indents(iter, &cfg.tab_stops, width);
-                bits(indents, width, 0, &cfg.tab_stops, false)
+                bits(indents, width, &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
             WrapMethod::Word => {
                 let indents = indents(iter, &cfg.tab_stops, width);
-                words(indents, width, 0, cfg)
+                words(indents, width, cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .nth(wrap)
             }
@@ -140,21 +142,33 @@ impl ui::Label for Label {
         }
     }
 
-    fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
+    fn get_width(
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
+    ) -> usize {
         let width = cfg.wrap_method.wrapping_cap(self.area().width());
         let indents = indents(iter, &cfg.tab_stops, width);
-        let iter = bits(indents, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
-        iter.fold(0, |mut width, (new_line, _, bit)| {
+        let fold_fn = |mut width, (new_line, _, bit)| {
             if let Some(indent) = new_line {
                 width = indent;
             };
 
             if let TextBit::Char(char) = bit {
-                width += len_from(char, width, 0, &cfg.tab_stops)
+                width += len_from(char, width, &cfg.tab_stops)
             }
 
             width
-        }) as usize
+        };
+
+        if let WrapMethod::Word = cfg.wrap_method {
+            let is_no_wrap = cfg.wrap_method.is_no_wrap();
+            bits(indents, width, &cfg.tab_stops, is_no_wrap)
+                .take_while(|(_, index, _)| *index <= max_index)
+                .fold(0, fold_fn) as usize
+        } else {
+            words(indents, width, &cfg)
+                .take_while(|(_, index, _)| *index <= max_index)
+                .fold(0, fold_fn) as usize
+        }
     }
 
     fn col_at_dist(
@@ -164,7 +178,7 @@ impl ui::Label for Label {
             .enumerate()
             .scan(0, |width, (index, char)| {
                 let old_width = *width as usize;
-                *width += len_from(char, *width, 0, &cfg.tab_stops);
+                *width += len_from(char, *width, &cfg.tab_stops);
                 if old_width < dist { Some(index) } else { None }
             })
             .last()
@@ -213,14 +227,14 @@ impl PrintInfo {
             let line = text.iter_line(line_index);
             let iter = indents(line, &cfg.tab_stops, width);
             if let WrapMethod::Word = cfg.wrap_method {
-                words(iter, width, 0, &cfg)
+                words(iter, width, &cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= pos.true_char())
                     .collect_into(&mut line_indices);
             } else {
-                bits(iter, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap())
+                bits(iter, width, &cfg.tab_stops, cfg.wrap_method.is_no_wrap())
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
-                    .take_while(|index| *index <= pos.true_col())
+                    .take_while(|index| *index <= pos.true_char())
                     .collect_into(&mut line_indices);
             };
 
@@ -231,7 +245,7 @@ impl PrintInfo {
             }
         }
 
-        if let Some(&index) = indices.get(limit - 1) {
+        if let Some(&index) = indices.get(limit - 1).or_else(|| indices.last()) {
             if (index < self.first_char && self.last_main > pos)
                 || (index > self.first_char && self.last_main < pos)
             {
@@ -242,9 +256,8 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap<U>(
-        &mut self, target: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
-    ) where
+    fn scroll_hor_to_gap<U>(&mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    where
         U: Ui
     {
         let max_x_shift = match cfg.wrap_method {
@@ -260,13 +273,18 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let line = text.iter_line(target.true_row()).take(target.true_col() + 1);
-        let target_dist = label.get_width(line, cfg);
+        let line = text.iter_line(pos.true_row());
+        let target_dist = label.get_width(line, cfg, pos.true_char());
+        log_info!("\ntarget_dist: {target_dist}");
         let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
         if target_dist < min_dist {
             self.x_shift = self.x_shift.saturating_sub(min_dist - target_dist);
         } else if target_dist > self.x_shift + max_dist {
+            let line = text.iter_line(pos.true_row());
+            if label.get_width(line, cfg, usize::MAX) < label.area().width() {
+                return;
+            }
             self.x_shift = target_dist - max_dist;
         }
 
@@ -294,9 +312,9 @@ impl ui::PrintInfo for PrintInfo {
     }
 }
 
-fn len_from(char: char, start: u16, x_shift: usize, tab_stops: &TabStops) -> u16 {
+fn len_from(char: char, start: u16, tab_stops: &TabStops) -> u16 {
     match char {
-        '\t' => tab_stops.spaces_at(start as usize + x_shift) as u16,
+        '\t' => tab_stops.spaces_at(start as usize) as u16,
         '\n' => 1,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
@@ -322,12 +340,12 @@ fn indents<'a>(
 }
 
 fn bits<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, x_shift: usize,
-    tab_stops: &'a TabStops, no_wrap: bool
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, tab_stops: &'a TabStops,
+    no_wrap: bool
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let width = width as u16;
     iter.scan((0, true), move |(x, ret_char), (indent, index, bit)| {
-        let len = bit.as_char().map(|char| len_from(char, *x, x_shift, tab_stops)).unwrap_or(0);
+        let len = bit.as_char().map(|char| len_from(char, *x, tab_stops)).unwrap_or(0);
         *x += len;
 
         let nl = if *ret_char || !no_wrap && (*x > width || (*x == width && len == 0)) {
@@ -349,8 +367,7 @@ fn bits<'a>(
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 fn words<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, x_shift: usize,
-    cfg: &'a PrintCfg
+    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, cfg: &'a PrintCfg
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let mut iter = iter.peekable();
     let width = width as u16;
@@ -362,7 +379,7 @@ fn words<'a>(
     std::iter::from_fn(move || {
         if let Some((index, bit)) = finished_word.pop() {
             let nl = if let TextBit::Char(char) = bit {
-                let len = len_from(char, x, x_shift, &cfg.tab_stops);
+                let len = len_from(char, x, &cfg.tab_stops);
                 let ret = if x + len > width { Some(indent) } else { None };
                 x = ret.map(|indent| indent + len).unwrap_or(x + len);
                 ret
@@ -382,7 +399,7 @@ fn words<'a>(
                 let is_word_char = cfg.word_chars.contains(char);
                 indent = *new_indent;
                 if word.is_empty() || is_word_char {
-                    word_len += len_from(char, x + word_len, x_shift, &cfg.tab_stops)
+                    word_len += len_from(char, x + word_len, &cfg.tab_stops)
                 }
                 if !is_word_char {
                     break;
@@ -411,7 +428,7 @@ fn words<'a>(
             finished_word.reverse();
             finished_word.pop().map(|(index, bit)| {
                 if let TextBit::Char(char) = bit {
-                    x += len_from(char, x, x_shift, &cfg.tab_stops);
+                    x += len_from(char, x, &cfg.tab_stops);
                 }
                 (nl, index, bit)
             })
@@ -432,8 +449,8 @@ fn print(
     while let Some((nl, _, bit)) = iter.next() {
         if let Some(indent) = nl {
             clear_line(cursor, coords, info.x_shift, stdout);
-
             if cursor.y + 1 > coords.br.y {
+                cursor.y += 1;
                 break;
             }
             cursor.x = coords.tl.x + indent;
@@ -441,7 +458,6 @@ fn print(
             cursor.y += 1;
         }
 
-        // std::thread::sleep(std::time::Duration::from_micros(300));
         if let &TextBit::Char(char) = &bit {
             last_char = real_char_from(char, &cfg.new_line, last_char);
             cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, stdout);
@@ -470,7 +486,7 @@ fn print_char(
     cursor: Coord, char: char, coords: Coords, x_shift: usize, tab_stops: &TabStops,
     stdout: &mut StdoutLock
 ) -> u16 {
-    let len = len_from(char, cursor.x, x_shift, tab_stops);
+    let len = len_from(char, cursor.x - coords.tl.x, tab_stops);
 
     if cursor.x < coords.tl.x + x_shift as u16 {
         let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
@@ -481,8 +497,8 @@ fn print_char(
             char => queue!(stdout, Print(char))
         };
     } else if cursor.x < coords.br.x + x_shift as u16 {
-        let width = coords.br.x - cursor.x;
-        queue!(stdout, Print(" ".repeat(width as usize)));
+        let len = (coords.br.x as usize + x_shift).saturating_sub(cursor.x as usize);
+        queue!(stdout, Print(" ".repeat(len as usize)));
     }
 
     len
@@ -497,10 +513,10 @@ fn trigger_tag(
 
     match tag {
         Tag::PushForm(id) => {
-            queue!(stdout, SetStyle(form_former.apply(id).style));
+            queue!(stdout, ResetColor, SetStyle(form_former.apply(id).style));
         }
         Tag::PopForm(id) => {
-            queue!(stdout, SetStyle(form_former.remove(id).style));
+            queue!(stdout, ResetColor, SetStyle(form_former.remove(id).style));
         }
         Tag::MainCursor => {
             let cursor = form_former.main_cursor();

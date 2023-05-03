@@ -78,7 +78,7 @@ pub trait Label {
     ) -> Option<usize>;
 
     /// Gets the visual width of the [`Iterator`].
-    fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
+    fn get_width(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index:usize) -> usize;
 
     /// Gets the column at `dist` from the left side on [`Iterator`].
     fn col_at_dist(
