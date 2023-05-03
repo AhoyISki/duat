@@ -127,7 +127,7 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: label.get_width(line.take(pos.true_col()), cfg, usize::MAX)
+            desired_x: label.get_width(line.take(pos.true_col()), cfg, usize::MAX, true)
         }
     }
 
@@ -164,14 +164,14 @@ impl Cursor {
         let line_char = text.inner.line_to_char(caret.row);
         caret.col = caret.char - line_char;
 
-        self.desired_x = label.get_width(text.iter_range(line_char..=caret.char), cfg, usize::MAX);
+        self.desired_x =
+            label.get_width(text.iter_range(line_char..=caret.char), cfg, usize::MAX, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `row` of th [Pos] are correct.
-    pub(crate) fn move_to<U>(
-        &mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
-    ) where
+    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    where
         U: Ui
     {
         let cur = &mut self.caret;
@@ -182,7 +182,7 @@ impl Cursor {
         cur.char = text.inner.line_to_char(cur.row) + cur.col;
         cur.byte = text.inner.char_to_byte(cur.char);
 
-        self.desired_x = label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX);
+        self.desired_x = label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX, true);
 
         self.anchor = None;
     }

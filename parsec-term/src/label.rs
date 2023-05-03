@@ -6,7 +6,6 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -50,6 +49,10 @@ impl ui::Label for Label {
     type Area = Area;
     type PrintInfo = PrintInfo;
 
+    fn set_as_active(&mut self) {
+        self.is_active = true;
+    }
+
     fn print<U>(&mut self, text: &Text<U>, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette)
     where
         U: Ui
@@ -87,14 +90,6 @@ impl ui::Label for Label {
         }
 
         execute!(stdout, ResetColor).unwrap();
-    }
-
-    fn set_as_active(&mut self) {
-        self.is_active = true;
-    }
-
-    fn area(&self) -> &Area {
-        &self.area
     }
 
     fn wrap_count(
@@ -143,12 +138,13 @@ impl ui::Label for Label {
     }
 
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize,
+        wrap_around: bool
     ) -> usize {
         let width = cfg.wrap_method.wrapping_cap(self.area().width());
         let indents = indents(iter, &cfg.tab_stops, width);
         let fold_fn = |mut width, (new_line, _, bit)| {
-            if let Some(indent) = new_line {
+            if let (true, Some(indent)) = (wrap_around, new_line) {
                 width = indent;
             };
 
@@ -162,11 +158,11 @@ impl ui::Label for Label {
         if let WrapMethod::Word = cfg.wrap_method {
             let is_no_wrap = cfg.wrap_method.is_no_wrap();
             bits(indents, width, &cfg.tab_stops, is_no_wrap)
-                .take_while(|(_, index, _)| *index <= max_index)
+                .take_while(|(_, index, _)| *index < max_index)
                 .fold(0, fold_fn) as usize
         } else {
             words(indents, width, &cfg)
-                .take_while(|(_, index, _)| *index <= max_index)
+                .take_while(|(_, index, _)| *index < max_index)
                 .fold(0, fold_fn) as usize
         }
     }
@@ -183,6 +179,10 @@ impl ui::Label for Label {
             })
             .last()
             .unwrap_or(0)
+    }
+
+    fn area(&self) -> &Area {
+        &self.area
     }
 
     fn area_index(&self) -> usize {
@@ -274,15 +274,15 @@ impl PrintInfo {
         };
 
         let line = text.iter_line(pos.true_row());
-        let target_dist = label.get_width(line, cfg, pos.true_char());
-        log_info!("\ntarget_dist: {target_dist}");
+        let target_dist = label.get_width(line, cfg, pos.true_char(), true);
         let max_dist = label.area().width() - (cfg.scrolloff.x_gap + 1);
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
         if target_dist < min_dist {
             self.x_shift = self.x_shift.saturating_sub(min_dist - target_dist);
         } else if target_dist > self.x_shift + max_dist {
             let line = text.iter_line(pos.true_row());
-            if label.get_width(line, cfg, usize::MAX) < label.area().width() {
+
+            if label.get_width(line, cfg, usize::MAX, false) < label.area().width() {
                 return;
             }
             self.x_shift = target_dist - max_dist;
