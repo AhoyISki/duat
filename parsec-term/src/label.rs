@@ -202,24 +202,24 @@ impl PrintInfo {
         };
 
         let mut indices = Vec::with_capacity(limit);
-        let mut col_limit = pos.true_col() + 1;
         let mut line_indices = Vec::new();
         for line_index in (0..=pos.true_row()).rev() {
-            let line = text.iter_line(line_index).take(col_limit);
+            let line = text.iter_line(line_index);
             let iter = indents(line, &cfg.tab_stops, width);
             if let WrapMethod::Word = cfg.wrap_method {
                 words(iter, width, 0, &cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .take_while(|index| *index <= pos.true_char())
                     .collect_into(&mut line_indices);
             } else {
                 bits(iter, width, 0, &cfg.tab_stops, cfg.wrap_method.is_no_wrap())
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .take_while(|index| *index <= pos.true_col() + 1)
                     .collect_into(&mut line_indices);
             };
 
             line_indices.reverse();
             indices.append(&mut line_indices);
-            col_limit = usize::MAX;
             if indices.len() >= limit {
                 break;
             }

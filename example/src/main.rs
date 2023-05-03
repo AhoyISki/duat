@@ -49,9 +49,10 @@ fn main() {
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that
     // name.
-    palette.add_form("Mode", Form::new(false).dark_green());
-    palette.add_form("VertRule", Form::new(false).dark_grey());
-    palette.add_form("VertRuleInv", Form::new(false).dark_grey().reverse());
+    palette.set_form("Mode", Form::new().dark_green());
+    palette.set_form("VertRule", Form::new().dark_grey());
+    palette.set_form("VertRuleInv", Form::new().dark_grey().reverse());
+    palette.set_form("WrappedLineNumber", Form::new());
 
     // The `Config` struct is a collection of common configuration options
     // for the end user.

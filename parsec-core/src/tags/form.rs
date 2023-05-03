@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crossterm::{
     cursor::SetCursorStyle,
-    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
+    style::{Attribute, Attributes, Color, ContentStyle, Stylize}
 };
 
 /// A style for text.
@@ -11,7 +11,7 @@ pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should
     /// override any that come after.
-    pub is_final: bool,
+    pub is_final: bool
 }
 
 macro_rules! mimic_method {
@@ -65,8 +65,12 @@ impl Form {
     mimic_method!(white on_white underline_white);
     mimic_method!(grey on_grey underline_grey);
 
-    pub fn new(is_final: bool) -> Self {
-        Self { style: ContentStyle::default(), is_final }
+    pub fn new() -> Self {
+        Self { style: ContentStyle::default(), is_final: false }
+    }
+
+    pub fn new_final() -> Self {
+        Self { style: ContentStyle::default(), is_final: true }
     }
 }
 
@@ -77,7 +81,7 @@ pub struct CursorStyle {
     // NOTE: This is obligatory as a fallback for when the application can't render the
     // cursor with `caret`.
     /// To render the cursor as a form, not as an actual cursor.
-    pub form: Form,
+    pub form: Form
 }
 
 impl CursorStyle {
@@ -107,96 +111,106 @@ pub const SELECTIONS: u16 = 8;
 pub const COORDS: u16 = 9;
 pub const SEPARATOR: u16 = 10;
 
+#[derive(Clone, Copy)]
+enum Named {
+    Form(Form),
+    Ref(&'static str)
+}
+
+impl Default for Named {
+    fn default() -> Self {
+        Named::Form(Form::default())
+    }
+}
+
 /// The list of forms to be used when rendering.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FormPalette {
     main_cursor: CursorStyle,
     extra_cursor: CursorStyle,
-    forms: Vec<(String, Form)>,
+    forms: Vec<(String, Named)>
 }
 
 impl Default for FormPalette {
     fn default() -> Self {
         let main_cursor =
-            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new(false).reverse());
-        let selection_form = Form::new(false).on_dark_grey();
+            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new().reverse());
         let forms = vec![
-            (String::from("Default"), Form::default()),
-            (String::from("LineNumbers"), Form::default()),
-            (String::from("MainLineNumber"), Form::default()),
-            (String::from("WrappedLineNumbers"), Form::default()),
-            (String::from("WrappedMainLineNumber"), Form::default()),
-            (String::from("MainSelection"), selection_form),
-            (String::from("ExtraSelection"), selection_form),
-            (String::from("FileName"), Form::new(false).dark_yellow().italic()),
-            (String::from("Selections"), Form::new(false).dark_blue()),
-            (String::from("Coords"), Form::new(false).yellow()),
-            (String::from("Separator"), Form::new(false).cyan()),
+            (String::from("Default"), Named::default()),
+            (String::from("LineNumbers"), Named::default()),
+            (String::from("MainLineNumber"), Named::Ref("LineNumbers")),
+            (String::from("WrappedLineNumbers"), Named::Ref("LineNumbers")),
+            (String::from("WrappedMainLineNumber"), Named::Ref("WrappedLineNumbers")),
+            (String::from("MainSelection"), Named::Form(Form::new().on_dark_grey())),
+            (String::from("ExtraSelection"), Named::Ref("MainSelection")),
+            // Forms for a basic `StatusLine`.
+            (String::from("FileName"), Named::Form(Form::new().dark_yellow().italic())),
+            (String::from("Selections"), Named::Form(Form::new().dark_blue())),
+            (String::from("Coords"), Named::Form(Form::new().yellow())),
+            (String::from("Separator"), Named::Form(Form::new().cyan())),
         ];
 
         Self {
             main_cursor,
             extra_cursor: main_cursor,
-            forms,
+            forms
         }
     }
 }
 
 impl FormPalette {
-    /// Adds a new named `Form` to the list of user added `Form`s.
-    pub fn add_form(&mut self, name: impl ToString, form: Form) {
-        let name = name.to_string();
-        if let None = self.forms.iter().find(|(cmp, _)| *cmp == name) {
-            self.forms.push((name.to_string(), form));
-        } else {
-            panic!("The form {} is already in use!", name);
-        }
-    }
-
     /// Sets the `Form` with a given name to a new one.
     pub fn set_form(&mut self, name: impl ToString, form: Form) {
         let name = name.to_string();
 
         let name_match = self.forms.iter_mut().find(|(cmp, _)| *cmp == name);
         if let Some((_, old_form)) = name_match {
-            *old_form = form
+            *old_form = Named::Form(form)
         } else {
-            panic!("The form of name \"{}\" wasn't added!", name);
+            self.forms.push((name.to_string(), Named::Form(form)));
         }
     }
 
     /// Returns the `Form` associated to a given name with the index
     /// for efficient access.
     pub fn from_name(&self, name: impl AsRef<str>) -> (Form, u16) {
-        let name = name.as_ref();
-
-        let name_match = self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name);
-        assert!(name_match.is_some(), "Form with name {} not found", name);
-        name_match.map(|(index, &(_, form))| (form, index as u16)).unwrap()
+        let Some(ret) = self.get_from_name(&name) else {
+            panic!("Form with name {} not found.", name.as_ref());
+        };
+        ret
     }
 
     /// Non-panicking version of
     /// [`from_name()`][FormPalette::from_name]
     pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, u16)> {
-        let name = name.as_ref();
+        let mut name = name.as_ref();
 
-        self.forms
-            .iter()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-            .map(|(index, &(_, form))| (form, index as u16))
+        while let Some((index, (_, named))) =
+            self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name)
+        {
+            match named {
+                Named::Form(form) => return Some((*form, index as u16)),
+                Named::Ref(ref_name) => name = ref_name
+            }
+        }
+        None
     }
 
     /// Returns a form, given an index.
     pub fn from_id(&self, form_id: u16) -> Form {
-        let form = self.forms.get(form_id as usize).map(|(_, form)| *form);
-        assert!(form.is_some(), "Form with id {} not found", form_id);
-        form.unwrap()
+        let Some(ret) = self.get_from_id(form_id) else {
+            panic!("Form with id {} not found", form_id);
+        };
+        ret
     }
 
     /// Non-panicking version of [`from_id()`][Self::from_id]
     pub fn get_from_id(&self, form_id: u16) -> Option<Form> {
-        self.forms.get(form_id as usize).map(|(_, form)| *form)
+        let named = self.forms.get(form_id as usize).map(|(_, named)| *named);
+        named.map(|named| match named {
+            Named::Form(form) => form,
+            Named::Ref(name) => self.from_name(name).0
+        })
     }
 
     pub fn main_cursor(&self) -> &CursorStyle {
@@ -218,14 +232,14 @@ impl FormPalette {
     pub fn form_former(&self) -> FormFormer {
         FormFormer {
             palette: self,
-            forms: Vec::new(),
+            forms: Vec::new()
         }
     }
 }
 
 pub struct FormFormer<'a> {
     palette: &'a FormPalette,
-    forms: Vec<(Form, u16)>,
+    forms: Vec<(Form, u16)>
 }
 
 impl<'a> FormFormer<'a> {
@@ -244,12 +258,12 @@ impl<'a> FormFormer<'a> {
             foreground_color: Some(Color::Reset),
             background_color: Some(Color::Reset),
             underline_color: Some(Color::Reset),
-            attributes: Attributes::default(),
+            attributes: Attributes::default()
         };
 
         let mut form = Form {
             style,
-            is_final: false,
+            is_final: false
         };
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
@@ -287,7 +301,7 @@ impl<'a> FormFormer<'a> {
             self.forms.remove(index);
             self.make_form()
         } else {
-            //panic!("The id {} has yet to be pushed.", id);
+            // panic!("The id {} has yet to be pushed.", id);
             Form::default()
         }
     }
@@ -304,7 +318,7 @@ impl<'a> FormFormer<'a> {
 /// Internal method used only to shorten code in `make_form()`.
 fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
 where
-    T: Clone,
+    T: Clone
 {
     if let (Some(new_var), false) = (maybe_new, &is_set) {
         *var = Some(new_var.clone());
