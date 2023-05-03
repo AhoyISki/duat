@@ -199,18 +199,19 @@ where
         let lines = file.printed_lines();
         let builder = &mut self.builder;
         let main_line = file.main_cursor().true_row();
-        let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
-        let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();
+        let above = lines.iter().filter(|&(line, _)| *line < main_line).count();
+        let equal = lines.iter().filter(|&(line, _)| *line == main_line).count();
+        let below = lines.iter().filter(|&(line, _)| *line > main_line).count();
 
         let forms = self.cfg.sep_form.forms();
         let chars = self.cfg.sep_char.chars();
 
         builder.swap_tag(0, Tag::PushForm(forms[0]));
-        builder.swap_range(0, [chars[0], '\n'].into_iter().collect::<String>().repeat(upper));
+        builder.swap_range(0, [chars[0], '\n'].into_iter().collect::<String>().repeat(above));
         builder.swap_tag(1, Tag::PushForm(forms[1]));
-        builder.swap_range(1, [chars[1], '\n'].into_iter().collect::<String>());
+        builder.swap_range(1, [chars[1], '\n'].into_iter().collect::<String>().repeat(equal));
         builder.swap_tag(2, Tag::PushForm(forms[2]));
-        builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
+        builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(below));
     }
 
     fn needs_update(&self) -> bool {
