@@ -167,7 +167,8 @@ where
 
     fn add_to_last_skip(&mut self, edit_len: u32) {
         let tags_vec = self.text.tags.vec();
-        let Some(tag_or_skip) = tags_vec.last_mut() else {
+        let Some(tag_or_skip) = tags_vec.last() else {
+            tags_vec.push(TagOrSkip::Skip(edit_len));
             return;
         };
 
@@ -180,8 +181,7 @@ where
                     tags_vec.insert(prev, TagOrSkip::Skip(edit_len));
                 }
             }
-            TagOrSkip::Tag(..) => tags_vec.push(TagOrSkip::Skip(edit_len)),
-            TagOrSkip::Skip(skip) => *skip += edit_len
+            _ => tags_vec.push(TagOrSkip::Skip(edit_len)),
         }
     }
 

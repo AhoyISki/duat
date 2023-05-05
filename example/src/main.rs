@@ -84,7 +84,11 @@ fn main() {
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
-            let parts = vec![text("[Mode]stinky"), f_var(|file| { file.main_cursor() }), f_var(|file| file.main_cursor())];
+            let parts = vec![
+                text("stinky"),
+                f_var(|file| file.main_cursor()),
+                f_var(|file| file.main_cursor()),
+            ];
             let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
             mod_node
                 .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);
