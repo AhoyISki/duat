@@ -14,7 +14,6 @@ use parsec_core::{
     // The input module handles remapping and input methods. Remapping will always be done in the
     // same way, and is not implemented individually for every editing method.
     input::KeyRemapper,
-    status_format,
     // Tags are a really powerfull part of Parsec. For now, they handle `Form`s (font styling),
     // cursors, and wrapping, but in the future, they will also allow the creation of buttons and
     // folding zones.
@@ -28,7 +27,7 @@ use parsec_core::{
         command_line::CommandLine,
         file_widget::FileWidget,
         line_numbers::{Alignment, LineNumbers, LineNumbersCfg, Numbering},
-        status_line::{StatusLine, StatusPart::{f_var, var}}
+        status_line::{f_var, text, var, StatusLine}
     },
     Session
 };
@@ -85,7 +84,7 @@ fn main() {
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
-            let parts = vec![f_var(|file| file.main_cursor())];
+            let parts = vec![text("[Mode]stinky"), f_var(|file| { file.main_cursor() }), f_var(|file| file.main_cursor())];
             let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
             mod_node
                 .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);

@@ -8,6 +8,7 @@ use no_deadlocks::RwLock;
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RoData},
+    log_info,
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag
@@ -29,10 +30,14 @@ impl<U> Reader<U>
 where
     U: Ui
 {
-    fn read(&self, file_widget: &FileWidget<U>) -> String {
+    fn read(&self, file: &FileWidget<U>) -> String {
         match self {
             Reader::Var(obj_fn) => obj_fn(),
-            Reader::File(file_fn) => file_fn(file_widget)
+            Reader::File(file_fn) => {
+                let ret = file_fn(file);
+                log_info!("\n{ret}");
+                ret
+            }
         }
     }
 }
@@ -49,28 +54,8 @@ impl<U> StatusPart<U>
 where
     U: Ui
 {
-    pub fn f_var<S>(file_fn: impl Fn(&FileWidget<U>) -> S + 'static) -> Self
-    where
-        S: ToString
-    {
-        let file_fn = Box::new(move |file: &FileWidget<U>| file_fn(file).to_string());
-        StatusPart::Dynamic(Reader::File(file_fn))
-    }
-
-    pub fn var<S>(var_fn: impl Fn() -> S + 'static) -> Self
-    where
-        S: ToString
-    {
-        let var_fn = Box::new(move || var_fn().to_string());
-        StatusPart::Dynamic(Reader::Var(var_fn))
-    }
-
-    pub fn text(text: &'static str) -> Self {
-        StatusPart::Static(text)
-    }
-
     fn process(
-        self, text_builder: &mut TextBuilder<U>, file_widget: &FileWidget<U>, palette: &FormPalette
+        self, text_builder: &mut TextBuilder<U>, file: &FileWidget<U>, palette: &FormPalette
     ) -> Option<Reader<U>> {
         match self {
             StatusPart::Dynamic(Reader::Var(obj_fn)) => {
@@ -78,7 +63,7 @@ where
                 Some(Reader::Var(obj_fn))
             }
             StatusPart::Dynamic(Reader::File(file_fn)) => {
-                text_builder.push_swappable(file_fn(file_widget));
+                text_builder.push_swappable(file_fn(file));
                 Some(Reader::File(file_fn))
             }
             StatusPart::Static(text) => {
@@ -101,15 +86,16 @@ where
             continue;
         };
 
-        if let Some((r_index, (_, form_id))) = text[(l_index + 1)..next_l_index]
+        if let Some((text_start, (_, form_id))) = text[(l_index + 1)..next_l_index]
             .find(']')
             .map(|r_index| {
-                palette.get_from_name(&text[l_index..r_index]).map(|form_id| (r_index, form_id))
+                let form_name = &text[(l_index + 1)..=r_index];
+                palette.get_from_name(form_name).map(|form_id| (r_index + 2, form_id))
             })
             .flatten()
         {
             text_builder.push_tag(Tag::PushForm(form_id));
-            text_builder.push_text(&text[(r_index + 1)..next_l_index]);
+            text_builder.push_text(&text[text_start..next_l_index]);
         } else {
             text_builder.push_text(&text[l_index..next_l_index]);
         }
@@ -122,8 +108,8 @@ pub struct StatusLine<U>
 where
     U: Ui
 {
-    file_widget: RoData<FileWidget<U>>,
-    text_builder: TextBuilder<U>,
+    file: RoData<FileWidget<U>>,
+    builder: TextBuilder<U>,
     readers: Vec<Reader<U>>,
     _clippable: bool
 }
@@ -133,47 +119,51 @@ where
     U: Ui
 {
     pub fn clippable_fn(
-        file_widget: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
+        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
-        let mut readers = Vec::new();
-        let file = file_widget.read();
-        for part in status_parts.into_iter() {
-            if let Some(reader) = part.process(&mut text_builder, &file, palette) {
-                readers.push(reader);
+        let readers = {
+            let mut readers = Vec::new();
+            let file = file.read();
+            for part in status_parts.into_iter() {
+                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                    readers.push(reader);
+                }
             }
-        }
+            readers
+        };
 
-        drop(file);
-        StatusLine::new_fn(file_widget, text_builder, readers, false)
+        StatusLine::new_fn(file, text_builder, readers, true)
     }
 
     pub fn unclippable_fn(
-        file_widget: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
+        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
-        let mut readers = Vec::new();
-        let file = file_widget.read();
-        for part in status_parts.into_iter() {
-            if let Some(reader) = part.process(&mut text_builder, &file, palette) {
-                readers.push(reader);
+        let readers = {
+            let mut readers = Vec::new();
+            let file = file.read();
+            for part in status_parts.into_iter() {
+                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                    readers.push(reader);
+                }
             }
-        }
+            readers
+        };
 
-        drop(file);
-        StatusLine::new_fn(file_widget, text_builder, readers, false)
+        StatusLine::new_fn(file, text_builder, readers, false)
     }
 
     fn new_fn(
-        file_widget: RoData<FileWidget<U>>, text_builder: TextBuilder<U>, readers: Vec<Reader<U>>,
+        file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
         _clippable: bool
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
-            let updaters = updaters![(file_widget.clone())];
+            let updaters = updaters![(file.clone())];
             Widget::normal(
                 Arc::new(RwLock::new(StatusLine {
-                    file_widget,
-                    text_builder,
+                    file,
+                    builder,
                     readers,
                     _clippable
                 })),
@@ -183,7 +173,7 @@ where
     }
 
     pub fn default_fn(
-        file_widget: RoData<FileWidget<U>>
+        file: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let name = Reader::File(file_name());
         let sels = Reader::File(file_selections());
@@ -191,34 +181,37 @@ where
         let line = Reader::File(main_line());
         let lines = Reader::File(file_lines_len());
 
-        let file = file_widget.read();
-        let mut text_builder = TextBuilder::default();
+        let text_builder = {
+            let file = file.read();
+            let mut builder = TextBuilder::default();
 
-        text_builder.push_tag(Tag::PushForm(FILE_NAME));
-        text_builder.push_swappable(name.read(&file));
-        text_builder.push_text(" ");
-        text_builder.push_tag(Tag::PushForm(SELECTIONS));
-        text_builder.push_swappable(sels.read(&file));
-        text_builder.push_text(" ");
-        text_builder.push_tag(Tag::PushForm(COORDS));
-        text_builder.push_swappable(col.read(&file));
-        text_builder.push_tag(Tag::PushForm(SEPARATOR));
-        text_builder.push_text(":");
-        text_builder.push_tag(Tag::PushForm(COORDS));
-        text_builder.push_swappable(line.read(&file));
-        text_builder.push_tag(Tag::PushForm(SEPARATOR));
-        text_builder.push_text("/");
-        text_builder.push_tag(Tag::PushForm(COORDS));
-        text_builder.push_swappable(lines.read(&file));
+            builder.push_tag(Tag::PushForm(FILE_NAME));
+            builder.push_swappable(name.read(&file));
+            builder.push_text(" ");
+            builder.push_tag(Tag::PushForm(SELECTIONS));
+            builder.push_swappable(sels.read(&file));
+            builder.push_text(" ");
+            builder.push_tag(Tag::PushForm(COORDS));
+            builder.push_swappable(col.read(&file));
+            builder.push_tag(Tag::PushForm(SEPARATOR));
+            builder.push_text(":");
+            builder.push_tag(Tag::PushForm(COORDS));
+            builder.push_swappable(line.read(&file));
+            builder.push_tag(Tag::PushForm(SEPARATOR));
+            builder.push_text("/");
+            builder.push_tag(Tag::PushForm(COORDS));
+            builder.push_swappable(lines.read(&file));
+
+            builder
+        };
 
         let readers = vec![name, sels, col, line, lines];
 
-        drop(file);
-        StatusLine::new_fn(file_widget, text_builder, readers, true)
+        StatusLine::new_fn(file, text_builder, readers, true)
     }
 
     pub fn set_file(&mut self, file_widget: RoData<FileWidget<U>>) {
-        self.file_widget = file_widget;
+        self.file = file_widget;
     }
 }
 
@@ -268,11 +261,20 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, _label: &U::Label) {
-        let file = self.file_widget.read();
+        let file = self.file.read();
 
         for (index, reader) in self.readers.iter().enumerate() {
-            self.text_builder.swap_range(index, reader.read(&file));
+            self.builder.swap_range(index, reader.read(&file));
         }
+
+        log_info!(
+            "\ntext: {}",
+            self.builder
+                .text()
+                .iter()
+                .filter_map(|(_, bit)| bit.as_char())
+                .collect::<String>()
+        );
     }
 
     fn needs_update(&self) -> bool {
@@ -280,7 +282,7 @@ where
     }
 
     fn text(&self) -> &Text<U> {
-        &self.text_builder.text()
+        &self.builder.text()
     }
 }
 
@@ -293,32 +295,29 @@ where
     }
 }
 
-#[macro_export]
-macro_rules! status_format {
-	// File closures are bounded by "f(" and ")".
-    (@process_tokens $parts:ident, file($closure:expr), $(readers:tt),*) => {
-        $parts.push(StatusPart::file(closure));
+pub fn f_var<U, S>(file_fn: impl Fn(&FileWidget<U>) -> S + 'static) -> StatusPart<U>
+where
+    U: Ui,
+    S: ToString
+{
+    let file_fn = Box::new(move |file: &FileWidget<U>| file_fn(file).to_string());
+    StatusPart::Dynamic(Reader::File(file_fn))
+}
 
-        startus_format!(@process_tokens $parts, $($readers),*);
-    };
+pub fn var<U, S>(var_fn: impl Fn() -> S + 'static) -> StatusPart<U>
+where
+    U: Ui,
+    S: ToString
+{
+    let var_fn = Box::new(move || var_fn().to_string());
+    StatusPart::Dynamic(Reader::Var(var_fn))
+}
 
-	// Remaining expressions are assumed to be text.
-    (@process_tokens $builder:ident, $text:expr, $(readers:tt),*) => {
-        $parts.push(StatusPart::Static($text));
-
-        status_format!(@process_tokens $builder, $($readers),*);
-    };
-
-    () => { Vec::new() };
-
-    ($func:item($closure:expr) $(, $readers:tt)* $(,)?) => {
-        use crate::widgets::StatusLine::{Reader, StatusPart};
-        let mut parts = Vec::new();
-
-        status_format!(@process_tokens parts, $($readers),*)
-
-        parts
-    };
+pub fn text<U>(text: &'static str) -> StatusPart<U>
+where
+    U: Ui
+{
+    StatusPart::Static(text)
 }
 
 /// A convenience macro to join any number of variables that can be
