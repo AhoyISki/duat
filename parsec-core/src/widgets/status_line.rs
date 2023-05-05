@@ -10,55 +10,72 @@ use crate::{
     config::{DownCastableData, RoData},
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
-        Tag,
+        Tag
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
-    updaters, SessionManager,
+    updaters, SessionManager
 };
 
 pub enum Reader<U>
 where
-    U: Ui,
+    U: Ui
 {
-    Obj(Box<dyn Fn() -> String>),
-    File(Box<dyn Fn(&FileWidget<U>) -> String>),
+    Var(Box<dyn Fn() -> String>),
+    File(Box<dyn Fn(&FileWidget<U>) -> String>)
 }
 
 impl<U> Reader<U>
 where
-    U: Ui,
+    U: Ui
 {
     fn read(&self, file_widget: &FileWidget<U>) -> String {
         match self {
-            Reader::Obj(obj_fn) => obj_fn(),
-            Reader::File(file_fn) => file_fn(file_widget),
+            Reader::Var(obj_fn) => obj_fn(),
+            Reader::File(file_fn) => file_fn(file_widget)
         }
     }
 }
 
 pub enum StatusPart<U>
 where
-    U: Ui,
+    U: Ui
 {
     Dynamic(Reader<U>),
-    Static(&'static str),
+    Static(&'static str)
 }
 
 impl<U> StatusPart<U>
 where
-    U: Ui,
+    U: Ui
 {
+    pub fn f_var<S>(file_fn: impl Fn(&FileWidget<U>) -> S + 'static) -> Self
+    where
+        S: ToString
+    {
+        let file_fn = Box::new(move |file: &FileWidget<U>| file_fn(file).to_string());
+        StatusPart::Dynamic(Reader::File(file_fn))
+    }
+
+    pub fn var<S>(var_fn: impl Fn() -> S + 'static) -> Self
+    where
+        S: ToString
+    {
+        let var_fn = Box::new(move || var_fn().to_string());
+        StatusPart::Dynamic(Reader::Var(var_fn))
+    }
+
+    pub fn text(text: &'static str) -> Self {
+        StatusPart::Static(text)
+    }
+
     fn process(
-        self,
-        text_builder: &mut TextBuilder<U>,
-        file_widget: &FileWidget<U>,
-        palette: &FormPalette,
+        self, text_builder: &mut TextBuilder<U>, file_widget: &FileWidget<U>, palette: &FormPalette
     ) -> Option<Reader<U>> {
         match self {
-            StatusPart::Dynamic(Reader::Obj(obj_fn)) => {
+            StatusPart::Dynamic(Reader::Var(obj_fn)) => {
                 text_builder.push_swappable(obj_fn());
-                Some(Reader::Obj(obj_fn))
+                Some(Reader::Var(obj_fn))
             }
             StatusPart::Dynamic(Reader::File(file_fn)) => {
                 text_builder.push_swappable(file_fn(file_widget));
@@ -74,7 +91,7 @@ where
 
 fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
 where
-    U: Ui,
+    U: Ui
 {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
@@ -103,22 +120,20 @@ where
 
 pub struct StatusLine<U>
 where
-    U: Ui,
+    U: Ui
 {
     file_widget: RoData<FileWidget<U>>,
     text_builder: TextBuilder<U>,
     readers: Vec<Reader<U>>,
-    _clippable: bool,
+    _clippable: bool
 }
 
 impl<U> StatusLine<U>
 where
-    U: Ui,
+    U: Ui
 {
     pub fn clippable_fn(
-        file_widget: RoData<FileWidget<U>>,
-        status_parts: Vec<StatusPart<U>>,
-        palette: &FormPalette,
+        file_widget: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
         let mut readers = Vec::new();
@@ -134,9 +149,7 @@ where
     }
 
     pub fn unclippable_fn(
-        file_widget: RoData<FileWidget<U>>,
-        status_parts: Vec<StatusPart<U>>,
-        palette: &FormPalette,
+        file_widget: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
         let mut readers = Vec::new();
@@ -152,10 +165,8 @@ where
     }
 
     fn new_fn(
-        file_widget: RoData<FileWidget<U>>,
-        text_builder: TextBuilder<U>,
-        readers: Vec<Reader<U>>,
-        _clippable: bool,
+        file_widget: RoData<FileWidget<U>>, text_builder: TextBuilder<U>, readers: Vec<Reader<U>>,
+        _clippable: bool
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let updaters = updaters![(file_widget.clone())];
@@ -164,15 +175,15 @@ where
                     file_widget,
                     text_builder,
                     readers,
-                    _clippable,
+                    _clippable
                 })),
-                updaters,
+                updaters
             )
         })
     }
 
     pub fn default_fn(
-        file_widget: RoData<FileWidget<U>>,
+        file_widget: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let name = Reader::File(file_name());
         let sels = Reader::File(file_selections());
@@ -213,28 +224,28 @@ where
 
 fn file_lines_len<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
-    U: Ui,
+    U: Ui
 {
     Box::new(|file| file.len_lines().to_string())
 }
 
 fn main_line<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
-    U: Ui,
+    U: Ui
 {
     Box::new(|file| file.main_cursor().row().to_string())
 }
 
 fn main_col<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
-    U: Ui,
+    U: Ui
 {
     Box::new(|file| file.main_cursor().col().to_string())
 }
 
 fn file_selections<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
-    U: Ui,
+    U: Ui
 {
     Box::new(|file| {
         if file.cursors().len() == 1 {
@@ -247,14 +258,14 @@ where
 
 fn file_name<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
-    U: Ui,
+    U: Ui
 {
     Box::new(|file| file.name().to_string())
 }
 
 impl<U> NormalWidget<U> for StatusLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn update(&mut self, _label: &U::Label) {
         let file = self.file_widget.read();
@@ -275,7 +286,7 @@ where
 
 impl<U> DownCastableData for StatusLine<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -285,70 +296,28 @@ where
 #[macro_export]
 macro_rules! status_format {
 	// File closures are bounded by "f(" and ")".
-    (@process_tokens $builder:ident, f(|$file:ident| $closure:expr), $remainder:tt) => {
-        let closure = |$file| { $closure.to_string() };
-        $builder.push(RopePart::FileFn(Box::new(closure)));
+    (@process_tokens $parts:ident, file($closure:expr), $(readers:tt),*) => {
+        $parts.push(StatusPart::file(closure));
 
-        startus_format!(@process_tokens $builder, $remainder);
-    };
-
-	// Object closures are bounded by "o(" and ")".
-    (@process_tokens $builder:ident, o(|$obj:ident| $closure:expr), $remainder:tt) => {
-        let closure = |$obj| { $closure.to_string() };
-        let part = RopePart::new_obj_fn(&$obj, closure);
-        $builder.push(part);
-
-        status_format!(@process_tokens $builder, $remainder);
-    };
-
-	// Objects that implement `ToString` are also bounded by "o(" and ")".
-    (@process_tokens $builder:ident, o($obj:expr), $remainder:tt) => {
-        let closure = |data| { data.to_string() };
-        let part = RopePart::new_obj_fn(&$obj, closure);
-        $builder.push(part);
-
-        status_format!(@process_tokens $builder, $remainder);
-    };
-
-	// Forms preceed a ":"
-    (@process_tokens $builder:ident, $form:ident:, $remainder:tt) => {
-        builder.push(RopePart::Form(stringify!($form)));
-
-        status_format!(@process_tokens $builder, $remainder);
+        startus_format!(@process_tokens $parts, $($readers),*);
     };
 
 	// Remaining expressions are assumed to be text.
-    (@process_tokens $builder:ident, $text:expr, $remainder:tt) => {
-        builder.push(RopePart::Text(String::from($text)));
+    (@process_tokens $builder:ident, $text:expr, $(readers:tt),*) => {
+        $parts.push(StatusPart::Static($text));
 
-        status_format!(@process_tokens $builder, $remainder);
+        status_format!(@process_tokens $builder, $($readers),*);
     };
 
-    (
-        $palette:expr, left: $left:tt, center: $center:tt, right: $right:tt,
-    ) => {
-        {
-            let mut left_builder = RopeBuilder::new();
-            $(
-                status_format!(@process_tokens left_builder, $left:tt);
-            )*
+    () => { Vec::new() };
 
-            let mut center_builder = RopeBuilder::new();
-            $(
-                status_format!(@process_tokens center_builder, $left:tt);
-            )*
+    ($func:item($closure:expr) $(, $readers:tt)* $(,)?) => {
+        use crate::widgets::StatusLine::{Reader, StatusPart};
+        let mut parts = Vec::new();
 
-            let mut right_builder = RopeBuilder::new();
-            $(
-                status_format!(@process_tokens right_builder, $left:tt);
-            )*
+        status_format!(@process_tokens parts, $($readers),*)
 
-    		*format.left_text_mut() = $left.to_string();
-    		*format.center_text_mut() = $center.to_string();
-    		*format.right_text_mut() = $right.to_string();
-
-    		format
-        }
+        parts
     };
 }
 

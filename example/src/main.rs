@@ -28,7 +28,7 @@ use parsec_core::{
         command_line::CommandLine,
         file_widget::FileWidget,
         line_numbers::{Alignment, LineNumbers, LineNumbersCfg, Numbering},
-        status_line::StatusLine
+        status_line::{StatusLine, StatusPart::{f_var, var}}
     },
     Session
 };
@@ -85,8 +85,10 @@ fn main() {
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
+            let parts = vec![f_var(|file| file.main_cursor())];
             let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-            mod_node.push_widget(StatusLine::default_fn(file), push_specs);
+            mod_node
+                .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);
         })
     );
 
