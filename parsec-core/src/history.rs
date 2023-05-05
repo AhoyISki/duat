@@ -21,7 +21,7 @@ use std::{
     ops::{Range, RangeBounds}
 };
 
-use crate::{log_info, text::inner::InnerText, ui::Ui};
+use crate::{text::inner::InnerText, ui::Ui};
 
 /// A change in a file, empty vectors indicate a pure insertion or
 /// deletion.
@@ -297,7 +297,6 @@ where
     pub fn add_change(
         &mut self, change: Change, assoc_index: Option<usize>, print_info: U::PrintInfo
     ) -> (usize, isize) {
-        log_info!("\nchange: {:?}", change);
         // Cut off any actions that take place after the current one. We don't
         // really want trees.
         unsafe { self.moments.set_len(self.current_moment) };
@@ -311,8 +310,6 @@ where
 
             (0, 1)
         };
-
-        log_info!("\n{:#?}", self);
 
         ret
     }

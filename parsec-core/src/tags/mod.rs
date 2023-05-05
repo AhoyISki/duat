@@ -6,7 +6,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope as AnyRope};
 
 use self::inner::InnerTags;
-use crate::text::inner::InnerText;
+use crate::{log_info, text::inner::InnerText};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
@@ -33,7 +33,7 @@ pub enum Tag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght,
     /// permanently.
-    PermanentConceal { index: u16 },
+    PermanentConceal { index: u16 }
 }
 
 impl std::fmt::Debug for Tag {
@@ -43,7 +43,7 @@ impl std::fmt::Debug for Tag {
             Tag::PopForm(index) => f.write_fmt(format_args!("PopForm({})", index)),
             Tag::MainCursor => f.write_str("MainCursor"),
             Tag::ExtraCursor => f.write_str("ExtraCursor"),
-            _ => todo!(),
+            _ => todo!()
         }
     }
 }
@@ -54,7 +54,7 @@ impl Tag {
             Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
             Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
             Tag::HoverBound => Some(Tag::HoverBound),
-            _ => None,
+            _ => None
         }
     }
 }
@@ -62,14 +62,14 @@ impl Tag {
 #[derive(Clone, Copy)]
 pub enum TagOrSkip {
     Tag(Tag, Lock),
-    Skip(u32),
+    Skip(u32)
 }
 
 impl std::fmt::Debug for TagOrSkip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TagOrSkip::Tag(tag, _) => f.write_fmt(format_args!("{:?}", tag)),
-            TagOrSkip::Skip(skip) => f.write_fmt(format_args!("Skip({:?})", skip)),
+            TagOrSkip::Skip(skip) => f.write_fmt(format_args!("Skip({:?})", skip))
         }
     }
 }
@@ -79,7 +79,7 @@ impl Measurable for TagOrSkip {
     fn width(&self) -> usize {
         match self {
             TagOrSkip::Tag(..) => 0,
-            TagOrSkip::Skip(count) => *count as usize,
+            TagOrSkip::Skip(count) => *count as usize
         }
     }
 }
@@ -87,7 +87,7 @@ impl Measurable for TagOrSkip {
 // TODO: Generic container.
 pub struct Tags {
     inner: InnerTags,
-    pub next_lock: u16,
+    pub next_lock: u16
 }
 
 impl std::fmt::Debug for Tags {
@@ -103,21 +103,21 @@ impl Tags {
     pub fn default_vec() -> Self {
         Tags {
             inner: InnerTags::Vec(Vec::new()),
-            next_lock: 0,
+            next_lock: 0
         }
     }
 
     pub fn default_rope() -> Self {
         Tags {
             inner: InnerTags::Rope(AnyRope::new()),
-            next_lock: 0,
+            next_lock: 0
         }
     }
 
     pub fn new(inner_text: &InnerText) -> Self {
         Tags {
             inner: InnerTags::new(inner_text),
-            next_lock: 0,
+            next_lock: 0
         }
     }
 
@@ -135,6 +135,7 @@ impl Tags {
             ch_index,
             self.inner
         );
+
         let Some((start, TagOrSkip::Skip(skip))) = self.inner.get_from_ch_index(ch_index) else {
             self.inner.insert(ch_index, TagOrSkip::Tag(tag, lock));
             return;
@@ -147,7 +148,7 @@ impl Tags {
             let insertion = [
                 TagOrSkip::Skip((ch_index - start) as u32),
                 TagOrSkip::Tag(tag, lock),
-                TagOrSkip::Skip(start as u32 + skip - ch_index as u32),
+                TagOrSkip::Skip(start as u32 + skip - ch_index as u32)
             ];
             self.inner.insert_slice(start, &insertion);
 
@@ -155,7 +156,8 @@ impl Tags {
             self.inner.remove_exclusive(skip_range);
         }
 
-        self.merge_surrounding_skips(ch_index);
+       self.merge_surrounding_skips(ch_index);
+
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -203,7 +205,7 @@ impl Tags {
     /// single one.
     ///
     /// This is crucial to prevent the gradual deterioration of the
-    /// [`Rope`]'s structure.
+    /// [`InnerTags`]'s structure.
     fn merge_surrounding_skips(&mut self, from: usize) {
         let mut next_tags = self
             .inner
@@ -238,9 +240,35 @@ impl Tags {
         }
         drop(prev_tags);
         if first_width != from {
+            log_info!("\nfirst_width: {first_width}, from: {from}");
+            log_info!(
+                "\ntags before insertion: {:?}\n",
+                self.inner
+                    .iter()
+                    .take(5)
+                    .map(|(_, tag_or_skip)| tag_or_skip)
+                    .collect::<Vec<TagOrSkip>>()
+            );
             self.inner.insert(first_width, TagOrSkip::Skip(total_skip));
+            log_info!(
+                "\ntags after insertion: {:?}\n",
+                self.inner
+                    .iter()
+                    .take(5)
+                    .map(|(_, tag_or_skip)| tag_or_skip)
+                    .collect::<Vec<TagOrSkip>>()
+            );
+
             let range = (first_width + total_skip as usize)..(from + total_skip as usize);
             self.inner.remove_exclusive(range);
+            log_info!(
+                "\ntags after removal: {:?}\n",
+                self.inner
+                    .iter()
+                    .take(5)
+                    .map(|(_, tag_or_skip)| tag_or_skip)
+                    .collect::<Vec<TagOrSkip>>()
+            );
         }
     }
 

@@ -315,15 +315,15 @@ where
 
     /// Merges `String`s with the body of text, given a range to
     /// replace.
-    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
+    fn replace_range(&mut self, old_range: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count();
-        let new = old.start..(old.start + edit_len);
+        let new_range = old_range.start..(old_range.start + edit_len);
 
-        self.inner.replace(old.start..old.end, edit);
+        self.inner.replace(old_range.start..old_range.end, edit);
 
-        if old != new {
-            self.tags.transform_range(old, new);
+        if old_range != new_range {
+            self.tags.transform_range(old_range, new_range);
         }
     }
 

@@ -3,7 +3,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope};
 use smallvec::SmallVec;
 
-use crate::text::inner::InnerText;
+use crate::{text::inner::InnerText};
 
 use super::{Lock, TagOrSkip};
 
@@ -16,12 +16,12 @@ pub(super) enum InnerTags {
 impl InnerTags {
     pub fn new(inner_text: &InnerText) -> Self {
         let skip = TagOrSkip::Skip(inner_text.len_chars() as u32);
-        let ret = match inner_text {
-            InnerText::String(_) => InnerTags::Vec(vec![skip]),
-            InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip])),
-        };
+        //match inner_text {
+        //    InnerText::String(_) => InnerTags::Vec(vec![skip]),
+        //    InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip])),
+        //}
 
-        ret
+        InnerTags::Vec(vec![skip])
     }
 
     pub fn insert(&mut self, ch_index: usize, tag_or_skip: TagOrSkip) {
@@ -101,13 +101,6 @@ impl InnerTags {
         }
     }
 
-    //pub fn replace_on(&mut self, ch_index: usize, lock: Lock, tag_or_skip: TagOrSkip,) {
-    //    match self {
-    //        InnerTags::Vec(_) => todo!(),
-    //        InnerTags::Rope(_) => todo!(),
-    //    }
-    //}
-
     pub fn get_from_ch_index(&self, ch_index: usize) -> Option<(usize, TagOrSkip)> {
         match self {
             InnerTags::Vec(vec) => vec
@@ -169,10 +162,8 @@ impl InnerTags {
                     vec.iter()
                         .rev()
                         .scan(width, |accum, tag_or_skip| {
-                            let old_accum = *accum;
                             *accum -= tag_or_skip.width();
-
-                            Some((old_accum, *tag_or_skip))
+                            Some((*accum, *tag_or_skip))
                         })
                         .skip_while(move |(accum, _)| *accum > ch_index),
                 )
