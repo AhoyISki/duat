@@ -25,10 +25,9 @@ use parsec_core::{
     text::{PrintCfg, ScrollOff, WrapMethod},
     ui::{ModNode, PushSpecs, Side, Split},
     widgets::{
-        command_line::CommandLine,
-        file_widget::FileWidget,
-        line_numbers::{Alignment, LineNumbers, LineNumbersCfg, Numbering},
-        status_line::{f_var, text, var, StatusLine}
+        line_numbers::{Alignment, Numbering},
+        status_line::{f_var, text, var},
+        CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
     },
     Session
 };

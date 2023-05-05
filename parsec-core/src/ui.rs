@@ -539,7 +539,7 @@ where
             |Node {
                  widget, area_index, ..
              }| {
-                widget.get_actionable().map(|widget| {
+                widget.as_actionable().map(|widget| {
                     let label = self.window.get_label(*area_index).unwrap();
                     (widget, label)
                 })
@@ -552,7 +552,7 @@ where
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
             .iter()
-            .filter_map(|Node { widget, .. }| widget.get_actionable())
+            .filter_map(|Node { widget, .. }| widget.as_actionable())
             .enumerate()
             .filter_map(|(index, widget)| {
                 widget

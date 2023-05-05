@@ -1,3 +1,14 @@
+//! A [`NormalWidget`] that serves the purpose of showing general
+//! information.
+//!
+//! This widget has an associated [`FileWidget<U>`] that's used as a
+//! reference. This conotates that a [`StatusLine<U>`] must be tied to
+//! a single file, but this is not really the case. The end user may
+//! be able to open multiple files and have just a single
+//! [`StatusLine<U>`] that displays the information of only the
+//! currently active [`FileWidget<U>`]. Given an existing
+//! [`Session<U>`][crate::Session], one can do the following. TODO.
+
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{any::Any, sync::Arc};
@@ -48,7 +59,7 @@ where
     U: Ui
 {
     Dynamic(Reader<U>),
-    Static(&'static str)
+    Static(String)
 }
 
 impl<U> StatusPart<U>
@@ -58,19 +69,19 @@ where
     /// Consumes [`self`] and modifies a [`TextBuilder<U>`], adding
     /// swappable ranges, text, and [`Tag`]s.
     fn process(
-        self, text_builder: &mut TextBuilder<U>, file: &FileWidget<U>, palette: &FormPalette
+        self, builder: &mut TextBuilder<U>, file: &FileWidget<U>, palette: &FormPalette
     ) -> Option<Reader<U>> {
         match self {
             StatusPart::Dynamic(Reader::Var(obj_fn)) => {
-                text_builder.push_swappable(obj_fn());
+                builder.push_swappable(obj_fn());
                 Some(Reader::Var(obj_fn))
             }
             StatusPart::Dynamic(Reader::File(file_fn)) => {
-                text_builder.push_swappable(file_fn(file));
+                builder.push_swappable(file_fn(file));
                 Some(Reader::File(file_fn))
             }
             StatusPart::Static(text) => {
-                push_forms_and_text(text, text_builder, palette);
+                push_forms_and_text(text.as_str(), builder, palette);
                 None
             }
         }
@@ -79,14 +90,14 @@ where
 
 /// Consumes a [`StatusPart::Static`], pushing text and [`Tag`] to a
 /// [`TextBuilder<U>`]
-fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
+fn push_forms_and_text<U>(text: &str, builder: &mut TextBuilder<U>, palette: &FormPalette)
 where
     U: Ui
 {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
         let Some(l_index) = prev_l_index else {
-            text_builder.push_text(&text[..next_l_index]);
+            builder.push_text(&text[..next_l_index]);
             prev_l_index = Some(next_l_index);
             continue;
         };
@@ -99,10 +110,10 @@ where
             })
             .flatten()
         {
-            text_builder.push_tag(Tag::PushForm(form_id));
-            text_builder.push_text(&text[text_start..next_l_index]);
+            builder.push_tag(Tag::PushForm(form_id));
+            builder.push_text(&text[text_start..next_l_index]);
         } else {
-            text_builder.push_text(&text[l_index..next_l_index]);
+            builder.push_text(&text[l_index..next_l_index]);
         }
 
         prev_l_index = Some(next_l_index);
@@ -152,7 +163,8 @@ impl<U> StatusLine<U>
 where
     U: Ui
 {
-	/// Returns a function that outputs a new instance of [`StatusLine<U>`].
+    /// Returns a function that outputs a new instance of
+    /// [`StatusLine<U>`].
     fn new_fn(
         file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
         _clippable: bool
@@ -194,13 +206,13 @@ where
     /// A [`StatusLine<U>`] that takes precedence over others, and
     /// when there is not enough space, gets clipped last.
     pub fn unclippable_fn(
-        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
+        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
             let file = file.read();
-            for part in status_parts.into_iter() {
+            for part in parts.into_iter() {
                 if let Some(reader) = part.process(&mut text_builder, &file, palette) {
                     readers.push(reader);
                 }
@@ -211,7 +223,8 @@ where
         StatusLine::new_fn(file, text_builder, readers, false)
     }
 
-	/// Returns a function that outputs the default version of [`StatusLine<U>`].
+    /// Returns a function that outputs the default version of
+    /// [`StatusLine<U>`].
     pub fn default_fn(
         file: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -250,9 +263,10 @@ where
         StatusLine::new_fn(file, text_builder, readers, true)
     }
 
-	/// Changes the reference [`FileWidget<U>`] for the [`StatusLine<U>`]
-    pub fn set_file(&mut self, file_widget: RoData<FileWidget<U>>) {
-        self.file = file_widget;
+    /// Changes the reference [`FileWidget<U>`] for the
+    /// [`StatusLine<U>`]
+    pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
+        self.file = file;
     }
 }
 
@@ -370,11 +384,11 @@ where
 /// print "My file name", and then return the [`Form`] to `"Default"`.
 ///
 /// [`Form`]: crate::tags::form::Form
-pub fn text<U>(text: &'static str) -> StatusPart<U>
+pub fn text<U>(text: impl ToString) -> StatusPart<U>
 where
     U: Ui
 {
-    StatusPart::Static(text)
+    StatusPart::Static(text.to_string())
 }
 
 ////////// Functions used in the default `StatusLine<U>`.
