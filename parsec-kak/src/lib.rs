@@ -6,7 +6,7 @@ use parsec_core::{
     input::InputScheme,
     ui::{Side, Ui},
     widgets::{ActionableWidget, WidgetActor},
-    Controls,
+    Controls
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -16,7 +16,7 @@ pub enum Mode {
     Normal,
     GoTo,
     View,
-    Command,
+    Command
 }
 
 impl Display for Mode {
@@ -26,7 +26,7 @@ impl Display for Mode {
             Mode::Normal => f.write_fmt(format_args!("normal")),
             Mode::GoTo => f.write_fmt(format_args!("goto")),
             Mode::View => f.write_fmt(format_args!("view")),
-            Mode::Command => f.write_fmt(format_args!("command")),
+            Mode::Command => f.write_fmt(format_args!("command"))
         }
     }
 }
@@ -34,7 +34,7 @@ impl Display for Mode {
 #[derive(Default)]
 pub struct Editor {
     cur_mode: RwData<Mode>,
-    last_file: String,
+    last_file: String
 }
 
 impl Editor {
@@ -42,7 +42,7 @@ impl Editor {
     fn match_insert<U, AW>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>)
     where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
@@ -180,13 +180,10 @@ impl Editor {
 
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U, AW>(
-        &mut self,
-        key: &KeyEvent,
-        mut actor: WidgetActor<U, AW>,
-        controls: &mut Controls<U>,
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &mut Controls<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized
     {
         match key {
             ////////// SessionControl commands.
@@ -307,13 +304,10 @@ impl Editor {
 
     /// Commands that are available in `Mode::Command`.
     fn match_command<U, AW>(
-        &mut self,
-        key: &KeyEvent,
-        mut actor: WidgetActor<U, AW>,
-        controls: &mut Controls<U>,
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &mut Controls<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
@@ -398,13 +392,10 @@ impl Editor {
 
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self,
-        key: &KeyEvent,
-        mut _actor: WidgetActor<U, E>,
-        controls: &mut Controls<U>,
+        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, controls: &mut Controls<U>
     ) where
         U: Ui,
-        E: ActionableWidget<U> + ?Sized,
+        E: ActionableWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
@@ -440,17 +431,19 @@ impl Editor {
     pub fn cur_mode(&self) -> RoData<Mode> {
         RoData::from(&self.cur_mode)
     }
+
+    pub fn mode_fn(&self) -> impl Fn() -> String + Clone {
+        let mode = RoData::from(&self.cur_mode);
+        move || mode.to_string()
+    }
 }
 
 impl InputScheme for Editor {
     fn process_key<U, AW>(
-        &mut self,
-        key: &KeyEvent,
-        actor: WidgetActor<U, AW>,
-        controls: &mut Controls<U>,
+        &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controls: &mut Controls<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized,
+        AW: ActionableWidget<U> + ?Sized
     {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
@@ -458,7 +451,7 @@ impl InputScheme for Editor {
             Mode::Normal => self.match_normal(key, actor, controls),
             Mode::Command => self.match_command(key, actor, controls),
             Mode::GoTo => self.match_goto(key, actor, controls),
-            Mode::View => todo!(),
+            Mode::View => todo!()
         }
     }
 
@@ -470,7 +463,7 @@ impl InputScheme for Editor {
 fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: ActionableWidget<U> + ?Sized,
+    E: ActionableWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
@@ -478,7 +471,7 @@ where
             Side::Top => mover.move_ver(-(amount as isize)),
             Side::Bottom => mover.move_ver(amount as isize),
             Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Right => mover.move_hor(amount as isize)
         }
     });
 }
@@ -486,7 +479,7 @@ where
 fn move_each_and_select<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: ActionableWidget<U> + ?Sized,
+    E: ActionableWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         if !mover.anchor_is_set() {
@@ -496,7 +489,7 @@ where
             Side::Top => mover.move_ver(-(amount as isize)),
             Side::Bottom => mover.move_ver(amount as isize),
             Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Right => mover.move_hor(amount as isize)
         }
     });
 }

@@ -367,7 +367,7 @@ where
     /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new<W>(
         ui: &mut U, widget: Widget<U>, session_manager: &mut SessionManager,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>)
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
     ) -> Self
     where
         W: NormalWidget<U>
@@ -432,7 +432,7 @@ where
     /// hook function.
     pub fn push_hooked_widget<W>(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
     ) -> (usize, Option<usize>)
     where
         W: NormalWidget<U>
@@ -448,7 +448,7 @@ where
     /// hook function.
     pub fn push_glued_hooked_widget<W>(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
     ) -> (usize, Option<usize>)
     where
         W: NormalWidget<U>
@@ -462,7 +462,7 @@ where
 
     fn activate_hook<W>(
         &mut self, new_area: usize, session_manager: &mut SessionManager,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<W>)
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
     ) where
         W: NormalWidget<U>
     {
@@ -494,7 +494,7 @@ where
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self, widget: Widget<U>, push_specs: PushSpecs,
-        constructor_hook: &dyn Fn(ModNode<U>, RoData<FileWidget<U>>),
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<FileWidget<U>>),
         session_manager: &mut SessionManager
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;

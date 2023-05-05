@@ -14,6 +14,7 @@ use parsec_core::{
     // The input module handles remapping and input methods. Remapping will always be done in the
     // same way, and is not implemented individually for every editing method.
     input::KeyRemapper,
+    join,
     // Tags are a really powerfull part of Parsec. For now, they handle `Form`s (font styling),
     // cursors, and wrapping, but in the future, they will also allow the creation of buttons and
     // folding zones.
@@ -50,7 +51,6 @@ fn main() {
     // name.
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
-    palette.set_form("VertRuleInv", Form::new().dark_grey().reverse());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
     palette.set_form("MainLineNumber", Form::new_final().dark_yellow().bold());
     palette.set_form("WrappedMainLineNumber", Form::new().yellow().italic());
@@ -67,7 +67,7 @@ fn main() {
     // program will be handle input to edit a file or any piece of
     // text.
     let editor = Editor::default();
-
+    let mode = editor.mode_fn();
     // A `Session` is essentially the application itself, it takes a
     // `Config` argument and a closure that determines what will happen
     // when a new file is opened.
@@ -85,10 +85,26 @@ fn main() {
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
             let parts = vec![
-                text("[Mode]stinky[VertRule]"),
-                f_var(|file| file.main_cursor()),
-                f_var(|file| file.main_cursor()),
+                text("[FileName]"),
+                f_var(|file| file.name()),
+                text(" [Mode]"),
+                var(mode.clone()),
+                text(" [Selections]"),
+                f_var(|file| {
+                    if file.cursors().len() == 1 {
+                        String::from("1 sel")
+                    } else {
+                        join![file.cursors().len(), "sels"]
+                    }
+                }),
+                text(" [Coords]"),
+                f_var(|file| file.main_cursor().col()),
+                text("[Separator]:[Coords]"),
+                f_var(|file| file.main_cursor().row()),
+                text("[Separator]/[Coords]"),
+                f_var(|file| file.len_lines()),
             ];
+
             let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
             mod_node
                 .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);

@@ -27,7 +27,7 @@ where
     U: Ui + 'static
 {
     pub(crate) _side_widgets: Option<(usize, Vec<usize>)>,
-    identifier: String,
+    name: String,
     text: Text<U>,
     print_info: U::PrintInfo,
     main_cursor: usize,
@@ -71,7 +71,7 @@ where
         Widget::actionable(
             Arc::new(RwLock::new(FileWidget {
                 _side_widgets: None,
-                identifier: ["parsec-file: ", name.as_str()].join(""),
+                name: ["parsec-file: ", name.as_str()].join(""),
                 text,
                 print_info: U::PrintInfo::default(),
                 main_cursor: 0,
@@ -198,13 +198,13 @@ where
     }
 
     /// The file's name.
-    pub fn name(&self) -> &str {
-        &self.identifier[13..]
+    pub fn name(&self) -> String {
+        String::from(&self.name[13..])
     }
 
     pub fn full_path(&self) -> String {
         let mut path = std::env::current_dir().unwrap();
-        path.push(Path::new(self.name()));
+        path.push(Path::new(self.name().as_str()));
         path.to_string_lossy().to_string()
     }
 
@@ -213,7 +213,7 @@ where
         self.text.inner().len_chars()
     }
 
-    pub(crate) fn len_lines(&self) -> usize {
+    pub fn len_lines(&self) -> usize {
         self.text.inner().len_lines()
     }
 

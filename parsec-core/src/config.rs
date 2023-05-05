@@ -8,8 +8,8 @@ use std::{
     fmt::{Debug, Display},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult,
-    },
+        Arc, TryLockResult
+    }
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -21,7 +21,7 @@ pub trait DownCastableData {
 
 pub trait DataHolder<T>
 where
-    T: Sized,
+    T: Sized
 {
 }
 
@@ -29,11 +29,11 @@ where
 /// said information has changed.
 pub struct RwData<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     data: Arc<RwLock<T>>,
     updated_state: Arc<AtomicUsize>,
-    last_read: AtomicUsize,
+    last_read: AtomicUsize
 }
 
 impl<T> RwData<T> {
@@ -41,14 +41,14 @@ impl<T> RwData<T> {
         RwData {
             data: Arc::new(RwLock::new(data)),
             updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1),
+            last_read: AtomicUsize::new(1)
         }
     }
 }
 
 impl<T> RwData<T>
 where
-    T: ?Sized + 'static,
+    T: ?Sized + 'static
 {
     /// Returns a new instance of [RwData<T>].
     pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
@@ -58,7 +58,7 @@ where
         RwData {
             data,
             updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1),
+            last_read: AtomicUsize::new(1)
         }
     }
 
@@ -112,7 +112,7 @@ where
 
 impl<T> Debug for RwData<T>
 where
-    T: ?Sized + Debug,
+    T: ?Sized + Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(&*self.data.read().unwrap(), f)
@@ -121,27 +121,36 @@ where
 
 impl<T> Clone for RwData<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn clone(&self) -> Self {
         RwData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed) - 1),
+            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed) - 1)
         }
     }
 }
 
 impl<T> Default for RwData<T>
 where
-    T: Default,
+    T: Default
 {
     fn default() -> Self {
         RwData {
             data: Arc::new(RwLock::new(T::default())),
             updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1),
+            last_read: AtomicUsize::new(1)
         }
+    }
+}
+
+impl<T> Display for RwData<T>
+where
+    T: Display + 'static
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.read().fmt(f)
     }
 }
 
@@ -150,16 +159,16 @@ unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 /// A read-only reference to information.
 pub struct RoData<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     data: Arc<RwLock<T>>,
     updated_state: Arc<AtomicUsize>,
-    last_read: AtomicUsize,
+    last_read: AtomicUsize
 }
 
 impl<T> RoData<T>
 where
-    T: ?Sized + Any + 'static,
+    T: ?Sized + Any + 'static
 {
     /// Reads the information.
     ///
@@ -194,16 +203,16 @@ where
 
 impl<T> RoData<T>
 where
-    T: ?Sized + DownCastableData,
+    T: ?Sized + DownCastableData
 {
     pub fn try_downcast<U>(self) -> Result<RoData<U>, RoDataCastError<T>>
     where
-        U: 'static,
+        U: 'static
     {
         let RoData {
             data,
             updated_state,
-            last_read: last_read_state,
+            last_read: last_read_state
         } = self;
         if (&*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
@@ -211,15 +220,15 @@ where
             Ok(RoData {
                 data,
                 updated_state,
-                last_read: last_read_state,
+                last_read: last_read_state
             })
         } else {
             Err(RoDataCastError {
                 ro_data: RoData {
                     data,
                     updated_state,
-                    last_read: last_read_state,
-                },
+                    last_read: last_read_state
+                }
             })
         }
     }
@@ -227,13 +236,13 @@ where
 
 impl<T> From<&RwData<T>> for RoData<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn from(value: &RwData<T>) -> Self {
         RoData {
             data: value.data.clone(),
             updated_state: value.updated_state.clone(),
-            last_read: AtomicUsize::new(value.updated_state.load(Ordering::Relaxed) - 1),
+            last_read: AtomicUsize::new(value.updated_state.load(Ordering::Relaxed) - 1)
         }
     }
 }
@@ -242,27 +251,37 @@ where
 // update counter.
 impl<T> Clone for RoData<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn clone(&self) -> Self {
         RoData {
             data: self.data.clone(),
             updated_state: self.updated_state.clone(),
-            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed)),
+            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed))
         }
     }
 }
 
+impl<T> Display for RoData<T>
+where
+    T: Display + 'static
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.read().fmt(f)
+    }
+}
+
+
 pub struct RwDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
-    rw_data: RwData<T>,
+    rw_data: RwData<T>
 }
 
 impl<T> RwDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     pub fn retrieve(self) -> RwData<T> {
         self.rw_data
@@ -271,7 +290,7 @@ where
 
 impl<T> Debug for RwDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Downcasting failed!")
@@ -280,7 +299,7 @@ where
 
 impl<T> Display for RwDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Downcasting failed!")
@@ -291,14 +310,14 @@ impl<T> Error for RwDataCastError<T> where T: ?Sized {}
 
 pub struct RoDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
-    ro_data: RoData<T>,
+    ro_data: RoData<T>
 }
 
 impl<T> RoDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     pub fn retrieve(self) -> RoData<T> {
         self.ro_data
@@ -307,7 +326,7 @@ where
 
 impl<T> Debug for RoDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Downcasting failed!")
@@ -316,7 +335,7 @@ where
 
 impl<T> Display for RoDataCastError<T>
 where
-    T: ?Sized,
+    T: ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Downcasting failed!")

@@ -293,15 +293,14 @@ impl<'a> FormFormer<'a> {
         form
     }
 
-    /// Removes the `Form` with the given `id` and returns the result,
-    /// given previous triggers.
+    /// Removes the [`Form`] with the given `id` and returns the
+    /// result, given previous triggers.
     pub fn remove(&mut self, id: u16) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
             self.make_form()
         } else {
-            // panic!("The id {} has yet to be pushed.", id);
             Form::default()
         }
     }

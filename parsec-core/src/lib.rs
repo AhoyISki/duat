@@ -30,7 +30,7 @@ where
     ui: U,
     windows: Vec<ParsecWindow<U>>,
     active_window: usize,
-    pub constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
+    pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
     session_manager: RwData<SessionManager>,
     global_commands: RwData<CommandList>,
     print_cfg: RwData<PrintCfg>,
@@ -45,7 +45,7 @@ where
         mut ui: U,
         print_cfg: PrintCfg,
         palette: FormPalette,
-        constructor_hook: Box<dyn Fn(ModNode<U>, RoData<FileWidget<U>>)>,
+        mut constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
     ) -> Self {
         let file = std::env::args().nth(1);
         let file_widget =
@@ -62,7 +62,7 @@ where
             &mut ui,
             file_widget,
             &mut session_manager.write(),
-            &constructor_hook,
+            &mut constructor_hook,
         );
 
         let mut session = Session {
@@ -103,7 +103,7 @@ where
         self.windows[self.active_window].push_file(
             file_widget,
             push_specs,
-            &self.constructor_hook,
+            &mut self.constructor_hook,
             &mut self.session_manager.write(),
         );
     }

@@ -14,8 +14,11 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
-    updaters, SessionManager};
+    updaters, SessionManager
+};
 
+/// A struct that holds mutable readers, either from a file, or from
+/// individual [`RoData<T>`]s
 pub enum Reader<U>
 where
     U: Ui
@@ -28,6 +31,8 @@ impl<U> Reader<U>
 where
     U: Ui
 {
+    /// Reads the current state of [`self`] and applies a function
+    /// that returns a [`String`].
     fn read(&self, file: &FileWidget<U>) -> String {
         match self {
             Reader::Var(obj_fn) => obj_fn(),
@@ -36,6 +41,8 @@ where
     }
 }
 
+/// Part of the [`StatusLine<U>`], can either be a
+/// [`&'static str`][str], or a dynamically updated [`Reader`].
 pub enum StatusPart<U>
 where
     U: Ui
@@ -48,6 +55,8 @@ impl<U> StatusPart<U>
 where
     U: Ui
 {
+    /// Consumes [`self`] and modifies a [`TextBuilder<U>`], adding
+    /// swappable ranges, text, and [`Tag`]s.
     fn process(
         self, text_builder: &mut TextBuilder<U>, file: &FileWidget<U>, palette: &FormPalette
     ) -> Option<Reader<U>> {
@@ -68,6 +77,8 @@ where
     }
 }
 
+/// Consumes a [`StatusPart::Static`], pushing text and [`Tag`] to a
+/// [`TextBuilder<U>`]
 fn push_forms_and_text<U>(text: &str, text_builder: &mut TextBuilder<U>, palette: &FormPalette)
 where
     U: Ui
@@ -98,6 +109,35 @@ where
     }
 }
 
+/// A [`NormalWidget`] that can display information about Parsec and
+/// its extensions.
+///
+/// The [`StatusLine<U>`] is built around a [`Vec<Reader<U>>`], which
+/// determines exacly how it will be updated. There is a default form
+/// for the [`Vec<Reader<U>>`] in [`StatusLine::default_fn()`], which
+/// you can read if you want to.
+///
+/// # Examples
+///
+/// Here's a very simple example, that will show the name of the file,
+/// as well as the main cursor's coordinates.
+///
+/// ```rust
+/// # let file = todo!();
+/// # let palette = todo!();
+/// let parts = vec![
+///     text("file name: [FileName]"),
+///     f_var(|file| file.name()),
+///     text("[Default] main cursor: [Coords]"),
+///     f_var(|file| file.main_cursor()),
+/// ];
+///
+/// clippable_fn(file, parts, palette);
+/// ```
+///
+/// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve
+/// to change the active [`Form`][crate::tags::form::Form] to print
+/// the next characters.
 pub struct StatusLine<U>
 where
     U: Ui
@@ -112,42 +152,7 @@ impl<U> StatusLine<U>
 where
     U: Ui
 {
-    pub fn clippable_fn(
-        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
-        let readers = {
-            let mut readers = Vec::new();
-            let file = file.read();
-            for part in status_parts.into_iter() {
-                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
-                    readers.push(reader);
-                }
-            }
-            readers
-        };
-
-        StatusLine::new_fn(file, text_builder, readers, true)
-    }
-
-    pub fn unclippable_fn(
-        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
-        let readers = {
-            let mut readers = Vec::new();
-            let file = file.read();
-            for part in status_parts.into_iter() {
-                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
-                    readers.push(reader);
-                }
-            }
-            readers
-        };
-
-        StatusLine::new_fn(file, text_builder, readers, false)
-    }
-
+	/// Returns a function that outputs a new instance of [`StatusLine<U>`].
     fn new_fn(
         file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
         _clippable: bool
@@ -166,6 +171,47 @@ where
         })
     }
 
+    /// A [`StatusLine<U>`] that gives way to others, and when there
+    /// is not enough space, gets clipped first.
+    pub fn clippable_fn(
+        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        let mut text_builder = TextBuilder::default();
+        let readers = {
+            let mut readers = Vec::new();
+            let file = file.read();
+            for part in parts.into_iter() {
+                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                    readers.push(reader);
+                }
+            }
+            readers
+        };
+
+        StatusLine::new_fn(file, text_builder, readers, true)
+    }
+
+    /// A [`StatusLine<U>`] that takes precedence over others, and
+    /// when there is not enough space, gets clipped last.
+    pub fn unclippable_fn(
+        file: RoData<FileWidget<U>>, status_parts: Vec<StatusPart<U>>, palette: &FormPalette
+    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+        let mut text_builder = TextBuilder::default();
+        let readers = {
+            let mut readers = Vec::new();
+            let file = file.read();
+            for part in status_parts.into_iter() {
+                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                    readers.push(reader);
+                }
+            }
+            readers
+        };
+
+        StatusLine::new_fn(file, text_builder, readers, false)
+    }
+
+	/// Returns a function that outputs the default version of [`StatusLine<U>`].
     pub fn default_fn(
         file: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -204,50 +250,10 @@ where
         StatusLine::new_fn(file, text_builder, readers, true)
     }
 
+	/// Changes the reference [`FileWidget<U>`] for the [`StatusLine<U>`]
     pub fn set_file(&mut self, file_widget: RoData<FileWidget<U>>) {
         self.file = file_widget;
     }
-}
-
-fn file_lines_len<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
-where
-    U: Ui
-{
-    Box::new(|file| file.len_lines().to_string())
-}
-
-fn main_line<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
-where
-    U: Ui
-{
-    Box::new(|file| file.main_cursor().row().to_string())
-}
-
-fn main_col<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
-where
-    U: Ui
-{
-    Box::new(|file| file.main_cursor().col().to_string())
-}
-
-fn file_selections<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
-where
-    U: Ui
-{
-    Box::new(|file| {
-        if file.cursors().len() == 1 {
-            String::from("1 sel")
-        } else {
-            join![file.cursors().len(), "sels"]
-        }
-    })
-}
-
-fn file_name<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
-where
-    U: Ui
-{
-    Box::new(|file| file.name().to_string())
 }
 
 impl<U> NormalWidget<U> for StatusLine<U>
@@ -280,6 +286,20 @@ where
     }
 }
 
+/// An updateable piece of text, created by reading from a
+/// [`FileWidget<U>`].
+///
+/// Whenever the [`FileWidget<U>`] is updated, the [`StatusLine<U>`]
+/// will be updated according to this function.
+///
+/// # Examples
+///
+/// This will print the `row` of the main cursor on the
+/// [`FileWidget<U>`]
+///
+/// ```rust
+/// f_var(move |file| file.main_cursor().row());
+/// ```
 pub fn f_var<U, S>(file_fn: impl Fn(&FileWidget<U>) -> S + 'static) -> StatusPart<U>
 where
     U: Ui,
@@ -289,6 +309,43 @@ where
     StatusPart::Dynamic(Reader::File(file_fn))
 }
 
+/// An updateable piece of text, usually based on a [`RoData<T>`].
+///
+/// Most of the time, `var_fn` will be a function that captures some
+/// sort of [`RoData<T>`]. This function will read the updated value
+/// of `T` and return a [`String`].
+///
+/// # Examples
+///
+/// On the crate [parsec-kak][https://docs.rs/parsec-kak], the
+/// [`Editor`][https://docs.rs/parsec-kak/struct.Editor] struct has an
+/// [`RoData<T>`] that represents the current mode. Since it
+/// implements display, one can do the following:
+///
+/// ```rust
+/// let editor = parsec_kak::Editor::new();
+/// let mode = editor.cur_mode();
+/// var(move || mode.to_string());
+/// ```
+///
+/// You could also (as you may be able to guess) do more with the
+/// `mode` variable:
+///
+/// ```rust
+/// let editor = parsec_kak::Editor::new();
+/// let mode = editor.cur_mode();
+/// var(move || {
+///     let mode = mode.to_string();
+///     if mode.as_str() == "normal" {
+///         String::default()
+///     } else {
+///         mode.to_uppercase()
+///     }
+/// });
+/// ```
+///
+/// In this case, the mode will only be displayed if it is not normal,
+/// and will be uppercased.
 pub fn var<U, S>(var_fn: impl Fn() -> S + 'static) -> StatusPart<U>
 where
     U: Ui,
@@ -298,11 +355,74 @@ where
     StatusPart::Dynamic(Reader::Var(var_fn))
 }
 
+/// A Piece of text to be used inside a [`StatusLine<U>`].
+///
+/// # Examples
+///
+/// This text can be colored, by including form names inside braces,
+/// e.g.:
+///
+/// ```
+/// text("[FileName]My file name[Default]")
+/// ```
+///
+/// When printed, this text will apply the `"FileName"` [`Form`],
+/// print "My file name", and then return the [`Form`] to `"Default"`.
+///
+/// [`Form`]: crate::tags::form::Form
 pub fn text<U>(text: &'static str) -> StatusPart<U>
 where
     U: Ui
 {
     StatusPart::Static(text)
+}
+
+////////// Functions used in the default `StatusLine<U>`.
+
+/// The number of lines in the file.
+fn file_lines_len<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui
+{
+    Box::new(|file| file.len_lines().to_string())
+}
+
+/// The line of the main cursor in the file.
+fn main_line<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui
+{
+    Box::new(|file| file.main_cursor().row().to_string())
+}
+
+/// The col of the main cursor in the file.
+fn main_col<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui
+{
+    Box::new(|file| file.main_cursor().col().to_string())
+}
+
+/// The number of selections in the file.
+fn file_selections<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui
+{
+    Box::new(|file| {
+        if file.cursors().len() == 1 {
+            String::from("1 sel")
+        } else {
+            join![file.cursors().len(), "sels"]
+        }
+    })
+}
+
+/// The name of the file.
+fn file_name<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
+where
+    U: Ui
+{
+    Box::new(|file| file.name().to_string())
 }
 
 /// A convenience macro to join any number of variables that can be
