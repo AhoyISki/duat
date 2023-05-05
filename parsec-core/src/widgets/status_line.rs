@@ -8,15 +8,13 @@ use no_deadlocks::RwLock;
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     config::{DownCastableData, RoData},
-    log_info,
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
-    updaters, SessionManager
-};
+    updaters, SessionManager};
 
 pub enum Reader<U>
 where
@@ -33,11 +31,7 @@ where
     fn read(&self, file: &FileWidget<U>) -> String {
         match self {
             Reader::Var(obj_fn) => obj_fn(),
-            Reader::File(file_fn) => {
-                let ret = file_fn(file);
-                log_info!("\n{ret}");
-                ret
-            }
+            Reader::File(file_fn) => file_fn(file)
         }
     }
 }
@@ -89,8 +83,8 @@ where
         if let Some((text_start, (_, form_id))) = text[(l_index + 1)..next_l_index]
             .find(']')
             .map(|r_index| {
-                let form_name = &text[(l_index + 1)..=r_index];
-                palette.get_from_name(form_name).map(|form_id| (r_index + 2, form_id))
+                let form_name = &text[(l_index + 1)..=(l_index + r_index)];
+                palette.get_from_name(form_name).map(|form_id| (l_index + r_index + 2, form_id))
             })
             .flatten()
         {
@@ -266,15 +260,6 @@ where
         for (index, reader) in self.readers.iter().enumerate() {
             self.builder.swap_range(index, reader.read(&file));
         }
-
-        log_info!(
-            "\ntext: {}",
-            self.builder
-                .text()
-                .iter()
-                .filter_map(|(_, bit)| bit.as_char())
-                .collect::<String>()
-        );
     }
 
     fn needs_update(&self) -> bool {

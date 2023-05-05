@@ -85,7 +85,7 @@ fn main() {
             mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
 
             let parts = vec![
-                text("stinky"),
+                text("[Mode]stinky[VertRule]"),
                 f_var(|file| file.main_cursor()),
                 f_var(|file| file.main_cursor()),
             ];
