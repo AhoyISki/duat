@@ -6,7 +6,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope as AnyRope};
 
 use self::inner::InnerTags;
-use crate::{log_info, text::inner::InnerText};
+use crate::{text::inner::InnerText};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
@@ -156,8 +156,7 @@ impl Tags {
             self.inner.remove_exclusive(skip_range);
         }
 
-       self.merge_surrounding_skips(ch_index);
-
+        self.merge_surrounding_skips(ch_index);
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -167,23 +166,31 @@ impl Tags {
     }
 
     pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {
-        let Some((start_width, tag_or_skip)) = self.inner.get_from_ch_index(old.start) else {
+        let Some((start, t_or_s)) = self.inner.get_from_ch_index(old.start) else {
             return;
         };
 
-        let removal_start = start_width.min(old.start);
-        let removal_end = old.end.max(start_width + tag_or_skip.width());
+        let removal_start = start.min(old.start);
+        let removal_end = {
+            let (start, t_or_s) = self
+                .inner
+                .get_from_ch_index(old.end)
+                .filter(|(end_start, _)| *end_start > start)
+                .unwrap_or((start, t_or_s));
+
+            old.end.max(start + t_or_s.width())
+        };
 
         let range_diff = new.count() as isize - old.count() as isize;
-        let skip = (removal_end - removal_start).saturating_add_signed(range_diff) as u32;
+        let skip = (removal_end - removal_start).saturating_add_signed(range_diff);
 
-        self.inner.remove_exclusive(removal_start..removal_end);
-        self.inner.insert(start_width, TagOrSkip::Skip(skip));
+        self.inner.insert(start, TagOrSkip::Skip(skip as u32));
+        self.inner.remove_exclusive((removal_start + skip)..(removal_end + skip));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        self.inner.iter().filter_map(|(width, tag_or_skip)| {
-            if let TagOrSkip::Tag(tag, _) = tag_or_skip {
+        self.inner.iter().filter_map(|(width, t_or_s)| {
+            if let TagOrSkip::Tag(tag, _) = t_or_s {
                 Some((width, tag))
             } else {
                 None
@@ -192,8 +199,8 @@ impl Tags {
     }
 
     pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        self.inner.iter_at(ch_index).filter_map(|(width, tag_or_skip)| {
-            if let TagOrSkip::Tag(tag, _) = tag_or_skip {
+        self.inner.iter_at(ch_index).filter_map(|(width, t_or_s)| {
+            if let TagOrSkip::Tag(tag, _) = t_or_s {
                 Some((width, tag))
             } else {
                 None
@@ -210,7 +217,7 @@ impl Tags {
         let mut next_tags = self
             .inner
             .iter_at(from)
-            .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
+            .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
 
         let mut total_skip = 0;
         let mut last_width = from;
@@ -230,7 +237,7 @@ impl Tags {
         let mut prev_tags = self
             .inner
             .iter_at_rev(from)
-            .skip_while(|(_, tag_or_skip)| matches!(tag_or_skip, TagOrSkip::Tag(..)));
+            .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
 
         let mut total_skip = 0;
         let mut first_width = from;
@@ -240,35 +247,10 @@ impl Tags {
         }
         drop(prev_tags);
         if first_width != from {
-            log_info!("\nfirst_width: {first_width}, from: {from}");
-            log_info!(
-                "\ntags before insertion: {:?}\n",
-                self.inner
-                    .iter()
-                    .take(5)
-                    .map(|(_, tag_or_skip)| tag_or_skip)
-                    .collect::<Vec<TagOrSkip>>()
-            );
             self.inner.insert(first_width, TagOrSkip::Skip(total_skip));
-            log_info!(
-                "\ntags after insertion: {:?}\n",
-                self.inner
-                    .iter()
-                    .take(5)
-                    .map(|(_, tag_or_skip)| tag_or_skip)
-                    .collect::<Vec<TagOrSkip>>()
-            );
 
             let range = (first_width + total_skip as usize)..(from + total_skip as usize);
             self.inner.remove_exclusive(range);
-            log_info!(
-                "\ntags after removal: {:?}\n",
-                self.inner
-                    .iter()
-                    .take(5)
-                    .map(|(_, tag_or_skip)| tag_or_skip)
-                    .collect::<Vec<TagOrSkip>>()
-            );
         }
     }
 

@@ -16,12 +16,10 @@ pub(super) enum InnerTags {
 impl InnerTags {
     pub fn new(inner_text: &InnerText) -> Self {
         let skip = TagOrSkip::Skip(inner_text.len_chars() as u32);
-        //match inner_text {
-        //    InnerText::String(_) => InnerTags::Vec(vec![skip]),
-        //    InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip])),
-        //}
-
-        InnerTags::Vec(vec![skip])
+        match inner_text {
+            InnerText::String(_) => InnerTags::Vec(vec![skip]),
+            InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip])),
+        }
     }
 
     pub fn insert(&mut self, ch_index: usize, tag_or_skip: TagOrSkip) {

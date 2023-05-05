@@ -60,7 +60,7 @@ fn main() {
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::Width,
+        wrap_method: WrapMethod::Word,
         ..PrintCfg::default()
     };
 

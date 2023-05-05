@@ -344,13 +344,15 @@ fn bits<'a>(
     no_wrap: bool
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let width = width as u16;
-    iter.scan((0, true), move |(x, ret_char), (indent, index, bit)| {
+    iter.scan((0, true), move |(x, next_line), (indent, index, bit)| {
         let len = bit.as_char().map(|char| len_from(char, *x, tab_stops)).unwrap_or(0);
         *x += len;
 
-        let nl = if *ret_char || !no_wrap && (*x > width || (*x == width && len == 0)) {
+		let surpassed_width = *x > width || (*x == width && len == 0);
+		let tag_on_indent = indent > *x - len && bit.is_tag();
+        let nl = if (*next_line && !tag_on_indent) || (!no_wrap && surpassed_width) {
             *x = indent + len;
-            *ret_char = false;
+            *next_line = false;
             Some(indent)
         } else {
             None
@@ -358,7 +360,7 @@ fn bits<'a>(
 
         if let TextBit::Char('\n') = bit {
             *x = 0;
-            *ret_char = true;
+            *next_line = true;
         }
 
         Some((nl, index, bit))

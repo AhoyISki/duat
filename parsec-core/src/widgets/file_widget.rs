@@ -16,8 +16,9 @@ use crate::{
     config::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
+    tags::{form::FILE_NAME, Tag},
     text::{reader::MutTextReader, PrintCfg, Text},
-    ui::{Area, Label, Ui, PrintInfo}, tags::{Tag, form::FILE_NAME}, log_info
+    ui::{Area, Label, PrintInfo, Ui}
 };
 
 /// The widget that is used to print and edit files.
@@ -226,8 +227,12 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, label: &U::Label) {
-        self.print_info
-            .scroll_to_gap(&self.text, self.main_cursor().caret(), label, &self.print_cfg);
+        self.print_info.scroll_to_gap(
+            &self.text,
+            self.main_cursor().caret(),
+            label,
+            &self.print_cfg
+        );
         self.set_printed_lines(label);
     }
 

@@ -460,6 +460,22 @@ impl std::fmt::Debug for TextBit {
 }
 
 impl TextBit {
+    /// Returns `true` if the text bit is [`Char`].
+    ///
+    /// [`Char`]: TextBit::Char
+    #[must_use]
+    pub fn is_char(&self) -> bool {
+        matches!(self, Self::Char(..))
+    }
+
+    /// Returns `true` if the text bit is [`Tag`].
+    ///
+    /// [`Tag`]: TextBit::Tag
+    #[must_use]
+    pub fn is_tag(&self) -> bool {
+        matches!(self, Self::Tag(..))
+    }
+
     pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {
             Some(*v)
