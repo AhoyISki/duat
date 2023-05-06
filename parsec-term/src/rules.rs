@@ -7,7 +7,7 @@ use no_deadlocks::RwLock;
 use std::{any::Any, sync::Arc};
 
 use parsec_core::{
-    config::{DownCastableData, RoData},
+    data::{DownCastableData, RoData},
     tags::{
         form::{FormPalette, DEFAULT},
         Tag

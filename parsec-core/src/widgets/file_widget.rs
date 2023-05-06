@@ -13,7 +13,7 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::DownCastableData,
+    data::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},

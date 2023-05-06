@@ -17,7 +17,7 @@ use crossterm::{
 
 use label::PrintInfo;
 use parsec_core::{
-    config::RwData,
+    data::RwData,
     ui::{self, Area as UiArea, Axis, Side, Split},
 };
 

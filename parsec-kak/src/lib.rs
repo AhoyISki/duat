@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
-    config::{RoData, RwData},
+    data::{RoData, RwData},
     input::InputScheme,
     ui::{Side, Ui},
     widgets::{ActionableWidget, WidgetActor},

@@ -7,7 +7,7 @@ use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RwData},
+    data::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{PrintInfo, Ui},

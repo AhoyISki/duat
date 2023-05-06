@@ -17,7 +17,9 @@
 //! The second option is [`Alignment`], which can be
 //! [`Left`][Alignment::Left], [`Right`][Alignment::Right], or
 //! [`Center`][Alignment::Center], it determines the side where the
-//! numbers will be printed. It is [`Right`][Alignment::Right].
+//! numbers will be printed. This struct shows up twice in
+//! [`LineNumbersCfg`], once for the main cursor's line, and once for
+//! all other lines. Its [`Right`][Alignment::Right] by default.
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{any::Any, cmp::max, fmt::Write, sync::Arc};
@@ -27,7 +29,7 @@ use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    config::{DownCastableData, RoData},
+    data::{DownCastableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag

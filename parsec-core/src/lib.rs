@@ -1,6 +1,6 @@
 #![feature(drain_filter)]
 
-pub mod config;
+pub mod data;
 pub mod history;
 pub mod input;
 pub mod position;
@@ -11,7 +11,7 @@ pub mod widgets;
 
 use std::{path::PathBuf, thread, time::Duration};
 
-use config::{RoData, RwData};
+use data::{RoData, RwData};
 use crossterm::event::{self, Event, KeyEvent};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;

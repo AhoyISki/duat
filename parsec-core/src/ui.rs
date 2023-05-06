@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use crate::{
-    config::{RoData, RwData},
+    data::{RoData, RwData},
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},

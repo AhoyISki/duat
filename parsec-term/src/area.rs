@@ -5,7 +5,7 @@ use std::{
 
 use crossterm::terminal;
 use parsec_core::{
-    config::RwData,
+    data::RwData,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split}
 };
 

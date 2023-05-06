@@ -31,7 +31,7 @@ use no_deadlocks::{RwLock, RwLockWriteGuard};
 
 use self::command_line::CommandList;
 use crate::{
-    config::{DownCastableData, RoData, RwData},
+    data::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
