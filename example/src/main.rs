@@ -58,7 +58,7 @@ fn main() {
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::Word,
+        wrap_method: WrapMethod::Width,
         ..PrintCfg::default()
     };
 
@@ -81,7 +81,8 @@ fn main() {
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            mod_node.push_widget(LineNumbers::default_fn(file.clone()), push_specs);
+            let cfg = LineNumbersCfg::new(Numbering::Hybrid, Alignment::Right, Alignment::Left);
+            mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
             let parts = vec![
                 text("[FileName]"),

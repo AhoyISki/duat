@@ -1,3 +1,23 @@
+//! A [`NormalWidget`] that shows the visible line numbers of a
+//! [`FileWidget<U>`].
+//!
+//! This widget has various options to configure the presentation of
+//! the lines. These can be found in the [`LineNumbersCfg`] struct.
+//!
+//! The first option is [`Numbering`], which determines the numbers
+//! that will show up on the lines. They can be
+//! [`Absolute`][Numbering::Absolute], which shows the number as the
+//! index from the first line, [`Relative`][Numbering::Relative],
+//! which show the numbers relative to the main cursor's line, or
+//! [`Hybrid`][Numbering::Hybrid], which is like
+//! [`Absolute`][Numbering::Absolute] for the main cursor's line, and
+//! like [`Hybrid`][Numbering::Hybrid] for all other lines. It is
+//! [`Absolute`][Numbering::Absolute] by default.
+//!
+//! The second option is [`Alignment`], which can be
+//! [`Left`][Alignment::Left], [`Right`][Alignment::Right], or
+//! [`Center`][Alignment::Center], it determines the side where the
+//! numbers will be printed. It is [`Right`][Alignment::Right].
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{any::Any, cmp::max, fmt::Write, sync::Arc};
@@ -10,31 +30,30 @@ use crate::{
     config::{DownCastableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
-        Tag,
+        Tag
     },
     text::{Text, TextBuilder},
     ui::{Area, Label, PushSpecs, Side, Ui},
-    updaters, SessionManager,
+    updaters, SessionManager
 };
 
 pub struct LineNumbers<U>
 where
-    U: Ui,
+    U: Ui
 {
     file_widget: RoData<FileWidget<U>>,
     builder: TextBuilder<U>,
     min_width: usize,
-    cfg: LineNumbersCfg,
+    cfg: LineNumbersCfg
 }
 
 impl<U> LineNumbers<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     /// Returns a new instance of `LineNumbersWidget`.
     pub fn config_fn(
-        file_widget: RoData<FileWidget<U>>,
-        cfg: LineNumbersCfg,
+        file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| -> Widget<U> {
             let file = file_widget.clone();
@@ -43,7 +62,7 @@ where
                 file_widget,
                 builder: TextBuilder::<U>::default(),
                 min_width: push_specs.split.len(),
-                cfg,
+                cfg
             };
             let width = line_numbers.calculate_width();
 
@@ -54,7 +73,7 @@ where
     }
 
     pub fn default_fn(
-        file_widget: RoData<FileWidget<U>>,
+        file_widget: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| {
             let updaters = updaters![(file_widget.clone())];
@@ -63,7 +82,7 @@ where
                 file_widget,
                 builder: TextBuilder::<U>::default(),
                 min_width: push_specs.split.len(),
-                cfg: LineNumbersCfg::default(),
+                cfg: LineNumbersCfg::default()
             };
 
             line_numbers.update_text(push_specs.split.len());
@@ -110,7 +129,7 @@ where
 
 impl<U> NormalWidget<U> for LineNumbers<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn update(&mut self, label: &U::Label) {
         let width = self.calculate_width();
@@ -130,7 +149,7 @@ where
 
 impl<U> DownCastableData for LineNumbers<U>
 where
-    U: Ui + 'static,
+    U: Ui + 'static
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -147,7 +166,7 @@ pub enum Numbering {
     /// that line.
     Relative,
     /// Relative line numbers on every line, except the main cursor's.
-    Hybrid,
+    Hybrid
 }
 
 /// How to show the line numbers on screen.
@@ -156,7 +175,7 @@ pub enum Alignment {
     #[default]
     Right,
     Left,
-    Center,
+    Center
 }
 
 /// Configuration options for the [`LineNumbers<U>`] widget.
@@ -164,14 +183,16 @@ pub enum Alignment {
 pub struct LineNumbersCfg {
     pub numbering: Numbering,
     pub alignment: Alignment,
+    pub main_alignment: Alignment
 }
 
 impl LineNumbersCfg {
     /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn new(numbering: Numbering, alignment: Alignment) -> Self {
+    pub fn new(numbering: Numbering, alignment: Alignment, main_alignment: Alignment) -> Self {
         Self {
             numbering,
             alignment,
+            main_alignment,
         }
     }
 }
@@ -182,7 +203,7 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
         (false, false) => LINE_NUMBERS,
         (false, true) => WRAPPED_LINE_NUMBERS,
         (true, false) => MAIN_LINE_NUMBER,
-        (true, true) => WRAPPED_MAIN_LINE_NUMBER,
+        (true, true) => WRAPPED_MAIN_LINE_NUMBER
     });
 
     tag
@@ -190,11 +211,7 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
 
 /// Writes the text of the line number to a given [`String`].
 fn write_text(
-    text: &mut String,
-    line: usize,
-    main_line: usize,
-    width: usize,
-    cfg: &LineNumbersCfg,
+    text: &mut String, line: usize, main_line: usize, width: usize, cfg: &LineNumbersCfg
 ) {
     text.clear();
     let number = match cfg.numbering {
@@ -209,9 +226,15 @@ fn write_text(
         }
     };
 
-    match cfg.alignment {
+    let alignment = if line == main_line {
+        cfg.main_alignment
+    } else {
+        cfg.alignment
+    };
+
+    match alignment {
         Alignment::Left => write!(text, "{:<width$}\n", number).unwrap(),
         Alignment::Center => write!(text, "{:^width$}\n", number).unwrap(),
-        Alignment::Right => write!(text, "{:>width$}\n", number).unwrap(),
+        Alignment::Right => write!(text, "{:>width$}\n", number).unwrap()
     }
 }
