@@ -81,7 +81,7 @@ fn main() {
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            let cfg = LineNumbersCfg::new(Numbering::Hybrid, Alignment::Right, Alignment::Left);
+            let cfg = LineNumbersCfg::new(Numbering::Absolute, Alignment::Right, Alignment::Left);
             mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
 
             let parts = vec![

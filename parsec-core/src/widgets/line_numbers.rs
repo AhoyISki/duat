@@ -37,6 +37,8 @@ use crate::{
     updaters, SessionManager
 };
 
+/// A simple [`NormalWidget`] that shows what lines of a
+/// [`FileWidget<U>`] are shown on screen.
 pub struct LineNumbers<U>
 where
     U: Ui
@@ -51,7 +53,8 @@ impl<U> LineNumbers<U>
 where
     U: Ui + 'static
 {
-    /// Returns a new instance of `LineNumbersWidget`.
+    /// Returns a function that outputs a [`LineNumbers<U>`], taking a
+    /// [`LineNumbersCfg`] as argument.
     pub fn config_fn(
         file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -72,6 +75,8 @@ where
         })
     }
 
+    /// Returns a function that outputs the default instance of
+    /// [`LineNumbers<U>`].
     pub fn default_fn(
         file_widget: RoData<FileWidget<U>>
     ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
@@ -91,6 +96,7 @@ where
         })
     }
 
+    /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> usize {
         let mut width = 1;
         let mut num_exp = 10;
@@ -104,6 +110,8 @@ where
         max(width, self.min_width)
     }
 
+    /// Updates the [`TextBuilder<U>`]'s [`Text<U>`] with the
+    /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self, width: usize) {
         let file = self.file_widget.read();
         let printed_lines = file.printed_lines();
@@ -192,7 +200,7 @@ impl LineNumbersCfg {
         Self {
             numbering,
             alignment,
-            main_alignment,
+            main_alignment
         }
     }
 }
