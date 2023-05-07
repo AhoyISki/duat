@@ -1,6 +1,6 @@
 use crate::{history::Change, ui::Ui, widgets::file_widget::FileWidget};
 
-pub trait MutTextReader<U>
+pub trait Observer<U>
 where
     U: Ui,
 {

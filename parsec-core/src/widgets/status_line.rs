@@ -8,7 +8,6 @@
 //! [`StatusLine<U>`] that displays the information of only the
 //! currently active [`FileWidget<U>`]. Given an existing
 //! [`Session<U>`][crate::Session], one can do the following. TODO.
-
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{any::Any, sync::Arc};

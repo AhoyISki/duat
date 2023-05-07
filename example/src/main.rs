@@ -10,7 +10,7 @@ use crossterm::style::{ContentStyle, Stylize};
 use parsec_core::{
     // The config module handles the `Config` struct and the structs `RwData` and `RoData`, useful
     // for the extension  of Parsec.
-    config::{RoData, RwData},
+    data::{RoData, RwData},
     // The input module handles remapping and input methods. Remapping will always be done in the
     // same way, and is not implemented individually for every editing method.
     input::KeyRemapper,

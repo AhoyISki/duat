@@ -8,7 +8,7 @@ use std::{
 
 use ropey::Rope;
 
-use self::{inner::InnerText, reader::MutTextReader};
+use self::{inner::InnerText, reader::Observer};
 use crate::{
     history::Change,
     position::Cursor,
@@ -235,7 +235,7 @@ where
     pub tags: Tags,
     lock: Lock,
     _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
-    _readers: Vec<Box<dyn MutTextReader<U>>>
+    _readers: Vec<Box<dyn Observer<U>>>
 }
 
 impl<U> std::fmt::Debug for Text<U>

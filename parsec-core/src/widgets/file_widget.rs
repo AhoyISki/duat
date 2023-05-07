@@ -1,3 +1,24 @@
+//! The primary widget of Parsec, used to display files.
+//!
+//! The [`FileWidget<U>`] is Parsec's way of display text files. It is
+//! an [`ActionableWidget`] with [`Text<U>`] containing a
+//! [`ropey::Rope`] and a [`any_rope::Rope`] as its backing, unlike
+//! most other widgets, that just use [`String`]s and [`Vec`]s.
+//!
+//! Most extensible features of Parsec have the primary purpose of
+//! serving the [`FileWidget<U>`], such as multiple [`Cursor`]s, a
+//! [`History`] system, [`PrintInfo`], etc.
+//!
+//! [`FileWidget<U>`]s can have attached extensions called
+//! [`Observer`]s, that can read the [`Text<U>`] within, and are also
+//! notified of any [`Change`][crate::history::Change]s made to the
+//! file.
+//!
+//! The [`FileWidget<U>`] also provides a list of printed lines
+//! through the [`printed_lines()`][FileWidget::printed_lines()`]
+//! method. This method is notably used by the
+//! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
+//! the numbers of the currently printed lines.
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{
@@ -17,7 +38,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
-    text::{reader::MutTextReader, PrintCfg, Text},
+    text::{reader::Observer, PrintCfg, Text},
     ui::{Area, Label, PrintInfo, Ui}
 };
 
@@ -33,7 +54,7 @@ where
     main_cursor: usize,
     cursors: Vec<Cursor>,
     history: History<U>,
-    readers: Vec<Box<dyn MutTextReader<U>>>,
+    readers: Vec<Box<dyn Observer<U>>>,
     printed_lines: Vec<(usize, bool)>,
     print_cfg: PrintCfg
 }
@@ -42,7 +63,7 @@ impl<U> FileWidget<U>
 where
     U: Ui + 'static
 {
-    /// Returns a new instance of `FileWidget`.
+    /// Returns a new instance of [`FileWidget<U>`].
     pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
         // TODO: Allow the creation of a new file.
         let file_contents = path
@@ -85,7 +106,8 @@ where
         )
     }
 
-    /// Undoes the last moment in history.
+    /// Undoes the last [`Moment<U>`][crate::history::Moment] in the
+    /// [`History`].
     pub fn undo(&mut self, label: &U::Label) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
@@ -108,7 +130,8 @@ where
         }
     }
 
-    /// Redoes the last moment in history.
+    /// Redoes the last [`Moment<U>`][crate::history::Moment] in the
+    /// [`History`].
     pub fn redo(&mut self, label: &U::Label) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
@@ -170,29 +193,31 @@ where
 
     // TODO: Move the history to a general placement, taking in all the
     // files.
-    /// The history associated with this file.
+    /// The [`History`] of [`Change`][crate::history::Change]s done to
+    /// this file.
     pub fn history(&self) -> &History<U> {
         &self.history
     }
 
-    /// Ends the current moment and starts a new one.
+    /// Ends the current [`Moment<U>`][crate::history::Moment] and
+    /// starts a new one.
     pub fn new_moment(&mut self) {
         self.cursors.iter_mut().for_each(|cursor| cursor.assoc_index = None);
         self.history.new_moment(self.print_info);
     }
 
-    /// The list of `TextCursor`s on the file.
+    /// The list of [`Cursor`]s on the file.
     pub fn cursors(&self) -> &[Cursor] {
         self.cursors.as_slice()
     }
 
-    /// A mutable reference to the `Text` of self.
+    /// A mutable reference to the [`Text<U>`] of [`self`].
     pub fn mut_text(&mut self) -> &mut Text<U> {
         &mut self.text
     }
 
     ////////// Status line convenience functions:
-    /// The main cursor of the file.
+    /// The main [`Cursor`] of the file.
     pub fn main_cursor(&self) -> Cursor {
         *self.cursors.get(self.main_cursor).unwrap()
     }
@@ -202,22 +227,25 @@ where
         String::from(&self.name[13..])
     }
 
+	/// The full path of the file.
     pub fn full_path(&self) -> String {
         let mut path = std::env::current_dir().unwrap();
         path.push(Path::new(self.name().as_str()));
         path.to_string_lossy().to_string()
     }
 
-    /// The lenght of the file, in lines.
+    /// The number of [`char`]s in the file.
     pub fn len_chars(&self) -> usize {
         self.text.inner().len_chars()
     }
 
+	/// The number of lines in the file.
     pub fn len_lines(&self) -> usize {
         self.text.inner().len_lines()
     }
 
-    pub fn add_reader(&mut self, reader: Box<dyn MutTextReader<U>>) {
+	/// Adds a new [`Observer`] to [`self`].
+    pub fn add_observer(&mut self, reader: Box<dyn Observer<U>>) {
         self.readers.push(reader);
     }
 }
