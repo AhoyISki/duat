@@ -14,23 +14,23 @@ pub struct Pos {
     byte: usize,
     char: usize,
     pub(crate) col: usize,
-    pub(crate) row: usize
+    pub(crate) line: usize
 }
 
 impl Pos {
     pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
         self.char = self.char.saturating_add_signed(ch_diff);
-        self.byte = inner.char_to_byte(self.char);
-        self.row = inner.char_to_line(self.char);
-        self.col = inner.char_from_line_start(self.char);
+        self.byte = inner.char_to_byte(self.char).unwrap();
+        self.line = inner.char_to_line(self.char).unwrap();
+        self.col = inner.char_from_line_start(self.char).unwrap();
     }
 
     pub fn new(ch_index: usize, inner: &InnerText) -> Pos {
         Pos {
-            byte: inner.char_to_byte(ch_index),
+            byte: inner.char_to_byte(ch_index).unwrap(),
             char: ch_index,
-            col: inner.char_from_line_start(ch_index),
-            row: inner.char_to_line(ch_index)
+            col: inner.char_from_line_start(ch_index).unwrap(),
+            line: inner.char_to_line(ch_index).unwrap()
         }
     }
 
@@ -60,7 +60,7 @@ impl Pos {
     /// displaying by the end user. For a 0 indexed row, see
     /// [true_row()](Self::true_row()).
     pub fn row(&self) -> usize {
-        self.row + 1
+        self.line + 1
     }
 
     /// Returns the byte (relative to the beginning of the file) of
@@ -82,13 +82,13 @@ impl Pos {
 
     /// Returns the row. Indexed at 0.
     pub fn true_row(&self) -> usize {
-        self.row
+        self.line
     }
 }
 
 impl std::fmt::Display for Pos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.col + 1, self.row + 1))
+        f.write_fmt(format_args!("{}:{}", self.col + 1, self.line + 1))
     }
 }
 
@@ -121,7 +121,7 @@ impl Cursor {
     where
         U: Ui
     {
-        let line = text.iter_line(pos.row);
+        let line = text.iter_line(pos.line);
         Cursor {
             caret: pos,
             // This should be fine.
@@ -139,16 +139,16 @@ impl Cursor {
     {
         let cur = &mut self.caret;
 
-        cur.row = cur.row.saturating_add_signed(count).min(text.len_lines().saturating_sub(1));
+        cur.line = cur.line.saturating_add_signed(count).min(text.len_lines().saturating_sub(1));
 
-        let line = text.iter_line(cur.row);
+        let line = text.iter_line(cur.line);
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
         cur.col = label.col_at_dist(line, self.desired_x, cfg);
 
-        cur.char = text.inner.line_to_char(cur.row) + cur.col;
-        cur.byte = text.inner.char_to_byte(cur.char);
+        cur.char = text.line_to_char(cur.line) + cur.col;
+        cur.byte = text.char_to_byte(cur.char);
     }
 
     /// Internal horizontal movement function.
@@ -159,9 +159,9 @@ impl Cursor {
     {
         let caret = &mut self.caret;
         caret.char = caret.char.saturating_add_signed(count);
-        caret.byte = text.inner.char_to_byte(caret.char);
-        caret.row = text.inner.char_to_line(caret.char);
-        let line_char = text.inner.line_to_char(caret.row);
+        caret.byte = text.char_to_byte(caret.char);
+        caret.line = text.char_to_line(caret.char);
+        let line_char = text.line_to_char(caret.line);
         caret.col = caret.char - line_char;
 
         self.desired_x =
@@ -176,11 +176,11 @@ impl Cursor {
     {
         let cur = &mut self.caret;
 
-        cur.row = min(pos.row, text.len_lines());
-        let line_char = text.inner.line_to_char(pos.row);
-        cur.col = min(pos.col, text.inner.line(cur.row).len_chars());
-        cur.char = text.inner.line_to_char(cur.row) + cur.col;
-        cur.byte = text.inner.char_to_byte(cur.char);
+        cur.line = min(pos.line, text.len_lines());
+        let line_char = text.line_to_char(pos.line);
+        cur.col = min(pos.col, text.inner.line(cur.line).len_chars());
+        cur.char = text.line_to_char(cur.line) + cur.col;
+        cur.byte = text.char_to_byte(cur.char);
 
         self.desired_x = label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX, true);
 
@@ -256,7 +256,7 @@ impl Cursor {
     /// displaying by the end user. For internal use, see
     /// `true_row()`.
     pub fn row(&self) -> usize {
-        self.caret.row + 1
+        self.caret.line + 1
     }
 
     /// The byte (relative to the beginning of the file) of the caret.
@@ -272,7 +272,7 @@ impl Cursor {
 
     /// The row of the caret. Indexed at 0.
     pub fn true_row(&self) -> usize {
-        self.caret.row
+        self.caret.line
     }
 
     pub(crate) fn try_merge(&mut self, start: Pos, end: Pos) -> Result<(), ()> {
@@ -299,7 +299,7 @@ impl Cursor {
 
 impl Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.caret.row + 1, self.caret.col + 1))
+        f.write_fmt(format_args!("{}:{}", self.caret.line + 1, self.caret.col + 1))
     }
 }
 

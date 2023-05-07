@@ -62,7 +62,7 @@ pub trait Label {
     fn print<U>(
         &mut self, text: &Text<U>, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette
     ) where
-        U: Ui;
+        U: Ui + ?Sized;
 
     //////////////////// Queries
     /// Counts how many times the given [`Iterator`] would wrap.

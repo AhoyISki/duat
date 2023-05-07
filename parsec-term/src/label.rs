@@ -55,7 +55,7 @@ impl ui::Label for Label {
 
     fn print<U>(&mut self, text: &Text<U>, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette)
     where
-        U: Ui
+        U: Ui + ?Sized
     {
         let mut stdout = io::stdout().lock();
         queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);

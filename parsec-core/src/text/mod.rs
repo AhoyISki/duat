@@ -181,7 +181,7 @@ where
                     tags_vec.insert(prev, TagOrSkip::Skip(edit_len));
                 }
             }
-            _ => tags_vec.push(TagOrSkip::Skip(edit_len)),
+            _ => tags_vec.push(TagOrSkip::Skip(edit_len))
         }
     }
 
@@ -254,7 +254,7 @@ where
 // TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
-    U: Ui
+    U: Ui + ?Sized
 {
     pub fn default_string() -> Self {
         let mut tags = Tags::default_vec();
@@ -393,11 +393,21 @@ where
     }
 
     pub fn char_to_line(&self, char: usize) -> usize {
-        self.inner.char_to_line(char)
+        self.inner
+            .char_to_line(char)
+            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 
     pub fn line_to_char(&self, line: usize) -> usize {
-        self.inner.line_to_char(line)
+        self.inner
+            .line_to_char(line)
+            .unwrap_or_else(|| panic!("Line index {line} out of bounds."))
+    }
+
+    pub(crate) fn char_to_byte(&self, char: usize) -> usize {
+        self.inner
+            .char_to_byte(char)
+            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 }
 
@@ -414,8 +424,8 @@ where
     }
 
     pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + '_ {
-        let start = self.inner.line_to_char(line);
-        let end = self.inner.line_to_char(line + 1);
+        let start = self.line_to_char(line);
+        let end = self.line_to_char(line + 1);
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 

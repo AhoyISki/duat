@@ -5,7 +5,7 @@ use ropey::{Rope, RopeSlice};
 #[derive(Debug)]
 pub enum InnerText {
     String(String),
-    Rope(Rope),
+    Rope(Rope)
 }
 
 impl InnerText {
@@ -28,47 +28,44 @@ impl InnerText {
     pub fn chars_at(&self, ch_index: usize) -> Box<dyn Iterator<Item = char> + '_> {
         match self {
             InnerText::String(string) => Box::new(string.chars().skip(ch_index)),
-            InnerText::Rope(rope) => Box::new(rope.chars_at(ch_index)),
+            InnerText::Rope(rope) => Box::new(rope.chars_at(ch_index))
         }
     }
 
-    pub fn char_from_line_start(&self, ch_index: usize) -> usize {
+    pub fn char_from_line_start(&self, ch_index: usize) -> Option<usize> {
         match self {
-            InnerText::String(string) => {
-                let line_ch = string
-                    .lines()
-                    .scan(0, |accum, line| {
-                        *accum = *accum + line.chars().count();
-                        if *accum <= ch_index {
-                            Some(*accum)
-                        } else {
-                            None
-                        }
-                    })
-                    .last()
-                    .unwrap();
-                ch_index - line_ch
-            }
-            InnerText::Rope(rope) => {
-                let line = rope.char_to_line(ch_index);
-                ch_index - rope.line_to_char(line)
-            }
+            InnerText::String(string) => string
+                .lines()
+                .scan(0, |accum, line| {
+                    *accum = *accum + line.chars().count();
+                    if *accum <= ch_index {
+                        Some(*accum)
+                    } else {
+                        None
+                    }
+                })
+                .map(|line_ch| ch_index - line_ch)
+                .last(),
+            InnerText::Rope(rope) => rope
+                .try_char_to_line(ch_index)
+                .ok()
+                .map(|line| ch_index - rope.line_to_char(line))
         }
     }
 
-    pub fn char_to_byte(&self, ch_index: usize) -> usize {
-        let ch = match self {
-            InnerText::String(string) => {
-                string.char_indices().nth(ch_index).map(|(index, _)| index)
-            }
-            InnerText::Rope(rope) => rope.try_char_to_byte(ch_index).ok(),
-        };
-        assert!(ch.is_some(), "Char index {} not found", ch_index);
-        ch.unwrap()
+    pub fn char_to_byte(&self, ch_index: usize) -> Option<usize> {
+        match self {
+            InnerText::String(string) => string
+                .char_indices()
+                .map(|(index, _)| index)
+                .chain(std::iter::once(string.len()))
+                .nth(ch_index),
+            InnerText::Rope(rope) => rope.try_char_to_byte(ch_index).ok()
+        }
     }
 
-    pub fn char_to_line(&self, ch_index: usize) -> usize {
-        let line = match self {
+    pub fn char_to_line(&self, ch_index: usize) -> Option<usize> {
+        match self {
             InnerText::String(string) => string
                 .lines()
                 .enumerate()
@@ -81,10 +78,8 @@ impl InnerText {
                     }
                 })
                 .last(),
-            InnerText::Rope(rope) => rope.try_char_to_line(ch_index).ok(),
-        };
-        assert!(line.is_some(), "Char index {} not found", ch_index);
-        line.unwrap()
+            InnerText::Rope(rope) => rope.try_char_to_line(ch_index).ok()
+        }
     }
 
     pub fn line(&self, line_index: usize) -> ropey::RopeSlice {
@@ -92,18 +87,23 @@ impl InnerText {
             InnerText::String(string) => {
                 string.lines().nth(line_index).map(|line| RopeSlice::from(line))
             }
-            InnerText::Rope(rope) => rope.get_line(line_index),
+            InnerText::Rope(rope) => rope.get_line(line_index)
         };
         assert!(line.is_some(), "Line index {} not found", line_index);
         line.unwrap()
     }
 
-    pub fn line_to_char(&self, line_index: usize) -> usize {
+    pub fn line_to_char(&self, line_index: usize) -> Option<usize> {
         match self {
-            InnerText::String(string) => {
-                string.lines().take(line_index).map(|line| line.chars().count()).sum()
-            }
-            InnerText::Rope(rope) => rope.line_to_char(line_index),
+            InnerText::String(string) => string
+                .lines()
+                .chain(std::iter::once(""))
+                .scan(0, |chars, line| {
+                    *chars += line.chars().count();
+                    Some(*chars)
+                })
+                .nth(line_index),
+            InnerText::Rope(rope) => rope.try_line_to_char(line_index).ok()
         }
     }
 
@@ -118,35 +118,35 @@ impl InnerText {
                 let end = chars.nth(start).unwrap();
                 RopeSlice::from(&string[start..end])
             }
-            InnerText::Rope(rope) => rope.slice(range),
+            InnerText::Rope(rope) => rope.slice(range)
         }
     }
 
     pub fn len_bytes(&self) -> usize {
         match self {
             InnerText::String(string) => string.len(),
-            InnerText::Rope(rope) => rope.len_bytes(),
+            InnerText::Rope(rope) => rope.len_bytes()
         }
     }
 
     pub fn len_chars(&self) -> usize {
         match self {
             InnerText::String(string) => string.chars().count(),
-            InnerText::Rope(rope) => rope.len_chars(),
+            InnerText::Rope(rope) => rope.len_chars()
         }
     }
 
     pub fn len_lines(&self) -> usize {
         match self {
             InnerText::String(string) => string.lines().count(),
-            InnerText::Rope(rope) => rope.len_lines(),
+            InnerText::Rope(rope) => rope.len_lines()
         }
     }
 
     pub fn clear(&mut self) {
         match self {
             InnerText::String(string) => string.clear(),
-            InnerText::Rope(rope) => *rope = Rope::default(),
+            InnerText::Rope(rope) => *rope = Rope::default()
         }
     }
 
@@ -167,12 +167,12 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
         std::ops::Bound::Excluded(start) => *start + 1,
-        std::ops::Bound::Unbounded => 0,
+        std::ops::Bound::Unbounded => 0
     };
     let end = match range.end_bound() {
         std::ops::Bound::Included(end) => *end + 1,
         std::ops::Bound::Excluded(end) => *end,
-        std::ops::Bound::Unbounded => max,
+        std::ops::Bound::Unbounded => max
     };
 
     (start, end)
