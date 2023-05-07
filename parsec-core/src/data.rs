@@ -1,5 +1,21 @@
-//! Configuration options for parsec.
-
+//! Data types that are meant to be shared and read across Parsec.
+//!
+//! The data types revolve around the [`RwLock<T>`] struct from std,
+//! and are adapters that may block the mutation of the inner data,
+//! gor the purpose of making it available for reading to any
+//! extension on Parsec.
+//!
+//! The first data type is [`RwData<T>`], which is a read and write
+//! wrapper over information. It should mostly not be shared, being
+//! used instead to write information while making sure that no other
+//! part of the code is still reading it. The second data type is
+//! [`RoData<T>`], or read only data. It is derived from the first
+//! one, and cannot mutate the inner data.
+//!
+//! The most common usecase for these data types is in the
+//! [`FileWidget<U>`][crate::widgets::FileWidget], where many readers
+//! can peer into the [`Text<U>`][crate::text::Text] or other useful
+//! information, such as the printed lines, cursors, etc.
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
@@ -15,14 +31,10 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+/// A trait that's primarily used for casting widgets to a concrete
+/// types.
 pub trait DownCastableData {
     fn as_any(&self) -> &dyn Any;
-}
-
-pub trait DataHolder<T>
-where
-    T: Sized
-{
 }
 
 /// A read-write reference to information, and can tell readers if
@@ -37,6 +49,8 @@ where
 }
 
 impl<T> RwData<T> {
+    /// Returns a new instance of a [`RwData<T>`], assuming that it is
+    /// sized.
     pub fn new(data: T) -> Self {
         RwData {
             data: Arc::new(RwLock::new(data)),
@@ -50,7 +64,8 @@ impl<T> RwData<T>
 where
     T: ?Sized + 'static
 {
-    /// Returns a new instance of [RwData<T>].
+    /// Returns a new instance of [`RwData<T>`], assuming that it is
+    /// unsized.
     pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
@@ -62,9 +77,10 @@ where
         }
     }
 
-    /// Reads the information.
+    /// Blocking reference to the information.
     ///
-    /// Also makes it so that [has_changed()] returns false.
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         self.last_read.store(updated_state, Ordering::Relaxed);
@@ -72,7 +88,10 @@ where
         self.data.read().unwrap()
     }
 
-    /// Tries to read the data immediately and returns a `Result`.
+    /// Non blocking reference to the information.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|guard| {
             let updated_state = self.updated_state.load(Ordering::Relaxed);
@@ -82,19 +101,19 @@ where
         })
     }
 
-    /// Returns a writeable reference to the state.
+    /// Blocking mutable reference to the information.
     ///
-    /// Also makes it so that `has_changed()` on it or any of its
-    /// clones returns `true`.
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// on it or any of its clones returns `true`.
     pub fn write(&self) -> RwLockWriteGuard<T> {
         self.updated_state.fetch_add(1, Ordering::Relaxed);
         self.data.write().unwrap()
     }
 
-    /// Tries to return a writeable reference to the state.
+    /// Non Blocking mutable reference to the information.
     ///
-    /// Also makes it so that `has_changed()` on it or any of its
-    /// clones returns `true`.
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// on it or any of its clones returns `true`.
     pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
         self.data.try_write().map(|guard| {
             self.updated_state.fetch_add(1, Ordering::Relaxed);
@@ -157,6 +176,9 @@ where
 unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 
 /// A read-only reference to information.
+///
+/// Can only be created by cloning the [`Arc<RwLock<T>>`] from a
+/// [`RwData<T>`], or through cloning.
 pub struct RoData<T>
 where
     T: ?Sized
@@ -170,9 +192,10 @@ impl<T> RoData<T>
 where
     T: ?Sized + Any + 'static
 {
-    /// Reads the information.
+    /// Blocking reference to the information.
     ///
-    /// Also makes it so that `has_changed()` returns false.
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         self.last_read.store(updated_state, Ordering::Relaxed);
@@ -180,7 +203,10 @@ where
         self.data.read().unwrap()
     }
 
-    /// Tries to read the data immediately and returns a `Result`.
+    /// Non Blocking reference to the information.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|mutex_guard| {
             let updated_state = self.updated_state.load(Ordering::Relaxed);
@@ -190,10 +216,7 @@ where
         })
     }
 
-    /// Checks if the state within has changed.
-    ///
-    /// If you have called `has_changed()` or `read()`, without any
-    /// changes, it will return false.
+    /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
         let updated_state = self.updated_state.load(Ordering::Relaxed);
         let last_read = self.last_read.swap(updated_state, Ordering::Relaxed);
@@ -205,6 +228,7 @@ impl<T> RoData<T>
 where
     T: ?Sized + DownCastableData
 {
+    /// Tries to downcast to a concrete type.
     pub fn try_downcast<U>(self) -> Result<RoData<U>, RoDataCastError<T>>
     where
         U: 'static
@@ -223,13 +247,11 @@ where
                 last_read: last_read_state
             })
         } else {
-            Err(RoDataCastError {
-                ro_data: RoData {
-                    data,
-                    updated_state,
-                    last_read: last_read_state
-                }
-            })
+            Err(RoDataCastError(RoData {
+                data,
+                updated_state,
+                last_read: last_read_state
+            }))
         }
     }
 }
@@ -271,56 +293,20 @@ where
     }
 }
 
-
-pub struct RwDataCastError<T>
+/// An error when trying to cast [`RoData<T>`] to [`RoData<S>`] when
+/// `T != S`.
+pub struct RoDataCastError<T>(RoData<T>)
 where
-    T: ?Sized
-{
-    rw_data: RwData<T>
-}
-
-impl<T> RwDataCastError<T>
-where
-    T: ?Sized
-{
-    pub fn retrieve(self) -> RwData<T> {
-        self.rw_data
-    }
-}
-
-impl<T> Debug for RwDataCastError<T>
-where
-    T: ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Downcasting failed!")
-    }
-}
-
-impl<T> Display for RwDataCastError<T>
-where
-    T: ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Downcasting failed!")
-    }
-}
-
-impl<T> Error for RwDataCastError<T> where T: ?Sized {}
-
-pub struct RoDataCastError<T>
-where
-    T: ?Sized
-{
-    ro_data: RoData<T>
-}
+    T: ?Sized;
 
 impl<T> RoDataCastError<T>
 where
     T: ?Sized
 {
+    /// Retrieve the [`RoData<T>`] back to its original state, giving
+    /// up on the casting.
     pub fn retrieve(self) -> RoData<T> {
-        self.ro_data
+        self.0
     }
 }
 
