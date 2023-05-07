@@ -16,7 +16,7 @@ use parsec_core::{
     ui::{PushSpecs, Ui},
     updaters,
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
-    SessionManager
+    Manager
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -147,7 +147,7 @@ where
     /// default config.
     pub fn config_fn(
         file: RoData<FileWidget<U>>, cfg: VertRuleCfg
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let file_read = file.read();
             let builder = setup_builder(&file_read, &cfg);
@@ -165,7 +165,7 @@ where
     /// default config.
     pub fn default_fn(
         file: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let cfg = VertRuleCfg::default();
             let file_read = file.read();

@@ -36,7 +36,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{Area, Label, PushSpecs, Side, Ui},
-    updaters, SessionManager
+    updaters, Manager
 };
 
 /// A simple [`NormalWidget`] that shows what lines of a
@@ -59,7 +59,7 @@ where
     /// [`LineNumbersCfg`] as argument.
     pub fn config_fn(
         file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| -> Widget<U> {
             let file = file_widget.clone();
 
@@ -81,7 +81,7 @@ where
     /// [`LineNumbers<U>`].
     pub fn default_fn(
         file_widget: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| {
             let updaters = updaters![(file_widget.clone())];
 

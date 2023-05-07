@@ -121,6 +121,26 @@ where
         })
     }
 
+	/// Blocking application of a function to the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// on it or any of its clones returns `true`.
+    pub fn mutate(&self, f: impl FnOnce(&mut T)) {
+        f(&mut self.write());
+    }
+
+    /// Non Blocking mutable reference to the information.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// on it or any of its clones returns `true`.
+    pub fn try_mutate(&self, f: impl FnOnce(&mut T)) -> TryLockResult<RwLockWriteGuard<T>>{
+        let mut res = self.try_write();
+        if let Ok(data) = &mut res {
+            f(&mut *data);
+        }
+        res
+    }
+
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
         let updated_state = self.updated_state.load(Ordering::Relaxed);

@@ -29,7 +29,7 @@ use std::{cmp::Ordering, ops::Range, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockWriteGuard};
 
-use self::command_line::CommandList;
+use self::command_line::Commands;
 use crate::{
     data::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
@@ -58,7 +58,7 @@ where
 
     /// If the `Widget` implements `Commandable`. Should return
     /// `Some(widget)`
-    fn command_list(&mut self) -> Option<CommandList> {
+    fn command_list(&mut self) -> Option<Commands> {
         None
     }
 

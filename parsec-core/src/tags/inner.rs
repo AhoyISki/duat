@@ -1,16 +1,15 @@
 use std::ops::Range;
 
 use any_rope::{Measurable, Rope};
-use smallvec::SmallVec;
 
-use crate::{text::inner::InnerText};
+use crate::text::inner::InnerText;
 
 use super::{Lock, TagOrSkip};
 
 #[derive(Debug)]
 pub(super) enum InnerTags {
     Vec(Vec<TagOrSkip>),
-    Rope(Rope<TagOrSkip>),
+    Rope(Rope<TagOrSkip>)
 }
 
 impl InnerTags {
@@ -18,7 +17,7 @@ impl InnerTags {
         let skip = TagOrSkip::Skip(inner_text.len_chars() as u32);
         match inner_text {
             InnerText::String(_) => InnerTags::Vec(vec![skip]),
-            InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip])),
+            InnerText::Rope(_) => InnerTags::Rope(Rope::from_slice(&[skip]))
         }
     }
 
@@ -28,7 +27,7 @@ impl InnerTags {
                 let index = end_ch_to_index(&vec, ch_index);
                 vec.insert(index, tag_or_skip)
             }
-            InnerTags::Rope(rope) => rope.insert(ch_index, tag_or_skip),
+            InnerTags::Rope(rope) => rope.insert(ch_index, tag_or_skip)
         }
     }
 
@@ -38,7 +37,7 @@ impl InnerTags {
                 let index = end_ch_to_index(&vec, ch_index);
                 vec.splice(index..index, slice.iter().map(|tag_or_skip| *tag_or_skip));
             }
-            InnerTags::Rope(rope) => rope.insert_slice(ch_index, slice),
+            InnerTags::Rope(rope) => rope.insert_slice(ch_index, slice)
         }
     }
 
@@ -56,7 +55,7 @@ impl InnerTags {
                 }
                 vec.splice(start..end, []);
             }
-            InnerTags::Rope(rope) => rope.remove_exclusive(range),
+            InnerTags::Rope(rope) => rope.remove_exclusive(range)
         }
     }
 
@@ -67,7 +66,7 @@ impl InnerTags {
                 let end = end_ch_to_index(&vec[start..], 0);
                 vec.drain_filter(|tag_or_skip| match tag_or_skip {
                     TagOrSkip::Tag(_, cmp_lock) => lock == *cmp_lock,
-                    TagOrSkip::Skip(_) => false,
+                    TagOrSkip::Skip(_) => false
                 })
                 .take(end)
                 .skip(start)
@@ -91,7 +90,7 @@ impl InnerTags {
                             None
                         }
                     })
-                    .collect::<SmallVec<[TagOrSkip; 8]>>();
+                    .collect::<Vec<TagOrSkip>>();
 
                 rope.remove_inclusive(ch_index..ch_index);
                 rope.insert_slice(ch_index, tags.as_slice());
@@ -117,7 +116,7 @@ impl InnerTags {
                     Some((old_accum, *tag_or_skip))
                 })
                 .last(),
-            InnerTags::Rope(rope) => rope.get_from_width(ch_index),
+            InnerTags::Rope(rope) => rope.get_from_width(ch_index)
         }
     }
 
@@ -129,7 +128,7 @@ impl InnerTags {
 
                 Some((old_accum, *tag_or_skip))
             })),
-            InnerTags::Rope(rope) => Box::new(rope.iter()),
+            InnerTags::Rope(rope) => Box::new(rope.iter())
         }
     }
 
@@ -143,15 +142,14 @@ impl InnerTags {
 
                         Some((old_accum, *tag_or_skip))
                     })
-                    .skip_while(move |(accum, _)| *accum < ch_index),
+                    .skip_while(move |(accum, _)| *accum < ch_index)
             ),
-            InnerTags::Rope(rope) => Box::new(rope.iter_at_width(ch_index)),
+            InnerTags::Rope(rope) => Box::new(rope.iter_at_width(ch_index))
         }
     }
 
     pub fn iter_at_rev(
-        &self,
-        ch_index: usize,
+        &self, ch_index: usize
     ) -> Box<dyn Iterator<Item = (usize, TagOrSkip)> + '_> {
         match self {
             InnerTags::Vec(vec) => {
@@ -163,31 +161,31 @@ impl InnerTags {
                             *accum -= tag_or_skip.width();
                             Some((*accum, *tag_or_skip))
                         })
-                        .skip_while(move |(accum, _)| *accum > ch_index),
+                        .skip_while(move |(accum, _)| *accum > ch_index)
                 )
             }
-            InnerTags::Rope(rope) => Box::new(rope.iter_at_width(ch_index).reversed()),
+            InnerTags::Rope(rope) => Box::new(rope.iter_at_width(ch_index).reversed())
         }
     }
 
     pub fn width(&self) -> usize {
         match self {
             InnerTags::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
-            InnerTags::Rope(rope) => rope.width(),
+            InnerTags::Rope(rope) => rope.width()
         }
     }
 
     pub fn len(&self) -> usize {
         match self {
             InnerTags::Vec(vec) => vec.len(),
-            InnerTags::Rope(rope) => rope.len(),
+            InnerTags::Rope(rope) => rope.len()
         }
     }
 
     pub fn clear(&mut self) {
         match self {
             InnerTags::Vec(vec) => vec.clear(),
-            InnerTags::Rope(rope) => *rope = Rope::new(),
+            InnerTags::Rope(rope) => *rope = Rope::new()
         }
     }
 }

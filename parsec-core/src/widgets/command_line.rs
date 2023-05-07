@@ -10,33 +10,16 @@ use crate::{
     data::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
-    ui::{PrintInfo, Ui},
-    Session
+    ui::{PrintInfo, PushSpecs, Ui},
+    Manager
 };
-
-/// The sole purpose of this module is to prevent any external
-/// implementations of `Commander`.
-mod private {
-    pub trait Commander {}
-}
-
-pub trait Commander: private::Commander {
-    fn try_exec(
-        &mut self, cmd: &String, flags: &[String], args: &[String]
-    ) -> Result<Option<String>, CommandError>;
-
-    fn callers(&self) -> &[String];
-}
 
 /// A command that doesn't returns a `String` as a result.
 ///
 /// The command takes in two vectors of `String`s, the first one is
 /// the "flags" passed on to the command. The second one is a list of
 /// arguments passed on to the command.
-pub struct Command<C>
-where
-    C: ?Sized + 'static
-{
+pub struct Command {
     /// A command that may mutate the `Commandable` struct.
     ///
     /// # Arguments
@@ -52,41 +35,24 @@ where
     /// outcome that could be used to chain multiple commands.
     /// `Err(String)` is obligatory, used to tell the user what went
     /// wrong while running the command.
-    function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
+    function: Box<dyn FnMut(&[String], &[String]) -> Result<Option<String>, String>>,
     /// A list of `String`s that act as callers for this `Command`.
-    callers: Vec<String>,
-    /// The object that will be affected by `self.function`.
-    commandable: RwData<C>
+    callers: Vec<String>
 }
 
-impl<C> Command<C>
-where
-    C: ?Sized
-{
+impl Command {
     pub fn new(
-        function: Box<dyn FnMut(&mut C, &[String], &[String]) -> Result<Option<String>, String>>,
-        callers: Vec<String>, commandable: RwData<C>
+        function: Box<dyn FnMut(&[String], &[String]) -> Result<Option<String>, String>>,
+        callers: Vec<String>
     ) -> Self {
-        Self {
-            function,
-            callers,
-            commandable
-        }
+        Self { function, callers }
     }
-}
 
-impl<C> private::Commander for Command<C> where C: ?Sized {}
-
-impl<C> Commander for Command<C>
-where
-    C: ?Sized
-{
     fn try_exec(
         &mut self, cmd: &String, flags: &[String], args: &[String]
     ) -> Result<Option<String>, CommandError> {
         if self.callers.contains(&cmd) {
-            return (self.function)(&mut self.commandable.write(), flags, args)
-                .map_err(|err| CommandError::Failed(err));
+            return (self.function)(flags, args).map_err(|err| CommandError::Failed(err));
         } else {
             return Err(CommandError::NotFound(cmd.clone()));
         }
@@ -97,21 +63,18 @@ where
     }
 }
 
-/// A list of `CommandList`s, that can execute commands on any of
-/// them.
+/// A list of [`Command`]s, meant to be used in a [`CommandLine<U>`]
+/// or in hooks (TODO).
 #[derive(Default)]
-pub struct CommandList {
-    commands: Vec<Box<dyn Commander>>
+pub struct Commands {
+    commands: Vec<Command>
 }
 
-impl CommandList {
-    /// Returns a new instance of `CommandListList`.
-    pub fn new<C>(command: Box<C>) -> Self
-    where
-        C: Commander + 'static
-    {
-        CommandList {
-            commands: vec![command]
+impl Commands {
+    /// Returns a new instance of `CommandList`.
+    pub fn new() -> Self {
+        Commands {
+            commands: Vec::new()
         }
     }
 
@@ -131,7 +94,7 @@ impl CommandList {
 
     /// Tries to add a new `CommandList`. Returns an error if any of
     /// its commands already exists.
-    pub(crate) fn try_add(&mut self, command: Box<dyn Commander>) -> Result<(), CommandError> {
+    pub(crate) fn try_add(&mut self, command: Command) -> Result<(), CommandError> {
         let mut new_callers = command.callers().iter();
 
         for caller in self.commands.iter().map(|cmd| cmd.callers()).flatten() {
@@ -167,7 +130,7 @@ where
     text: Text<U>,
     print_info: U::PrintInfo,
     cursor: [Cursor; 1],
-    command_list: RwData<CommandList>,
+    commands: RwData<Commands>,
     needs_update: bool,
     cfg: CommandLineCfg
 }
@@ -176,17 +139,38 @@ impl<U> CommandLine<U>
 where
     U: Ui + Default + 'static
 {
-    pub fn default(session: &Session<U>) -> Widget<U> {
-        let command_line = CommandLine {
-            text: Text::default_string(),
-            print_info: U::PrintInfo::default(),
-            cursor: [Cursor::default()],
-            command_list: session.global_commands(),
-            needs_update: false,
-            cfg: CommandLineCfg::default()
-        };
+    /// Returns a function that outputs a [`CommandLine<U>`], using a
+    /// [`CommandLineCfg`].
+    pub fn config_fn(cfg: CommandLineCfg) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+        Box::new(move |manager, _| {
+            let command_line = CommandLine {
+                text: Text::default_string(),
+                print_info: U::PrintInfo::default(),
+                cursor: [Cursor::default()],
+                commands: manager.commands(),
+                needs_update: false,
+                cfg
+            };
 
-        Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+        })
+    }
+
+    /// Returns a function that outputs a [`CommandLine<U>`], using
+    /// the default [`CommandLineCfg`].
+    pub fn default_fn() -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+        Box::new(move |session_manager, _| {
+            let command_line = CommandLine {
+                text: Text::default_string(),
+                print_info: U::PrintInfo::default(),
+                cursor: [Cursor::default()],
+                commands: session_manager.commands(),
+                needs_update: false,
+                cfg: CommandLineCfg::default()
+            };
+
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+        })
     }
 }
 
@@ -196,7 +180,8 @@ where
 {
     fn update(&mut self, label: &U::Label) {
         let print_cfg = PrintCfg::default();
-        self.print_info.scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
+        self.print_info
+            .scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
 
         // self.match_scroll();
         let lines: String = self.text.inner().chars_at(0).collect();
@@ -206,7 +191,7 @@ where
 			return;
 		};
 
-        let mut command_list = self.command_list.write();
+        let mut command_list = self.commands.write();
         let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
 
         self.needs_update = false;

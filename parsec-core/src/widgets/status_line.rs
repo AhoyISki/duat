@@ -24,7 +24,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
-    updaters, SessionManager
+    updaters, Manager
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -167,7 +167,7 @@ where
     fn new_fn(
         file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
         _clippable: bool
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |_, _| {
             let updaters = updaters![(file.clone())];
             Widget::normal(
@@ -186,7 +186,7 @@ where
     /// is not enough space, gets clipped first.
     pub fn clippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
@@ -206,7 +206,7 @@ where
     /// when there is not enough space, gets clipped last.
     pub fn unclippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         let mut text_builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
@@ -226,7 +226,7 @@ where
     /// [`StatusLine<U>`].
     pub fn default_fn(
         file: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&SessionManager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         let name = Reader::File(file_name());
         let sels = Reader::File(file_selections());
         let col = Reader::File(main_col());

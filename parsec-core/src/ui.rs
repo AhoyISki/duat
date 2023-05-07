@@ -6,7 +6,7 @@ use crate::{
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
-    SessionManager
+    Manager
 };
 
 /// A representation of part of Parsec's window.
@@ -124,7 +124,7 @@ pub struct ModNode<'a, U>
 where
     U: Ui
 {
-    session_manager: &'a mut SessionManager,
+    manager: &'a mut Manager,
     window: &'a mut ParsecWindow<U>,
     area_index: usize
 }
@@ -174,10 +174,10 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
-        &mut self, constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
+        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>,
         push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(self.session_manager, push_specs);
+        let widget = (constructor)(self.manager, push_specs);
         self.window.push_glued_widget(widget, self.area_index, push_specs)
     }
 
@@ -197,15 +197,15 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &mut self, constructor: impl FnOnce(&SessionManager, PushSpecs) -> Widget<U>,
+        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>,
         area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(self.session_manager, push_specs);
+        let widget = (constructor)(self.manager, push_specs);
         self.window.push_widget(widget, area_index, push_specs)
     }
 
     pub fn palette(&self) -> &FormPalette {
-        &self.session_manager.palette
+        &self.manager.palette
     }
 }
 
@@ -366,7 +366,7 @@ where
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new<W>(
-        ui: &mut U, widget: Widget<U>, session_manager: &mut SessionManager,
+        ui: &mut U, widget: Widget<U>, manager: &mut Manager,
         constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
     ) -> Self
     where
@@ -385,7 +385,7 @@ where
             files_parent: 0
         };
 
-        parsec_window.activate_hook(initial_label.area_index(), session_manager, constructor_hook);
+        parsec_window.activate_hook(initial_label.area_index(), manager, constructor_hook);
 
         parsec_window
     }
@@ -432,14 +432,14 @@ where
     /// hook function.
     pub fn push_hooked_widget<W>(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), manager: &mut Manager
     ) -> (usize, Option<usize>)
     where
         W: NormalWidget<U>
     {
         let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
 
-        self.activate_hook(new_area, session_manager, constructor_hook);
+        self.activate_hook(new_area, manager, constructor_hook);
 
         (new_area, opt_parent)
     }
@@ -448,20 +448,20 @@ where
     /// hook function.
     pub fn push_glued_hooked_widget<W>(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), session_manager: &mut SessionManager
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), manager: &mut Manager
     ) -> (usize, Option<usize>)
     where
         W: NormalWidget<U>
     {
         let (new_area, opt_parent) = self.push_glued_widget(widget, area_index, push_specs);
 
-        self.activate_hook(new_area, session_manager, constructor_hook);
+        self.activate_hook(new_area, manager, constructor_hook);
 
         (new_area, opt_parent)
     }
 
     fn activate_hook<W>(
-        &mut self, new_area: usize, session_manager: &mut SessionManager,
+        &mut self, new_area: usize, manager: &mut Manager,
         constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
     ) where
         W: NormalWidget<U>
@@ -477,7 +477,7 @@ where
         };
 
         let mod_node = ModNode {
-            session_manager,
+            manager,
             window: self,
             area_index: new_area
         };
@@ -495,7 +495,7 @@ where
     pub fn push_file(
         &mut self, widget: Widget<U>, push_specs: PushSpecs,
         constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<FileWidget<U>>),
-        session_manager: &mut SessionManager
+        manager: &mut Manager
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 
@@ -504,7 +504,7 @@ where
             node_index,
             push_specs,
             constructor_hook,
-            session_manager
+            manager
         );
 
         (new_index, opt_parent)
