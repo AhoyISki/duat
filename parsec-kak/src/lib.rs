@@ -5,8 +5,8 @@ use parsec_core::{
     data::{RoData, RwData},
     input::InputScheme,
     ui::{Side, Ui},
-    widgets::{ActionableWidget, WidgetActor},
-    Controls
+    widgets::{ActionableWidget, WidgetActor, CommandLine},
+    Controls,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -280,7 +280,7 @@ impl Editor {
                 code: KeyCode::Char(':'),
                 ..
             } => {
-                if let Ok(_) = controls.switch_to_file("parsec-command-line") {
+                if let Ok(_) = controls.switch_to_widget::<CommandLine<U>>() {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
@@ -323,7 +323,7 @@ impl Editor {
                 code: KeyCode::Char(ch),
                 ..
             } => {
-                actor.edit_on_main(|mut editor| editor.replace(ch));
+                actor.edit_on_main(|mut editor| editor.insert(ch));
                 actor.move_main(|mut mover| mover.move_hor(1));
             }
 

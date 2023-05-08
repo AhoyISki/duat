@@ -37,9 +37,10 @@ impl InnerText {
             InnerText::String(string) => string
                 .lines()
                 .scan(0, |accum, line| {
+                    let old_accum = *accum;
                     *accum = *accum + line.chars().count();
-                    if *accum <= ch_index {
-                        Some(*accum)
+                    if old_accum <= ch_index {
+                        Some(old_accum)
                     } else {
                         None
                     }
@@ -99,8 +100,9 @@ impl InnerText {
                 .lines()
                 .chain(std::iter::once(""))
                 .scan(0, |chars, line| {
+                    let old_chars = *chars;
                     *chars += line.chars().count();
-                    Some(*chars)
+                    Some(old_chars)
                 })
                 .nth(line_index),
             InnerText::Rope(rope) => rope.try_line_to_char(line_index).ok()

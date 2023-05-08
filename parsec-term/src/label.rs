@@ -60,22 +60,30 @@ impl ui::Label for Label {
         let mut stdout = io::stdout().lock();
         queue!(stdout, MoveTo(self.area.tl().x, self.area.tl().y), cursor::Hide);
 
-        let no_wraps = cfg.wrap_method.is_no_wrap();
         let coords = self.area.coords();
         let width = cfg.wrap_method.wrapping_cap(self.area.width());
-        let first_char = info.first_char;
-        let line_char = text.line_to_char(text.char_to_line(first_char));
-        let iter = text.iter_range(line_char..);
-        let indents = indents(iter, &cfg.tab_stops, width)
-            .filter(|(_, index, bit)| *index >= first_char || matches!(bit, TextBit::Tag(_)));
+
+        let indents = {
+            let line_char = {
+                let Some(line) = text.get_char_to_line(info.first_char) else {
+                    clear_line(coords.tl, coords, 0, &mut stdout);
+                    return;
+                };
+                text.line_to_char(line)
+            };
+            let iter = text.iter_range(line_char..);
+            indents(iter, &cfg.tab_stops, width).filter(move |(_, index, bit)| {
+                *index >= info.first_char || matches!(bit, TextBit::Tag(_))
+            })
+        };
 
         let form_former = palette.form_former();
         let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, width, &cfg);
             print(words, coords, self.is_active, info, &cfg, form_former, &mut stdout)
         } else {
-            let iter = bits(indents, width, &cfg.tab_stops, no_wraps);
-            print(iter, coords, self.is_active, info, &cfg, form_former, &mut stdout)
+            let bits = bits(indents, width, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
+            print(bits, coords, self.is_active, info, &cfg, form_former, &mut stdout)
         };
 
         let mut stdout = io::stdout().lock();
@@ -348,8 +356,8 @@ fn bits<'a>(
         let len = bit.as_char().map(|char| len_from(char, *x, tab_stops)).unwrap_or(0);
         *x += len;
 
-		let surpassed_width = *x > width || (*x == width && len == 0);
-		let tag_on_indent = indent > *x - len && bit.is_tag();
+        let surpassed_width = *x > width || (*x == width && len == 0);
+        let tag_on_indent = indent > *x - len && bit.is_tag();
         let nl = if (*next_line && !tag_on_indent) || (!no_wrap && surpassed_width) {
             *x = indent + len;
             *next_line = false;

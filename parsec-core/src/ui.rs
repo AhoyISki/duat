@@ -197,8 +197,8 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>,
-        area_index: usize, push_specs: PushSpecs
+        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>, area_index: usize,
+        push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
         self.window.push_widget(widget, area_index, push_specs)
@@ -494,8 +494,7 @@ where
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self, widget: Widget<U>, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<FileWidget<U>>),
-        manager: &mut Manager
+        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<FileWidget<U>>), manager: &mut Manager
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 

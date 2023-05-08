@@ -263,7 +263,7 @@ where
     /// Wether or not the [`Widget<U>`] needs to be updated.
     pub fn needs_update(&self) -> bool {
         match &self.inner {
-            InnerWidget::Normal(_) => (self.needs_update)(),
+            InnerWidget::Normal(widget) => (self.needs_update)(),
             InnerWidget::Actionable(widget) => widget.has_changed() || (self.needs_update)()
         }
     }
@@ -323,13 +323,13 @@ where
     label: &'a U::Label
 }
 
-impl<'a, U, AW> WidgetActor<'a, U, AW>
+impl<'a, U, Aw> WidgetActor<'a, U, Aw>
 where
     U: Ui,
-    AW: ActionableWidget<U> + ?Sized + 'static
+    Aw: ActionableWidget<U> + ?Sized + 'static
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub(crate) fn new(actionable: &'a RwData<AW>, label: &'a U::Label) -> Self {
+    pub(crate) fn new(actionable: &'a RwData<Aw>, label: &'a U::Label) -> Self {
         WidgetActor {
             clearing_needed: false,
             widget: actionable,
@@ -450,6 +450,7 @@ where
         F: FnMut(Editor<U>)
     {
         let mut widget = self.widget.write();
+        assert!(index < widget.cursors().len(), "Index {index} out of bounds.");
         if self.clearing_needed {
             self.clear_intersections();
             self.clearing_needed = false;
@@ -459,12 +460,11 @@ where
         let editor = widget.editor(index, &mut edit_accum);
         f(editor);
 
-        let mut new_cursors = Vec::from(&widget.cursors()[(index + 1)..]);
-        for cursor in &mut new_cursors {
-            cursor.calibrate_on_accum(&edit_accum, widget.text().inner());
+        for index in (index + 1)..(widget.cursors().len() - 1) {
+            // A bit hacky, but the creation of an `Editor` automatically
+            // calibrates the cursor's position.
+            widget.editor(index, &mut edit_accum);
         }
-
-        widget.mut_cursors().unwrap().splice((index + 1).., new_cursors.into_iter());
     }
 
     /// Edits on the main cursor's selection.
@@ -542,6 +542,14 @@ where
     /// Redoes the last [`Moment`][crate::history::Moment].
     pub fn redo(&mut self) {
         self.widget.write().redo(self.label);
+    }
+
+    pub fn main_cursor(&self) -> Cursor {
+        self.widget.read().cursors()[self.main_cursor_index()]
+    }
+
+    pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
+        self.widget.read().cursors().get(index).copied()
     }
 }
 

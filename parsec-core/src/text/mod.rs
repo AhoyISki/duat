@@ -404,10 +404,22 @@ where
             .unwrap_or_else(|| panic!("Line index {line} out of bounds."))
     }
 
-    pub(crate) fn char_to_byte(&self, char: usize) -> usize {
+    pub fn char_to_byte(&self, char: usize) -> usize {
         self.inner
             .char_to_byte(char)
             .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+    }
+
+    pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
+        self.inner.char_to_line(char)
+    }
+
+    pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
+        self.inner.line_to_char(line)
+    }
+
+    pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
+        self.inner.char_to_byte(char)
     }
 }
 
@@ -425,7 +437,7 @@ where
 
     pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + '_ {
         let start = self.line_to_char(line);
-        let end = self.line_to_char(line + 1);
+        let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 

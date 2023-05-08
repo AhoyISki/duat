@@ -182,7 +182,8 @@ impl Cursor {
         cur.char = text.line_to_char(cur.line) + cur.col;
         cur.byte = text.char_to_byte(cur.char);
 
-        self.desired_x = label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX, true);
+        self.desired_x =
+            label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX, true);
 
         self.anchor = None;
     }

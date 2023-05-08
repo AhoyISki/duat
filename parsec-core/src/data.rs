@@ -20,7 +20,6 @@
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     any::Any,
-    error::Error,
     fmt::{Debug, Display},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -44,8 +43,8 @@ where
     T: ?Sized
 {
     data: Arc<RwLock<T>>,
-    updated_state: Arc<AtomicUsize>,
-    last_read: AtomicUsize
+    cur_state: Arc<AtomicUsize>,
+    read_state: AtomicUsize
 }
 
 impl<T> RwData<T> {
@@ -54,8 +53,8 @@ impl<T> RwData<T> {
     pub fn new(data: T) -> Self {
         RwData {
             data: Arc::new(RwLock::new(data)),
-            updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1)
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
         }
     }
 }
@@ -72,8 +71,8 @@ where
         // second value - 1.
         RwData {
             data,
-            updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1)
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
         }
     }
 
@@ -82,8 +81,8 @@ where
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_state = self.updated_state.load(Ordering::Relaxed);
-        self.last_read.store(updated_state, Ordering::Relaxed);
+        let updated_state = self.cur_state.load(Ordering::Relaxed);
+        self.read_state.store(updated_state, Ordering::Relaxed);
 
         self.data.read().unwrap()
     }
@@ -94,8 +93,8 @@ where
     /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|guard| {
-            let updated_state = self.updated_state.load(Ordering::Relaxed);
-            self.last_read.store(updated_state, Ordering::Relaxed);
+            let updated_state = self.cur_state.load(Ordering::Relaxed);
+            self.read_state.store(updated_state, Ordering::Relaxed);
 
             guard
         })
@@ -106,7 +105,7 @@ where
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
     pub fn write(&self) -> RwLockWriteGuard<T> {
-        self.updated_state.fetch_add(1, Ordering::Relaxed);
+        self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.data.write().unwrap()
     }
 
@@ -116,12 +115,12 @@ where
     /// on it or any of its clones returns `true`.
     pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
         self.data.try_write().map(|guard| {
-            self.updated_state.fetch_add(1, Ordering::Relaxed);
+            self.cur_state.fetch_add(1, Ordering::Relaxed);
             guard
         })
     }
 
-	/// Blocking application of a function to the inner data.
+    /// Blocking application of a function to the inner data.
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
@@ -133,7 +132,7 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
-    pub fn try_mutate(&self, f: impl FnOnce(&mut T)) -> TryLockResult<RwLockWriteGuard<T>>{
+    pub fn try_mutate(&self, f: impl FnOnce(&mut T)) -> TryLockResult<RwLockWriteGuard<T>> {
         let mut res = self.try_write();
         if let Ok(data) = &mut res {
             f(&mut *data);
@@ -143,9 +142,50 @@ where
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let updated_state = self.updated_state.load(Ordering::Relaxed);
-        let last_read = self.last_read.swap(updated_state, Ordering::Relaxed);
+        let updated_state = self.cur_state.load(Ordering::Relaxed);
+        let last_read = self.read_state.swap(updated_state, Ordering::Relaxed);
         updated_state > last_read
+    }
+}
+
+impl<T> RwData<T>
+where
+    T: ?Sized + DownCastableData
+{
+    /// Tries to downcast to a concrete type.
+    pub fn try_downcast<U>(self) -> Result<RwData<U>, RwData<T>>
+    where
+        U: 'static
+    {
+        let RwData {
+            data,
+            cur_state,
+            read_state
+        } = self;
+        if (&*data.read().unwrap()).as_any().is::<U>() {
+            let raw_data_pointer = Arc::into_raw(data);
+            let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
+            Ok(RwData {
+                data,
+                cur_state,
+                read_state
+            })
+        } else {
+            Err(RwData {
+                data,
+                cur_state,
+                read_state
+            })
+        }
+    }
+
+	/// If the inner data is of type `U`, return `true`.
+    pub fn data_is<U>(&self) -> bool
+    where
+        U: 'static
+    {
+        let RwData { data, .. } = &self;
+        data.read().unwrap().as_any().is::<U>()
     }
 }
 
@@ -165,8 +205,8 @@ where
     fn clone(&self) -> Self {
         RwData {
             data: self.data.clone(),
-            updated_state: self.updated_state.clone(),
-            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed) - 1)
+            cur_state: self.cur_state.clone(),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)
         }
     }
 }
@@ -178,8 +218,8 @@ where
     fn default() -> Self {
         RwData {
             data: Arc::new(RwLock::new(T::default())),
-            updated_state: Arc::new(AtomicUsize::new(1)),
-            last_read: AtomicUsize::new(1)
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
         }
     }
 }
@@ -204,8 +244,8 @@ where
     T: ?Sized
 {
     data: Arc<RwLock<T>>,
-    updated_state: Arc<AtomicUsize>,
-    last_read: AtomicUsize
+    cur_state: Arc<AtomicUsize>,
+    read_state: AtomicUsize
 }
 
 impl<T> RoData<T>
@@ -217,8 +257,8 @@ where
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_state = self.updated_state.load(Ordering::Relaxed);
-        self.last_read.store(updated_state, Ordering::Relaxed);
+        let updated_state = self.cur_state.load(Ordering::Relaxed);
+        self.read_state.store(updated_state, Ordering::Relaxed);
 
         self.data.read().unwrap()
     }
@@ -229,8 +269,8 @@ where
     /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|mutex_guard| {
-            let updated_state = self.updated_state.load(Ordering::Relaxed);
-            self.last_read.store(updated_state, Ordering::Relaxed);
+            let updated_state = self.cur_state.load(Ordering::Relaxed);
+            self.read_state.store(updated_state, Ordering::Relaxed);
 
             mutex_guard
         })
@@ -238,8 +278,8 @@ where
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let updated_state = self.updated_state.load(Ordering::Relaxed);
-        let last_read = self.last_read.swap(updated_state, Ordering::Relaxed);
+        let updated_state = self.cur_state.load(Ordering::Relaxed);
+        let last_read = self.read_state.swap(updated_state, Ordering::Relaxed);
         updated_state > last_read
     }
 }
@@ -249,30 +289,38 @@ where
     T: ?Sized + DownCastableData
 {
     /// Tries to downcast to a concrete type.
-    pub fn try_downcast<U>(self) -> Result<RoData<U>, RoDataCastError<T>>
+    pub fn try_downcast<U>(self) -> Result<RoData<U>, RoData<T>>
     where
         U: 'static
     {
         let RoData {
             data,
-            updated_state,
-            last_read: last_read_state
+            cur_state: updated_state,
+            read_state: last_read_state
         } = self;
         if (&*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Ok(RoData {
                 data,
-                updated_state,
-                last_read: last_read_state
+                cur_state: updated_state,
+                read_state: last_read_state
             })
         } else {
-            Err(RoDataCastError(RoData {
+            Err(RoData {
                 data,
-                updated_state,
-                last_read: last_read_state
-            }))
+                cur_state: updated_state,
+                read_state: last_read_state
+            })
         }
+    }
+
+    pub fn data_is<U>(&self) -> bool
+    where
+        U: 'static
+    {
+        let RoData { data, .. } = &self;
+        data.read().unwrap().as_any().is::<U>()
     }
 }
 
@@ -283,8 +331,8 @@ where
     fn from(value: &RwData<T>) -> Self {
         RoData {
             data: value.data.clone(),
-            updated_state: value.updated_state.clone(),
-            last_read: AtomicUsize::new(value.updated_state.load(Ordering::Relaxed) - 1)
+            cur_state: value.cur_state.clone(),
+            read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed) - 1)
         }
     }
 }
@@ -298,8 +346,8 @@ where
     fn clone(&self) -> Self {
         RoData {
             data: self.data.clone(),
-            updated_state: self.updated_state.clone(),
-            last_read: AtomicUsize::new(self.updated_state.load(Ordering::Relaxed))
+            cur_state: self.cur_state.clone(),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))
         }
     }
 }
@@ -312,40 +360,3 @@ where
         self.read().fmt(f)
     }
 }
-
-/// An error when trying to cast [`RoData<T>`] to [`RoData<S>`] when
-/// `T != S`.
-pub struct RoDataCastError<T>(RoData<T>)
-where
-    T: ?Sized;
-
-impl<T> RoDataCastError<T>
-where
-    T: ?Sized
-{
-    /// Retrieve the [`RoData<T>`] back to its original state, giving
-    /// up on the casting.
-    pub fn retrieve(self) -> RoData<T> {
-        self.0
-    }
-}
-
-impl<T> Debug for RoDataCastError<T>
-where
-    T: ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Downcasting failed!")
-    }
-}
-
-impl<T> Display for RoDataCastError<T>
-where
-    T: ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Downcasting failed!")
-    }
-}
-
-impl<T> Error for RoDataCastError<T> where T: ?Sized {}

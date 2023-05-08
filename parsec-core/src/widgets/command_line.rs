@@ -20,7 +20,7 @@ use crate::{
 /// the "flags" passed on to the command. The second one is a list of
 /// arguments passed on to the command.
 pub struct Command {
-    /// A command that may mutate the `Commandable` struct.
+    /// A closure to trigger when any of the `callers` are called.
     ///
     /// # Arguments
     ///
@@ -66,23 +66,19 @@ impl Command {
 /// A list of [`Command`]s, meant to be used in a [`CommandLine<U>`]
 /// or in hooks (TODO).
 #[derive(Default)]
-pub struct Commands {
-    commands: Vec<Command>
-}
+pub struct Commands(Vec<Command>);
 
 impl Commands {
     /// Returns a new instance of `CommandList`.
     pub fn new() -> Self {
-        Commands {
-            commands: Vec::new()
-        }
+        Commands(Vec::new())
     }
 
     /// Tries to execute a given command on any of its lists.
     pub(crate) fn try_exec(
         &mut self, cmd: String, flags: Vec<String>, args: Vec<String>
     ) -> Result<Option<String>, CommandError> {
-        for command in &mut self.commands {
+        for command in &mut self.0 {
             let result = command.try_exec(&cmd, flags.as_slice(), args.as_slice());
             let Err(CommandError::NotFound(_)) = result else {
                 return result;
@@ -97,13 +93,13 @@ impl Commands {
     pub(crate) fn try_add(&mut self, command: Command) -> Result<(), CommandError> {
         let mut new_callers = command.callers().iter();
 
-        for caller in self.commands.iter().map(|cmd| cmd.callers()).flatten() {
+        for caller in self.0.iter().map(|cmd| cmd.callers()).flatten() {
             if new_callers.any(|new_caller| new_caller == caller) {
                 return Err(CommandError::AlreadyExists(caller.clone()));
             }
         }
 
-        self.commands.push(command);
+        self.0.push(command);
 
         Ok(())
     }
@@ -159,12 +155,12 @@ where
     /// Returns a function that outputs a [`CommandLine<U>`], using
     /// the default [`CommandLineCfg`].
     pub fn default_fn() -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
-        Box::new(move |session_manager, _| {
+        Box::new(move |manager, _| {
             let command_line = CommandLine {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
-                commands: session_manager.commands(),
+                commands: manager.commands(),
                 needs_update: false,
                 cfg: CommandLineCfg::default()
             };

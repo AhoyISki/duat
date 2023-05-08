@@ -9,7 +9,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{path::PathBuf, thread, time::Duration};
+use std::{iter::Chain, path::PathBuf, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyEvent};
 use data::{RoData, RwData};
@@ -242,11 +242,12 @@ impl Manager {
 unsafe impl Send for Manager {}
 unsafe impl Sync for Manager {}
 
+// TODO: Local and global widgets.
 pub struct Controls<'a, U>
 where
     U: Ui
 {
-    session_manager: &'a mut Manager,
+    manager: &'a mut Manager,
     window: &'a ParsecWindow<U>
 }
 
@@ -256,11 +257,11 @@ where
 {
     /// Quits Parsec.
     pub fn quit(&mut self) {
-        self.session_manager.should_quit = true;
-        self.session_manager.break_loop = true;
+        self.manager.should_quit = true;
+        self.manager.break_loop = true;
     }
 
-    /// Switches to a `Widget<U>` with the given identifier.
+    /// Switches to the [`FileWidget<U>`] with the given name.
     pub fn switch_to_file(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
         let target = target.as_ref();
         let (file_index, (widget_index, _)) = self
@@ -270,13 +271,12 @@ where
             .find(|(_, (_, name))| name == target)
             .ok_or(())?;
 
-        self.session_manager.anchor_file = file_index;
+        self.manager.anchor_file = file_index;
 
-        self.switch_to_widget(widget_index)
+        self.switch_to_widget_index(widget_index)
     }
 
-    /// Switches to the next `Widget<U>` that contains a
-    /// `FileWidget<U>`.
+    /// Switches to the next [`FileWidget<U>`].
     pub fn next_file(&mut self) -> Result<(), ()> {
         if self.window.file_names().count() < 2 {
             Err(())
@@ -286,18 +286,17 @@ where
                 .file_names()
                 .enumerate()
                 .cycle()
-                .skip(self.session_manager.anchor_file + 1)
+                .skip(self.manager.anchor_file + 1)
                 .next()
                 .ok_or(())?;
 
-            self.session_manager.anchor_file = file_index;
+            self.manager.anchor_file = file_index;
 
-            self.switch_to_widget(widget_index)
+            self.switch_to_widget_index(widget_index)
         }
     }
 
-    /// Switches to the previous `Widget<U>` that contains a
-    /// `FileWidget<U>`.
+    /// Switches to the previous [`FileWidget<U>`].
     pub fn prev_file(&mut self) -> Result<(), ()> {
         if self.window.file_names().count() < 2 {
             Err(())
@@ -306,47 +305,58 @@ where
                 .window
                 .file_names()
                 .enumerate()
-                .take(self.session_manager.anchor_file.wrapping_sub(1))
+                .take(self.manager.anchor_file.wrapping_sub(1))
                 .last()
                 .ok_or(())?;
 
-            self.session_manager.anchor_file = file_index;
+            self.manager.anchor_file = file_index;
 
-            self.switch_to_widget(widget_index)
+            self.switch_to_widget_index(widget_index)
         }
     }
 
-    fn switch_to_widget(&mut self, index: usize) -> Result<(), ()> {
+    /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
+    pub fn switch_to_widget<Aw>(&mut self) -> Result<(), ()>
+    where
+        Aw: ActionableWidget<U>
+    {
+        let index = self
+            .window
+            .actionable_widgets()
+            .position(|(widget, _)| widget.data_is::<Aw>())
+            .ok_or(())?;
+
+        self.switch_to_widget_index(index)
+    }
+
+    fn switch_to_widget_index(&mut self, index: usize) -> Result<(), ()> {
         let (widget, label) = self.window.actionable_widgets().nth(index).ok_or(())?;
 
         let mut widget = widget.write();
         widget.on_focus(&label);
         drop(widget);
 
-        let (widget, ..) = self
-            .window
-            .actionable_widgets()
-            .nth(self.session_manager.active_widget)
-            .ok_or(())?;
+		let active_index = self.manager.active_widget;
+        let (widget, label) =
+            self.window.actionable_widgets().nth(active_index).ok_or(())?;
 
         let mut widget = widget.write();
         widget.on_unfocus(&label);
 
-        self.session_manager.active_widget = index;
+        self.manager.active_widget = index;
 
         Ok(())
     }
 
-    /// The identifier of the active file.
+    /// The name of the active [`FileWidget<U>`].
     pub fn active_file(&self) -> String {
-        self.window.file_names().nth(self.session_manager.anchor_file).unwrap().1
+        self.window.file_names().nth(self.manager.anchor_file).unwrap().1
     }
 
     pub fn return_to_file(&mut self) -> Result<(), ()> {
-        let (widget_index, _) =
-            self.window.file_names().nth(self.session_manager.anchor_file).ok_or(())?;
+        let (widget_index, _) = self.window.file_names().nth(self.manager.anchor_file).ok_or(())?;
 
-        self.switch_to_widget(widget_index)
+        self.switch_to_widget_index(widget_index)
     }
 }
 
@@ -366,7 +376,7 @@ fn send_event<U, I>(
         };
 
         let controls = Controls {
-            session_manager: &mut *session_manager,
+            manager: &mut *session_manager,
             window
         };
 
