@@ -231,7 +231,7 @@ pub struct Text<U>
 where
     U: Ui + ?Sized
 {
-    pub inner: InnerText,
+    inner: InnerText,
     pub tags: Tags,
     lock: Lock,
     _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
@@ -420,6 +420,14 @@ where
 
     pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
         self.inner.char_to_byte(char)
+    }
+
+    pub fn iter_chars_at(&self, char: usize) -> impl Iterator<Item = char> + '_ {
+        self.inner.chars_at(char)
+    }
+
+    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
+        self.iter_line(line).filter_map(|(_, bit)| bit.as_char())
     }
 }
 

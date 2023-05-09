@@ -9,7 +9,15 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{path::PathBuf, thread, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc
+    },
+    thread,
+    time::Duration
+};
 
 use crossterm::event::{self, Event, KeyEvent};
 use data::{RoData, RwData};
@@ -31,7 +39,7 @@ where
     windows: Vec<ParsecWindow<U>>,
     active_window: usize,
     pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
-    session_manager: RwData<Manager>,
+    manager: RwData<Manager>,
     print_cfg: RwData<PrintCfg>
 }
 
@@ -48,7 +56,7 @@ where
         let file_widget =
             FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)), print_cfg.clone());
 
-        let manager = Manager::new(0, 0, palette);
+        let manager = RwData::new(Manager::new(0, 0, palette));
 
         let window =
             ParsecWindow::new(&mut ui, file_widget, &mut manager.write(), &mut constructor_hook);
@@ -58,7 +66,7 @@ where
             windows: vec![window],
             active_window: 0,
             constructor_hook,
-            session_manager: manager,
+            manager,
             print_cfg: RwData::new(print_cfg)
         };
 
@@ -91,7 +99,7 @@ where
             file_widget,
             push_specs,
             &mut self.constructor_hook,
-            &mut self.session_manager.write()
+            &mut self.manager.write()
         );
     }
 
@@ -114,7 +122,7 @@ where
 
         // The main loop.
         loop {
-            let session_manager = self.session_manager.read();
+            let session_manager = self.manager.read();
             let palette = &session_manager.palette;
             for (widget, mut label) in self.active_window().widgets() {
                 widget.update(&mut label);
@@ -125,7 +133,7 @@ where
 
             self.session_loop(key_remapper);
 
-            if self.session_manager.read().should_quit || true {
+            if self.manager.read().should_quit.load(Ordering::Acquire) || true {
                 break;
             }
         }
@@ -139,14 +147,14 @@ where
     where
         I: InputScheme
     {
-        let palette = self.session_manager.read().palette.clone();
+        let palette = self.manager.read().palette.clone();
         thread::scope(|scope| {
             loop {
                 self.active_window().print_if_layout_changed(&palette);
 
-                let mut session_manager = self.session_manager.write();
-                if session_manager.break_loop {
-                    session_manager.break_loop = false;
+                let mut session_manager = self.manager.write();
+                if session_manager.break_loop.load(Ordering::Acquire) {
+                    session_manager.break_loop.store(false, Ordering::Release);
                     break;
                 }
 
@@ -180,59 +188,57 @@ where
 /// structs
 pub struct Manager {
     commands: RwData<Commands>,
-    files_to_open: Vec<PathBuf>,
+    files_to_open: RwData<Vec<PathBuf>>,
     anchor_file: usize,
     active_widget: usize,
-    break_loop: bool,
-    should_quit: bool,
+    break_loop: Arc<AtomicBool>,
+    should_quit: Arc<AtomicBool>,
     pub palette: FormPalette
 }
 
 impl Manager {
-    fn new(anchor_file: usize, active_widget: usize, palette: FormPalette) -> RwData<Self> {
-        let manager = RwData::new(Manager {
+    fn new(anchor_file: usize, active_widget: usize, palette: FormPalette) -> Self {
+        let manager = Manager {
             commands: RwData::new(Commands::default()),
-            files_to_open: Vec::new(),
+            files_to_open: RwData::new(Vec::new()),
             anchor_file,
             active_widget,
-            break_loop: false,
-            should_quit: false,
+            break_loop: Arc::new(AtomicBool::from(false)),
+            should_quit: Arc::new(AtomicBool::from(false)),
             palette
-        });
+        };
 
-        let manager_clone = manager.clone();
-        let quit_callers = vec![String::from("quit"), String::from("q")];
-        let quit_command = Command::new(
+        let break_loop = manager.break_loop.clone();
+        let should_quit = manager.should_quit.clone();
+        let quit = Command::new(
             Box::new(move |_, _| {
-                let mut manager = manager_clone.write();
-                manager.break_loop = true;
-                manager.should_quit = true;
+                break_loop.swap(true, Ordering::Release);
+                should_quit.swap(true, Ordering::Release);
                 Ok(None)
             }),
-            quit_callers
+            vec![String::from("quit"), String::from("q")]
         );
 
-        let manager_clone = manager.clone();
-        let open_file_callers = vec![String::from("edit"), String::from("e")];
-        let open_file_command = Command::new(
+        let break_loop = manager.break_loop.clone();
+        let files_to_open = manager.files_to_open.clone();
+        let open_files = Command::new(
             Box::new(move |_, files| {
-                let mut manager = manager_clone.write();
-                manager.files_to_open = files.into_iter().map(|file| PathBuf::from(file)).collect();
+                break_loop.swap(true, Ordering::Release);
+                *files_to_open.write() = files.iter().map(|file| PathBuf::from(file)).collect();
                 Ok(None)
             }),
-            open_file_callers
+            vec![String::from("edit"), String::from("e")]
         );
 
-        manager.mutate(move |manager| {
-            let mut commands = manager.commands.write();
-            commands.try_add(quit_command).unwrap();
-            commands.try_add(open_file_command).unwrap();
+        manager.commands.mutate(|commands| {
+            commands.try_add(quit).unwrap();
+            commands.try_add(open_files).unwrap();
         });
 
         manager
     }
 
-    /// A thread safe, read-write [`CommandList`], meant to be used
+    /// A thread safe, read-write [`Commands`], meant to be used
     /// globaly.
     pub fn commands(&self) -> RwData<Commands> {
         self.commands.clone()
@@ -257,8 +263,8 @@ where
 {
     /// Quits Parsec.
     pub fn quit(&mut self) {
-        self.manager.should_quit = true;
-        self.manager.break_loop = true;
+        self.manager.should_quit.swap(true, Ordering::Release);
+        self.manager.break_loop.swap(true, Ordering::Release);
     }
 
     /// Switches to the [`FileWidget<U>`] with the given name.

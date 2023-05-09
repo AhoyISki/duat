@@ -178,7 +178,7 @@ impl Cursor {
 
         cur.line = min(pos.line, text.len_lines());
         let line_char = text.line_to_char(pos.line);
-        cur.col = min(pos.col, text.inner.line(cur.line).len_chars());
+        cur.col = min(pos.col, text.iter_line_chars(cur.line).count());
         cur.char = text.line_to_char(cur.line) + cur.col;
         cur.byte = text.char_to_byte(cur.char);
 

@@ -41,23 +41,35 @@ pub struct Command {
 }
 
 impl Command {
+    /// Returns a new instance of [`Command`].
+    ///
+    /// The first parameter is the function that will be triggered
+    /// through any of the keywords in the second parameter.
     pub fn new(
         function: Box<dyn FnMut(&[String], &[String]) -> Result<Option<String>, String>>,
         callers: Vec<String>
     ) -> Self {
+        if let Some(wrong_caller) =
+            callers.iter().find(|caller| caller.split_whitespace().count() != 1)
+        {
+            panic!("Command caller \"{wrong_caller}\" is not a single word.");
+        }
         Self { function, callers }
     }
 
+    /// Executes the inner function if the `caller` matches any of the
+    /// callers in [`self`].
     fn try_exec(
-        &mut self, cmd: &String, flags: &[String], args: &[String]
+        &mut self, caller: &String, flags: &[String], args: &[String]
     ) -> Result<Option<String>, CommandError> {
-        if self.callers.contains(&cmd) {
+        if self.callers.contains(&caller) {
             return (self.function)(flags, args).map_err(|err| CommandError::Failed(err));
         } else {
-            return Err(CommandError::NotFound(cmd.clone()));
+            return Err(CommandError::NotFound(caller.clone()));
         }
     }
 
+    /// The list of callers that will trigger this command.
     fn callers(&self) -> &[String] {
         &self.callers
     }
@@ -69,27 +81,32 @@ impl Command {
 pub struct Commands(Vec<Command>);
 
 impl Commands {
-    /// Returns a new instance of `CommandList`.
+    /// Returns a new instance of [`Commands`].
     pub fn new() -> Self {
         Commands(Vec::new())
     }
 
-    /// Tries to execute a given command on any of its lists.
+    /// Tries to execute a given `caller`, by checking if any of its
+    /// [`Command`]s's callers match it.
+    ///
+    /// Will return an [`Err`] if the `caller` was not found.
     pub(crate) fn try_exec(
-        &mut self, cmd: String, flags: Vec<String>, args: Vec<String>
+        &mut self, caller: String, flags: Vec<String>, args: Vec<String>
     ) -> Result<Option<String>, CommandError> {
         for command in &mut self.0 {
-            let result = command.try_exec(&cmd, flags.as_slice(), args.as_slice());
+            let result = command.try_exec(&caller, flags.as_slice(), args.as_slice());
             let Err(CommandError::NotFound(_)) = result else {
                 return result;
             };
         }
 
-        Err(CommandError::NotFound(cmd))
+        Err(CommandError::NotFound(caller))
     }
 
-    /// Tries to add a new `CommandList`. Returns an error if any of
-    /// its commands already exists.
+    /// Tries to add a new [`Command`].
+    ///
+    /// Returns an [`Err`] if any of the callers of the [`Command`]
+    /// are already callers for other commands.
     pub(crate) fn try_add(&mut self, command: Command) -> Result<(), CommandError> {
         let mut new_callers = command.callers().iter();
 
@@ -105,6 +122,13 @@ impl Commands {
     }
 }
 
+/// An [`ActionableWidget<U>`] whose primary purpose is to execute
+/// [`Command`]s.
+///
+/// While this is the primary purpose of the [`CommandLine<U>`], in
+/// the future, it will be able to change its functionality to, for
+/// example, search for pieces of text on a
+/// [`FileWidget<U>`][crate::widgets::FileWidget] in real time.
 pub struct CommandLine<U>
 where
     U: Ui + ?Sized
@@ -113,7 +137,6 @@ where
     print_info: U::PrintInfo,
     cursor: [Cursor; 1],
     commands: RwData<Commands>,
-    needs_update: bool,
     prompt: String
 }
 
@@ -131,7 +154,6 @@ where
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                needs_update: false,
                 prompt
             }));
 
@@ -151,7 +173,6 @@ where
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                needs_update: false,
                 prompt: String::from(":")
             }));
 
@@ -167,24 +188,7 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, label: &U::Label) {
-        let print_cfg = PrintCfg::default();
-        self.print_info
-            .scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
-
-        // self.match_scroll();
-        let lines: String = self.text.inner().chars_at(0).collect();
-        let mut whole_command = lines.split_whitespace().map(|word| String::from(word));
-
-        let Some(command) = whole_command.next() else {
-			return;
-		};
-
-        let mut command_list = self.commands.write();
-        let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
-
-        self.needs_update = false;
-    }
+    fn update(&mut self, _label: &U::Label) {}
 
     fn text(&self) -> &Text<U> {
         &self.text
@@ -196,12 +200,10 @@ where
     U: Ui + 'static
 {
     fn editor<'a>(&'a mut self, _: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
-        self.needs_update = true;
         Editor::new(&mut self.cursor[0], &mut self.text, edit_accum, None, None)
     }
 
     fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label) -> Mover<U> {
-        self.needs_update = true;
         Mover::new(&mut self.cursor[0], &self.text, label, PrintCfg::default())
     }
 
@@ -226,18 +228,32 @@ where
     }
 
     fn on_focus(&mut self, label: &U::Label) {
-        self.needs_update = true;
         self.text = Text::new_string(&self.prompt);
         let chars = self.prompt.chars().count() as isize;
         self.cursor[0].move_hor::<U>(chars, &self.text, label, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self, _label: &U::Label) {
-        self.needs_update = true;
-        self.text = Text::default_string();
+    fn on_unfocus(&mut self, label: &U::Label) {
+        let text = std::mem::replace(&mut self.text, Text::default_string());
         self.cursor[0] = Cursor::default();
         self.text.remove_cursor_tags(self.cursor.as_slice());
+
+        let print_cfg = PrintCfg::default();
+        self.print_info.scroll_to_gap(&text, self.cursor[0].caret(), label, &print_cfg);
+
+        // A '\n' indicates that the command has been "entered".
+        if let Some('\n') = text.iter_chars_at(0).last() {
+            let line = text.iter_chars_at(self.prompt.chars().count()).collect::<String>();
+            let mut whole_command = line.split_whitespace().map(|word| String::from(word));
+
+            let Some(command) = whole_command.next() else {
+    			return;
+    		};
+
+            let mut command_list = self.commands.write();
+            let _ = command_list.try_exec(command.clone(), Vec::new(), whole_command.collect());
+        };
     }
 
     fn still_valid(&self) -> bool {
@@ -254,6 +270,7 @@ where
     }
 }
 
+/// An error representing a failure in executing a [`Command`].
 #[derive(Debug)]
 pub enum CommandError {
     AlreadyExists(String),
@@ -264,11 +281,11 @@ pub enum CommandError {
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandError::AlreadyExists(cmd) => {
-                f.write_fmt(format_args!("The command \"{}\" already exists!", cmd))
+            CommandError::AlreadyExists(caller) => {
+                f.write_fmt(format_args!("The caller \"{}\" already exists!", caller))
             }
-            CommandError::NotFound(cmd) => {
-                f.write_fmt(format_args!("The command \"{}\" was not found!", cmd))
+            CommandError::NotFound(caller) => {
+                f.write_fmt(format_args!("The caller \"{}\" was not found!", caller))
             }
             CommandError::Failed(failure) => f.write_fmt(format_args!("{}", failure))
         }
@@ -277,6 +294,8 @@ impl Display for CommandError {
 
 impl Error for CommandError {}
 
+/// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
+/// [`Commands`].
 fn add_commands<U>(manager: &Manager, command_line: Arc<RwLock<CommandLine<U>>>)
 where
     U: Ui + Default + 'static

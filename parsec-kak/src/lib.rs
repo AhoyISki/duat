@@ -314,7 +314,7 @@ impl Editor {
                 code: KeyCode::Enter,
                 ..
             } => {
-                actor.edit_on_main(|mut editor| editor.replace('\n'));
+                actor.edit_on_main(|mut editor| editor.insert('\n'));
                 if let Ok(_) = controls.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
