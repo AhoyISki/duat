@@ -137,7 +137,7 @@ where
     print_info: U::PrintInfo,
     cursor: [Cursor; 1],
     commands: RwData<Commands>,
-    prompt: String
+    prompt: RwData<String>
 }
 
 impl<U> CommandLine<U>
@@ -149,18 +149,17 @@ where
     pub fn prompt_fn(prompt: impl ToString) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         let prompt = prompt.to_string();
         Box::new(move |manager, _| {
-            let command_line = Arc::new(RwLock::new(CommandLine::<U> {
+            let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                prompt
-            }));
+                prompt: RwData::new(prompt)
+            };
 
-            let widget: Arc<RwLock<dyn ActionableWidget<U>>> = command_line.clone();
-            add_commands(manager, command_line);
+            add_commands(manager, &command_line);
 
-            Widget::actionable(widget, Box::new(|| true))
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
         })
     }
 
@@ -168,18 +167,17 @@ where
     /// `":"` as a prompt.
     pub fn default_fn() -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |manager, _| {
-            let command_line = Arc::new(RwLock::new(CommandLine::<U> {
+            let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                prompt: String::from(":")
-            }));
+                prompt: RwData::new(String::from(":"))
+            };
 
-            let widget: Arc<RwLock<dyn ActionableWidget<U>>> = command_line.clone();
-            add_commands(manager, command_line);
+            add_commands(manager, &command_line);
 
-            Widget::actionable(widget, Box::new(|| true))
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
         })
     }
 }
@@ -229,7 +227,7 @@ where
 
     fn on_focus(&mut self, label: &U::Label) {
         self.text = Text::new_string(&self.prompt);
-        let chars = self.prompt.chars().count() as isize;
+        let chars = self.prompt.read().chars().count() as isize;
         self.cursor[0].move_hor::<U>(chars, &self.text, label, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
@@ -244,15 +242,15 @@ where
 
         // A '\n' indicates that the command has been "entered".
         if let Some('\n') = text.iter_chars_at(0).last() {
-            let line = text.iter_chars_at(self.prompt.chars().count()).collect::<String>();
-            let mut whole_command = line.split_whitespace().map(|word| String::from(word));
+            let line = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
+            let mut command = line.split_whitespace().map(|word| String::from(word));
 
-            let Some(command) = whole_command.next() else {
+            let Some(caller) = command.next() else {
     			return;
     		};
 
             let mut command_list = self.commands.write();
-            let _ = command_list.try_exec(command.clone(), Vec::new(), whole_command.collect());
+            let _ = command_list.try_exec(caller.clone(), Vec::new(), command.collect());
         };
     }
 
@@ -296,14 +294,14 @@ impl Error for CommandError {}
 
 /// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
 /// [`Commands`].
-fn add_commands<U>(manager: &Manager, command_line: Arc<RwLock<CommandLine<U>>>)
+fn add_commands<U>(manager: &Manager, command_line: &CommandLine<U>)
 where
     U: Ui + Default + 'static
 {
+    let prompt = command_line.prompt.clone();
     let set_prompt = Command::new(
-        Box::new(move |prompt, _| {
-            let mut command_line = command_line.write().unwrap();
-            command_line.prompt = prompt.first().cloned().unwrap_or(String::from(""));
+        Box::new(move |_, new_prompt| {
+            *prompt.write() = new_prompt.first().cloned().unwrap_or(String::from(""));
             Ok(None)
         }),
         vec![String::from("set-prompt")]
