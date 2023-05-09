@@ -59,7 +59,7 @@ where
     /// [`LineNumbersCfg`] as argument.
     pub fn config_fn(
         file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
-    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| -> Widget<U> {
             let file = file_widget.clone();
 
@@ -81,7 +81,7 @@ where
     /// [`LineNumbers<U>`].
     pub fn default_fn(
         file_widget: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
         Box::new(move |_, push_specs| {
             let updaters = updaters![(file_widget.clone())];
 

@@ -12,7 +12,7 @@ pub mod widgets;
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc
     },
     thread,
@@ -24,7 +24,7 @@ use data::{RoData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
+use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
 use widgets::{
     command_line::{Command, CommandError, Commands},
     file_widget::FileWidget,
@@ -36,10 +36,8 @@ where
     U: Ui
 {
     ui: U,
-    windows: Vec<ParsecWindow<U>>,
-    active_window: usize,
     pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
-    manager: RwData<Manager>,
+    manager: Manager<U>,
     print_cfg: RwData<PrintCfg>
 }
 
@@ -56,15 +54,12 @@ where
         let file_widget =
             FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)), print_cfg.clone());
 
-        let manager = RwData::new(Manager::new(0, 0, palette));
-
-        let window =
-            ParsecWindow::new(&mut ui, file_widget, &mut manager.write(), &mut constructor_hook);
+        let window = ParsecWindow::new(&mut ui, file_widget);
+        let mut manager = Manager::new(window, 0, 0, palette);
+        activate_hook(&mut manager, 0, &mut constructor_hook);
 
         let mut session = Session {
             ui,
-            windows: vec![window],
-            active_window: 0,
             constructor_hook,
             manager,
             print_cfg: RwData::new(print_cfg)
@@ -73,14 +68,6 @@ where
         session.open_arg_files();
 
         session
-    }
-
-    fn mut_active_window(&mut self) -> &mut ParsecWindow<U> {
-        self.windows.get_mut(self.active_window).unwrap()
-    }
-
-    fn active_window(&self) -> &ParsecWindow<U> {
-        self.windows.get(self.active_window).unwrap()
     }
 
     fn open_arg_files(&mut self) {
@@ -95,22 +82,16 @@ where
             side: Side::Right,
             split: Split::Min(40)
         };
-        self.windows[self.active_window].push_file(
-            file_widget,
-            push_specs,
-            &mut self.constructor_hook,
-            &mut self.manager.write()
-        );
+        let (new_area, _) = self.manager.mut_active_window().push_file(file_widget, push_specs);
+
+        activate_hook(&mut self.manager, new_area, &mut self.constructor_hook)
     }
 
-    pub fn push_widget_to_edge<C>(
-        &mut self, constructor: C, push_specs: PushSpecs
-    ) -> (usize, Option<usize>)
-    where
-        C: Fn(&Session<U>) -> Widget<U>
-    {
+    pub fn push_widget_to_edge(
+        &mut self, constructor: impl Fn(&Session<U>) -> Widget<U>, push_specs: PushSpecs
+    ) -> (usize, Option<usize>) {
         let widget = (constructor)(self);
-        self.mut_active_window().push_to_master(widget, push_specs)
+        self.manager.mut_active_window().push_to_master(widget, push_specs)
     }
 
     /// Start the application, initiating a read/response loop.
@@ -122,18 +103,15 @@ where
 
         // The main loop.
         loop {
-            let session_manager = self.manager.read();
-            let palette = &session_manager.palette;
-            for (widget, mut label) in self.active_window().widgets() {
+            let palette = &self.manager.palette;
+            for (widget, mut label) in self.manager.active_window().widgets() {
                 widget.update(&mut label);
                 widget.print(&mut label, &palette);
             }
-            drop(palette);
-            drop(session_manager);
 
             self.session_loop(key_remapper);
 
-            if self.manager.read().should_quit.load(Ordering::Acquire) || true {
+            if self.manager.should_quit.load(Ordering::Acquire) || true {
                 break;
             }
         }
@@ -147,18 +125,17 @@ where
     where
         I: InputScheme
     {
-        let palette = self.manager.read().palette.clone();
+        let palette = &self.manager.palette;
+        let manager = &self.manager;
         thread::scope(|scope| {
             loop {
-                self.active_window().print_if_layout_changed(&palette);
-
-                let mut session_manager = self.manager.write();
-                if session_manager.break_loop.load(Ordering::Acquire) {
-                    session_manager.break_loop.store(false, Ordering::Release);
+                manager.active_window().print_if_layout_changed(&palette);
+                if manager.break_loop.load(Ordering::Acquire) {
+                    manager.break_loop.store(false, Ordering::Release);
                     break;
                 }
 
-                for (widget, mut label) in self.windows[self.active_window].widgets() {
+                for (widget, mut label) in manager.active_window().widgets() {
                     if widget.needs_update() {
                         if widget.is_slow() {
                             let palette = &palette;
@@ -174,35 +151,50 @@ where
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    let active_window = &self.windows[self.active_window];
-                    send_event(key_remapper, &mut session_manager, active_window, &palette);
+                    send_event(key_remapper, &manager, &palette);
                 } else {
                     continue;
                 }
             }
         });
     }
+
+    /// Returns the [`RwData<Manager>`].
+    pub fn manager(&self) -> &Manager<U> {
+        &self.manager
+    }
 }
 
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
-pub struct Manager {
+pub struct Manager<U>
+where
+    U: Ui
+{
+    windows: Vec<ParsecWindow<U>>,
+    active_window: usize,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
-    anchor_file: usize,
-    active_widget: usize,
+    anchor_file: Arc<AtomicUsize>,
+    active_widget: Arc<AtomicUsize>,
     break_loop: Arc<AtomicBool>,
     should_quit: Arc<AtomicBool>,
     pub palette: FormPalette
 }
 
-impl Manager {
-    fn new(anchor_file: usize, active_widget: usize, palette: FormPalette) -> Self {
+impl<U> Manager<U>
+where
+    U: Ui
+{
+    /// Returns a new instance of [`Manager`].
+    fn new(window: ParsecWindow<U>, anchor_file: usize, active_widget: usize, palette: FormPalette) -> Self {
         let manager = Manager {
+            windows: vec![window],
+            active_window: 0,
             commands: RwData::new(Commands::default()),
             files_to_open: RwData::new(Vec::new()),
-            anchor_file,
-            active_widget,
+            anchor_file: Arc::new(AtomicUsize::new(anchor_file)),
+            active_widget: Arc::new(AtomicUsize::new(active_widget)),
             break_loop: Arc::new(AtomicBool::from(false)),
             should_quit: Arc::new(AtomicBool::from(false)),
             palette
@@ -243,17 +235,25 @@ impl Manager {
     pub fn commands(&self) -> RwData<Commands> {
         self.commands.clone()
     }
+
+    pub fn mut_active_window(&mut self) -> &mut ParsecWindow<U> {
+        self.windows.get_mut(self.active_window).unwrap()
+    }
+
+    pub fn active_window(&self) -> &ParsecWindow<U> {
+        self.windows.get(self.active_window).unwrap()
+    }
 }
 
-unsafe impl Send for Manager {}
-unsafe impl Sync for Manager {}
+unsafe impl<U> Send for Manager<U> where U: Ui {}
+unsafe impl<U> Sync for Manager<U> where U: Ui {}
 
 // TODO: Local and global widgets.
 pub struct Controls<'a, U>
 where
     U: Ui
 {
-    manager: &'a mut Manager,
+    manager: &'a Manager<U>,
     window: &'a ParsecWindow<U>
 }
 
@@ -277,7 +277,7 @@ where
             .find(|(_, (_, name))| name == target)
             .ok_or(())?;
 
-        self.manager.anchor_file = file_index;
+        self.manager.anchor_file.store(file_index, Ordering::Release);
 
         self.switch_to_widget_index(widget_index)
     }
@@ -292,11 +292,11 @@ where
                 .file_names()
                 .enumerate()
                 .cycle()
-                .skip(self.manager.anchor_file + 1)
+                .skip(self.manager.anchor_file.load(Ordering::Acquire) + 1)
                 .next()
                 .ok_or(())?;
 
-            self.manager.anchor_file = file_index;
+            self.manager.anchor_file.store(file_index, Ordering::Release);
 
             self.switch_to_widget_index(widget_index)
         }
@@ -311,11 +311,11 @@ where
                 .window
                 .file_names()
                 .enumerate()
-                .take(self.manager.anchor_file.wrapping_sub(1))
+                .take(self.manager.anchor_file.load(Ordering::Acquire).wrapping_sub(1))
                 .last()
                 .ok_or(())?;
 
-            self.manager.anchor_file = file_index;
+            self.manager.anchor_file.store(file_index, Ordering::Release);
 
             self.switch_to_widget_index(widget_index)
         }
@@ -342,24 +342,26 @@ where
         widget.on_focus(&label);
         drop(widget);
 
-        let active_index = self.manager.active_widget;
+        let active_index = self.manager.active_widget.load(Ordering::Acquire);
         let (widget, label) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
 
         let mut widget = widget.write();
         widget.on_unfocus(&label);
 
-        self.manager.active_widget = index;
+        self.manager.active_widget.store(index, Ordering::Release);
 
         Ok(())
     }
 
     /// The name of the active [`FileWidget<U>`].
     pub fn active_file(&self) -> String {
-        self.window.file_names().nth(self.manager.anchor_file).unwrap().1
+        let index = self.manager.anchor_file.load(Ordering::Acquire);
+        self.window.file_names().nth(index).unwrap().1
     }
 
     pub fn return_to_file(&mut self) -> Result<(), ()> {
-        let (widget_index, _) = self.window.file_names().nth(self.manager.anchor_file).ok_or(())?;
+        let index = self.manager.anchor_file.load(Ordering::Acquire);
+        let (widget_index, _) = self.window.file_names().nth(index).ok_or(())?;
 
         self.switch_to_widget_index(widget_index)
     }
@@ -372,22 +374,22 @@ where
 }
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
-fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, session_manager: &mut Manager, window: &ParsecWindow<U>,
-    palette: &FormPalette
-) where
+fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, manager: &Manager<U>, palette: &FormPalette)
+where
     U: Ui + 'static,
     I: InputScheme
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let actionable_widget = window.actionable_widgets().nth(session_manager.active_widget);
+        let window = manager.active_window();
+        let index = manager.active_widget.load(Ordering::Acquire);
+        let actionable_widget = window.actionable_widgets().nth(index);
 
         let Some((widget, mut label)) = actionable_widget else {
             return;
         };
 
         let controls = Controls {
-            manager: &mut *session_manager,
+            manager: &*manager,
             window
         };
 
@@ -395,7 +397,8 @@ fn send_event<U, I>(
 
         // If the widget is no longer valid, return to the file.
         if !widget.read().still_valid() {
-            session_manager.active_widget = session_manager.anchor_file.clone();
+            let index = manager.anchor_file.load(Ordering::Acquire);
+            manager.active_widget.store(index, Ordering::Release);
         }
     }
 }

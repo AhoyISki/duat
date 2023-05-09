@@ -124,9 +124,8 @@ pub struct ModNode<'a, U>
 where
     U: Ui
 {
-    manager: &'a mut Manager,
-    window: &'a mut ParsecWindow<U>,
-    area_index: usize
+    manager: &'a mut Manager<U>,
+    mod_area: usize
 }
 
 impl<'a, U> ModNode<'a, U>
@@ -174,11 +173,12 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
-        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>,
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
         push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        self.window.push_glued_widget(widget, self.area_index, push_specs)
+        let window = self.manager.mut_active_window();
+        window.push_glued_widget(widget, self.mod_area, push_specs)
     }
 
     /// Pushes a [`Widget<U>`] to a specific `area`, given
@@ -197,16 +197,39 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &mut self, constructor: impl FnOnce(&Manager, PushSpecs) -> Widget<U>, area_index: usize,
-        push_specs: PushSpecs
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
+        area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        self.window.push_widget(widget, area_index, push_specs)
+        let window = self.manager.mut_active_window();
+        window.push_widget(widget, area_index, push_specs)
     }
 
     pub fn palette(&self) -> &FormPalette {
         &self.manager.palette
     }
+}
+
+pub(crate) fn activate_hook<U, Nw>(
+    manager: &mut Manager<U>, mod_area: usize,
+    constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<Nw>)
+) where
+    U: Ui,
+    Nw: NormalWidget<U>
+{
+    let node = manager
+        .active_window()
+        .nodes
+        .iter()
+        .find(|Node { area_index, .. }| *area_index == mod_area)
+        .unwrap();
+
+    let Some(widget) = node.widget.try_downcast::<Nw>() else {
+        panic!("The widget is not of type {}", std::any::type_name::<Nw>());
+    };
+    let mod_node = ModNode { manager, mod_area };
+
+    (constructor_hook)(mod_node, widget)
 }
 
 /// How an [`Area`] is pushed onto another.
@@ -365,13 +388,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new<W>(
-        ui: &mut U, widget: Widget<U>, manager: &mut Manager,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
-    ) -> Self
-    where
-        W: NormalWidget<U>
-    {
+    pub fn new(ui: &mut U, widget: Widget<U>) -> Self {
         let (window, mut initial_label) = ui.new_window();
         widget.update(&mut initial_label);
 
@@ -379,26 +396,24 @@ where
             widget,
             area_index: initial_label.area_index()
         };
-        let mut parsec_window = ParsecWindow {
+        let parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
             files_parent: 0
         };
 
-        parsec_window.activate_hook(initial_label.area_index(), manager, constructor_hook);
-
         parsec_window
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push_widget(
+    fn push_widget(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         self.inner_push_widget(area_index, push_specs, false, widget)
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push_glued_widget(
+    fn push_glued_widget(
         &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         self.inner_push_widget(area_index, push_specs, true, widget)
@@ -428,63 +443,6 @@ where
         (new_area, pushed_area)
     }
 
-    /// Pushes a [`Widget<U>`] onto an existing one and activates a
-    /// hook function.
-    pub fn push_hooked_widget<W>(
-        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), manager: &mut Manager
-    ) -> (usize, Option<usize>)
-    where
-        W: NormalWidget<U>
-    {
-        let (new_area, opt_parent) = self.push_widget(widget, area_index, push_specs);
-
-        self.activate_hook(new_area, manager, constructor_hook);
-
-        (new_area, opt_parent)
-    }
-
-    /// Pushes a [`Widget<U>`] onto an existing one and activates a
-    /// hook function.
-    pub fn push_glued_hooked_widget<W>(
-        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>), manager: &mut Manager
-    ) -> (usize, Option<usize>)
-    where
-        W: NormalWidget<U>
-    {
-        let (new_area, opt_parent) = self.push_glued_widget(widget, area_index, push_specs);
-
-        self.activate_hook(new_area, manager, constructor_hook);
-
-        (new_area, opt_parent)
-    }
-
-    fn activate_hook<W>(
-        &mut self, new_area: usize, manager: &mut Manager,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
-    ) where
-        W: NormalWidget<U>
-    {
-        let node = self
-            .nodes
-            .iter()
-            .find(|Node { area_index, .. }| *area_index == new_area)
-            .unwrap();
-
-        let Some(widget) = node.widget.try_downcast::<W>() else {
-            panic!("The widget is not of type {}", std::any::type_name::<W>());
-        };
-
-        let mod_node = ModNode {
-            manager,
-            window: self,
-            area_index: new_area
-        };
-
-        (constructor_hook)(mod_node, widget);
-    }
-
     /// Pushes a [`FileWidget<U>`] to another, and then activates a
     /// special hook.
     ///
@@ -493,20 +451,11 @@ where
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
-        &mut self, widget: Widget<U>, push_specs: PushSpecs,
-        constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<FileWidget<U>>), manager: &mut Manager
+        &mut self, widget: Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 
-        let (new_index, opt_parent) = self.push_hooked_widget::<FileWidget<U>>(
-            widget,
-            node_index,
-            push_specs,
-            constructor_hook,
-            manager
-        );
-
-        (new_index, opt_parent)
+        self.push_widget(widget, node_index, push_specs)
     }
 
     /// Pushes a [`Widget<U>`] to the master node of the current
