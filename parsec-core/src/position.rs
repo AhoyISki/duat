@@ -137,18 +137,18 @@ impl Cursor {
     ) where
         U: Ui
     {
-        let cur = &mut self.caret;
+        let caret = &mut self.caret;
+        let max = text.len_lines().saturating_sub(1);
+        caret.line = caret.line.saturating_add_signed(count).min(max);
 
-        cur.line = cur.line.saturating_add_signed(count).min(text.len_lines().saturating_sub(1));
-
-        let line = text.iter_line(cur.line);
+        let line = text.iter_line(caret.line);
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        cur.col = label.col_at_dist(line, self.desired_x, cfg);
+        caret.col = label.col_at_dist(line, self.desired_x, cfg);
 
-        cur.char = text.line_to_char(cur.line) + cur.col;
-        cur.byte = text.char_to_byte(cur.char);
+        caret.char = text.line_to_char(caret.line) + caret.col;
+        caret.byte = text.char_to_byte(caret.char);
     }
 
     /// Internal horizontal movement function.
@@ -158,7 +158,8 @@ impl Cursor {
         U: Ui
     {
         let caret = &mut self.caret;
-        caret.char = caret.char.saturating_add_signed(count);
+        let max = text.len_chars();
+        caret.char = caret.char.saturating_add_signed(count).min(max);
         caret.byte = text.char_to_byte(caret.char);
         caret.line = text.char_to_line(caret.char);
         let line_char = text.line_to_char(caret.line);
@@ -174,16 +175,16 @@ impl Cursor {
     where
         U: Ui
     {
-        let cur = &mut self.caret;
+        let caret = &mut self.caret;
 
-        cur.line = min(pos.line, text.len_lines());
+        caret.line = min(pos.line, text.len_lines().saturating_sub(1));
         let line_char = text.line_to_char(pos.line);
-        cur.col = min(pos.col, text.iter_line_chars(cur.line).count());
-        cur.char = text.line_to_char(cur.line) + cur.col;
-        cur.byte = text.char_to_byte(cur.char);
+        caret.col = min(pos.col, text.iter_line_chars(caret.line).count());
+        caret.char = text.line_to_char(caret.line) + caret.col;
+        caret.byte = text.char_to_byte(caret.char);
 
         self.desired_x =
-            label.get_width(text.iter_range(line_char..cur.char), cfg, usize::MAX, true);
+            label.get_width(text.iter_range(line_char..caret.char), cfg, usize::MAX, true);
 
         self.anchor = None;
     }

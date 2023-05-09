@@ -226,7 +226,6 @@ where
 }
 
 /// The text in a given area.
-/// log_info!("\ncur_char: {}", self.cur_char);
 pub struct Text<U>
 where
     U: Ui + ?Sized
@@ -464,7 +463,7 @@ where
         let end = match range.end_bound() {
             std::ops::Bound::Included(end) => end + 1,
             std::ops::Bound::Excluded(end) => *end,
-            std::ops::Bound::Unbounded => self.inner.len_chars()
+            std::ops::Bound::Unbounded => self.inner.len_chars() + 1
         };
 
         let chars = self.inner.chars_at(start).take(end - start);
@@ -564,7 +563,7 @@ where
             self.cur_char += 1;
             Some((self.cur_char - 1, TextBit::Char(char)))
         } else {
-            None
+            self.tags.next().map(|(index, tag)| (index, TextBit::Tag(tag)))
         }
     }
 }

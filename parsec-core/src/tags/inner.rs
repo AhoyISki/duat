@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use any_rope::{Measurable, Rope};
 
-use crate::text::inner::InnerText;
+use crate::{text::inner::InnerText};
 
 use super::{Lock, TagOrSkip};
 

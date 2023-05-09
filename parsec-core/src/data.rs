@@ -81,8 +81,8 @@ where
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_state = self.cur_state.load(Ordering::Relaxed);
-        self.read_state.store(updated_state, Ordering::Relaxed);
+        let cur_state = self.cur_state.load(Ordering::Relaxed);
+        self.read_state.store(cur_state, Ordering::Relaxed);
 
         self.data.read().unwrap()
     }

@@ -159,7 +159,7 @@ where
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| false))
         })
     }
 
@@ -177,7 +177,7 @@ where
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| false))
         })
     }
 }
@@ -186,7 +186,11 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, _label: &U::Label) {}
+    fn update(&mut self, label: &U::Label) {
+        let print_cfg = PrintCfg::default();
+        self.print_info
+            .scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
+    }
 
     fn text(&self) -> &Text<U> {
         &self.text
@@ -232,13 +236,10 @@ where
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self, label: &U::Label) {
+    fn on_unfocus(&mut self, _label: &U::Label) {
         let text = std::mem::replace(&mut self.text, Text::default_string());
         self.cursor[0] = Cursor::default();
         self.text.remove_cursor_tags(self.cursor.as_slice());
-
-        let print_cfg = PrintCfg::default();
-        self.print_info.scroll_to_gap(&text, self.cursor[0].caret(), label, &print_cfg);
 
         // A '\n' indicates that the command has been "entered".
         if let Some('\n') = text.iter_chars_at(0).last() {
@@ -285,7 +286,7 @@ impl Display for CommandError {
             CommandError::NotFound(caller) => {
                 f.write_fmt(format_args!("The caller \"{}\" was not found!", caller))
             }
-            CommandError::Failed(failure) => f.write_fmt(format_args!("{}", failure))
+            CommandError::Failed(failure) => f.write_str(failure)
         }
     }
 }

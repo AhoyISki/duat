@@ -447,7 +447,7 @@ fn words<'a>(
 }
 
 fn print(
-    mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
+    iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> (Coord, bool) {
     let x_shift = info.x_shift;
@@ -456,7 +456,10 @@ fn print(
     let mut show_cursor = false;
     let mut prev_style = None;
 
-    while let Some((nl, _, bit)) = iter.next() {
+    let mut iter = iter
+        .map(|(nl, _, bit)| (nl, bit))
+        .chain(std::iter::once((None, TextBit::Char(' '))));
+    while let Some((nl, bit)) = iter.next() {
         if let Some(indent) = nl {
             clear_line(cursor, coords, info.x_shift, stdout);
             if cursor.y + 1 > coords.br.y {
