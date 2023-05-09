@@ -109,7 +109,7 @@ fn main() {
             mod_node
                 .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);
 
-            mod_node.push_widget(CommandLine::default_fn(), push_specs);
+            mod_node.push_widget(CommandLine::prompt_fn("cmd "), push_specs);
         })
     );
 

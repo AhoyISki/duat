@@ -148,10 +148,6 @@ where
         self.update_text(width);
     }
 
-    fn needs_update(&self) -> bool {
-        self.file_widget.has_changed()
-    }
-
     fn text(&self) -> &Text<U> {
         &self.builder.text()
     }

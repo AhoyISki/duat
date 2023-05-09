@@ -179,7 +179,7 @@ where
         }
     }
 
-	/// If the inner data is of type `U`, return `true`.
+    /// If the inner data is of type `U`, return `true`.
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static

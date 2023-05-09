@@ -29,7 +29,6 @@ use std::{cmp::Ordering, ops::Range, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockWriteGuard};
 
-use self::command_line::Commands;
 use crate::{
     data::{DownCastableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
@@ -47,24 +46,11 @@ where
     /// Updates the widget.
     fn update(&mut self, label: &U::Label);
 
-    /// Wether or not the widget needs to be updated.
-    fn needs_update(&self) -> bool;
-
     /// The text that this widget prints out.
     fn text(&self) -> &Text<U>;
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, _d_y: i32) {}
-
-    /// If the `Widget` implements `Commandable`. Should return
-    /// `Some(widget)`
-    fn command_list(&mut self) -> Option<Commands> {
-        None
-    }
-
-    fn editable(&mut self) -> Option<&mut dyn ActionableWidget<U>> {
-        None
-    }
 
     fn print_info(&self) -> U::PrintInfo {
         U::PrintInfo::default()
@@ -115,7 +101,7 @@ where
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
     fn new_moment(&mut self) {
-        panic!("This implementation of Editable does not have a History of its own.")
+        panic!("This ActionableWidget does not have a History of its own.")
     }
 
     /// Undoes the last [`Moment`][crate::history::Moment].
@@ -123,7 +109,7 @@ where
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
     fn undo(&mut self, _label: &U::Label) {
-        panic!("This implementation of Editable does not have a History of its own.")
+        panic!("This ActionableWidget does not have a History of its own.")
     }
 
     /// Redoes the last [`Moment`][crate::history::Moment].
@@ -131,7 +117,7 @@ where
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
     fn redo(&mut self, _label: &U::Label) {
-        panic!("This implementation of Editable does not have a History of its own.")
+        panic!("This ActionableWidget does not have a History of its own.")
     }
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
@@ -179,8 +165,6 @@ where
     pub fn normal(
         widget: Arc<RwLock<dyn NormalWidget<U>>>, updater: Box<dyn Fn() -> bool>
     ) -> Widget<U> {
-        // assert!(updaters.len() > 0, "Without any updaters, this widget can
-        // never update");
         Widget {
             inner: InnerWidget::Normal(RwData::new_unsized(widget)),
             is_slow: false,
@@ -263,7 +247,7 @@ where
     /// Wether or not the [`Widget<U>`] needs to be updated.
     pub fn needs_update(&self) -> bool {
         match &self.inner {
-            InnerWidget::Normal(widget) => (self.needs_update)(),
+            InnerWidget::Normal(_) => (self.needs_update)(),
             InnerWidget::Actionable(widget) => widget.has_changed() || (self.needs_update)()
         }
     }

@@ -9,7 +9,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-use std::{iter::Chain, path::PathBuf, thread, time::Duration};
+use std::{path::PathBuf, thread, time::Duration};
 
 use crossterm::event::{self, Event, KeyEvent};
 use data::{RoData, RwData};
@@ -336,9 +336,8 @@ where
         widget.on_focus(&label);
         drop(widget);
 
-		let active_index = self.manager.active_widget;
-        let (widget, label) =
-            self.window.actionable_widgets().nth(active_index).ok_or(())?;
+        let active_index = self.manager.active_widget;
+        let (widget, label) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
 
         let mut widget = widget.write();
         widget.on_unfocus(&label);

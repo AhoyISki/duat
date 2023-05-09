@@ -264,10 +264,6 @@ where
         self.set_printed_lines(label);
     }
 
-    fn needs_update(&self) -> bool {
-        true
-    }
-
     fn text(&self) -> &Text<U> {
         &self.text
     }

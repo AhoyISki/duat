@@ -214,10 +214,6 @@ where
         builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(below));
     }
 
-    fn needs_update(&self) -> bool {
-        self.file.has_changed()
-    }
-
     fn text(&self) -> &Text<U> {
         self.builder.text()
     }

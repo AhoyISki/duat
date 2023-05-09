@@ -105,20 +105,6 @@ impl Commands {
     }
 }
 
-pub struct CommandLineCfg {
-    run_string: String,
-    _cmd_replacements: Vec<(String, String)>
-}
-
-impl Default for CommandLineCfg {
-    fn default() -> Self {
-        CommandLineCfg {
-            run_string: String::from(':'),
-            _cmd_replacements: Vec::new()
-        }
-    }
-}
-
 pub struct CommandLine<U>
 where
     U: Ui + ?Sized
@@ -128,44 +114,51 @@ where
     cursor: [Cursor; 1],
     commands: RwData<Commands>,
     needs_update: bool,
-    cfg: CommandLineCfg
+    prompt: String
 }
 
 impl<U> CommandLine<U>
 where
     U: Ui + Default + 'static
 {
-    /// Returns a function that outputs a [`CommandLine<U>`], using a
-    /// [`CommandLineCfg`].
-    pub fn config_fn(cfg: CommandLineCfg) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+    /// Returns a function that outputs a [`CommandLine<U>`] with a
+    /// custom prompt.
+    pub fn prompt_fn(prompt: impl ToString) -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
+        let prompt = prompt.to_string();
         Box::new(move |manager, _| {
-            let command_line = CommandLine {
+            let command_line = Arc::new(RwLock::new(CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
                 needs_update: false,
-                cfg
-            };
+                prompt
+            }));
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+            let widget: Arc<RwLock<dyn ActionableWidget<U>>> = command_line.clone();
+            add_commands(manager, command_line);
+
+            Widget::actionable(widget, Box::new(|| true))
         })
     }
 
-    /// Returns a function that outputs a [`CommandLine<U>`], using
-    /// the default [`CommandLineCfg`].
+    /// Returns a function that outputs a [`CommandLine<U>`] with
+    /// `":"` as a prompt.
     pub fn default_fn() -> Box<dyn FnOnce(&Manager, PushSpecs) -> Widget<U>> {
         Box::new(move |manager, _| {
-            let command_line = CommandLine {
+            let command_line = Arc::new(RwLock::new(CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
                 needs_update: false,
-                cfg: CommandLineCfg::default()
-            };
+                prompt: String::from(":")
+            }));
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| true))
+            let widget: Arc<RwLock<dyn ActionableWidget<U>>> = command_line.clone();
+            add_commands(manager, command_line);
+
+            Widget::actionable(widget, Box::new(|| true))
         })
     }
 }
@@ -191,10 +184,6 @@ where
         let _ = command_list.try_exec(command, Vec::new(), whole_command.collect());
 
         self.needs_update = false;
-    }
-
-    fn needs_update(&self) -> bool {
-        self.needs_update
     }
 
     fn text(&self) -> &Text<U> {
@@ -238,8 +227,8 @@ where
 
     fn on_focus(&mut self, label: &U::Label) {
         self.needs_update = true;
-        self.text = Text::new_string(&self.cfg.run_string);
-        let chars = self.cfg.run_string.chars().count() as isize;
+        self.text = Text::new_string(&self.prompt);
+        let chars = self.prompt.chars().count() as isize;
         self.cursor[0].move_hor::<U>(chars, &self.text, label, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
@@ -287,3 +276,19 @@ impl Display for CommandError {
 }
 
 impl Error for CommandError {}
+
+fn add_commands<U>(manager: &Manager, command_line: Arc<RwLock<CommandLine<U>>>)
+where
+    U: Ui + Default + 'static
+{
+    let set_prompt = Command::new(
+        Box::new(move |prompt, _| {
+            let mut command_line = command_line.write().unwrap();
+            command_line.prompt = prompt.first().cloned().unwrap_or(String::from(""));
+            Ok(None)
+        }),
+        vec![String::from("set-prompt")]
+    );
+
+    manager.commands.write().try_add(set_prompt).unwrap();
+}

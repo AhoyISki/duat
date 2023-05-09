@@ -281,10 +281,6 @@ where
         }
     }
 
-    fn needs_update(&self) -> bool {
-        true
-    }
-
     fn text(&self) -> &Text<U> {
         &self.builder.text()
     }
