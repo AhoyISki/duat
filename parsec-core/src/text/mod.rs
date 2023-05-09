@@ -563,7 +563,7 @@ where
             self.cur_char += 1;
             Some((self.cur_char - 1, TextBit::Char(char)))
         } else {
-            self.tags.next().map(|(index, tag)| (index, TextBit::Tag(tag)))
+            None
         }
     }
 }

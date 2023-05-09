@@ -320,6 +320,56 @@ impl Editor {
                 }
             }
             KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            } => {
+                let mut anchors = Vec::with_capacity(actor.cursors_len());
+                actor.move_each_cursor(|mut mover| {
+                    let caret = mover.caret();
+                    anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    mover.set_anchor();
+                    mover.move_hor(-1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                actor.edit_on_each_cursor(|mut editor| {
+                    editor.replace("");
+                });
+                actor.move_each_cursor(|mut mover| {
+                    if let Some(Some((anchor, _))) = anchors.next() {
+                        mover.set_anchor();
+                        mover.move_to(anchor);
+                        mover.switch_ends()
+                    } else {
+                        mover.unset_anchor();
+                    }
+                });
+            }
+            KeyEvent {
+                code: KeyCode::Delete,
+                ..
+            } => {
+                let mut anchors = Vec::with_capacity(actor.cursors_len());
+                actor.move_each_cursor(|mut mover| {
+                    let caret = mover.caret();
+                    anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    mover.set_anchor();
+                    mover.move_hor(1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                actor.edit_on_each_cursor(|mut editor| {
+                    editor.replace("");
+                });
+                actor.move_each_cursor(|mut mover| {
+                    if let Some(Some((anchor, _))) = anchors.next() {
+                        mover.set_anchor();
+                        mover.move_to(anchor);
+                        mover.switch_ends()
+                    } else {
+                        mover.unset_anchor();
+                    }
+                });
+            }
+            KeyEvent {
                 code: KeyCode::Char(ch),
                 ..
             } => {

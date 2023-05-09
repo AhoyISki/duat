@@ -26,7 +26,7 @@ use tags::form::FormPalette;
 use text::PrintCfg;
 use ui::{ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
 use widgets::{
-    command_line::{Command, Commands},
+    command_line::{Command, CommandError, Commands},
     file_widget::FileWidget,
     ActionableWidget, Widget
 };
@@ -142,7 +142,7 @@ where
     }
 
     /// The primary application loop, executed while no breaking
-    /// commands have been sent to `SessionControl`.
+    /// commands have been sent to [`Controls`].
     fn session_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme
@@ -362,6 +362,16 @@ where
         let (widget_index, _) = self.window.file_names().nth(self.manager.anchor_file).ok_or(())?;
 
         self.switch_to_widget_index(widget_index)
+    }
+
+    pub fn call(
+        &mut self, caller: impl ToString, flags: &[impl ToString], args: &[impl ToString]
+    ) -> Result<Option<String>, CommandError> {
+        let caller = caller.to_string();
+        let flags = flags.iter().map(|flag| flag.to_string()).collect::<Vec<String>>();
+        let args = args.iter().map(|arg| arg.to_string()).collect::<Vec<String>>();
+        let mut commands = self.manager.commands.write();
+        commands.try_exec(caller, flags, args)
     }
 }
 
