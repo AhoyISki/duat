@@ -211,22 +211,22 @@ impl Manager {
         let break_loop = manager.break_loop.clone();
         let should_quit = manager.should_quit.clone();
         let quit = Command::new(
-            Box::new(move |_, _| {
+            move |_, _| {
                 break_loop.swap(true, Ordering::Release);
                 should_quit.swap(true, Ordering::Release);
                 Ok(None)
-            }),
+            },
             vec![String::from("quit"), String::from("q")]
         );
 
         let break_loop = manager.break_loop.clone();
         let files_to_open = manager.files_to_open.clone();
         let open_files = Command::new(
-            Box::new(move |_, files| {
+            move |_, files| {
                 break_loop.swap(true, Ordering::Release);
                 *files_to_open.write() = files.iter().map(|file| PathBuf::from(file)).collect();
                 Ok(None)
-            }),
+            },
             vec![String::from("edit"), String::from("e")]
         );
 
@@ -364,14 +364,10 @@ where
         self.switch_to_widget_index(widget_index)
     }
 
-    pub fn call(
-        &mut self, caller: impl ToString, flags: &[impl ToString], args: &[impl ToString]
-    ) -> Result<Option<String>, CommandError> {
-        let caller = caller.to_string();
-        let flags = flags.iter().map(|flag| flag.to_string()).collect::<Vec<String>>();
-        let args = args.iter().map(|arg| arg.to_string()).collect::<Vec<String>>();
+    pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandError> {
+        let cmd = cmd.to_string();
         let mut commands = self.manager.commands.write();
-        commands.try_exec(caller, flags, args)
+        commands.try_parse(cmd)
     }
 }
 

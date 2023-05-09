@@ -1,3 +1,19 @@
+//! An [`ActionableWidget<U>`] capable of running [`Command`]s.
+//!
+//! This widget is capable of running [`Command`]s that are defined
+//! and stored in the [`Commands`] struct. It does so by treating the
+//! first word as the `caller` for the [`Command`], while the other
+//! words are treated as `arguments` for said [`Command`].
+//!
+//! There are plans on creating a simple interface for `flags` in the
+//! near future.
+//!
+//! There are also plans to permit overriding [`CommandLine<U>`]'s
+//! behaviour, such as making it search for text in a [`Text<U>`], in
+//! real time.
+//!
+//! Currently, you can also change the prompt of a [`CommandLine<U>`],
+//! by running the `set-prompt` [`Command`].
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{any::Any, error::Error, fmt::Display, sync::Arc};
@@ -14,29 +30,130 @@ use crate::{
     Manager
 };
 
-/// A command that doesn't returns a `String` as a result.
+/// A function to be used on hooks or in the [`CommandLine<U>`].
 ///
-/// The command takes in two vectors of `String`s, the first one is
-/// the "flags" passed on to the command. The second one is a list of
-/// arguments passed on to the command.
+/// The [`Command`] takes in two vectors of [`String`]s, the first
+/// represents the `flags` passed on to the [`Command`], while the
+/// second is a list of `arguments`.
+///
+/// # Examples
+///
+/// When creating a [`Command`], one should prioritize the reduction
+/// of "data" that the [`Command`] uses when triggering.
+///
+/// For example, if you're creating a [`Command`] that acts on a
+/// [`NormalWidget<U>`], you should avoid moving the entire widget to
+/// a closure:
+///
+/// ```rust
+/// struct MyWidget<U>
+/// where
+/// 	U: Ui
+/// {
+/// 	text: Text<U>,
+/// 	other_field: String,
+/// 	relevant_field: Arc<AtomicBool>>
+/// }
+/// ```
+///
+/// In this case, assuming that you will add the [`Command`]s through
+/// a function that takes, as parameters, one `RwData<MyWidget<U>` and
+/// one [`&mut Commands`][Commands], the function should look like
+/// this:
+///
+/// ```rust
+/// # use crate::ui::Ui;
+/// # struct MyWidget<U>
+/// # where
+/// #     U: Ui
+/// # {
+/// #     text: Text<U>,
+/// #     other_field: String,
+/// #     relevant_field: Arc<AtomicBool>>
+/// # }
+/// fn add_commands<U>(
+///     widget: RwData<MyWidget<U>>, commands: &mut Commands
+/// ) -> Result<(), CommandError>
+/// where
+///     U: Ui
+/// {
+///     let relevant_field = widget.relevant_field.clone();
+///     let command = Command::new(
+///         move |flags, args| {
+///             if relevant_field.load(std::Sync::Ordering::Acquire) {
+///                 // Function internals.
+///             }
+///         },
+///         vec![String::from("my-function-caller")]
+///     );
+///     commands.try_add(command);
+/// }
+/// ```
+///
+/// Instead of this:
+///
+/// ```rust
+/// # use crate::ui::Ui;
+/// # struct MyWidget<U>
+/// # where
+/// #     U: Ui
+/// # {
+/// #     text: Text<U>,
+/// #     other_field: String,
+/// #     relevant_field: Arc<AtomicBool>>
+/// # }
+/// fn add_commands<U>(
+///     widget: RwData<MyWidget<U>>, commands: &mut Commands
+/// ) -> Result<(), CommandError>
+/// where
+///     U: Ui
+/// {
+///     let command = Command::new(
+///         move |flags, args| {
+///             if widget
+///                 .read()
+///                 .relevant_field
+///                 .load(std::Sync::Ordering::Acquire)
+///             {
+///                 // Function internals.
+///             }
+///         },
+///         vec![String::from("my-function-caller")]
+///     );
+///     commands.try_add(command);
+/// }
+/// ```
+///
+/// In the second version, the whole `widget` variable gets moved into
+/// the closure. The problem with this is that this specific
+/// [`RwData`] will get used very often, and by running the
+/// [`Command`], you may cause a deadlock, which is really annoying to
+/// diagnose.
+///
+/// As an example, there is the [`CommandLine<U>`] widget. If its
+/// [`Command`]s moved an entire [`RwData<CommandLine<U>>`] to the
+/// closures, every single one of them, when triggered through the
+/// widget, would result in a deadlock, since they're writing to an
+/// [`RwData<T>`] that was already being written to.
 pub struct Command {
     /// A closure to trigger when any of the `callers` are called.
     ///
     /// # Arguments
     ///
-    /// - 1: A `Vec<String>` representing the flags that have been
-    ///   passed to the function.
-    /// - 2: A `Vec<String>` representing the arguments to be read by
-    ///   the function.
+    /// - 1: A [`&[String]`][String] representing the flags that have
+    ///   been passed to the function.
+    /// - 2: A [`&[String]`][String] representing the arguments to be
+    ///   read by the function.
     ///
     /// # Returns
     ///
-    /// A `Result<Option<String>, String>`. `Ok(Some(String))` is an
-    /// outcome that could be used to chain multiple commands.
-    /// `Err(String)` is obligatory, used to tell the user what went
-    /// wrong while running the command.
+    /// A [`Result<Option<String>, String>`]. [`Ok(Some(String))`] is
+    /// an outcome that could be used to chain multiple commands.
+    /// The [`String`] in [`Err(String)`] is used to tell the user
+    /// what went wrong while running the command, and possibly to
+    /// show a message somewhere on Parsec.
     function: Box<dyn FnMut(&[String], &[String]) -> Result<Option<String>, String>>,
-    /// A list of `String`s that act as callers for this `Command`.
+    /// A list of [`String`]s that act as callers for this `Command`.
     callers: Vec<String>
 }
 
@@ -46,15 +163,18 @@ impl Command {
     /// The first parameter is the function that will be triggered
     /// through any of the keywords in the second parameter.
     pub fn new(
-        function: Box<dyn FnMut(&[String], &[String]) -> Result<Option<String>, String>>,
+        function: impl FnMut(&[String], &[String]) -> Result<Option<String>, String> + 'static,
         callers: Vec<String>
     ) -> Self {
         if let Some(wrong_caller) =
             callers.iter().find(|caller| caller.split_whitespace().count() != 1)
         {
-            panic!("Command caller \"{wrong_caller}\" is not a single word.");
+            panic!("Command caller \"{wrong_caller}\" is not a singular word.");
         }
-        Self { function, callers }
+        Self {
+            function: Box::new(function),
+            callers
+        }
     }
 
     /// Executes the inner function if the `caller` matches any of the
@@ -86,15 +206,22 @@ impl Commands {
         Commands(Vec::new())
     }
 
-    /// Tries to execute a given `caller`, by checking if any of its
-    /// [`Command`]s's callers match it.
+    /// Parses a [`String`] and tries to execute a [`Command`].
     ///
-    /// Will return an [`Err`] if the `caller` was not found.
-    pub(crate) fn try_exec(
-        &mut self, caller: String, flags: Vec<String>, args: Vec<String>
+    /// The [`ToString`] will be parsed by separating the first word
+    /// as the caller, while the rest of the words are treated as
+    /// args.
+    pub(crate) fn try_parse(
+        &mut self, command: impl ToString
     ) -> Result<Option<String>, CommandError> {
+        let command = command.to_string();
+        let mut command = command.split_whitespace().map(|word| String::from(word));
+
+        let caller = command.next().ok_or(CommandError::Empty)?;
+        let args = command.collect::<Vec<String>>();
+
         for command in &mut self.0 {
-            let result = command.try_exec(&caller, flags.as_slice(), args.as_slice());
+            let result = command.try_exec(&caller, &[], args.as_slice());
             let Err(CommandError::NotFound(_)) = result else {
                 return result;
             };
@@ -131,7 +258,7 @@ impl Commands {
 /// [`FileWidget<U>`][crate::widgets::FileWidget] in real time.
 pub struct CommandLine<U>
 where
-    U: Ui + ?Sized
+    U: Ui
 {
     text: Text<U>,
     print_info: U::PrintInfo,
@@ -243,15 +370,8 @@ where
 
         // A '\n' indicates that the command has been "entered".
         if let Some('\n') = text.iter_chars_at(0).last() {
-            let line = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
-            let mut command = line.split_whitespace().map(|word| String::from(word));
-
-            let Some(caller) = command.next() else {
-    			return;
-    		};
-
-            let mut command_list = self.commands.write();
-            let _ = command_list.try_exec(caller.clone(), Vec::new(), command.collect());
+            let cmd = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
+            let _ = self.commands.write().try_parse(cmd);
         };
     }
 
@@ -274,19 +394,21 @@ where
 pub enum CommandError {
     AlreadyExists(String),
     NotFound(String),
-    Failed(String)
+    Failed(String),
+    Empty
 }
 
 impl Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::AlreadyExists(caller) => {
-                f.write_fmt(format_args!("The caller \"{}\" already exists!", caller))
+                f.write_fmt(format_args!("The caller \"{}\" already exists.", caller))
             }
             CommandError::NotFound(caller) => {
-                f.write_fmt(format_args!("The caller \"{}\" was not found!", caller))
+                f.write_fmt(format_args!("The caller \"{}\" was not found.", caller))
             }
-            CommandError::Failed(failure) => f.write_str(failure)
+            CommandError::Failed(failure) => f.write_str(failure),
+            CommandError::Empty => f.write_str("No caller supplied.")
         }
     }
 }
@@ -297,14 +419,14 @@ impl Error for CommandError {}
 /// [`Commands`].
 fn add_commands<U>(manager: &Manager, command_line: &CommandLine<U>)
 where
-    U: Ui + Default + 'static
+    U: Ui
 {
     let prompt = command_line.prompt.clone();
     let set_prompt = Command::new(
-        Box::new(move |_, new_prompt| {
+        move |_, new_prompt| {
             *prompt.write() = new_prompt.first().cloned().unwrap_or(String::from(""));
             Ok(None)
-        }),
+        },
         vec![String::from("set-prompt")]
     );
 
