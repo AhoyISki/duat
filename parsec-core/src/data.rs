@@ -23,7 +23,7 @@ use std::{
     fmt::{Debug, Display},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult
+        Arc, TryLockError, TryLockResult
     }
 };
 
@@ -120,24 +120,42 @@ where
         })
     }
 
-    /// Blocking application of a function to the inner data.
+    /// Blocking inspection of the inner data.
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// on it or any of its clones returns `true`.
-    pub fn mutate(&self, f: impl FnOnce(&mut T)) {
-        f(&mut self.write());
+    /// returns `false`.
+    pub fn inspect<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+        f(&self.read())
     }
 
-    /// Non Blocking mutable reference to the information.
+    /// Non blocking inspection of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// `false`.
+    pub fn try_inspect<S>(
+        &self, f: impl FnOnce(&T) -> S
+    ) -> Result<S, TryLockError<RwLockReadGuard<T>>> {
+        let res = self.try_read();
+        res.map(|data| f(&*data))
+    }
+
+    /// Blocking mutation of the inner data.
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
-    pub fn try_mutate(&self, f: impl FnOnce(&mut T)) -> TryLockResult<RwLockWriteGuard<T>> {
-        let mut res = self.try_write();
-        if let Ok(data) = &mut res {
-            f(&mut *data);
-        }
-        res
+    pub fn mutate<S>(&self, f: impl FnOnce(&mut T) -> S) -> S {
+        f(&mut self.write())
+    }
+
+    /// Non blocking mutation of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// on it or any of its clones returns `true`.
+    pub fn try_mutate<S>(
+        &self, f: impl FnOnce(&mut T) -> S
+    ) -> Result<S, TryLockError<RwLockWriteGuard<T>>> {
+        let res = self.try_write();
+        res.map(|mut data| f(&mut *data))
     }
 
     /// Wether or not it has changed since it was last read.
@@ -274,6 +292,25 @@ where
 
             mutex_guard
         })
+    }
+
+    /// Blocking inspection of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
+    pub fn inspect<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+        f(&self.read())
+    }
+
+    /// Non blocking inspection of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// `false`.
+    pub fn try_inspect<S>(
+        &self, f: impl FnOnce(&T) -> S
+    ) -> Result<S, TryLockError<RwLockReadGuard<T>>> {
+        let res = self.try_read();
+        res.map(|data| f(&*data))
     }
 
     /// Wether or not it has changed since it was last read.

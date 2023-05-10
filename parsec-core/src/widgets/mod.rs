@@ -135,12 +135,29 @@ where
 }
 
 /// An enum for handling the 2 types of widget.
+#[derive(Clone)]
 enum InnerWidget<U>
 where
     U: Ui + ?Sized
 {
     Normal(RwData<dyn NormalWidget<U>>),
     Actionable(RwData<dyn ActionableWidget<U>>)
+}
+
+impl<U> InnerWidget<U>
+where
+    U: Ui + ?Sized
+{
+    pub fn update(&self, label: &U::Label) {
+        match self {
+            InnerWidget::Normal(widget) => {
+                widget.write().update(label);
+            }
+            InnerWidget::Actionable(widget) => {
+                widget.write().update(label);
+            }
+        }
+    }
 }
 
 /// A full representation of a widget.
@@ -215,14 +232,7 @@ where
 
     /// Updates the [`Widget<U>`].
     pub(crate) fn update(&self, label: &U::Label) {
-        match &self.inner {
-            InnerWidget::Normal(widget) => {
-                widget.write().update(label);
-            }
-            InnerWidget::Actionable(widget) => {
-                widget.write().update(label);
-            }
-        }
+        self.inner.update(label);
     }
 
     /// Prints the [`Widget<U>`] to its designated

@@ -82,7 +82,8 @@ where
             side: Side::Right,
             split: Split::Min(40)
         };
-        let (new_area, _) = self.manager.mut_active_window().push_file(file_widget, push_specs);
+        let (new_area, _) = self.manager.windows.write()[self.manager.active_window]
+            .push_file(file_widget, push_specs);
 
         activate_hook(&mut self.manager, new_area, &mut self.constructor_hook)
     }
@@ -91,7 +92,7 @@ where
         &mut self, constructor: impl Fn(&Session<U>) -> Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self);
-        self.manager.mut_active_window().push_to_master(widget, push_specs)
+        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, push_specs)
     }
 
     /// Start the application, initiating a read/response loop.
@@ -104,7 +105,9 @@ where
         // The main loop.
         loop {
             let palette = &self.manager.palette;
-            for (widget, mut label) in self.manager.active_window().widgets() {
+            for (widget, mut label) in
+                self.manager.windows.read()[self.manager.active_window].widgets()
+            {
                 widget.update(&mut label);
                 widget.print(&mut label, &palette);
             }
@@ -127,15 +130,16 @@ where
     {
         let palette = &self.manager.palette;
         let manager = &self.manager;
+        let windows = self.manager.windows.read();
         thread::scope(|scope| {
             loop {
-                manager.active_window().print_if_layout_changed(&palette);
+                windows[manager.active_window].print_if_layout_changed(&palette);
                 if manager.break_loop.load(Ordering::Acquire) {
                     manager.break_loop.store(false, Ordering::Release);
                     break;
                 }
 
-                for (widget, mut label) in manager.active_window().widgets() {
+                for (widget, mut label) in windows[manager.active_window].widgets() {
                     if widget.needs_update() {
                         if widget.is_slow() {
                             let palette = &palette;
@@ -171,7 +175,7 @@ pub struct Manager<U>
 where
     U: Ui
 {
-    windows: Vec<ParsecWindow<U>>,
+    windows: RwData<Vec<ParsecWindow<U>>>,
     active_window: usize,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
@@ -187,9 +191,11 @@ where
     U: Ui
 {
     /// Returns a new instance of [`Manager`].
-    fn new(window: ParsecWindow<U>, anchor_file: usize, active_widget: usize, palette: FormPalette) -> Self {
+    fn new(
+        window: ParsecWindow<U>, anchor_file: usize, active_widget: usize, palette: FormPalette
+    ) -> Self {
         let manager = Manager {
-            windows: vec![window],
+            windows: RwData::new(vec![window]),
             active_window: 0,
             commands: RwData::new(Commands::default()),
             files_to_open: RwData::new(Vec::new()),
@@ -236,12 +242,8 @@ where
         self.commands.clone()
     }
 
-    pub fn mut_active_window(&mut self) -> &mut ParsecWindow<U> {
-        self.windows.get_mut(self.active_window).unwrap()
-    }
-
-    pub fn active_window(&self) -> &ParsecWindow<U> {
-        self.windows.get(self.active_window).unwrap()
+    pub fn windows(&self) -> RoData<Vec<ParsecWindow<U>>> {
+        RoData::from(&self.windows)
     }
 }
 
@@ -380,7 +382,9 @@ where
     I: InputScheme
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let window = manager.active_window();
+        let windows = manager.windows.read();
+        let window = &windows[manager.active_window];
+
         let index = manager.active_widget.load(Ordering::Acquire);
         let actionable_widget = window.actionable_widgets().nth(index);
 

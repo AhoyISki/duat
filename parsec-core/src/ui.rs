@@ -110,8 +110,6 @@ where
 /// further actions to be taken. It is used in contexts where a widget
 /// has just been inserted to the screen, inside closures.
 ///
-/// # Examples
-///
 /// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed
 /// to the left of a widget (which in this case is a [`FileWidget<U>`]
 /// ```rust
@@ -177,8 +175,17 @@ where
         push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        let window = self.manager.mut_active_window();
-        window.push_glued_widget(widget, self.mod_area, push_specs)
+        let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
+            let window = &mut windows[self.manager.active_window];
+            window.push_glued_widget(widget, self.mod_area, push_specs)
+        });
+
+        let window = &self.manager.windows.read()[self.manager.active_window];
+        let label = window.window.get_label(new_area).unwrap();
+        let node = window.nodes.iter().find(|Node { area_index, .. }| *area_index == new_area);
+        node.map(|Node { widget, .. }| widget).unwrap().update(&label);
+
+        (new_area, pushed_area)
     }
 
     /// Pushes a [`Widget<U>`] to a specific `area`, given
@@ -201,12 +208,25 @@ where
         area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        let window = self.manager.mut_active_window();
-        window.push_widget(widget, area_index, push_specs)
+        let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
+            let window = &mut windows[self.manager.active_window];
+            window.push_glued_widget(widget, area_index, push_specs)
+        });
+
+        let window = &self.manager.windows.read()[self.manager.active_window];
+        let label = window.window.get_label(new_area).unwrap();
+        let node = window.nodes.iter().find(|Node { area_index, .. }| *area_index == new_area);
+        node.map(|Node { widget, .. }| widget).unwrap().update(&label);
+
+        (new_area, pushed_area)
     }
 
     pub fn palette(&self) -> &FormPalette {
         &self.manager.palette
+    }
+
+    pub fn manager(&self) -> &Manager<U> {
+        &self.manager
     }
 }
 
@@ -217,16 +237,19 @@ pub(crate) fn activate_hook<U, Nw>(
     U: Ui,
     Nw: NormalWidget<U>
 {
-    let node = manager
-        .active_window()
-        .nodes
-        .iter()
-        .find(|Node { area_index, .. }| *area_index == mod_area)
-        .unwrap();
+    let widget = manager.windows.inspect(|windows| {
+        let window = &windows[manager.active_window];
 
-    let Some(widget) = node.widget.try_downcast::<Nw>() else {
-        panic!("The widget is not of type {}", std::any::type_name::<Nw>());
-    };
+        let node = window
+            .nodes
+            .iter()
+            .find(|Node { area_index, .. }| *area_index == mod_area)
+            .unwrap();
+
+        node.widget.try_downcast::<Nw>().unwrap_or_else(|| {
+            panic!("The widget in question is not of type {}", std::any::type_name::<Nw>())
+        })
+    });
     let mod_node = ModNode { manager, mod_area };
 
     (constructor_hook)(mod_node, widget)
@@ -424,8 +447,6 @@ where
     ) -> (usize, Option<usize>) {
         let mut area = self.window.get_area(area_index).unwrap();
         let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
-        let label = self.window.get_label(new_area).unwrap();
-        widget.update(&label);
 
         if let Some(new_area_index) = pushed_area {
             self.nodes.iter_mut().for_each(|node| {

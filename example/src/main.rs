@@ -29,6 +29,7 @@ use parsec_core::{
         status_line::{f_var, text, var},
         CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
     },
+    Manager,
     Session
 };
 use parsec_kak::Editor;
@@ -98,6 +99,8 @@ fn main() {
                         join![file.cursors().len(), "sels"]
                     }
                 }),
+                text(" [Default]file count: "),
+                var(file_count(mod_node.manager())),
                 text(" [Coords]"),
                 f_var(|file| file.main_cursor().col()),
                 text("[Separator]:[Coords]"),
@@ -121,4 +124,12 @@ fn main() {
 
     // Start Parsec.
     session.start_parsec(&mut file_remapper);
+}
+
+fn file_count(manager: &Manager<Ui>) -> impl Fn() -> String {
+    let windows = manager.windows();
+    move || {
+        let windows = windows.read();
+        windows.iter().map(|window| window.file_names()).flatten().count().to_string()
+    }
 }
