@@ -255,14 +255,34 @@ where
     }
 
     /// Wether or not the [`Widget<U>`] needs to be updated.
-    pub fn needs_update(&self) -> bool {
+    pub(crate) fn needs_update(&self) -> bool {
         match &self.inner {
             InnerWidget::Normal(_) => (self.needs_update)(),
             InnerWidget::Actionable(widget) => widget.has_changed() || (self.needs_update)()
         }
     }
 
-    pub fn as_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
+	/// Raw inspection of the inner [`NormalWidget<U>`].
+    ///
+    /// This method should only be used in very specific
+    /// circumstances, such as when multiple owners have nested
+    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
+    /// a way that reading from one point would interfere in the
+    /// update detection of the other point.
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn NormalWidget<U>) -> B) -> B {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
+                let widget = widget.raw_read();
+                f(&*widget)
+            }
+            InnerWidget::Actionable(widget) => {
+                let widget = widget.raw_read();
+                f(&*widget as &dyn NormalWidget<U>)
+            }
+        }
+    }
+
+    pub(crate) fn as_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
         match &self.inner {
             InnerWidget::Normal(_) => None,
             InnerWidget::Actionable(widget) => Some(&widget)

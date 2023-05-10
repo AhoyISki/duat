@@ -501,7 +501,7 @@ where
 
     /// Returns an [`Iterator`] over the [`ActionableWidget`]s of
     /// [`self`].
-    pub fn actionable_widgets(
+    pub(crate) fn actionable_widgets(
         &self
     ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label)> + '_ {
         self.nodes.iter().filter_map(
@@ -543,5 +543,73 @@ where
                 node.widget.print(&mut label, &palette);
             }
         }
+    }
+}
+
+pub struct RoWindow<'a, U>(&'a ParsecWindow<U>)
+where
+    U: Ui;
+
+impl<'a, U> RoWindow<'a, U>
+where
+    U: Ui
+{
+    /// Similar to the [`Iterator::fold`] operation, folding each
+    /// [`&FileWidget<U>`][FileWidget`] by applying an operation,
+    /// returning a final result.
+    ///
+    /// The reason why this is a `fold` operation, and doesn't just
+    /// return an [`Iterator`], is because `f` will act on a
+    /// reference, as to not do unnecessary cloning of the widget's
+    /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
+    /// references to themselves.
+    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &FileWidget<U>) -> B) -> B {
+        self.0
+            .nodes
+            .iter()
+            .filter_map(|Node { widget, .. }| widget.as_actionable())
+            .fold(init, |accum, widget| {
+                if let Some(file_widget) =
+                    widget.raw_read().as_any().downcast_ref::<FileWidget<U>>()
+                {
+                    f(accum, file_widget)
+                } else {
+                    accum
+                }
+            })
+    }
+
+    /// Similar to the [`Iterator::fold`] operation, folding each
+    /// [`&dyn NormalWidget<U>`][NormalWidget] by applying an
+    /// operation, returning a final result.
+    ///
+    /// The reason why this is a `fold` operation, and doesn't just
+    /// return an [`Iterator`], is because `f` will act on a
+    /// reference, as to not do unnecessary cloning of the widget's
+    /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
+    /// references to themselves.
+    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn NormalWidget<U>) -> B) -> B {
+        self.0.nodes.iter().fold(init, |accum, Node { widget, .. }| {
+            let f = &mut f;
+            widget.raw_inspect(move |widget| f(accum, widget))
+        })
+    }
+}
+
+pub struct RoWindows<U>(RoData<Vec<ParsecWindow<U>>>)
+where
+    U: Ui;
+
+impl<U> RoWindows<U>
+where
+    U: Ui
+{
+    pub fn new(windows: RoData<Vec<ParsecWindow<U>>>) -> Self {
+        RoWindows(windows)
+    }
+
+    pub fn inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
+        let windows = self.0.read();
+        windows.get(index).map(|window| f(RoWindow(window)))
     }
 }

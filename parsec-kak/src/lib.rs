@@ -280,7 +280,7 @@ impl Editor {
                 code: KeyCode::Char(':'),
                 ..
             } => {
-                controls.run_cmd("set-prompt >").unwrap();
+                controls.run_cmd("set-prompt :").unwrap();
                 if let Ok(_) = controls.switch_to_widget::<CommandLine<U>>() {
                     *self.cur_mode.write() = Mode::Command;
                 }

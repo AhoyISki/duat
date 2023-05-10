@@ -1,4 +1,4 @@
-#![feature(drain_filter, result_option_inspect)]
+#![feature(drain_filter, result_option_inspect, trait_upcasting)]
 
 pub mod data;
 pub mod history;
@@ -24,7 +24,7 @@ use data::{RoData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Side, Split, Ui};
+use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Side, Split, Ui, RoWindows};
 use widgets::{
     command_line::{Command, CommandError, Commands},
     file_widget::FileWidget,
@@ -242,8 +242,8 @@ where
         self.commands.clone()
     }
 
-    pub fn windows(&self) -> RoData<Vec<ParsecWindow<U>>> {
-        RoData::from(&self.windows)
+    pub fn windows(&self) -> RoWindows<U> {
+        RoWindows::new(RoData::from(&self.windows))
     }
 }
 
@@ -339,16 +339,15 @@ where
 
     fn switch_to_widget_index(&mut self, index: usize) -> Result<(), ()> {
         let (widget, label) = self.window.actionable_widgets().nth(index).ok_or(())?;
-
-        let mut widget = widget.write();
-        widget.on_focus(&label);
-        drop(widget);
+        widget.mutate(|widget| {
+            widget.on_focus(&label);
+        });
 
         let active_index = self.manager.active_widget.load(Ordering::Acquire);
         let (widget, label) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
-
-        let mut widget = widget.write();
-        widget.on_unfocus(&label);
+        widget.mutate(|widget| {
+            widget.on_unfocus(&label);
+        });
 
         self.manager.active_widget.store(index, Ordering::Release);
 

@@ -78,6 +78,20 @@ where
 
     /// Blocking reference to the information.
     ///
+    /// Unlike [`read()`][Self::read()], *DOES NOT* make it so
+    /// [`has_changed()`][Self::has_changed()] returns `false`.
+    ///
+    /// This method should only be used in very specific
+    /// circumstances, such as when multiple owners have nested
+    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
+    /// a way that reading from one point would interfere in the
+    /// update detection of the other point.
+    pub(crate) fn raw_read(&self) -> RwLockReadGuard<T> {
+        self.data.read().unwrap()
+    }
+
+    /// Blocking reference to the information.
+    ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
@@ -124,7 +138,7 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
-    pub fn inspect<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn inspect<B>(&self, f: impl FnOnce(&T) -> B) -> B {
         f(&self.read())
     }
 
@@ -132,9 +146,9 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// `false`.
-    pub fn try_inspect<S>(
-        &self, f: impl FnOnce(&T) -> S
-    ) -> Result<S, TryLockError<RwLockReadGuard<T>>> {
+    pub fn try_inspect<B>(
+        &self, f: impl FnOnce(&T) -> B
+    ) -> Result<B, TryLockError<RwLockReadGuard<T>>> {
         let res = self.try_read();
         res.map(|data| f(&*data))
     }
@@ -143,7 +157,7 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
-    pub fn mutate<S>(&self, f: impl FnOnce(&mut T) -> S) -> S {
+    pub fn mutate<B>(&self, f: impl FnOnce(&mut T) -> B) -> B {
         f(&mut self.write())
     }
 
@@ -151,9 +165,9 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// on it or any of its clones returns `true`.
-    pub fn try_mutate<S>(
-        &self, f: impl FnOnce(&mut T) -> S
-    ) -> Result<S, TryLockError<RwLockWriteGuard<T>>> {
+    pub fn try_mutate<B>(
+        &self, f: impl FnOnce(&mut T) -> B
+    ) -> Result<B, TryLockError<RwLockWriteGuard<T>>> {
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
     }
@@ -298,7 +312,7 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
-    pub fn inspect<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn inspect<B>(&self, f: impl FnOnce(&T) -> B) -> B {
         f(&self.read())
     }
 
@@ -306,9 +320,9 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// `false`.
-    pub fn try_inspect<S>(
-        &self, f: impl FnOnce(&T) -> S
-    ) -> Result<S, TryLockError<RwLockReadGuard<T>>> {
+    pub fn try_inspect<B>(
+        &self, f: impl FnOnce(&T) -> B
+    ) -> Result<B, TryLockError<RwLockReadGuard<T>>> {
         let res = self.try_read();
         res.map(|data| f(&*data))
     }

@@ -4,7 +4,10 @@
 // terminal-like features, such as colors and control of the cursor's
 // shape. Such features will also be present on any other frontends,
 // and crossterm is an easy way to get access to them.
-use crossterm::style::{ContentStyle, Stylize};
+use crossterm::{
+    cursor::SetCursorStyle,
+    style::{ContentStyle, Stylize}
+};
 // parsec-core is the main crate for Parsec. It handles all the
 // functionality, with the exception of frontend implementations.
 use parsec_core::{
@@ -49,7 +52,10 @@ fn main() {
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that
     // name.
-    palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
+    palette.set_main_cursor(CursorStyle::new(
+        Some(SetCursorStyle::BlinkingBlock),
+        Form::new().on_cyan()
+    ));
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
@@ -129,7 +135,8 @@ fn main() {
 fn file_count(manager: &Manager<Ui>) -> impl Fn() -> String {
     let windows = manager.windows();
     move || {
-        let windows = windows.read();
-        windows.iter().map(|window| window.file_names()).flatten().count().to_string()
+        windows
+            .inspect_nth(0, |window| window.fold_files(0, |accum, _| accum + 1).to_string())
+            .unwrap()
     }
 }
