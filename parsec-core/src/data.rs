@@ -476,7 +476,21 @@ where
     }
 }
 
-/// A nested [`RoData<T>`] useful
+/// A nested [`RoData<RoData<T>>`], synced across all readers.
+///
+/// An [`RoData<RoData<T>>`] is useful for allowing multiple readers
+/// to the same data, while also allowing for the changing of the
+/// inner [`RoData<T>`], which essentially makes this struct capable
+/// of altering what data it is pointing to.
+///
+/// The problem with a raw [`RoData<RoData<T>>`] is that reading the
+/// inner [`RoData<T>`] will automatically mean that every other owner
+/// of the [`RoData<RoData<T>>`] will think that the inner data has
+/// never been updated, which is false.
+///
+/// That's the whole point of [`RoNestedData<T>`], to allow for
+/// multiple readers to catch up, not only to the inner data, but also
+/// changes to the pointer itself.
 pub struct RoNestedData<T>
 where
     T: ?Sized
@@ -489,6 +503,11 @@ impl<T> RoNestedData<T>
 where
     T: ?Sized + 'static
 {
+    /// Returns a new instance of [`RoNestedData<T>`]
+    ///
+    /// Note that the inner [`RoData<T>`] in the [`RoData<RoData<T>>`]
+    /// will never be swappable by another [`RoData<T>`] which is the
+    /// whole point of this struct.
     pub fn new(data: RoData<T>) -> Self {
         let read_state = AtomicUsize::new(data.cur_state.load(Ordering::Relaxed));
         Self {

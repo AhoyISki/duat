@@ -319,9 +319,10 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, _label: &U::Label) {
-        self.file.inspect(|file|
-        for (index, reader) in self.readers.iter().enumerate() {
-            self.builder.swap_range(index, reader.read(&file));
+        self.file.inspect(|file| {
+            for (index, reader) in self.readers.iter().enumerate() {
+                self.builder.swap_range(index, reader.read(&file));
+            }
         });
     }
 
