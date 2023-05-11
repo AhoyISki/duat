@@ -151,7 +151,7 @@ where
         // the first line number a wrapped line.
         let mut is_wrapped = {
             let line = self.text.iter_line(line_num);
-            label.wrap_count(line, &self.print_cfg, first_char) > 0
+            label.vis_rows(line, &self.print_cfg, first_char) > 1
         };
 
         let height = label.area().height();
@@ -163,13 +163,13 @@ where
         let lines_len = self.text.len_lines();
         while accum <= height && line_num < lines_len {
             let line = self.text.iter_line(line_num);
-            let mut wrap_count = label.wrap_count(line, &self.print_cfg, usize::MAX);
+            let mut wrap_count = label.vis_rows(line, &self.print_cfg, usize::MAX);
             if accum == 0 {
                 let line = self.text.iter_line(line_num);
-                wrap_count -= label.wrap_count(line, &self.print_cfg, first_char);
+                wrap_count -= label.vis_rows(line, &self.print_cfg, first_char);
             }
             let prev_accum = accum;
-            accum = min(accum + wrap_count, height) + 1;
+            accum = min(accum + wrap_count, height);
             for _ in prev_accum..accum {
                 self.printed_lines.push((line_num, is_wrapped));
                 is_wrapped = true;

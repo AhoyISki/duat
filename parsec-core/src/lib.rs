@@ -1,8 +1,4 @@
-#![feature(
-    drain_filter,
-    result_option_inspect,
-    trait_upcasting,
-)]
+#![feature(drain_filter, result_option_inspect, trait_upcasting)]
 
 pub mod data;
 pub mod history;

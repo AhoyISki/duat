@@ -100,27 +100,22 @@ impl ui::Label for Label {
         execute!(stdout, ResetColor).unwrap();
     }
 
-    fn wrap_count(
+    fn vis_rows(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
     ) -> usize {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
-            WrapMethod::Width | WrapMethod::Capped(_) => {
+            WrapMethod::Width | WrapMethod::Capped(_) =>
                 bits(indents, coords.width(), &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
-                    .count()
-                    - 1
-            }
-            WrapMethod::Word => {
-                words(indents, coords.width(), &cfg)
-                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
-                    .take_while(|index| *index <= max_index)
-                    .count()
-                    - 1
-            }
-            WrapMethod::NoWrap => 0
+                    .count(),
+            WrapMethod::Word => words(indents, coords.width(), &cfg)
+                .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                .take_while(|index| *index <= max_index)
+                .count(),
+            WrapMethod::NoWrap => 1
         }
     }
 

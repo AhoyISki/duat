@@ -188,7 +188,9 @@ where
     }
 
     /// Returns an [`ActionableWidget`] [`Widget<U>`].
-    pub fn actionable(widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
+    pub fn actionable(
+        widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static
+    ) -> Widget<U> {
         Widget {
             inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: false,
@@ -214,7 +216,9 @@ where
     ///
     /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
     /// down the execution of Parsec.
-    pub fn slow_actionable(widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
+    pub fn slow_actionable(
+        widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static
+    ) -> Widget<U> {
         Widget {
             inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: true,

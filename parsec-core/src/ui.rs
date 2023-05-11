@@ -65,8 +65,14 @@ pub trait Label {
         U: Ui + ?Sized;
 
     //////////////////// Queries
-    /// Counts how many times the given [`Iterator`] would wrap.
-    fn wrap_count(
+    /// The amount of rows of the screen that the [`Iterator`] takes
+    /// up.
+    ///
+    /// Must take the [`PrintCfg`] into account, as in, if the
+    /// [`WrapMethod`][crate::text::WrapMethod] is
+    /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
+    /// then the number of rows must equal the number of lines on the [`Iterator`].
+    fn vis_rows(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
     ) -> usize;
 
