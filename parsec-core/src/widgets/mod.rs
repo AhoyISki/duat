@@ -607,5 +607,5 @@ macro_rules! updaters {
 
 pub use command_line::CommandLine;
 pub use file_widget::FileWidget;
-pub use line_numbers::{Alignment, LineNumbers, LineNumbersCfg, Numbering};
+pub use line_numbers::{Align, LineNumbers, LineNumbersCfg, Numbers};
 pub use status_line::{StatusLine, StatusPart};

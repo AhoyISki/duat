@@ -30,7 +30,7 @@ use parsec_core::{
     text::{PrintCfg, ScrollOff, WrapMethod},
     ui::{ModNode, PushSpecs, Side, Split},
     widgets::{
-        line_numbers::{Alignment, Numbering},
+        line_numbers::{Align, Numbers},
         status_line::{f_var, text, var},
         CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
     },
@@ -90,13 +90,13 @@ fn main() {
             mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
 
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-            let cfg = LineNumbersCfg::new(Numbering::Absolute, Alignment::Right, Alignment::Left);
+            let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
             mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
         })
     );
 
     let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-    //session.push_widget_to_edge(StatusLine::default_global_fn(), push_specs);
+    session.push_widget_to_edge(StatusLine::default_global_fn(), push_specs);
 
     // session.push_widget_to_edge(CommandLine::default, Side::Bottom,
     // Split::Locked(1)); The `KeyRemapper` is an intermediary struct

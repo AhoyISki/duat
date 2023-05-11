@@ -117,7 +117,7 @@ where
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let tag = get_tag(*line, main_line, *is_wrapped);
-            write_text(&mut text, *line, main_line, width, &self.cfg);
+            write_text(&mut text, *line, main_line, *is_wrapped, width, &self.cfg);
 
             if index < self.builder.ranges_len() {
                 self.builder.swap_tag(index, tag);
@@ -159,7 +159,7 @@ where
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
-pub enum Numbering {
+pub enum Numbers {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Absolute,
@@ -172,7 +172,7 @@ pub enum Numbering {
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
-pub enum Alignment {
+pub enum Align {
     #[default]
     Right,
     Left,
@@ -182,18 +182,20 @@ pub enum Alignment {
 /// Configuration options for the [`LineNumbers<U>`] widget.
 #[derive(Default, Clone, Copy)]
 pub struct LineNumbersCfg {
-    pub numbering: Numbering,
-    pub alignment: Alignment,
-    pub main_alignment: Alignment
+    pub numbers: Numbers,
+    pub align: Align,
+    pub main_align: Align,
+    pub hide_wraps: bool
 }
 
 impl LineNumbersCfg {
     /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn new(numbering: Numbering, alignment: Alignment, main_alignment: Alignment) -> Self {
+    pub fn new(numbers: Numbers, align: Align, main_align: Align, hide_wraps: bool) -> Self {
         Self {
-            numbering,
-            alignment,
-            main_alignment
+            numbers,
+            align,
+            main_align,
+            hide_wraps
         }
     }
 }
@@ -212,13 +214,13 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
 
 /// Writes the text of the line number to a given [`String`].
 fn write_text(
-    text: &mut String, line: usize, main_line: usize, width: usize, cfg: &LineNumbersCfg
+    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, width: usize, cfg: &LineNumbersCfg
 ) {
     text.clear();
-    let number = match cfg.numbering {
-        Numbering::Absolute => line + 1,
-        Numbering::Relative => usize::abs_diff(line, main_line),
-        Numbering::Hybrid => {
+    let number = match cfg.numbers {
+        Numbers::Absolute => line + 1,
+        Numbers::Relative => usize::abs_diff(line, main_line),
+        Numbers::Hybrid => {
             if line != main_line {
                 usize::abs_diff(line, main_line)
             } else {
@@ -228,14 +230,18 @@ fn write_text(
     };
 
     let alignment = if line == main_line {
-        cfg.main_alignment
+        cfg.main_align
     } else {
-        cfg.alignment
+        cfg.align
     };
 
-    match alignment {
-        Alignment::Left => write!(text, "{:<width$}\n", number).unwrap(),
-        Alignment::Center => write!(text, "{:^width$}\n", number).unwrap(),
-        Alignment::Right => write!(text, "{:>width$}\n", number).unwrap()
+    if is_wrapped && cfg.hide_wraps {
+        *text = " ".repeat(width) + "\n";
+    } else {
+        match alignment {
+            Align::Left => write!(text, "{:<width$}\n", number).unwrap(),
+            Align::Center => write!(text, "{:^width$}\n", number).unwrap(),
+            Align::Right => write!(text, "{:>width$}\n", number).unwrap()
+        }
     }
 }
