@@ -5,7 +5,6 @@ use std::{
 
 use crossterm::terminal;
 use parsec_core::{
-    log_info,
     data::RwData,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split}
 };
@@ -227,7 +226,6 @@ impl ui::Area for Area {
         if child.resizable_len(req_axis, &window) == len {
             return Ok(());
         };
-        log_info!("\n{}, {len}", child.resizable_len(req_axis, &window));
         window.cur_state.fetch_add(1, Ordering::Relaxed);
 
         if req_axis != *axis {

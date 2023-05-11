@@ -76,7 +76,6 @@ fn main() {
     // program will be handle input to edit a file or any piece of
     // text.
     let editor = Editor::default();
-    let mode = editor.mode_fn();
     // A `Session` is essentially the application itself, it takes a
     // `Config` argument and a closure that determines what will happen
     // when a new file is opened.
@@ -96,30 +95,8 @@ fn main() {
         })
     );
 
-    let parts = vec![
-        text("[FileName]"),
-        f_var(|file| file.name()),
-        text(" [Mode]"),
-        var(mode.clone()),
-        text(" [Selections]"),
-        f_var(|file| {
-            if file.cursors().len() == 1 {
-                String::from("1 sel")
-            } else {
-                join![file.cursors().len(), "sels"]
-            }
-        }),
-        text(" [Coords]"),
-        f_var(|file| file.main_cursor().col()),
-        text("[Separator]:[Coords]"),
-        f_var(|file| file.main_cursor().line()),
-        text("[Separator]/[Coords]"),
-        f_var(|file| file.len_lines()),
-    ];
-
     let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-    let palette = &session.manager().palette;
-    session.push_widget_to_edge(StatusLine::global_fn(parts, palette), push_specs);
+    //session.push_widget_to_edge(StatusLine::default_global_fn(), push_specs);
 
     // session.push_widget_to_edge(CommandLine::default, Side::Bottom,
     // Split::Locked(1)); The `KeyRemapper` is an intermediary struct
@@ -128,23 +105,4 @@ fn main() {
 
     // Start Parsec.
     session.start_parsec(&mut file_remapper);
-}
-
-fn file_count(manager: &Manager<Ui>) -> impl Fn() -> String {
-    let windows = manager.windows();
-    move || {
-        windows
-            .inspect_nth(0, |window| {
-                window
-                    .fold_files(0, |accum, file| {
-                        if file.name().ends_with(".rs") {
-                            accum + 1
-                        } else {
-                            accum
-                        }
-                    })
-                    .to_string()
-            })
-            .unwrap()
-    }
 }

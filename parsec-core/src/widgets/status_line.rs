@@ -17,7 +17,7 @@ use crate::{
     },
     text::{Text, TextBuilder},
     ui::{PushSpecs, Ui},
-    updaters, Manager
+    Manager
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -167,31 +167,20 @@ where
 {
     file: RoNestedData<FileWidget<U>>,
     builder: TextBuilder<U>,
-    readers: Vec<Reader<U>>,
-    _clippable: bool
+    readers: Vec<Reader<U>>
 }
 
 impl<U> StatusLine<U>
 where
     U: Ui
 {
-    /// Returns a function that outputs a new instance of
-    /// [`StatusLine<U>`].
-    fn new_fn(
-        file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
-        _clippable: bool
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, _| {
-            let updaters = updaters![(file.clone())];
-            Widget::normal(
-                StatusLine {
-                    file: RoNestedData::new(file),
-                    builder,
-                    readers,
-                    _clippable
-                },
-                updaters
-            )
+    fn new(
+        file: RoNestedData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>
+    ) -> Self {
+        Self {
+            file,
+            builder,
+            readers
         }
     }
 
@@ -215,55 +204,10 @@ where
             };
 
             Widget::normal(
-                StatusLine {
-                    file: file.clone(),
-                    builder,
-                    readers,
-                    _clippable: true
-                },
+                StatusLine::new(file.clone(), builder, readers),
                 Box::new(move || file.has_changed())
             )
         }
-    }
-
-    /// A [`StatusLine<U>`] that gives way to others, and when there
-    /// is not enough space, gets clipped first.
-    pub fn clippable_fn(
-        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let mut builder = TextBuilder::default();
-        let readers = {
-            let mut readers = Vec::new();
-            let file = file.read();
-            for part in parts.into_iter() {
-                if let Some(reader) = part.process(&mut builder, &file, palette) {
-                    readers.push(reader);
-                }
-            }
-            readers
-        };
-
-        StatusLine::new_fn(file, builder, readers, true)
-    }
-
-    /// A [`StatusLine<U>`] that takes precedence over others, and
-    /// when there is not enough space, gets clipped last.
-    pub fn unclippable_fn(
-        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let mut builder = TextBuilder::default();
-        let readers = {
-            let mut readers = Vec::new();
-            let file = file.read();
-            for part in parts.into_iter() {
-                if let Some(reader) = part.process(&mut builder, &file, palette) {
-                    readers.push(reader);
-                }
-            }
-            readers
-        };
-
-        StatusLine::new_fn(file, builder, readers, false)
     }
 
     /// Returns a function that outputs the default version of
@@ -271,40 +215,60 @@ where
     pub fn default_fn(
         file: RoData<FileWidget<U>>
     ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let name = Reader::File(file_name());
-        let sels = Reader::File(file_selections());
-        let col = Reader::File(main_col());
-        let line = Reader::File(main_line());
-        let lines = Reader::File(file_lines_len());
+        let (builder, readers) = default_parts(&file.read());
 
-        let text_builder = {
-            let file = file.read();
-            let mut builder = TextBuilder::default();
-
-            builder.push_tag(Tag::PushForm(FILE_NAME));
-            builder.push_swappable(name.read(&file));
-            builder.push_text(" ");
-            builder.push_tag(Tag::PushForm(SELECTIONS));
-            builder.push_swappable(sels.read(&file));
-            builder.push_text(" ");
-            builder.push_tag(Tag::PushForm(COORDS));
-            builder.push_swappable(col.read(&file));
-            builder.push_tag(Tag::PushForm(SEPARATOR));
-            builder.push_text(":");
-            builder.push_tag(Tag::PushForm(COORDS));
-            builder.push_swappable(line.read(&file));
-            builder.push_tag(Tag::PushForm(SEPARATOR));
-            builder.push_text("/");
-            builder.push_tag(Tag::PushForm(COORDS));
-            builder.push_swappable(lines.read(&file));
-
-            builder
-        };
-
-        let readers = vec![name, sels, col, line, lines];
-
-        StatusLine::new_fn(file, text_builder, readers, true)
+        move |_, _| {
+            Widget::normal(
+                StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
+                Box::new(move || file.has_changed())
+            )
+        }
     }
+
+    /// Returns a function that outputs the default version of
+    /// [`StatusLine<U>`].
+    pub fn default_global_fn() -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |manager, _| {
+            let file = manager.active_file();
+            let (builder, readers) = file.inspect(|file| default_parts(file));
+            Widget::normal(
+                StatusLine::new(file.clone(), builder, readers),
+                Box::new(move || file.has_changed())
+            )
+        }
+    }
+}
+
+fn default_parts<U>(file: &FileWidget<U>) -> (TextBuilder<U>, Vec<Reader<U>>)
+where
+    U: Ui
+{
+    let name = Reader::File(file_name());
+    let sels = Reader::File(file_selections());
+    let col = Reader::File(main_col());
+    let line = Reader::File(main_line());
+    let lines = Reader::File(file_lines_len());
+
+    let mut builder = TextBuilder::default();
+
+    builder.push_tag(Tag::PushForm(FILE_NAME));
+    builder.push_swappable(name.read(&file));
+    builder.push_text(" ");
+    builder.push_tag(Tag::PushForm(SELECTIONS));
+    builder.push_swappable(sels.read(&file));
+    builder.push_text(" ");
+    builder.push_tag(Tag::PushForm(COORDS));
+    builder.push_swappable(col.read(&file));
+    builder.push_tag(Tag::PushForm(SEPARATOR));
+    builder.push_text(":");
+    builder.push_tag(Tag::PushForm(COORDS));
+    builder.push_swappable(line.read(&file));
+    builder.push_tag(Tag::PushForm(SEPARATOR));
+    builder.push_text("/");
+    builder.push_tag(Tag::PushForm(COORDS));
+    builder.push_swappable(lines.read(&file));
+
+    (builder, vec![name, sels, col, line, lines])
 }
 
 impl<U> NormalWidget<U> for StatusLine<U>

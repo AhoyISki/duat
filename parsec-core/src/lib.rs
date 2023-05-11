@@ -134,13 +134,15 @@ where
         let windows = self.manager.windows.read();
         thread::scope(|scope| {
             loop {
-                windows[manager.active_window].print_if_layout_changed(&palette);
-                if manager.break_loop.load(Ordering::Acquire) {
-                    manager.break_loop.store(false, Ordering::Release);
+                let active_window = &windows[self.manager.active_window];
+                active_window.print_if_layout_changed(palette);
+
+                if manager.break_loop.load(Ordering::Relaxed) {
+                    manager.break_loop.store(false, Ordering::Relaxed);
                     break;
                 }
 
-                for (widget, mut label) in windows[manager.active_window].widgets() {
+                for (widget, mut label) in active_window.widgets() {
                     if widget.needs_update() {
                         if widget.is_slow() {
                             let palette = &palette;
@@ -150,7 +152,7 @@ where
                             });
                         } else {
                             widget.update(&mut label);
-                            widget.print(&mut label, &palette);
+                            widget.print(&mut label, palette);
                         }
                     }
                 }
