@@ -98,8 +98,7 @@ fn main() {
     let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
     session.push_widget_to_edge(StatusLine::default_global_fn(), push_specs);
 
-    // session.push_widget_to_edge(CommandLine::default, Side::Bottom,
-    // Split::Locked(1)); The `KeyRemapper` is an intermediary struct
+    session.push_widget_to_edge(CommandLine::default_fn(), push_specs);
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
