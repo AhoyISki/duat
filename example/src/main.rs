@@ -11,16 +11,18 @@ use crossterm::{
 // parsec-core is the main crate for Parsec. It handles all the
 // functionality, with the exception of frontend implementations.
 use parsec_core::{
-    // The config module handles the `Config` struct and the structs `RwData` and `RoData`, useful
-    // for the extension  of Parsec.
+    // The config module handles the `Config` struct and the structs
+    // `RwData` and `RoData`, useful for the extension  of Parsec.
     data::{RoData, RwData},
-    // The input module handles remapping and input methods. Remapping will always be done in the
-    // same way, and is not implemented individually for every editing method.
+    // The input module handles remapping and input methods.
+    // Remapping will always be done in the same way, and is not
+    // implemented individually for every editing method.
     input::KeyRemapper,
     join,
-    // Tags are a really powerfull part of Parsec. For now, they handle `Form`s (font styling),
-    // cursors, and wrapping, but in the future, they will also allow the creation of buttons and
-    // folding zones.
+    // Tags are a really powerfull part of Parsec. For now,
+    // they handle `Form`s (font styling), cursors, and wrapping,
+    // but in the future, they will also allow the creation of buttons
+    // and folding zones.
     tags::{
         form::FormPalette,
         form::{CursorStyle, Form}
@@ -105,21 +107,18 @@ fn main() {
                         join![file.cursors().len(), "sels"]
                     }
                 }),
-                text(" [Default]file count: "),
-                var(file_count(mod_node.manager())),
                 text(" [Coords]"),
                 f_var(|file| file.main_cursor().col()),
                 text("[Separator]:[Coords]"),
-                f_var(|file| file.main_cursor().row()),
+                f_var(|file| file.main_cursor().line()),
                 text("[Separator]/[Coords]"),
                 f_var(|file| file.len_lines()),
             ];
 
             let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-            mod_node
-                .push_widget(StatusLine::clippable_fn(file, parts, mod_node.palette()), push_specs);
+            mod_node.push_widget(StatusLine::global_fn(parts, mod_node.palette()), push_specs);
 
-            mod_node.push_widget(CommandLine::prompt_fn("cmd "), push_specs);
+            mod_node.push_widget(CommandLine::prompt_fn(":"), push_specs);
         })
     );
 
@@ -136,7 +135,17 @@ fn file_count(manager: &Manager<Ui>) -> impl Fn() -> String {
     let windows = manager.windows();
     move || {
         windows
-            .inspect_nth(0, |window| window.fold_files(0, |accum, _| accum + 1).to_string())
+            .inspect_nth(0, |window| {
+                window
+                    .fold_files(0, |accum, file| {
+                        if file.name().ends_with(".rs") {
+                            accum + 1
+                        } else {
+                            accum
+                        }
+                    })
+                    .to_string()
+            })
             .unwrap()
     }
 }

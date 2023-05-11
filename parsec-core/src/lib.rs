@@ -20,11 +20,11 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyEvent};
-use data::{RoData, RwData};
+use data::{RoData, RwData, RoNestedData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Side, Split, Ui, RoWindows};
+use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Side, Split, Ui};
 use widgets::{
     command_line::{Command, CommandError, Commands},
     file_widget::FileWidget,
@@ -89,9 +89,9 @@ where
     }
 
     pub fn push_widget_to_edge(
-        &mut self, constructor: impl Fn(&Session<U>) -> Widget<U>, push_specs: PushSpecs
+        &mut self, constructor: impl Fn(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(self);
+        let widget = (constructor)(&self.manager, push_specs);
         self.manager.windows.write()[self.manager.active_window].push_to_master(widget, push_specs)
     }
 
@@ -180,6 +180,7 @@ where
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
     anchor_file: Arc<AtomicUsize>,
+    active_file: RwData<RoData<FileWidget<U>>>,
     active_widget: Arc<AtomicUsize>,
     break_loop: Arc<AtomicBool>,
     should_quit: Arc<AtomicBool>,
@@ -194,12 +195,18 @@ where
     fn new(
         window: ParsecWindow<U>, anchor_file: usize, active_widget: usize, palette: FormPalette
     ) -> Self {
+        let active_file = window
+            .actionable_widgets()
+            .find_map(|(widget, _)| widget.clone().try_downcast::<FileWidget<U>>().ok())
+            .unwrap();
+
         let manager = Manager {
             windows: RwData::new(vec![window]),
             active_window: 0,
             commands: RwData::new(Commands::default()),
             files_to_open: RwData::new(Vec::new()),
             anchor_file: Arc::new(AtomicUsize::new(anchor_file)),
+            active_file: RwData::new(RoData::from(&active_file)),
             active_widget: Arc::new(AtomicUsize::new(active_widget)),
             break_loop: Arc::new(AtomicBool::from(false)),
             should_quit: Arc::new(AtomicBool::from(false)),
@@ -244,6 +251,10 @@ where
 
     pub fn windows(&self) -> RoWindows<U> {
         RoWindows::new(RoData::from(&self.windows))
+    }
+
+    pub fn active_file(&self) -> RoNestedData<FileWidget<U>> {
+        RoNestedData::from(&self.active_file)
     }
 }
 
@@ -342,6 +353,9 @@ where
         widget.mutate(|widget| {
             widget.on_focus(&label);
         });
+        if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
+            *self.manager.active_file.write() = RoData::from(&file);
+        }
 
         let active_index = self.manager.active_widget.load(Ordering::Acquire);
         let (widget, label) = self.window.actionable_widgets().nth(active_index).ok_or(())?;

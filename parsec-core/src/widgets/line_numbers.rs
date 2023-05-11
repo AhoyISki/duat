@@ -117,7 +117,7 @@ where
     fn update_text(&mut self, width: usize) {
         let file = self.file_widget.read();
         let printed_lines = file.printed_lines();
-        let main_line = file.main_cursor().true_row();
+        let main_line = file.main_cursor().true_line();
         let mut text = String::new();
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {

@@ -198,7 +198,7 @@ where
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;
-        let main_line = file.main_cursor().true_row();
+        let main_line = file.main_cursor().true_line();
         let above = lines.iter().filter(|&(line, _)| *line < main_line).count();
         let equal = lines.iter().filter(|&(line, _)| *line == main_line).count();
         let below = lines.iter().filter(|&(line, _)| *line > main_line).count();
@@ -225,7 +225,7 @@ where
     U: Ui
 {
     let lines = file.printed_lines();
-    let main_line = file.main_cursor().true_row();
+    let main_line = file.main_cursor().true_line();
     let mut builder = TextBuilder::<U>::default();
     let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
     let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();

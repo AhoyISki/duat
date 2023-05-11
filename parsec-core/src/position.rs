@@ -56,8 +56,8 @@ impl Pos {
         self.col + 1
     }
 
-    /// Returns the row of self. Indexed at 1. Intended only for
-    /// displaying by the end user. For a 0 indexed row, see
+    /// Returns the line of self. Indexed at 1. Intended only for
+    /// displaying by the end user. For a 0 indexed line, see
     /// [true_row()](Self::true_row()).
     pub fn row(&self) -> usize {
         self.line + 1
@@ -80,7 +80,7 @@ impl Pos {
         self.col
     }
 
-    /// Returns the row. Indexed at 0.
+    /// Returns the line. Indexed at 0.
     pub fn true_row(&self) -> usize {
         self.line
     }
@@ -170,7 +170,7 @@ impl Cursor {
     }
 
     /// Internal absolute movement function. Assumes that the `col`
-    /// and `row` of th [Pos] are correct.
+    /// and `line` of th [Pos] are correct.
     pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
     where
         U: Ui
@@ -254,10 +254,10 @@ impl Cursor {
         self.caret.col + 1
     }
 
-    /// The row of the caret. Indexed at 1. Intended only for
+    /// The line of the caret. Indexed at 1. Intended only for
     /// displaying by the end user. For internal use, see
     /// `true_row()`.
-    pub fn row(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.caret.line + 1
     }
 
@@ -272,8 +272,8 @@ impl Cursor {
         self.caret.col
     }
 
-    /// The row of the caret. Indexed at 0.
-    pub fn true_row(&self) -> usize {
+    /// The line of the caret. Indexed at 0.
+    pub fn true_line(&self) -> usize {
         self.caret.line
     }
 

@@ -17,7 +17,7 @@ use no_deadlocks::RwLock;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    data::{DownCastableData, RoData},
+    data::{DownCastableData, RoData, RoNestedData},
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag
@@ -133,8 +133,27 @@ where
 /// as well as the main cursor's coordinates.
 ///
 /// ```rust
-/// # let file = todo!();
-/// # let palette = todo!();
+/// # use parsec_core::{
+/// #     data::RoData,
+/// #     tags::form::FormPalette,
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{
+/// #         status_line::{f_var, text, StatusLine},
+/// #         FileWidget, Widget
+/// #     },
+/// #     Manager
+/// # };
+///
+/// # fn test_fn<U>(
+/// #     file_fn: impl Fn() -> RoData<FileWidget<U>>,
+/// #     palette_fn: impl Fn() -> FormPalette
+/// # ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>>
+/// # where
+/// #     U: Ui
+/// # {
+/// let file: RoData<FileWidget<U>> = file_fn();
+/// let palette: FormPalette = palette_fn();
+///
 /// let parts = vec![
 ///     text("file name: [FileName]"),
 ///     f_var(|file| file.name()),
@@ -142,7 +161,8 @@ where
 ///     f_var(|file| file.main_cursor()),
 /// ];
 ///
-/// clippable_fn(file, parts, palette);
+/// StatusLine::clippable_fn(file, parts, &palette)
+/// # }
 /// ```
 ///
 /// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve
@@ -152,7 +172,7 @@ pub struct StatusLine<U>
 where
     U: Ui
 {
-    file: RoData<FileWidget<U>>,
+    file: RoNestedData<FileWidget<U>>,
     builder: TextBuilder<U>,
     readers: Vec<Reader<U>>,
     _clippable: bool
@@ -172,7 +192,7 @@ where
             let updaters = updaters![(file.clone())];
             Widget::normal(
                 Arc::new(RwLock::new(StatusLine {
-                    file,
+                    file: RoNestedData::new(file),
                     builder,
                     readers,
                     _clippable
@@ -182,24 +202,55 @@ where
         })
     }
 
+    pub fn global_fn(
+        parts: Vec<StatusPart<U>>, palette: &FormPalette
+    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+        let mut builder = TextBuilder::default();
+        let palette = palette.clone();
+        Box::new(move |manager, _| {
+            let file = manager.active_file();
+            let readers = {
+                let mut readers = Vec::new();
+                file.inspect(|file| {
+                    for part in parts.into_iter() {
+                        if let Some(reader) = part.process(&mut builder, &file, &palette) {
+                            readers.push(reader);
+                        }
+                    }
+                });
+                readers
+            };
+
+            Widget::normal(
+                Arc::new(RwLock::new(StatusLine {
+                    file: file.clone(),
+                    builder,
+                    readers,
+                    _clippable: true
+                })),
+                Box::new(move || file.has_changed())
+            )
+        })
+    }
+
     /// A [`StatusLine<U>`] that gives way to others, and when there
     /// is not enough space, gets clipped first.
     pub fn clippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
+        let mut builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
             let file = file.read();
             for part in parts.into_iter() {
-                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                if let Some(reader) = part.process(&mut builder, &file, palette) {
                     readers.push(reader);
                 }
             }
             readers
         };
 
-        StatusLine::new_fn(file, text_builder, readers, true)
+        StatusLine::new_fn(file, builder, readers, true)
     }
 
     /// A [`StatusLine<U>`] that takes precedence over others, and
@@ -207,19 +258,19 @@ where
     pub fn unclippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
     ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        let mut text_builder = TextBuilder::default();
+        let mut builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
             let file = file.read();
             for part in parts.into_iter() {
-                if let Some(reader) = part.process(&mut text_builder, &file, palette) {
+                if let Some(reader) = part.process(&mut builder, &file, palette) {
                     readers.push(reader);
                 }
             }
             readers
         };
 
-        StatusLine::new_fn(file, text_builder, readers, false)
+        StatusLine::new_fn(file, builder, readers, false)
     }
 
     /// Returns a function that outputs the default version of
@@ -261,12 +312,6 @@ where
 
         StatusLine::new_fn(file, text_builder, readers, true)
     }
-
-    /// Changes the reference [`FileWidget<U>`] for the
-    /// [`StatusLine<U>`]
-    pub fn set_file(&mut self, file: RoData<FileWidget<U>>) {
-        self.file = file;
-    }
 }
 
 impl<U> NormalWidget<U> for StatusLine<U>
@@ -274,11 +319,10 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, _label: &U::Label) {
-        let file = self.file.read();
-
+        self.file.inspect(|file|
         for (index, reader) in self.readers.iter().enumerate() {
             self.builder.swap_range(index, reader.read(&file));
-        }
+        });
     }
 
     fn text(&self) -> &Text<U> {
@@ -307,8 +351,24 @@ where
 /// [`FileWidget<U>`]
 ///
 /// ```rust
-/// f_var(move |file| file.main_cursor().row());
+/// # use parsec_core::{
+/// #     ui::Ui,
+/// #     widgets::{
+/// #         status_line::{f_var, StatusPart},
+/// #         FileWidget
+/// #     }
+/// # };
+/// # fn test_fn<U>()
+/// # where
+/// #     U: Ui
+/// # {
+/// let main_cursor_line: StatusPart<U> =
+///     f_var(|file| file.main_cursor().line());
+/// # }
 /// ```
+///
+/// As a [`StatusPart<U>`], `main_cursor_row` will show the main
+/// cursor's line, indexed by 1.
 pub fn f_var<U, S>(file_fn: impl Fn(&FileWidget<U>) -> S + 'static) -> StatusPart<U>
 where
     U: Ui,
@@ -326,37 +386,43 @@ where
 ///
 /// # Examples
 ///
-/// On the crate [parsec-kak][https://docs.rs/parsec-kak], the
-/// [`Editor`][https://docs.rs/parsec-kak/struct.Editor] struct has an
-/// [`RoData<T>`] that represents the current mode. Since it
-/// implements display, one can do the following:
+/// When pushing a widget to the layout, you use a function with the
+/// signature [`FnMut(&Manager<U>, PushSpecs) -> Widget<U>`], this
+/// means that, on said function, you have access to the
+/// [`Manager<U>`] struct. Giving you access to, for example, the list
+/// of all open [`Widget<U>`]s:
 ///
 /// ```rust
-/// # use parsec_core::widgets::status_line::var;
-/// let editor = parsec_kak::Editor::new();
-/// let mode = editor.cur_mode();
-/// var(move || mode.to_string());
+/// # use parsec_core::{
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{
+/// #         status_line::{text, var},
+/// #         StatusLine, Widget
+/// #     },
+/// #     Manager
+/// # };
+/// fn status_var_fn<U>(
+///     manager: &Manager<U>, push_specs: PushSpecs
+/// ) -> Widget<U>
+/// where
+///     U: Ui
+/// {
+///     let windows = manager.windows();
+///     let parts = vec![
+///         text("There are "),
+///         var(move || {
+///             windows.inspect_nth(0, |window| {
+///                 window.fold_files(0, |accum, _| accum + 1)
+///             })
+///         }),
+///         text("files open."),
+///     ];
+/// }
 /// ```
 ///
-/// You could also (as you may be able to guess) do more with the
-/// `mode` variable:
-///
-/// ```rust
-/// # use parsec_core::widgets::status_line::var;
-/// let editor = parsec_kak::Editor::new();
-/// let mode = editor.cur_mode();
-/// var(move || {
-///     let mode = mode.to_string();
-///     if mode.as_str() == "normal" {
-///         String::default()
-///     } else {
-///         mode.to_uppercase()
-///     }
-/// });
-/// ```
-///
-/// In this case, the mode will only be displayed if it is not normal,
-/// and will be uppercased.
+/// This specific [`StatusLine<U>`] will simply show the text
+/// `"There are {} files open."`, where `{}` is the number of opened
+/// files, as defined by the closure above.
 pub fn var<U, S>(var_fn: impl Fn() -> S + 'static) -> StatusPart<U>
 where
     U: Ui,
@@ -403,7 +469,7 @@ fn main_line<U>() -> Box<dyn Fn(&FileWidget<U>) -> String>
 where
     U: Ui
 {
-    Box::new(|file| file.main_cursor().row().to_string())
+    Box::new(|file| file.main_cursor().line().to_string())
 }
 
 /// The col of the main cursor in the file.

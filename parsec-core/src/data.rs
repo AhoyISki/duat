@@ -19,7 +19,6 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
-    any::Any,
     fmt::{Debug, Display},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -33,7 +32,7 @@ use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// A trait that's primarily used for casting widgets to a concrete
 /// types.
 pub trait DownCastableData {
-    fn as_any(&self) -> &dyn Any;
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// A read-write reference to information, and can tell readers if
@@ -107,8 +106,8 @@ where
     /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|guard| {
-            let updated_state = self.cur_state.load(Ordering::Relaxed);
-            self.read_state.store(updated_state, Ordering::Relaxed);
+            let cur_state = self.cur_state.load(Ordering::Relaxed);
+            self.read_state.store(cur_state, Ordering::Relaxed);
 
             guard
         })
@@ -174,9 +173,9 @@ where
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let updated_state = self.cur_state.load(Ordering::Relaxed);
-        let last_read = self.read_state.swap(updated_state, Ordering::Relaxed);
-        updated_state > last_read
+        let cur_state = self.cur_state.load(Ordering::Relaxed);
+        let read_state = self.read_state.swap(cur_state, Ordering::Relaxed);
+        cur_state > read_state
     }
 }
 
@@ -280,17 +279,82 @@ where
     read_state: AtomicUsize
 }
 
+impl<T> RoData<T> {
+    /// Returns a new instance of a [`RoData<T>`], assuming that it is
+    /// sized.
+    ///
+    /// Since this is read only, you would usually call this
+    /// function only if `T` has some sort of internal mutability, and
+    /// you want only those internally mutable parts to be modifiable.
+    ///
+    /// If you don't need that internal mutability, I would just
+    /// recommend using an [`Arc<T>`] from the `std`.
+    pub fn new(data: T) -> Self {
+        RoData {
+            data: Arc::new(RwLock::new(data)),
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
+        }
+    }
+}
+
 impl<T> RoData<T>
 where
-    T: ?Sized + Any + 'static
+    T: ?Sized + 'static
 {
+    /// Returns a new instance of [`RoData<T>`], assuming that it is
+    /// unsized.
+    ///
+    /// Since this is read only, you would usually call this
+    /// function only if `T` has some sort of internal mutability, and
+    /// you want only those internally mutable parts to be modifiable.
+    ///
+    /// If you don't need that internal mutability, I would just
+    /// recommend using an [`Arc<T>`] from the `std`.
+    pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
+        // It's 1 here so that any `RoState`s created from this will have
+        // `has_changed()` return `true` at least once, by copying the
+        // second value - 1.
+        RoData {
+            data,
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
+        }
+    }
+
+    /// Blocking reference to the information.
+    ///
+    /// Unlike [`read()`][Self::read()], *DOES NOT* make it so
+    /// [`has_changed()`][Self::has_changed()] returns `false`.
+    ///
+    /// This method is only used in the [`RoNestedData<T>`] struct, as
+    /// it is important to keep the `read_state` of the inner
+    /// [`RoData<T>`] intact while other clones of the
+    /// [`RoNestedData<T>`] read it.
+    fn raw_read(&self) -> RwLockReadGuard<T> {
+        self.data.read().unwrap()
+    }
+
+    /// Non Blocking reference to the information.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
+    ///
+    /// This method is only used in the [`RoNestedData<T>`] struct, as
+    /// it is important to keep the `read_state` of the inner
+    /// [`RoData<T>`] intact while other clones of the
+    /// [`RoNestedData<T>`] read it.
+    pub fn raw_try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
+        self.data.try_read()
+    }
+
     /// Blocking reference to the information.
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// returns `false`.
     pub fn read(&self) -> RwLockReadGuard<T> {
-        let updated_state = self.cur_state.load(Ordering::Relaxed);
-        self.read_state.store(updated_state, Ordering::Relaxed);
+        let cur_state = self.cur_state.load(Ordering::Relaxed);
+        self.read_state.store(cur_state, Ordering::Relaxed);
 
         self.data.read().unwrap()
     }
@@ -301,8 +365,8 @@ where
     /// returns `false`.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
         self.data.try_read().map(|mutex_guard| {
-            let updated_state = self.cur_state.load(Ordering::Relaxed);
-            self.read_state.store(updated_state, Ordering::Relaxed);
+            let cur_state = self.cur_state.load(Ordering::Relaxed);
+            self.read_state.store(cur_state, Ordering::Relaxed);
 
             mutex_guard
         })
@@ -329,9 +393,9 @@ where
 
     /// Wether or not it has changed since it was last read.
     pub fn has_changed(&self) -> bool {
-        let updated_state = self.cur_state.load(Ordering::Relaxed);
-        let last_read = self.read_state.swap(updated_state, Ordering::Relaxed);
-        updated_state > last_read
+        let cur_state = self.cur_state.load(Ordering::Relaxed);
+        let read_state = self.read_state.swap(cur_state, Ordering::Relaxed);
+        cur_state > read_state
     }
 }
 
@@ -346,22 +410,22 @@ where
     {
         let RoData {
             data,
-            cur_state: updated_state,
-            read_state: last_read_state
+            cur_state,
+            read_state
         } = self;
         if (&*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Ok(RoData {
                 data,
-                cur_state: updated_state,
-                read_state: last_read_state
+                cur_state,
+                read_state
             })
         } else {
             Err(RoData {
                 data,
-                cur_state: updated_state,
-                read_state: last_read_state
+                cur_state,
+                read_state
             })
         }
     }
@@ -409,5 +473,93 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.read().fmt(f)
+    }
+}
+
+/// A nested [`RoData<T>`] useful
+pub struct RoNestedData<T>
+where
+    T: ?Sized
+{
+    data: RoData<RoData<T>>,
+    read_state: AtomicUsize
+}
+
+impl<T> RoNestedData<T>
+where
+    T: ?Sized + 'static
+{
+    pub fn new(data: RoData<T>) -> Self {
+        let read_state = AtomicUsize::new(data.cur_state.load(Ordering::Relaxed));
+        Self {
+            data: RoData::new(data),
+            read_state
+        }
+    }
+
+    /// Blocking inspection of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
+    pub fn inspect<B>(&self, f: impl FnOnce(&T) -> B) -> B {
+        let data = self.data.read();
+        let cur_state = data.cur_state.load(Ordering::Relaxed);
+        self.read_state.store(cur_state, Ordering::Relaxed);
+        let inner_data = data.raw_read();
+        f(&inner_data)
+    }
+
+    /// Non blocking inspection of the inner data.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// `false`.
+    pub fn try_inspect<B>(&self, f: impl FnOnce(&T) -> B) -> Result<B, ()> {
+        self.data.try_read().map_err(|_| ()).and_then(|data| {
+            data.raw_try_read().map_err(|_| ()).map(|inner_data| {
+                let cur_state = data.cur_state.load(Ordering::Relaxed);
+                self.read_state.store(cur_state, Ordering::Relaxed);
+                f(&inner_data)
+            })
+        })
+    }
+
+    /// Wether or not it has changed since it was last read.
+    ///
+    /// Will return true if either the inner `T` in [`RoData<T>`] has
+    /// changed (by mutation from some third party), or if the
+    /// [`RoData<T>`] in the [`RoData<RoData<T>>`] has been swapped
+    /// out for another (by changing the data that is being pointed
+    /// to).
+    pub fn has_changed(&self) -> bool {
+        let mut has_changed = self.data.has_changed();
+        let data = self.data.read();
+        let cur_state = data.cur_state.load(Ordering::Relaxed);
+        has_changed |= cur_state > self.read_state.load(Ordering::Relaxed);
+        self.read_state.store(cur_state, Ordering::Relaxed);
+        has_changed
+    }
+}
+
+impl<T> Clone for RoNestedData<T>
+where
+    T: ?Sized + 'static
+{
+    fn clone(&self) -> Self {
+        RoNestedData {
+            data: self.data.clone(),
+            read_state: AtomicUsize::new(self.data.raw_read().cur_state.load(Ordering::Relaxed))
+        }
+    }
+}
+
+impl<T> From<&RwData<RoData<T>>> for RoNestedData<T>
+where
+    T: ?Sized + 'static
+{
+    fn from(value: &RwData<RoData<T>>) -> Self {
+        RoNestedData {
+            data: RoData::from(value),
+            read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed))
+        }
     }
 }
