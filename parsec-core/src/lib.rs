@@ -1,4 +1,8 @@
-#![feature(drain_filter, result_option_inspect, trait_upcasting)]
+#![feature(
+    drain_filter,
+    result_option_inspect,
+    trait_upcasting,
+)]
 
 pub mod data;
 pub mod history;
@@ -20,7 +24,7 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyEvent};
-use data::{RoData, RwData, RoNestedData};
+use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
@@ -89,7 +93,8 @@ where
     }
 
     pub fn push_widget_to_edge(
-        &mut self, constructor: impl Fn(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
+        push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(&self.manager, push_specs);
         self.manager.windows.write()[self.manager.active_window].push_to_master(widget, push_specs)

@@ -93,34 +93,33 @@ fn main() {
             let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
             let cfg = LineNumbersCfg::new(Numbering::Absolute, Alignment::Right, Alignment::Left);
             mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
-
-            let parts = vec![
-                text("[FileName]"),
-                f_var(|file| file.name()),
-                text(" [Mode]"),
-                var(mode.clone()),
-                text(" [Selections]"),
-                f_var(|file| {
-                    if file.cursors().len() == 1 {
-                        String::from("1 sel")
-                    } else {
-                        join![file.cursors().len(), "sels"]
-                    }
-                }),
-                text(" [Coords]"),
-                f_var(|file| file.main_cursor().col()),
-                text("[Separator]:[Coords]"),
-                f_var(|file| file.main_cursor().line()),
-                text("[Separator]/[Coords]"),
-                f_var(|file| file.len_lines()),
-            ];
-
-            let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-            mod_node.push_widget(StatusLine::global_fn(parts, mod_node.palette()), push_specs);
-
-            mod_node.push_widget(CommandLine::prompt_fn(":"), push_specs);
         })
     );
+
+    let parts = vec![
+        text("[FileName]"),
+        f_var(|file| file.name()),
+        text(" [Mode]"),
+        var(mode.clone()),
+        text(" [Selections]"),
+        f_var(|file| {
+            if file.cursors().len() == 1 {
+                String::from("1 sel")
+            } else {
+                join![file.cursors().len(), "sels"]
+            }
+        }),
+        text(" [Coords]"),
+        f_var(|file| file.main_cursor().col()),
+        text("[Separator]:[Coords]"),
+        f_var(|file| file.main_cursor().line()),
+        text("[Separator]/[Coords]"),
+        f_var(|file| file.len_lines()),
+    ];
+
+    let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
+    let palette = &session.manager().palette;
+    session.push_widget_to_edge(StatusLine::global_fn(parts, palette), push_specs);
 
     // session.push_widget_to_edge(CommandLine::default, Side::Bottom,
     // Split::Locked(1)); The `KeyRemapper` is an intermediary struct

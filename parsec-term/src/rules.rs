@@ -1,11 +1,3 @@
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
-
-use std::{any::Any, sync::Arc};
-
 use parsec_core::{
     data::{DownCastableData, RoData},
     tags::{
@@ -157,7 +149,7 @@ where
             drop(file_read);
             let vert_rule = VertRule { file, builder, cfg };
 
-            Widget::normal(Arc::new(RwLock::new(vert_rule)), updaters)
+            Widget::normal(vert_rule, updaters)
         })
     }
 
@@ -176,7 +168,7 @@ where
             drop(file_read);
             let vert_rule = VertRule { file, builder, cfg };
 
-            Widget::normal(Arc::new(RwLock::new(vert_rule)), updaters)
+            Widget::normal(vert_rule, updaters)
         })
     }
 }
@@ -185,7 +177,7 @@ impl<U> DownCastableData for VertRule<U>
 where
     U: Ui + 'static
 {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

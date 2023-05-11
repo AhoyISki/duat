@@ -14,13 +14,6 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
-use std::{any::Any, error::Error, fmt::Display, sync::Arc};
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
-
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     data::{DownCastableData, RwData},
@@ -273,7 +266,9 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(prompt: impl ToString) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    pub fn prompt_fn(
+        prompt: impl ToString
+    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
         let prompt = prompt.to_string();
         Box::new(move |manager, _| {
             let command_line = CommandLine::<U> {
@@ -286,7 +281,7 @@ where
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| false))
+            Widget::actionable(command_line, Box::new(|| false))
         })
     }
 
@@ -304,7 +299,7 @@ where
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(Arc::new(RwLock::new(command_line)), Box::new(|| false))
+            Widget::actionable(command_line, Box::new(|| false))
         })
     }
 }
@@ -384,7 +379,7 @@ impl<U> DownCastableData for CommandLine<U>
 where
     U: Ui + 'static
 {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
@@ -398,7 +393,7 @@ pub enum CommandError {
     Empty
 }
 
-impl Display for CommandError {
+impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::AlreadyExists(caller) => {
@@ -413,7 +408,7 @@ impl Display for CommandError {
     }
 }
 
-impl Error for CommandError {}
+impl std::error::Error for CommandError {}
 
 /// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
 /// [`Commands`].

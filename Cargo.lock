@@ -231,7 +231,6 @@ name = "parsec-term"
 version = "0.1.0"
 dependencies = [
  "crossterm",
- "no_deadlocks",
  "parsec-core",
  "smallvec",
  "unicode-width",

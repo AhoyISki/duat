@@ -179,24 +179,20 @@ where
     U: Ui + 'static
 {
     /// Returns a [`NormalWidget`] [`Widget<U>`].
-    pub fn normal(
-        widget: Arc<RwLock<dyn NormalWidget<U>>>, updater: Box<dyn Fn() -> bool>
-    ) -> Widget<U> {
+    pub fn normal(widget: impl NormalWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Normal(RwData::new_unsized(widget)),
+            inner: InnerWidget::Normal(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: false,
-            needs_update: updater
+            needs_update: Box::new(f)
         }
     }
 
     /// Returns an [`ActionableWidget`] [`Widget<U>`].
-    pub fn actionable(
-        widget: Arc<RwLock<dyn ActionableWidget<U>>>, updater: Box<dyn Fn() -> bool>
-    ) -> Widget<U> {
+    pub fn actionable(widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: false,
-            needs_update: updater
+            needs_update: Box::new(f)
         }
     }
 
@@ -204,15 +200,13 @@ where
     ///
     /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
     /// down the execution of Parsec.
-    pub fn slow_normal(
-        widget: Arc<RwLock<dyn NormalWidget<U>>>, updater: Box<dyn Fn() -> bool>
-    ) -> Widget<U> {
+    pub fn slow_normal(widget: impl NormalWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
         // assert!(updaters.len() > 0, "Without any updaters, this widget can
         // never update");
         Widget {
-            inner: InnerWidget::Normal(RwData::new_unsized(widget)),
+            inner: InnerWidget::Normal(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: true,
-            needs_update: updater
+            needs_update: Box::new(f)
         }
     }
 
@@ -220,13 +214,11 @@ where
     ///
     /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
     /// down the execution of Parsec.
-    pub fn slow_actionable(
-        widget: Arc<RwLock<dyn ActionableWidget<U>>>, updater: Box<dyn Fn() -> bool>
-    ) -> Widget<U> {
+    pub fn slow_actionable(widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
         Widget {
-            inner: InnerWidget::Actionable(RwData::new_unsized(widget)),
+            inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: true,
-            needs_update: updater
+            needs_update: Box::new(f)
         }
     }
 
@@ -262,7 +254,7 @@ where
         }
     }
 
-	/// Raw inspection of the inner [`NormalWidget<U>`].
+    /// Raw inspection of the inner [`NormalWidget<U>`].
     ///
     /// This method should only be used in very specific
     /// circumstances, such as when multiple owners have nested
@@ -604,7 +596,7 @@ macro_rules! updaters {
 
             updaters!(@ro_data updaters, $($items)*);
 
-            Box::new(move || updaters.iter().any(|data| data.has_changed()))
+            move || updaters.iter().any(|data| data.has_changed())
         }
     }
 }

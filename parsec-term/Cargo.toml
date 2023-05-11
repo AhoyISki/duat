@@ -15,9 +15,4 @@ parsec-core = { path = "../parsec-core/", version = "0.1.0" }
 
 unicode-width = "0.1.10"
 crossterm = "0.26.0"
-no_deadlocks = { path = "../../no-deadlocks/", optional = true }
 smallvec = "1.10.0"
-
-[features]
-#default = ["deadlock-detection"]
-deadlock-detection = ["dep:no_deadlocks"]

@@ -20,12 +20,7 @@
 //! numbers will be printed. This struct shows up twice in
 //! [`LineNumbersCfg`], once for the main cursor's line, and once for
 //! all other lines. Its [`Right`][Alignment::Right] by default.
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
-use std::{any::Any, cmp::max, fmt::Write, sync::Arc};
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
+use std::{cmp::max, fmt::Write};
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
@@ -73,7 +68,7 @@ where
 
             line_numbers.update_text(width);
 
-            Widget::normal(Arc::new(RwLock::new(line_numbers)), updaters![file])
+            Widget::normal(line_numbers, updaters![file])
         })
     }
 
@@ -94,7 +89,7 @@ where
 
             line_numbers.update_text(push_specs.split.len());
 
-            Widget::normal(Arc::new(RwLock::new(line_numbers)), updaters)
+            Widget::normal(line_numbers, updaters)
         })
     }
 
@@ -157,7 +152,7 @@ impl<U> DownCastableData for LineNumbers<U>
 where
     U: Ui + 'static
 {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

@@ -19,18 +19,11 @@
 //! method. This method is notably used by the
 //! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
 use std::{
-    any::Any,
     cmp::min,
     fs,
     path::{Path, PathBuf},
-    sync::Arc
 };
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -90,7 +83,7 @@ where
         }
 
         Widget::actionable(
-            Arc::new(RwLock::new(FileWidget {
+            FileWidget {
                 _side_widgets: None,
                 name: ["parsec-file: ", name.as_str()].join(""),
                 text,
@@ -101,7 +94,7 @@ where
                 readers: Vec::new(),
                 printed_lines: Vec::new(),
                 print_cfg
-            })),
+            },
             Box::new(|| false)
         )
     }
@@ -227,7 +220,7 @@ where
         String::from(&self.name[13..])
     }
 
-	/// The full path of the file.
+    /// The full path of the file.
     pub fn full_path(&self) -> String {
         let mut path = std::env::current_dir().unwrap();
         path.push(Path::new(self.name().as_str()));
@@ -239,12 +232,12 @@ where
         self.text.inner().len_chars()
     }
 
-	/// The number of lines in the file.
+    /// The number of lines in the file.
     pub fn len_lines(&self) -> usize {
         self.text.inner().len_lines()
     }
 
-	/// Adds a new [`Observer`] to [`self`].
+    /// Adds a new [`Observer`] to [`self`].
     pub fn add_observer(&mut self, reader: Box<dyn Observer<U>>) {
         self.readers.push(reader);
     }
@@ -336,7 +329,7 @@ impl<U> DownCastableData for FileWidget<U>
 where
     U: Ui + 'static
 {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

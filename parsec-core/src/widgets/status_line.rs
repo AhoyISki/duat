@@ -8,13 +8,6 @@
 //! [`StatusLine<U>`] that displays the information of only the
 //! currently active [`FileWidget<U>`]. Given an existing
 //! [`Session<U>`][crate::Session], one can do the following. TODO.
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
-use std::{any::Any, sync::Arc};
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
-
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     data::{DownCastableData, RoData, RoNestedData},
@@ -191,12 +184,12 @@ where
         Box::new(move |_, _| {
             let updaters = updaters![(file.clone())];
             Widget::normal(
-                Arc::new(RwLock::new(StatusLine {
+                StatusLine {
                     file: RoNestedData::new(file),
                     builder,
                     readers,
                     _clippable
-                })),
+                },
                 updaters
             )
         })
@@ -222,12 +215,12 @@ where
             };
 
             Widget::normal(
-                Arc::new(RwLock::new(StatusLine {
+                StatusLine {
                     file: file.clone(),
                     builder,
                     readers,
                     _clippable: true
-                })),
+                },
                 Box::new(move || file.has_changed())
             )
         })
@@ -335,7 +328,7 @@ impl<U> DownCastableData for StatusLine<U>
 where
     U: Ui + 'static
 {
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

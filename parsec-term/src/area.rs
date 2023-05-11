@@ -213,6 +213,8 @@ impl ui::Area for Area {
     }
 
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()> {
+        // To signal to other readers that the `InnerWindow` has changed.
+        drop(self.window.write());
         let req_axis = Axis::from(side);
         let window = self.window.read();
         let (child_index, parent) = window.find_parent(self.index).ok_or(())?;
@@ -250,16 +252,12 @@ impl ui::Area for Area {
     }
 
     fn bisect(&mut self, push_specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>) {
-        // To signal to other readers that the `InnerWindow` has changed.
-        drop(self.window.write());
-        let window = self.window.read();
         let PushSpecs { side, split } = push_specs;
         let axis = Axis::from(side);
 
-        let node = window.find_node(self.index).unwrap();
-        let resizable_len = node.resizable_len(axis, &window);
-        drop(node);
-        drop(window);
+        let resizable_len = self.window.inspect(|window| {
+            window.find_node(self.index).unwrap().resizable_len(axis, &window)
+        });
 
         if resizable_len < split.len() {
             self.request_len(resizable_len.max(split.len()), side).unwrap();
