@@ -54,8 +54,8 @@ where
     /// [`LineNumbersCfg`] as argument.
     pub fn config_fn(
         file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, push_specs| -> Widget<U> {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |_, push_specs| -> Widget<U> {
             let file = file_widget.clone();
 
             let mut line_numbers = LineNumbers {
@@ -69,15 +69,15 @@ where
             line_numbers.update_text(width);
 
             Widget::normal(line_numbers, updaters![file])
-        })
+        }
     }
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
     pub fn default_fn(
         file_widget: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, push_specs| {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |_, push_specs| {
             let updaters = updaters![(file_widget.clone())];
 
             let mut line_numbers = LineNumbers {
@@ -90,7 +90,7 @@ where
             line_numbers.update_text(push_specs.split.len());
 
             Widget::normal(line_numbers, updaters)
-        })
+        }
     }
 
     /// The minimum width that would be needed to show the last line.

@@ -266,11 +266,9 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(
-        prompt: impl ToString
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
         let prompt = prompt.to_string();
-        Box::new(move |manager, _| {
+        move |manager, _| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
@@ -282,13 +280,13 @@ where
             add_commands(manager, &command_line);
 
             Widget::actionable(command_line, Box::new(|| false))
-        })
+        }
     }
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |manager, _| {
+    pub fn default_fn() -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |manager, _| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
@@ -300,7 +298,7 @@ where
             add_commands(manager, &command_line);
 
             Widget::actionable(command_line, Box::new(|| false))
-        })
+        }
     }
 }
 

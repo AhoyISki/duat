@@ -139,8 +139,8 @@ where
     /// default config.
     pub fn config_fn(
         file: RoData<FileWidget<U>>, cfg: VertRuleCfg
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, _| {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |_, _| {
             let file_read = file.read();
             let builder = setup_builder(&file_read, &cfg);
 
@@ -150,15 +150,15 @@ where
             let vert_rule = VertRule { file, builder, cfg };
 
             Widget::normal(vert_rule, updaters)
-        })
+        }
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
     pub fn default_fn(
         file: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, _| {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |_, _| {
             let cfg = VertRuleCfg::default();
             let file_read = file.read();
             let builder = setup_builder(&file_read, &cfg);
@@ -169,7 +169,7 @@ where
             let vert_rule = VertRule { file, builder, cfg };
 
             Widget::normal(vert_rule, updaters)
-        })
+        }
     }
 }
 

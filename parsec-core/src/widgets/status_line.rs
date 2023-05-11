@@ -180,8 +180,8 @@ where
     fn new_fn(
         file: RoData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>,
         _clippable: bool
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
-        Box::new(move |_, _| {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        move |_, _| {
             let updaters = updaters![(file.clone())];
             Widget::normal(
                 StatusLine {
@@ -192,15 +192,15 @@ where
                 },
                 updaters
             )
-        })
+        }
     }
 
     pub fn global_fn(
         parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
         let mut builder = TextBuilder::default();
         let palette = palette.clone();
-        Box::new(move |manager, _| {
+        move |manager, _| {
             let file = manager.active_file();
             let readers = {
                 let mut readers = Vec::new();
@@ -223,14 +223,14 @@ where
                 },
                 Box::new(move || file.has_changed())
             )
-        })
+        }
     }
 
     /// A [`StatusLine<U>`] that gives way to others, and when there
     /// is not enough space, gets clipped first.
     pub fn clippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
         let mut builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
@@ -250,7 +250,7 @@ where
     /// when there is not enough space, gets clipped last.
     pub fn unclippable_fn(
         file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
         let mut builder = TextBuilder::default();
         let readers = {
             let mut readers = Vec::new();
@@ -270,7 +270,7 @@ where
     /// [`StatusLine<U>`].
     pub fn default_fn(
         file: RoData<FileWidget<U>>
-    ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>> {
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
         let name = Reader::File(file_name());
         let sels = Reader::File(file_selections());
         let col = Reader::File(main_col());
@@ -397,7 +397,7 @@ where
 /// # };
 /// fn status_var_fn<U>(
 ///     manager: &Manager<U>, push_specs: PushSpecs
-/// ) -> Widget<U>
+/// ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>
 /// where
 ///     U: Ui
 /// {
@@ -405,12 +405,16 @@ where
 ///     let parts = vec![
 ///         text("There are "),
 ///         var(move || {
-///             windows.inspect_nth(0, |window| {
-///                 window.fold_files(0, |accum, _| accum + 1)
-///             })
+///             windows
+///                 .inspect_nth(0, |window| {
+///                     window.fold_files(0, |accum, _| accum + 1)
+///                 })
+///                 .unwrap()
 ///         }),
 ///         text("files open."),
 ///     ];
+///
+///     StatusLine::global_fn(parts, &manager.palette)
 /// }
 /// ```
 ///
