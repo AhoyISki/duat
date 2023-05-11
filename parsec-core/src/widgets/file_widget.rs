@@ -161,7 +161,7 @@ where
 
         let mut accum = 0;
         let lines_len = self.text.len_lines();
-        while accum <= height && line_num < lines_len {
+        while accum < height && line_num < lines_len {
             let line = self.text.iter_line(line_num);
             let mut wrap_count = label.vis_rows(line, &self.print_cfg, usize::MAX);
             if accum == 0 {
