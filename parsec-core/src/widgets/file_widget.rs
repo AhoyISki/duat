@@ -166,7 +166,7 @@ where
             let mut wrap_count = label.vis_rows(line, &self.print_cfg, usize::MAX);
             if accum == 0 {
                 let line = self.text.iter_line(line_num);
-                wrap_count -= label.vis_rows(line, &self.print_cfg, first_char);
+                wrap_count -= label.vis_rows(line, &self.print_cfg, first_char) - 1;
             }
             let prev_accum = accum;
             accum = min(accum + wrap_count, height);

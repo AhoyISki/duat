@@ -92,9 +92,9 @@ impl Node {
     /// within children whose split is [`Split::Locked(_)`].
     fn resizable_len(&self, axis: Axis, window: &InnerWindow) -> usize {
         if let Axis::Horizontal = axis {
-            self.resizable_width(window)
+            self.resizable_width(window, true)
         } else {
-            self.resizable_height(window)
+            self.resizable_height(window, true)
         }
     }
 
@@ -102,20 +102,22 @@ impl Node {
     ///
     /// This width consists of the total width that is not contained
     /// within children whose split is [`Split::Locked(_)`].
-    fn resizable_width(&self, window: &InnerWindow) -> usize {
-        if let Some((child_index, parent)) = window.find_parent(self.area.index) {
-            let (children, axis) = parent.lineage.as_ref().unwrap();
-            if let (Axis::Horizontal, Split::Locked(_)) = (axis, children[child_index].1) {
-                return 0;
-            }
-        };
+    fn resizable_width(&self, window: &InnerWindow, is_root: bool) -> usize {
+        if !is_root {
+            if let Some((child_index, parent)) = window.find_parent(self.area.index) {
+                let (children, axis) = parent.lineage.as_ref().unwrap();
+                if let (Axis::Horizontal, Split::Locked(_)) = (axis, children[child_index].1) {
+                    return 0;
+                }
+            };
+        }
         drop(window);
 
         if let Some((children, ..)) = &self.lineage {
             if children.is_empty() {
                 self.area.width()
             } else {
-                children.iter().map(|(node, _)| node.resizable_width(window)).sum()
+                children.iter().map(|(node, _)| node.resizable_width(window, false)).sum()
             }
         } else {
             self.area.width()
@@ -126,20 +128,22 @@ impl Node {
     ///
     /// This height consists of the total height that is not contained
     /// within children whose split is [`Split::Locked(_)`].
-    fn resizable_height(&self, window: &InnerWindow) -> usize {
-        if let Some((child_index, parent)) = window.find_parent(self.area.index) {
-            let (children, axis) = parent.lineage.as_ref().unwrap();
-            if let (Axis::Vertical, Split::Locked(_)) = (axis, children[child_index].1) {
-                return 0;
-            }
-        };
+    fn resizable_height(&self, window: &InnerWindow, is_root: bool) -> usize {
+        if !is_root {
+            if let Some((child_index, parent)) = window.find_parent(self.area.index) {
+                let (children, axis) = parent.lineage.as_ref().unwrap();
+                if let (Axis::Horizontal, Split::Locked(_)) = (axis, children[child_index].1) {
+                    return 0;
+                }
+            };
+        }
         drop(window);
 
         if let Some((children, ..)) = &self.lineage {
             if children.is_empty() {
                 self.area.height()
             } else {
-                children.iter().map(|(node, _)| node.resizable_height(window)).sum()
+                children.iter().map(|(node, _)| node.resizable_height(window, false)).sum()
             }
         } else {
             self.area.height()
@@ -402,6 +406,7 @@ struct InnerWindow {
     main_node: Option<Node>,
     floating_nodes: Vec<(Node, Anchor)>,
     next_index: Arc<AtomicUsize>,
+    cur_state: AtomicUsize,
 }
 
 impl InnerWindow {
@@ -454,9 +459,18 @@ impl InnerWindow {
     }
 }
 
-#[derive(Clone)]
 pub struct Window {
     inner: RwData<InnerWindow>,
+    read_state: AtomicUsize
+}
+
+impl Clone for Window {
+fn clone(&self) -> Self {
+    Window {
+        inner: self.inner.clone(),
+        read_state: AtomicUsize::new(self.inner.read().cur_state.load(Ordering::Relaxed))
+    }
+}
 }
 
 impl ui::Window for Window {
@@ -464,7 +478,10 @@ impl ui::Window for Window {
     type Label = Label;
 
     fn layout_has_changed(&self) -> bool {
-        self.inner.has_changed()
+        let cur_state = self.inner.read().cur_state.load(Ordering::Relaxed);
+        let has_changed = cur_state > self.read_state.load(Ordering::Relaxed);
+        self.read_state.store(cur_state, Ordering::Relaxed);
+        has_changed
     }
 
     fn get_area(&self, area_index: usize) -> Option<Self::Area> {
@@ -506,6 +523,7 @@ impl ui::Ui for Ui {
             main_node: None,
             floating_nodes: Vec::new(),
             next_index: self.next_index.clone(),
+            cur_state: AtomicUsize::new(0)
         });
 
         let area = Area::total(new_area_index, inner_window.clone());
@@ -514,6 +532,7 @@ impl ui::Ui for Ui {
 
         let window = Window {
             inner: inner_window,
+            read_state: AtomicUsize::new(1)
         };
         self.windows.push(window.clone());
 

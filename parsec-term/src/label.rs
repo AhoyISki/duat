@@ -106,11 +106,12 @@ impl ui::Label for Label {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
-            WrapMethod::Width | WrapMethod::Capped(_) =>
+            WrapMethod::Width | WrapMethod::Capped(_) => {
                 bits(indents, coords.width(), &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= max_index)
-                    .count(),
+                    .count()
+            }
             WrapMethod::Word => words(indents, coords.width(), &cfg)
                 .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                 .take_while(|index| *index <= max_index)

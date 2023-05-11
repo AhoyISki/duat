@@ -5,6 +5,7 @@ use std::{
 
 use crossterm::terminal;
 use parsec_core::{
+    log_info,
     data::RwData,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split}
 };
@@ -214,7 +215,6 @@ impl ui::Area for Area {
 
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()> {
         // To signal to other readers that the `InnerWindow` has changed.
-        drop(self.window.write());
         let req_axis = Axis::from(side);
         let window = self.window.read();
         let (child_index, parent) = window.find_parent(self.index).ok_or(())?;
@@ -227,6 +227,8 @@ impl ui::Area for Area {
         if child.resizable_len(req_axis, &window) == len {
             return Ok(());
         };
+        log_info!("\n{}, {len}", child.resizable_len(req_axis, &window));
+        window.cur_state.fetch_add(1, Ordering::Relaxed);
 
         if req_axis != *axis {
             let area = parent.area.clone();
@@ -256,6 +258,7 @@ impl ui::Area for Area {
         let axis = Axis::from(side);
 
         let resizable_len = self.window.inspect(|window| {
+            window.cur_state.fetch_add(1, Ordering::Relaxed);
             window.find_node(self.index).unwrap().resizable_len(axis, &window)
         });
 
