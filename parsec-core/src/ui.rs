@@ -24,6 +24,43 @@ pub trait Area {
     /// Requests a new width to the widget.
     fn request_len(&self, len: usize, side: Side) -> Result<(), ()>;
 
+    /// Bisects [`self`] into two areas.
+    ///
+    /// Will return 2 indices, the first one is the index of a new
+    /// area. The second is the new index for [`self`], and
+    /// happens when a new parent is created for both of them.
+    ///
+    /// As an example, assuming that [`self`] has an index of `0`,
+    /// pushing an area to [`self`] on [`Side::Left`] would create
+    /// 2 new areas:
+    ///
+    /// ```ignore
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │                 │     │╭──2───╮╭───1───╮│
+    /// │      self       │ --> ││      ││ self  ││
+    /// │                 │     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// This means that `0` is now the index of the newly created
+    /// parent, `2` is the index of the new area, and `1` is the new
+    /// index of the initial area. In the end, [`Area::bisect()`]
+    /// should return `(2, Some(1))`.
+    ///
+    /// That doesn't always happen though. For example, pushing
+    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
+    /// this situation, should not result in the creation of a new
+    /// parent:
+    ///
+    /// ```ignore
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
+    /// ││      ││ self  ││     ││   ││self ││   ││
+    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// And so [`Area::bisect()`] should return `(3, None)`.
     fn bisect(&mut self, push_specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>);
 
     /// Requests that the width be enough to fit a certain piece of
@@ -71,7 +108,8 @@ pub trait Label {
     /// Must take the [`PrintCfg`] into account, as in, if the
     /// [`WrapMethod`][crate::text::WrapMethod] is
     /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
-    /// then the number of rows must equal the number of lines on the [`Iterator`].
+    /// then the number of rows must equal the number of lines on the
+    /// [`Iterator`].
     fn vis_rows(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
     ) -> usize;
@@ -157,22 +195,26 @@ where
     ///
     /// Pushing on [`Side::Left`], when [`self`] has an index of `0`:
     ///
+    /// ```ignore
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │                 │     │╭──2───╮╭───1───╮│
     /// │                 │ --> ││      ││       ││
     /// │                 │     ││      ││       ││
     /// │                 │     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
     ///
     /// So a subsequent use of [`push_widget`][Self::push_widget] on
     /// [`Side::Bottom`] would push to the bottom of "both 1 and 2":
     ///
+    /// ```ignore
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
     /// ││      ││       ││ --> │╰──────╯╰───────╯│
     /// ││      ││       ││     │╭───────3───────╮│
     /// │╰──────╯╰───────╯│     │╰───────────────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
     ///
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
@@ -454,12 +496,15 @@ where
         let mut area = self.window.get_area(area_index).unwrap();
         let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
 
-        if let Some(new_area_index) = pushed_area {
-            self.nodes.iter_mut().for_each(|node| {
+        if let Some(pushed_area) = pushed_area {
+            if self.files_parent == area_index {
+                self.files_parent = pushed_area;
+            }
+            for node in self.nodes.iter_mut() {
                 if node.area_index == area_index {
-                    node.area_index = new_area_index
+                    node.area_index = pushed_area
                 }
-            });
+            }
         }
 
         let node = Node {
@@ -482,7 +527,12 @@ where
     ) -> (usize, Option<usize>) {
         let node_index = self.files_parent;
 
-        self.push_widget(widget, node_index, push_specs)
+        let (file_area, new_parent) = self.push_widget(widget, node_index, push_specs);
+        if let Some(new_parent) = new_parent {
+            self.files_parent = new_parent;
+        }
+
+        (file_area, new_parent)
     }
 
     /// Pushes a [`Widget<U>`] to the master node of the current

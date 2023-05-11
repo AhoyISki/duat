@@ -115,7 +115,12 @@ where
 
             self.session_loop(key_remapper);
 
-            if self.manager.should_quit.load(Ordering::Acquire) || true {
+			let mut files = std::mem::take(&mut *self.manager.files_to_open.write());
+            for file in files.drain(..) {
+                self.open_file(file);
+            }
+
+            if self.manager.should_quit.load(Ordering::Acquire) {
                 break;
             }
         }
@@ -220,8 +225,8 @@ where
         let should_quit = manager.should_quit.clone();
         let quit = Command::new(
             move |_, _| {
-                break_loop.swap(true, Ordering::Release);
-                should_quit.swap(true, Ordering::Release);
+                break_loop.store(true, Ordering::Release);
+                should_quit.store(true, Ordering::Release);
                 Ok(None)
             },
             vec![String::from("quit"), String::from("q")]
@@ -231,7 +236,7 @@ where
         let files_to_open = manager.files_to_open.clone();
         let open_files = Command::new(
             move |_, files| {
-                break_loop.swap(true, Ordering::Release);
+                break_loop.store(true, Ordering::Release);
                 *files_to_open.write() = files.iter().map(|file| PathBuf::from(file)).collect();
                 Ok(None)
             },
