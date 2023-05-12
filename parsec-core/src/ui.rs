@@ -145,7 +145,8 @@ where
     U: Ui
 {
     widget: Widget<U>,
-    area_index: usize
+    index: usize,
+    context: Option<usize>
 }
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -168,9 +169,8 @@ where
 /// ) where
 ///     U: Ui
 /// {
-///     let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
-///     mod_node
-///         .push_widget(LineNumbers::default_fn(file), push_specs);
+///     let specs = PushSpecs::new(Side::Left, Split::Locked(1));
+///     mod_node.push_widget(LineNumbers::default_fn(file), specs);
 /// }
 /// ```
 ///
@@ -239,14 +239,19 @@ where
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
+        let context = self.manager.commands.read().context;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_glued_widget(widget, self.mod_area, push_specs)
+            window.push_widget(self.mod_area, widget, push_specs, context)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
         let label = window.window.get_label(new_area).unwrap();
-        let node = window.nodes.iter().find(|Node { area_index, .. }| *area_index == new_area);
+        let node = window.nodes.iter().find(
+            |Node {
+                 index: area_index, ..
+             }| *area_index == new_area
+        );
         node.map(|Node { widget, .. }| widget).unwrap().update(&label);
 
         (new_area, pushed_area)
@@ -268,18 +273,23 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area_index: usize,
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: usize,
         push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
+        let context = self.manager.commands.read().context;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_glued_widget(widget, area_index, push_specs)
+            window.push_widget(index, widget, push_specs, context)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
         let label = window.window.get_label(new_area).unwrap();
-        let node = window.nodes.iter().find(|Node { area_index, .. }| *area_index == new_area);
+        let node = window.nodes.iter().find(
+            |Node {
+                 index: area_index, ..
+             }| *area_index == new_area
+        );
         node.map(|Node { widget, .. }| widget).unwrap().update(&label);
 
         (new_area, pushed_area)
@@ -307,7 +317,11 @@ pub(crate) fn activate_hook<U, Nw>(
         let node = window
             .nodes
             .iter()
-            .find(|Node { area_index, .. }| *area_index == mod_area)
+            .find(
+                |Node {
+                     index: area_index, ..
+                 }| *area_index == mod_area
+            )
             .unwrap();
 
         node.widget.try_downcast::<Nw>().unwrap_or_else(|| {
@@ -499,13 +513,14 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new(ui: &mut U, widget: Widget<U>) -> Self {
+    pub fn new(ui: &mut U, widget: Widget<U>, context: Option<usize>) -> Self {
         let (window, mut initial_label) = ui.new_window();
         widget.update(&mut initial_label);
 
         let main_node = Node {
             widget,
-            area_index: initial_label.area_index()
+            index: initial_label.area_index(),
+            context
         };
         let parsec_window = ParsecWindow {
             window,
@@ -518,38 +533,32 @@ where
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     fn push_widget(
-        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
+        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
     ) -> (usize, Option<usize>) {
-        self.inner_push_widget(area_index, push_specs, false, widget)
-    }
-
-    /// Pushes a [`Widget<U>`] onto an existing one.
-    fn push_glued_widget(
-        &mut self, widget: Widget<U>, area_index: usize, push_specs: PushSpecs
-    ) -> (usize, Option<usize>) {
-        self.inner_push_widget(area_index, push_specs, true, widget)
+        self.inner_push_widget(index, widget, push_specs, context)
     }
 
     fn inner_push_widget(
-        &mut self, area_index: usize, push_specs: PushSpecs, is_glued: bool, widget: Widget<U>
+        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
     ) -> (usize, Option<usize>) {
-        let mut area = self.window.get_area(area_index).unwrap();
-        let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
+        let is_file = widget.raw_inspect(|widget| widget.as_any().is::<FileWidget<U>>());
+        let mut area = self.window.get_area(index).unwrap();
+        let (new_area, pushed_area) = area.bisect(push_specs, context.is_some() && !is_file);
 
         if let Some(pushed_area) = pushed_area {
-            if self.files_parent == area_index {
+            if self.files_parent == index && context.is_none() {
                 self.files_parent = pushed_area;
             }
-            for node in self.nodes.iter_mut() {
-                if node.area_index == area_index {
-                    node.area_index = pushed_area
-                }
-            }
+            self.nodes
+                .iter_mut()
+                .find(|node| node.index == index)
+                .map(|node| node.index = pushed_area);
         }
 
         let node = Node {
             widget,
-            area_index: new_area
+            index: new_area,
+            context
         };
         self.nodes.push(node);
         (new_area, pushed_area)
@@ -563,11 +572,11 @@ where
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
-        &mut self, widget: Widget<U>, push_specs: PushSpecs
+        &mut self, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
     ) -> (usize, Option<usize>) {
-        let node_index = self.files_parent;
+        let index = self.files_parent;
 
-        let (file_area, new_parent) = self.push_widget(widget, node_index, push_specs);
+        let (file_area, new_parent) = self.push_widget(index, widget, push_specs, context);
         if let Some(new_parent) = new_parent {
             self.files_parent = new_parent;
         }
@@ -580,14 +589,14 @@ where
     pub fn push_to_master(
         &mut self, widget: Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        self.push_widget(widget, 0, push_specs)
+        self.push_widget(0, widget, push_specs, None)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
-    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label)> + '_ {
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, Option<usize>)> + '_ {
         self.nodes.iter().map(|node| {
-            let label = self.window.get_label(node.area_index).unwrap();
-            (&node.widget, label)
+            let label = self.window.get_label(node.index).unwrap();
+            (&node.widget, label, node.context)
         })
     }
 
@@ -595,11 +604,12 @@ where
     /// [`self`].
     pub(crate) fn actionable_widgets(
         &self
-    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label)> + '_ {
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label, Option<usize>)> + '_
+    {
         self.nodes.iter().filter_map(|node| {
             node.widget.as_actionable().map(|widget| {
-                let label = self.window.get_label(node.area_index).unwrap();
-                (widget, label)
+                let label = self.window.get_label(node.index).unwrap();
+                (widget, label, node.context)
             })
         })
     }
@@ -626,7 +636,7 @@ where
     pub(crate) fn print_if_layout_changed(&self, palette: &FormPalette) {
         if self.window.layout_has_changed() {
             for node in &self.nodes {
-                let mut label = self.window.get_label(node.area_index).unwrap();
+                let mut label = self.window.get_label(node.index).unwrap();
                 node.widget.update(&mut label);
                 node.widget.print(&mut label, &palette);
             }

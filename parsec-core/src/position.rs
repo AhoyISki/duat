@@ -4,7 +4,7 @@ use crate::{
     history::{Change, History},
     text::{inner::InnerText, PrintCfg, Text},
     ui::{Label, Ui},
-    widgets::EditAccum
+    widgets::EditAccum, log_info
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -13,8 +13,8 @@ use crate::{
 pub struct Pos {
     byte: usize,
     char: usize,
-    pub(crate) col: usize,
-    pub(crate) line: usize
+    col: usize,
+    line: usize
 }
 
 impl Pos {
@@ -337,6 +337,7 @@ where
         cursor: &'a mut Cursor, text: &'a mut Text<U>, edit_accum: &'a mut EditAccum,
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
+        log_info!("\npos: {}, chars: {:?}", cursor.caret, edit_accum.chars);
         cursor.calibrate_on_accum(edit_accum, text.inner());
         Self {
             cursor,

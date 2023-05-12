@@ -125,13 +125,6 @@ where
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
     fn on_unfocus(&mut self, _label: &U::Label) {}
-
-    /// By returning `false`, the [`ActionableWidget`] is telling
-    /// Parsec that it can no longer be focused, and should return to
-    /// the [`FileWidget<U>`]
-    fn still_valid(&self) -> bool {
-        true
-    }
 }
 
 /// An enum for handling the 2 types of widget.

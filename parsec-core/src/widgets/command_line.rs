@@ -21,8 +21,7 @@ use crate::{
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{PrintInfo, PushSpecs, Ui},
-    Manager
-};
+    Manager};
 
 /// An [`ActionableWidget<U>`] whose primary purpose is to execute
 /// [`Command`]s.
@@ -148,10 +147,6 @@ where
             let cmd = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
             let _ = self.commands.read().try_exec(cmd);
         };
-    }
-
-    fn still_valid(&self) -> bool {
-        !self.text.is_empty()
     }
 }
 

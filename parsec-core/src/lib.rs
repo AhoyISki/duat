@@ -49,11 +49,13 @@ where
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
         let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
-        let file_widget = FileWidget::<U>::new(file, print_cfg.clone());
+        let file = FileWidget::<U>::new(file, print_cfg.clone());
 
-        let window = ParsecWindow::new(&mut ui, file_widget);
+        let window = ParsecWindow::new(&mut ui, file, Some(0));
         let mut manager = Manager::new(window, 0, 0, palette);
+        manager.commands.write().context = Some(0);
         activate_hook(&mut manager, 0, &mut constructor_hook);
+        manager.commands.write().context = None;
 
         let mut session = Session {
             ui,
@@ -79,10 +81,23 @@ where
             side: Side::Right,
             split: Split::Min(40)
         };
-        let (new_area, _) = self.manager.windows.write()[self.manager.active_window]
-            .push_file(file_widget, push_specs);
+        let context = self.manager.windows.inspect(|windows| {
+            Some(windows.iter().map(|window| window.file_names().count()).sum::<usize>())
+        });
 
-        activate_hook(&mut self.manager, new_area, &mut self.constructor_hook)
+        let (new_area, _) = self.manager.windows.mutate(|windows| {
+            let active_window = &mut windows[self.manager.active_window];
+            active_window.push_file(file_widget, push_specs, context)
+        });
+
+        let context = self.manager.commands.mutate(|commands| {
+            let old_context = commands.context;
+            commands.context = context;
+            old_context
+        });
+
+        activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);
+        self.manager.commands.write().context = context;
     }
 
     pub fn push_widget_to_edge(
@@ -103,7 +118,7 @@ where
         // The main loop.
         loop {
             let palette = &self.manager.palette;
-            for (widget, mut label) in
+            for (widget, mut label, _) in
                 self.manager.windows.read()[self.manager.active_window].widgets()
             {
                 widget.update(&mut label);
@@ -144,7 +159,7 @@ where
                     break;
                 }
 
-                for (widget, mut label) in active_window.widgets() {
+                for (widget, mut label, _) in active_window.widgets() {
                     if widget.needs_update() {
                         if widget.is_slow() {
                             let palette = &palette;
@@ -202,7 +217,7 @@ where
     ) -> Self {
         let active_file = window
             .actionable_widgets()
-            .find_map(|(widget, _)| widget.clone().try_downcast::<FileWidget<U>>().ok())
+            .find_map(|(widget, ..)| widget.clone().try_downcast::<FileWidget<U>>().ok())
             .unwrap();
 
         let manager = Manager {
@@ -338,29 +353,31 @@ where
     where
         Aw: ActionableWidget<U>
     {
+        let cur_context = self.manager.commands.read().context;
         let index = self
             .window
             .actionable_widgets()
-            .position(|(widget, _)| widget.data_is::<Aw>())
+            .position(|(widget, _, context)| {
+                widget.data_is::<Aw>() && (context.is_none() || context == cur_context)
+            })
             .ok_or(())?;
 
         self.switch_to_widget_index(index)
     }
 
     fn switch_to_widget_index(&mut self, index: usize) -> Result<(), ()> {
-        let (widget, label) = self.window.actionable_widgets().nth(index).ok_or(())?;
-        widget.mutate(|widget| {
-            widget.on_focus(&label);
-        });
+        let (widget, label, context) = self.window.actionable_widgets().nth(index).ok_or(())?;
+        widget.write().on_focus(&label);
         if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
             *self.manager.active_file.write() = RoData::from(&file);
         }
 
+        self.manager.commands.write().context = context;
+
         let active_index = self.manager.active_widget.load(Ordering::Acquire);
-        let (widget, label) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
-        widget.mutate(|widget| {
-            widget.on_unfocus(&label);
-        });
+		log_info!("\nactive: {active_index}, switch: {index}");
+        let (widget, label, _) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
+        widget.write().on_unfocus(&label);
 
         self.manager.active_widget.store(index, Ordering::Release);
 
@@ -381,9 +398,7 @@ where
     }
 
     pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
-        let cmd = cmd.to_string();
-        let mut commands = self.manager.commands.write();
-        commands.try_exec(cmd)
+        self.manager.commands.read().try_exec(cmd.to_string())
     }
 }
 
@@ -400,7 +415,7 @@ where
         let index = manager.active_widget.load(Ordering::Acquire);
         let actionable_widget = window.actionable_widgets().nth(index);
 
-        let Some((widget, mut label)) = actionable_widget else {
+        let Some((widget, mut label, _)) = actionable_widget else {
             return;
         };
 
@@ -410,12 +425,6 @@ where
         };
 
         blink_cursors_and_send_key(&widget, &mut label, controls, key_event, key_remapper, palette);
-
-        // If the widget is no longer valid, return to the file.
-        if !widget.read().still_valid() {
-            let index = manager.anchor_file.load(Ordering::Acquire);
-            manager.active_widget.store(index, Ordering::Release);
-        }
     }
 }
 

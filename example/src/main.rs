@@ -80,20 +80,20 @@ fn main() {
     // `Config` argument and a closure that determines what will happen
     // when a new file is opened.
     let mut session = Session::new(Ui::default(), print_cfg, palette, move |mod_node, file| {
-        let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
+        let specs = PushSpecs::new(Side::Left, Split::Locked(1));
         let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
-        mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), push_specs);
+        mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), specs);
 
-        let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
+        let specs = PushSpecs::new(Side::Left, Split::Locked(1));
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
-        mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), push_specs);
+        mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
+
+        let specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
+        mod_node.push_widget(StatusLine::default_fn(file), specs);
+        mod_node.push_widget(CommandLine::default_fn(), specs);
     });
 
-    let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-    session.push_widget_to_edge(StatusLine::default_global_fn(), push_specs);
-
-    session.push_widget_to_edge(CommandLine::default_fn(), push_specs);
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
