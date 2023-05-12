@@ -16,11 +16,12 @@
 //! by running the `set-prompt` [`Command`].
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
+    commands::{Command, Commands},
     data::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{PrintInfo, PushSpecs, Ui},
-    Manager, commands::{Command, Commands}
+    Manager
 };
 
 /// An [`ActionableWidget<U>`] whose primary purpose is to execute
@@ -43,7 +44,7 @@ where
 
 impl<U> CommandLine<U>
 where
-    U: Ui + Default + 'static
+    U: Ui + 'static
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
@@ -170,13 +171,10 @@ where
     U: Ui
 {
     let prompt = command_line.prompt.clone();
-    let set_prompt = Command::new(
-        move |_, new_prompt| {
-            *prompt.write() = new_prompt.first().cloned().unwrap_or(String::from(""));
-            Ok(None)
-        },
-        vec![String::from("set-prompt")]
-    );
+    let set_prompt = Command::new(vec!["set-prompt"], move |_, new_prompt| {
+        *prompt.write() = String::from(new_prompt.next().unwrap_or(""));
+        Ok(None)
+    });
 
     manager.commands.write().try_add(set_prompt).unwrap();
 }

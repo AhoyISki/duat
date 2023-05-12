@@ -34,7 +34,7 @@ pub trait Area {
     /// pushing an area to [`self`] on [`Side::Left`] would create
     /// 2 new areas:
     ///
-    /// ```ignore
+    /// ```text
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │                 │     │╭──2───╮╭───1───╮│
     /// │      self       │ --> ││      ││ self  ││
@@ -52,7 +52,7 @@ pub trait Area {
     /// this situation, should not result in the creation of a new
     /// parent:
     ///
-    /// ```ignore
+    /// ```text
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
     /// ││      ││ self  ││     ││   ││self ││   ││
@@ -212,7 +212,7 @@ where
     ///
     /// Pushing on [`Side::Left`], when [`self`] has an index of `0`:
     ///
-    /// ```ignore
+    /// ```text
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │                 │     │╭──2───╮╭───1───╮│
     /// │                 │ --> ││      ││       ││
@@ -224,7 +224,7 @@ where
     /// So a subsequent use of [`push_widget`][Self::push_widget] on
     /// [`Side::Bottom`] would push to the bottom of "both 1 and 2":
     ///
-    /// ```ignore
+    /// ```text
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
     /// ││      ││       ││ --> │╰──────╯╰───────╯│
@@ -236,8 +236,7 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
-        push_specs: PushSpecs
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
@@ -269,7 +268,7 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
         area_index: usize, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
@@ -401,8 +400,32 @@ impl Side {
 
 /// Information on how a [`Widget<U>`] should be pushed onto another.
 ///
-/// The `glued` member indicates wether or not a [`Widget<U>`] should
-/// "stick together" in case of movement.
+/// The [`Side`] member determines what direction to push into, in
+/// relation to the original widget.
+///
+/// The [`Split`] can be one of two types:
+/// - [`Min(min_len)`][Split::Min] represents the minimum length, in
+///   the [`Side`]'s [`Axis`], that this new widget needs.
+/// - [`Locked(locked_len)`][Split::Locked] represents a length, in
+///   the [`Side`]'s [`Axis`], that cannot be altered by any means.
+///
+/// So if, for example, if a widget is pushed with
+///
+/// ```rust
+/// # use parsec_core::ui::{PushSpecs, Side, Split};
+/// # fn test_fn() -> PushSpecs {
+/// PushSpecs {
+///     side: Side::Left,
+///     split: Split::Min(3)
+/// }
+/// # }
+/// ```
+///
+/// into another widget, then it will be placed on the left side of
+/// that widget, and will have a minimum `width` of `3`.
+///
+/// If it were pushed to either [`Side::Top`] or [`Side::Bottom`], it
+/// would instead have a minimum `height` of `3`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PushSpecs {
     pub side: Side,
@@ -410,7 +433,7 @@ pub struct PushSpecs {
 }
 
 impl PushSpecs {
-    /// Returns a new instance of [`PushSpecs`] that is not glued.
+    /// Returns a new instance of [`PushSpecs`].
     pub fn new(side: Side, split: Split) -> Self {
         PushSpecs { side, split }
     }

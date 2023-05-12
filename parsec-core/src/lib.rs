@@ -20,7 +20,7 @@ use std::{
     time::Duration
 };
 
-use commands::{Command, Commands, CommandErr};
+use commands::{Command, CommandErr, Commands};
 use crossterm::event::{self, Event, KeyEvent};
 use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
@@ -46,11 +46,10 @@ where
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
         mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
-        mut constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>
+        mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
-        let file = std::env::args().nth(1);
-        let file_widget =
-            FileWidget::<U>::new(file.as_ref().map(|file| PathBuf::from(file)), print_cfg.clone());
+        let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
+        let file_widget = FileWidget::<U>::new(file, print_cfg.clone());
 
         let window = ParsecWindow::new(&mut ui, file_widget);
         let mut manager = Manager::new(window, 0, 0, palette);
@@ -58,7 +57,7 @@ where
 
         let mut session = Session {
             ui,
-            constructor_hook,
+            constructor_hook: Box::new(constructor_hook),
             manager,
             print_cfg: RwData::new(print_cfg)
         };
@@ -221,25 +220,19 @@ where
 
         let break_loop = manager.break_loop.clone();
         let should_quit = manager.should_quit.clone();
-        let quit = Command::new(
-            move |_, _| {
-                break_loop.store(true, Ordering::Release);
-                should_quit.store(true, Ordering::Release);
-                Ok(None)
-            },
-            vec![String::from("quit"), String::from("q")]
-        );
+        let quit = Command::new(vec!["quit", "q"], move |_, _| {
+            break_loop.store(true, Ordering::Release);
+            should_quit.store(true, Ordering::Release);
+            Ok(None)
+        });
 
         let break_loop = manager.break_loop.clone();
         let files_to_open = manager.files_to_open.clone();
-        let open_files = Command::new(
-            move |_, files| {
-                break_loop.store(true, Ordering::Release);
-                *files_to_open.write() = files.iter().map(|file| PathBuf::from(file)).collect();
-                Ok(None)
-            },
-            vec![String::from("edit"), String::from("e")]
-        );
+        let open_files = Command::new(vec!["edit", "e"], move |_, files| {
+            break_loop.store(true, Ordering::Release);
+            *files_to_open.write() = files.map(|file| PathBuf::from(file)).collect();
+            Ok(None)
+        });
 
         manager.commands.mutate(|commands| {
             commands.try_add(quit).unwrap();
