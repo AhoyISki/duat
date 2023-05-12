@@ -268,8 +268,8 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
-        area_index: usize, push_specs: PushSpecs
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area_index: usize,
+        push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {

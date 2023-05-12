@@ -72,7 +72,8 @@
 //!
 //! This struct is found in the [`Session<U>`][crate::Session], either
 //! through the `constructor_hook` via a
-//! [`ModNode`][crate::ui::ModNode], or directly:
+//! [`ModNode`][crate::ui::ModNode], or directly from the
+//! [`Session<U>`][crate::Session]'s [`Manager<U>`][crate::Manager]
 //!
 //! ```
 //! # use parsec_core::{
@@ -96,15 +97,14 @@
 //!     mod_node.push_widget(CommandLine::default_fn(), push_specs);
 //! };
 //!
-//! let session =
-//!     Session::new(ui, print_cfg, palette, constructor_hook);
+//! let session = Session::new(ui, print_cfg, palette, constructor_hook);
 //!
 //! let my_callers = vec!["lol", "lmao"];
 //! let lol_cmd = Command::new(my_callers, |_, _| {
 //!     Ok(Some(String::from("😜")))
 //! });
 //!
-//! session.manager().commands().write().try_add(lol_cmd);
+//! session.manager().commands().write().try_add(lol_cmd).unwrap();
 //! # }
 //! ```
 //!
@@ -125,6 +125,13 @@
 //! [`Manager<U>`][crate::Manager] parameter is then used to grant the
 //! [`CommandLine<U>`][crate::widgets::CommandLine] access to the
 //! [`Commands`] struct, allowing it to take user input to run.
+
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock}
+};
+
+use crate::data::RwData;
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -179,6 +186,8 @@
 /// assert!(flags.blob == cmp.blob);
 /// assert!(flags.units == cmp.units);
 /// ```
+///
+/// Do note that, since
 pub struct Flags<'a> {
     pub blob: String,
     pub units: Vec<&'a str>
@@ -218,6 +227,22 @@ impl<'a> Flags<'a> {
     /// ```
     pub fn unit(&self, flag: impl AsRef<str>) -> bool {
         self.units.contains(&flag.as_ref())
+    }
+
+    /// Returns `true` if no flags have been passed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::commands::{split_flags, Flags};
+    /// let command = "run arg1 --foo --bar arg2 -baz";
+    /// let mut command_args = command.split_whitespace().skip(1);
+    /// let (flags, args) = split_flags(command_args);
+    ///
+    /// assert!(flags.is_empty());
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.blob.is_empty() && self.units.is_empty()
     }
 }
 
@@ -348,15 +373,18 @@ impl<'a> Flags<'a> {
 ///
 /// In the second version, the whole `widget` variable gets moved into
 /// the closure. The problem with this is that this specific
-/// [`RwData`] will get used very often, and by running the
-/// [`Command`], you may cause a deadlock, which is really annoying to
-/// diagnose.
+/// [`RwData`][crate::data::RwData] will get used very often, and by
+/// running the [`Command`], you may cause a deadlock, which is really
+/// annoying to diagnose.
 ///
-/// As an example, there is the [`CommandLine<U>`] widget. If its
-/// [`Command`]s moved an entire [`RwData<CommandLine<U>>`] to the
+/// As an example, there is the
+/// [`CommandLine<U>`][crate::widgets::CommandLine] widget. If its
+/// [`Command`]s moved an entire
+/// [`RwData<CommandLine<U>>`][crate::data::RwData] to the
 /// closures, every single one of them, when triggered through the
 /// widget, would result in a deadlock, since they're writing to an
-/// [`RwData<T>`] that was already being written to.
+/// [`RwData<T>`][crate::data::RwData] that was already being written
+/// to.
 pub struct Command {
     /// A closure to trigger when any of the `callers` are called.
     ///
@@ -374,7 +402,7 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    function: Box<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CommandResult>,
+    function: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CommandResult>,
     /// A list of [`String`]s that act as callers for this `Command`.
     callers: Vec<String>
 }
@@ -395,7 +423,7 @@ impl Command {
             panic!("Command caller \"{wrong_caller}\" is not a singular word.");
         }
         Self {
-            function: Box::new(function),
+            function: RwData::new_unsized(Arc::new(RwLock::new(function))),
             callers
         }
     }
@@ -403,10 +431,10 @@ impl Command {
     /// Executes the inner function if the `caller` matches any of the
     /// callers in [`self`].
     fn try_exec<'a>(
-        &mut self, caller: &str, flags: &Flags, args: &mut impl Iterator<Item = &'a str>
+        &self, caller: &str, flags: &Flags, args: &mut impl Iterator<Item = &'a str>
     ) -> Result<Option<String>, CommandErr> {
-        if self.callers.iter().any(|name| name == caller) {
-            return (self.function)(flags, args).map_err(|err| CommandErr::Failed(err));
+        if self.callers.iter().any(|name| name == &caller) {
+            return (self.function.write())(flags, args).map_err(|err| CommandErr::Failed(err));
         } else {
             return Err(CommandErr::NotFound(String::from(caller)));
         }
@@ -420,13 +448,94 @@ impl Command {
 
 /// A list of [`Command`]s, meant to be used in a
 /// [`CommandLine<U>`][crate::widgets::CommandLine].
-#[derive(Default)]
-pub struct Commands(Vec<Command>);
+///
+/// [`Command`]s can be added through the
+/// [`Commands::try_add()`][Commands::try_add()] function, they
+/// can have multiple callers, and return
+/// [`Result<Option<String>, String>`]:
+///
+/// ```rust
+/// # use parsec_core::{
+/// #     commands::{Command, Commands},
+/// #     data::RwData
+/// # };
+/// #
+/// let commands: RwData<Commands> = Commands::new_rw_data();
+/// let callers = vec!["run-cmd"];
+/// let command = Command::new(callers, |flags, _| {
+///     if flags.unit("success") {
+///         Ok(Some(String::from("✅")))
+///     } else if flags.unit("failure") {
+///         Err(String::from("❎"))
+///     } else {
+///         Ok(None)
+///     }
+/// });
+/// ```
+///
+/// This is a [`Command`] that analyzes the [`Flags`] that were
+/// passed, checking for the `"success"` and `"failure"` flags.
+///
+/// By default, one [`Command`] will always be available, that
+/// being the `"alias"` [`Command`]. This is its calling syntax:
+///
+/// `
+/// "alias alias-name aliased-command --flag1 --flag2 -blobs --flag1
+/// -abc args" `
+///
+/// This call will alias the `"alias-name"` keyword to the
+/// `"aliased-command"` caller. If the caller doesn't exist, the
+/// `"alias"` [`Command`] will return an [`Err`].
+///
+/// When running the `"aliased-command"`, this alias will also pass
+/// the following [`Flags`]:
+///
+/// ```rust
+/// # use parsec_core::commands::Flags;
+/// # fn test_fn<'a>() -> Flags<'a> {
+/// Flags {
+///     blob: String::from("blosac"),
+///     units: vec!["flag1", "flag2"]
+/// }
+/// # }
+/// ```
+///
+/// And will also pass `"args"` as an argument for the [`Command`].
+pub struct Commands {
+    list: Vec<Command>,
+    aliases: RwData<HashMap<String, String>>
+}
 
 impl Commands {
-    /// Returns a new instance of [`Commands`].
-    pub fn new() -> Self {
-        Commands(Vec::new())
+    /// Returns a new instance of [`RwData<Commands>`].
+    ///
+    /// This function is primarily used in the creation of a
+    /// [`Manager`][crate::Manager], for bookkeeping of the available
+    /// [`Command`]s in an accessible place.
+    pub fn new_rw_data() -> RwData<Self> {
+        let commands = RwData::new(Commands {
+            list: Vec::new(),
+            aliases: RwData::new(HashMap::new())
+        });
+
+        let commands_clone = commands.clone();
+        let alias_callers = vec!["alias"];
+        let alias_command = Command::new(alias_callers, move |flags, args| {
+            if !flags.is_empty() {
+                Err(String::from(
+                    "An alias cannot take any flags, try moving them after the command, like \
+                     \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
+                     my-alias my-caller\""
+                ))
+            } else {
+                let alias = args.next().ok_or(String::from("No alias supplied"))?;
+                commands_clone.read().try_alias(alias, args).map_err(|err| err.to_string())
+            }
+        });
+
+        commands.write().try_add(alias_command).unwrap();
+
+        commands
     }
 
     /// Parses a [`String`] and tries to execute a [`Command`].
@@ -434,14 +543,18 @@ impl Commands {
     /// The [`ToString`] will be parsed by separating the first word
     /// as the caller, while the rest of the words are treated as
     /// args.
-    pub fn try_exec(&mut self, command: impl ToString) -> Result<Option<String>, CommandErr> {
+    pub fn try_exec(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
         let command = command.to_string();
-        let mut command = command.split_whitespace();
+        let caller = command.split_whitespace().next().ok_or(CommandErr::Empty)?.to_string();
 
-        let caller = command.next().ok_or(CommandErr::Empty)?;
+        let command =
+            self.aliases.inspect(|aliases| aliases.get(&caller).cloned().unwrap_or(command));
+        let mut command = command.split_whitespace();
+        let caller = command.next().unwrap();
+
         let (flags, mut args) = split_flags(command);
 
-        for command in &mut self.0 {
+        for command in &self.list {
             let result = command.try_exec(caller, &flags, &mut args);
             let Err(CommandErr::NotFound(_)) = result else {
                 return result;
@@ -458,21 +571,43 @@ impl Commands {
     pub fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
         let mut new_callers = command.callers().iter();
 
-        for caller in self.0.iter().map(|cmd| cmd.callers()).flatten() {
+        for caller in self.list.iter().map(|cmd| cmd.callers()).flatten() {
             if new_callers.any(|new_caller| new_caller == caller) {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
             }
         }
 
-        self.0.push(command);
+        self.list.push(command);
 
         Ok(())
+    }
+
+    pub fn try_alias<'a>(
+        &self, alias: impl ToString, command: impl IntoIterator<Item = &'a str>
+    ) -> Result<Option<String>, CommandErr> {
+        let alias = alias.to_string();
+        let mut command = command.into_iter();
+
+        if alias.split_whitespace().count() != 1 {
+            return Err(CommandErr::NotSingleWord(alias));
+        }
+        let caller = String::from(command.next().ok_or(CommandErr::Empty)?);
+
+        let mut callers = self.list.iter().map(|command| command.callers.iter()).flatten();
+
+        if callers.find(|&name| *name == caller).is_some() {
+            let mut aliases = self.aliases.write();
+            Ok(aliases.insert(alias, caller + command.collect::<String>().as_str()))
+        } else {
+            Err(CommandErr::NotFound(String::from(caller)))
+        }
     }
 }
 
 /// An error representing a failure in executing a [`Command`].
 #[derive(Debug)]
 pub enum CommandErr {
+    NotSingleWord(String),
     AlreadyExists(String),
     NotFound(String),
     Failed(String),
@@ -482,11 +617,14 @@ pub enum CommandErr {
 impl std::fmt::Display for CommandErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CommandErr::NotSingleWord(caller) => {
+                f.write_fmt(format_args!("The caller \"{caller}\" is not a single word"))
+            }
             CommandErr::AlreadyExists(caller) => {
-                f.write_fmt(format_args!("The caller \"{}\" already exists.", caller))
+                f.write_fmt(format_args!("The caller \"{caller}\" already exists."))
             }
             CommandErr::NotFound(caller) => {
-                f.write_fmt(format_args!("The caller \"{}\" was not found.", caller))
+                f.write_fmt(format_args!("The caller \"{caller}\" was not found."))
             }
             CommandErr::Failed(failure) => f.write_str(failure),
             CommandErr::Empty => f.write_str("No caller supplied.")
@@ -497,17 +635,19 @@ impl std::fmt::Display for CommandErr {
 impl std::error::Error for CommandErr {}
 
 pub fn split_flags<'a>(
-    mut args: impl Iterator<Item = &'a str>
+    args: impl Iterator<Item = &'a str>
 ) -> (Flags<'a>, impl Iterator<Item = &'a str>) {
     let mut blob = String::new();
     let mut units = Vec::new();
 
-    while let Some(arg) = args.next() {
+    let mut args = args.peekable();
+    while let Some(arg) = args.peek() {
         if arg.starts_with("--") {
             if arg.len() > 2 {
                 if !units.contains(&&arg[2..]) {
                     units.push(&arg[2..])
                 }
+                args.next();
             } else {
                 break;
             }
@@ -516,6 +656,7 @@ pub fn split_flags<'a>(
                 if !blob.contains(char) {
                     blob.push(char)
                 }
+                args.next();
             }
         } else {
             break;

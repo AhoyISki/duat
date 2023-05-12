@@ -146,7 +146,7 @@ where
         // A '\n' indicates that the command has been "entered".
         if let Some('\n') = text.iter_chars_at(0).last() {
             let cmd = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
-            let _ = self.commands.write().try_exec(cmd);
+            let _ = self.commands.read().try_exec(cmd);
         };
     }
 

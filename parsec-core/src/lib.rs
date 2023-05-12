@@ -208,7 +208,7 @@ where
         let manager = Manager {
             windows: RwData::new(vec![window]),
             active_window: 0,
-            commands: RwData::new(Commands::default()),
+            commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
             anchor_file: Arc::new(AtomicUsize::new(anchor_file)),
             active_file: RwData::new(RoData::from(&active_file)),
