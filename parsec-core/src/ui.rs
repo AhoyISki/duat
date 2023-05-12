@@ -156,12 +156,29 @@ where
 ///
 /// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed
 /// to the left of a widget (which in this case is a [`FileWidget<U>`]
+///
 /// ```rust
-/// let file_fn = Box::new(move |mut mod_node: ModNode<U>, file: RoData<FileWidget<U>>| {
-/// 	let push_specs = PushSpecs::new_glued(Side::Left, Split::Locked(1));
-/// 	mod_node.push_widget(LineNumbers::default_fn(file), push_specs);
-/// })
+/// # use parsec_core::{
+/// #     data::RoData,
+/// #     ui::{ModNode, PushSpecs, Side, Split, Ui},
+/// #     widgets::{FileWidget, LineNumbers}
+/// # };
+/// fn file_fn<U>(
+///     mut mod_node: ModNode<U>, file: RoData<FileWidget<U>>
+/// ) where
+///     U: Ui
+/// {
+///     let push_specs = PushSpecs::new(Side::Left, Split::Locked(1));
+///     mod_node
+///         .push_widget(LineNumbers::default_fn(file), push_specs);
+/// }
 /// ```
+///
+/// By using the `file_fn()` function as the `constructor_hook`
+/// argument for [`Session::new()`][crate::Session::new()], every file
+/// that is opened will have a
+/// [`LineNumbers<U>`][crate::widgets::LineNumbers] widget attached to
+/// the [`Left`][Side::Left] side of the [`FileWidget<U>`].
 pub struct ModNode<'a, U>
 where
     U: Ui
@@ -545,14 +562,10 @@ where
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
     pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label)> + '_ {
-        self.nodes.iter().map(
-            |Node {
-                 widget, area_index, ..
-             }| {
-                let label = self.window.get_label(*area_index).unwrap();
-                (widget, label)
-            }
-        )
+        self.nodes.iter().map(|node| {
+            let label = self.window.get_label(node.area_index).unwrap();
+            (&node.widget, label)
+        })
     }
 
     /// Returns an [`Iterator`] over the [`ActionableWidget`]s of
@@ -560,16 +573,12 @@ where
     pub(crate) fn actionable_widgets(
         &self
     ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label)> + '_ {
-        self.nodes.iter().filter_map(
-            |Node {
-                 widget, area_index, ..
-             }| {
-                widget.as_actionable().map(|widget| {
-                    let label = self.window.get_label(*area_index).unwrap();
-                    (widget, label)
-                })
-            }
-        )
+        self.nodes.iter().filter_map(|node| {
+            node.widget.as_actionable().map(|widget| {
+                let label = self.window.get_label(node.area_index).unwrap();
+                (widget, label)
+            })
+        })
     }
 
     /// Returns an [`Iterator`] over the file names of open

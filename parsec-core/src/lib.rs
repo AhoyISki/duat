@@ -1,5 +1,6 @@
 #![feature(drain_filter, result_option_inspect, trait_upcasting)]
 
+pub mod commands;
 pub mod data;
 pub mod history;
 pub mod input;
@@ -19,17 +20,14 @@ use std::{
     time::Duration
 };
 
+use commands::{Command, Commands, CommandErr};
 use crossterm::event::{self, Event, KeyEvent};
 use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
 use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Side, Split, Ui};
-use widgets::{
-    command_line::{Command, CommandError, Commands},
-    file_widget::FileWidget,
-    ActionableWidget, Widget
-};
+use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
 pub struct Session<U>
 where
@@ -115,7 +113,7 @@ where
 
             self.session_loop(key_remapper);
 
-			let mut files = std::mem::take(&mut *self.manager.files_to_open.write());
+            let mut files = std::mem::take(&mut *self.manager.files_to_open.write());
             for file in files.drain(..) {
                 self.open_file(file);
             }
@@ -389,10 +387,10 @@ where
         self.switch_to_widget_index(widget_index)
     }
 
-    pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandError> {
+    pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
         let cmd = cmd.to_string();
         let mut commands = self.manager.commands.write();
-        commands.try_parse(cmd)
+        commands.try_exec(cmd)
     }
 }
 

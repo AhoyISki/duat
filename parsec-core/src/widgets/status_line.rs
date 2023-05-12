@@ -140,7 +140,7 @@ where
 /// # fn test_fn<U>(
 /// #     file_fn: impl Fn() -> RoData<FileWidget<U>>,
 /// #     palette_fn: impl Fn() -> FormPalette
-/// # ) -> Box<dyn FnOnce(&Manager<U>, PushSpecs) -> Widget<U>>
+/// # ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>
 /// # where
 /// #     U: Ui
 /// # {
@@ -154,7 +154,7 @@ where
 ///     f_var(|file| file.main_cursor()),
 /// ];
 ///
-/// StatusLine::clippable_fn(file, parts, &palette)
+/// StatusLine::new_fn(file, parts, &palette)
 /// # }
 /// ```
 ///
@@ -181,6 +181,30 @@ where
             file,
             builder,
             readers
+        }
+    }
+
+    pub fn new_fn(
+        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
+    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+        let mut builder = TextBuilder::default();
+        let readers = {
+            let mut readers = Vec::new();
+            file.inspect(|file| {
+                for part in parts.into_iter() {
+                    if let Some(reader) = part.process(&mut builder, &file, &palette) {
+                        readers.push(reader);
+                    }
+                }
+            });
+            readers
+        };
+
+        move |_, _| {
+            Widget::normal(
+                StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
+                Box::new(move || file.has_changed())
+            )
         }
     }
 
@@ -359,7 +383,8 @@ where
 /// #     },
 /// #     Manager
 /// # };
-/// fn status_var_fn<U>(
+/// #
+/// fn status_line_fn<U>(
 ///     manager: &Manager<U>, push_specs: PushSpecs
 /// ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>
 /// where
@@ -401,12 +426,36 @@ where
 /// This text can be colored, by including form names inside braces,
 /// e.g.:
 ///
-/// ```
-/// text("[FileName]My file name[Default]")
+/// ```rust
+/// # use parsec_core::{
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{
+/// #         status_line::{text, f_var},
+/// #         StatusLine, Widget
+/// #     },
+/// #     Manager
+/// # };
+/// #
+/// fn status_line_fn<U>(
+///     manager: &Manager<U>, push_specs: PushSpecs
+/// ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>
+/// where
+///     U: Ui
+/// {
+///     let windows = manager.windows();
+///     let parts = vec![
+///         text("[Default]The file's name is [FileName]"),
+///         f_var(|file| file.name()),
+///         text("[Default]."),
+///     ];
+///
+///     StatusLine::global_fn(parts, &manager.palette)
+/// }
 /// ```
 ///
-/// When printed, this text will apply the `"FileName"` [`Form`],
-/// print "My file name", and then return the [`Form`] to `"Default"`.
+/// When used as a widget, this [`StatusLine<U>`] will print `"The
+/// file's name is "` using the `[Default]` [`Form`], followed by the
+/// file's name, using the `[FileName]` [`Form`].
 ///
 /// [`Form`]: crate::tags::form::Form
 pub fn text<U>(text: impl ToString) -> StatusPart<U>
