@@ -21,7 +21,8 @@ use crate::{
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{PrintInfo, PushSpecs, Ui},
-    Manager};
+    Manager
+};
 
 /// An [`ActionableWidget<U>`] whose primary purpose is to execute
 /// [`Command`]s.

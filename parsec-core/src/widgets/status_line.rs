@@ -6,8 +6,53 @@
 //! a single file, but this is not really the case. The end user may
 //! be able to open multiple files and have just a single
 //! [`StatusLine<U>`] that displays the information of only the
-//! currently active [`FileWidget<U>`]. Given an existing
-//! [`Session<U>`][crate::Session], one can do the following. TODO.
+//! currently active [`FileWidget<U>`]:
+//!
+//! ```rust
+//! # use parsec_core::{
+//! #     tags::form::FormPalette,
+//! #     text::PrintCfg,
+//! #     ui::{ModNode, PushSpecs, Side, Split, Ui},
+//! #     widgets::StatusLine,
+//! #     Session
+//! # };
+//! #
+//! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
+//! # where
+//! #     U: Ui
+//! # {
+//! let constructor_hook = move |mod_node: ModNode<U>, file| {
+//!     let commands = mod_node.manager().commands();
+//!     commands.write().try_exec("lol");
+//!
+//!     let specs =
+//!         PushSpecs::new(Side::Bottom, Split::Locked(1));
+//!     mod_node.push_widget(StatusLine::default_fn(file), specs);
+//! };
+//!
+//! let mut session = Session::new(ui, print_cfg, palette, constructor_hook);
+//! let specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
+//! session.push_widget_to_edge(StatusLine::default_global_fn(), specs);
+//! # }
+//! ```
+//!
+//! In the example above, every time a [`FileWidget<U>`] is opened
+//! with a new file, a [`StatusLine<U>`] will be pushed below it, as
+//! seen in the `constructor_hook`. This [`StatusLine<U>`] will show
+//! information about that specific [`FileWidget<U>`].
+//!
+//! Also in the example above, you can see that a second
+//! [`StatusLine<U>`] is pushed to the [`Bottom`][crate::Side::Bottom]
+//! edge. This widget will be placed below all others, and the
+//! [`default_global_fn()`][StatusLine::default_global_fn()] means
+//! that it is global, and instead of pointing to a specific
+//! [`FileWidget<U>`], it will change to always point at the currently
+//! active one.
+//!
+//! In a real life situation, you would choose only one of these
+//! aproaches, as having two [`StatusLine<U>`]s showing the same
+//! information at the same time is quite redundant. But this is a
+//! good showing for the flexibility of this widget.
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
     data::{DownCastableData, RoData, RoNestedData},

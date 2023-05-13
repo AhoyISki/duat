@@ -664,8 +664,8 @@ pub fn split_flags<'a>(
                 if !blob.contains(char) {
                     blob.push(char)
                 }
-                args.next();
             }
+            args.next();
         } else {
             break;
         }

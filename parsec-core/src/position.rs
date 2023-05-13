@@ -337,7 +337,6 @@ where
         cursor: &'a mut Cursor, text: &'a mut Text<U>, edit_accum: &'a mut EditAccum,
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
-        log_info!("\npos: {}, chars: {:?}", cursor.caret, edit_accum.chars);
         cursor.calibrate_on_accum(edit_accum, text.inner());
         Self {
             cursor,
