@@ -504,7 +504,7 @@ impl Command {
 pub struct Commands {
     list: Vec<(Command, Option<usize>)>,
     aliases: RwData<HashMap<String, String>>,
-    pub(crate) context: Option<usize>
+    pub(crate) file_id: Option<usize>
 }
 
 impl Commands {
@@ -517,7 +517,7 @@ impl Commands {
         let commands = RwData::new(Commands {
             list: Vec::new(),
             aliases: RwData::new(HashMap::new()),
-            context: None
+            file_id: None
         });
 
         let commands_clone = commands.clone();
@@ -556,8 +556,8 @@ impl Commands {
 
         let (flags, mut args) = split_flags(command);
 
-        for (cmd, context) in &self.list {
-            if context.is_none() || *context == self.context {
+        for (cmd, file_id) in &self.list {
+            if file_id.is_none() || *file_id == self.file_id {
                 let result = cmd.try_exec(caller, &flags, &mut args);
                 let Err(CommandErr::NotFound(_)) = result else {
                     return result;
@@ -576,16 +576,16 @@ impl Commands {
         let mut new_callers = command.callers().iter();
 
         let commands = self.list.iter();
-        for (caller, context) in commands
-            .map(|(cmd, context)| cmd.callers().iter().map(|caller| (caller, *context)))
+        for (caller, file_id) in commands
+            .map(|(cmd, file_id)| cmd.callers().iter().map(|caller| (caller, *file_id)))
             .flatten()
         {
-            if new_callers.any(|new_caller| new_caller == caller) && context == self.context {
+            if new_callers.any(|new_caller| new_caller == caller) && file_id == self.file_id {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
             }
         }
 
-        self.list.push((command, self.context));
+        self.list.push((command, self.file_id));
 
         Ok(())
     }

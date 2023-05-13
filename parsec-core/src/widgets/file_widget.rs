@@ -19,11 +19,7 @@
 //! method. This method is notably used by the
 //! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{
-    cmp::min,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{ cmp::min, fs, path::PathBuf};
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -31,7 +27,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
-    text::{reader::Observer, PrintCfg, Text},
+    text::{PrintCfg, Text},
     ui::{Area, Label, PrintInfo, Ui}
 };
 
@@ -40,14 +36,12 @@ pub struct FileWidget<U>
 where
     U: Ui + 'static
 {
-    pub(crate) _side_widgets: Option<(usize, Vec<usize>)>,
-    name: String,
+    path: Option<PathBuf>,
     text: Text<U>,
     print_info: U::PrintInfo,
     main_cursor: usize,
     cursors: Vec<Cursor>,
     history: History<U>,
-    readers: Vec<Box<dyn Observer<U>>>,
     printed_lines: Vec<(usize, bool)>,
     print_cfg: PrintCfg
 }
@@ -61,12 +55,15 @@ where
         // TODO: Allow the creation of a new file.
         let file_contents = path
             .as_ref()
-            .map(|path| fs::read_to_string(path).expect("Failed to read the file."))
+            .map(|path| {
+                fs::read_to_string(path).map_err(|err| panic!("{}", err.to_string())).unwrap()
+            })
             .unwrap_or(String::from(""));
 
-        let name = path
-            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
-            .unwrap_or(String::from("scratch_file"));
+        let path = path.map(|path| {
+            let file_name = path.file_name().expect("Invalid path.");
+            std::env::current_dir().unwrap().with_file_name(file_name)
+        });
 
         let mut text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
@@ -84,14 +81,12 @@ where
 
         Widget::actionable(
             FileWidget {
-                _side_widgets: None,
-                name: ["parsec-file: ", name.as_str()].join(""),
+                path,
                 text,
                 print_info: U::PrintInfo::default(),
                 main_cursor: 0,
                 cursors: vec![cursor],
                 history: History::new(),
-                readers: Vec::new(),
                 printed_lines: Vec::new(),
                 print_cfg
             },
@@ -217,14 +212,19 @@ where
 
     /// The file's name.
     pub fn name(&self) -> String {
-        String::from(&self.name[13..])
+        self.path
+            .as_ref()
+            .map(|path| path.file_name().map(|file| file.to_string_lossy().to_string()))
+            .flatten()
+            .unwrap_or(String::from("scratch file"))
     }
 
     /// The full path of the file.
     pub fn full_path(&self) -> String {
-        let mut path = std::env::current_dir().unwrap();
-        path.push(Path::new(self.name().as_str()));
-        path.to_string_lossy().to_string()
+        self.path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or(String::from("scratch file"))
     }
 
     /// The number of [`char`]s in the file.
@@ -235,11 +235,6 @@ where
     /// The number of lines in the file.
     pub fn len_lines(&self) -> usize {
         self.text.inner().len_lines()
-    }
-
-    /// Adds a new [`Observer`] to [`self`].
-    pub fn add_observer(&mut self, reader: Box<dyn Observer<U>>) {
-        self.readers.push(reader);
     }
 }
 

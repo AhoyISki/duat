@@ -261,7 +261,7 @@ impl ui::Area for Area {
         });
 
         if resizable_len < split.len() {
-            self.request_len(resizable_len.max(split.len()), side).unwrap();
+            self.request_len(split.len(), side).unwrap();
         }
 
         let mut window = self.window.write();

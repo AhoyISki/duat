@@ -51,11 +51,11 @@ where
         let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
         let file = FileWidget::<U>::new(file, print_cfg.clone());
 
-        let window = ParsecWindow::new(&mut ui, file, Some(0));
+        let window = ParsecWindow::new(&mut ui, file);
         let mut manager = Manager::new(window, 0, 0, palette);
-        manager.commands.write().context = Some(0);
+        manager.commands.write().file_id = Some(0);
         activate_hook(&mut manager, 0, &mut constructor_hook);
-        manager.commands.write().context = None;
+        manager.commands.write().file_id = None;
 
         let mut session = Session {
             ui,
@@ -81,23 +81,13 @@ where
             side: Side::Right,
             split: Split::Min(40)
         };
-        let context = self.manager.windows.inspect(|windows| {
-            Some(windows.iter().map(|window| window.file_names().count()).sum::<usize>())
-        });
 
         let (new_area, _) = self.manager.windows.mutate(|windows| {
             let active_window = &mut windows[self.manager.active_window];
-            active_window.push_file(file_widget, push_specs, context)
-        });
-
-        let context = self.manager.commands.mutate(|commands| {
-            let old_context = commands.context;
-            commands.context = context;
-            old_context
+            active_window.push_file(file_widget, push_specs)
         });
 
         activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);
-        self.manager.commands.write().context = context;
     }
 
     pub fn push_widget_to_edge(
@@ -353,12 +343,12 @@ where
     where
         Aw: ActionableWidget<U>
     {
-        let cur_context = self.manager.commands.read().context;
+        let cur_file_id = self.manager.commands.read().file_id;
         let index = self
             .window
             .actionable_widgets()
-            .position(|(widget, _, context)| {
-                widget.data_is::<Aw>() && (context.is_none() || context == cur_context)
+            .position(|(widget, _, file_id)| {
+                widget.data_is::<Aw>() && (cur_file_id.is_none() || cur_file_id == file_id)
             })
             .ok_or(())?;
 
@@ -366,16 +356,15 @@ where
     }
 
     fn switch_to_widget_index(&mut self, index: usize) -> Result<(), ()> {
-        let (widget, label, context) = self.window.actionable_widgets().nth(index).ok_or(())?;
+        let (widget, label, file_id) = self.window.actionable_widgets().nth(index).ok_or(())?;
         widget.write().on_focus(&label);
         if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
             *self.manager.active_file.write() = RoData::from(&file);
         }
 
-        self.manager.commands.write().context = context;
+        self.manager.commands.write().file_id = file_id;
 
         let active_index = self.manager.active_widget.load(Ordering::Acquire);
-		log_info!("\nactive: {active_index}, switch: {index}");
         let (widget, label, _) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
         widget.write().on_unfocus(&label);
 

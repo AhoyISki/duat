@@ -271,6 +271,29 @@ where
         }
     }
 
+    /// Raw inspection of the inner [`NormalWidget<U>`], assuming it is `Nw`.
+    ///
+    /// This method should only be used in very specific
+    /// circumstances, such as when multiple owners have nested
+    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
+    /// a way that reading from one point would interfere in the
+    /// update detection of the other point.
+    pub(crate) fn raw_inspect_as<B, Nw>(&self, f: impl FnOnce(&Nw) -> B) -> Option<B>
+    where
+        Nw: NormalWidget<U>
+    {
+        match &self.inner {
+            InnerWidget::Normal(widget) => {
+                let widget = widget.raw_read();
+                widget.as_any().downcast_ref::<Nw>().map(|widget| f(&*widget))
+            }
+            InnerWidget::Actionable(widget) => {
+                let widget = widget.raw_read();
+                widget.as_any().downcast_ref::<Nw>().map(|widget| f(&*widget))
+            }
+        }
+    }
+
     pub(crate) fn as_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
         match &self.inner {
             InnerWidget::Normal(_) => None,

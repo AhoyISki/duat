@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    sync::atomic::AtomicUsize
+};
 
 use crate::{
     data::{RoData, RwData},
@@ -8,6 +11,12 @@ use crate::{
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
     Manager
 };
+
+fn unique_file_id() -> usize {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
 
 /// A representation of part of Parsec's window.
 ///
@@ -146,7 +155,7 @@ where
 {
     widget: Widget<U>,
     index: usize,
-    context: Option<usize>
+    file_id: Option<usize>
 }
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -239,7 +248,7 @@ where
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        let context = self.manager.commands.read().context;
+        let context = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
             window.push_widget(self.mod_area, widget, push_specs, context)
@@ -277,7 +286,7 @@ where
         push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, push_specs);
-        let context = self.manager.commands.read().context;
+        let context = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
             window.push_widget(index, widget, push_specs, context)
@@ -311,26 +320,25 @@ pub(crate) fn activate_hook<U, Nw>(
     U: Ui,
     Nw: NormalWidget<U>
 {
-    let widget = manager.windows.inspect(|windows| {
+    let (widget, file_id) = manager.windows.inspect(|windows| {
         let window = &windows[manager.active_window];
 
-        let node = window
-            .nodes
-            .iter()
-            .find(
-                |Node {
-                     index: area_index, ..
-                 }| *area_index == mod_area
-            )
-            .unwrap();
+        let node = window.nodes.iter().find(|Node { index, .. }| *index == mod_area).unwrap();
 
-        node.widget.try_downcast::<Nw>().unwrap_or_else(|| {
+        let widget = node.widget.try_downcast::<Nw>().unwrap_or_else(|| {
             panic!("The widget in question is not of type {}", std::any::type_name::<Nw>())
-        })
-    });
-    let mod_node = ModNode { manager, mod_area };
+        });
 
-    (constructor_hook)(mod_node, widget)
+        (widget, node.file_id)
+    });
+    let old_file_id = file_id
+        .map(|file_id| manager.commands.write().file_id.replace(file_id))
+        .flatten();
+
+    let mod_node = ModNode { manager, mod_area };
+    (constructor_hook)(mod_node, widget);
+
+    manager.commands.write().file_id = old_file_id;
 }
 
 /// How an [`Area`] is pushed onto another.
@@ -513,14 +521,14 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new(ui: &mut U, widget: Widget<U>, context: Option<usize>) -> Self {
+    pub fn new(ui: &mut U, widget: Widget<U>) -> Self {
         let (window, mut initial_label) = ui.new_window();
         widget.update(&mut initial_label);
 
         let main_node = Node {
             widget,
             index: initial_label.area_index(),
-            context
+            file_id: Some(unique_file_id())
         };
         let parsec_window = ParsecWindow {
             window,
@@ -533,20 +541,22 @@ where
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     fn push_widget(
-        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
+        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, file_id: Option<usize>
     ) -> (usize, Option<usize>) {
-        self.inner_push_widget(index, widget, push_specs, context)
+        self.inner_push_widget(index, widget, push_specs, file_id)
     }
 
     fn inner_push_widget(
-        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
+        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, file_id: Option<usize>
     ) -> (usize, Option<usize>) {
         let is_file = widget.raw_inspect(|widget| widget.as_any().is::<FileWidget<U>>());
         let mut area = self.window.get_area(index).unwrap();
-        let (new_area, pushed_area) = area.bisect(push_specs, context.is_some() && !is_file);
+        // If a `Widget` is associated with a file, it must be glued to it.
+        let is_glued = file_id.is_some() && !is_file;
+        let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
 
         if let Some(pushed_area) = pushed_area {
-            if self.files_parent == index && context.is_none() {
+            if self.files_parent == index && file_id.is_none() {
                 self.files_parent = pushed_area;
             }
             self.nodes
@@ -558,7 +568,7 @@ where
         let node = Node {
             widget,
             index: new_area,
-            context
+            file_id
         };
         self.nodes.push(node);
         (new_area, pushed_area)
@@ -572,11 +582,12 @@ where
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
-        &mut self, widget: Widget<U>, push_specs: PushSpecs, context: Option<usize>
+        &mut self, widget: Widget<U>, push_specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let index = self.files_parent;
+        let file_id = unique_file_id();
 
-        let (file_area, new_parent) = self.push_widget(index, widget, push_specs, context);
+        let (file_area, new_parent) = self.push_widget(index, widget, push_specs, Some(file_id));
         if let Some(new_parent) = new_parent {
             self.files_parent = new_parent;
         }
@@ -596,7 +607,7 @@ where
     pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, Option<usize>)> + '_ {
         self.nodes.iter().map(|node| {
             let label = self.window.get_label(node.index).unwrap();
-            (&node.widget, label, node.context)
+            (&node.widget, label, node.file_id)
         })
     }
 
@@ -609,7 +620,7 @@ where
         self.nodes.iter().filter_map(|node| {
             node.widget.as_actionable().map(|widget| {
                 let label = self.window.get_label(node.index).unwrap();
-                (widget, label, node.context)
+                (widget, label, node.file_id)
             })
         })
     }

@@ -4,7 +4,7 @@ use crate::{
     history::{Change, History},
     text::{inner::InnerText, PrintCfg, Text},
     ui::{Label, Ui},
-    widgets::EditAccum, log_info
+    widgets::EditAccum
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
