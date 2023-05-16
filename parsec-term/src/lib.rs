@@ -5,20 +5,21 @@ use std::{
     io,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+        Arc
+    }
 };
 
 use area::Coord;
 use crossterm::{
     cursor, execute,
-    terminal::{self, ClearType},
+    terminal::{self, ClearType}
 };
 
 use label::PrintInfo;
 use parsec_core::{
     data::RwData,
-    ui::{self, Area as UiArea, Axis, Side, Split},
+    log_info,
+    ui::{self, Area as UiArea, Axis, Side, Split}
 };
 
 mod area;
@@ -68,16 +69,17 @@ fn scale_children(children: &[(Node, Split)], len_diff: i16, axis: Axis) -> Vec<
     lens
 }
 
+#[derive(Debug)]
 pub enum Anchor {
     TopLeft,
     TopRight,
     BottomLeft,
-    BottomRight,
+    BottomRight
 }
 
 pub struct Node {
     area: Area,
-    lineage: Option<(Vec<(Node, Split)>, Axis)>,
+    lineage: Option<(Vec<(Node, Split)>, Axis)>
 }
 
 impl Node {
@@ -317,7 +319,7 @@ impl Node {
 
         let self_index = match side {
             Side::Bottom | Side::Right => child_index + 1,
-            Side::Top | Side::Left => child_index,
+            Side::Top | Side::Left => child_index
         };
 
         let area = Area::new(coords, node_index, self.area.window.clone());
@@ -361,28 +363,37 @@ impl Debug for Node {
 fn normalize_to_coords(children: &[(Node, Split)], lens: Vec<u16>, parent: Coords, axis: Axis) {
     let mut last_tl = parent.tl;
     let mut new_lens = lens.iter();
+    // let locked_len = children.iter().filter_map(|(_, split)|
+    // split.as_locked()).sum::<usize>(); let resizable_len =
+    // parent.len(axis) - locked_len;
+
+    log_info!("\n\nnormalizing to {} on {parent}\n", parent.len(axis));
 
     for (node, split) in children.iter() {
-        let mut coords = node.area.coords.write();
+        log_info!("\nsplit: {:?}", split);
+
         let len = if let Split::Locked(len) = split {
             *len as u16
         } else {
             *new_lens.next().unwrap()
         };
 
-        let old_len = coords.len(axis);
-        let perp_old_len = coords.len(axis.perp()) as i16;
-        coords.tl = last_tl;
-        coords.br = match axis {
-            Axis::Horizontal => Coord::new(last_tl.x + len, parent.br.y),
-            Axis::Vertical => Coord::new(parent.br.x, last_tl.y + len),
-        };
+        let (old_len, perp_len_diff) = node.area.coords.mutate(|coords| {
+            let old_len = coords.len(axis);
+            let perp_old_len = coords.len(axis.perp()) as i16;
+            coords.tl = last_tl;
+            coords.br = match axis {
+                Axis::Horizontal => Coord::new(last_tl.x + len, parent.br.y),
+                Axis::Vertical => Coord::new(parent.br.x, last_tl.y + len)
+            };
 
-        last_tl = coords.ortho_corner(axis);
+            log_info!(", coords: {coords}");
 
-        let perp_len_diff = coords.len(axis.perp()) as i16 - perp_old_len;
+            last_tl = coords.ortho_corner(axis);
 
-        drop(coords);
+            let perp_len_diff = coords.len(axis.perp()) as i16 - perp_old_len;
+            (old_len, perp_len_diff)
+        });
         node.normalize_children(len as i16 - old_len as i16, axis, perp_len_diff);
     }
 }
@@ -396,17 +407,18 @@ fn resizable_len_of(children: &[(Node, Split)], axis: Axis) -> u16 {
             let coords = node.area.coords();
             match *split {
                 Split::Min(len) => (coords.len(axis).saturating_sub(len)) as u16,
-                Split::Locked(_) => 0,
+                Split::Locked(_) => 0
             }
         })
         .sum::<u16>()
 }
 
+#[derive(Debug)]
 struct InnerWindow {
     main_node: Option<Node>,
     floating_nodes: Vec<(Node, Anchor)>,
     next_index: Arc<AtomicUsize>,
-    cur_state: AtomicUsize,
+    cur_state: AtomicUsize
 }
 
 impl InnerWindow {
@@ -465,12 +477,12 @@ pub struct Window {
 }
 
 impl Clone for Window {
-fn clone(&self) -> Self {
-    Window {
-        inner: self.inner.clone(),
-        read_state: AtomicUsize::new(self.inner.read().cur_state.load(Ordering::Relaxed))
+    fn clone(&self) -> Self {
+        Window {
+            inner: self.inner.clone(),
+            read_state: AtomicUsize::new(self.inner.read().cur_state.load(Ordering::Relaxed))
+        }
     }
-}
 }
 
 impl ui::Window for Window {
@@ -499,14 +511,14 @@ impl ui::Window for Window {
 
 pub struct Ui {
     windows: Vec<Window>,
-    next_index: Arc<AtomicUsize>,
+    next_index: Arc<AtomicUsize>
 }
 
 impl Default for Ui {
     fn default() -> Self {
         Ui {
             windows: Vec::new(),
-            next_index: Arc::new(AtomicUsize::new(0)),
+            next_index: Arc::new(AtomicUsize::new(0))
         }
     }
 }

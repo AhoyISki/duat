@@ -89,9 +89,6 @@ fn main() {
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
         mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
 
-        let specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-        mod_node.push_widget(StatusLine::default_fn(file), specs);
-        mod_node.push_widget(CommandLine::default_fn(), specs);
     });
 
     // that takes the input, remaps it, and sends it to the `Editor`.

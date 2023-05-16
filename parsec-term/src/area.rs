@@ -5,6 +5,7 @@ use std::{
 
 use crossterm::terminal;
 use parsec_core::{
+    log_info,
     data::RwData,
     ui::{self, Area as UiArea, Axis, PushSpecs, Side, Split}
 };
@@ -269,7 +270,7 @@ impl ui::Area for Area {
 
         let node = window.find_mut_node(self.index).unwrap();
 
-        if let Some((children, _)) = node.lineage.as_ref().filter(|(_, other)| *other == axis) {
+        let ret = if let Some((children, _)) = node.lineage.as_ref().filter(|(_, other)| *other == axis) {
             let self_index = match side {
                 Side::Bottom | Side::Right => children.len() - 1,
                 Side::Top | Side::Left => 0
@@ -305,7 +306,11 @@ impl ui::Area for Area {
             swapped_parent.insert_new_area(0, split, side, new_child_index);
 
             (new_child_index, Some(new_area_index))
-        }
+        };
+
+        log_info!("window: {:#?}", window);
+
+        ret
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {

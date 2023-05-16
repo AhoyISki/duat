@@ -256,11 +256,7 @@ where
 
         let window = &self.manager.windows.read()[self.manager.active_window];
         let label = window.window.get_label(new_area).unwrap();
-        let node = window.nodes.iter().find(
-            |Node {
-                 index: area_index, ..
-             }| *area_index == new_area
-        );
+        let node = window.nodes.iter().find(|Node { index, .. }| *index == new_area);
         node.map(|Node { widget, .. }| widget).unwrap().update(&label);
 
         (new_area, pushed_area)
@@ -296,8 +292,8 @@ where
         let label = window.window.get_label(new_area).unwrap();
         let node = window.nodes.iter().find(
             |Node {
-                 index: area_index, ..
-             }| *area_index == new_area
+                 index, ..
+             }| *index == new_area
         );
         node.map(|Node { widget, .. }| widget).unwrap().update(&label);
 
@@ -352,7 +348,7 @@ impl Debug for Split {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
-            Split::Min(len) => f.write_fmt(format_args!("Locked({})", len))
+            Split::Min(len) => f.write_fmt(format_args!("Min({})", len))
         }
     }
 }
@@ -368,6 +364,22 @@ impl Split {
     pub fn len(&self) -> usize {
         match self {
             Split::Locked(len) | Split::Min(len) => *len
+        }
+    }
+
+    pub fn as_locked(&self) -> Option<&usize> {
+        if let Self::Locked(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_min(&self) -> Option<&usize> {
+        if let Self::Min(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 }
