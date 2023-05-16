@@ -290,11 +290,7 @@ where
 
         let window = &self.manager.windows.read()[self.manager.active_window];
         let label = window.window.get_label(new_area).unwrap();
-        let node = window.nodes.iter().find(
-            |Node {
-                 index, ..
-             }| *index == new_area
-        );
+        let node = window.nodes.iter().find(|Node { index, .. }| *index == new_area);
         node.map(|Node { widget, .. }| widget).unwrap().update(&label);
 
         (new_area, pushed_area)
