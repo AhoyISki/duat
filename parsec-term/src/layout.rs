@@ -13,6 +13,7 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
+    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -60,7 +61,7 @@ impl VarPoint {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Rect {
     index: usize,
     tl: VarPoint,
@@ -70,16 +71,16 @@ pub struct Rect {
     pub children: Option<(Vec<RwData<Rect>>, Axis)>
 }
 
-impl std::fmt::Debug for Rect {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Rect")
-            .field("index", &self.index)
-            .field("x", &self.tl)
-            .field("y", &self.br)
-            .field("children", &self.children)
-            .finish()
-    }
-}
+// impl std::fmt::Debug for Rect {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
+// std::fmt::Result {        f.debug_struct("Rect")
+//            .field("index", &self.index)
+//            .field("x", &self.tl)
+//            .field("y", &self.br)
+//            .field("children", &self.children)
+//            .finish()
+//    }
+//}
 
 impl Rect {
     fn new(
@@ -119,9 +120,6 @@ impl Rect {
         for constraint in self.constraints.drain(..) {
             solver.remove_constraint(&constraint).unwrap();
         }
-        if let Some(constraint) = &self.len_constraint {
-            solver.remove_constraint(constraint).unwrap();
-        }
     }
 
     fn set_base_vars(&mut self, parent: &Rect, axis: Axis) {
@@ -147,6 +145,9 @@ impl Rect {
 
     fn add_constraints(&self, solver: &mut Solver) {
         solver.add_constraints(&self.constraints).unwrap();
+    }
+
+    fn add_len_constraint(&self, solver: &mut Solver) {
         if let Some(constraint) = &self.len_constraint {
             solver.add_constraint(constraint.clone()).unwrap();
         }
@@ -259,7 +260,7 @@ impl Layout {
             .find_map(|rect| fetch_parent(rect, index))
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         self.main.inspect(|main| {
             let width = main.br.x_var;
             let height = main.br.y_var;
@@ -278,6 +279,8 @@ impl Layout {
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
         }
+
+        // log_info!("\n{:#?}", self);
     }
 
     pub fn bisect(
@@ -334,53 +337,57 @@ impl Layout {
             (area, index, new_parent_index)
         };
 
-        let mut parent = parent.write();
-        let (children, _) = parent.children.as_ref().unwrap();
+        let new_index = parent.mutate(|parent| {
+            let new = Rect::new(&mut self.vars, Some((&parent, specs.constraint)));
+            new.add_len_constraint(&mut self.solver);
+            let new_index = new.index;
 
-        let mut new = Rect::new(&mut self.vars, Some((&parent, specs.constraint)));
-        let new_index = new.index;
-        new.set_base_vars(&parent, axis);
+            let len = parent
+                .children
+                .as_mut()
+                .map(|(children, _)| {
+                    children.insert(index, RwData::new(new));
+                    children.len()
+                })
+                .unwrap();
 
-        // Previous children carry the `Constraint`s for the `start` of their
-        // successors.
-        if index > 0 {
-            let mut prev = children.get(index - 1).unwrap().write();
-
-            prev.clear_constraints(&mut self.solver);
-            prev.set_base_vars(&parent, axis);
-
-            let constraint = prev.end(axis) | EQ(REQUIRED) | new.start(axis);
-            prev.constraints.push(constraint);
-
-            if index - 1 == 0 {
-                let constraint = prev.start(axis) | EQ(REQUIRED) | parent.start(axis);
-                prev.constraints.push(constraint);
+            if index < len - 1 {
+                set_child_vars(&parent, index + 1, &mut self.solver);
             }
+            if index > 0 {
+                set_child_vars(&parent, index - 1, &mut self.solver);
+            }
+            set_child_vars(&parent, index, &mut self.solver);
 
-            prev.add_constraints(&mut self.solver);
-        } else {
-            let constraint = new.start(axis) | EQ(REQUIRED) | parent.start(axis);
-            new.constraints.push(constraint);
-        }
-
-        if let Some(next) = children.get(index) {
-            let constraint = new.end(axis) | EQ(REQUIRED) | next.read().start(axis);
-            new.constraints.push(constraint);
-        } else {
-            let constraint = new.end(axis) | EQ(REQUIRED) | parent.end(axis);
-            new.constraints.push(constraint);
-        }
-
-        new.add_constraints(&mut self.solver);
-
-        let (children, _) = parent.children.as_mut().unwrap();
-        children.insert(index, RwData::new(new));
-        drop(parent);
+            new_index
+        });
 
         self.update();
 
         (new_index, new_parent_index)
     }
+}
+
+fn set_child_vars(parent: &Rect, index: usize, solver: &mut Solver) {
+    let (children, axis) = parent.children.as_ref().unwrap();
+    let mut child = children[index].write();
+    child.clear_constraints(solver);
+    child.set_base_vars(parent, *axis);
+
+    // Previous children carry the `Constraint`s for the `start` of their
+    // successors.
+    if index == 0 {
+        let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis);
+        child.constraints.push(constraint);
+    }
+
+    let constraint = if let Some(next) = children.get(index + 1) {
+        child.end(*axis) | EQ(REQUIRED) | next.read().start(*axis)
+    } else {
+        child.end(*axis) | EQ(REQUIRED) | parent.end(*axis)
+    };
+    child.constraints.push(constraint);
+    child.add_constraints(solver);
 }
 
 fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {

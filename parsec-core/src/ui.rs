@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::atomic::AtomicUsize};
+use std::{fmt::Debug, sync::atomic::{AtomicUsize, Ordering}};
 
 use crate::{
     data::{RoData, RwData},
@@ -226,7 +226,7 @@ where
     U: Ui
 {
     manager: &'a mut Manager<U>,
-    mod_area: usize
+    mod_area: AtomicUsize
 }
 
 impl<'a, U> ModNode<'a, U>
@@ -282,17 +282,21 @@ where
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, specs);
         let context = self.manager.commands.read().file_id;
-        let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
+        let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(self.mod_area, widget, specs, context)
+            window.push_widget(self.mod_area.load(Ordering::Relaxed), widget, specs, context)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
-        let mut area = window.window.get_area(new_area).unwrap();
-        let node = window.nodes.iter().find(|Node { index, .. }| *index == new_area);
+        let mut area = window.window.get_area(new_child).unwrap();
+        let node = window.nodes.iter().find(|Node { index, .. }| *index == new_child);
         node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
 
-        (new_area, pushed_area)
+        if let Some(new_parent) = new_parent {
+            self.mod_area.store(new_parent, Ordering::Relaxed);
+        }
+
+        (new_child, new_parent)
     }
 
     /// Pushes a [`Widget<U>`] to a specific `area`, given
@@ -360,7 +364,7 @@ pub(crate) fn activate_hook<U, Nw>(
         .map(|file_id| manager.commands.write().file_id.replace(file_id))
         .flatten();
 
-    let mod_node = ModNode { manager, mod_area };
+    let mod_node = ModNode { manager, mod_area: AtomicUsize::from(mod_area) };
     (constructor_hook)(mod_node, widget);
 
     manager.commands.write().file_id = old_file_id;

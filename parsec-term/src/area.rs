@@ -170,11 +170,15 @@ impl ui::Area for Area {
         let child = &parent.children.as_ref().unwrap().0[index];
         let mut child = child.write();
         let constraint = gen_constraint(constraint, &child, &parent);
+
+        if let Some(constraint) = &child.len_constraint {
+            layout.solver.remove_constraint(&constraint).unwrap();
+        }
+
         layout.solver.add_constraint(constraint.clone()).unwrap();
-        child
-            .len_constraint
-            .replace(constraint)
-            .map(|constraint| layout.solver.remove_constraint(&constraint));
+        child.len_constraint = Some(constraint);
+
+        layout.update();
 
         Ok(())
     }
