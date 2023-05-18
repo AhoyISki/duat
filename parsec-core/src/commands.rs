@@ -126,10 +126,13 @@
 //! [`CommandLine<U>`][crate::widgets::CommandLine] access to the
 //! [`Commands`] struct, allowing it to take user input to run.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock}
-};
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::RwLock;
+
+use std::{collections::HashMap, sync::Arc};
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::RwLock;
 
 use crate::data::RwData;
 

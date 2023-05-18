@@ -129,7 +129,7 @@ where
         &mut self,
         key: KeyEvent,
         widget: &RwData<A>,
-        label: &U::Label,
+        area: &U::Area,
         mut controls: Controls<U>,
     ) where
         U: Ui + 'static,
@@ -173,12 +173,12 @@ where
         }
 
         for key in keys_to_send {
-            let widget_actor = WidgetActor::new(widget, label);
+            let widget_actor = WidgetActor::new(widget, area);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 
         if should_check_new.is_empty() {
-            let widget_actor = WidgetActor::new(widget, label);
+            let widget_actor = WidgetActor::new(widget, area);
             self.input_scheme.process_key(&key, widget_actor, &mut controls);
         }
 

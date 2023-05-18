@@ -3,7 +3,7 @@ use std::{cmp::min, fmt::Display, ops::Range};
 use crate::{
     history::{Change, History},
     text::{inner::InnerText, PrintCfg, Text},
-    ui::{Label, Ui},
+    ui::{Area, Ui},
     widgets::EditAccum
 };
 
@@ -117,7 +117,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg) -> Cursor
+    pub fn new<U>(pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg) -> Cursor
     where
         U: Ui
     {
@@ -127,13 +127,13 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: label.get_width(line.take(pos.true_col()), cfg, usize::MAX, true)
+            desired_x: area.get_width(line.take(pos.true_col()), cfg, usize::MAX, true)
         }
     }
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver<U>(
-        &mut self, count: isize, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
+        &mut self, count: isize, text: &Text<U>, area: &U::Area, cfg: &PrintCfg
     ) where
         U: Ui
     {
@@ -145,7 +145,7 @@ impl Cursor {
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        caret.col = label.col_at_dist(line, self.desired_x, cfg);
+        caret.col = area.col_at_dist(line, self.desired_x, cfg);
 
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
@@ -153,7 +153,7 @@ impl Cursor {
 
     /// Internal horizontal movement function.
     pub(crate) fn move_hor<U>(
-        &mut self, count: isize, text: &Text<U>, label: &U::Label, cfg: &PrintCfg
+        &mut self, count: isize, text: &Text<U>, area: &U::Area, cfg: &PrintCfg
     ) where
         U: Ui
     {
@@ -166,12 +166,12 @@ impl Cursor {
         caret.col = caret.char - line_char;
 
         self.desired_x =
-            label.get_width(text.iter_range(line_char..=caret.char), cfg, usize::MAX, true);
+            area.get_width(text.iter_range(line_char..=caret.char), cfg, usize::MAX, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `line` of th [Pos] are correct.
-    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text<U>, label: &U::Label, cfg: &PrintCfg)
+    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui
     {
@@ -184,7 +184,7 @@ impl Cursor {
         caret.byte = text.char_to_byte(caret.char);
 
         self.desired_x =
-            label.get_width(text.iter_range(line_char..caret.char), cfg, usize::MAX, true);
+            area.get_width(text.iter_range(line_char..caret.char), cfg, usize::MAX, true);
 
         self.anchor = None;
     }
@@ -406,7 +406,7 @@ where
 {
     cursor: &'a mut Cursor,
     text: &'a Text<U>,
-    label: &'a U::Label,
+    area: &'a U::Area,
     print_cfg: PrintCfg
 }
 
@@ -416,12 +416,12 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut Cursor, text: &'a Text<U>, label: &'a U::Label, print_cfg: PrintCfg
+        cursor: &'a mut Cursor, text: &'a Text<U>, area: &'a U::Area, print_cfg: PrintCfg
     ) -> Self {
         Self {
             cursor,
             text,
-            label,
+            area,
             print_cfg
         }
     }
@@ -431,13 +431,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver::<U>(count, &self.text, self.label, &self.print_cfg);
+        self.cursor.move_ver::<U>(count, &self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor::<U>(count, &self.text, self.label, &self.print_cfg);
+        self.cursor.move_hor::<U>(count, &self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -446,7 +446,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to::<U>(caret, &self.text, self.label, &self.print_cfg);
+        self.cursor.move_to::<U>(caret, &self.text, self.area, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

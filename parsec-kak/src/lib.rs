@@ -4,9 +4,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use parsec_core::{
     data::{RoData, RwData},
     input::InputScheme,
-    ui::{Side, Ui},
-    widgets::{ActionableWidget, WidgetActor, CommandLine},
-    Controls,
+    ui::Ui,
+    widgets::{ActionableWidget, CommandLine, WidgetActor},
+    Controls
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -29,6 +29,13 @@ impl Display for Mode {
             Mode::Command => f.write_fmt(format_args!("command"))
         }
     }
+}
+
+enum Side {
+    Left,
+    Right,
+    Top,
+    Bottom
 }
 
 #[derive(Default)]

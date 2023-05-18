@@ -1,7 +1,4 @@
-use std::{
-    fmt::{Debug, Display},
-    sync::atomic::AtomicUsize
-};
+use std::{fmt::Debug, sync::atomic::AtomicUsize};
 
 use crate::{
     data::{RoData, RwData},
@@ -18,70 +15,102 @@ fn unique_file_id() -> usize {
     COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
-/// A representation of part of Parsec's window.
+/// A direction, where a [`Widget<U>`] will be placed in relation to
+/// another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Above,
+    Right,
+    Below,
+    Left
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Constraint {
+    Ratio(u16, u16),
+    Percent(u16),
+    Length(f64),
+    Min(f64),
+    Max(f64)
+}
+
+/// Information on how a [`Widget<U>`] should be pushed onto another.
 ///
-/// This is an abstract region of space that can be a [`Label`], which
-/// may print [`Text<U>`], or it may contain other `Area`s, which may
-/// be [`Label`]s themselves.
-pub trait Area {
-    /// Gets the width of the area.
-    fn width(&self) -> usize;
+/// The [`Side`] member determines what direction to push into, in
+/// relation to the original widget.
+///
+/// The [`Split`] can be one of two types:
+/// - [`Min(min_len)`][Split::Min] represents the minimum length, in
+///   the [`Side`]'s [`Axis`], that this new widget needs.
+/// - [`Locked(locked_len)`][Split::Locked] represents a length, in
+///   the [`Side`]'s [`Axis`], that cannot be altered by any means.
+///
+/// So if, for example, if a widget is pushed with
+///
+/// ```rust
+/// # use parsec_core::ui::{PushSpecs, Side, Split};
+/// # fn test_fn() -> PushSpecs {
+/// PushSpecs {
+///     side: Side::Left,
+///     split: Split::Min(3)
+/// }
+/// # }
+/// ```
+///
+/// into another widget, then it will be placed on the left side of
+/// that widget, and will have a minimum `width` of `3`.
+///
+/// If it were pushed to either [`Side::Top`] or [`Side::Bottom`], it
+/// would instead have a minimum `height` of `3`.
+#[derive(Debug, Clone, Copy)]
+pub struct PushSpecs {
+    side: Side,
+    pub constraint: Constraint
+}
 
-    /// Gets the height of the area.
-    fn height(&self) -> usize;
+impl PushSpecs {
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn left(constraint: Constraint) -> Self {
+        PushSpecs {
+            side: Side::Left,
+            constraint
+        }
+    }
 
-    /// Requests a new width to the widget.
-    fn request_len(&self, len: usize, side: Side) -> Result<(), ()>;
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn right(constraint: Constraint) -> Self {
+        PushSpecs {
+            side: Side::Right,
+            constraint
+        }
+    }
 
-    /// Bisects [`self`] into two areas.
-    ///
-    /// Will return 2 indices, the first one is the index of a new
-    /// area. The second is the new index for [`self`], and
-    /// happens when a new parent is created for both of them.
-    ///
-    /// As an example, assuming that [`self`] has an index of `0`,
-    /// pushing an area to [`self`] on [`Side::Left`] would create
-    /// 2 new areas:
-    ///
-    /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │                 │     │╭──2───╮╭───1───╮│
-    /// │      self       │ --> ││      ││ self  ││
-    /// │                 │     │╰──────╯╰───────╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// This means that `0` is now the index of the newly created
-    /// parent, `2` is the index of the new area, and `1` is the new
-    /// index of the initial area. In the end, [`Area::bisect()`]
-    /// should return `(2, Some(1))`.
-    ///
-    /// That doesn't always happen though. For example, pushing
-    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
-    /// this situation, should not result in the creation of a new
-    /// parent:
-    ///
-    /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
-    /// ││      ││ self  ││     ││   ││self ││   ││
-    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// And so [`Area::bisect()`] should return `(3, None)`.
-    fn bisect(&mut self, push_specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>);
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn above(constraint: Constraint) -> Self {
+        PushSpecs {
+            side: Side::Above,
+            constraint
+        }
+    }
 
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn below(constraint: Constraint) -> Self {
+        PushSpecs {
+            side: Side::Below,
+            constraint
+        }
+    }
+
+    pub fn comes_earlier(&self) -> bool {
+        matches!(self.side, Side::Left | Side::Above)
+    }
 }
 
 // TODO: Add a general scrolling function.
 pub trait PrintInfo: Default {
     /// Scrolls the [`Text<U>`] (up or down) until the main cursor is
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, label: &U::Label, cfg: &PrintCfg)
+    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui;
 
@@ -96,11 +125,16 @@ pub trait PrintInfo: Default {
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Label {
-    type Area: Area + Clone + Display + Send + Sync;
+pub trait Area {
     type PrintInfo: PrintInfo + Clone + Copy;
+    
+    /// Gets the width of the area.
+    fn width(&self) -> usize;
 
-    /// Tells the [`Ui`] that this [`Label`] is the one that is
+    /// Gets the height of the area.
+    fn height(&self) -> usize;
+
+    /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
     fn set_as_active(&mut self);
 
@@ -109,6 +143,8 @@ pub trait Label {
         &mut self, text: &Text<U>, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette
     ) where
         U: Ui + ?Sized;
+
+    fn change_constraint(&mut self, constraint: Constraint) -> Result<(), ()>;
 
     //////////////////// Queries
     /// The amount of rows of the screen that the [`Iterator`] takes
@@ -141,11 +177,8 @@ pub trait Label {
         &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
     ) -> usize;
 
-    /// Returns a reference to the area of [`self`].
-    fn area(&self) -> &Self::Area;
-
-    /// A unique identifier to this [`Label`].
-    fn area_index(&self) -> usize;
+    /// A unique identifier to this [`Area`].
+    fn index(&self) -> usize;
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -245,19 +278,19 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, push_specs: PushSpecs
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(self.manager, push_specs);
+        let widget = (constructor)(self.manager, specs);
         let context = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(self.mod_area, widget, push_specs, context)
+            window.push_widget(self.mod_area, widget, specs, context)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
-        let label = window.window.get_label(new_area).unwrap();
+        let mut area = window.window.get_area(new_area).unwrap();
         let node = window.nodes.iter().find(|Node { index, .. }| *index == new_area);
-        node.map(|Node { widget, .. }| widget).unwrap().update(&label);
+        node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
 
         (new_area, pushed_area)
     }
@@ -279,19 +312,19 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: usize,
-        push_specs: PushSpecs
+        specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(self.manager, push_specs);
+        let widget = (constructor)(self.manager, specs);
         let context = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(index, widget, push_specs, context)
+            window.push_widget(index, widget, specs, context)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
-        let label = window.window.get_label(new_area).unwrap();
+        let mut area = window.window.get_area(new_area).unwrap();
         let node = window.nodes.iter().find(|Node { index, .. }| *index == new_area);
-        node.map(|Node { widget, .. }| widget).unwrap().update(&label);
+        node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
 
         (new_area, pushed_area)
     }
@@ -333,53 +366,6 @@ pub(crate) fn activate_hook<U, Nw>(
     manager.commands.write().file_id = old_file_id;
 }
 
-/// How an [`Area`] is pushed onto another.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Split {
-    Locked(usize),
-    Min(usize)
-}
-
-impl Debug for Split {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Split::Locked(len) => f.write_fmt(format_args!("Locked({})", len)),
-            Split::Min(len) => f.write_fmt(format_args!("Min({})", len))
-        }
-    }
-}
-
-impl Default for Split {
-    fn default() -> Self {
-        Split::Min(0)
-    }
-}
-
-impl Split {
-    /// The length of this [`Split`].
-    pub fn len(&self) -> usize {
-        match self {
-            Split::Locked(len) | Split::Min(len) => *len
-        }
-    }
-
-    pub fn as_locked(&self) -> Option<&usize> {
-        if let Self::Locked(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_min(&self) -> Option<&usize> {
-        if let Self::Min(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
 /// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -396,76 +382,13 @@ impl Axis {
     }
 }
 
-impl From<Side> for Axis {
-    fn from(value: Side) -> Self {
-        if let Side::Top | Side::Bottom = value {
+impl From<PushSpecs> for Axis {
+    fn from(value: PushSpecs) -> Self {
+        if let Side::Above | Side::Below = value.side {
             Axis::Vertical
         } else {
             Axis::Horizontal
         }
-    }
-}
-
-/// A direction, where a [`Widget<U>`] will be placed in relation to
-/// another.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Top,
-    Right,
-    Bottom,
-    Left
-}
-
-impl Side {
-    /// The opposite of this `Side`.
-    pub fn opposite(&self) -> Side {
-        match self {
-            Side::Top => Side::Bottom,
-            Side::Bottom => Side::Top,
-            Side::Left => Side::Right,
-            Side::Right => Side::Left
-        }
-    }
-}
-
-/// Information on how a [`Widget<U>`] should be pushed onto another.
-///
-/// The [`Side`] member determines what direction to push into, in
-/// relation to the original widget.
-///
-/// The [`Split`] can be one of two types:
-/// - [`Min(min_len)`][Split::Min] represents the minimum length, in
-///   the [`Side`]'s [`Axis`], that this new widget needs.
-/// - [`Locked(locked_len)`][Split::Locked] represents a length, in
-///   the [`Side`]'s [`Axis`], that cannot be altered by any means.
-///
-/// So if, for example, if a widget is pushed with
-///
-/// ```rust
-/// # use parsec_core::ui::{PushSpecs, Side, Split};
-/// # fn test_fn() -> PushSpecs {
-/// PushSpecs {
-///     side: Side::Left,
-///     split: Split::Min(3)
-/// }
-/// # }
-/// ```
-///
-/// into another widget, then it will be placed on the left side of
-/// that widget, and will have a minimum `width` of `3`.
-///
-/// If it were pushed to either [`Side::Top`] or [`Side::Bottom`], it
-/// would instead have a minimum `height` of `3`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PushSpecs {
-    pub side: Side,
-    pub split: Split
-}
-
-impl PushSpecs {
-    /// Returns a new instance of [`PushSpecs`].
-    pub fn new(side: Side, split: Split) -> Self {
-        PushSpecs { side, split }
     }
 }
 
@@ -474,38 +397,77 @@ impl PushSpecs {
 /// Only one [`Window`] may be shown at a time, and they contain all
 /// [`Widget<U>`]s that should be displayed, both static and floating.
 pub trait Window: 'static {
-    type Area: Area + Clone + Display + Send + Sync;
-    type Label: Label<Area = Self::Area> + Send + Sync;
+    type Area: Area + Send + Sync;
 
     /// Gets the [`Area`][Window::Area] associated with a given
     /// `area_index`.
-    fn get_area(&self, area_index: usize) -> Option<Self::Area>;
-
-    /// Gets the [`Label`][Window::Label] associated with a given
-    /// `area_index`.
     ///
     /// If the [`Area`][Window::Area] in question is not a
-    /// [`Label`][Window::Label], then returns [`None`].
-    fn get_label(&self, area_index: usize) -> Option<Self::Label>;
+    /// [`Area`][Window::Area], then returns [`None`].
+    fn get_area(&self, area_index: usize) -> Option<Self::Area>;
 
     /// Wether or not the layout of the `Ui` (size of widgets, their
     /// positions, etc) has changed.
     fn layout_has_changed(&self) -> bool;
+
+    /// Bisects the [`Area`][Window::Area] with the given index into
+    /// two.
+    ///
+    /// Will return 2 indices, the first one is the index of a new
+    /// area. The second is an index for a newly created parent
+    ///
+    /// As an example, assuming that [`self`] has an index of `0`,
+    /// pushing an area to [`self`] on [`Side::Left`] would create
+    /// 2 new areas:
+    ///
+    /// ```text
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │                 │     │╭──2───╮╭───1───╮│
+    /// │      self       │ --> ││      ││ self  ││
+    /// │                 │     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// This means that `0` is now the index of the newly created
+    /// parent, `2` is the index of the new area, and `1` is the new
+    /// index of the initial area. In the end, [`Window::bisect()`]
+    /// should return `(2, Some(1))`.
+    ///
+    /// That doesn't always happen though. For example, pushing
+    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
+    /// this situation, should not result in the creation of a new
+    /// parent:
+    ///
+    /// ```text
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
+    /// ││      ││ self  ││     ││   ││self ││   ││
+    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// And so [`Window::bisect()`] should return `(3, None)`.
+    fn bisect(
+        &mut self, index: usize, specs: PushSpecs, is_glued: bool
+    ) -> (usize, Option<usize>);
+
+    /// Requests that the width be enough to fit a certain piece of
+    /// text.
+    fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 }
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: 'static {
-    type Area: Area + Clone + Display + Send + Sync;
     type PrintInfo: PrintInfo + Clone + Copy;
-    type Label: Label<Area = Self::Area, PrintInfo = Self::PrintInfo> + Send + Sync;
-    type Window: Window<Area = Self::Area, Label = Self::Label> + Clone + Send + Sync;
+    type Area: Area<PrintInfo = Self::PrintInfo> + Send + Sync;
+    type Window: Window<Area = Self::Area> + Clone + Send + Sync;
 
     /// Initiates and returns a new [`Window`][Ui::Window].
     ///
-    /// Also returns the newly created [`Label`][Ui::Label] of that
+    /// Also returns the newly created [`Area`][Ui::Area] of that
     /// [`Window`][Ui::Window].
-    fn new_window(&mut self) -> (Self::Window, Self::Label);
+    fn new_window(&mut self) -> (Self::Window, Self::Area);
 
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
@@ -530,12 +492,12 @@ where
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new(ui: &mut U, widget: Widget<U>) -> Self {
-        let (window, mut initial_label) = ui.new_window();
-        widget.update(&mut initial_label);
+        let (window, mut initial_area) = ui.new_window();
+        widget.update(&mut initial_area);
 
         let main_node = Node {
             widget,
-            index: initial_label.area_index(),
+            index: initial_area.index(),
             file_id: Some(unique_file_id())
         };
         let parsec_window = ParsecWindow {
@@ -549,37 +511,26 @@ where
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     fn push_widget(
-        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, file_id: Option<usize>
+        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>
     ) -> (usize, Option<usize>) {
-        self.inner_push_widget(index, widget, push_specs, file_id)
+        self.inner_push_widget(index, widget, specs, file_id)
     }
 
     fn inner_push_widget(
-        &mut self, index: usize, widget: Widget<U>, push_specs: PushSpecs, file_id: Option<usize>
+        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>
     ) -> (usize, Option<usize>) {
         let is_file = widget.raw_inspect(|widget| widget.as_any().is::<FileWidget<U>>());
-        let mut area = self.window.get_area(index).unwrap();
-        // If a `Widget` is associated with a file, it must be glued to it.
         let is_glued = file_id.is_some() && !is_file;
-        let (new_area, pushed_area) = area.bisect(push_specs, is_glued);
-
-        if let Some(pushed_area) = pushed_area {
-            if self.files_parent == index && file_id.is_none() {
-                self.files_parent = pushed_area;
-            }
-            self.nodes
-                .iter_mut()
-                .find(|node| node.index == index)
-                .map(|node| node.index = pushed_area);
-        }
+        let (new_child, new_parent) = self.window.bisect(index, specs, is_glued);
 
         let node = Node {
             widget,
-            index: new_area,
+            index: new_child,
             file_id
         };
+
         self.nodes.push(node);
-        (new_area, pushed_area)
+        (new_child, new_parent)
     }
 
     /// Pushes a [`FileWidget<U>`] to another, and then activates a
@@ -589,13 +540,11 @@ where
     /// This is an area, usually in the center, that contains all
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
-    pub fn push_file(
-        &mut self, widget: Widget<U>, push_specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+    pub fn push_file(&mut self, widget: Widget<U>, specs: PushSpecs) -> (usize, Option<usize>) {
         let index = self.files_parent;
         let file_id = unique_file_id();
 
-        let (file_area, new_parent) = self.push_widget(index, widget, push_specs, Some(file_id));
+        let (file_area, new_parent) = self.push_widget(index, widget, specs, Some(file_id));
         if let Some(new_parent) = new_parent {
             self.files_parent = new_parent;
         }
@@ -606,16 +555,16 @@ where
     /// Pushes a [`Widget<U>`] to the master node of the current
     /// window.
     pub fn push_to_master(
-        &mut self, widget: Widget<U>, push_specs: PushSpecs
+        &mut self, widget: Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        self.push_widget(0, widget, push_specs, None)
+        self.push_widget(0, widget, specs, None)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
-    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Label, Option<usize>)> + '_ {
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, U::Area, Option<usize>)> + '_ {
         self.nodes.iter().map(|node| {
-            let label = self.window.get_label(node.index).unwrap();
-            (&node.widget, label, node.file_id)
+            let area = self.window.get_area(node.index).unwrap();
+            (&node.widget, area, node.file_id)
         })
     }
 
@@ -623,12 +572,11 @@ where
     /// [`self`].
     pub(crate) fn actionable_widgets(
         &self
-    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Label, Option<usize>)> + '_
-    {
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Area, Option<usize>)> + '_ {
         self.nodes.iter().filter_map(|node| {
             node.widget.as_actionable().map(|widget| {
-                let label = self.window.get_label(node.index).unwrap();
-                (widget, label, node.file_id)
+                let area = self.window.get_area(node.index).unwrap();
+                (widget, area, node.file_id)
             })
         })
     }
@@ -655,9 +603,9 @@ where
     pub(crate) fn print_if_layout_changed(&self, palette: &FormPalette) {
         if self.window.layout_has_changed() {
             for node in &self.nodes {
-                let mut label = self.window.get_label(node.index).unwrap();
-                node.widget.update(&mut label);
-                node.widget.print(&mut label, &palette);
+                let mut area = self.window.get_area(node.index).unwrap();
+                node.widget.update(&mut area);
+                node.widget.print(&mut area, &palette);
             }
         }
     }

@@ -88,10 +88,10 @@ impl<U> NormalWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, label: &U::Label) {
+    fn update(&mut self, area: &mut U::Area) {
         let print_cfg = PrintCfg::default();
         self.print_info
-            .scroll_to_gap(&self.text, self.cursor[0].caret(), label, &print_cfg);
+            .scroll_to_gap(&self.text, self.cursor[0].caret(), area, &print_cfg);
     }
 
     fn text(&self) -> &Text<U> {
@@ -107,8 +107,8 @@ where
         Editor::new(&mut self.cursor[0], &mut self.text, edit_accum, None, None)
     }
 
-    fn mover<'a>(&'a mut self, _: usize, label: &'a U::Label) -> Mover<U> {
-        Mover::new(&mut self.cursor[0], &self.text, label, PrintCfg::default())
+    fn mover<'a>(&'a mut self, _: usize, area: &'a U::Area) -> Mover<U> {
+        Mover::new(&mut self.cursor[0], &self.text, area, PrintCfg::default())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -131,14 +131,14 @@ where
         None
     }
 
-    fn on_focus(&mut self, label: &U::Label) {
+    fn on_focus(&mut self, area: &U::Area) {
         self.text = Text::new_string(&self.prompt);
         let chars = self.prompt.read().chars().count() as isize;
-        self.cursor[0].move_hor::<U>(chars, &self.text, label, &PrintCfg::default());
+        self.cursor[0].move_hor::<U>(chars, &self.text, area, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 
-    fn on_unfocus(&mut self, _label: &U::Label) {
+    fn on_unfocus(&mut self, _area: &U::Area) {
         let text = std::mem::replace(&mut self.text, Text::default_string());
         self.cursor[0] = Cursor::default();
         self.text.remove_cursor_tags(self.cursor.as_slice());

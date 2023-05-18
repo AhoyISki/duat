@@ -44,7 +44,7 @@ where
     U: Ui + ?Sized + 'static
 {
     /// Updates the widget.
-    fn update(&mut self, label: &U::Label);
+    fn update(&mut self, label: &mut U::Area);
 
     /// The text that this widget prints out.
     fn text(&self) -> &Text<U>;
@@ -72,7 +72,7 @@ where
 
     /// Returns a [`Mover<U>`], which can move a cursor's position
     /// over [`self`].
-    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label) -> Mover<U>;
+    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Area) -> Mover<U>;
 
     /// This is used specifically to remove and add the [`Cursor`]
     /// [`Tag`][crate::tags::Tag]s to [`self`]
@@ -108,7 +108,7 @@ where
     ///
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
-    fn undo(&mut self, _label: &U::Label) {
+    fn undo(&mut self, _label: &U::Area) {
         panic!("This ActionableWidget does not have a History of its own.")
     }
 
@@ -116,15 +116,15 @@ where
     ///
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
-    fn redo(&mut self, _label: &U::Label) {
+    fn redo(&mut self, _label: &U::Area) {
         panic!("This ActionableWidget does not have a History of its own.")
     }
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
-    fn on_focus(&mut self, _label: &U::Label) {}
+    fn on_focus(&mut self, _label: &U::Area) {}
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
-    fn on_unfocus(&mut self, _label: &U::Label) {}
+    fn on_unfocus(&mut self, _label: &U::Area) {}
 }
 
 /// An enum for handling the 2 types of widget.
@@ -141,7 +141,7 @@ impl<U> InnerWidget<U>
 where
     U: Ui + ?Sized
 {
-    pub fn update(&self, label: &U::Label) {
+    pub fn update(&self, label: &mut U::Area) {
         match self {
             InnerWidget::Normal(widget) => {
                 widget.write().update(label);
@@ -220,25 +220,25 @@ where
     }
 
     /// Updates the [`Widget<U>`].
-    pub(crate) fn update(&self, label: &U::Label) {
+    pub(crate) fn update(&self, label: &mut U::Area) {
         self.inner.update(label);
     }
 
     /// Prints the [`Widget<U>`] to its designated
-    /// [`Label`][crate::ui::Label].
-    pub(crate) fn print(&self, label: &mut U::Label, palette: &FormPalette) {
+    /// [`Area`][crate::ui::Area].
+    pub(crate) fn print(&self, area: &mut U::Area, palette: &FormPalette) {
         match &self.inner {
             InnerWidget::Normal(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 let print_cfg = widget.print_cfg();
-                widget.text().print(label, print_info, print_cfg, palette);
+                widget.text().print(area, print_info, print_cfg, palette);
             }
             InnerWidget::Actionable(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 let print_cfg = widget.print_cfg();
-                widget.text().print(label, print_info, print_cfg, palette);
+                widget.text().print(area, print_info, print_cfg, palette);
             }
         }
     }
@@ -346,7 +346,7 @@ where
 {
     clearing_needed: bool,
     widget: &'a RwData<AW>,
-    label: &'a U::Label
+    label: &'a U::Area
 }
 
 impl<'a, U, Aw> WidgetActor<'a, U, Aw>
@@ -355,7 +355,7 @@ where
     Aw: ActionableWidget<U> + ?Sized + 'static
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub(crate) fn new(actionable: &'a RwData<Aw>, label: &'a U::Label) -> Self {
+    pub(crate) fn new(actionable: &'a RwData<Aw>, label: &'a U::Area) -> Self {
         WidgetActor {
             clearing_needed: false,
             widget: actionable,

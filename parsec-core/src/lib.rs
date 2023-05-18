@@ -26,7 +26,7 @@ use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Side, Split, Ui};
+use ui::{activate_hook, Constraint::*, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
 use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
 pub struct Session<U>
@@ -77,10 +77,7 @@ where
 
     pub fn open_file(&mut self, path: PathBuf) {
         let file_widget = FileWidget::new(Some(path), self.print_cfg.read().clone());
-        let push_specs = PushSpecs {
-            side: Side::Right,
-            split: Split::Min(40)
-        };
+        let push_specs = PushSpecs::right(Min(0f64));
 
         let (new_area, _) = self.manager.windows.mutate(|windows| {
             let active_window = &mut windows[self.manager.active_window];
@@ -404,7 +401,7 @@ where
         let index = manager.active_widget.load(Ordering::Acquire);
         let actionable_widget = window.actionable_widgets().nth(index);
 
-        let Some((widget, mut label, _)) = actionable_widget else {
+        let Some((widget, mut area, _)) = actionable_widget else {
             return;
         };
 
@@ -413,13 +410,13 @@ where
             window
         };
 
-        blink_cursors_and_send_key(&widget, &mut label, controls, key_event, key_remapper, palette);
+        blink_cursors_and_send_key(&widget, &mut area, controls, key_event, key_remapper, palette);
     }
 }
 
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, AW, I>(
-    widget: &RwData<AW>, label: &mut U::Label, controls: Controls<U>, key_event: KeyEvent,
+    widget: &RwData<AW>, area: &mut U::Area, controls: Controls<U>, key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>, palette: &FormPalette
 ) where
     U: Ui + 'static,
@@ -431,17 +428,17 @@ fn blink_cursors_and_send_key<U, AW, I>(
     text.remove_cursor_tags(cursors);
     drop(widget_lock);
 
-    key_remapper.send_key_to_actionable(key_event, widget, label, controls);
+    key_remapper.send_key_to_actionable(key_event, widget, area, controls);
 
     let mut widget_lock = widget.write();
     let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
     text.add_cursor_tags(cursors, main_index);
     drop((text, cursors, main_index));
 
-    widget_lock.update(label);
+    widget_lock.update(area);
     widget_lock
         .text()
-        .print(label, widget_lock.print_info(), widget_lock.print_cfg(), palette);
+        .print(area, widget_lock.print_info(), widget_lock.print_cfg(), palette);
 }
 
 //////////// Useful for testing.

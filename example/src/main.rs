@@ -28,7 +28,7 @@ use parsec_core::{
         form::{CursorStyle, Form}
     },
     text::{PrintCfg, ScrollOff, WrapMethod},
-    ui::{ModNode, PushSpecs, Side, Split},
+    ui::{Constraint, ModNode, PushSpecs},
     widgets::{
         line_numbers::{Align, Numbers},
         status_line::{f_var, text, var},
@@ -55,7 +55,7 @@ fn main() {
     // `add_form()` will panic if there is already a `Form` with that
     // name.
     palette.set_main_cursor(CursorStyle::new(
-        Some(SetCursorStyle::BlinkingBlock),
+        None,
         Form::new().on_cyan()
     ));
     palette.set_form("Mode", Form::new().dark_green());
@@ -80,15 +80,14 @@ fn main() {
     // `Config` argument and a closure that determines what will happen
     // when a new file is opened.
     let mut session = Session::new(Ui::default(), print_cfg, palette, move |mod_node, file| {
-        let specs = PushSpecs::new(Side::Left, Split::Locked(1));
+        let specs = PushSpecs::left(Constraint::Length(1.0));
         let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), specs);
 
-        let specs = PushSpecs::new(Side::Left, Split::Locked(1));
+        let specs = PushSpecs::below(Constraint::Length(1f64));
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
         mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
-
     });
 
     // that takes the input, remaps it, and sends it to the `Editor`.

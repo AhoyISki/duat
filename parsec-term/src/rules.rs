@@ -186,7 +186,7 @@ impl<U> NormalWidget<U> for VertRule<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, _label: &U::Label) {
+    fn update(&mut self, _area: &mut U::Area) {
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;

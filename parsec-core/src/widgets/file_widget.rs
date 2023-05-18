@@ -19,7 +19,7 @@
 //! method. This method is notably used by the
 //! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{ cmp::min, fs, path::PathBuf};
+use std::{cmp::min, fs, path::PathBuf};
 
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
@@ -28,7 +28,7 @@ use crate::{
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
-    ui::{Area, Label, PrintInfo, Ui}
+    ui::{Area, PrintInfo, Ui}
 };
 
 /// The widget that is used to print and edit files.
@@ -96,7 +96,7 @@ where
 
     /// Undoes the last [`Moment<U>`][crate::history::Moment] in the
     /// [`History`].
-    pub fn undo(&mut self, label: &U::Label) {
+    pub fn undo(&mut self, area: &U::Area) {
         let moment = match self.history.move_backwards() {
             Some(moment) => moment,
             None => return
@@ -112,7 +112,7 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
-            self.cursors.push(Cursor::new::<U>(pos, &self.text, label, &self.print_cfg));
+            self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.print_cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -120,7 +120,7 @@ where
 
     /// Redoes the last [`Moment<U>`][crate::history::Moment] in the
     /// [`History`].
-    pub fn redo(&mut self, label: &U::Label) {
+    pub fn redo(&mut self, area: &U::Area) {
         let moment = match self.history.move_forward() {
             Some(moment) => moment,
             None => return
@@ -134,11 +134,11 @@ where
             self.text.apply_change(&change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
-            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, label, &self.print_cfg));
+            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.print_cfg));
         }
     }
 
-    fn set_printed_lines(&mut self, label: &U::Label) {
+    fn set_printed_lines(&mut self, area: &U::Area) {
         let first_char = self.print_info.first_char(&self.text);
         let mut line_num = self.text.char_to_line(first_char);
 
@@ -146,10 +146,10 @@ where
         // the first line number a wrapped line.
         let mut is_wrapped = {
             let line = self.text.iter_line(line_num);
-            label.vis_rows(line, &self.print_cfg, first_char) > 1
+            area.vis_rows(line, &self.print_cfg, first_char) > 1
         };
 
-        let height = label.area().height();
+        let height = area.height();
 
         self.printed_lines.clear();
         self.printed_lines.reserve_exact(height);
@@ -158,10 +158,10 @@ where
         let lines_len = self.text.len_lines();
         while accum < height && line_num < lines_len {
             let line = self.text.iter_line(line_num);
-            let mut wrap_count = label.vis_rows(line, &self.print_cfg, usize::MAX);
+            let mut wrap_count = area.vis_rows(line, &self.print_cfg, usize::MAX);
             if accum == 0 {
                 let line = self.text.iter_line(line_num);
-                wrap_count -= label.vis_rows(line, &self.print_cfg, first_char) - 1;
+                wrap_count -= area.vis_rows(line, &self.print_cfg, first_char) - 1;
             }
             let prev_accum = accum;
             accum = min(accum + wrap_count, height);
@@ -242,14 +242,14 @@ impl<U> NormalWidget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, label: &U::Label) {
+    fn update(&mut self, area: &mut U::Area) {
         self.print_info.scroll_to_gap(
             &self.text,
             self.main_cursor().caret(),
-            label,
+            area,
             &self.print_cfg
         );
-        self.set_printed_lines(label);
+        self.set_printed_lines(area);
     }
 
     fn text(&self) -> &Text<U> {
@@ -283,8 +283,8 @@ where
         )
     }
 
-    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Label) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, label, self.print_cfg.clone())
+    fn mover<'a>(&'a mut self, index: usize, area: &'a U::Area) -> Mover<U> {
+        Mover::new(&mut self.cursors[index], &self.text, area, self.print_cfg.clone())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
@@ -311,12 +311,12 @@ where
         self.new_moment();
     }
 
-    fn undo(&mut self, label: &'_ U::Label) {
-        self.undo(label)
+    fn undo(&mut self, area: &'_ U::Area) {
+        self.undo(area)
     }
 
-    fn redo(&mut self, label: &'_ U::Label) {
-        self.redo(label)
+    fn redo(&mut self, area: &'_ U::Area) {
+        self.redo(area)
     }
 }
 

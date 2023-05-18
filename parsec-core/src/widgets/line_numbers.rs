@@ -30,7 +30,7 @@ use crate::{
         Tag
     },
     text::{Text, TextBuilder},
-    ui::{Area, Label, PushSpecs, Side, Ui},
+    ui::{PushSpecs, Ui, Area, Constraint},
     updaters, Manager
 };
 
@@ -42,7 +42,6 @@ where
 {
     file_widget: RoData<FileWidget<U>>,
     builder: TextBuilder<U>,
-    min_width: usize,
     cfg: LineNumbersCfg
 }
 
@@ -61,12 +60,11 @@ where
             let mut line_numbers = LineNumbers {
                 file_widget,
                 builder: TextBuilder::<U>::default(),
-                min_width: push_specs.split.len(),
                 cfg
             };
             let width = line_numbers.calculate_width();
 
-            line_numbers.update_text(width);
+            line_numbers.update_text(width as usize);
 
             Widget::normal(line_numbers, updaters![file])
         }
@@ -83,28 +81,29 @@ where
             let mut line_numbers = LineNumbers {
                 file_widget,
                 builder: TextBuilder::<U>::default(),
-                min_width: push_specs.split.len(),
                 cfg: LineNumbersCfg::default()
             };
 
-            line_numbers.update_text(push_specs.split.len());
+			let width = line_numbers.calculate_width();
+            line_numbers.update_text(width as usize);
 
             Widget::normal(line_numbers, updaters)
         }
     }
 
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&mut self) -> usize {
-        let mut width = 1;
+    fn calculate_width(&mut self) -> f64 {
+        let mut width = 1f64;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
         let len = self.file_widget.read().text().len_lines() + 1;
 
         while len > num_exp {
             num_exp *= 10;
-            width += 1;
+            width += 1f64;
         }
-        max(width, self.min_width)
+
+        width
     }
 
     /// Updates the [`TextBuilder<U>`]'s [`Text<U>`] with the
@@ -136,11 +135,11 @@ impl<U> NormalWidget<U> for LineNumbers<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, label: &U::Label) {
+    fn update(&mut self, area: &mut U::Area) {
         let width = self.calculate_width();
-        label.area().request_len(width.max(self.min_width), Side::Right).unwrap();
+        area.change_constraint(Constraint::Length(width)).unwrap();
 
-        self.update_text(width);
+        self.update_text(width as usize);
     }
 
     fn text(&self) -> &Text<U> {
@@ -214,7 +213,8 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
 
 /// Writes the text of the line number to a given [`String`].
 fn write_text(
-    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, width: usize, cfg: &LineNumbersCfg
+    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, width: usize,
+    cfg: &LineNumbersCfg
 ) {
     text.clear();
     let number = match cfg.numbers {
