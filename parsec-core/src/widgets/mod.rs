@@ -232,7 +232,6 @@ where
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 let print_cfg = widget.print_cfg();
-                
                 widget.text().print(area, print_info, print_cfg, palette);
             }
             InnerWidget::Actionable(widget) => {

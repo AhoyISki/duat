@@ -105,11 +105,11 @@ where
         // The main loop.
         loop {
             let palette = &self.manager.palette;
-            for (widget, mut label, _) in
+            for (widget, mut area, _) in
                 self.manager.windows.read()[self.manager.active_window].widgets()
             {
-                widget.update(&mut label);
-                widget.print(&mut label, &palette);
+                widget.update(&mut area);
+                widget.print(&mut area, &palette);
             }
 
             self.session_loop(key_remapper);

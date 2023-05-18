@@ -11,7 +11,6 @@ use area::PrintInfo;
 use layout::Layout;
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{self, PushSpecs}
 };
 

@@ -85,7 +85,7 @@ fn main() {
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), specs);
 
-        let specs = PushSpecs::below(Constraint::Length(1f64));
+        let specs = PushSpecs::left(Constraint::Length(1f64));
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
         mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
     });

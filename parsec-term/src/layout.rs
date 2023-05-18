@@ -350,7 +350,7 @@ impl Layout {
             prev.set_base_vars(&parent, axis);
 
             let constraint = prev.end(axis) | EQ(REQUIRED) | new.start(axis);
-            prev.constraints.push(constraint.clone());
+            prev.constraints.push(constraint);
 
             if index - 1 == 0 {
                 let constraint = prev.start(axis) | EQ(REQUIRED) | parent.start(axis);
@@ -370,7 +370,6 @@ impl Layout {
             let constraint = new.end(axis) | EQ(REQUIRED) | parent.end(axis);
             new.constraints.push(constraint);
         }
-        prev.constraints.push(constraint);
 
         new.add_constraints(&mut self.solver);
 
