@@ -13,7 +13,6 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -109,7 +108,7 @@ impl Rect {
             ..rect.clone()
         };
 
-		rect.constraints.clear();
+        rect.constraints.clear();
         rect.tl = VarPoint::new(vars);
         rect.br = VarPoint::new(vars);
 
@@ -352,6 +351,12 @@ impl Layout {
 
             let constraint = prev.end(axis) | EQ(REQUIRED) | new.start(axis);
             prev.constraints.push(constraint.clone());
+
+            if index - 1 == 0 {
+                let constraint = prev.start(axis) | EQ(REQUIRED) | parent.start(axis);
+                prev.constraints.push(constraint);
+            }
+
             prev.add_constraints(&mut self.solver);
         } else {
             let constraint = new.start(axis) | EQ(REQUIRED) | parent.start(axis);
@@ -365,6 +370,7 @@ impl Layout {
             let constraint = new.end(axis) | EQ(REQUIRED) | parent.end(axis);
             new.constraints.push(constraint);
         }
+        prev.constraints.push(constraint);
 
         new.add_constraints(&mut self.solver);
 

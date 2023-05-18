@@ -28,7 +28,7 @@ use crate::{
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}
+    ui::{Area, PrintInfo, Ui}, log_info
 };
 
 /// The widget that is used to print and edit files.
@@ -78,6 +78,8 @@ where
             }
             pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
         }
+
+        log_info!("\n\nNEW SESSION\n");
 
         Widget::actionable(
             FileWidget {

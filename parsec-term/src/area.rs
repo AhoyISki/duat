@@ -1,13 +1,13 @@
-use std::{io::{self, StdoutLock}, fmt::Pointer};
+use std::io::{self, StdoutLock};
 
 use crossterm::{
     cursor::{self, MoveTo, SavePosition},
     execute, queue as crossterm_queue,
-    style::{ContentStyle, Print, ResetColor, SetStyle},
+    style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    log_info,
     data::RwData,
+    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -21,8 +21,8 @@ use unicode_width::UnicodeWidthChar;
 use crate::layout::{gen_constraint, Layout};
 
 macro_rules! queue {
-    ($stdout:expr $(, $args:expr)*) => {
-        let _ = crossterm_queue!($stdout $(, $args)*);
+    ($writer:expr $(, $command:expr)* $(,)?) => {
+        unsafe { crossterm_queue!($writer $(, $command)*).unwrap_unchecked() }
     }
 }
 
@@ -33,9 +33,9 @@ pub struct Coord {
 }
 
 impl std::fmt::Debug for Coord {
-fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_fmt(format_args!("x: {}, y: {}", self.x, self.y))
-}
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("x: {}, y: {}", self.x, self.y))
+    }
 }
 
 impl Coord {
@@ -122,7 +122,6 @@ impl ui::Area for Area {
     {
         let mut stdout = io::stdout().lock();
         let coords = self.coords();
-        log_info!("\ncoords: {:?}", coords);
         queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
 
         let width = cfg.wrap_method.wrapping_cap(coords.width());
