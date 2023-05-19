@@ -7,7 +7,6 @@ use crossterm::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -275,20 +274,6 @@ impl ui::Area for Area {
 
 unsafe impl Send for Area {}
 unsafe impl Sync for Area {}
-
-pub struct Label {
-    area: Area,
-    is_active: bool
-}
-
-impl Label {
-    pub fn new(area: Area) -> Self {
-        Label {
-            area,
-            is_active: false
-        }
-    }
-}
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {

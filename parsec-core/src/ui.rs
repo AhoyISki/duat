@@ -1,4 +1,7 @@
-use std::{fmt::Debug, sync::atomic::{AtomicUsize, Ordering}};
+use std::{
+    fmt::Debug,
+    sync::atomic::{AtomicUsize, Ordering}
+};
 
 use crate::{
     data::{RoData, RwData},
@@ -65,7 +68,7 @@ pub enum Constraint {
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
-    pub constraint: Constraint
+    pub constraint: Option<Constraint>
 }
 
 impl PushSpecs {
@@ -73,7 +76,7 @@ impl PushSpecs {
     pub fn left(constraint: Constraint) -> Self {
         PushSpecs {
             side: Side::Left,
-            constraint
+            constraint: Some(constraint)
         }
     }
 
@@ -81,7 +84,7 @@ impl PushSpecs {
     pub fn right(constraint: Constraint) -> Self {
         PushSpecs {
             side: Side::Right,
-            constraint
+            constraint: Some(constraint)
         }
     }
 
@@ -89,7 +92,7 @@ impl PushSpecs {
     pub fn above(constraint: Constraint) -> Self {
         PushSpecs {
             side: Side::Above,
-            constraint
+            constraint: Some(constraint)
         }
     }
 
@@ -97,7 +100,39 @@ impl PushSpecs {
     pub fn below(constraint: Constraint) -> Self {
         PushSpecs {
             side: Side::Below,
-            constraint
+            constraint: Some(constraint)
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn left_free() -> Self {
+        PushSpecs {
+            side: Side::Left,
+            constraint: None
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn right_free() -> Self {
+        PushSpecs {
+            side: Side::Right,
+            constraint: None
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn above_free() -> Self {
+        PushSpecs {
+            side: Side::Above,
+            constraint: None
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn below_free() -> Self {
+        PushSpecs {
+            side: Side::Below,
+            constraint: None
         }
     }
 
@@ -127,7 +162,7 @@ pub trait PrintInfo: Default {
 /// screen where text may be printed.
 pub trait Area {
     type PrintInfo: PrintInfo + Clone + Copy;
-    
+
     /// Gets the width of the area.
     fn width(&self) -> usize;
 
@@ -364,7 +399,10 @@ pub(crate) fn activate_hook<U, Nw>(
         .map(|file_id| manager.commands.write().file_id.replace(file_id))
         .flatten();
 
-    let mod_node = ModNode { manager, mod_area: AtomicUsize::from(mod_area) };
+    let mod_node = ModNode {
+        manager,
+        mod_area: AtomicUsize::from(mod_area)
+    };
     (constructor_hook)(mod_node, widget);
 
     manager.commands.write().file_id = old_file_id;
@@ -451,9 +489,7 @@ pub trait Window: 'static {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(
-        &mut self, index: usize, specs: PushSpecs, is_glued: bool
-    ) -> (usize, Option<usize>);
+    fn bisect(&mut self, index: usize, specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>);
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.

@@ -26,7 +26,7 @@ use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, Constraint::*, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
+use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
 use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
 pub struct Session<U>
@@ -77,11 +77,9 @@ where
 
     pub fn open_file(&mut self, path: PathBuf) {
         let file_widget = FileWidget::new(Some(path), self.print_cfg.read().clone());
-        let push_specs = PushSpecs::right(Min(0f64));
-
         let (new_area, _) = self.manager.windows.mutate(|windows| {
             let active_window = &mut windows[self.manager.active_window];
-            active_window.push_file(file_widget, push_specs)
+            active_window.push_file(file_widget, PushSpecs::right_free())
         });
 
         activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);

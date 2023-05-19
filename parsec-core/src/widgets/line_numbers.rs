@@ -20,7 +20,7 @@
 //! numbers will be printed. This struct shows up twice in
 //! [`LineNumbersCfg`], once for the main cursor's line, and once for
 //! all other lines. Its [`Right`][Alignment::Right] by default.
-use std::{cmp::max, fmt::Write};
+use std::fmt::Write;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
         Tag
     },
     text::{Text, TextBuilder},
-    ui::{PushSpecs, Ui, Area, Constraint},
+    ui::{Area, Constraint, PushSpecs, Ui},
     updaters, Manager
 };
 
@@ -54,7 +54,7 @@ where
     pub fn config_fn(
         file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
     ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, push_specs| -> Widget<U> {
+        move |_, _| -> Widget<U> {
             let file = file_widget.clone();
 
             let mut line_numbers = LineNumbers {
@@ -75,7 +75,7 @@ where
     pub fn default_fn(
         file_widget: RoData<FileWidget<U>>
     ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, push_specs| {
+        move |_, _| {
             let updaters = updaters![(file_widget.clone())];
 
             let mut line_numbers = LineNumbers {
@@ -84,7 +84,7 @@ where
                 cfg: LineNumbersCfg::default()
             };
 
-			let width = line_numbers.calculate_width();
+            let width = line_numbers.calculate_width();
             line_numbers.update_text(width as usize);
 
             Widget::normal(line_numbers, updaters)

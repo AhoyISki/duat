@@ -13,7 +13,6 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -284,7 +283,7 @@ impl Layout {
     }
 
     pub fn bisect(
-        &mut self, index: usize, specs: PushSpecs, is_glued: bool
+        &mut self, index: usize, specs: PushSpecs, _is_glued: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
 
@@ -338,7 +337,8 @@ impl Layout {
         };
 
         let new_index = parent.mutate(|parent| {
-            let new = Rect::new(&mut self.vars, Some((&parent, specs.constraint)));
+            let applied_constraint = specs.constraint.map(|constraint| (&*parent, constraint));
+            let new = Rect::new(&mut self.vars, applied_constraint);
             new.add_len_constraint(&mut self.solver);
             let new_index = new.index;
 

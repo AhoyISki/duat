@@ -62,7 +62,7 @@ impl ui::Window for Window {
         ret
     }
 
-    fn request_width_to_fit(&self, text: &str) -> Result<(), ()> {
+    fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {
         todo!()
     }
 }
@@ -137,6 +137,5 @@ impl ui::Ui for Ui {
     }
 }
 
-pub use area::Label;
 pub use area::{Area, Coords};
 pub use rules::{SepChar, SepForm, VertRule, VertRuleCfg};
