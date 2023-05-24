@@ -17,7 +17,7 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::layout::{gen_constraint, Layout};
+use crate::layout::Layout;
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -165,17 +165,7 @@ impl ui::Area for Area {
     fn change_constraint(&mut self, constraint: Constraint) -> Result<(), ()> {
         let mut layout = self.layout.write();
         let (parent, index, _) = layout.fetch_parent(self.index).ok_or(())?;
-        let parent = parent.read();
-        let child = &parent.children.as_ref().unwrap().0[index];
-        let mut child = child.write();
-        let constraint = gen_constraint(constraint, &child, &parent);
-
-        if let Some(constraint) = &child.len_constraint {
-            layout.solver.remove_constraint(&constraint).unwrap();
-        }
-
-        layout.solver.add_constraint(constraint.clone()).unwrap();
-        child.len_constraint = Some(constraint);
+        parent.write().change_child_constraints(index, constraint, &mut layout.solver);
 
         layout.update();
 
@@ -274,12 +264,6 @@ impl ui::Area for Area {
 
 unsafe impl Send for Area {}
 unsafe impl Sync for Area {}
-
-macro_rules! queue {
-    ($writer:expr $(, $command:expr)* $(,)?) => {
-        unsafe { crossterm_queue!($writer $(, $command)*).unwrap_unchecked() }
-    }
-}
 
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.

@@ -2,7 +2,7 @@ use crate::{history::Change, ui::Ui, widgets::file_widget::FileWidget};
 
 pub trait Observer<U>
 where
-    U: Ui,
+    U: Ui
 {
     fn initial_read(&mut self, file: &mut FileWidget<U>, area: &U::Area);
 

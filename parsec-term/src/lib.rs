@@ -2,12 +2,11 @@
 
 use std::{fmt::Debug, io, sync::atomic::Ordering};
 
+use area::PrintInfo;
 use crossterm::{
     cursor, execute,
     terminal::{self, ClearType}
 };
-
-use area::PrintInfo;
 use layout::Layout;
 use parsec_core::{
     data::RwData,
@@ -37,10 +36,7 @@ impl ui::Window for Window {
     fn get_area(&self, index: usize) -> Option<Self::Area> {
         let layout = self.layout.clone();
         if layout.inspect(|layout| {
-            layout
-                .fetch_index(index)
-                .filter(|rect| rect.read().children.is_none())
-                .is_some()
+            layout.fetch_index(index).filter(|rect| !rect.read().is_parent()).is_some()
         }) {
             Some(Area { index, layout })
         } else {

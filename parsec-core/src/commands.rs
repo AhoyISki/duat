@@ -128,7 +128,6 @@
 
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-
 use std::{collections::HashMap, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]

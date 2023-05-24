@@ -4,7 +4,7 @@ use crate::{
     data::RwData,
     ui::Ui,
     widgets::{ActionableWidget, WidgetActor},
-    Controls,
+    Controls
 };
 
 /// A widget that can receive and process input.
@@ -28,10 +28,8 @@ pub trait KeyTakingWidget {
 pub trait InputScheme: Send + Sync {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
-        &mut self,
-        key: &KeyEvent,
-        widget_actor: WidgetActor<U, A>,
-        session_control: &mut Controls<U>,
+        &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
+        session_control: &mut Controls<U>
     ) where
         U: Ui + 'static,
         A: ActionableWidget<U> + ?Sized;
@@ -44,7 +42,7 @@ pub trait InputScheme: Send + Sync {
 /// sequence of characters.
 pub struct InputRemap<E>
 where
-    E: InputScheme,
+    E: InputScheme
 {
     /// Takes this sequence of `KeyEvent`s.
     takes: Vec<KeyEvent>,
@@ -52,23 +50,22 @@ where
     gives: Vec<KeyEvent>,
     /// A condition to ask the `InputScheme`, if it returns `true`,
     /// then we remap.
-    condition: Box<dyn Fn(&E) -> bool + Send + Sync>,
+    condition: Box<dyn Fn(&E) -> bool + Send + Sync>
 }
 
 // TODO: Add the ability to send keys to an arbitrary object.
 impl<I> InputRemap<I>
 where
-    I: InputScheme,
+    I: InputScheme
 {
     pub fn new(
-        takes: &Vec<KeyEvent>,
-        gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&I) -> bool + Send + Sync>,
+        takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>,
+        condition: Box<dyn Fn(&I) -> bool + Send + Sync>
     ) -> Self {
         Self {
             takes: takes.clone(),
             gives: gives.clone(),
-            condition,
+            condition
         }
     }
 }
@@ -76,7 +73,7 @@ where
 /// The structure responsible for remapping sequences of characters.
 pub struct KeyRemapper<I>
 where
-    I: InputScheme,
+    I: InputScheme
 {
     /// The list of remapped sequences to be used with the
     /// `EditingScheme`.
@@ -88,37 +85,33 @@ where
     input_scheme: I,
     /// A list of sequences that have been at least partially matched
     /// with `current_sequence`.
-    should_check: Vec<usize>,
+    should_check: Vec<usize>
 }
 
 impl<I> KeyRemapper<I>
 where
-    I: InputScheme,
+    I: InputScheme
 {
     pub fn new(editing_scheme: I) -> Self {
         KeyRemapper {
             remaps: Vec::new(),
             current_sequence: Vec::new(),
             input_scheme: editing_scheme,
-            should_check: Vec::new(),
+            should_check: Vec::new()
         }
     }
 
     /// Removes all remappings with the given sequence.
     pub fn unmap(
-        &mut self,
-        takes: &Vec<KeyEvent>,
-        condition: &Box<dyn Fn(&I) -> bool + Send + Sync>,
+        &mut self, takes: &Vec<KeyEvent>, condition: &Box<dyn Fn(&I) -> bool + Send + Sync>
     ) {
         self.remaps.retain(|r| condition(&self.input_scheme) || &r.takes != takes);
     }
 
     /// Maps a sequence of characters to another.
     pub fn remap(
-        &mut self,
-        takes: &Vec<KeyEvent>,
-        gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&I) -> bool + Send + Sync>,
+        &mut self, takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>,
+        condition: Box<dyn Fn(&I) -> bool + Send + Sync>
     ) {
         self.unmap(takes, &condition);
         self.remaps.push(InputRemap::new(takes, gives, condition));
@@ -126,14 +119,10 @@ where
 
     /// Send a given key to be processed.
     pub fn send_key_to_actionable<U, A>(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<A>,
-        area: &U::Area,
-        mut controls: Controls<U>,
+        &mut self, key: KeyEvent, widget: &RwData<A>, area: &U::Area, mut controls: Controls<U>
     ) where
         U: Ui + 'static,
-        A: ActionableWidget<U> + ?Sized,
+        A: ActionableWidget<U> + ?Sized
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };

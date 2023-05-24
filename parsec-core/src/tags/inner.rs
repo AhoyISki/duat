@@ -2,9 +2,8 @@ use std::ops::Range;
 
 use any_rope::{Measurable, Rope};
 
-use crate::{text::inner::InnerText};
-
 use super::{Lock, TagOrSkip};
+use crate::text::inner::InnerText;
 
 #[derive(Debug)]
 pub(super) enum InnerTags {
