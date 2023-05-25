@@ -13,7 +13,6 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -310,11 +309,16 @@ impl Rect {
     pub fn change_child_constraints(
         &mut self, index: usize, constraint: Constraint, solver: &mut Solver
     ) {
-        let (children, _) = self.children.as_mut().unwrap();
+        let (children, axis) = self.children.as_mut().unwrap();
+        let axis = *axis;
 
         let (child, mut constraints) = children.remove(index);
 
         child.inspect(|child| {
+            if child.meets_constraint(constraint, axis, self.len_value(axis) as f64) {
+                return;
+            }
+
             let index = self.resizable_index(index);
             let new_constraints = Constraints::new(Some(constraint), self, &child, index, solver);
 
@@ -334,6 +338,17 @@ impl Rect {
             .filter(|(_, constraints)| constraints.is_resizable())
             .take_while(|(child, _)| child.read().index < index)
             .count()
+    }
+
+    fn meets_constraint(&self, constraint: Constraint, axis: Axis, parent_len: f64) -> bool {
+        let cur_len = self.len_value(axis) as f64;
+        match constraint {
+            Constraint::Ratio(den, div) => cur_len / parent_len == den as f64 / div as f64,
+            Constraint::Percent(perc) => cur_len == parent_len * perc as f64,
+            Constraint::Length(len) => cur_len == len,
+            Constraint::Min(min) => cur_len >= min,
+            Constraint::Max(max) => cur_len <= max
+        }
     }
 }
 
@@ -427,8 +442,6 @@ impl Layout {
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
         }
-
-        log_info!("\n{:#?}", self);
     }
 
     pub fn bisect(
