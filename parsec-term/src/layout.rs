@@ -98,8 +98,7 @@ impl Constraints {
             let (children, _) = parent.children.as_mut().unwrap();
             let resizables =
                 children.iter().filter(|(_, constraints)| constraints.is_resizable()).count()
-                    as f64
-                    + 1.0;
+                    as f64;
 
             let mut children =
                 children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
