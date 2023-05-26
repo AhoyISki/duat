@@ -94,59 +94,31 @@ impl Constraints {
         });
 
         let ratio = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
-            let parent_len = parent.len_value(axis) as f64;
             let (children, _) = parent.children.as_mut().unwrap();
-            let resizables =
-                children.iter().filter(|(_, constraints)| constraints.is_resizable()).count()
-                    as f64;
 
             let mut children =
                 children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
 
-            let prev_child = if index > 0 {
-                children.nth(index - 1)
-            } else {
-                None
-            };
+            if index > 0 {
+                children.nth(index - 1).map(|(prev, constraints)| {
+                    let prev = prev.read();
 
-            let next_child = children.next();
-            let mut next_len = None;
+                    let constraint = prev.len(axis) | EQ(WEAK) | new.len(axis);
+                    constraints.ratio = Some((constraint.clone(), 1.0));
+                    solver.add_constraint(constraint).unwrap();
+                });
+            }
 
-            let ret = next_child.map(|(next, _)| {
+            let ratio = children.next().map(|(next, _)| {
                 let next = next.read();
-                next_len = Some(next.len_value(axis) as f64);
 
-                // The len of the new child will initially be equal to the parent's
-                // len divided by the number of resizable children. The `len_ratio` is
-                // the ratio needed, between this and the next_child`, in order to
-                // achieve that.
-                let ratio_val = parent_len / (resizables * next_len.unwrap());
-
-                let constraint = new.len(axis) | EQ(WEAK) | ratio_val * next.len(axis);
+                let constraint = new.len(axis) | EQ(WEAK) | next.len(axis);
                 solver.add_constraint(constraint.clone()).unwrap();
 
-                (constraint, ratio_val)
+                (constraint, 1.0)
             });
 
-            prev_child.map(|(prev, constraints)| {
-                let prev = prev.read();
-
-                let ratio_val = if let Some((constraint, _)) = &constraints.ratio {
-                    solver.remove_constraint(constraint).unwrap();
-                    // If `new_len == parent_len * next_len / resizables`,
-                    // and previously `prev_len == next_len * ratio_val`,
-                    // then `prev_len == new_len * resizables * ratio_val / parent_len`.
-                    resizables * next_len.unwrap() / parent_len
-                } else {
-                    1.0
-                };
-
-                let constraint = prev.len(axis) | EQ(WEAK) | ratio_val * new.len(axis);
-                constraints.ratio = Some((constraint.clone(), ratio_val));
-                solver.add_constraint(constraint).unwrap();
-            });
-
-            ret
+            ratio
         } else {
             None
         };
