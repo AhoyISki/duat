@@ -20,5 +20,5 @@ ropey = "1.6.0"
 any-rope = "1.0.7"
 
 [features]
-#default = ["deadlock-detection"]
+default = ["deadlock-detection"]
 deadlock-detection = ["dep:no_deadlocks"]

@@ -12,6 +12,7 @@ use cassowary::{
     WeightedRelation::*
 };
 use parsec_core::{
+    log_info,
     data::RwData,
     ui::{Axis, Constraint, PushSpecs}
 };
@@ -60,79 +61,27 @@ impl VarPoint {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Constraints {
     defined: Option<(CassowaryConstraint, Constraint)>,
     ratio: Option<(CassowaryConstraint, f64)>
 }
 
 impl Constraints {
-    fn new(
-        constraint: Option<Constraint>, parent: &mut Rect, new: &Rect, index: usize,
-        solver: &mut Solver
-    ) -> Self {
-        let &(_, axis) = parent.children.as_ref().unwrap();
+    fn change_defined(
+        &mut self, new: Option<Constraint>, parent: &Rect, index: usize, solver: &mut Solver
+    ) {
+        if let Some((constraint, _)) = self.defined.take() {
+            solver.remove_constraint(&constraint).unwrap();
+        }
 
-        let defined = constraint.map(|constraint| {
-            let defined = match constraint {
-                Constraint::Ratio(den, div) => {
-                    assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-                    new.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (den as f64 / div as f64)
-                }
-                Constraint::Percent(percent) => {
-                    assert!(percent <= 100, "Constraint::Percent must be smaller than 100");
-                    new.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (percent as f64 / 100.0)
-                }
-                Constraint::Length(len) => new.len(axis) | EQ(STRONG) | len,
-                Constraint::Min(min) => new.len(axis) | GE(MEDIUM) | min,
-                Constraint::Max(max) => new.len(axis) | LE(MEDIUM) | max
-            };
+        self.defined = new.map(|defined| {
+            let &(_, axis) = parent.children.as_ref().unwrap();
+            let constraint = defined_constraint(defined, parent, index, axis);
+            solver.add_constraint(constraint.clone()).unwrap();
 
-            solver.add_constraint(defined.clone()).unwrap();
-
-            (defined, constraint)
+            (constraint, defined)
         });
-
-        let ratio = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
-            let (children, _) = parent.children.as_mut().unwrap();
-
-            let mut children =
-                children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
-
-            if index > 0 {
-                children.nth(index - 1).map(|(prev, constraints)| {
-                    let prev = prev.read();
-
-                    let constraint = prev.len(axis) | EQ(WEAK) | new.len(axis);
-                    constraints.ratio = Some((constraint.clone(), 1.0));
-                    solver.add_constraint(constraint).unwrap();
-                });
-            }
-
-            let ratio = children.next().map(|(next, _)| {
-                let next = next.read();
-
-                let constraint = new.len(axis) | EQ(WEAK) | next.len(axis);
-                solver.add_constraint(constraint.clone()).unwrap();
-
-                (constraint, 1.0)
-            });
-
-            ratio
-        } else {
-            None
-        };
-
-        Constraints { defined, ratio }
-    }
-
-    fn remove(self, solver: &mut Solver) {
-        if let Some((constraint, _)) = self.defined {
-            solver.remove_constraint(&constraint).unwrap()
-        }
-        if let Some((constraint, _)) = self.ratio {
-            solver.remove_constraint(&constraint).unwrap()
-        }
     }
 
     fn is_resizable(&self) -> bool {
@@ -283,32 +232,18 @@ impl Rect {
         let (children, axis) = self.children.as_mut().unwrap();
         let axis = *axis;
 
-        let (child, mut constraints) = children.remove(index);
+        let (child, mut constraints) = children[index].clone();
 
         child.inspect(|child| {
             if child.meets_constraint(constraint, axis, self.len_value(axis) as f64) {
                 return;
             }
 
-            let index = self.resizable_index(index);
-            let new_constraints = Constraints::new(Some(constraint), self, &child, index, solver);
-
-            let old_constraints = std::mem::replace(&mut constraints, new_constraints);
-            old_constraints.remove(solver);
+            constraints.change_defined(Some(constraint), self, index, solver);
         });
 
-        self.children.as_mut().unwrap().0.insert(index, (child, constraints));
-    }
-
-    fn resizable_index(&self, index: usize) -> usize {
-        self.children
-            .as_ref()
-            .unwrap()
-            .0
-            .iter()
-            .filter(|(_, constraints)| constraints.is_resizable())
-            .take_while(|(child, _)| child.read().index < index)
-            .count()
+        let (children, _) = self.children.as_mut().unwrap();
+		children[index].1 = constraints;
     }
 
     fn meets_constraint(&self, constraint: Constraint, axis: Axis, parent_len: f64) -> bool {
@@ -457,41 +392,82 @@ impl Layout {
             };
 
             rect.mutate(|parent| {
-                let index = parent.resizable_index(index);
-                let constraints = Constraints::new(None, parent, &child, index, &mut self.solver);
-
-                parent.children = Some((vec![(RwData::new(child), constraints)], axis));
+                parent.children = Some((vec![(RwData::new(child), Constraints::default())], axis));
             });
 
             (rect, index, new_parent_index)
         };
 
-        let new_index = parent.mutate(|mut parent| {
+        log_info!("\n{index}, {:?}, {:?}", new_parent_index, specs);
+
+        let (temp_constraint, new_index) = parent.mutate(|mut parent| {
             let new = Rect::new(&mut self.vars);
-            let constraints = {
-                let index = parent.resizable_index(index);
-                Constraints::new(specs.constraint, &mut parent, &new, index, &mut self.solver)
-            };
             let new_index = new.index;
 
             let len = parent
                 .children
                 .as_mut()
                 .map(|(children, _)| {
-                    children.insert(index, (RwData::new(new), constraints));
+                    children.insert(index, (RwData::new(new), Constraints::default()));
                     children.len()
                 })
                 .unwrap();
 
+            specs.constraint.map(|defined| {
+                let constraint = defined_constraint(defined, parent, index, axis);
+                let (children, _) = parent.children.as_mut().unwrap();
+                let (_, constraints) = &mut children[index];
+
+                self.solver.add_constraint(constraint.clone()).unwrap();
+
+                constraints.defined = Some((constraint, defined));
+            });
+
+
             if index < len - 1 {
-                set_child_vars(&parent, index + 1, &mut self.solver);
+                set_child_vars(&mut parent, index + 1, &mut self.solver);
             }
             if index > 0 {
-                set_child_vars(&parent, index - 1, &mut self.solver);
+                set_child_vars(&mut parent, index - 1, &mut self.solver);
             }
-            set_child_vars(&parent, index, &mut self.solver);
+            set_child_vars(&mut parent, index, &mut self.solver);
 
-            new_index
+            // Add a constraint so that the new child `Rect` has a len equal to
+            // `resizable_len / resizable_children`, a self imposed rule.
+            // This will be useful later, when adding new ratio constraints to the
+            // new child.
+
+            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint {
+                let (children, axis) = parent.children.as_ref().unwrap();
+                let (res_count, res_len) = children
+                    .iter()
+                    .filter(|(_, constraints)| constraints.is_resizable())
+                    .fold((0, 0), |(count, len), (child, _)| {
+                        (count + 1, len + child.read().len_value(*axis))
+                    });
+
+                let temp_constraint = {
+                    let (new, _) = children[index].clone();
+                    let new = new.read();
+                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 / res_count as f64
+                };
+
+                self.solver.add_constraint(temp_constraint.clone()).unwrap();
+
+                (Some(temp_constraint), new_index)
+            } else {
+                (None, new_index)
+            }
+        });
+
+        self.update();
+
+        parent.mutate(|parent| {
+            set_ratio_constraints(specs.constraint, parent, index, &mut self.solver);
+
+            if let Some(temp_constraint) = temp_constraint {
+                self.solver.remove_constraint(&temp_constraint).unwrap();
+            }
         });
 
         self.update();
@@ -500,26 +476,93 @@ impl Layout {
     }
 }
 
-fn set_child_vars(parent: &Rect, index: usize, solver: &mut Solver) {
+fn set_child_vars(parent: &mut Rect, index: usize, solver: &mut Solver) {
     let (children, axis) = parent.children.as_ref().unwrap();
-    let mut child = children[index].0.write();
-    child.clear_constraints(solver);
-    child.set_base_vars(parent, *axis);
+    children[index].0.mutate(|child| {
+        child.clear_constraints(solver);
+        child.set_base_vars(parent, *axis);
 
-    // Previous children carry the `Constraint`s for the `start` of their
-    // successors.
-    if index == 0 {
-        let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis);
+        // Previous children carry the `Constraint`s for the `start` of their
+        // successors.
+        if index == 0 {
+            let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis);
+            child.edge_cons.push(constraint);
+        }
+
+        let constraint = if let Some((next, _)) = children.get(index + 1) {
+            child.end(*axis) | EQ(REQUIRED) | next.read().start(*axis)
+        } else {
+            child.end(*axis) | EQ(REQUIRED) | parent.end(*axis)
+        };
         child.edge_cons.push(constraint);
-    }
+        child.add_constraints(solver);
+    });
+}
 
-    let constraint = if let Some((next, _)) = children.get(index + 1) {
-        child.end(*axis) | EQ(REQUIRED) | next.read().start(*axis)
+/// Returns a new instance of [`Constraints`].
+///
+/// It assumes that the new child [`Rect`] was already added to
+/// the list of children, but with a [`Default`] [`Constraints`].
+fn set_ratio_constraints(
+    defined: Option<Constraint>, parent: &mut Rect, index: usize, solver: &mut Solver
+) {
+    let &(_, axis) = parent.children.as_ref().unwrap();
+
+    let ratio = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = defined {
+        let (children, _) = parent.children.as_mut().unwrap();
+
+        let (new, _) = children[index].clone();
+        let new = new.read();
+
+        let mut children =
+            children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
+
+        if index > 0 {
+            children.nth(index - 1).map(|(prev, constraints)| {
+                let prev = prev.read();
+                let ratio = prev.len_value(axis) as f64 / new.len_value(axis) as f64;
+
+                let constraint = prev.len(axis) | EQ(WEAK) | ratio * new.len(axis);
+                constraints.ratio = Some((constraint.clone(), ratio));
+                solver.add_constraint(constraint).unwrap();
+            });
+        }
+
+        children.nth(1).map(|(next, _)| {
+            let next = next.read();
+            let ratio = new.len_value(axis) as f64 / next.len_value(axis) as f64;
+
+            let constraint = new.len(axis) | EQ(WEAK) | ratio * next.len(axis);
+            solver.add_constraint(constraint.clone()).unwrap();
+
+            (constraint, ratio)
+        })
     } else {
-        child.end(*axis) | EQ(REQUIRED) | parent.end(*axis)
+        None
     };
-    child.edge_cons.push(constraint);
-    child.add_constraints(solver);
+
+    parent.children.as_mut().unwrap().0[index].1.ratio = ratio;
+}
+
+fn defined_constraint(
+    constraint: Constraint, parent: &Rect, index: usize, axis: Axis
+) -> CassowaryConstraint {
+    let (children, _) = parent.children.as_ref().unwrap();
+    let (child, _) = &children[index];
+    let child = child.read();
+    match constraint {
+        Constraint::Ratio(den, div) => {
+            assert!(den < div, "Constraint::Ratio must be smaller than 1.");
+            child.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (den as f64 / div as f64)
+        }
+        Constraint::Percent(percent) => {
+            assert!(percent <= 100, "Constraint::Percent must be smaller than 100");
+            child.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (percent as f64 / 100.0)
+        }
+        Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
+        Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
+        Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max
+    }
 }
 
 fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
