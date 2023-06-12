@@ -12,8 +12,8 @@ use cassowary::{
     WeightedRelation::*
 };
 use parsec_core::{
-    log_info,
     data::RwData,
+    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -92,7 +92,7 @@ impl Constraints {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Rect {
     index: usize,
     tl: VarPoint,
@@ -102,15 +102,15 @@ pub struct Rect {
 }
 
 // impl std::fmt::Debug for Rect {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
-// std::fmt::Result {        f.debug_struct("Rect")
-//            .field("index", &self.index)
-//            .field("x", &self.tl)
-//            .field("y", &self.br)
-//            .field("children", &self.children)
-//            .finish()
-//    }
-//}
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
+// std::fmt::Result {         f.debug_struct("Rect")
+//             .field("index", &self.index)
+//             .field("x", &self.tl)
+//             .field("y", &self.br)
+//             .field("children", &self.children)
+//             .finish()
+//     }
+// }
 
 impl Rect {
     fn new(vars: &mut HashMap<Variable, Arc<AtomicU16>>) -> Self {
@@ -243,7 +243,7 @@ impl Rect {
         });
 
         let (children, _) = self.children.as_mut().unwrap();
-		children[index].1 = constraints;
+        children[index].1 = constraints;
     }
 
     fn meets_constraint(&self, constraint: Constraint, axis: Axis, parent_len: f64) -> bool {
@@ -342,11 +342,12 @@ impl Layout {
 
         let mut vars_changed = false;
         for (var, value) in self.solver.fetch_changes() {
-            self.vars[var].store(*value as u16, Ordering::Release);
+            self.vars[var].store(value.round() as u16, Ordering::Release);
             vars_changed = true;
         }
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
+            log_info!("\n{:#?}", self);
         }
     }
 
@@ -398,8 +399,6 @@ impl Layout {
             (rect, index, new_parent_index)
         };
 
-        log_info!("\n{index}, {:?}, {:?}", new_parent_index, specs);
-
         let (temp_constraint, new_index) = parent.mutate(|mut parent| {
             let new = Rect::new(&mut self.vars);
             let new_index = new.index;
@@ -422,7 +421,6 @@ impl Layout {
 
                 constraints.defined = Some((constraint, defined));
             });
-
 
             if index < len - 1 {
                 set_child_vars(&mut parent, index + 1, &mut self.solver);
@@ -449,7 +447,7 @@ impl Layout {
                 let temp_constraint = {
                     let (new, _) = children[index].clone();
                     let new = new.read();
-                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 / res_count as f64
+                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 * 1.2 / res_count as f64
                 };
 
                 self.solver.add_constraint(temp_constraint.clone()).unwrap();
@@ -514,11 +512,14 @@ fn set_ratio_constraints(
         let (new, _) = children[index].clone();
         let new = new.read();
 
+        let prev = children.iter().take(index);
+        let res_index = prev.filter(|(_, constraints)| constraints.is_resizable()).count();
+
         let mut children =
             children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
 
-        if index > 0 {
-            children.nth(index - 1).map(|(prev, constraints)| {
+        if res_index > 0 {
+            children.nth(res_index - 1).map(|(prev, constraints)| {
                 let prev = prev.read();
                 let ratio = prev.len_value(axis) as f64 / new.len_value(axis) as f64;
 
