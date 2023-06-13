@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     data::{RoData, RwData},
+    log_info,
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},

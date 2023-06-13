@@ -13,7 +13,6 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -95,6 +94,8 @@ impl Constraints {
 #[derive(Clone, Debug)]
 pub struct Rect {
     index: usize,
+    /// The index that this [`Rect`] is tied to.
+    tied_index: Option<usize>,
     tl: VarPoint,
     br: VarPoint,
     edge_cons: Vec<CassowaryConstraint>,
@@ -116,6 +117,7 @@ impl Rect {
     fn new(vars: &mut HashMap<Variable, Arc<AtomicU16>>) -> Self {
         Rect {
             index: unique_rect_index(),
+            tied_index: None,
             tl: VarPoint::new(vars),
             br: VarPoint::new(vars),
             edge_cons: Vec::new(),
@@ -256,6 +258,15 @@ impl Rect {
             Constraint::Max(max) => cur_len <= max
         }
     }
+
+    fn set_tied_index(&mut self, index: usize) {
+        self.tied_index = Some(index);
+        if let Some((children, _)) = &mut self.children {
+            for (child, _) in children {
+                child.write().set_tied_index(index);
+            }
+        }
+    }
 }
 
 pub struct Layout {
@@ -345,20 +356,26 @@ impl Layout {
             self.vars[var].store(value.round() as u16, Ordering::Release);
             vars_changed = true;
         }
+
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
-            log_info!("\n{:#?}", self);
         }
     }
 
     pub fn bisect(
-        &mut self, index: usize, specs: PushSpecs, _is_glued: bool
+        &mut self, mut index: usize, specs: PushSpecs, is_glued: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
 
+        if is_glued {
+            if let Some(rect) = self.fetch_index(index) {
+                index = rect.read().tied_index.unwrap_or(index);
+            }
+        }
+
         // Check for a parent of `self` with the same `Axis`.
-        let (parent, index, new_parent_index) = if let Some((parent, index, _)) =
-            self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp)
+        let (parent, index, new_parent_index) = if let (false, Some((parent, index, _))) =
+            (is_glued, self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp))
         {
             let index = match specs.comes_earlier() {
                 true => index,
@@ -382,10 +399,14 @@ impl Layout {
         } else {
             let rect = self.fetch_index(index).unwrap();
 
-            let (new_parent_index, child) = rect.mutate(|rect| {
+            let (new_parent_index, mut child) = rect.mutate(|rect| {
                 let parent = Rect::new_parent_of(rect, axis, &mut self.vars);
-                (Some(parent.index), std::mem::replace(rect, parent))
+                (parent.index, std::mem::replace(rect, parent))
             });
+
+            if is_glued {
+                child.set_tied_index(new_parent_index);
+            }
 
             let index = match specs.comes_earlier() {
                 true => 0,
@@ -396,11 +417,14 @@ impl Layout {
                 parent.children = Some((vec![(RwData::new(child), Constraints::default())], axis));
             });
 
-            (rect, index, new_parent_index)
+            (rect, index, Some(new_parent_index))
         };
 
         let (temp_constraint, new_index) = parent.mutate(|mut parent| {
-            let new = Rect::new(&mut self.vars);
+            let mut new = Rect::new(&mut self.vars);
+            if is_glued {
+                new.tied_index = new_parent_index.or(Some(index));
+            }
             let new_index = new.index;
 
             let len = parent
