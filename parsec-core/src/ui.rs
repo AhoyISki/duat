@@ -5,12 +5,11 @@ use std::{
 
 use crate::{
     data::{RoData, RwData},
-    log_info,
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
-    Manager
+    Manager, log_info
 };
 
 fn unique_file_id() -> usize {
@@ -262,6 +261,7 @@ where
     U: Ui
 {
     manager: &'a mut Manager<U>,
+    is_file: bool,
     mod_area: AtomicUsize
 }
 
@@ -317,10 +317,20 @@ where
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, specs);
-        let context = self.manager.commands.read().file_id;
+        let file_id = self.manager.commands.read().file_id;
         let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(self.mod_area.load(Ordering::Relaxed), widget, specs, context)
+            let (new_child, new_parent) =
+                window.push_widget(self.mod_area.load(Ordering::Relaxed), widget, specs, file_id);
+
+            if let (Some(new_parent), true) = (new_parent, self.is_file) {
+                if window.window.is_senior(new_parent, window.files_parent) {
+                    window.files_parent = new_parent;
+                    log_info!("\n{new_parent}");
+                }
+            }
+
+            (new_child, new_parent)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
@@ -402,6 +412,7 @@ pub(crate) fn activate_hook<U, Nw>(
 
     let mod_node = ModNode {
         manager,
+        is_file: std::any::TypeId::of::<Nw>() == std::any::TypeId::of::<FileWidget<U>>(),
         mod_area: AtomicUsize::from(mod_area)
     };
     (constructor_hook)(mod_node, widget);
@@ -495,6 +506,8 @@ pub trait Window: 'static {
     /// Requests that the width be enough to fit a certain piece of
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
+
+    fn is_senior(&self, senior: usize, junior: usize) -> bool;
 }
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -574,8 +587,7 @@ where
         (new_child, new_parent)
     }
 
-    /// Pushes a [`FileWidget<U>`] to another, and then activates a
-    /// special hook.
+    /// Pushes a [`FileWidget<U>`] to the file's parent.
     ///
     /// This function will push to the edge of `self.files_parent`.
     /// This is an area, usually in the center, that contains all

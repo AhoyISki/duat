@@ -13,6 +13,7 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
+    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -91,6 +92,28 @@ impl Constraints {
     }
 }
 
+// impl std::fmt::Debug for Rect {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
+// std::fmt::Result {         f.debug_struct("Rect")
+//             .field("index", &self.index)
+//             .field("x", &self.tl)
+//             .field("y", &self.br)
+//             .field(
+//                 "children",
+//                 &self.children.as_ref().map(|(children, axis)| {
+//                     (
+//                         axis,
+//                         children
+//                             .iter()
+//                             .map(|(rect, _)| rect)
+//                             .cloned()
+//                             .collect::<Vec<RwData<Rect>>>()
+//                     )
+//                 })
+//             )
+//             .finish()
+//     }
+// }
 #[derive(Clone, Debug)]
 pub struct Rect {
     index: usize,
@@ -106,8 +129,14 @@ pub struct Rect {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
 // std::fmt::Result {         f.debug_struct("Rect")
 //             .field("index", &self.index)
-//             .field("x", &self.tl)
-//             .field("y", &self.br)
+//             .field("tied_index", &self.tied_index)
+//             .field("tl", &self.tl)
+//             .field("br", &self.br)
+//             .field(
+//                 "edge_cons",
+//
+// &self.edge_cons.iter().skip(4).collect::<Vec<&
+// CassowaryConstraint>>()             )
 //             .field("children", &self.children)
 //             .finish()
 //     }
@@ -147,7 +176,7 @@ impl Rect {
         }
     }
 
-    fn set_base_vars(&mut self, parent: &Rect, axis: Axis) {
+    fn set_base_constraints(&mut self, parent: &Rect, axis: Axis) {
         self.edge_cons.extend([
             self.tl.x_var | GE(REQUIRED) | 0.0,
             self.tl.y_var | GE(REQUIRED) | 0.0,
@@ -267,6 +296,10 @@ impl Rect {
             }
         }
     }
+
+    pub fn index(&self) -> usize {
+        self.index
+    }
 }
 
 pub struct Layout {
@@ -282,8 +315,8 @@ impl std::fmt::Debug for Layout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Layout")
             .field("main", &self.main)
-            .field("floating", &self.floating)
             .field("active_index", &self.active_index)
+            .field("solver", &self.solver)
             .finish()
     }
 }
@@ -360,6 +393,8 @@ impl Layout {
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
         }
+
+        log_info!("\n{:#?}", self);
     }
 
     pub fn bisect(
@@ -471,7 +506,7 @@ impl Layout {
                 let temp_constraint = {
                     let (new, _) = children[index].clone();
                     let new = new.read();
-                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 * 1.2 / res_count as f64
+                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 / res_count as f64
                 };
 
                 self.solver.add_constraint(temp_constraint.clone()).unwrap();
@@ -502,22 +537,30 @@ fn set_child_vars(parent: &mut Rect, index: usize, solver: &mut Solver) {
     let (children, axis) = parent.children.as_ref().unwrap();
     children[index].0.mutate(|child| {
         child.clear_constraints(solver);
-        child.set_base_vars(parent, *axis);
+
+        child.set_base_constraints(parent, *axis);
+
+        if index == 0 {
+            child.edge_cons.push(child.start(*axis) | EQ(REQUIRED) | parent.start(*axis));
+        }
 
         // Previous children carry the `Constraint`s for the `start` of their
         // successors.
-        if index == 0 {
-            let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis);
-            child.edge_cons.push(constraint);
-        }
-
         let constraint = if let Some((next, _)) = children.get(index + 1) {
             child.end(*axis) | EQ(REQUIRED) | next.read().start(*axis)
         } else {
             child.end(*axis) | EQ(REQUIRED) | parent.end(*axis)
         };
         child.edge_cons.push(constraint);
+
         child.add_constraints(solver);
+
+        if let Some((children, _)) = &child.children {
+            let len = children.len();
+            for index in 0..len {
+                set_child_vars(child, index, solver);
+            }
+        }
     });
 }
 
@@ -543,19 +586,27 @@ fn set_ratio_constraints(
             children.iter_mut().filter(|(_, constraints)| constraints.is_resizable());
 
         if res_index > 0 {
-            children.nth(res_index - 1).map(|(prev, constraints)| {
-                let prev = prev.read();
-                let ratio = prev.len_value(axis) as f64 / new.len_value(axis) as f64;
+            let (prev, constraints) = children.nth(res_index - 1).unwrap();
 
-                let constraint = prev.len(axis) | EQ(WEAK) | ratio * new.len(axis);
-                constraints.ratio = Some((constraint.clone(), ratio));
-                solver.add_constraint(constraint).unwrap();
-            });
+            let prev = prev.read();
+            let ratio = if new.len_value(axis) == 0 {
+                1.0
+            } else {
+                prev.len_value(axis) as f64 / new.len_value(axis) as f64
+            };
+
+            let constraint = prev.len(axis) | EQ(WEAK) | ratio * new.len(axis);
+            constraints.ratio = Some((constraint.clone(), ratio));
+            solver.add_constraint(constraint).unwrap();
         }
 
         children.nth(1).map(|(next, _)| {
             let next = next.read();
-            let ratio = new.len_value(axis) as f64 / next.len_value(axis) as f64;
+            let ratio = if next.len_value(axis) == 0 {
+                1.0
+            } else {
+                new.len_value(axis) as f64 / next.len_value(axis) as f64
+            };
 
             let constraint = new.len(axis) | EQ(WEAK) | ratio * next.len(axis);
             solver.add_constraint(constraint.clone()).unwrap();

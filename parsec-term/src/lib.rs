@@ -54,12 +54,24 @@ impl ui::Window for Window {
 
     fn bisect(&mut self, index: usize, specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>) {
         let mut layout = self.layout.write();
-        let ret = layout.bisect(index, specs, is_glued);
-        ret
+        layout.bisect(index, specs, is_glued)
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {
         todo!()
+    }
+
+    fn is_senior(&self, senior: usize, mut junior: usize) -> bool {
+        self.layout.inspect(|layout| {
+            while let Some((parent, _, _)) = layout.fetch_parent(junior) {
+                junior = parent.read().index();
+                if junior == senior {
+                    break;
+                }
+            }
+
+            junior == senior
+        })
     }
 }
 
