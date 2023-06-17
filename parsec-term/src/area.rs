@@ -7,6 +7,7 @@ use crossterm::{
 };
 use parsec_core::{
     data::RwData,
+    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -119,6 +120,7 @@ impl ui::Area for Area {
     where
         U: Ui + ?Sized
     {
+        log_info!("\ncalled print");
         let mut stdout = io::stdout().lock();
         let coords = self.coords();
         queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);

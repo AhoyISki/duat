@@ -393,8 +393,6 @@ impl Layout {
         if vars_changed {
             self.vars_changed.store(true, Ordering::Release);
         }
-
-        log_info!("\n{:#?}", self);
     }
 
     pub fn bisect(

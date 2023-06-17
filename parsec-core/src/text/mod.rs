@@ -439,7 +439,7 @@ where
         let chars = self.inner.chars_at(0);
         let tags = self.tags.iter_at(0).peekable();
 
-        TextIter::new(self, chars, tags, 0)
+        Iter::new(self, chars, tags, 0)
     }
 
     pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + '_ {
@@ -448,7 +448,7 @@ where
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 
-        TextIter::new(self, chars, tags, start)
+        Iter::new(self, chars, tags, start)
     }
 
     pub fn iter_range(
@@ -469,7 +469,7 @@ where
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 
-        TextIter::new(self, chars, tags, start)
+        Iter::new(self, chars, tags, start)
     }
 }
 
@@ -518,7 +518,7 @@ impl TextBit {
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
-pub struct TextIter<'a, U, Ci, Ti>
+pub struct Iter<'a, U, Ci, Ti>
 where
     U: Ui + ?Sized,
     Ci: Iterator<Item = char> + 'a,
@@ -530,7 +530,7 @@ where
     cur_char: usize
 }
 
-impl<'a, U, Ci, Ti> TextIter<'a, U, Ci, Ti>
+impl<'a, U, Ci, Ti> Iter<'a, U, Ci, Ti>
 where
     U: Ui + ?Sized,
     Ci: Iterator<Item = char> + 'a,
@@ -546,7 +546,7 @@ where
     }
 }
 
-impl<U, CI, TI> Iterator for TextIter<'_, U, CI, TI>
+impl<U, CI, TI> Iterator for Iter<'_, U, CI, TI>
 where
     U: Ui + ?Sized,
     CI: Iterator<Item = char>,
@@ -568,14 +568,14 @@ where
     }
 }
 
-impl<'a, U, Ci, Ti> Clone for TextIter<'a, U, Ci, Ti>
+impl<'a, U, Ci, Ti> Clone for Iter<'a, U, Ci, Ti>
 where
     U: Ui + ?Sized,
     Ci: Iterator<Item = char> + Clone + 'a,
     Ti: Iterator<Item = (usize, Tag)> + Clone + 'a
 {
     fn clone(&self) -> Self {
-        TextIter {
+        Iter {
             text: &self.text,
             chars: self.chars.clone(),
             tags: self.tags.clone(),
