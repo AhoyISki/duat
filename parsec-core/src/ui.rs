@@ -5,11 +5,12 @@ use std::{
 
 use crate::{
     data::{RoData, RwData},
+    log_info,
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
     widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
-    Manager, log_info
+    Manager
 };
 
 fn unique_file_id() -> usize {
@@ -385,6 +386,11 @@ where
 
     pub fn manager(&self) -> &Manager<U> {
         &self.manager
+    }
+
+    pub fn get_area(&self, index: usize) -> Option<U::Area> {
+        let windows = self.manager.windows.read();
+        windows[self.manager.active_window].window.get_area(index)
     }
 }
 

@@ -17,7 +17,7 @@ use parsec_core::{
     ui::{Axis, Constraint, PushSpecs}
 };
 
-use crate::area::Coord;
+use crate::area::{Coord, Frame};
 
 fn unique_rect_index() -> usize {
     static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -92,28 +92,6 @@ impl Constraints {
     }
 }
 
-// impl std::fmt::Debug for Rect {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) ->
-// std::fmt::Result {         f.debug_struct("Rect")
-//             .field("index", &self.index)
-//             .field("x", &self.tl)
-//             .field("y", &self.br)
-//             .field(
-//                 "children",
-//                 &self.children.as_ref().map(|(children, axis)| {
-//                     (
-//                         axis,
-//                         children
-//                             .iter()
-//                             .map(|(rect, _)| rect)
-//                             .cloned()
-//                             .collect::<Vec<RwData<Rect>>>()
-//                     )
-//                 })
-//             )
-//             .finish()
-//     }
-// }
 #[derive(Clone, Debug)]
 pub struct Rect {
     index: usize,
@@ -121,6 +99,7 @@ pub struct Rect {
     tied_index: Option<usize>,
     tl: VarPoint,
     br: VarPoint,
+    pub frame: Frame,
     edge_cons: Vec<CassowaryConstraint>,
     children: Option<(Vec<(RwData<Rect>, Constraints)>, Axis)>
 }
@@ -149,6 +128,7 @@ impl Rect {
             tied_index: None,
             tl: VarPoint::new(vars),
             br: VarPoint::new(vars),
+            frame: Frame::default(),
             edge_cons: Vec::new(),
             children: None
         }
@@ -528,6 +508,14 @@ impl Layout {
         self.update();
 
         (new_index, new_parent_index)
+    }
+
+    pub fn width(&self) -> u16 {
+        self.main.read().len_value(Axis::Horizontal)
+    }
+
+    pub fn height(&self) -> u16 {
+        self.main.read().len_value(Axis::Vertical)
     }
 }
 

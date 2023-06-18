@@ -7,7 +7,6 @@ use crossterm::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -55,6 +54,127 @@ impl Coords {
     }
 }
 
+/// When to show the side of a [`Frame`].
+///
+/// - [`Never`][Show::Never] never shows it.
+/// - [`Border`][Show::Border] hides when on the edge of the window.
+/// - [`Always`][Show::Always] always shows it.
+/// - [`Negate`][Show::Negate] stops other [`Frame`]s from bordering.
+#[derive(Clone, Copy, Debug)]
+pub enum Show {
+    Never,
+    Border,
+    Always,
+    Negate
+}
+
+enum Side {
+    Right,
+    Up,
+    Left,
+    Down
+}
+
+impl Show {
+    fn frame_shift(&self, on_edge_of_screen: bool, side: Side) -> u16 {
+        // TODO: Take neighboring edges into account.
+        match self {
+            Show::Never | Show::Negate => 0,
+            Show::Border => match (on_edge_of_screen, side) {
+                (false, Side::Right | Side::Down) => 1,
+                _ => 0
+            },
+            Show::Always => 1
+        }
+    }
+}
+
+/// Configuration about how and wether to frame a [`Rect`].
+///
+/// All options follow an anti-clockwise ordering, starting from
+/// right:
+///
+/// - edges: (horizontal, vertical),
+/// - corners: (up right, up left, down left, down right),
+/// - joints: (right ver, up hor, left ver, down hor, ver hor)
+/// - sides_to_show: (right, up, left, down)
+#[derive(Clone, Debug)]
+pub struct Frame {
+    pub edges: (char, char),
+    pub corners: (char, char, char, char),
+    pub joints: (char, char, char, char, char),
+    pub sides_to_show: (Show, Show, Show, Show)
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Frame {
+            edges: ('─', '│'),
+            corners: ('┐', '┌', '└', '┘'),
+            joints: ('├', '┴', '┤', '┬', '┼'),
+            sides_to_show: (Show::Never, Show::Never, Show::Never, Show::Never)
+        }
+    }
+}
+
+impl Frame {
+    pub fn normal() -> Self {
+        Frame {
+            edges: ('─', '│'),
+            corners: ('┐', '┌', '└', '┘'),
+            joints: ('├', '┴', '┤', '┬', '┼'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+
+    /// Returns a new instance of [`Frame`], using only ASCII
+    /// characters.
+    pub fn ascii() -> Self {
+        Frame {
+            edges: ('-', '|'),
+            corners: ('+', '+', '+', '+'),
+            joints: ('+', '+', '+', '+', '+'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+
+    pub fn heavy() -> Self {
+        Frame {
+            edges: ('━', '┃'),
+            corners: ('┓', '┏', '┗', '┛'),
+            joints: ('┣', '┻', '┫', '┳', '╋'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+
+    pub fn dashed() -> Self {
+        Frame {
+            edges: ('╌', '╎'),
+            corners: ('┐', '┌', '└', '┘'),
+            joints: ('├', '┴', '┤', '┬', '┼'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+
+    pub fn heavy_dashed() -> Self {
+        Frame {
+            edges: ('╍', '╏'),
+            corners: ('┓', '┏', '┗', '┛'),
+            joints: ('┣', '┻', '┫', '┳', '╋'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+
+    pub fn double() -> Self {
+        Frame {
+            edges: ('═', '║'),
+            corners: ('╗', '╔', '╚', '╝'),
+            joints: ('╠', '╩', '╣', '╦', '╬'),
+            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
+        }
+    }
+}
+
 pub struct Area {
     pub layout: RwData<Layout>,
     pub index: usize
@@ -67,29 +187,47 @@ impl Area {
 
     fn coords(&self) -> Coords {
         let layout = self.layout.read();
-        let area = layout.fetch_index(self.index).unwrap();
-        let area = area.read();
+        let rect = layout.fetch_index(self.index).unwrap();
+        let rect = rect.read();
 
-        Coords {
-            tl: area.tl(),
-            br: area.br()
-        }
+        let mut coords = Coords {
+            tl: rect.tl(),
+            br: rect.br()
+        };
+
+        let (right, up, left, down) = rect.frame.sides_to_show;
+        coords.br.x -= right.frame_shift(coords.br.x == layout.width(), Side::Right);
+        coords.tl.y += up.frame_shift(coords.tl.y == 0, Side::Up);
+        coords.tl.x += left.frame_shift(coords.tl.x == 0, Side::Left);
+        coords.br.y -= down.frame_shift(coords.tl.y == layout.height(), Side::Down);
+
+        coords
     }
 
     fn wrapping_coords(&self, cfg: &PrintCfg) -> Coords {
         let layout = self.layout.read();
-        let area = layout.fetch_index(self.index).unwrap();
-        let area = area.read();
+        let rect = layout.fetch_index(self.index).unwrap();
+        let rect = rect.read();
 
         let width = match cfg.wrap_method {
             WrapMethod::Capped(cap) => cap as u16,
-            _ => area.br().x - area.tl().x as u16
+            _ => rect.br().x - rect.tl().x as u16
         };
 
-        Coords {
-            tl: area.tl(),
-            br: Coord::new(area.tl().x + width, area.br().y)
-        }
+        let mut coords = Coords {
+            tl: rect.tl(),
+            br: Coord::new(rect.tl().x + width, rect.br().y)
+        };
+
+        let (_, up, left, down) = rect.frame.sides_to_show;
+        coords.tl.y += up.frame_shift(coords.tl.y == 0, Side::Up);
+        coords.br.y -= down.frame_shift(coords.tl.y == layout.height(), Side::Down);
+
+        let x_shift = left.frame_shift(coords.br.x == layout.width(), Side::Right);
+        coords.tl.x += x_shift;
+        coords.br.x += x_shift;
+
+        coords
     }
 }
 
@@ -98,17 +236,17 @@ impl ui::Area for Area {
 
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
-            let area = layout.fetch_index(self.index).unwrap();
-            let area = area.read();
-            area.br().x as usize - area.tl().x as usize
+            let rect = layout.fetch_index(self.index).unwrap();
+            let rect = rect.read();
+            rect.br().x as usize - rect.tl().x as usize
         })
     }
 
     fn height(&self) -> usize {
         self.layout.inspect(|window| {
-            let area = window.fetch_index(self.index).unwrap();
-            let area = area.read();
-            area.br().y as usize - area.tl().y as usize
+            let rect = window.fetch_index(self.index).unwrap();
+            let rect = rect.read();
+            rect.br().y as usize - rect.tl().y as usize
         })
     }
 
@@ -120,7 +258,6 @@ impl ui::Area for Area {
     where
         U: Ui + ?Sized
     {
-        log_info!("\ncalled print");
         let mut stdout = io::stdout().lock();
         let coords = self.coords();
         queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
