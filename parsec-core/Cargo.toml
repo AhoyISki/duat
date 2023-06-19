@@ -15,10 +15,11 @@ edition = "2021"
 crossterm = "0.26.0"
 
 # Utility
-#no_deadlocks = { path = "../../no-deadlocks/", optional = true }
+no_deadlocks = { path = "../../no-deadlocks/", optional = true }
 ropey = "1.6.0"
 any-rope = "1.0.8"
 
 [features]
+# NOTE: Feature meant for testing only by myself.
 #default = ["deadlock-detection"]
 deadlock-detection = ["dep:no_deadlocks"]
