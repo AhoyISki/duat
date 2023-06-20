@@ -1,4 +1,4 @@
-use std::io::{self, StdoutLock};
+use std::{io::{self, StdoutLock}, sync::atomic::Ordering};
 
 use crossterm::{
     cursor::{self, MoveTo, SavePosition},
@@ -13,7 +13,7 @@ use parsec_core::{
         Tag
     },
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Constraint, Ui}
+    ui::{self, Area as UiArea, Constraint, Ui, Axis}
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -38,7 +38,7 @@ impl std::fmt::Debug for Coord {
 }
 
 impl Coord {
-    fn new(x: u16, y: u16) -> Coord {
+    pub fn new(x: u16, y: u16) -> Coord {
         Coord { x, y }
     }
 }
@@ -51,127 +51,6 @@ pub struct Coords {
 impl Coords {
     fn width(&self) -> usize {
         (self.br.x - self.tl.x) as usize
-    }
-}
-
-/// When to show the side of a [`Frame`].
-///
-/// - [`Never`][Show::Never] never shows it.
-/// - [`Border`][Show::Border] hides when on the edge of the window.
-/// - [`Always`][Show::Always] always shows it.
-/// - [`Negate`][Show::Negate] stops other [`Frame`]s from bordering.
-#[derive(Clone, Copy, Debug)]
-pub enum Show {
-    Never,
-    Border,
-    Always,
-    Negate
-}
-
-enum Side {
-    Right,
-    Up,
-    Left,
-    Down
-}
-
-impl Show {
-    fn frame_shift(&self, on_edge_of_screen: bool, side: Side) -> u16 {
-        // TODO: Take neighboring edges into account.
-        match self {
-            Show::Never | Show::Negate => 0,
-            Show::Border => match (on_edge_of_screen, side) {
-                (false, Side::Right | Side::Down) => 1,
-                _ => 0
-            },
-            Show::Always => 1
-        }
-    }
-}
-
-/// Configuration about how and wether to frame a [`Rect`].
-///
-/// All options follow an anti-clockwise ordering, starting from
-/// right:
-///
-/// - edges: (horizontal, vertical),
-/// - corners: (up right, up left, down left, down right),
-/// - joints: (right ver, up hor, left ver, down hor, ver hor)
-/// - sides_to_show: (right, up, left, down)
-#[derive(Clone, Debug)]
-pub struct Frame {
-    pub edges: (char, char),
-    pub corners: (char, char, char, char),
-    pub joints: (char, char, char, char, char),
-    pub sides_to_show: (Show, Show, Show, Show)
-}
-
-impl Default for Frame {
-    fn default() -> Self {
-        Frame {
-            edges: ('─', '│'),
-            corners: ('┐', '┌', '└', '┘'),
-            joints: ('├', '┴', '┤', '┬', '┼'),
-            sides_to_show: (Show::Never, Show::Never, Show::Never, Show::Never)
-        }
-    }
-}
-
-impl Frame {
-    pub fn normal() -> Self {
-        Frame {
-            edges: ('─', '│'),
-            corners: ('┐', '┌', '└', '┘'),
-            joints: ('├', '┴', '┤', '┬', '┼'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
-    }
-
-    /// Returns a new instance of [`Frame`], using only ASCII
-    /// characters.
-    pub fn ascii() -> Self {
-        Frame {
-            edges: ('-', '|'),
-            corners: ('+', '+', '+', '+'),
-            joints: ('+', '+', '+', '+', '+'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
-    }
-
-    pub fn heavy() -> Self {
-        Frame {
-            edges: ('━', '┃'),
-            corners: ('┓', '┏', '┗', '┛'),
-            joints: ('┣', '┻', '┫', '┳', '╋'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
-    }
-
-    pub fn dashed() -> Self {
-        Frame {
-            edges: ('╌', '╎'),
-            corners: ('┐', '┌', '└', '┘'),
-            joints: ('├', '┴', '┤', '┬', '┼'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
-    }
-
-    pub fn heavy_dashed() -> Self {
-        Frame {
-            edges: ('╍', '╏'),
-            corners: ('┓', '┏', '┗', '┛'),
-            joints: ('┣', '┻', '┫', '┳', '╋'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
-    }
-
-    pub fn double() -> Self {
-        Frame {
-            edges: ('═', '║'),
-            corners: ('╗', '╔', '╚', '╝'),
-            joints: ('╠', '╩', '╣', '╦', '╬'),
-            sides_to_show: (Show::Border, Show::Border, Show::Border, Show::Border)
-        }
     }
 }
 
@@ -190,18 +69,10 @@ impl Area {
         let rect = layout.fetch_index(self.index).unwrap();
         let rect = rect.read();
 
-        let mut coords = Coords {
+        Coords {
             tl: rect.tl(),
             br: rect.br()
-        };
-
-        let (right, up, left, down) = rect.frame.sides_to_show;
-        coords.br.x -= right.frame_shift(coords.br.x == layout.width(), Side::Right);
-        coords.tl.y += up.frame_shift(coords.tl.y == 0, Side::Up);
-        coords.tl.x += left.frame_shift(coords.tl.x == 0, Side::Left);
-        coords.br.y -= down.frame_shift(coords.tl.y == layout.height(), Side::Down);
-
-        coords
+        }
     }
 
     fn wrapping_coords(&self, cfg: &PrintCfg) -> Coords {
@@ -214,20 +85,10 @@ impl Area {
             _ => rect.br().x - rect.tl().x as u16
         };
 
-        let mut coords = Coords {
+        Coords {
             tl: rect.tl(),
             br: Coord::new(rect.tl().x + width, rect.br().y)
-        };
-
-        let (_, up, left, down) = rect.frame.sides_to_show;
-        coords.tl.y += up.frame_shift(coords.tl.y == 0, Side::Up);
-        coords.br.y -= down.frame_shift(coords.tl.y == layout.height(), Side::Down);
-
-        let x_shift = left.frame_shift(coords.br.x == layout.width(), Side::Right);
-        coords.tl.x += x_shift;
-        coords.br.x += x_shift;
-
-        coords
+        }
     }
 }
 
@@ -550,7 +411,7 @@ fn indents<'a>(
     })
 }
 
-fn bits<'a>(
+pub fn bits<'a>(
     iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, tab_stops: &'a TabStops,
     no_wrap: bool
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {

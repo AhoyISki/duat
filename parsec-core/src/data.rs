@@ -177,6 +177,11 @@ where
         let read_state = self.read_state.swap(cur_state, Ordering::Relaxed);
         cur_state > read_state
     }
+
+	/// Returns [`true`] if both [`RwData<T>`]s point to the same data.
+    pub fn ptr_eq(&self, other: &RwData<T>) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
 }
 
 impl<T> RwData<T>

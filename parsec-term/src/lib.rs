@@ -7,7 +7,7 @@ use crossterm::{
     cursor, execute,
     terminal::{self, ClearType}
 };
-use layout::Layout;
+use layout::{Layout, Frame, Line};
 use parsec_core::{
     data::RwData,
     ui::{self, PushSpecs}
@@ -79,13 +79,15 @@ unsafe impl Send for Window {}
 unsafe impl Sync for Window {}
 
 pub struct Ui {
-    windows: Vec<Window>
+    windows: Vec<Window>,
+    frame: Frame
 }
 
 impl Default for Ui {
     fn default() -> Self {
         Ui {
-            windows: Vec::new()
+            windows: Vec::new(),
+            frame: Frame::Surround(Line::Regular)
         }
     }
 }
@@ -97,7 +99,7 @@ impl ui::Ui for Ui {
 
     fn new_window(&mut self) -> (Self::Window, Self::Area) {
         let window = Window {
-            layout: RwData::new(Layout::new())
+            layout: RwData::new(Layout::new(self.frame))
         };
 
         let area = Area {

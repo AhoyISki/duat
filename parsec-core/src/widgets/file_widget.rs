@@ -26,7 +26,6 @@ use crate::{
     data::DownCastableData,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
-    tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
     ui::{Area, PrintInfo, Ui}
 };
@@ -67,16 +66,17 @@ where
 
         let mut text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
-        //let mut pushes_pops_you_cant_explain_that = true;
-        //let lock = text.tags.get_lock();
+        // let mut pushes_pops_you_cant_explain_that = true;
+        // let lock = text.tags.get_lock();
 
-        //for index in (0..text.len_chars()).step_by(20) {
+        // for index in (0..text.len_chars()).step_by(20) {
         //    if pushes_pops_you_cant_explain_that {
         //        text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
         //    } else {
         //        text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
         //    }
-        //    pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
+        //    pushes_pops_you_cant_explain_that =
+        // !pushes_pops_you_cant_explain_that
         //}
 
         Widget::actionable(
