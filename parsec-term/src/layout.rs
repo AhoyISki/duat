@@ -170,9 +170,9 @@ impl Rect {
         }
     }
 
-    fn set_parental_constraints(
+    fn set_parallel_constraints(
         &mut self, parent: &Rect, axis: Axis, frame: Frame, max: Coord, edges: &mut Vec<Edge>
-    ) {
+    ) -> (f64, f64) {
         let axis = axis.perp();
 
         self.edge_cons.extend([
@@ -182,12 +182,20 @@ impl Rect {
             self.br.y.var | GE(REQUIRED) | self.tl.y.var
         ]);
 
-        let (perp_left_edge, perp_right_edge) = self.create_frame(parent, axis, frame, max, edges);
+        let (right, up, left, down) = self.form_frame(parent, frame, max, edges);
+
+        let (para_left, para_right, start, end) = match axis {
+            Axis::Vertical => (up, down, left, right),
+            Axis::Horizontal => (left, right, up, down)
+        };
+
 
         self.edge_cons.extend([
-            self.start(axis) | EQ(REQUIRED) | parent.start(axis) + perp_left_edge,
-            self.end(axis) + perp_right_edge | EQ(REQUIRED) | parent.end(axis)
+            self.start(axis) | EQ(REQUIRED) | parent.start(axis) + para_left,
+            self.end(axis) + para_right | EQ(REQUIRED) | parent.end(axis)
         ]);
+
+        (start, end)
     }
 
     fn set_main_constraints(&mut self, frame: Frame, solver: &mut Solver, edges: &mut Vec<Edge>) {
@@ -198,7 +206,7 @@ impl Rect {
             (0.0, 0.0)
         };
 
-        edges.retain(|edge| !edge.matches(&self.br, &self.tl));
+        edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         if hor_edge == 1.0 {
             edges.push(Edge::new(self.br.clone(), self.tl.clone(), Axis::Vertical, frame));
             edges.push(Edge::new(self.tl.clone(), self.br.clone(), Axis::Vertical, frame));
@@ -215,12 +223,9 @@ impl Rect {
             self.br.y.var | GE(REQUIRED) | self.tl.y.var,
         ];
 
+		solver.add_constraints(&self.edge_cons).unwrap();
         solver.suggest_value(self.br.x.var, width as f64 - hor_edge).unwrap();
         solver.suggest_value(self.br.y.var, height as f64 - ver_edge).unwrap();
-    }
-
-    fn add_constraints(&self, solver: &mut Solver) {
-        solver.add_constraints(&self.edge_cons).unwrap();
     }
 
     fn start(&self, axis: Axis) -> Variable {
@@ -310,15 +315,6 @@ impl Rect {
         }
     }
 
-    fn set_tied_index(&mut self, index: usize) {
-        self.tied_index = Some(index);
-        if let Some((children, _)) = &mut self.lineage {
-            for (child, _) in children {
-                child.write().set_tied_index(index);
-            }
-        }
-    }
-
     pub fn index(&self) -> usize {
         self.index
     }
@@ -333,24 +329,30 @@ impl Rect {
         }
     }
 
-    fn create_frame(
-        &self, parent: &Rect, axis: Axis, frame: Frame, max: Coord, edges: &mut Vec<Edge>
-    ) -> (f64, f64) {
-        let (start_edge, end_edge) = if self.is_frameable() {
-            frame.edges(axis, &parent.br, &parent.tl, max)
+    fn form_frame(
+        &self, parent: &Rect, frame: Frame, max: Coord, edges: &mut Vec<Edge>
+    ) -> (f64, f64, f64, f64) {
+        let (right, up, left, down) = if self.is_frameable() {
+            frame.edges(&parent.br, &parent.tl, max)
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0, 0.0)
         };
 
-        edges.retain(|edge| !edge.matches(&self.br, &self.tl));
-        if start_edge == 1.0 {
-            edges.push(Edge::new(self.tl.clone(), self.br.clone(), axis.perp(), frame));
+        edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
+        if right == 1.0 {
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Axis::Vertical, frame));
         }
-        if end_edge == 1.0 {
-            edges.push(Edge::new(self.br.clone(), self.tl.clone(), axis.perp(), frame));
+        if up == 1.0 {
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Axis::Horizontal, frame));
+        }
+        if left == 1.0 {
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Axis::Vertical, frame));
+        }
+        if down == 1.0 {
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Axis::Horizontal, frame));
         }
 
-        (start_edge, end_edge)
+        (right, up, left, down)
     }
 }
 
@@ -366,6 +368,7 @@ pub enum Line {
     Custom(char)
 }
 
+#[derive(Debug)]
 struct Edge {
     center: VarPoint,
     target: VarPoint,
@@ -383,8 +386,8 @@ impl Edge {
         }
     }
 
-    fn matches(&self, tl: &VarPoint, br: &VarPoint) -> bool {
-        self.center == *tl || self.center == *br || self.target == *tl || self.target == *br
+    fn matches_vars(&self, tl: &VarPoint, br: &VarPoint) -> bool {
+        self.center == *tl && self.target == *br || self.center == *br && self.target == *tl
     }
 }
 
@@ -409,53 +412,38 @@ pub enum Frame {
 }
 
 impl Frame {
-    fn edges(&self, axis: Axis, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64) {
-        let on_edge = match axis {
-            Axis::Horizontal => tl.x.value.load(Ordering::Acquire) == 0,
-            Axis::Vertical => tl.y.value.load(Ordering::Acquire) == 0
+    fn edges(&self, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64, f64, f64) {
+        let right = br.x.value.load(Ordering::Acquire) == max.x;
+        let up = tl.y.value.load(Ordering::Acquire) == 0;
+        let left = tl.x.value.load(Ordering::Acquire) == 0;
+        let down = br.y.value.load(Ordering::Acquire) == max.y;
+
+        let (up, left) = match self {
+            Frame::Surround(_) => (up as usize as f64, left as usize as f64),
+            Frame::Horizontal(_) => (0.0, left as usize as f64),
+            Frame::Vertical(_) => (up as usize as f64, 0.0),
+            _ => (0.0, 0.0)
         };
 
-        let start_edge = match (self, axis) {
-            (Frame::Surround(_), _)
-            | (Frame::Horizontal(_), Axis::Horizontal)
-            | (Frame::Vertical(_), Axis::Vertical)
-                if on_edge =>
-            {
-                1.0
-            }
-            _ => 0.0
+        let (down, right) = match self {
+            Frame::Surround(_) => (1.0, 1.0),
+            Frame::Horizontal(_) => (0.0, 1.0),
+            Frame::Vertical(_) => (1.0, 0.0),
+            Frame::Border(_) => (!down as usize as f64, !right as usize as f64),
+            Frame::HorBorder(_) => (0.0, !right as usize as f64),
+            Frame::VerBorder(_) => (!down as usize as f64, 0.0),
+            Frame::Empty => (0.0, 0.0)
         };
 
-        let not_on_edge = match axis {
-            Axis::Horizontal => br.x.value.load(Ordering::Acquire) != max.x,
-            Axis::Vertical => br.y.value.load(Ordering::Acquire) != max.y
-        };
-
-        let end_edge = match (self, axis) {
-            (Frame::Surround(_), _)
-            | (Frame::Horizontal(_), Axis::Horizontal)
-            | (Frame::Vertical(_), Axis::Vertical) => 1.0,
-            (Frame::Border(_), _)
-            | (Frame::HorBorder(_), Axis::Horizontal)
-            | (Frame::VerBorder(_), Axis::Vertical)
-                if not_on_edge =>
-            {
-                1.0
-            }
-            _ => 0.0
-        };
-
-        (start_edge, end_edge)
+        (right, up, left, down)
     }
 
     fn main_edges(&self) -> (f64, f64) {
         match self {
-            Frame::Empty | Frame::Border(_) | Frame::HorBorder(_) | Frame::VerBorder(_) => {
-                (0.0, 0.0)
-            }
             Frame::Surround(_) => (1.0, 1.0),
             Frame::Horizontal(_) => (1.0, 0.0),
-            Frame::Vertical(_) => (0.0, 1.0)
+            Frame::Vertical(_) => (0.0, 1.0),
+            _ => (0.0, 0.0)
         }
     }
 }
@@ -493,8 +481,6 @@ impl Layout {
         solver.add_edit_variable(main.br.y.var, STRONG * 2.0).unwrap();
 
         main.set_main_constraints(frame, &mut solver, &mut edges);
-
-        solver.add_constraints(&main.edge_cons).unwrap();
 
         let active_index = main.index;
         let mut layout = Layout {
@@ -602,7 +588,9 @@ impl Layout {
             if !is_glued {
                 if child_is_main {
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
-                    rect.write().set_main_constraints(self.frame, solver, edges);
+                    let mut rect = rect.write();
+                    rect.clear_constraints(solver);
+                    rect.set_main_constraints(self.frame, solver, edges);
                 } else {
                     let (parent, index, _) = self.fetch_parent(rect.read().index).unwrap();
                     let mut parent = parent.write();
@@ -613,6 +601,8 @@ impl Layout {
 
             (rect, index, Some(new_parent_index))
         };
+
+        self.update();
 
         let (temp_constraint, new_index) = parent.mutate(|mut parent| {
             let mut new = Rect::new(&mut self.vars);
@@ -653,7 +643,6 @@ impl Layout {
             // `resizable_len / resizable_children`, a self imposed rule.
             // This will be useful later, when adding new ratio constraints to the
             // new child.
-
             if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint {
                 let (children, axis) = parent.lineage.as_ref().unwrap();
                 let (res_count, res_len) = children
@@ -709,25 +698,23 @@ fn set_child_vars(
     let mut child = children[index].0.write();
 
     child.clear_constraints(solver);
-    child.set_parental_constraints(parent, *axis, frame, max, edges);
-
-    let (start_edge, end_edge) = child.create_frame(parent, *axis, frame, max, edges);
+    let (start, end) = child.set_parallel_constraints(parent, *axis, frame, max, edges);
 
     if index == 0 {
-        let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis) + start_edge;
+        let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis) + start;
         child.edge_cons.push(constraint);
     }
 
     // Previous children carry the `Constraint`s for the `start` of their
     // successors.
     let constraint = if let Some((next, _)) = children.get(index + 1) {
-        child.end(*axis) + end_edge | EQ(REQUIRED) | next.read().start(*axis)
+        child.end(*axis) + end | EQ(REQUIRED) | next.read().start(*axis)
     } else {
-        child.end(*axis) + end_edge | EQ(REQUIRED) | parent.end(*axis)
+        child.end(*axis) + end | EQ(REQUIRED) | parent.end(*axis)
     };
     child.edge_cons.push(constraint);
 
-    child.add_constraints(solver);
+    solver.add_constraints(&child.edge_cons).unwrap();
 
     if let Some((children, _)) = &child.lineage {
         let len = children.len();

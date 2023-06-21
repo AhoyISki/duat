@@ -448,8 +448,8 @@ pub static mut FOR_TEST: usize = 0;
 #[doc(hidden)]
 macro_rules! log_info {
     ($($text:tt)*) => {{
-        //use std::{fs, io::Write};
-        //let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-        //log.write_fmt(format_args!($($text)*)).unwrap();
+        use std::{fs, io::Write};
+        let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+        log.write_fmt(format_args!($($text)*)).unwrap();
     }};
 }

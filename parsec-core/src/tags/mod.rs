@@ -199,41 +199,13 @@ impl Tags {
     }
 
     pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        struct Iter<I>(I, usize)
-        where
-            I: Iterator<Item = (usize, Tag)>;
-
-        impl<I> Iterator for Iter<I>
-        where
-            I: Iterator<Item = (usize, Tag)>
-        {
-            type Item = (usize, Tag);
-
-            fn next(&mut self) -> Option<Self::Item> {
-                self.1 += 1;
-                self.0.next()
+        self.inner.iter_at(ch_index).filter_map(move |(width, t_or_s)| {
+            if let TagOrSkip::Tag(tag, _) = t_or_s {
+                Some((width, tag))
+            } else {
+                None
             }
-        }
-
-        impl<I> Drop for Iter<I>
-        where
-            I: Iterator<Item = (usize, Tag)>
-        {
-            fn drop(&mut self) {
-                log_info!("\nTags iterated: {}", self.1);
-            }
-        }
-
-        Iter(
-            self.inner.iter_at(ch_index).filter_map(move |(width, t_or_s)| {
-                if let TagOrSkip::Tag(tag, _) = t_or_s {
-                    Some((width, tag))
-                } else {
-                    None
-                }
-            }),
-            0
-        )
+        })
     }
 
     /// Transforms any surrounding clusters of multiple skips into a

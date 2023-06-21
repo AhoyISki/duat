@@ -4,8 +4,7 @@ use crate::{
     history::{Change, History},
     text::{inner::InnerText, PrintCfg, Text},
     ui::{Area, Ui},
-    widgets::EditAccum, log_info
-};
+    widgets::EditAccum};
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
@@ -121,7 +120,6 @@ impl Cursor {
     where
         U: Ui
     {
-        log_info!("\n new Cursor called");
         let line = text.iter_line(pos.line);
         Cursor {
             caret: pos,
@@ -138,7 +136,6 @@ impl Cursor {
     ) where
         U: Ui
     {
-        log_info!("\n move ver called");
         let caret = &mut self.caret;
         let max = text.len_lines().saturating_sub(1);
         caret.line = caret.line.saturating_add_signed(count).min(max);
