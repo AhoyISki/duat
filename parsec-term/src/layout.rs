@@ -16,7 +16,7 @@ use parsec_core::{
     ui::{Axis, Constraint, PushSpecs}
 };
 
-use crate::area::Coord;
+use crate::{area::Coord, Coords};
 
 fn unique_rect_index() -> usize {
     static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -30,12 +30,6 @@ struct VarValue {
     value: Arc<AtomicU16>
 }
 
-impl PartialEq<VarValue> for VarValue {
-    fn eq(&self, other: &VarValue) -> bool {
-        self.var == other.var
-    }
-}
-
 impl VarValue {
     fn new() -> Self {
         Self {
@@ -45,7 +39,25 @@ impl VarValue {
     }
 }
 
-#[derive(Clone, PartialEq)]
+impl PartialEq<VarValue> for VarValue {
+    fn eq(&self, other: &VarValue) -> bool {
+        self.var == other.var
+    }
+}
+
+impl PartialOrd<VarValue> for VarValue {
+    fn partial_cmp(&self, other: &VarValue) -> Option<std::cmp::Ordering> {
+        if self.value.load(Ordering::Acquire) > other.value.load(Ordering::Acquire) {
+            Some(std::cmp::Ordering::Greater)
+        } else if self.value.load(Ordering::Acquire) < other.value.load(Ordering::Acquire) {
+            Some(std::cmp::Ordering::Less)
+        } else {
+            Some(std::cmp::Ordering::Equal)
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, PartialOrd)]
 struct VarPoint {
     x: VarValue,
     y: VarValue
@@ -189,7 +201,6 @@ impl Rect {
             Axis::Horizontal => (left, right, up, down)
         };
 
-
         self.edge_cons.extend([
             self.start(axis) | EQ(REQUIRED) | parent.start(axis) + para_left,
             self.end(axis) + para_right | EQ(REQUIRED) | parent.end(axis)
@@ -223,7 +234,7 @@ impl Rect {
             self.br.y.var | GE(REQUIRED) | self.tl.y.var,
         ];
 
-		solver.add_constraints(&self.edge_cons).unwrap();
+        solver.add_constraints(&self.edge_cons).unwrap();
         solver.suggest_value(self.br.x.var, width as f64 - hor_edge).unwrap();
         solver.suggest_value(self.br.y.var, height as f64 - ver_edge).unwrap();
     }
@@ -369,11 +380,11 @@ pub enum Line {
 }
 
 #[derive(Debug)]
-struct Edge {
+pub struct Edge {
     center: VarPoint,
     target: VarPoint,
     axis: Axis,
-    frame: Frame
+    pub frame: Frame
 }
 
 impl Edge {
@@ -388,6 +399,40 @@ impl Edge {
 
     fn matches_vars(&self, tl: &VarPoint, br: &VarPoint) -> bool {
         self.center == *tl && self.target == *br || self.center == *br && self.target == *tl
+    }
+
+    pub fn line_coords(&self) -> Coords {
+        let (c_shift, t_shift) = if self.center < self.target {
+            (1, 0)
+        } else {
+            (0, 1)
+        };
+
+        let target = match self.axis {
+            Axis::Horizontal => Coord {
+                x: self.target.x.value.load(Ordering::Acquire) - t_shift,
+                y: self.center.y.value.load(Ordering::Acquire) - c_shift
+            },
+            Axis::Vertical => Coord {
+                x: self.center.x.value.load(Ordering::Acquire) - c_shift,
+                y: self.target.y.value.load(Ordering::Acquire) - t_shift
+            }
+        };
+        let center = Coord {
+            x: self.center.x.value.load(Ordering::Acquire) - c_shift,
+            y: self.center.y.value.load(Ordering::Acquire) - c_shift
+        };
+        if self.center < self.target {
+            Coords {
+                tl: center,
+                br: target
+            }
+        } else {
+            Coords {
+                tl: target,
+                br: center
+            }
+        }
     }
 }
 
@@ -444,6 +489,18 @@ impl Frame {
             Frame::Horizontal(_) => (1.0, 0.0),
             Frame::Vertical(_) => (0.0, 1.0),
             _ => (0.0, 0.0)
+        }
+    }
+
+    pub fn line(&self) -> Option<Line> {
+        match self {
+            Frame::Empty => None,
+            Frame::Surround(line)
+            | Frame::Border(line)
+            | Frame::Horizontal(line)
+            | Frame::HorBorder(line)
+            | Frame::Vertical(line)
+            | Frame::VerBorder(line) => Some(*line)
         }
     }
 }
@@ -687,6 +744,10 @@ impl Layout {
 
     pub fn height(&self) -> u16 {
         self.main.read().len_value(Axis::Vertical)
+    }
+
+    pub fn edges(&self) -> &[Edge] {
+        self.edges.as_ref()
     }
 }
 
