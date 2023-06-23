@@ -13,7 +13,9 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    ui::{Axis, Constraint, PushSpecs}
+    log_info,
+    ui::{Axis, Constraint, PushSpecs},
+    widgets
 };
 
 use crate::{area::Coord, Coords};
@@ -209,8 +211,9 @@ impl Rect {
         (start, end)
     }
 
-    fn set_main_constraints(&mut self, frame: Frame, solver: &mut Solver, edges: &mut Vec<Edge>) {
-        let (width, height) = crossterm::terminal::size().unwrap();
+    fn set_main_constraints(
+        &mut self, frame: Frame, solver: &mut Solver, edges: &mut Vec<Edge>, max: Coord
+    ) {
         let (hor_edge, ver_edge) = if self.is_frameable() {
             frame.main_edges()
         } else {
@@ -235,8 +238,8 @@ impl Rect {
         ];
 
         solver.add_constraints(&self.edge_cons).unwrap();
-        solver.suggest_value(self.br.x.var, width as f64 - hor_edge).unwrap();
-        solver.suggest_value(self.br.y.var, height as f64 - ver_edge).unwrap();
+        solver.suggest_value(self.br.x.var, max.x as f64 - hor_edge).unwrap();
+        solver.suggest_value(self.br.y.var, max.y as f64 - ver_edge).unwrap();
     }
 
     fn start(&self, axis: Axis) -> Variable {
@@ -456,6 +459,8 @@ pub enum Frame {
 
 impl Frame {
     fn edges(&self, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64, f64, f64) {
+        // log_info!("\n{:?}\nbr: {:?}\ntl: {:?}\nmax: {:?}\n", self, br, tl,
+        // max);
         let right = br.x.value.load(Ordering::Acquire) == max.x;
         let up = tl.y.value.load(Ordering::Acquire) == 0;
         let left = tl.x.value.load(Ordering::Acquire) == 0;
@@ -506,6 +511,7 @@ impl Frame {
 pub struct Layout {
     vars: HashMap<Variable, Arc<AtomicU16>>,
     main: RwData<Rect>,
+    max: Coord,
     floating: Vec<RwData<Rect>>,
     frame: Frame,
     edges: Vec<Edge>,
@@ -526,6 +532,10 @@ impl std::fmt::Debug for Layout {
 
 impl Layout {
     pub fn new(frame: Frame) -> Self {
+        let max = {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            Coord::new(width, height)
+        };
         let mut edges = Vec::new();
         let mut solver = Solver::new();
         let mut vars = HashMap::new();
@@ -535,12 +545,13 @@ impl Layout {
         solver.add_edit_variable(main.br.x.var, STRONG * 2.0).unwrap();
         solver.add_edit_variable(main.br.y.var, STRONG * 2.0).unwrap();
 
-        main.set_main_constraints(frame, &mut solver, &mut edges);
+        main.set_main_constraints(Frame::Empty, &mut solver, &mut edges, max);
 
         let active_index = main.index;
         let mut layout = Layout {
             vars,
             main: RwData::new(main),
+            max,
             floating: Vec::new(),
             edges,
             frame,
@@ -548,6 +559,13 @@ impl Layout {
             solver,
             vars_changed: AtomicBool::new(false)
         };
+
+        layout.update();
+
+        layout.main.mutate(|main| {
+            main.clear_constraints(&mut layout.solver);
+            main.set_main_constraints(Frame::Empty, &mut layout.solver, &mut layout.edges, max);
+        });
 
         layout.update();
 
@@ -586,11 +604,6 @@ impl Layout {
         &mut self, mut index: usize, specs: PushSpecs, is_glued: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
-        let max = {
-            let (width, height) = crossterm::terminal::size().unwrap();
-            Coord::new(width, height)
-        };
-
         if is_glued {
             if let Some(rect) = self.fetch_index(index) {
                 index = rect.read().tied_index.unwrap_or(index);
@@ -648,12 +661,12 @@ impl Layout {
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
                     let mut rect = rect.write();
                     rect.clear_constraints(solver);
-                    rect.set_main_constraints(self.frame, solver, edges);
+                    rect.set_main_constraints(self.frame, solver, edges, self.max);
                 } else {
                     let (parent, index, _) = self.fetch_parent(rect.read().index).unwrap();
                     let mut parent = parent.write();
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
-                    set_child_vars(&mut parent, index, solver, self.frame, max, edges)
+                    prepare_child(&mut parent, index, solver, self.frame, self.max, edges)
                 }
             }
 
@@ -662,8 +675,9 @@ impl Layout {
 
         self.update();
 
-        let (temp_constraint, new_index) = parent.mutate(|mut parent| {
+        let (temp_constraint, new_index, is_7) = parent.mutate(|mut parent| {
             let mut new = Rect::new(&mut self.vars);
+            let is_7 = format!("{:?}", new.br).chars().nth(6).unwrap() == '7';
             if is_glued {
                 new.tied_index = new_parent_index.or(Some(index));
             }
@@ -691,23 +705,21 @@ impl Layout {
             // We initially set the frame to `Frame::Empty`, since that will make
             // the `Rect`s take their "full space". What this means is that, when
             // we calculate the real frame, using `self.frame`, we know for a fact
-            // which `Rect`s are on the edge of the screen. Unfortunately, this
-            // does mean that we have to run `set_child_vars()` twice for each
+            // which `Rect`s reach the edge of the screen. Unfortunately, this
+            // does mean that we have to run `prepare_child()` twice for each
             // affected area.
             let edges = &mut self.edges;
-            if index < len - 1 {
-                set_child_vars(&mut parent, index + 1, &mut self.solver, Frame::Empty, max, edges);
+            let next = (len - 1).checked_sub(index + 1).map(|_| index + 1);
+            for &index in [index.checked_sub(1), Some(index), next].iter().flatten() {
+                prepare_child(parent, index, &mut self.solver, Frame::Empty, self.max, edges);
             }
-            if index > 0 {
-                set_child_vars(&mut parent, index - 1, &mut self.solver, Frame::Empty, max, edges);
-            }
-            set_child_vars(&mut parent, index, &mut self.solver, Frame::Empty, max, edges);
 
             // Add a constraint so that the new child `Rect` has a len equal to
             // `resizable_len / resizable_children`, a self imposed rule.
             // This will be useful later, when adding new ratio constraints to the
             // new child.
-            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint {
+            let constraint = specs.constraint;
+            let temp = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
                 let (children, axis) = parent.lineage.as_ref().unwrap();
                 let (res_count, res_len) = children
                     .iter()
@@ -727,6 +739,18 @@ impl Layout {
                 (Some(temp_constraint), new_index)
             } else {
                 (None, new_index)
+            };
+
+            (temp.0, temp.1, is_7)
+        });
+
+        self.update();
+
+        parent.mutate(|parent| {
+            set_ratio_constraints(specs.constraint, parent, index, &mut self.solver);
+
+            if let Some(temp_constraint) = temp_constraint {
+                self.solver.remove_constraint(&temp_constraint).unwrap();
             }
         });
 
@@ -736,22 +760,15 @@ impl Layout {
             let len = parent.children().unwrap().count();
             let edges = &mut self.edges;
             // Second frame calculation, this time, using the real `self.frame`.
-            if index < len - 1 {
-                set_child_vars(parent, index + 1, &mut self.solver, self.frame, max, edges);
-            }
-            if index > 0 {
-                set_child_vars(parent, index - 1, &mut self.solver, self.frame, max, edges);
-            }
-            set_child_vars(parent, index, &mut self.solver, self.frame, max, edges);
-
-            set_ratio_constraints(specs.constraint, parent, index, &mut self.solver);
-
-            if let Some(temp_constraint) = temp_constraint {
-                self.solver.remove_constraint(&temp_constraint).unwrap();
+            let next = (len - 1).checked_sub(index + 1).map(|_| index + 1);
+            for &index in [index.checked_sub(1), Some(index), next].iter().flatten() {
+                prepare_child(parent, index, &mut self.solver, self.frame, self.max, edges);
             }
         });
 
         self.update();
+
+        // log_info!("{:#?}", self.edges);
 
         (new_index, new_parent_index)
     }
@@ -769,7 +786,7 @@ impl Layout {
     }
 }
 
-fn set_child_vars(
+fn prepare_child(
     parent: &mut Rect, index: usize, solver: &mut Solver, frame: Frame, max: Coord,
     edges: &mut Vec<Edge>
 ) {
@@ -798,7 +815,7 @@ fn set_child_vars(
     if let Some((children, _)) = &child.lineage {
         let len = children.len();
         for index in 0..len {
-            set_child_vars(&mut child, index, solver, frame, max, edges);
+            prepare_child(&mut child, index, solver, frame, max, edges);
         }
     }
 }
