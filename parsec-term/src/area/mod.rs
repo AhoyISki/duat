@@ -1,3 +1,5 @@
+mod line;
+
 use std::io::{self, StdoutLock};
 
 use crossterm::{
@@ -17,7 +19,10 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::layout::{Edge, Layout, Line};
+use crate::{
+    area::line::horizontal,
+    layout::{Edge, Layout, Line}
+};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -706,26 +711,14 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     for (index, &(edge, line)) in edges.iter().enumerate() {
         if edge.tl.y == edge.br.y {
             let char = match line {
-                Some(Line::Regular | Line::Rounded) => '─',
-                Some(Line::Ascii) => '-',
-                Some(Line::Dashed) => '╌',
-                Some(Line::Double) => '═',
-                Some(Line::Thick) => '━',
-                Some(Line::ThickDashed) => '╍',
-                Some(Line::Custom(char)) => char,
+                Some(line) => line::horizontal(line, line),
                 None => unreachable!()
             };
             let line = char.to_string().repeat((edge.br.x - edge.tl.x - 1) as usize);
             queue!(stdout, MoveTo(edge.tl.x + 1, edge.tl.y), Print(line))
         } else {
             let char = match line {
-                Some(Line::Regular | Line::Rounded) => '│',
-                Some(Line::Ascii) => '|',
-                Some(Line::Dashed) => '╎',
-                Some(Line::Double) => '║',
-                Some(Line::Thick) => '┃',
-                Some(Line::ThickDashed) => '╏',
-                Some(Line::Custom(char)) => char,
+                Some(line) => line::vertical(line, line),
                 None => unreachable!()
             };
 
@@ -744,24 +737,10 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     }
 
     for (coord, right, up, left, down) in crossings {
-        let char = match (right, up, left, down) {
-            (None, None, None, None) => unreachable!(),
-            (None, None, None, Some(_)) => '╷',
-            (None, None, Some(_), None) => '╴',
-            (None, None, Some(_), Some(_)) => '┐',
-            (None, Some(_), None, None) => '╵',
-            (None, Some(_), None, Some(_)) => '│',
-            (None, Some(_), Some(_), None) => '┘',
-            (None, Some(_), Some(_), Some(_)) => '┤',
-            (Some(_), None, None, None) => '╶',
-            (Some(_), None, None, Some(_)) => '┌',
-            (Some(_), None, Some(_), None) => '─',
-            (Some(_), None, Some(_), Some(_)) => '┬',
-            (Some(_), Some(_), None, None) => '└',
-            (Some(_), Some(_), None, Some(_)) => '├',
-            (Some(_), Some(_), Some(_), None) => '┴',
-            (Some(_), Some(_), Some(_), Some(_)) => '┼'
-        };
-        queue!(stdout, MoveTo(coord.x, coord.y), Print(char))
+        queue!(
+            stdout,
+            MoveTo(coord.x, coord.y),
+            Print(line::crossing(right, up, left, down, true))
+        )
     }
 }
