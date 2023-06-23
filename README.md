@@ -19,6 +19,7 @@ These are the goals that have been acomplished or are on their way:
 - [x] Create a status line;
 - [x] File switching;
 - [x] Create a command creation interface and a command line;
+- [x] Add the ability to frame areas;
 - [ ] Add the ability to create hooks;
 - [ ] Implement folding;
 - [ ] Add floating widgets, not tied to the session layout;
