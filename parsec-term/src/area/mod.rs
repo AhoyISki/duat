@@ -19,10 +19,7 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::{
-    area::line::horizontal,
-    layout::{Edge, Layout, Line}
-};
+use crate::layout::{Edge, Layout, Line};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -706,7 +703,8 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
         .map(|edge| (edge.line_coords(), edge.frame.line()))
         .collect::<Vec<(Coords, Option<Line>)>>();
 
-    let mut crossings = Vec::new();
+    let mut crossings =
+        Vec::<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)>::new();
 
     for (index, &(edge, line)) in edges.iter().enumerate() {
         if edge.tl.y == edge.br.y {
@@ -730,7 +728,15 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
         for (other_index, &(other_edge, other_line)) in edges.iter().enumerate() {
             if index != other_index {
                 if let Some(crossing) = edge.crossing(other_edge, line, other_line) {
-                    crossings.push(crossing);
+                    let existing = crossings.iter_mut().find(|(coord, ..)| *coord == crossing.0);
+                    if let Some((_, right, up, left, down)) = existing {
+                        *right = right.or(crossing.1);
+                        *up = up.or(crossing.2);
+                        *left = left.or(crossing.3);
+                        *down = down.or(crossing.4);
+                    } else {
+                        crossings.push(crossing);
+                    }
                 }
             }
         }
