@@ -327,7 +327,6 @@ where
             if let (Some(new_parent), true) = (new_parent, self.is_file) {
                 if window.window.is_senior(new_parent, window.files_parent) {
                     window.files_parent = new_parent;
-                    log_info!("\n{new_parent}");
                 }
             }
 

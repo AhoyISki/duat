@@ -182,7 +182,7 @@ impl Rect {
         }
     }
 
-    fn set_parallel_constraints(
+    fn set_constraints(
         &mut self, parent: &Rect, axis: Axis, frame: Frame, max: Coord, edges: &mut Vec<Edge>
     ) -> (f64, f64) {
         let axis = axis.perp();
@@ -194,7 +194,7 @@ impl Rect {
             self.br.y.var | GE(REQUIRED) | self.tl.y.var
         ]);
 
-        let (right, up, left, down) = self.form_frame(parent, frame, max, edges);
+        let (right, up, left, down) = self.form_frame(frame, max, edges);
 
         let (para_left, para_right, start, end) = match axis {
             Axis::Vertical => (up, down, left, right),
@@ -340,11 +340,9 @@ impl Rect {
         }
     }
 
-    fn form_frame(
-        &self, parent: &Rect, frame: Frame, max: Coord, edges: &mut Vec<Edge>
-    ) -> (f64, f64, f64, f64) {
+    fn form_frame(&self, frame: Frame, max: Coord, edges: &mut Vec<Edge>) -> (f64, f64, f64, f64) {
         let (right, up, left, down) = if self.is_frameable() {
-            frame.edges(&parent.br, &parent.tl, max)
+            frame.edges(&self.br, &self.tl, max)
         } else {
             (0.0, 0.0, 0.0, 0.0)
         };
@@ -588,7 +586,10 @@ impl Layout {
         &mut self, mut index: usize, specs: PushSpecs, is_glued: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
-        let max = Coord::new(self.width(), self.height());
+        let max = {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            Coord::new(width, height)
+        };
 
         if is_glued {
             if let Some(rect) = self.fetch_index(index) {
@@ -628,7 +629,6 @@ impl Layout {
                 (parent.index, std::mem::replace(rect, parent))
             });
 
-            // If the child is glued, the frame doesn't need to be redone.
             if is_glued {
                 child.tied_index = Some(new_parent_index);
             }
@@ -642,6 +642,7 @@ impl Layout {
                 parent.lineage = Some((vec![(RwData::new(child), Constraints::default())], axis));
             });
 
+            // If the child is glued, the frame doesn't need to be redone.
             if !is_glued {
                 if child_is_main {
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
@@ -687,14 +688,20 @@ impl Layout {
                 constraints.defined = Some((constraint, defined));
             });
 
+            // We initially set the frame to `Frame::Empty`, since that will make
+            // the `Rect`s take their "full space". What this means is that, when
+            // we calculate the real frame, using `self.frame`, we know for a fact
+            // which `Rect`s are on the edge of the screen. Unfortunately, this
+            // does mean that we have to run `set_child_vars()` twice for each
+            // affected area.
             let edges = &mut self.edges;
             if index < len - 1 {
-                set_child_vars(&mut parent, index + 1, &mut self.solver, self.frame, max, edges);
+                set_child_vars(&mut parent, index + 1, &mut self.solver, Frame::Empty, max, edges);
             }
             if index > 0 {
-                set_child_vars(&mut parent, index - 1, &mut self.solver, self.frame, max, edges);
+                set_child_vars(&mut parent, index - 1, &mut self.solver, Frame::Empty, max, edges);
             }
-            set_child_vars(&mut parent, index, &mut self.solver, self.frame, max, edges);
+            set_child_vars(&mut parent, index, &mut self.solver, Frame::Empty, max, edges);
 
             // Add a constraint so that the new child `Rect` has a len equal to
             // `resizable_len / resizable_children`, a self imposed rule.
@@ -726,6 +733,17 @@ impl Layout {
         self.update();
 
         parent.mutate(|parent| {
+            let len = parent.children().unwrap().count();
+            let edges = &mut self.edges;
+            // Second frame calculation, this time, using the real `self.frame`.
+            if index < len - 1 {
+                set_child_vars(parent, index + 1, &mut self.solver, self.frame, max, edges);
+            }
+            if index > 0 {
+                set_child_vars(parent, index - 1, &mut self.solver, self.frame, max, edges);
+            }
+            set_child_vars(parent, index, &mut self.solver, self.frame, max, edges);
+
             set_ratio_constraints(specs.constraint, parent, index, &mut self.solver);
 
             if let Some(temp_constraint) = temp_constraint {
@@ -759,7 +777,7 @@ fn set_child_vars(
     let mut child = children[index].0.write();
 
     child.clear_constraints(solver);
-    let (start, end) = child.set_parallel_constraints(parent, *axis, frame, max, edges);
+    let (start, end) = child.set_constraints(parent, *axis, frame, max, edges);
 
     if index == 0 {
         let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis) + start;

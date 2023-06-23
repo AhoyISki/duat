@@ -6,7 +6,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope as AnyRope};
 
 use self::inner::InnerTags;
-use crate::{log_info, text::inner::InnerText};
+use crate::{text::inner::InnerText};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);

@@ -6,7 +6,6 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    log_info,
     data::RwData,
     position::Pos,
     tags::{
@@ -55,11 +54,11 @@ impl Coords {
     }
 
     fn crossing(
-        &self, other: Coords, self_frame: Option<Line>, other_frame: Option<Line>
+        &self, other: Coords, self_line: Option<Line>, other_line: Option<Line>
     ) -> Option<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)> {
         if self.tl.x == self.br.x {
             if other.tl.x == other.br.x && self.br == other.tl {
-                return Some((self.br, None, self_frame, None, other_frame));
+                return Some((self.br, None, self_line, None, other_line));
             // All perpendicular crossings will be iterated, so if two
             // perpendicular `Coords`, `a` and `b` cross, `self` will
             // be horizontal in one of the iterations, while `other`
@@ -72,25 +71,25 @@ impl Coords {
 
         if other.tl.y == other.br.y {
             if other.tl == self.br {
-                Some((self.br, other_frame, None, self_frame, None))
+                Some((self.br, other_line, None, self_line, None))
             } else {
                 None
             }
         } else if self.tl.x <= other.tl.x && other.tl.x <= self.br.x {
             let right = match other.tl.x < self.br.x {
-                true => self_frame,
+                true => self_line,
                 false => None
             };
             let up = match other.tl.y < self.tl.y {
-                true => other_frame,
+                true => other_line,
                 false => None
             };
             let left = match self.tl.x < other.tl.x {
-                true => self_frame,
+                true => self_line,
                 false => None
             };
-            let down = match self.tl.y < other.tl.x {
-                true => other_frame,
+            let down = match self.br.y < other.br.y {
+                true => other_line,
                 false => None
             };
 
@@ -704,7 +703,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
 
     let mut crossings = Vec::new();
 
-    for &(edge, line) in &edges {
+    for (index, &(edge, line)) in edges.iter().enumerate() {
         if edge.tl.y == edge.br.y {
             let char = match line {
                 Some(Line::Regular | Line::Rounded) => '─',
@@ -735,8 +734,34 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
             }
         }
 
-        for &(other_edge, other_line) in &edges {
-            crossings.push(edge.crossing(other_edge, line, other_line));
+        for (other_index, &(other_edge, other_line)) in edges.iter().enumerate() {
+            if index != other_index {
+                if let Some(crossing) = edge.crossing(other_edge, line, other_line) {
+                    crossings.push(crossing);
+                }
+            }
         }
+    }
+
+    for (coord, right, up, left, down) in crossings {
+        let char = match (right, up, left, down) {
+            (None, None, None, None) => unreachable!(),
+            (None, None, None, Some(_)) => '╷',
+            (None, None, Some(_), None) => '╴',
+            (None, None, Some(_), Some(_)) => '┐',
+            (None, Some(_), None, None) => '╵',
+            (None, Some(_), None, Some(_)) => '│',
+            (None, Some(_), Some(_), None) => '┘',
+            (None, Some(_), Some(_), Some(_)) => '┤',
+            (Some(_), None, None, None) => '╶',
+            (Some(_), None, None, Some(_)) => '┌',
+            (Some(_), None, Some(_), None) => '─',
+            (Some(_), None, Some(_), Some(_)) => '┬',
+            (Some(_), Some(_), None, None) => '└',
+            (Some(_), Some(_), None, Some(_)) => '├',
+            (Some(_), Some(_), Some(_), None) => '┴',
+            (Some(_), Some(_), Some(_), Some(_)) => '┼'
+        };
+        queue!(stdout, MoveTo(coord.x, coord.y), Print(char))
     }
 }
