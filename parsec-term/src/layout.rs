@@ -13,9 +13,7 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs},
-    widgets
 };
 
 use crate::{area::Coord, Coords};
@@ -459,8 +457,6 @@ pub enum Frame {
 
 impl Frame {
     fn edges(&self, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64, f64, f64) {
-        // log_info!("\n{:?}\nbr: {:?}\ntl: {:?}\nmax: {:?}\n", self, br, tl,
-        // max);
         let right = br.x.value.load(Ordering::Acquire) == max.x;
         let up = tl.y.value.load(Ordering::Acquire) == 0;
         let left = tl.x.value.load(Ordering::Acquire) == 0;
@@ -767,8 +763,6 @@ impl Layout {
         });
 
         self.update();
-
-        // log_info!("{:#?}", self.edges);
 
         (new_index, new_parent_index)
     }
