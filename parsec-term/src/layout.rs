@@ -13,7 +13,8 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    ui::{Axis, Constraint, PushSpecs},
+    log_info,
+    ui::{Axis, Constraint, PushSpecs}
 };
 
 use crate::{area::Coord, Coords};
@@ -298,22 +299,26 @@ impl Rect {
 
     pub fn change_child_constraints(
         &mut self, index: usize, constraint: Constraint, solver: &mut Solver
-    ) {
+    ) -> bool {
         let (children, axis) = self.lineage.as_mut().unwrap();
         let axis = *axis;
 
         let (child, mut constraints) = children[index].clone();
 
-        child.inspect(|child| {
+        let changed = child.inspect(|child| {
             if child.meets_constraint(constraint, axis, self.len_value(axis) as f64) {
-                return;
-            }
+                false
+            } else {
+                constraints.change_defined(Some(constraint), self, index, solver);
 
-            constraints.change_defined(Some(constraint), self, index, solver);
+                true
+            }
         });
 
         let (children, _) = self.lineage.as_mut().unwrap();
         children[index].1 = constraints;
+
+        changed
     }
 
     fn meets_constraint(&self, constraint: Constraint, axis: Axis, parent_len: f64) -> bool {
