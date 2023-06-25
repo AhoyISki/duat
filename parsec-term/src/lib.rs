@@ -87,7 +87,7 @@ impl Default for Ui {
     fn default() -> Self {
         Ui {
             windows: Vec::new(),
-            frame: Frame::HorBorder(Line::Rounded)
+            frame: Frame::VerBorder(Line::Rounded)
         }
     }
 }

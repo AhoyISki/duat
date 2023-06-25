@@ -225,9 +225,8 @@ impl ui::Area for Area {
         let mut layout = self.layout.write();
         let (parent, index, _) = layout.fetch_parent(self.index).ok_or(())?;
         if parent.write().change_child_constraints(index, constraint, &mut layout.solver) {
-        layout.update();
+            layout.update();
         }
-
 
         Ok(())
     }

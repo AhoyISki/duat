@@ -28,7 +28,7 @@ enum Side {
     Left
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constraint {
     Ratio(u16, u16),
     Percent(u16),
