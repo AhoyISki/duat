@@ -94,6 +94,7 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
+#[derive(Debug)]
 pub struct Tags {
     inner: InnerTags,
 }

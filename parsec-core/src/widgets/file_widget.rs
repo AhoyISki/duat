@@ -25,9 +25,11 @@ use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     data::DownCastableData,
     history::History,
+    log_info,
     position::{Cursor, Editor, Mover, Pos},
+    tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}, tags::{Tag, form::FILE_NAME}
+    ui::{Area, PrintInfo, Ui}
 };
 
 /// The widget that is used to print and edit files.
@@ -249,6 +251,29 @@ where
             &self.print_cfg
         );
         self.set_printed_lines(area);
+
+        log_info!(
+            "\nNew Update:\n\n{}",
+            format!("{:#?}", self.text.tags)
+                .lines()
+                .skip(4)
+                .scan(0, |pos, line| {
+                    if !line.contains(['[', ']']) && !line.contains("Skip") {
+                        *pos += 20;
+                        Some(
+                            line.to_string()
+                                + " char: "
+                                + &self.text.iter_chars_at(*pos - 20).next().unwrap().to_string()
+                                + "\n"
+                        )
+                    } else {
+                        Some(line.to_string() + "\n")
+                    }
+                })
+                .skip(50)
+                .take(15)
+                .collect::<String>()
+        )
     }
 
     fn text(&self) -> &Text<U> {
