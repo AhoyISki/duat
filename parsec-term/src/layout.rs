@@ -319,25 +319,23 @@ impl Rect {
     }
 
     /// Changes a child's defined constraint in [`Constraints`].
-    pub fn change_child_constraints(
-        &mut self, index: usize, constraint: Constraint, solver: &mut Solver
+    pub fn change_child_constraint(
+        &mut self, index: usize, defined: Constraint, solver: &mut Solver
     ) -> bool {
-        let (children, _) = self.lineage.as_mut().unwrap();
+        let (children, axis) = self.lineage.as_mut().unwrap();
+        let axis = *axis;
 
-        let (_, mut constraints) = children[index].clone();
-        if !constraints.defined.as_ref().is_some_and(|(_, cmp)| *cmp == constraint) {
-            let new = Some(constraint);
+        let (_, constraints) = &mut children[index];
+        if !constraints.defined.as_ref().is_some_and(|(_, cmp)| *cmp == defined) {
             if let Some((constraint, _)) = constraints.defined.take() {
                 solver.remove_constraint(&constraint).unwrap();
             }
 
-            constraints.defined = new.map(|defined| {
-                let &(_, axis) = self.lineage.as_ref().unwrap();
-                let constraint = defined_constraint(defined, self, index, axis);
-                solver.add_constraint(constraint.clone()).unwrap();
+            let constraint = defined_constraint(defined, self, index, axis);
+            solver.add_constraint(constraint.clone()).unwrap();
 
-                (constraint, defined)
-            });
+            let (children, _) = self.lineage.as_mut().unwrap();
+            children[index].1.defined = Some((constraint, defined));
 
             true
         } else {

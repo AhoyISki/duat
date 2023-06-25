@@ -92,7 +92,7 @@ where
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, tag: Tag) -> Lock {
-        let lock = self.text.tags.get_lock();
+        let lock = self.text.tags.new_lock();
         self.text.tags.vec().push(TagOrSkip::Tag(tag, lock));
         if let Some(inv_tag) = tag.inverse() {
             self.text.tags.vec().push(TagOrSkip::Tag(inv_tag, lock));
@@ -237,19 +237,6 @@ where
     _readers: Vec<Box<dyn Observer<U>>>
 }
 
-impl<U> std::fmt::Debug for Text<U>
-where
-    U: Ui + ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Text")
-            .field("inner", &self.inner)
-            .field("tags", &self.tags)
-            .field("lock", &self.lock)
-            .finish()
-    }
-}
-
 // TODO: Properly implement _replacements.
 impl<U> Text<U>
 where
@@ -257,7 +244,7 @@ where
 {
     pub fn default_string() -> Self {
         let mut tags = Tags::default_vec();
-        let lock = tags.get_lock();
+        let lock = tags.new_lock();
         Text {
             inner: InnerText::String(String::default()),
             tags,
@@ -269,7 +256,7 @@ where
 
     pub fn default_rope() -> Self {
         let mut tags = Tags::default_rope();
-        let lock = tags.get_lock();
+        let lock = tags.new_lock();
         Text {
             inner: InnerText::Rope(Rope::default()),
             tags,
@@ -282,7 +269,7 @@ where
     pub fn new_string(string: impl ToString) -> Self {
         let inner = InnerText::String(string.to_string());
         let mut tags = Tags::new(&inner);
-        let lock = tags.get_lock();
+        let lock = tags.new_lock();
         Text {
             inner,
             tags,
@@ -295,7 +282,7 @@ where
     pub fn new_rope(string: impl ToString) -> Self {
         let inner = InnerText::Rope(Rope::from(string.to_string()));
         let mut tags = Tags::new(&inner);
-        let lock = tags.get_lock();
+        let lock = tags.new_lock();
         Text {
             inner,
             tags,

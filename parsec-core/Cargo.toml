@@ -17,7 +17,7 @@ crossterm = "0.26.0"
 # Utility
 no_deadlocks = { path = "../../no-deadlocks/", optional = true }
 ropey = "1.6.0"
-any-rope = "1.0.8"
+any-rope = "1.0.9"
 
 [features]
 # NOTE: Feature meant for testing only by myself.

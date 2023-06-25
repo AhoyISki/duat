@@ -11,6 +11,15 @@ use crate::text::inner::InnerText;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lock(u16);
 
+impl Lock {
+    fn new() -> Lock {
+        use std::sync::atomic::{AtomicU16, Ordering};
+        static LOCK_COUNT: AtomicU16 = AtomicU16::new(0);
+
+        Lock(LOCK_COUNT.fetch_add(1, Ordering::Acquire))
+    }
+}
+
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
 // character indexed. The reason is that modules like `regex` and
 // `tree-sitter` work on `u8`s, rather than `char`s.
@@ -87,45 +96,31 @@ impl Measurable for TagOrSkip {
 // TODO: Generic container.
 pub struct Tags {
     inner: InnerTags,
-    pub next_lock: u16
-}
-
-impl std::fmt::Debug for Tags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tags")
-            .field("inner", &self.inner)
-            .field("last_lock", &format_args!("{}", self.next_lock))
-            .finish()
-    }
 }
 
 impl Tags {
     pub fn default_vec() -> Self {
         Tags {
             inner: InnerTags::Vec(Vec::new()),
-            next_lock: 0
         }
     }
 
     pub fn default_rope() -> Self {
         Tags {
             inner: InnerTags::Rope(AnyRope::new()),
-            next_lock: 0
         }
     }
 
     pub fn new(inner_text: &InnerText) -> Self {
         Tags {
             inner: InnerTags::new(inner_text),
-            next_lock: 0
         }
     }
 
     /// Gets a unique [`Lock`], for the purpose of "private" [`Tag`]
     /// insertion and removal.
-    pub fn get_lock(&mut self) -> Lock {
-        self.next_lock += 1;
-        Lock(self.next_lock)
+    pub fn new_lock(&mut self) -> Lock {
+        Lock::new()
     }
 
     pub fn insert(&mut self, ch_index: usize, tag: Tag, lock: Lock) {

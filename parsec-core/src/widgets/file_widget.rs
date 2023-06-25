@@ -67,7 +67,7 @@ where
         let mut text = Text::new_rope(file_contents);
         let cursor = Cursor::default();
         let mut pushes_pops_you_cant_explain_that = true;
-        let lock = text.tags.get_lock();
+        let lock = text.tags.new_lock();
 
         for index in (0..text.len_chars()).step_by(20) {
             if pushes_pops_you_cant_explain_that {
