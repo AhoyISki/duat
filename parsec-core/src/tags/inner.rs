@@ -76,15 +76,9 @@ impl InnerTags {
                 let tags = slice.iter();
 
                 let tags = tags
-                    .filter_map(|(_, tag_or_skip)| {
-                        if let TagOrSkip::Tag(tag, cmp_lock) = tag_or_skip {
-                            // Take all tags with the wrong `Lock`.
-                            // Those will be kept.
-                            if cmp_lock != lock {
-                                Some(TagOrSkip::Tag(tag, cmp_lock))
-                            } else {
-                                None
-                            }
+                    .filter_map(|(_, t_or_s)| {
+                        if let TagOrSkip::Tag(tag, cmp_lock) = t_or_s && cmp_lock != lock {
+                            return Some(TagOrSkip::Tag(tag, cmp_lock));
                         } else {
                             None
                         }

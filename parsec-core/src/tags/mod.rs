@@ -96,25 +96,25 @@ impl Measurable for TagOrSkip {
 // TODO: Generic container.
 #[derive(Debug)]
 pub struct Tags {
-    inner: InnerTags,
+    inner: InnerTags
 }
 
 impl Tags {
     pub fn default_vec() -> Self {
         Tags {
-            inner: InnerTags::Vec(Vec::new()),
+            inner: InnerTags::Vec(Vec::new())
         }
     }
 
     pub fn default_rope() -> Self {
         Tags {
-            inner: InnerTags::Rope(AnyRope::new()),
+            inner: InnerTags::Rope(AnyRope::new())
         }
     }
 
     pub fn new(inner_text: &InnerText) -> Self {
         Tags {
-            inner: InnerTags::new(inner_text),
+            inner: InnerTags::new(inner_text)
         }
     }
 
@@ -159,6 +159,8 @@ impl Tags {
     /// `ch_index`.
     pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
         self.inner.remove_on(ch_index, lock);
+
+        self.merge_surrounding_skips(ch_index);
     }
 
     pub(crate) fn transform_range(&mut self, old: Range<usize>, new: Range<usize>) {

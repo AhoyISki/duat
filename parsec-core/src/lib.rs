@@ -1,4 +1,4 @@
-#![feature(drain_filter, result_option_inspect, trait_upcasting)]
+#![feature(drain_filter, result_option_inspect, trait_upcasting, let_chains)]
 
 pub mod commands;
 pub mod data;
