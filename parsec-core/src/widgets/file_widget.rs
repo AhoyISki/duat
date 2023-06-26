@@ -66,18 +66,22 @@ where
         });
 
         let mut text = Text::new_rope(file_contents);
-        let cursor = Cursor::default();
-        let mut pushes_pops_you_cant_explain_that = true;
-        let lock = text.tags.new_lock();
 
-        for index in (0..text.len_chars()).step_by(20) {
-            if pushes_pops_you_cant_explain_that {
-                text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
-            } else {
-                text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
+        if cfg!(feature = "wacky-colors") {
+            let lock = text.tags.new_lock();
+            let mut pushes_pops_you_cant_explain_that = true;
+            for index in (0..text.len_chars()).step_by(20) {
+                if pushes_pops_you_cant_explain_that {
+                    text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
+                } else {
+                    text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
+                }
+                pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
-            pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
         }
+
+		let cursors = vec![Cursor::default()];
+        text.add_cursor_tags(&cursors, 0);
 
         Widget::actionable(
             FileWidget {
@@ -85,7 +89,7 @@ where
                 text,
                 print_info: U::PrintInfo::default(),
                 main_cursor: 0,
-                cursors: vec![cursor],
+                cursors,
                 history: History::new(),
                 printed_lines: Vec::new(),
                 print_cfg

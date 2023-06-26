@@ -21,6 +21,6 @@ ropey = "1.6.0"
 any-rope = "1.1.0"
 
 [features]
-# NOTE: Feature meant for testing only by myself.
-#default = ["deadlock-detection"]
+# NOTE: Features meant for testing only by myself.
 deadlock-detection = ["dep:no_deadlocks"]
+wacky-colors = []
