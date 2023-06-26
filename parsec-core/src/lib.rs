@@ -160,7 +160,7 @@ where
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    send_event(key_remapper, &manager, &palette);
+                    send_event(key_remapper, &manager);
                 } else {
                     continue;
                 }
@@ -387,7 +387,7 @@ where
 }
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
-fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, manager: &Manager<U>, palette: &FormPalette)
+fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, manager: &Manager<U>)
 where
     U: Ui + 'static,
     I: InputScheme
@@ -408,14 +408,14 @@ where
             window
         };
 
-        blink_cursors_and_send_key(&widget, &mut area, controls, key_event, key_remapper, palette);
+        blink_cursors_and_send_key(&widget, &mut area, controls, key_event, key_remapper);
     }
 }
 
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, AW, I>(
     widget: &RwData<AW>, area: &mut U::Area, controls: Controls<U>, key_event: KeyEvent,
-    key_remapper: &mut KeyRemapper<I>, palette: &FormPalette
+    key_remapper: &mut KeyRemapper<I>
 ) where
     U: Ui + 'static,
     AW: ActionableWidget<U> + ?Sized + 'static,
@@ -434,9 +434,6 @@ fn blink_cursors_and_send_key<U, AW, I>(
     drop((text, cursors, main_index));
 
     widget_lock.update(area);
-    widget_lock
-        .text()
-        .print(area, widget_lock.print_info(), widget_lock.print_cfg(), palette);
 }
 
 //////////// Useful for testing.

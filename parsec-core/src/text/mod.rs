@@ -541,7 +541,7 @@ where
 {
     type Item = (usize, TextBit);
 
-	#[inline]
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // `<=` because some `Tag`s may be triggered before printing.
         if let Some(&(index, tag)) = self.tags.peek().filter(|(index, _)| *index <= self.cur_char) {

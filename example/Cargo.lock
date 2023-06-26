@@ -5,6 +5,8 @@ version = 3
 [[package]]
 name = "any-rope"
 version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c9af7cbd4035e4d5bb20ee72a51b291d5441e64b9f46c9230457e533149e0ee"
 dependencies = [
  "smallvec",
 ]
