@@ -665,27 +665,24 @@ impl Layout {
     /// these cases, an aditional index associated with the parent
     /// will be returned.
     ///
-    /// If `is_glued`, and the bisected [`Rect`] was "not glued", a
+    /// If `glue_new`, and the bisected [`Rect`] was "not glued", a
     /// new parent will be created, which will act as the holder for
     /// all of its successors. If this parent is moved, the children
     /// will move with it.
     ///
-    /// If `is_glued`, and the bisected [`Rect`] was already glued,
+    /// If `glue_new`, and the bisected [`Rect`] was already glued,
     /// the creation of a new parent will follow regular rules, but
     /// the children will still be "glued".
     pub fn bisect(
-        &mut self, mut index: usize, specs: PushSpecs, is_glued: bool
+        &mut self, index: usize, specs: PushSpecs, glue_new: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
-        if is_glued {
-            if let Some(rect) = self.fetch_index(index) {
-                index = rect.read().tied_index.unwrap_or(index);
-            }
-        }
+        let glued = self.fetch_index(index).unwrap().read().tied_index.is_some();
+        let parent_valid = glued == glue_new;
 
         // Check for a parent of `self` with the same `Axis`.
-        let (parent, index, new_parent_index) = if let (false, Some((parent, index, _))) =
-            (is_glued, self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp))
+        let (parent, index, new_parent_index) = if let (true, Some((parent, index, _))) =
+            (parent_valid, self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp))
         {
             let index = match specs.comes_earlier() {
                 true => index,
@@ -715,7 +712,7 @@ impl Layout {
                 (parent.index, std::mem::replace(rect, parent))
             });
 
-            if is_glued {
+            if glue_new {
                 child.tied_index = Some(new_parent_index);
             }
 
@@ -729,7 +726,7 @@ impl Layout {
             });
 
             // If the child is glued, the frame doesn't need to be redone.
-            if !is_glued {
+            if !glue_new {
                 if child_is_main {
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
                     let mut rect = rect.write();
@@ -750,7 +747,7 @@ impl Layout {
 
         let (temp_constraint, new_index) = parent.mutate(|parent| {
             let mut new = Rect::new(&mut self.vars);
-            if is_glued {
+            if glue_new {
                 new.tied_index = new_parent_index.or(Some(index));
             }
             let new_index = new.index;

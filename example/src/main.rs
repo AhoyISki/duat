@@ -54,10 +54,7 @@ fn main() {
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that
     // name.
-    palette.set_main_cursor(CursorStyle::new(
-        None,
-        Form::new().on_cyan()
-    ));
+    palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
@@ -90,7 +87,10 @@ fn main() {
         mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
 
         let specs = PushSpecs::below(Constraint::Length(1.0));
-        mod_node.push_widget(StatusLine::default_fn(file.clone()), specs);
+        let (child, _) = mod_node.push_widget(StatusLine::default_fn(file.clone()), specs);
+
+        let specs = PushSpecs::left(Constraint::Percent(50));
+        mod_node.push_widget_to_area(CommandLine::default_fn(), child, specs);
     });
 
     // that takes the input, remaps it, and sends it to the `Editor`.
