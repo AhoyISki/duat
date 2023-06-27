@@ -13,6 +13,7 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
+    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -191,7 +192,7 @@ impl Rect {
     fn set_constraints(
         &mut self, parent: &Rect, axis: Axis, frame: Frame, max: Coord, edges: &mut Vec<Edge>
     ) -> (f64, f64) {
-        let axis = axis.perp();
+        let perp = axis.perp();
 
         self.edge_cons.extend([
             self.tl.x.var | GE(REQUIRED) | 0.0,
@@ -205,14 +206,14 @@ impl Rect {
             (0.0, 0.0, 0.0, 0.0)
         };
 
-        let (para_left, para_right, start, end) = match axis {
+        let (para_left, para_right, start, end) = match perp {
             Axis::Vertical => (up, down, left, right),
             Axis::Horizontal => (left, right, up, down)
         };
 
         self.edge_cons.extend([
-            self.start(axis) | EQ(REQUIRED) | parent.start(axis) + para_left,
-            self.end(axis) + para_right | EQ(REQUIRED) | parent.end(axis)
+            self.start(perp) | EQ(REQUIRED) | parent.start(perp) + para_left,
+            self.end(perp) + para_right | EQ(REQUIRED) | parent.end(perp)
         ]);
 
         (start, end)
@@ -333,12 +334,7 @@ impl Rect {
             if let Some((constraint, _)) = constraints.defined.take() {
                 solver.remove_constraint(&constraint).unwrap();
             }
-
-            let constraint = defined_constraint(defined, self, index, axis);
-            solver.add_constraint(constraint.clone()).unwrap();
-
-            let (children, _, _) = self.lineage.as_mut().unwrap();
-            children[index].1.defined = Some((constraint, defined));
+            set_defined_constraint(defined, self, index, axis, solver);
 
             true
         } else {
@@ -636,7 +632,7 @@ impl Layout {
     ///
     /// Also returns the child's "child index", given an [`Axis`],
     /// going top to bottom or left to right.
-    pub fn fetch_parent(&self, index: usize) -> Option<(RwData<Rect>, usize, Axis)> {
+    pub fn fetch_parent(&self, index: usize) -> Option<(RwData<Rect>, usize)> {
         std::iter::once(&self.main)
             .chain(&self.floating)
             .find_map(|rect| fetch_parent(rect, index))
@@ -692,9 +688,10 @@ impl Layout {
 
         // Check for a parent of `self` with the same `Axis`.
         let (parent, index, new_parent_index) = if can_be_sibling
-            && let Some(matching) = self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp)
+            && let Some((parent, index)) = self.fetch_parent(index).filter(|(parent, _)|
+                parent.read().lineage.as_ref().unwrap().1 == axis
+            )
         {
-            let (parent, index, _) = matching;
             let index = match specs.comes_earlier() {
                 true => index,
                 false => index + 1
@@ -729,10 +726,26 @@ impl Layout {
                 false => 1
             };
 
+			let defined = if let Some((grandpa, index)) = self.fetch_parent(new_parent_index) {
+    			let mut grandpa = grandpa.write();
+    			let (children, axis, _) = grandpa.lineage.as_mut().unwrap();
+    			let constraints = std::mem::take(&mut children[index].1);
+    			constraints.defined.map(|(constraint, defined)| {
+        			self.solver.remove_constraint(&constraint).unwrap();
+        			(defined, *axis)
+    			})
+			} else {
+    			None
+			};
+
             rect.mutate(|parent| {
                 parent.lineage = Some(
                     (vec![(RwData::new(child), Constraints::default())], axis, cluster_new)
                 );
+
+    			if let Some((defined, axis)) = defined {
+        			set_defined_constraint(defined, parent, 0, axis, &mut self.solver);
+    			}
             });
 
             // If the child is glued, the frame doesn't need to be redone.
@@ -743,7 +756,7 @@ impl Layout {
                     rect.clear_constraints(solver);
                     rect.set_main_constraints(self.frame, solver, edges, self.max);
                 } else {
-                    let (parent, index, _) = self.fetch_parent(rect.read().index).unwrap();
+                    let (parent, index) = self.fetch_parent(rect.read().index).unwrap();
                     let mut parent = parent.write();
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
                     prepare_child(&mut parent, index, solver, self.frame, self.max, edges)
@@ -759,23 +772,17 @@ impl Layout {
             let new = Rect::new(&mut self.vars);
             let new_index = new.index;
 
-            let len = parent
+            let (len, axis) = parent
                 .lineage
                 .as_mut()
-                .map(|(children, ..)| {
+                .map(|(children, axis, _)| {
                     children.insert(index, (RwData::new(new), Constraints::default()));
-                    children.len()
+                    (children.len(), *axis)
                 })
                 .unwrap();
 
             specs.constraint.map(|defined| {
-                let constraint = defined_constraint(defined, parent, index, axis);
-                let (children, ..) = parent.lineage.as_mut().unwrap();
-                let (_, constraints) = &mut children[index];
-
-                self.solver.add_constraint(constraint.clone()).unwrap();
-
-                constraints.defined = Some((constraint, defined));
+                set_defined_constraint(defined, parent, index, axis, &mut self.solver);
             });
 
             // We initially set the frame to `Frame::Empty`, since that will make
@@ -845,6 +852,8 @@ impl Layout {
         });
 
         self.update();
+
+        log_info!("{:#?}", self);
 
         (new_index, new_parent_index)
     }
@@ -951,25 +960,32 @@ fn set_ratio_constraints(parent: &mut Rect, index: usize, solver: &mut Solver) {
 
 /// Returns a [`CassowaryConstraint`] representing the defined
 /// [`Constraint`].
-fn defined_constraint(
-    constraint: Constraint, parent: &Rect, index: usize, axis: Axis
-) -> CassowaryConstraint {
-    let (children, ..) = parent.lineage.as_ref().unwrap();
-    let (child, _) = &children[index];
+fn set_defined_constraint(
+    defined: Constraint, parent: &mut Rect, index: usize, axis: Axis, solver: &mut Solver
+) {
+    let parent_len = parent.len(axis);
+
+    let (children, ..) = parent.lineage.as_mut().unwrap();
+    let (child, constraints) = &mut children[index];
+
     let child = child.read();
-    match constraint {
+    let constraint = match defined {
         Constraint::Ratio(den, div) => {
             assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-            child.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (den as f64 / div as f64)
+            child.len(axis) | EQ(WEAK * 2.0) | parent_len * (den as f64 / div as f64)
         }
         Constraint::Percent(percent) => {
             assert!(percent <= 100, "Constraint::Percent must be smaller than 100");
-            child.len(axis) | EQ(WEAK * 2.0) | parent.len(axis) * (percent as f64 / 100.0)
+            child.len(axis) | EQ(WEAK * 2.0) | parent_len * (percent as f64 / 100.0)
         }
         Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
         Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
         Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max
-    }
+    };
+
+    solver.add_constraint(constraint.clone()).unwrap();
+
+    constraints.defined = Some((constraint, defined));
 }
 
 /// Fetches the [`RwData<Rect>`] with the given index.
@@ -990,19 +1006,19 @@ fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
 
 /// Fetches the parent of the [`RwData<Rect>`] with the given index,
 /// including its positional index and the [`Axis`] of its children.
-fn fetch_parent(main: &RwData<Rect>, index: usize) -> Option<(RwData<Rect>, usize, Axis)> {
+fn fetch_parent(main: &RwData<Rect>, index: usize) -> Option<(RwData<Rect>, usize)> {
     let rect = main.read();
 
     if rect.index == index {
         return None;
     }
-    let Some((children, axis, _)) = &rect.lineage else {
+    let Some((children, _, _)) = &rect.lineage else {
         return None;
     };
 
     children.iter().enumerate().find_map(|(pos, (child, _))| {
         if child.read().index == index {
-            Some((main.clone(), pos, *axis))
+            Some((main.clone(), pos))
         } else {
             fetch_parent(child, index)
         }

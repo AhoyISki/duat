@@ -63,7 +63,7 @@ impl ui::Window for Window {
 
     fn is_senior(&self, senior: usize, mut junior: usize) -> bool {
         self.layout.inspect(|layout| {
-            while let Some((parent, _, _)) = layout.fetch_parent(junior) {
+            while let Some((parent, _)) = layout.fetch_parent(junior) {
                 junior = parent.read().index();
                 if junior == senior {
                     break;
@@ -87,7 +87,7 @@ impl Default for Ui {
     fn default() -> Self {
         Ui {
             windows: Vec::new(),
-            frame: Frame::VerBorder(Line::Rounded)
+            frame: Frame::Surround(Line::Rounded)
         }
     }
 }
