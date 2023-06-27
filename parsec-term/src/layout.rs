@@ -142,15 +142,14 @@ impl Constraints {
 /// along with it.
 ///
 /// [`Constraint`]: CassowaryConstraint
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Rect {
     index: usize,
     /// The index that this [`Rect`] is tied to.
-    tied_index: Option<usize>,
     tl: VarPoint,
     br: VarPoint,
     edge_cons: Vec<CassowaryConstraint>,
-    lineage: Option<(Vec<(RwData<Rect>, Constraints)>, Axis)>
+    lineage: Option<(Vec<(RwData<Rect>, Constraints)>, Axis, bool)>
 }
 
 impl Rect {
@@ -159,7 +158,6 @@ impl Rect {
     fn new(vars: &mut HashMap<Variable, Arc<AtomicU16>>) -> Self {
         Rect {
             index: unique_rect_index(),
-            tied_index: None,
             tl: VarPoint::new(vars),
             br: VarPoint::new(vars),
             edge_cons: Vec::new(),
@@ -170,12 +168,14 @@ impl Rect {
     /// Returns a new [`Rect`], which is supposed to replace an
     /// existing [`Rect`], as its new parent.
     fn new_parent_of(
-        rect: &mut Rect, axis: Axis, vars: &mut HashMap<Variable, Arc<AtomicU16>>
+        rect: &mut Rect, axis: Axis, vars: &mut HashMap<Variable, Arc<AtomicU16>>, new_glued: bool
     ) -> Self {
         let parent = Rect {
             index: unique_rect_index(),
-            lineage: Some((Vec::new(), axis)),
-            ..rect.clone()
+            tl: rect.tl.clone(),
+            br: rect.br.clone(),
+            edge_cons: rect.edge_cons.clone(),
+            lineage: Some((Vec::new(), axis, new_glued))
         };
 
         rect.edge_cons.clear();
@@ -199,8 +199,11 @@ impl Rect {
             self.br.x.var | GE(REQUIRED) | self.tl.x.var,
             self.br.y.var | GE(REQUIRED) | self.tl.y.var
         ]);
-
-        let (right, up, left, down) = self.form_frame(frame, max, edges);
+        let (right, up, left, down) = if self.is_frameable(Some(parent)) {
+            self.form_frame(frame, max, edges)
+        } else {
+            (0.0, 0.0, 0.0, 0.0)
+        };
 
         let (para_left, para_right, start, end) = match axis {
             Axis::Vertical => (up, down, left, right),
@@ -221,7 +224,7 @@ impl Rect {
     fn set_main_constraints(
         &mut self, frame: Frame, solver: &mut Solver, edges: &mut Vec<Edge>, max: Coord
     ) {
-        let (hor_edge, ver_edge) = if self.is_frameable() {
+        let (hor_edge, ver_edge) = if self.is_frameable(None) {
             frame.main_edges()
         } else {
             (0.0, 0.0)
@@ -322,7 +325,7 @@ impl Rect {
     pub fn change_child_constraint(
         &mut self, index: usize, defined: Constraint, solver: &mut Solver
     ) -> bool {
-        let (children, axis) = self.lineage.as_mut().unwrap();
+        let (children, axis, _) = self.lineage.as_mut().unwrap();
         let axis = *axis;
 
         let (_, constraints) = &mut children[index];
@@ -334,7 +337,7 @@ impl Rect {
             let constraint = defined_constraint(defined, self, index, axis);
             solver.add_constraint(constraint.clone()).unwrap();
 
-            let (children, _) = self.lineage.as_mut().unwrap();
+            let (children, _, _) = self.lineage.as_mut().unwrap();
             children[index].1.defined = Some((constraint, defined));
 
             true
@@ -349,24 +352,20 @@ impl Rect {
     }
 
     /// Wheter or not [`self`] can be framed.
-    pub fn is_frameable(&self) -> bool {
-        if let Some((children, _)) = &self.lineage {
-            let child = children[0].0.read();
-            let children_tied = child.tied_index.is_some_and(|index| index == self.index);
-            children_tied && self.tied_index.is_none()
+    pub fn is_frameable(&self, parent: Option<&Rect>) -> bool {
+        if parent.is_some_and(|parent| parent.lineage.as_ref().unwrap().2) {
+            false
+        } else if let Some((_, _, clustered)) = &self.lineage {
+            *clustered
         } else {
-            self.tied_index.is_none()
+            true
         }
     }
 
     /// Forms the frame surrounding [`self`], considering its position
     /// and a [`Frame`].
     fn form_frame(&self, frame: Frame, max: Coord, edges: &mut Vec<Edge>) -> (f64, f64, f64, f64) {
-        let (right, up, left, down) = if self.is_frameable() {
-            frame.edges(&self.br, &self.tl, max)
-        } else {
-            (0.0, 0.0, 0.0, 0.0)
-        };
+        let (right, up, left, down) = frame.edges(&self.br, &self.tl, max);
 
         edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         if right == 1.0 {
@@ -674,16 +673,28 @@ impl Layout {
     /// the creation of a new parent will follow regular rules, but
     /// the children will still be "glued".
     pub fn bisect(
-        &mut self, index: usize, specs: PushSpecs, glue_new: bool
+        &mut self, index: usize, specs: PushSpecs, cluster_new: bool
     ) -> (usize, Option<usize>) {
         let axis = Axis::from(specs);
-        let glued = self.fetch_index(index).unwrap().read().tied_index.is_some();
-        let parent_valid = glued == glue_new;
+        let (can_be_sibling, can_be_child) = {
+            let parent_clustered = self
+                .fetch_parent(index)
+                .map(|(parent, ..)| parent.read().lineage.as_ref().unwrap().2)
+                .unwrap_or(cluster_new);
+
+            let child_clustered = self
+                .fetch_index(index)
+                .unwrap()
+                .inspect(|child| child.lineage.as_ref().is_some_and(|(.., clustered)| *clustered));
+
+            (parent_clustered == cluster_new, child_clustered == cluster_new)
+        };
 
         // Check for a parent of `self` with the same `Axis`.
-        let (parent, index, new_parent_index) = if let (true, Some((parent, index, _))) =
-            (parent_valid, self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp))
+        let (parent, index, new_parent_index) = if can_be_sibling
+            && let Some(matching) = self.fetch_parent(index).filter(|(.., cmp)| axis == *cmp)
         {
+            let (parent, index, _) = matching;
             let index = match specs.comes_earlier() {
                 true => index,
                 false => index + 1
@@ -691,9 +702,10 @@ impl Layout {
 
             (parent, index, None)
         // Checking if `self` is a parent with the same `Axis`.
-        } else if let Some(parent) = self
-            .fetch_index(index)
-            .filter(|area| area.read().lineage.as_ref().is_some_and(|(_, cmp)| axis == *cmp))
+        } else if can_be_child
+        	&& let Some(parent) = self
+        		.fetch_index(index)
+        		.filter(|area| area.read().lineage.as_ref().is_some_and(|(_, cmp, _)| axis == *cmp))
         {
             let index = match specs.comes_earlier() {
                 true => 0,
@@ -707,14 +719,10 @@ impl Layout {
             let rect = self.fetch_index(index).unwrap();
             let child_is_main = rect.ptr_eq(&self.main);
 
-            let (new_parent_index, mut child) = rect.mutate(|rect| {
-                let parent = Rect::new_parent_of(rect, axis, &mut self.vars);
+            let (new_parent_index, child) = rect.mutate(|rect| {
+                let parent = Rect::new_parent_of(rect, axis, &mut self.vars, cluster_new);
                 (parent.index, std::mem::replace(rect, parent))
             });
-
-            if glue_new {
-                child.tied_index = Some(new_parent_index);
-            }
 
             let index = match specs.comes_earlier() {
                 true => 0,
@@ -722,11 +730,13 @@ impl Layout {
             };
 
             rect.mutate(|parent| {
-                parent.lineage = Some((vec![(RwData::new(child), Constraints::default())], axis));
+                parent.lineage = Some(
+                    (vec![(RwData::new(child), Constraints::default())], axis, cluster_new)
+                );
             });
 
             // If the child is glued, the frame doesn't need to be redone.
-            if !glue_new {
+            if !cluster_new {
                 if child_is_main {
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
                     let mut rect = rect.write();
@@ -746,16 +756,13 @@ impl Layout {
         self.update();
 
         let (temp_constraint, new_index) = parent.mutate(|parent| {
-            let mut new = Rect::new(&mut self.vars);
-            if glue_new {
-                new.tied_index = new_parent_index.or(Some(index));
-            }
+            let new = Rect::new(&mut self.vars);
             let new_index = new.index;
 
             let len = parent
                 .lineage
                 .as_mut()
-                .map(|(children, _)| {
+                .map(|(children, ..)| {
                     children.insert(index, (RwData::new(new), Constraints::default()));
                     children.len()
                 })
@@ -763,7 +770,7 @@ impl Layout {
 
             specs.constraint.map(|defined| {
                 let constraint = defined_constraint(defined, parent, index, axis);
-                let (children, _) = parent.lineage.as_mut().unwrap();
+                let (children, ..) = parent.lineage.as_mut().unwrap();
                 let (_, constraints) = &mut children[index];
 
                 self.solver.add_constraint(constraint.clone()).unwrap();
@@ -789,7 +796,7 @@ impl Layout {
             // new child.
             let constraint = specs.constraint;
             let temp = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
-                let (children, axis) = parent.lineage.as_ref().unwrap();
+                let (children, axis, _) = parent.lineage.as_ref().unwrap();
                 let (res_count, res_len) = children
                     .iter()
                     .filter(|(_, constraints)| constraints.is_resizable())
@@ -864,7 +871,7 @@ fn prepare_child(
     parent: &mut Rect, index: usize, solver: &mut Solver, frame: Frame, max: Coord,
     edges: &mut Vec<Edge>
 ) {
-    let (children, axis) = parent.lineage.as_ref().unwrap();
+    let (children, axis, _) = parent.lineage.as_ref().unwrap();
     let mut child = children[index].0.write();
 
     child.clear_constraints(solver);
@@ -886,7 +893,7 @@ fn prepare_child(
 
     solver.add_constraints(&child.edge_cons).unwrap();
 
-    if let Some((children, _)) = &child.lineage {
+    if let Some((children, ..)) = &mut child.lineage {
         let len = children.len();
         for index in 0..len {
             prepare_child(&mut child, index, solver, frame, max, edges);
@@ -894,10 +901,13 @@ fn prepare_child(
     }
 }
 
+/// Sets the ratio [`CassowaryConstraint`]s for the child of the given
+/// index. This does include setting the [`CassowaryConstraint`] for
+/// the previous child, if there is one.
 fn set_ratio_constraints(parent: &mut Rect, index: usize, solver: &mut Solver) {
-    let &(_, axis) = parent.lineage.as_ref().unwrap();
+    let &(_, axis, _) = parent.lineage.as_ref().unwrap();
 
-    let (children, _) = parent.lineage.as_mut().unwrap();
+    let (children, ..) = parent.lineage.as_mut().unwrap();
 
     let (new, _) = children[index].clone();
     let new = new.read();
@@ -939,10 +949,12 @@ fn set_ratio_constraints(parent: &mut Rect, index: usize, solver: &mut Solver) {
     parent.lineage.as_mut().unwrap().0[index].1.ratio = ratio;
 }
 
+/// Returns a [`CassowaryConstraint`] representing the defined
+/// [`Constraint`].
 fn defined_constraint(
     constraint: Constraint, parent: &Rect, index: usize, axis: Axis
 ) -> CassowaryConstraint {
-    let (children, _) = parent.lineage.as_ref().unwrap();
+    let (children, ..) = parent.lineage.as_ref().unwrap();
     let (child, _) = &children[index];
     let child = child.read();
     match constraint {
@@ -960,6 +972,7 @@ fn defined_constraint(
     }
 }
 
+/// Fetches the [`RwData<Rect>`] with the given index.
 fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
     if rect.read().index == index {
         Some(rect.clone())
@@ -967,7 +980,7 @@ fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
         rect.inspect(|rect| {
             rect.lineage
                 .as_ref()
-                .map(|(children, _)| {
+                .map(|(children, ..)| {
                     children.iter().find_map(|(child, _)| fetch_index(child, index))
                 })
                 .flatten()
@@ -975,19 +988,21 @@ fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
     }
 }
 
+/// Fetches the parent of the [`RwData<Rect>`] with the given index,
+/// including its positional index and the [`Axis`] of its children.
 fn fetch_parent(main: &RwData<Rect>, index: usize) -> Option<(RwData<Rect>, usize, Axis)> {
     let rect = main.read();
 
     if rect.index == index {
         return None;
     }
-    let Some((children, side)) = &rect.lineage else {
+    let Some((children, axis, _)) = &rect.lineage else {
         return None;
     };
 
     children.iter().enumerate().find_map(|(pos, (child, _))| {
         if child.read().index == index {
-            Some((main.clone(), pos, *side))
+            Some((main.clone(), pos, *axis))
         } else {
             fetch_parent(child, index)
         }

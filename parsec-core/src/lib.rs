@@ -86,11 +86,19 @@ where
     }
 
     pub fn push_widget_to_edge(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
-        push_specs: PushSpecs
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        let widget = (constructor)(&self.manager, push_specs);
-        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, push_specs)
+        let widget = (constructor)(&self.manager, specs);
+        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
+    }
+
+    pub fn push_widget_to(
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area: usize,
+        specs: PushSpecs
+    ) -> (usize, Option<usize>) {
+        let widget = (constructor)(&self.manager, specs);
+        let mut windows = self.manager.windows.write();
+        windows[self.manager.active_window].push_widget(area, widget, specs, None)
     }
 
     /// Start the application, initiating a read/response loop.

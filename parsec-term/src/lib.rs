@@ -1,4 +1,4 @@
-#![feature(result_option_inspect, iter_collect_into)]
+#![feature(result_option_inspect, iter_collect_into, let_chains)]
 
 use std::{fmt::Debug, io, sync::atomic::Ordering};
 

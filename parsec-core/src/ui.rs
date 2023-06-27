@@ -324,8 +324,8 @@ where
                 window.push_widget(self.mod_area.load(Ordering::Relaxed), widget, specs, file_id);
 
             if let (Some(new_parent), true) = (new_parent, self.is_file) {
-                if window.window.is_senior(new_parent, window.files_parent) {
-                    window.files_parent = new_parent;
+                if window.window.is_senior(new_parent, window.files_node) {
+                    window.files_node = new_parent;
                 }
             }
 
@@ -541,7 +541,8 @@ where
 {
     window: U::Window,
     nodes: Vec<Node<U>>,
-    files_parent: usize
+    files_node: usize,
+    master_node: usize
 }
 
 impl<U> ParsecWindow<U>
@@ -561,20 +562,15 @@ where
         let parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
-            files_parent: 0
+            files_node: 0,
+            master_node: 0
         };
 
         parsec_window
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    fn push_widget(
-        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>
-    ) -> (usize, Option<usize>) {
-        self.inner_push_widget(index, widget, specs, file_id)
-    }
-
-    fn inner_push_widget(
+    pub fn push_widget(
         &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>
     ) -> (usize, Option<usize>) {
         let is_file = widget.raw_inspect(|widget| widget.as_any().is::<FileWidget<U>>());
@@ -582,10 +578,14 @@ where
         let (new_child, new_parent) = self.window.bisect(index, specs, is_glued);
 
         let node = Node {
-            widget,
+            widget: widget,
             index: new_child,
-            file_id
+            file_id: file_id
         };
+
+        if index == self.master_node && let Some(new_master_node) = new_parent {
+            self.master_node = new_master_node;
+        }
 
         self.nodes.push(node);
         (new_child, new_parent)
@@ -598,12 +598,12 @@ where
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(&mut self, widget: Widget<U>, specs: PushSpecs) -> (usize, Option<usize>) {
-        let index = self.files_parent;
+        let index = self.files_node;
         let file_id = unique_file_id();
 
         let (file_area, new_parent) = self.push_widget(index, widget, specs, Some(file_id));
         if let Some(new_parent) = new_parent {
-            self.files_parent = new_parent;
+            self.files_node = new_parent;
         }
 
         (file_area, new_parent)
@@ -614,7 +614,7 @@ where
     pub fn push_to_master(
         &mut self, widget: Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        self.push_widget(0, widget, specs, None)
+        self.push_widget(self.master_node, widget, specs, None)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].

@@ -86,12 +86,17 @@ fn main() {
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
         mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
 
-        let specs = PushSpecs::below(Constraint::Length(1.0));
-        let (child, _) = mod_node.push_widget(StatusLine::default_fn(file.clone()), specs);
+        //let specs = PushSpecs::below(Constraint::Length(1.0));
+        //let (child, _) = mod_node.push_widget(StatusLine::default_fn(file.clone()), specs);
 
-        let specs = PushSpecs::left(Constraint::Percent(50));
-        mod_node.push_widget_to_area(CommandLine::default_fn(), child, specs);
+        //let specs = PushSpecs::left(Constraint::Percent(50));
+        //mod_node.push_widget_to_area(CommandLine::default_fn(), child, specs);
     });
+
+    let specs = PushSpecs::below(Constraint::Length(1.0));
+    let (status_line, _) = session.push_widget_to_edge(StatusLine::default_global_fn(), specs);
+    let specs = PushSpecs::left(Constraint::Percent(50));
+    session.push_widget_to(CommandLine::default_fn(), status_line, specs);
 
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
