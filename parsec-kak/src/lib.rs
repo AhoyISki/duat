@@ -6,7 +6,7 @@ use parsec_core::{
     input::InputScheme,
     ui::Ui,
     widgets::{ActionableWidget, CommandLine, WidgetActor},
-    Controls
+    Controls, position::Pos
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -449,7 +449,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self, key: &KeyEvent, mut _actor: WidgetActor<U, E>, controls: &mut Controls<U>
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized
@@ -462,6 +462,18 @@ impl Editor {
                 if let Ok(_) = controls.switch_to_file(&self.last_file) {
                     self.last_file = controls.active_file().to_string();
                 }
+            }
+            KeyEvent {
+                code: KeyCode::Char('j'),
+                ..
+            } => {
+                actor.move_main(|mut cursor| cursor.move_ver(isize::MAX));
+            }
+            KeyEvent {
+                code: KeyCode::Char('k'),
+                ..
+            } => {
+                actor.move_main(|mut cursor| cursor.move_to_coords(0, 0));
             }
             KeyEvent {
                 code: KeyCode::Char('n'),

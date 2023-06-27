@@ -18,20 +18,32 @@ pub struct Pos {
 }
 
 impl Pos {
-    pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
-        self.char = self.char.saturating_add_signed(ch_diff);
-        self.byte = inner.char_to_byte(self.char).unwrap();
-        self.line = inner.char_to_line(self.char).unwrap();
-        self.col = inner.char_from_line_start(self.char).unwrap();
+    pub fn from_coords(line: usize, col: usize, inner: &InnerText) -> Self {
+        let line = inner.line_to_char(line);
+        let ch_index = if let Some(line) = line {
+            let rope = inner.line(line);
+            inner.line_to_char(line).unwrap() + col.min(rope.len_chars() - 1)
+        } else {
+            inner.len_chars() - 1
+        };
+
+        Pos::new(ch_index, inner)
     }
 
-    pub fn new(ch_index: usize, inner: &InnerText) -> Pos {
+    pub fn new(ch_index: usize, inner: &InnerText) -> Self {
         Pos {
             byte: inner.char_to_byte(ch_index).unwrap(),
             char: ch_index,
             col: inner.char_from_line_start(ch_index).unwrap(),
             line: inner.char_to_line(ch_index).unwrap()
         }
+    }
+
+    pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
+        self.char = self.char.saturating_add_signed(ch_diff);
+        self.byte = inner.char_to_byte(self.char).unwrap();
+        self.line = inner.char_to_line(self.char).unwrap();
+        self.col = inner.char_from_line_start(self.char).unwrap();
     }
 
     /// Returns the byte (relative to the beginning of the file),
@@ -165,8 +177,8 @@ impl Cursor {
         let line_char = text.line_to_char(caret.line);
         caret.col = caret.char - line_char;
 
-        self.desired_x =
-            area.get_width(text.iter_range(line_char..=caret.char), cfg, usize::MAX, true);
+        let iter_range = text.iter_range(line_char..=caret.char);
+        self.desired_x = area.get_width(iter_range, cfg, usize::MAX, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
@@ -183,8 +195,8 @@ impl Cursor {
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
 
-        self.desired_x =
-            area.get_width(text.iter_range(line_char..caret.char), cfg, usize::MAX, true);
+        let iter_range = text.iter_range(line_char..caret.char);
+        self.desired_x = area.get_width(iter_range, cfg, usize::MAX, true);
 
         self.anchor = None;
     }
@@ -445,8 +457,18 @@ where
     /// - If the position isn't valid, it will move to the "maximum"
     ///   position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, caret: Pos) {
-        self.cursor.move_to::<U>(caret, &self.text, self.area, &self.print_cfg);
+    pub fn move_to(&mut self, pos: Pos) {
+        self.cursor.move_to::<U>(pos, &self.text, self.area, &self.print_cfg);
+    }
+
+    /// Moves the cursor to a line and a column on the file.
+    ///
+    /// - If the coords isn't valid, it will move to the "maximum"
+    ///   position allowed.
+    /// - This command sets `desired_x`.
+    pub fn move_to_coords(&mut self, line: usize, col: usize) {
+        let pos = Pos::from_coords(line, col, &self.text.inner());
+        self.cursor.move_to::<U>(pos, &self.text, self.area, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.
