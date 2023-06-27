@@ -200,6 +200,8 @@ impl Rect {
             self.br.x.var | GE(REQUIRED) | self.tl.x.var,
             self.br.y.var | GE(REQUIRED) | self.tl.y.var
         ]);
+
+        edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         let (right, up, left, down) = if self.is_frameable(Some(parent)) {
             self.form_frame(frame, max, edges)
         } else {
@@ -363,7 +365,6 @@ impl Rect {
     fn form_frame(&self, frame: Frame, max: Coord, edges: &mut Vec<Edge>) -> (f64, f64, f64, f64) {
         let (right, up, left, down) = frame.edges(&self.br, &self.tl, max);
 
-        edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         if right == 1.0 {
             edges.push(Edge::new(self.br.clone(), self.tl.clone(), Axis::Vertical, frame));
         }
@@ -853,7 +854,7 @@ impl Layout {
 
         self.update();
 
-        log_info!("{:#?}", self);
+        log_info!("{:#?}", self.edges);
 
         (new_index, new_parent_index)
     }
