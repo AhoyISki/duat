@@ -80,7 +80,7 @@ where
             }
         }
 
-		let cursors = vec![Cursor::default()];
+        let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
 
         Widget::actionable(

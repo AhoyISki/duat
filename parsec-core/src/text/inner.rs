@@ -35,7 +35,7 @@ impl InnerText {
     pub fn char_from_line_start(&self, ch_index: usize) -> Option<usize> {
         match self {
             InnerText::String(string) => string
-                .lines()
+                .split_inclusive('\n')
                 .scan(0, |accum, line| {
                     let old_accum = *accum;
                     *accum = *accum + line.chars().count();
@@ -68,7 +68,7 @@ impl InnerText {
     pub fn char_to_line(&self, ch_index: usize) -> Option<usize> {
         match self {
             InnerText::String(string) => string
-                .lines()
+                .split_inclusive('\n')
                 .enumerate()
                 .scan(0, |accum, (index, line)| {
                     if *accum <= ch_index {
@@ -86,7 +86,7 @@ impl InnerText {
     pub fn line(&self, line_index: usize) -> ropey::RopeSlice {
         let line = match self {
             InnerText::String(string) => {
-                string.lines().nth(line_index).map(|line| RopeSlice::from(line))
+                string.split_inclusive('\n').nth(line_index).map(|line| RopeSlice::from(line))
             }
             InnerText::Rope(rope) => rope.get_line(line_index)
         };
@@ -97,7 +97,7 @@ impl InnerText {
     pub fn line_to_char(&self, line_index: usize) -> Option<usize> {
         match self {
             InnerText::String(string) => string
-                .lines()
+                .split_inclusive('\n')
                 .chain(std::iter::once(""))
                 .scan(0, |chars, line| {
                     let old_chars = *chars;
@@ -140,7 +140,7 @@ impl InnerText {
 
     pub fn len_lines(&self) -> usize {
         match self {
-            InnerText::String(string) => string.lines().count(),
+            InnerText::String(string) => string.split_inclusive('\n').count(),
             InnerText::Rope(rope) => rope.len_lines()
         }
     }

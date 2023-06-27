@@ -212,38 +212,47 @@ impl Tags {
     /// This is crucial to prevent the gradual deterioration of the
     /// [`InnerTags`]'s structure.
     fn merge_surrounding_skips(&mut self, from: usize) {
-        let mut next_tags = self
-            .inner
-            .iter_at(from)
-            .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+        let (total_skip, last_width) = {
+            let mut total_skip = 0;
+            let mut last_width = from;
+            let mut next_tags = self
+                .inner
+                .iter_at(from)
+                .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
 
-        let mut total_skip = 0;
-        let mut last_width = from;
-        while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
-            total_skip += skip;
-            last_width = width;
-        }
-        drop(next_tags);
+            while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
+                total_skip += skip;
+                last_width = width;
+            }
+
+            (total_skip, last_width)
+        };
+
         if last_width != from {
-            // The removal happens after the insertion in order to prevent "`Tag`
-            // clustering".
+            // The removal happens after the insertion in order to prevent `Tag`s
+            // which are meant to be separate from coming together.
             self.inner.insert(from, TagOrSkip::Skip(total_skip));
             let skip_range = (from + total_skip as usize)..(from + 2 * total_skip as usize);
             self.inner.remove_exclusive(skip_range);
         }
 
-        let mut prev_tags = self
-            .inner
-            .iter_at_rev(from)
-            .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+        let (total_skip, first_width) = {
+            let mut total_skip = 0;
+            let mut first_width = from;
 
-        let mut total_skip = 0;
-        let mut first_width = from;
-        while let Some((width, TagOrSkip::Skip(skip))) = prev_tags.next() {
-            total_skip += skip;
-            first_width = width;
-        }
-        drop(prev_tags);
+            let mut prev_tags = self
+                .inner
+                .iter_at_rev(from)
+                .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+
+            while let Some((width, TagOrSkip::Skip(skip))) = prev_tags.next() {
+                total_skip += skip;
+                first_width = width;
+            }
+
+            (total_skip, first_width)
+        };
+
         if first_width != from {
             self.inner.insert(first_width, TagOrSkip::Skip(total_skip));
 

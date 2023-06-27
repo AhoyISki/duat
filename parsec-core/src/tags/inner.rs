@@ -3,7 +3,7 @@ use std::ops::Range;
 use any_rope::{Measurable, Rope};
 
 use super::{Lock, TagOrSkip};
-use crate::text::inner::InnerText;
+use crate::{text::inner::InnerText};
 
 #[derive(Debug)]
 pub(super) enum InnerTags {
@@ -20,13 +20,13 @@ impl InnerTags {
         }
     }
 
-    pub fn insert(&mut self, ch_index: usize, tag_or_skip: TagOrSkip) {
+    pub fn insert(&mut self, ch_index: usize, t_or_s: TagOrSkip) {
         match self {
             InnerTags::Vec(vec) => {
                 let index = end_ch_to_index(&vec, ch_index);
-                vec.insert(index, tag_or_skip)
+                vec.insert(index, t_or_s)
             }
-            InnerTags::Rope(rope) => rope.insert(ch_index, tag_or_skip)
+            InnerTags::Rope(rope) => rope.insert(ch_index, t_or_s)
         }
     }
 
@@ -49,9 +49,7 @@ impl InnerTags {
 
                 let start = end_ch_to_index(&vec, range.start);
                 let end = start_ch_to_index(&vec, range.end);
-                if start > end {
-                    panic!("{}, {}\n{:?}", range.start, range.end, vec);
-                }
+                assert!(start <= end, "{}, {}\n{:?}", range.start, range.end, vec);
                 vec.splice(start..end, []);
             }
             InnerTags::Rope(rope) => rope.remove_exclusive(range)
@@ -146,15 +144,17 @@ impl InnerTags {
     ) -> Box<dyn Iterator<Item = (usize, TagOrSkip)> + '_> {
         match self {
             InnerTags::Vec(vec) => {
-                let width = vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum::<usize>();
+                let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
                 Box::new(
                     vec.iter()
                         .rev()
-                        .scan(width, |accum, tag_or_skip| {
-                            *accum -= tag_or_skip.width();
-                            Some((*accum, *tag_or_skip))
+                        .scan(width, |accum, t_or_s| {
+                            *accum -= t_or_s.width();
+                            Some((*accum, *t_or_s))
                         })
-                        .skip_while(move |(accum, _)| *accum > ch_index)
+                        .skip_while(move |(accum, t_or_s)| {
+                            *accum > ch_index && t_or_s.width() == 0 || *accum >= ch_index
+                        })
                 )
             }
             InnerTags::Rope(rope) => Box::new(rope.iter_at_width(ch_index).reversed())
