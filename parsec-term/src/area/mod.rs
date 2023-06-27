@@ -78,19 +78,19 @@ impl Coords {
                 None
             }
         } else if self.tl.x <= other.tl.x && other.tl.x <= self.br.x {
-            let right = match other.tl.x < self.br.x {
+            let right = match other.tl.x < self.br.x && self.tl.x <= other.tl.x + 1{
                 true => self_line,
                 false => None
             };
-            let up = match other.tl.y < self.tl.y {
+            let up = match other.tl.y < self.tl.y && self.br.y <= other.br.y + 1 {
                 true => other_line,
                 false => None
             };
-            let left = match self.tl.x < other.tl.x {
+            let left = match self.tl.x < other.tl.x && other.br.x <= self.br.x + 1 {
                 true => self_line,
                 false => None
             };
-            let down = match self.br.y < other.br.y {
+            let down = match self.br.y < other.br.y && other.tl.y <= self.tl.y + 1{
                 true => other_line,
                 false => None
             };
@@ -726,18 +726,22 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
         }
 
         for (other_index, &(other_edge, other_line)) in edges.iter().enumerate() {
-            if index != other_index {
-                if let Some(crossing) = edge.crossing(other_edge, line, other_line) {
-                    let existing = crossings.iter_mut().find(|(coord, ..)| *coord == crossing.0);
-                    if let Some((_, right, up, left, down)) = existing {
-                        *right = right.or(crossing.1);
-                        *up = up.or(crossing.2);
-                        *left = left.or(crossing.3);
-                        *down = down.or(crossing.4);
-                    } else {
-                        crossings.push(crossing);
-                    }
-                }
+            if index == other_index {
+                continue;
+            }
+
+            let Some(crossing) = edge.crossing(other_edge, line, other_line) else {
+                continue;
+            };
+
+            let prev_crossing = crossings.iter_mut().find(|(coord, ..)| *coord == crossing.0);
+            if let Some((_, right, up, left, down)) = prev_crossing {
+                *right = right.or(crossing.1);
+                *up = up.or(crossing.2);
+                *left = left.or(crossing.3);
+                *down = down.or(crossing.4);
+            } else {
+                crossings.push(crossing);
             }
         }
     }
