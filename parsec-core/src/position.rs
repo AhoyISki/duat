@@ -1,10 +1,11 @@
-use std::{cmp::min, fmt::Display, ops::Range};
+use std::ops::Range;
 
 use crate::{
     history::{Change, History},
     text::{inner::InnerText, PrintCfg, Text},
     ui::{Area, Ui},
-    widgets::EditAccum};
+    widgets::EditAccum
+};
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
@@ -157,7 +158,7 @@ impl Cursor {
         U: Ui
     {
         let caret = &mut self.caret;
-        let max = text.len_chars();
+        let max = text.len_chars().saturating_sub(1);
         caret.char = caret.char.saturating_add_signed(count).min(max);
         caret.byte = text.char_to_byte(caret.char);
         caret.line = text.char_to_line(caret.char);
@@ -176,9 +177,9 @@ impl Cursor {
     {
         let caret = &mut self.caret;
 
-        caret.line = min(pos.line, text.len_lines().saturating_sub(1));
+        caret.line = pos.line.min(text.len_lines().saturating_sub(1));
         let line_char = text.line_to_char(pos.line);
-        caret.col = min(pos.col, text.iter_line_chars(caret.line).count());
+        caret.col = pos.col.min(text.iter_line_chars(caret.line).count());
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
 
@@ -298,7 +299,7 @@ impl Cursor {
     }
 }
 
-impl Display for Cursor {
+impl std::fmt::Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}:{}", self.caret.line + 1, self.caret.col + 1))
     }

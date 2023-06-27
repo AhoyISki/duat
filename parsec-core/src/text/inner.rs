@@ -141,7 +141,7 @@ impl InnerText {
     pub fn len_lines(&self) -> usize {
         match self {
             InnerText::String(string) => string.split_inclusive('\n').count(),
-            InnerText::Rope(rope) => rope.len_lines()
+            InnerText::Rope(rope) => rope.len_lines() - 1
         }
     }
 
