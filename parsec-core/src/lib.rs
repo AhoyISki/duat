@@ -98,7 +98,16 @@ where
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(&self.manager, specs);
         let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push_widget(area, widget, specs, None)
+        windows[self.manager.active_window].push_widget(area, widget, specs, None, false)
+    }
+
+    pub fn push_clustered_widget_to(
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area: usize,
+        specs: PushSpecs
+    ) -> (usize, Option<usize>) {
+        let widget = (constructor)(&self.manager, specs);
+        let mut windows = self.manager.windows.write();
+        windows[self.manager.active_window].push_widget(area, widget, specs, None, true)
     }
 
     /// Start the application, initiating a read/response loop.

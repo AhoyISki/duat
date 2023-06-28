@@ -15,11 +15,11 @@ use parsec_core::{
         Tag
     },
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Constraint, Ui}
+    ui::{self, Area as UiArea, Axis, Constraint, Ui}
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::layout::{Edge, Layout, Line};
+use crate::layout::{Edge, Layout, Line, LineCoords};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -47,67 +47,16 @@ impl Coord {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Coords {
-    pub tl: Coord,
-    pub br: Coord
+    tl: Coord,
+    br: Coord
 }
 impl Coords {
-    fn width(&self) -> usize {
-        (self.br.x - self.tl.x) as usize
+    pub fn new(tl: Coord, br: Coord) -> Self {
+        Coords { tl, br }
     }
 
-    fn crossing(
-        &self, other: Coords, self_line: Option<Line>, other_line: Option<Line>
-    ) -> Option<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)> {
-        if self.tl.x == self.br.x {
-            if other.tl.x == other.br.x && self.br == other.tl {
-                return Some((self.br, None, self_line, None, other_line));
-            // All perpendicular crossings will be iterated, so if two
-            // perpendicular `Coords`, `a` and `b` cross, `self` will
-            // be horizontal in one of the iterations, while `other`
-            // will be vertical, that's when the rest of the logic on
-            // this function is used.
-            } else {
-                return None;
-            }
-        }
-
-        if other.tl.y == other.br.y {
-            if other.tl == self.br {
-                Some((self.br, other_line, None, self_line, None))
-            } else {
-                None
-            }
-        } else if self.tl.x <= other.tl.x && other.tl.x <= self.br.x {
-            let right = match other.tl.x < self.br.x && self.tl.x <= other.tl.x + 1{
-                true => self_line,
-                false => None
-            };
-            let up = match other.tl.y < self.tl.y && self.br.y <= other.br.y + 1 {
-                true => other_line,
-                false => None
-            };
-            let left = match self.tl.x < other.tl.x && other.br.x <= self.br.x + 1 {
-                true => self_line,
-                false => None
-            };
-            let down = match self.br.y < other.br.y && other.tl.y <= self.tl.y + 1{
-                true => other_line,
-                false => None
-            };
-
-            if up.is_some() || down.is_some() {
-                let coord = Coord {
-                    x: other.tl.x,
-                    y: self.tl.y
-                };
-
-                Some((coord, right, up, left, down))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    fn width(&self) -> usize {
+        (self.br.x - self.tl.x) as usize
     }
 }
 
@@ -698,50 +647,45 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut Stdout
 }
 
 fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
-    let edges = edges
-        .iter()
-        .map(|edge| (edge.line_coords(), edge.frame.line()))
-        .collect::<Vec<(Coords, Option<Line>)>>();
+    let edges = edges.iter().map(|edge| edge.line_coords()).collect::<Vec<LineCoords>>();
 
     let mut crossings =
         Vec::<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)>::new();
 
-    for (index, &(edge, line)) in edges.iter().enumerate() {
-        if edge.tl.y == edge.br.y {
-            let char = match line {
+    for (index, &coords) in edges.iter().enumerate() {
+        if let Axis::Horizontal = coords.axis {
+            let char = match coords.line {
                 Some(line) => line::horizontal(line, line),
                 None => unreachable!()
             };
-            let line = char.to_string().repeat((edge.br.x - edge.tl.x - 1) as usize);
-            queue!(stdout, MoveTo(edge.tl.x + 1, edge.tl.y), Print(line))
+            let line = char.to_string().repeat((coords.br.x - coords.tl.x + 1) as usize);
+            queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), Print(line))
         } else {
-            let char = match line {
+            let char = match coords.line {
                 Some(line) => line::vertical(line, line),
                 None => unreachable!()
             };
 
-            for y in (edge.tl.y + 1)..edge.br.y {
-                queue!(stdout, MoveTo(edge.tl.x, y), Print(char))
+            for y in (coords.tl.y)..=coords.br.y {
+                queue!(stdout, MoveTo(coords.tl.x, y), Print(char))
             }
         }
 
-        for (other_index, &(other_edge, other_line)) in edges.iter().enumerate() {
+        for (other_index, &other_coords) in edges.iter().enumerate() {
             if index == other_index {
                 continue;
             }
 
-            let Some(crossing) = edge.crossing(other_edge, line, other_line) else {
-                continue;
-            };
-
-            let prev_crossing = crossings.iter_mut().find(|(coord, ..)| *coord == crossing.0);
-            if let Some((_, right, up, left, down)) = prev_crossing {
-                *right = right.or(crossing.1);
-                *up = up.or(crossing.2);
-                *left = left.or(crossing.3);
-                *down = down.or(crossing.4);
-            } else {
-                crossings.push(crossing);
+            if let Some(crossing) = coords.crossing(other_coords) {
+                let prev_crossing = crossings.iter_mut().find(|(coord, ..)| *coord == crossing.0);
+                if let Some((_, right, up, left, down)) = prev_crossing {
+                    *right = right.or(crossing.1);
+                    *up = up.or(crossing.2);
+                    *left = left.or(crossing.3);
+                    *down = down.or(crossing.4);
+                } else {
+                    crossings.push(crossing);
+                }
             }
         }
     }

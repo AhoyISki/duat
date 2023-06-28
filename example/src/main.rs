@@ -96,7 +96,7 @@ fn main() {
     let specs = PushSpecs::below(Constraint::Length(1.0));
     let (status_line, _) = session.push_widget_to_edge(StatusLine::default_global_fn(), specs);
     let specs = PushSpecs::left(Constraint::Percent(50));
-    session.push_widget_to(CommandLine::default_fn(), status_line, specs);
+    session.push_clustered_widget_to(CommandLine::default_fn(), status_line, specs);
 
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);

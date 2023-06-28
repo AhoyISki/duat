@@ -320,8 +320,9 @@ where
         let file_id = self.manager.commands.read().file_id;
         let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
+            let mod_area = self.mod_area.load(Ordering::Relaxed);
             let (new_child, new_parent) =
-                window.push_widget(self.mod_area.load(Ordering::Relaxed), widget, specs, file_id);
+                window.push_widget(mod_area, widget, specs, file_id, true);
 
             if let (Some(new_parent), true) = (new_parent, self.is_file) {
                 if window.window.is_senior(new_parent, window.files_node) {
@@ -364,10 +365,10 @@ where
         specs: PushSpecs
     ) -> (usize, Option<usize>) {
         let widget = (constructor)(self.manager, specs);
-        let context = self.manager.commands.read().file_id;
+        let file_id = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(index, widget, specs, context)
+            window.push_widget(index, widget, specs, file_id, true)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
@@ -571,16 +572,15 @@ where
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push_widget(
-        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>
+        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>,
+        is_glued: bool
     ) -> (usize, Option<usize>) {
-        let is_file = widget.raw_inspect(|widget| widget.as_any().is::<FileWidget<U>>());
-        let is_glued = file_id.is_some() && !is_file;
         let (new_child, new_parent) = self.window.bisect(index, specs, is_glued);
 
         let node = Node {
-            widget: widget,
+            widget,
             index: new_child,
-            file_id: file_id
+            file_id
         };
 
         if index == self.master_node && let Some(new_master_node) = new_parent {
@@ -601,7 +601,7 @@ where
         let index = self.files_node;
         let file_id = unique_file_id();
 
-        let (file_area, new_parent) = self.push_widget(index, widget, specs, Some(file_id));
+        let (file_area, new_parent) = self.push_widget(index, widget, specs, Some(file_id), false);
         if let Some(new_parent) = new_parent {
             self.files_node = new_parent;
         }
@@ -614,7 +614,7 @@ where
     pub fn push_to_master(
         &mut self, widget: Widget<U>, specs: PushSpecs
     ) -> (usize, Option<usize>) {
-        self.push_widget(self.master_node, widget, specs, None)
+        self.push_widget(self.master_node, widget, specs, None, false)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].

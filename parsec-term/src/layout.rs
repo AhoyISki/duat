@@ -423,37 +423,100 @@ impl Edge {
     }
 
     /// The [`Coords`] that will be used to draw the line.
-    pub fn line_coords(&self) -> Coords {
-        let (c_shift, t_shift) = if self.center < self.target {
-            (1, 0)
-        } else {
-            (0, 1)
+    pub fn line_coords(&self) -> LineCoords {
+        let shift = self.center < self.target;
+        let (x_shift, y_shift) = match self.axis {
+            Axis::Horizontal => (!shift as u16, shift as u16),
+            Axis::Vertical => (shift as u16, !shift as u16)
         };
 
         let target = match self.axis {
-            Axis::Horizontal => Coord {
-                x: self.target.x.value.load(Ordering::Acquire) - t_shift,
-                y: self.center.y.value.load(Ordering::Acquire) - c_shift
-            },
-            Axis::Vertical => Coord {
-                x: self.center.x.value.load(Ordering::Acquire) - c_shift,
-                y: self.target.y.value.load(Ordering::Acquire) - t_shift
-            }
+            Axis::Horizontal => Coord::new(
+                self.target.x.value.load(Ordering::Acquire) - shift as u16,
+                self.center.y.value.load(Ordering::Acquire) - shift as u16
+            ),
+            Axis::Vertical => Coord::new(
+                self.center.x.value.load(Ordering::Acquire) - shift as u16,
+                self.target.y.value.load(Ordering::Acquire) - shift as u16
+            )
         };
-        let center = Coord {
-            x: self.center.x.value.load(Ordering::Acquire) - c_shift,
-            y: self.center.y.value.load(Ordering::Acquire) - c_shift
-        };
+        let center = Coord::new(
+            self.center.x.value.load(Ordering::Acquire) - x_shift,
+            self.center.y.value.load(Ordering::Acquire) - y_shift
+        );
         if self.center < self.target {
-            Coords {
-                tl: center,
-                br: target
+            LineCoords::new(center, target, self.axis, self.frame.line())
+        } else {
+            LineCoords::new(target, center, self.axis, self.frame.line())
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct LineCoords {
+    pub tl: Coord,
+    pub br: Coord,
+    pub axis: Axis,
+    pub line: Option<Line>
+}
+
+impl LineCoords {
+    pub fn new(tl: Coord, br: Coord, axis: Axis, line: Option<Line>) -> Self {
+        Self { tl, br, axis, line }
+    }
+
+    pub fn crossing(
+        &self, other: LineCoords
+    ) -> Option<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)> {
+        if self.tl.x == self.br.x {
+            if other.tl.x == other.br.x && self.br.x + 1 == other.tl.x {
+                return Some((self.br, None, self.line, None, other.line));
+            // All perpendicular crossings will be iterated, so if two
+            // perpendicular `Coords`, `a` and `b` cross, `self` will
+            // be horizontal in one of the iterations, while `other`
+            // will be vertical, that's when the rest of the logic on
+            // this function is used.
+            } else {
+                return None;
+            }
+        }
+
+        if other.tl.y == other.br.y {
+            if self.br == other.tl {
+                Some((self.br, other.line, None, self.line, None))
+            } else {
+                None
+            }
+        } else if self.tl.x <= other.tl.x && other.tl.x <= self.br.x {
+            let right = match other.tl.x < self.br.x && self.tl.x <= other.tl.x + 1 {
+                true => self.line,
+                false => None
+            };
+            let up = match other.tl.y < self.tl.y && self.br.y <= other.br.y + 1 {
+                true => other.line,
+                false => None
+            };
+            let left = match self.tl.x < other.tl.x && other.br.x <= self.br.x + 1 {
+                true => self.line,
+                false => None
+            };
+            let down = match self.br.y < other.br.y && other.tl.y <= self.tl.y + 1 {
+                true => other.line,
+                false => None
+            };
+
+            if up.is_some() || down.is_some() {
+                let coord = Coord {
+                    x: other.tl.x,
+                    y: self.tl.y
+                };
+
+                Some((coord, right, up, left, down))
+            } else {
+                None
             }
         } else {
-            Coords {
-                tl: target,
-                br: center
-            }
+            None
         }
     }
 }
