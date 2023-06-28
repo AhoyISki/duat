@@ -17,7 +17,7 @@ use parsec_core::{
     ui::{Axis, Constraint, PushSpecs}
 };
 
-use crate::{area::Coord, Coords};
+use crate::area::Coord;
 
 /// Generates a unique index for [`Rect`]s.
 fn unique_rect_index() -> usize {
@@ -468,9 +468,13 @@ impl LineCoords {
     pub fn crossing(
         &self, other: LineCoords
     ) -> Option<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)> {
-        if self.tl.x == self.br.x {
-            if other.tl.x == other.br.x && self.br.x + 1 == other.tl.x {
-                return Some((self.br, None, self.line, None, other.line));
+        if let Axis::Vertical = self.axis {
+            if let Axis::Vertical = other.axis
+                && self.br.x == other.tl.x
+                && self.br.y + 2 == other.tl.y
+            {
+                let coord = Coord::new(self.br.x, self.br.y + 1);
+                return Some((coord, None, self.line, None, other.line));
             // All perpendicular crossings will be iterated, so if two
             // perpendicular `Coords`, `a` and `b` cross, `self` will
             // be horizontal in one of the iterations, while `other`
@@ -481,26 +485,28 @@ impl LineCoords {
             }
         }
 
-        if other.tl.y == other.br.y {
-            if self.br == other.tl {
-                Some((self.br, other.line, None, self.line, None))
+        if let Axis::Horizontal = other.axis {
+            if self.br.y == other.br.y && self.br.x + 2 == other.tl.x {
+                let coord = Coord::new(self.br.x + 1, self.br.y);
+                Some((coord, other.line, None, self.line, None))
             } else {
                 None
             }
-        } else if self.tl.x <= other.tl.x && other.tl.x <= self.br.x {
-            let right = match other.tl.x < self.br.x && self.tl.x <= other.tl.x + 1 {
+        } else if self.tl.x <= other.tl.x + 1 && other.tl.x <= self.br.x + 1 {
+            let right_height = (other.tl.y..=other.br.y + 2).contains(&(self.br.y + 1));
+            let right = match right_height && other.br.x <= self.br.x {
                 true => self.line,
                 false => None
             };
-            let up = match other.tl.y < self.tl.y && self.br.y <= other.br.y + 1 {
+            let up = match other.tl.y <= self.tl.y && self.br.y <= other.br.y + 1 {
                 true => other.line,
                 false => None
             };
-            let left = match self.tl.x < other.tl.x && other.br.x <= self.br.x + 1 {
+            let left = match right_height && self.tl.x <= other.tl.x {
                 true => self.line,
                 false => None
             };
-            let down = match self.br.y < other.br.y && other.tl.y <= self.tl.y + 1 {
+            let down = match self.br.y <= other.br.y && other.tl.y <= self.tl.y + 1 {
                 true => other.line,
                 false => None
             };
