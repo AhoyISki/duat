@@ -1,9 +1,12 @@
 mod line;
 
-use std::io::{self, StdoutLock};
+use std::{
+    io::{self, StdoutLock},
+    sync::atomic::{AtomicBool, Ordering}
+};
 
 use crossterm::{
-    cursor::{self, MoveTo, SavePosition},
+    cursor::{self},
     execute, queue as crossterm_queue,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
@@ -23,6 +26,8 @@ use crate::{
     layout::{Edge, Layout, Line, LineCoords},
     AreaIndex
 };
+
+static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -126,9 +131,16 @@ impl ui::Area for Area {
     }
 
     fn print(&mut self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {
+        if self.is_active() {
+            SHOW_CURSOR.store(false, Ordering::Release);
+        }
+
         let mut stdout = io::stdout().lock();
+
+        print_edges(self.layout.read().edges(), &mut stdout);
+
         let coords = self.coords();
-        queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
+        queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
 
         let width = cfg.wrap_method.wrapping_cap(coords.width());
 
@@ -147,7 +159,7 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let (mut cursor, show_cursor) = if let WrapMethod::Word = cfg.wrap_method {
+        let mut cursor = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, width, &cfg);
             print(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         } else {
@@ -162,11 +174,9 @@ impl ui::Area for Area {
             cursor.x = coords.tl.x;
         }
 
-        if show_cursor {
-            queue!(stdout, cursor::Show);
+        if SHOW_CURSOR.load(Ordering::Acquire) {
+            queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
-
-        print_edges(self.layout.read().edges(), &mut stdout);
 
         execute!(stdout, ResetColor).unwrap();
     }
@@ -512,11 +522,10 @@ fn words<'a>(
 fn print(
     iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
-) -> (Coord, bool) {
+) -> Coord {
     let x_shift = info.x_shift;
     let mut last_char = 'a';
     let mut cursor = coords.tl;
-    let mut show_cursor = false;
     let mut prev_style = None;
 
     let mut iter = iter
@@ -541,12 +550,11 @@ fn print(
                 queue!(stdout, ResetColor, SetStyle(style));
             }
         } else if let TextBit::Tag(tag) = bit {
-            (show_cursor, prev_style) =
-                trigger_tag(tag, show_cursor, is_active, &mut form_former, stdout);
+            prev_style = trigger_tag(tag, is_active, &mut form_former, stdout);
         }
     }
 
-    (cursor, show_cursor)
+    cursor
 }
 
 fn indent_line(
@@ -581,12 +589,8 @@ fn print_char(
 }
 
 fn trigger_tag(
-    tag: Tag, show_cursor: bool, is_active: bool, form_former: &mut FormFormer,
-    stdout: &mut StdoutLock
-) -> (bool, Option<ContentStyle>) {
-    let mut prev_style = None;
-    let mut cursor_shown = false;
-
+    tag: Tag, is_active: bool, form_former: &mut FormFormer, stdout: &mut StdoutLock
+) -> Option<ContentStyle> {
     match tag {
         Tag::PushForm(id) => {
             queue!(stdout, ResetColor, SetStyle(form_former.apply(id).style));
@@ -597,11 +601,11 @@ fn trigger_tag(
         Tag::MainCursor => {
             let cursor_style = form_former.main_cursor();
             if let (Some(caret), true) = (cursor_style.caret, is_active) {
-                queue!(stdout, caret, SavePosition);
-                cursor_shown = true || show_cursor;
+                SHOW_CURSOR.store(true, Ordering::Release);
+                queue!(stdout, caret, cursor::SavePosition);
             } else {
-                prev_style = Some(form_former.make_form().style);
                 queue!(stdout, SetStyle(cursor_style.form.style));
+                return Some(form_former.make_form().style);
             }
         }
         Tag::ExtraCursor => {
@@ -611,7 +615,7 @@ fn trigger_tag(
         Tag::PermanentConceal { .. } => todo!()
     }
 
-    (cursor_shown, prev_style)
+    None
 }
 
 fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
@@ -634,7 +638,12 @@ fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
     let (x, y) = (coords.tl.x, cursor.y);
-    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), MoveTo(x, y));
+    queue!(
+        stdout,
+        ResetColor,
+        Print(" ".repeat(len.min(coords.width()))),
+        cursor::MoveTo(x, y)
+    );
 }
 
 fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
@@ -650,7 +659,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
                 None => unreachable!()
             };
             let line = char.to_string().repeat((coords.br.x - coords.tl.x + 1) as usize);
-            queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), Print(line))
+            queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), Print(line))
         } else {
             let char = match coords.line {
                 Some(line) => line::vertical(line, line),
@@ -658,7 +667,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
             };
 
             for y in (coords.tl.y)..=coords.br.y {
-                queue!(stdout, MoveTo(coords.tl.x, y), Print(char))
+                queue!(stdout, cursor::MoveTo(coords.tl.x, y), Print(char))
             }
         }
 
@@ -684,7 +693,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     for (coord, right, up, left, down) in crossings {
         queue!(
             stdout,
-            MoveTo(coord.x, coord.y),
+            cursor::MoveTo(coord.x, coord.y),
             Print(line::crossing(right, up, left, down, true))
         )
     }

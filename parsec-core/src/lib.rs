@@ -26,7 +26,7 @@ use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
+use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui, Area};
 use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
 pub struct Session<U>
@@ -368,8 +368,9 @@ where
     }
 
     fn switch_to_widget_index(&mut self, index: usize) -> Result<(), ()> {
-        let (widget, label, file_id) = self.window.actionable_widgets().nth(index).ok_or(())?;
-        widget.write().on_focus(&label);
+        let (widget, mut area, file_id) = self.window.actionable_widgets().nth(index).ok_or(())?;
+        area.set_as_active();
+        widget.write().on_focus(&area);
         if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
             *self.manager.active_file.write() = RoData::from(&file);
         }
@@ -377,8 +378,8 @@ where
         self.manager.commands.write().file_id = file_id;
 
         let active_index = self.manager.active_widget.load(Ordering::Acquire);
-        let (widget, label, _) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
-        widget.write().on_unfocus(&label);
+        let (widget, area, _) = self.window.actionable_widgets().nth(active_index).ok_or(())?;
+        widget.write().on_unfocus(&area);
 
         self.manager.active_widget.store(index, Ordering::Release);
 

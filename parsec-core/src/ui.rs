@@ -170,6 +170,9 @@ pub trait Area: Send + Sync {
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
+    ///
+    /// Should make [`self`] the active [`Area`] while deactivating
+    /// any other active [`Area`].
     fn set_as_active(&mut self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].

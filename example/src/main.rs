@@ -54,7 +54,7 @@ fn main() {
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that
     // name.
-    palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
+    //palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());

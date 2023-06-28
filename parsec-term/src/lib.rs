@@ -64,7 +64,7 @@ impl ui::Window for Window {
         todo!()
     }
 
-    fn is_senior(&self, senior:AreaIndex, mut junior:AreaIndex) -> bool {
+    fn is_senior(&self, senior: AreaIndex, mut junior: AreaIndex) -> bool {
         self.layout.inspect(|layout| {
             while let Some((parent, _)) = layout.fetch_parent(junior) {
                 junior = parent.read().index();
