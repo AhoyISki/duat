@@ -163,7 +163,8 @@ impl ui::Area for Area {
             let words = words(indents, width, &cfg);
             print(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         } else {
-            let bits = bits(indents, width, &cfg.tab_stops, cfg.wrap_method.is_no_wrap());
+            let dont_wrap = cfg.wrap_method.is_no_wrap();
+            let bits = bits(indents, width, &cfg.tab_stops, dont_wrap);
             print(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         };
 
