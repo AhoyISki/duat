@@ -47,7 +47,7 @@ where
     fn update(&mut self, label: &mut U::Area);
 
     /// The text that this widget prints out.
-    fn text(&self) -> &Text<U>;
+    fn text(&self) -> &Text;
 
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, _d_y: i32) {}
@@ -76,7 +76,7 @@ where
 
     /// This is used specifically to remove and add the [`Cursor`]
     /// [`Tag`][crate::tags::Tag]s to [`self`]
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize);
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize);
 
     /// The list of active [`Cursor`]s on [`self`].
     fn cursors(&self) -> &[Cursor];
@@ -232,13 +232,13 @@ where
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 let print_cfg = widget.print_cfg();
-                widget.text().print(area, print_info, print_cfg, palette);
+                widget.text().print::<U>(area, print_info, print_cfg, palette);
             }
             InnerWidget::Actionable(widget) => {
                 let widget = widget.read();
                 let print_info = widget.print_info();
                 let print_cfg = widget.print_cfg();
-                widget.text().print(area, print_info, print_cfg, palette);
+                widget.text().print::<U>(area, print_info, print_cfg, palette);
             }
         }
     }
@@ -315,7 +315,7 @@ pub struct EditAccum {
 }
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
-/// edit [`Text<U>`].
+/// edit [`Text`].
 pub struct WidgetActor<'a, U, AW>
 where
     U: Ui + 'static,
@@ -527,7 +527,7 @@ where
         });
     }
 
-    /// The amount of active [`Cursor`]s in the [`Text<U>`].
+    /// The amount of active [`Cursor`]s in the [`Text`].
     pub fn cursors_len(&self) -> usize {
         self.widget.read().cursors().len()
     }

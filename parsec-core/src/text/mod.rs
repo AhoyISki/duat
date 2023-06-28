@@ -8,7 +8,7 @@ use std::{
 
 use ropey::Rope;
 
-use self::{inner::InnerText, reader::Observer};
+use self::{inner::InnerText};
 use crate::{
     history::Change,
     position::Cursor,
@@ -39,30 +39,12 @@ use crate::{
 /// These properties allow for quick and easy modification of the
 /// [`Text<U>`] within, which can then be accessed with
 /// [`text()`][Self::text()].
-pub struct TextBuilder<U>
-where
-    U: Ui
-{
-    text: Text<U>,
+pub struct TextBuilder {
+    text: Text,
     swappables: Vec<usize>
 }
 
-impl<U> Default for TextBuilder<U>
-where
-    U: Ui
-{
-    fn default() -> Self {
-        TextBuilder {
-            text: Text::default_string(),
-            swappables: Vec::default()
-        }
-    }
-}
-
-impl<U> TextBuilder<U>
-where
-    U: Ui
-{
+impl TextBuilder {
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count() as u32;
@@ -220,28 +202,30 @@ where
         self.swappables.len()
     }
 
-    pub fn text(&self) -> &Text<U> {
+    pub fn text(&self) -> &Text {
         &self.text
     }
 }
 
+impl Default for TextBuilder {
+    fn default() -> Self {
+        TextBuilder {
+            text: Text::default_string(),
+            swappables: Vec::default()
+        }
+    }
+}
+
 /// The text in a given area.
-pub struct Text<U>
-where
-    U: Ui + ?Sized
-{
+pub struct Text {
     inner: InnerText,
     pub tags: Tags,
     lock: Lock,
-    _replacements: Vec<(Vec<Text<U>>, RangeInclusive<usize>, bool)>,
-    _readers: Vec<Box<dyn Observer<U>>>
+    _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>
 }
 
 // TODO: Properly implement _replacements.
-impl<U> Text<U>
-where
-    U: Ui + ?Sized
-{
+impl Text {
     pub fn default_string() -> Self {
         let mut tags = Tags::default_vec();
         let lock = tags.new_lock();
@@ -249,8 +233,7 @@ where
             inner: InnerText::String(String::default()),
             tags,
             lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new()
+            _replacements: Vec::new()
         }
     }
 
@@ -261,8 +244,7 @@ where
             inner: InnerText::Rope(Rope::default()),
             tags,
             lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new()
+            _replacements: Vec::new()
         }
     }
 
@@ -274,8 +256,7 @@ where
             inner,
             tags,
             lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new()
+            _replacements: Vec::new()
         }
     }
 
@@ -287,15 +268,16 @@ where
             inner,
             tags,
             lock,
-            _replacements: Vec::new(),
-            _readers: Vec::new()
+            _replacements: Vec::new()
         }
     }
 
     /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print(
+    pub(crate) fn print<U>(
         &self, label: &mut U::Area, info: U::PrintInfo, cfg: PrintCfg, palette: &FormPalette
-    ) {
+    ) where
+        U: Ui
+    {
         label.print(self, info, cfg, palette);
     }
 
@@ -418,10 +400,7 @@ where
 }
 
 // Iterator methods.
-impl<U> Text<U>
-where
-    U: Ui + ?Sized
-{
+impl Text {
     pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + '_ {
         let chars = self.inner.chars_at(0);
         let tags = self.tags.iter_at(0).peekable();
@@ -505,25 +484,23 @@ impl TextBit {
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
-pub struct Iter<'a, U, Ci, Ti>
+pub struct Iter<'a, Ci, Ti>
 where
-    U: Ui + ?Sized,
     Ci: Iterator<Item = char> + 'a,
     Ti: Iterator<Item = (usize, Tag)> + 'a
 {
-    text: &'a Text<U>,
+    text: &'a Text,
     chars: Ci,
     tags: Peekable<Ti>,
     cur_char: usize
 }
 
-impl<'a, U, Ci, Ti> Iter<'a, U, Ci, Ti>
+impl<'a, Ci, Ti> Iter<'a, Ci, Ti>
 where
-    U: Ui + ?Sized,
     Ci: Iterator<Item = char> + 'a,
     Ti: Iterator<Item = (usize, Tag)> + 'a
 {
-    pub fn new(text: &'a Text<U>, chars: Ci, tags: Peekable<Ti>, cur_char: usize) -> Self {
+    pub fn new(text: &'a Text, chars: Ci, tags: Peekable<Ti>, cur_char: usize) -> Self {
         Self {
             text,
             chars,
@@ -533,11 +510,10 @@ where
     }
 }
 
-impl<U, CI, TI> Iterator for Iter<'_, U, CI, TI>
+impl<Chars, Tags> Iterator for Iter<'_, Chars, Tags>
 where
-    U: Ui + ?Sized,
-    CI: Iterator<Item = char>,
-    TI: Iterator<Item = (usize, Tag)>
+    Chars: Iterator<Item = char>,
+    Tags: Iterator<Item = (usize, Tag)>
 {
     type Item = (usize, TextBit);
 
@@ -556,11 +532,10 @@ where
     }
 }
 
-impl<'a, U, Ci, Ti> Clone for Iter<'a, U, Ci, Ti>
+impl<'a, Chars, Tags> Clone for Iter<'a, Chars, Tags>
 where
-    U: Ui + ?Sized,
-    Ci: Iterator<Item = char> + Clone + 'a,
-    Ti: Iterator<Item = (usize, Tag)> + Clone + 'a
+    Chars: Iterator<Item = char> + Clone + 'a,
+    Tags: Iterator<Item = (usize, Tag)> + Clone + 'a
 {
     fn clone(&self) -> Self {
         Iter {

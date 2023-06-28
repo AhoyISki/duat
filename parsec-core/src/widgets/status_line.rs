@@ -103,10 +103,10 @@ impl<U> StatusPart<U>
 where
     U: Ui
 {
-    /// Consumes [`self`] and modifies a [`TextBuilder<U>`], adding
+    /// Consumes [`self`] and modifies a [`TextBuilder`], adding
     /// swappable ranges, text, and [`Tag`]s.
     fn process(
-        self, builder: &mut TextBuilder<U>, file: &FileWidget<U>, palette: &FormPalette
+        self, builder: &mut TextBuilder, file: &FileWidget<U>, palette: &FormPalette
     ) -> Option<Reader<U>> {
         match self {
             StatusPart::Dynamic(Reader::Var(obj_fn)) => {
@@ -126,10 +126,8 @@ where
 }
 
 /// Consumes a [`StatusPart::Static`], pushing text and [`Tag`] to a
-/// [`TextBuilder<U>`]
-fn push_forms_and_text<U>(text: &str, builder: &mut TextBuilder<U>, palette: &FormPalette)
-where
-    U: Ui
+/// [`TextBuilder`]
+fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPalette)
 {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
@@ -211,7 +209,7 @@ where
     U: Ui
 {
     file: RoNestedData<FileWidget<U>>,
-    builder: TextBuilder<U>,
+    builder: TextBuilder,
     readers: Vec<Reader<U>>
 }
 
@@ -220,7 +218,7 @@ where
     U: Ui
 {
     fn new(
-        file: RoNestedData<FileWidget<U>>, builder: TextBuilder<U>, readers: Vec<Reader<U>>
+        file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
     ) -> Self {
         Self {
             file,
@@ -308,7 +306,7 @@ where
     }
 }
 
-fn default_parts<U>(file: &FileWidget<U>) -> (TextBuilder<U>, Vec<Reader<U>>)
+fn default_parts<U>(file: &FileWidget<U>) -> (TextBuilder, Vec<Reader<U>>)
 where
     U: Ui
 {
@@ -352,7 +350,7 @@ where
         });
     }
 
-    fn text(&self) -> &Text<U> {
+    fn text(&self) -> &Text {
         &self.builder.text()
     }
 }

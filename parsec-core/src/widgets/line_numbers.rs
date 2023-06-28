@@ -41,7 +41,7 @@ where
     U: Ui
 {
     file_widget: RoData<FileWidget<U>>,
-    builder: TextBuilder<U>,
+    builder: TextBuilder,
     cfg: LineNumbersCfg
 }
 
@@ -59,7 +59,7 @@ where
 
             let mut line_numbers = LineNumbers {
                 file_widget,
-                builder: TextBuilder::<U>::default(),
+                builder: TextBuilder::default(),
                 cfg
             };
             let width = line_numbers.calculate_width();
@@ -80,7 +80,7 @@ where
 
             let mut line_numbers = LineNumbers {
                 file_widget,
-                builder: TextBuilder::<U>::default(),
+                builder: TextBuilder::default(),
                 cfg: LineNumbersCfg::default()
             };
 
@@ -106,7 +106,7 @@ where
         width
     }
 
-    /// Updates the [`TextBuilder<U>`]'s [`Text<U>`] with the
+    /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self, width: usize) {
         let file = self.file_widget.read();
@@ -142,7 +142,7 @@ where
         self.update_text(width as usize);
     }
 
-    fn text(&self) -> &Text<U> {
+    fn text(&self) -> &Text {
         &self.builder.text()
     }
 }

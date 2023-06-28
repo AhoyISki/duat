@@ -51,10 +51,10 @@ where
         let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
         let file = FileWidget::<U>::new(file, print_cfg.clone());
 
-        let window = ParsecWindow::new(&mut ui, file);
+        let (window, initial_index) = ParsecWindow::new(&mut ui, file);
         let mut manager = Manager::new(window, 0, 0, palette);
         manager.commands.write().file_id = Some(0);
-        activate_hook(&mut manager, 0, &mut constructor_hook);
+        activate_hook(&mut manager, initial_index, &mut constructor_hook);
         manager.commands.write().file_id = None;
 
         let mut session = Session {
@@ -87,27 +87,27 @@ where
 
     pub fn push_widget_to_edge(
         &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
     }
 
     pub fn push_widget_to(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area: usize,
-        specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
+        index: U::AreaIndex, specs: PushSpecs
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push_widget(area, widget, specs, None, false)
+        windows[self.manager.active_window].push_widget(index, widget, specs, None, false)
     }
 
     pub fn push_clustered_widget_to(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, area: usize,
-        specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
+        index: U::AreaIndex, specs: PushSpecs
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push_widget(area, widget, specs, None, true)
+        windows[self.manager.active_window].push_widget(index, widget, specs, None, true)
     }
 
     /// Start the application, initiating a read/response loop.

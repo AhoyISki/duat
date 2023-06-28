@@ -7,7 +7,7 @@ use crossterm::{
     cursor, execute,
     terminal::{self, ClearType}
 };
-use layout::{Layout, Frame, Line};
+use layout::{Frame, Layout, Line};
 use parsec_core::{
     data::RwData,
     ui::{self, PushSpecs}
@@ -31,9 +31,10 @@ pub struct Window {
 }
 
 impl ui::Window for Window {
+    type AreaIndex = AreaIndex;
     type Area = Area;
 
-    fn get_area(&self, index: usize) -> Option<Self::Area> {
+    fn get_area(&self, index: AreaIndex) -> Option<Self::Area> {
         let layout = self.layout.clone();
         if layout.inspect(|layout| {
             layout.fetch_index(index).filter(|rect| !rect.read().is_parent()).is_some()
@@ -52,7 +53,9 @@ impl ui::Window for Window {
         })
     }
 
-    fn bisect(&mut self, index: usize, specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>) {
+    fn bisect(
+        &mut self, index: AreaIndex, specs: PushSpecs, is_glued: bool
+    ) -> (AreaIndex, Option<AreaIndex>) {
         let mut layout = self.layout.write();
         layout.bisect(index, specs, is_glued)
     }
@@ -61,7 +64,7 @@ impl ui::Window for Window {
         todo!()
     }
 
-    fn is_senior(&self, senior: usize, mut junior: usize) -> bool {
+    fn is_senior(&self, senior:AreaIndex, mut junior:AreaIndex) -> bool {
         self.layout.inspect(|layout| {
             while let Some((parent, _)) = layout.fetch_parent(junior) {
                 junior = parent.read().index();
@@ -78,23 +81,42 @@ impl ui::Window for Window {
 unsafe impl Send for Window {}
 unsafe impl Sync for Window {}
 
+#[derive(Clone, Copy, PartialEq)]
+pub struct AreaIndex(usize);
+
+impl std::fmt::Debug for AreaIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.0))
+    }
+}
+
 pub struct Ui {
     windows: Vec<Window>,
     frame: Frame
+}
+
+impl Ui {
+    pub fn new(frame: Frame) -> Self {
+        Self {
+            windows: Vec::new(),
+            frame
+        }
+    }
 }
 
 impl Default for Ui {
     fn default() -> Self {
         Ui {
             windows: Vec::new(),
-            frame: Frame::Surround(Line::Rounded)
+            frame: Frame::Border(Line::Regular)
         }
     }
 }
 
 impl ui::Ui for Ui {
-    type Area = Area;
+    type AreaIndex = AreaIndex;
     type PrintInfo = PrintInfo;
+    type Area = Area;
     type Window = Window;
 
     fn new_window(&mut self) -> (Self::Window, Self::Area) {

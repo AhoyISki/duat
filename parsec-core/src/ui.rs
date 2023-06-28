@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering}
+    sync::{atomic::AtomicUsize, RwLock}
 };
 
 use crate::{
@@ -142,26 +142,25 @@ impl PushSpecs {
 }
 
 // TODO: Add a general scrolling function.
-pub trait PrintInfo: Default {
-    /// Scrolls the [`Text<U>`] (up or down) until the main cursor is
+pub trait PrintInfo: Default + Clone + Copy {
+    type Area: Area;
+
+    /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui;
+    fn scroll_to_gap(&mut self, text: &Text, pos: Pos, area: &Self::Area, cfg: &PrintCfg);
 
     /// Returns the character index of the first character that would
     /// be printed.
-    fn first_char<U>(&self, text: &Text<U>) -> usize
-    where
-        U: Ui;
+    fn first_char(&self, text: &Text) -> usize;
 }
 
-/// An [`Area`] that supports printing [`Text<U>`].
+/// An [`Area`] that supports printing [`Text`].
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Area {
-    type PrintInfo: PrintInfo + Clone + Copy;
+pub trait Area: Send + Sync {
+    type AreaIndex: Clone + Copy;
+    type PrintInfo: PrintInfo;
 
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -174,10 +173,7 @@ pub trait Area {
     fn set_as_active(&mut self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print<U>(
-        &mut self, text: &Text<U>, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette
-    ) where
-        U: Ui + ?Sized;
+    fn print(&mut self, text: &Text, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette);
 
     fn change_constraint(&mut self, constraint: Constraint) -> Result<(), ()>;
 
@@ -190,7 +186,7 @@ pub trait Area {
     /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
     /// then the number of rows must equal the number of lines on the
     /// [`Iterator`].
-    fn vis_rows(
+    fn visible_rows(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
     ) -> usize;
 
@@ -213,7 +209,7 @@ pub trait Area {
     ) -> usize;
 
     /// A unique identifier to this [`Area`].
-    fn index(&self) -> usize;
+    fn index(&self) -> Self::AreaIndex;
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -222,7 +218,7 @@ where
     U: Ui
 {
     widget: Widget<U>,
-    index: usize,
+    index: U::AreaIndex,
     file_id: Option<usize>
 }
 
@@ -262,7 +258,7 @@ where
 {
     manager: &'a mut Manager<U>,
     is_file: bool,
-    mod_area: AtomicUsize
+    mod_area: RwLock<U::AreaIndex>
 }
 
 impl<'a, U> ModNode<'a, U>
@@ -315,14 +311,14 @@ where
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push_widget(
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(self.manager, specs);
         let file_id = self.manager.commands.read().file_id;
         let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            let mod_area = self.mod_area.load(Ordering::Relaxed);
+            let mod_area = self.mod_area.read().unwrap();
             let (new_child, new_parent) =
-                window.push_widget(mod_area, widget, specs, file_id, true);
+                window.push_widget(*mod_area, widget, specs, file_id, true);
 
             if let (Some(new_parent), true) = (new_parent, self.is_file) {
                 if window.window.is_senior(new_parent, window.files_node) {
@@ -339,7 +335,7 @@ where
         node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
 
         if let Some(new_parent) = new_parent {
-            self.mod_area.store(new_parent, Ordering::Relaxed);
+            *self.mod_area.write().unwrap() = new_parent;
         }
 
         (new_child, new_parent)
@@ -361,9 +357,9 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_widget_to_area(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: usize,
+        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: U::AreaIndex,
         specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(self.manager, specs);
         let file_id = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
@@ -387,14 +383,14 @@ where
         &self.manager
     }
 
-    pub fn get_area(&self, index: usize) -> Option<U::Area> {
+    pub fn get_area(&self, index: U::AreaIndex) -> Option<U::Area> {
         let windows = self.manager.windows.read();
         windows[self.manager.active_window].window.get_area(index)
     }
 }
 
 pub(crate) fn activate_hook<U, Nw>(
-    manager: &mut Manager<U>, mod_area: usize,
+    manager: &mut Manager<U>, mod_area: U::AreaIndex,
     constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<Nw>)
 ) where
     U: Ui,
@@ -418,7 +414,7 @@ pub(crate) fn activate_hook<U, Nw>(
     let mod_node = ModNode {
         manager,
         is_file: std::any::TypeId::of::<Nw>() == std::any::TypeId::of::<FileWidget<U>>(),
-        mod_area: AtomicUsize::from(mod_area)
+        mod_area: RwLock::new(mod_area)
     };
     (constructor_hook)(mod_node, widget);
 
@@ -455,15 +451,16 @@ impl From<PushSpecs> for Axis {
 ///
 /// Only one [`Window`] may be shown at a time, and they contain all
 /// [`Widget<U>`]s that should be displayed, both static and floating.
-pub trait Window: 'static {
-    type Area: Area + Send + Sync;
+pub trait Window: 'static + Send + Sync {
+    type Area: Area;
+    type AreaIndex: Clone + Copy;
 
     /// Gets the [`Area`][Window::Area] associated with a given
     /// `area_index`.
     ///
     /// If the [`Area`][Window::Area] in question is not a
     /// [`Area`][Window::Area], then returns [`None`].
-    fn get_area(&self, area_index: usize) -> Option<Self::Area>;
+    fn get_area(&self, area_index: Self::AreaIndex) -> Option<Self::Area>;
 
     /// Wether or not the layout of the `Ui` (size of widgets, their
     /// positions, etc) has changed.
@@ -506,21 +503,24 @@ pub trait Window: 'static {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(&mut self, index: usize, specs: PushSpecs, is_glued: bool) -> (usize, Option<usize>);
+    fn bisect(
+        &mut self, index: Self::AreaIndex, specs: PushSpecs, is_glued: bool
+    ) -> (Self::AreaIndex, Option<Self::AreaIndex>);
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 
-    fn is_senior(&self, senior: usize, junior: usize) -> bool;
+    fn is_senior(&self, senior: Self::AreaIndex, junior: Self::AreaIndex) -> bool;
 }
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: 'static {
-    type PrintInfo: PrintInfo + Clone + Copy;
-    type Area: Area<PrintInfo = Self::PrintInfo> + Send + Sync;
-    type Window: Window<Area = Self::Area> + Clone + Send + Sync;
+    type AreaIndex: Clone + Copy + PartialEq;
+    type PrintInfo: PrintInfo<Area = Self::Area>;
+    type Area: Area<AreaIndex = Self::AreaIndex, PrintInfo = Self::PrintInfo>;
+    type Window: Window<AreaIndex = Self::AreaIndex, Area = Self::Area> + Clone + Send + Sync;
 
     /// Initiates and returns a new [`Window`][Ui::Window].
     ///
@@ -542,8 +542,8 @@ where
 {
     window: U::Window,
     nodes: Vec<Node<U>>,
-    files_node: usize,
-    master_node: usize
+    files_node: U::AreaIndex,
+    master_node: U::AreaIndex
 }
 
 impl<U> ParsecWindow<U>
@@ -551,7 +551,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new(ui: &mut U, widget: Widget<U>) -> Self {
+    pub fn new(ui: &mut U, widget: Widget<U>) -> (Self, U::AreaIndex) {
         let (window, mut initial_area) = ui.new_window();
         widget.update(&mut initial_area);
 
@@ -563,18 +563,18 @@ where
         let parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
-            files_node: 0,
-            master_node: 0
+            files_node: initial_area.index(),
+            master_node: initial_area.index()
         };
 
-        parsec_window
+        (parsec_window, initial_area.index())
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push_widget(
-        &mut self, index: usize, widget: Widget<U>, specs: PushSpecs, file_id: Option<usize>,
-        is_glued: bool
-    ) -> (usize, Option<usize>) {
+        &mut self, index: U::AreaIndex, widget: Widget<U>, specs: PushSpecs,
+        file_id: Option<usize>, is_glued: bool
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let (new_child, new_parent) = self.window.bisect(index, specs, is_glued);
 
         let node = Node {
@@ -597,7 +597,9 @@ where
     /// This is an area, usually in the center, that contains all
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
-    pub fn push_file(&mut self, widget: Widget<U>, specs: PushSpecs) -> (usize, Option<usize>) {
+    pub fn push_file(
+        &mut self, widget: Widget<U>, specs: PushSpecs
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let index = self.files_node;
         let file_id = unique_file_id();
 
@@ -613,7 +615,7 @@ where
     /// window.
     pub fn push_to_master(
         &mut self, widget: Widget<U>, specs: PushSpecs
-    ) -> (usize, Option<usize>) {
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         self.push_widget(self.master_node, widget, specs, None, false)
     }
 

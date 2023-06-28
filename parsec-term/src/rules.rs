@@ -125,7 +125,7 @@ where
     U: Ui
 {
     file: RoData<FileWidget<U>>,
-    builder: TextBuilder<U>,
+    builder: TextBuilder,
     cfg: VertRuleCfg
 }
 
@@ -206,19 +206,19 @@ where
         builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(below));
     }
 
-    fn text(&self) -> &Text<U> {
+    fn text(&self) -> &Text {
         self.builder.text()
     }
 }
 
 /// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.
-fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder<U>
+fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder
 where
     U: Ui
 {
     let lines = file.printed_lines();
     let main_line = file.main_cursor().true_line();
-    let mut builder = TextBuilder::<U>::default();
+    let mut builder = TextBuilder::default();
     let upper = lines.iter().take_while(|&(line, _)| *line != main_line).count();
     let lower = lines.iter().skip_while(|&(line, _)| *line <= main_line).count();
 

@@ -1,7 +1,7 @@
 //! The primary widget of Parsec, used to display files.
 //!
 //! The [`FileWidget<U>`] is Parsec's way of display text files. It is
-//! an [`ActionableWidget`] with [`Text<U>`] containing a
+//! an [`ActionableWidget`] with [`Text`] containing a
 //! [`ropey::Rope`] and a [`any_rope::Rope`] as its backing, unlike
 //! most other widgets, that just use [`String`]s and [`Vec`]s.
 //!
@@ -10,7 +10,7 @@
 //! [`History`] system, [`PrintInfo`], etc.
 //!
 //! [`FileWidget<U>`]s can have attached extensions called
-//! [`Observer`]s, that can read the [`Text<U>`] within, and are also
+//! [`Observer`]s, that can read the [`Text`] within, and are also
 //! notified of any [`Change`][crate::history::Change]s made to the
 //! file.
 //!
@@ -37,7 +37,7 @@ where
     U: Ui + 'static
 {
     path: Option<PathBuf>,
-    text: Text<U>,
+    text: Text,
     print_info: U::PrintInfo,
     main_cursor: usize,
     cursors: Vec<Cursor>,
@@ -150,7 +150,7 @@ where
         // the first line number a wrapped line.
         let mut is_wrapped = {
             let line = self.text.iter_line(line_num);
-            area.vis_rows(line, &self.print_cfg, first_char) > 1
+            area.visible_rows(line, &self.print_cfg, first_char) > 1
         };
 
         let height = area.height();
@@ -162,10 +162,10 @@ where
         let lines_len = self.text.len_lines();
         while accum < height && line_num < lines_len {
             let line = self.text.iter_line(line_num);
-            let mut wrap_count = area.vis_rows(line, &self.print_cfg, usize::MAX);
+            let mut wrap_count = area.visible_rows(line, &self.print_cfg, usize::MAX);
             if accum == 0 {
                 let line = self.text.iter_line(line_num);
-                wrap_count -= area.vis_rows(line, &self.print_cfg, first_char) - 1;
+                wrap_count -= area.visible_rows(line, &self.print_cfg, first_char) - 1;
             }
             let prev_accum = accum;
             accum = min(accum + wrap_count, height);
@@ -203,8 +203,8 @@ where
         self.cursors.as_slice()
     }
 
-    /// A mutable reference to the [`Text<U>`] of [`self`].
-    pub fn mut_text(&mut self) -> &mut Text<U> {
+    /// A mutable reference to the [`Text`] of [`self`].
+    pub fn mut_text(&mut self) -> &mut Text {
         &mut self.text
     }
 
@@ -256,7 +256,7 @@ where
         self.set_printed_lines(area);
     }
 
-    fn text(&self) -> &Text<U> {
+    fn text(&self) -> &Text {
         &self.text
     }
 
@@ -291,7 +291,7 @@ where
         Mover::new(&mut self.cursors[index], &self.text, area, self.print_cfg.clone())
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize) {
         (&mut self.text, self.cursors.as_slice(), self.main_cursor)
     }
 

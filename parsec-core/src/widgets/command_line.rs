@@ -35,7 +35,7 @@ pub struct CommandLine<U>
 where
     U: Ui
 {
-    text: Text<U>,
+    text: Text,
     print_info: U::PrintInfo,
     cursor: [Cursor; 1],
     commands: RwData<Commands>,
@@ -94,7 +94,7 @@ where
             .scroll_to_gap(&self.text, self.cursor[0].caret(), area, &print_cfg);
     }
 
-    fn text(&self) -> &Text<U> {
+    fn text(&self) -> &Text {
         &self.text
     }
 }
@@ -111,7 +111,7 @@ where
         Mover::new(&mut self.cursor[0], &self.text, area, PrintCfg::default())
     }
 
-    fn members_for_cursor_tags(&mut self) -> (&mut Text<U>, &[Cursor], usize) {
+    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize) {
         (&mut self.text, self.cursor.as_slice(), 0)
     }
 

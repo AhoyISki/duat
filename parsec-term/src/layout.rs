@@ -13,17 +13,16 @@ use cassowary::{
 };
 use parsec_core::{
     data::RwData,
-    log_info,
     ui::{Axis, Constraint, PushSpecs}
 };
 
-use crate::area::Coord;
+use crate::{area::Coord, AreaIndex};
 
 /// Generates a unique index for [`Rect`]s.
-fn unique_rect_index() -> usize {
+fn unique_rect_index() -> AreaIndex {
     static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    INDEX_COUNTER.fetch_add(1, Ordering::SeqCst)
+    AreaIndex(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
 
 /// A [`Variable`], attached to its value, which is automatically kept
@@ -145,7 +144,7 @@ impl Constraints {
 /// [`Constraint`]: CassowaryConstraint
 #[derive(Debug)]
 pub struct Rect {
-    index: usize,
+    index: AreaIndex,
     /// The index that this [`Rect`] is tied to.
     tl: VarPoint,
     br: VarPoint,
@@ -345,7 +344,7 @@ impl Rect {
     }
 
     /// The index that identifies [`self`].
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> AreaIndex {
         self.index
     }
 
@@ -634,7 +633,7 @@ pub struct Layout {
     floating: Vec<RwData<Rect>>,
     frame: Frame,
     edges: Vec<Edge>,
-    pub active_index: usize,
+    pub active_index: AreaIndex,
     pub solver: Solver,
     pub vars_changed: AtomicBool
 }
@@ -685,13 +684,13 @@ impl Layout {
 
     /// The index of the main [`Rect`], which holds all (non floating)
     /// others.
-    pub fn main_index(&self) -> usize {
+    pub fn main_index(&self) -> AreaIndex {
         self.main.read().index
     }
 
     /// Fetches the [`RwData<Rect>`] of the given index, if there is
     /// one.
-    pub fn fetch_index(&self, index: usize) -> Option<RwData<Rect>> {
+    pub fn fetch_index(&self, index: AreaIndex) -> Option<RwData<Rect>> {
         std::iter::once(&self.main)
             .chain(&self.floating)
             .find_map(|rect| fetch_index(rect, index))
@@ -702,7 +701,7 @@ impl Layout {
     ///
     /// Also returns the child's "child index", given an [`Axis`],
     /// going top to bottom or left to right.
-    pub fn fetch_parent(&self, index: usize) -> Option<(RwData<Rect>, usize)> {
+    pub fn fetch_parent(&self, index: AreaIndex) -> Option<(RwData<Rect>, usize)> {
         std::iter::once(&self.main)
             .chain(&self.floating)
             .find_map(|rect| fetch_parent(rect, index))
@@ -739,8 +738,8 @@ impl Layout {
     /// the creation of a new parent will follow regular rules, but
     /// the children will still be "glued".
     pub fn bisect(
-        &mut self, index: usize, specs: PushSpecs, cluster_new: bool
-    ) -> (usize, Option<usize>) {
+        &mut self, index: AreaIndex, specs: PushSpecs, cluster_new: bool
+    ) -> (AreaIndex, Option<AreaIndex>) {
         let axis = Axis::from(specs);
         let (can_be_sibling, can_be_child) = {
             let parent_clustered = self
@@ -923,8 +922,6 @@ impl Layout {
 
         self.update();
 
-        log_info!("{:#?}", self.edges);
-
         (new_index, new_parent_index)
     }
 
@@ -1059,7 +1056,7 @@ fn set_defined_constraint(
 }
 
 /// Fetches the [`RwData<Rect>`] with the given index.
-fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
+fn fetch_index(rect: &RwData<Rect>, index: AreaIndex) -> Option<RwData<Rect>> {
     if rect.read().index == index {
         Some(rect.clone())
     } else {
@@ -1076,7 +1073,7 @@ fn fetch_index(rect: &RwData<Rect>, index: usize) -> Option<RwData<Rect>> {
 
 /// Fetches the parent of the [`RwData<Rect>`] with the given index,
 /// including its positional index and the [`Axis`] of its children.
-fn fetch_parent(main: &RwData<Rect>, index: usize) -> Option<(RwData<Rect>, usize)> {
+fn fetch_parent(main: &RwData<Rect>, index: AreaIndex) -> Option<(RwData<Rect>, usize)> {
     let rect = main.read();
 
     if rect.index == index {

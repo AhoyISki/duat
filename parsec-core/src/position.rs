@@ -129,7 +129,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg) -> Cursor
+    pub fn new<U>(pos: Pos, text: &Text, area: &U::Area, cfg: &PrintCfg) -> Cursor
     where
         U: Ui
     {
@@ -145,7 +145,7 @@ impl Cursor {
 
     /// Internal vertical movement function.
     pub(crate) fn move_ver<U>(
-        &mut self, count: isize, text: &Text<U>, area: &U::Area, cfg: &PrintCfg
+        &mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg
     ) where
         U: Ui
     {
@@ -165,7 +165,7 @@ impl Cursor {
 
     /// Internal horizontal movement function.
     pub(crate) fn move_hor<U>(
-        &mut self, count: isize, text: &Text<U>, area: &U::Area, cfg: &PrintCfg
+        &mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg
     ) where
         U: Ui
     {
@@ -183,7 +183,7 @@ impl Cursor {
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `line` of th [Pos] are correct.
-    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg)
+    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui
     {
@@ -334,7 +334,7 @@ where
     U: Ui
 {
     cursor: &'a mut Cursor,
-    text: &'a mut Text<U>,
+    text: &'a mut Text,
     edit_accum: &'a mut EditAccum,
     print_info: Option<U::PrintInfo>,
     history: Option<&'a mut History<U>>
@@ -346,7 +346,7 @@ where
 {
     /// Returns a new instance of `Editor`.
     pub fn new(
-        cursor: &'a mut Cursor, text: &'a mut Text<U>, edit_accum: &'a mut EditAccum,
+        cursor: &'a mut Cursor, text: &'a mut Text, edit_accum: &'a mut EditAccum,
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
         cursor.calibrate_on_accum(edit_accum, text.inner());
@@ -417,7 +417,7 @@ where
     U: Ui
 {
     cursor: &'a mut Cursor,
-    text: &'a Text<U>,
+    text: &'a Text,
     area: &'a U::Area,
     print_cfg: PrintCfg
 }
@@ -428,7 +428,7 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
-        cursor: &'a mut Cursor, text: &'a Text<U>, area: &'a U::Area, print_cfg: PrintCfg
+        cursor: &'a mut Cursor, text: &'a Text, area: &'a U::Area, print_cfg: PrintCfg
     ) -> Self {
         Self {
             cursor,

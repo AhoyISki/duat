@@ -15,11 +15,14 @@ use parsec_core::{
         Tag
     },
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint, Ui}
+    ui::{self, Area as UiArea, Axis, Constraint}
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::layout::{Edge, Layout, Line, LineCoords};
+use crate::{
+    layout::{Edge, Layout, Line, LineCoords},
+    AreaIndex
+};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -62,7 +65,7 @@ impl Coords {
 
 pub struct Area {
     pub layout: RwData<Layout>,
-    pub index: usize
+    pub index: AreaIndex
 }
 
 impl Area {
@@ -99,6 +102,7 @@ impl Area {
 }
 
 impl ui::Area for Area {
+    type AreaIndex = AreaIndex;
     type PrintInfo = PrintInfo;
 
     fn width(&self) -> usize {
@@ -121,10 +125,7 @@ impl ui::Area for Area {
         self.layout.write().active_index = self.index;
     }
 
-    fn print<U>(&mut self, text: &Text<U>, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette)
-    where
-        U: Ui + ?Sized
-    {
+    fn print(&mut self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {
         let mut stdout = io::stdout().lock();
         let coords = self.coords();
         queue!(stdout, MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
@@ -180,7 +181,7 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn vis_rows(
+    fn visible_rows(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
     ) -> usize {
         let coords = self.wrapping_coords(cfg);
@@ -265,7 +266,7 @@ impl ui::Area for Area {
             .unwrap_or(0)
     }
 
-    fn index(&self) -> usize {
+    fn index(&self) -> AreaIndex {
         self.index
     }
 }
@@ -290,10 +291,7 @@ pub struct PrintInfo {
 impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_to_gap<U>(&mut self, pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    fn scroll_ver_to_gap(&mut self, pos: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
         let width = cfg.wrap_method.wrapping_cap(area.width());
         let limit = if self.last_main > pos {
             cfg.scrolloff.y_gap + 1
@@ -336,10 +334,7 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap<U>(&mut self, pos: Pos, text: &Text<U>, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    fn scroll_hor_to_gap(&mut self, pos: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
         let width = area.width();
         let max_x_shift = match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Word => return,
@@ -373,21 +368,17 @@ impl PrintInfo {
 }
 
 impl ui::PrintInfo for PrintInfo {
-    fn scroll_to_gap<U>(&mut self, text: &Text<U>, pos: Pos, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    type Area = Area;
+
+    fn scroll_to_gap(&mut self, text: &Text, pos: Pos, area: &Area, cfg: &PrintCfg) {
         if self.last_main != pos {
-            self.scroll_hor_to_gap::<U>(pos, text, area, cfg);
-            self.scroll_ver_to_gap::<U>(pos, text, area, cfg);
+            self.scroll_hor_to_gap(pos, text, area, cfg);
+            self.scroll_ver_to_gap(pos, text, area, cfg);
             self.last_main = pos;
         }
     }
 
-    fn first_char<U>(&self, _text: &Text<U>) -> usize
-    where
-        U: Ui
-    {
+    fn first_char(&self, _text: &Text) -> usize {
         self.first_char
     }
 }
