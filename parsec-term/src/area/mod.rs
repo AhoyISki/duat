@@ -252,12 +252,12 @@ impl ui::Area for Area {
         };
 
         if let WrapMethod::Word = cfg.wrap_method {
-            let is_no_wrap = cfg.wrap_method.is_no_wrap();
-            bits(indents, width, &cfg.tab_stops, is_no_wrap)
+            words(indents, width, &cfg)
                 .take_while(|(_, index, _)| *index < max_index)
                 .fold(0, fold_fn) as usize
         } else {
-            words(indents, width, &cfg)
+            let is_no_wrap = cfg.wrap_method.is_no_wrap();
+            bits(indents, width, &cfg.tab_stops, is_no_wrap)
                 .take_while(|(_, index, _)| *index < max_index)
                 .fold(0, fold_fn) as usize
         }
@@ -313,7 +313,10 @@ impl PrintInfo {
         let mut indices = Vec::with_capacity(limit);
         let mut line_indices = Vec::new();
         for line_index in (0..=pos.true_row()).rev() {
-            let line = text.iter_line(line_index);
+            let line = text
+                .iter_line(line_index)
+                .filter(|(_, bit)| !bit.as_char().is_some_and(|char| char == '\n'));
+
             let iter = indents(line, &cfg.tab_stops, width);
             if let WrapMethod::Word = cfg.wrap_method {
                 words(iter, width, &cfg)
@@ -359,7 +362,10 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let line = text.iter_line(pos.true_row());
+        let line = text
+            .iter_line(pos.true_row())
+            .filter(|(_, bit)| !bit.as_char().is_some_and(|char| char == '\n'));
+
         let target_dist = area.get_width(line, cfg, pos.true_char(), true);
         let max_dist = width - (cfg.scrolloff.x_gap + 1);
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
