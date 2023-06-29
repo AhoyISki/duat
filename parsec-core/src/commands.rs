@@ -70,10 +70,10 @@
 //! struct, shared around with an
 //! [`RwData<Commands>`][crate::data::RwData].
 //!
-//! This struct is found in the [`Session<U>`][crate::Session], either
+//! This struct is found in the [`Parsec<U>`][crate::Parsec], either
 //! through the `constructor_hook` via a
 //! [`ModNode`][crate::ui::ModNode], or directly from the
-//! [`Session<U>`][crate::Session]'s [`Manager<U>`][crate::Manager]
+//! [`Parsec<U>`][crate::Parsec]'s [`Manager<U>`][crate::Manager]
 //!
 //! ```
 //! # use parsec_core::{
@@ -81,9 +81,9 @@
 //! #     data::RwData,
 //! #     tags::form::FormPalette,
 //! #     text::PrintCfg,
-//! #     ui::{ModNode, PushSpecs, Side, Split, Ui},
+//! #     ui::{ModNode, PushSpecs, Constraint, Ui},
 //! #     widgets::CommandLine,
-//! #     Session
+//! #     Parsec
 //! # };
 //! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
 //! # where
@@ -93,11 +93,11 @@
 //!     let commands = mod_node.manager().commands();
 //!     commands.write().try_exec("lol");
 //!
-//!     let push_specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-//!     mod_node.push_widget(CommandLine::default_fn(), push_specs);
+//!     let specs = PushSpecs::below(Constraint::Length(1.0));
+//!     mod_node.push(CommandLine::default_fn(), specs);
 //! };
 //!
-//! let session = Session::new(ui, print_cfg, palette, constructor_hook);
+//! let session = Parsec::new(ui, print_cfg, palette, constructor_hook);
 //!
 //! let my_callers = vec!["lol", "lmao"];
 //! let lol_cmd = Command::new(my_callers, |_, _| {
@@ -265,11 +265,8 @@ impl<'a> Flags<'a> {
 /// ```rust
 /// # use parsec_core::{text::Text, ui::Ui};
 /// # use std::sync::{atomic::AtomicBool, Arc};
-/// struct MyWidget<U>
-/// where
-///     U: Ui
-/// {
-///     text: Text<U>,
+/// struct MyWidget {
+///     text: Text,
 ///     other_field: String,
 ///     relevant_field: Arc<AtomicBool>
 /// }
@@ -292,11 +289,8 @@ impl<'a> Flags<'a> {
 /// #     Arc
 /// # };
 /// #
-/// # struct MyWidget<U>
-/// # where
-/// #     U: Ui
-/// # {
-/// #     text: Text<U>,
+/// # struct MyWidget {
+/// #     text: Text,
 /// #     other_field: String,
 /// #     relevant_field: Arc<AtomicBool>
 /// # }
@@ -308,12 +302,9 @@ impl<'a> Flags<'a> {
 /// #     todo!();
 /// # }
 /// #
-/// fn add_commands<U>(
-///     widget: RwData<MyWidget<U>>, commands: &mut Commands
-/// ) -> Result<(), CommandErr>
-/// where
-///     U: Ui
-/// {
+/// fn add_commands(
+///     widget: RwData<MyWidget>, commands: &mut Commands
+/// ) -> Result<(), CommandErr> {
 ///     let relevant_field = widget.read().relevant_field.clone();
 ///     let callers = vec!["my-function-caller"];
 ///     let command = Command::new(callers, move |flags, args| {
@@ -341,11 +332,8 @@ impl<'a> Flags<'a> {
 /// #     Arc
 /// # };
 /// #
-/// # struct MyWidget<U>
-/// # where
-/// #     U: Ui
-/// # {
-/// #     text: Text<U>,
+/// # struct MyWidget {
+/// #     text: Text,
 /// #     other_field: String,
 /// #     relevant_field: Arc<AtomicBool>
 /// # }
@@ -357,12 +345,9 @@ impl<'a> Flags<'a> {
 /// #     todo!();
 /// # }
 /// #
-/// fn add_commands<U>(
-///     widget: RwData<MyWidget<U>>, commands: &mut Commands
-/// ) -> Result<(), CommandErr>
-/// where
-///     U: Ui
-/// {
+/// fn add_commands(
+///     widget: RwData<MyWidget>, commands: &mut Commands
+/// ) -> Result<(), CommandErr> {
 ///     let callers = vec!["my-function-caller"];
 ///     let command = Command::new(callers, move |flags, args| {
 ///         let relevant_field =

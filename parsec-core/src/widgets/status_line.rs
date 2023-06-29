@@ -12,9 +12,9 @@
 //! # use parsec_core::{
 //! #     tags::form::FormPalette,
 //! #     text::PrintCfg,
-//! #     ui::{ModNode, PushSpecs, Side, Split, Ui},
+//! #     ui::{ModNode, PushSpecs, Constraint, Ui},
 //! #     widgets::StatusLine,
-//! #     Session
+//! #     Parsec
 //! # };
 //! #
 //! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
@@ -25,14 +25,13 @@
 //!     let commands = mod_node.manager().commands();
 //!     commands.write().try_exec("lol");
 //!
-//!     let specs =
-//!         PushSpecs::new(Side::Bottom, Split::Locked(1));
-//!     mod_node.push_widget(StatusLine::default_fn(file), specs);
+//!     let specs = PushSpecs::below(Constraint::Length(1.0));
+//!     mod_node.push(StatusLine::default_fn(file), specs);
 //! };
 //!
-//! let mut session = Session::new(ui, print_cfg, palette, constructor_hook);
-//! let specs = PushSpecs::new(Side::Bottom, Split::Locked(1));
-//! session.push_widget_to_edge(StatusLine::default_global_fn(), specs);
+//! let mut parsec = Parsec::new(ui, print_cfg, palette, constructor_hook);
+//! let specs = PushSpecs::below(Constraint::Length(1.0));
+//! parsec.push_to_edge(StatusLine::default_global_fn(), specs);
 //! # }
 //! ```
 //!
@@ -42,8 +41,8 @@
 //! information about that specific [`FileWidget<U>`].
 //!
 //! Also in the example above, you can see that a second
-//! [`StatusLine<U>`] is pushed to the [`Bottom`][crate::Side::Bottom]
-//! edge. This widget will be placed below all others, and the
+//! [`StatusLine<U>`] is pushed by [`PushSpecs::below()`]. As such,
+//! this widget will be placed below all others, and the
 //! [`default_global_fn()`][StatusLine::default_global_fn()] means
 //! that it is global, and instead of pointing to a specific
 //! [`FileWidget<U>`], it will change to always point at the currently
@@ -127,8 +126,7 @@ where
 
 /// Consumes a [`StatusPart::Static`], pushing text and [`Tag`] to a
 /// [`TextBuilder`]
-fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPalette)
-{
+fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPalette) {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
         let Some(l_index) = prev_l_index else {

@@ -39,32 +39,32 @@ pub enum Constraint {
 
 /// Information on how a [`Widget<U>`] should be pushed onto another.
 ///
-/// The [`Side`] member determines what direction to push into, in
+/// The side member determines what direction to push into, in
 /// relation to the original widget.
 ///
-/// The [`Split`] can be one of two types:
-/// - [`Min(min_len)`][Split::Min] represents the minimum length, in
-///   the [`Side`]'s [`Axis`], that this new widget needs.
-/// - [`Locked(locked_len)`][Split::Locked] represents a length, in
-///   the [`Side`]'s [`Axis`], that cannot be altered by any means.
+/// The [`Constraint`] can be one of five types:
+///
+/// - [`Min(min)`][Constraint::Min] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Max(max)`][Constraint::Max] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Length(len)`][Constraint::Length] represents a length, in the
+///   side's [`Axis`], that cannot be altered by any means.
+/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio
+///   between the length of the child and the length of the parent.
+/// - [`Percent(per)`][Constraint::Percent] represents the percent of
+///   the parent that the child must take. Must go from 0 to 100
+///   percent.
 ///
 /// So if, for example, if a widget is pushed with
-///
-/// ```rust
-/// # use parsec_core::ui::{PushSpecs, Side, Split};
-/// # fn test_fn() -> PushSpecs {
-/// PushSpecs {
-///     side: Side::Left,
-///     split: Split::Min(3)
-/// }
-/// # }
-/// ```
+/// [`PushSpecs::left(Constraint::Min(3.0)`][Self::left()]
 ///
 /// into another widget, then it will be placed on the left side of
 /// that widget, and will have a minimum `width` of `3`.
 ///
-/// If it were pushed to either [`Side::Top`] or [`Side::Bottom`], it
-/// would instead have a minimum `height` of `3`.
+/// If it were pushed to either [`PushSpecs::above()`] or
+/// [`PushSpecs::below()`], it would instead have a minimum `height`
+/// of `3`.
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
@@ -237,7 +237,7 @@ where
 /// ```rust
 /// # use parsec_core::{
 /// #     data::RoData,
-/// #     ui::{ModNode, PushSpecs, Side, Split, Ui},
+/// #     ui::{ModNode, PushSpecs, Constraint, Ui},
 /// #     widgets::{FileWidget, LineNumbers}
 /// # };
 /// fn file_fn<U>(
@@ -245,8 +245,8 @@ where
 /// ) where
 ///     U: Ui
 /// {
-///     let specs = PushSpecs::new(Side::Left, Split::Locked(1));
-///     mod_node.push_widget(LineNumbers::default_fn(file), specs);
+///     let specs = PushSpecs::left(Constraint::Length(1.0));
+///     mod_node.push(LineNumbers::default_fn(file), specs);
 /// }
 /// ```
 ///
@@ -312,7 +312,7 @@ where
     ///
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
-    pub fn push_widget(
+    pub fn push(
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(self.manager, specs);
@@ -320,8 +320,7 @@ where
         let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
             let mod_area = self.mod_area.read().unwrap();
-            let (new_child, new_parent) =
-                window.push_widget(*mod_area, widget, specs, file_id, true);
+            let (new_child, new_parent) = window.push(*mod_area, widget, specs, file_id, true);
 
             if let (Some(new_parent), true) = (new_parent, self.is_file) {
                 if window.window.is_senior(new_parent, window.files_node) {
@@ -359,7 +358,7 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    pub fn push_widget_to_area(
+    pub fn push_to(
         &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: U::AreaIndex,
         specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
@@ -367,7 +366,7 @@ where
         let file_id = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
-            window.push_widget(index, widget, specs, file_id, true)
+            window.push(index, widget, specs, file_id, true)
         });
 
         let window = &self.manager.windows.read()[self.manager.active_window];
@@ -574,7 +573,7 @@ where
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push_widget(
+    pub fn push(
         &mut self, index: U::AreaIndex, widget: Widget<U>, specs: PushSpecs,
         file_id: Option<usize>, is_glued: bool
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
@@ -606,7 +605,7 @@ where
         let index = self.files_node;
         let file_id = unique_file_id();
 
-        let (file_area, new_parent) = self.push_widget(index, widget, specs, Some(file_id), false);
+        let (file_area, new_parent) = self.push(index, widget, specs, Some(file_id), false);
         if let Some(new_parent) = new_parent {
             self.files_node = new_parent;
         }
@@ -619,7 +618,7 @@ where
     pub fn push_to_master(
         &mut self, widget: Widget<U>, specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        self.push_widget(self.master_node, widget, specs, None, false)
+        self.push(self.master_node, widget, specs, None, false)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].

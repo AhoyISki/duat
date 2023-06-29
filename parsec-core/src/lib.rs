@@ -29,7 +29,7 @@ use text::PrintCfg;
 use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui, Area};
 use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
-pub struct Session<U>
+pub struct Parsec<U>
 where
     U: Ui
 {
@@ -39,7 +39,7 @@ where
     print_cfg: RwData<PrintCfg>
 }
 
-impl<U> Session<U>
+impl<U> Parsec<U>
 where
     U: Ui + 'static
 {
@@ -57,7 +57,7 @@ where
         activate_hook(&mut manager, initial_index, &mut constructor_hook);
         manager.commands.write().file_id = None;
 
-        let mut session = Session {
+        let mut session = Parsec {
             ui,
             constructor_hook: Box::new(constructor_hook),
             manager,
@@ -85,33 +85,33 @@ where
         activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);
     }
 
-    pub fn push_widget_to_edge(
+    pub fn push_to_edge(
         &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
     }
 
-    pub fn push_widget_to(
+    pub fn push_to(
         &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
         index: U::AreaIndex, specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push_widget(index, widget, specs, None, false)
+        windows[self.manager.active_window].push(index, widget, specs, None, false)
     }
 
-    pub fn push_clustered_widget_to(
+    pub fn push_clustered_to(
         &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
         index: U::AreaIndex, specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let widget = (constructor)(&self.manager, specs);
         let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push_widget(index, widget, specs, None, true)
+        windows[self.manager.active_window].push(index, widget, specs, None, true)
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start_parsec<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
+    pub fn start<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
     where
         I: InputScheme
     {
