@@ -75,9 +75,9 @@ fn main() {
     // program will be handle input to edit a file or any piece of
     // text.
     let editor = Editor::default();
-    // A `Session` is essentially the application itself, it takes a
-    // `Config` argument and a closure that determines what will happen
-    // when a new file is opened.
+    // A `Session` is essentially the application itself, it takes a `Ui`,
+    // a `PrintCfg`, a `FormPalette`, and a closure that determines
+    // what will happen when a new file is opened.
     let mut parsec = Parsec::new(Ui::default(), print_cfg, palette, move |mod_node, _file| {
         let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);

@@ -245,13 +245,11 @@ impl Rect {
         self.edge_cons = vec![
             self.tl.x.var | EQ(REQUIRED) | hor_edge,
             self.tl.y.var | EQ(REQUIRED) | ver_edge,
-            self.br.x.var | GE(REQUIRED) | self.tl.x.var,
-            self.br.y.var | GE(REQUIRED) | self.tl.y.var,
+            self.br.x.var | EQ(REQUIRED) | max.x as f64 - hor_edge,
+            self.br.y.var | EQ(REQUIRED) | max.y as f64 - ver_edge,
         ];
 
         solver.add_constraints(&self.edge_cons).unwrap();
-        solver.suggest_value(self.br.x.var, max.x as f64 - hor_edge).unwrap();
-        solver.suggest_value(self.br.y.var, max.y as f64 - ver_edge).unwrap();
     }
 
     /// Removes all [`CassowaryConstraint`]s which define the edges of
@@ -651,9 +649,6 @@ impl Layout {
         let mut vars = HashMap::new();
 
         let mut main = Rect::new(&mut vars);
-
-        solver.add_edit_variable(main.br.x.var, STRONG * 2.0).unwrap();
-        solver.add_edit_variable(main.br.y.var, STRONG * 2.0).unwrap();
 
         main.set_main_constraints(Frame::Empty, &mut solver, &mut edges, max);
 
