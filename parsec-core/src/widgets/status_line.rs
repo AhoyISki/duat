@@ -54,13 +54,13 @@
 //! good showing for the flexibility of this widget.
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    data::{DownCastableData, RoData, RoNestedData},
+    data::{DownCastableData, RoNestedData},
     tags::{
         form::{FormPalette, COORDS, FILE_NAME, SELECTIONS, SEPARATOR},
         Tag
     },
     text::{Text, TextBuilder},
-    ui::{PushSpecs, Ui},
+    ui::{Constraint, PushSpecs, Ui},
     Manager
 };
 
@@ -195,7 +195,7 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPale
 ///     f_var(|file| file.main_cursor()),
 /// ];
 ///
-/// StatusLine::new_fn(file, parts, &palette)
+/// StatusLine::parts_fn(file, parts, &palette)
 /// # }
 /// ```
 ///
@@ -225,83 +225,86 @@ where
         }
     }
 
-    pub fn new_fn(
-        file: RoData<FileWidget<U>>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let mut builder = TextBuilder::default();
-        let readers = {
-            let mut readers = Vec::new();
-            file.inspect(|file| {
-                for part in parts.into_iter() {
-                    if let Some(reader) = part.process(&mut builder, &file, &palette) {
-                        readers.push(reader);
-                    }
-                }
-            });
-            readers
-        };
-
-        move |_, _| {
-            Widget::normal(
+    pub fn parts_fn(
+        parts: Vec<StatusPart<U>>
+    ) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) + 'static {
+        move |manager| {
+            let file = manager.active_file();
+            let palette = &manager.palette;
+            let (builder, readers) = build_parts(&file.read(), parts, palette);
+            let widget = Widget::normal(
                 StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
                 Box::new(move || file.has_changed())
-            )
+            );
+
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
-    pub fn global_fn(
-        parts: Vec<StatusPart<U>>, palette: &FormPalette
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let mut builder = TextBuilder::default();
-        let palette = palette.clone();
-        move |manager, _| {
-            let file = manager.active_file();
-            let readers = {
-                let mut readers = Vec::new();
-                file.inspect(|file| {
-                    for part in parts.into_iter() {
-                        if let Some(reader) = part.process(&mut builder, &file, &palette) {
-                            readers.push(reader);
-                        }
-                    }
-                });
-                readers
-            };
-
-            Widget::normal(
+    pub fn parts_global_fn(
+        parts: Vec<StatusPart<U>>
+    ) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
+            let file = manager.dynamic_active_file();
+            let palette = &manager.palette;
+            let (builder, readers) = file.inspect(|file| build_parts(file, parts, palette));
+            let widget = Widget::normal(
                 StatusLine::new(file.clone(), builder, readers),
                 Box::new(move || file.has_changed())
-            )
+            );
+
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_fn(
-        file: RoData<FileWidget<U>>
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        let (builder, readers) = default_parts(&file.read());
-
-        move |_, _| {
-            Widget::normal(
+    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
+            let file = manager.active_file();
+            let (builder, readers) = default_parts(&file.read());
+            let widget = Widget::normal(
                 StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
                 Box::new(move || file.has_changed())
-            )
+            );
+
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_global_fn() -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |manager, _| {
-            let file = manager.active_file();
+    pub fn default_global_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
+            let file = manager.dynamic_active_file();
             let (builder, readers) = file.inspect(|file| default_parts(file));
-            Widget::normal(
+            let widget = Widget::normal(
                 StatusLine::new(file.clone(), builder, readers),
                 Box::new(move || file.has_changed())
-            )
+            );
+
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
+}
+
+fn build_parts<U>(
+    file: &FileWidget<U>, parts: Vec<StatusPart<U>>, palette: &FormPalette
+) -> (TextBuilder, Vec<Reader<U>>)
+where
+    U: Ui
+{
+    let mut builder = TextBuilder::default();
+    let readers = {
+        let mut readers = Vec::new();
+        for part in parts.into_iter() {
+            if let Some(reader) = part.process(&mut builder, &file, &palette) {
+                readers.push(reader);
+            }
+        }
+        readers
+    };
+    (builder, readers)
 }
 
 fn default_parts<U>(file: &FileWidget<U>) -> (TextBuilder, Vec<Reader<U>>)

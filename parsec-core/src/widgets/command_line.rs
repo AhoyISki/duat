@@ -20,7 +20,7 @@ use crate::{
     data::{DownCastableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
-    ui::{PrintInfo, PushSpecs, Ui},
+    ui::{Constraint, PrintInfo, PushSpecs, Ui},
     Manager
 };
 
@@ -48,38 +48,40 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
+    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
         let prompt = prompt.to_string();
-        move |manager, _| {
+        move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                prompt: RwData::new(prompt)
+                prompt: RwData::new(prompt + " ")
             };
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(command_line, Box::new(|| false))
+            let widget = Widget::actionable(command_line, Box::new(|| false));
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |manager, _| {
+    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
                 commands: manager.commands(),
-                prompt: RwData::new(String::from(":"))
+                prompt: RwData::new(String::from(": "))
             };
 
             add_commands(manager, &command_line);
 
-            Widget::actionable(command_line, Box::new(|| false))
+            let widget = Widget::actionable(command_line, Box::new(|| false));
+            (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }

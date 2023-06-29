@@ -26,7 +26,7 @@ use data::{RoData, RoNestedData, RwData};
 use input::{InputScheme, KeyRemapper};
 use tags::form::FormPalette;
 use text::PrintCfg;
-use ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui, Area};
+use ui::{activate_hook, Area, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
 use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
 
 pub struct Parsec<U>
@@ -85,27 +85,50 @@ where
         activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);
     }
 
-    pub fn push_to_edge(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
+    pub fn push(
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let widget = (constructor)(&self.manager, specs);
+        let (widget, _) = f(&self.manager);
+        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
+    }
+
+    pub fn push_specd(
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs)
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
+        let (widget, specs) = f(&self.manager);
         self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
     }
 
     pub fn push_to(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
-        index: U::AreaIndex, specs: PushSpecs
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
+        specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let widget = (constructor)(&self.manager, specs);
+        let (widget, _) = f(&self.manager);
         let mut windows = self.manager.windows.write();
         windows[self.manager.active_window].push(index, widget, specs, None, false)
     }
 
-    pub fn push_clustered_to(
-        &mut self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>,
-        index: U::AreaIndex, specs: PushSpecs
+    pub fn push_specd_to(
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let widget = (constructor)(&self.manager, specs);
+        let (widget, specs) = f(&self.manager);
+        let mut windows = self.manager.windows.write();
+        windows[self.manager.active_window].push(index, widget, specs, None, false)
+    }
+
+    pub fn cluster_to(
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
+        specs: PushSpecs
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
+        let (widget, _) = f(&self.manager);
+        let mut windows = self.manager.windows.write();
+        windows[self.manager.active_window].push(index, widget, specs, None, true)
+    }
+
+    pub fn cluster_specd_to(
+        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
+        let (widget, specs) = f(&self.manager);
         let mut windows = self.manager.windows.write();
         windows[self.manager.active_window].push(index, widget, specs, None, true)
     }
@@ -269,8 +292,12 @@ where
         RoWindows::new(RoData::from(&self.windows))
     }
 
-    pub fn active_file(&self) -> RoNestedData<FileWidget<U>> {
+    pub fn dynamic_active_file(&self) -> RoNestedData<FileWidget<U>> {
         RoNestedData::from(&self.active_file)
+    }
+
+    pub fn active_file(&self) -> RoData<FileWidget<U>> {
+        self.active_file.read().clone()
     }
 }
 

@@ -62,7 +62,7 @@ pub enum Constraint {
 /// into another widget, then it will be placed on the left side of
 /// that widget, and will have a minimum `width` of `3`.
 ///
-/// If it were pushed to either [`PushSpecs::above()`] or
+/// If it were pushed with either [`PushSpecs::above()`] or
 /// [`PushSpecs::below()`], it would instead have a minimum `height`
 /// of `3`.
 #[derive(Debug, Clone, Copy)]
@@ -227,9 +227,9 @@ where
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
-/// When pushing [`Widget`]s to the layout, this struct can be used to
-/// further actions to be taken. It is used in contexts where a widget
-/// has just been inserted to the screen, inside closures.
+/// When pushing [`Widget<U>`]s to the layout, this struct can be used
+/// to further actions to be taken. It is used in contexts where a
+/// widget has just been inserted to the screen, inside closures.
 ///
 /// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed
 /// to the left of a widget (which in this case is a [`FileWidget<U>`]
@@ -313,9 +313,9 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, specs: PushSpecs
+        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let widget = (constructor)(self.manager, specs);
+        let (widget, _) = f(self.manager);
         let file_id = self.manager.commands.read().file_id;
         let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
@@ -359,10 +359,10 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to(
-        &self, constructor: impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U>, index: U::AreaIndex,
+        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
         specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let widget = (constructor)(self.manager, specs);
+        let (widget, _) = f(self.manager);
         let file_id = self.manager.commands.read().file_id;
         let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
@@ -375,6 +375,37 @@ where
         node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
 
         (new_area, pushed_area)
+    }
+
+    pub fn push_specd(
+        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs)
+    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
+        let (widget, specs) = (f)(self.manager);
+        let file_id = self.manager.commands.read().file_id;
+        let (new_child, new_parent) = self.manager.windows.mutate(|windows| {
+            let window = &mut windows[self.manager.active_window];
+            let mod_area = self.mod_area.read().unwrap();
+            let (new_child, new_parent) = window.push(*mod_area, widget, specs, file_id, true);
+
+            if let (Some(new_parent), true) = (new_parent, self.is_file) {
+                if window.window.is_senior(new_parent, window.files_node) {
+                    window.files_node = new_parent;
+                }
+            }
+
+            (new_child, new_parent)
+        });
+
+        let window = &self.manager.windows.read()[self.manager.active_window];
+        let mut area = window.window.get_area(new_child).unwrap();
+        let node = window.nodes.iter().find(|Node { index, .. }| *index == new_child);
+        node.map(|Node { widget, .. }| widget).unwrap().update(&mut area);
+
+        if let Some(new_parent) = new_parent {
+            *self.mod_area.write().unwrap() = new_parent;
+        }
+
+        (new_child, new_parent)
     }
 
     pub fn palette(&self) -> &FormPalette {

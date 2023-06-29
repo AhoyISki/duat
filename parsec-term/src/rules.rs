@@ -5,7 +5,7 @@ use parsec_core::{
         Tag
     },
     text::{Text, TextBuilder},
-    ui::{PushSpecs, Ui},
+    ui::{Constraint, PushSpecs, Ui},
     updaters,
     widgets::{file_widget::FileWidget, NormalWidget, Widget},
     Manager
@@ -137,39 +137,23 @@ where
     /// user provided config.
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn config_fn(
-        file: RoData<FileWidget<U>>, cfg: VertRuleCfg
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, _| {
-            let file_read = file.read();
-            let builder = setup_builder(&file_read, &cfg);
+    pub fn config_fn(cfg: VertRuleCfg) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
+            let file = manager.active_file();
+            let builder = file.inspect(|file| setup_builder(&file, &cfg));
 
             let updater = file.clone();
-            let updaters = updaters![updater];
-            drop(file_read);
-            let vert_rule = VertRule { file, builder, cfg };
 
-            Widget::normal(vert_rule, updaters)
+            let widget = Widget::normal(VertRule { file, builder, cfg }, updaters![updater]);
+            (widget, PushSpecs::left(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn default_fn(
-        file: RoData<FileWidget<U>>
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, _| {
-            let cfg = VertRuleCfg::default();
-            let file_read = file.read();
-            let builder = setup_builder(&file_read, &cfg);
-
-            let updater = file.clone();
-            let updaters = updaters![updater];
-            drop(file_read);
-            let vert_rule = VertRule { file, builder, cfg };
-
-            Widget::normal(vert_rule, updaters)
-        }
+    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        let cfg = VertRuleCfg::default();
+        VertRule::config_fn(cfg)
     }
 }
 

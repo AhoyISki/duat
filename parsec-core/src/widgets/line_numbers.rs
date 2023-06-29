@@ -40,7 +40,7 @@ pub struct LineNumbers<U>
 where
     U: Ui
 {
-    file_widget: RoData<FileWidget<U>>,
+    file: RoData<FileWidget<U>>,
     builder: TextBuilder,
     cfg: LineNumbersCfg
 }
@@ -51,14 +51,12 @@ where
 {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    pub fn config_fn(
-        file_widget: RoData<FileWidget<U>>, cfg: LineNumbersCfg
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, _| -> Widget<U> {
-            let file = file_widget.clone();
+    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        move |manager| {
+            let file = manager.active_file();
 
             let mut line_numbers = LineNumbers {
-                file_widget,
+                file: file.clone(),
                 builder: TextBuilder::default(),
                 cfg
             };
@@ -66,29 +64,14 @@ where
 
             line_numbers.update_text(width as usize);
 
-            Widget::normal(line_numbers, updaters![file])
+            (Widget::normal(line_numbers, updaters![file]), PushSpecs::left_free())
         }
     }
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
-    pub fn default_fn(
-        file_widget: RoData<FileWidget<U>>
-    ) -> impl FnOnce(&Manager<U>, PushSpecs) -> Widget<U> {
-        move |_, _| {
-            let updaters = updaters![(file_widget.clone())];
-
-            let mut line_numbers = LineNumbers {
-                file_widget,
-                builder: TextBuilder::default(),
-                cfg: LineNumbersCfg::default()
-            };
-
-            let width = line_numbers.calculate_width();
-            line_numbers.update_text(width as usize);
-
-            Widget::normal(line_numbers, updaters)
-        }
+    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+        LineNumbers::config_fn(LineNumbersCfg::default())
     }
 
     /// The minimum width that would be needed to show the last line.
@@ -96,7 +79,7 @@ where
         let mut width = 1f64;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.file_widget.read().text().len_lines() + 1;
+        let len = self.file.read().text().len_lines() + 1;
 
         while len > num_exp {
             num_exp *= 10;
@@ -109,7 +92,7 @@ where
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self, width: usize) {
-        let file = self.file_widget.read();
+        let file = self.file.read();
         let printed_lines = file.printed_lines();
         let main_line = file.main_cursor().true_line();
         let mut text = String::new();

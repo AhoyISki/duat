@@ -27,7 +27,7 @@ use parsec_core::{
         form::FormPalette,
         form::{CursorStyle, Form}
     },
-    text::{PrintCfg, ScrollOff, WrapMethod, NewLine},
+    text::{NewLine, PrintCfg, ScrollOff, WrapMethod},
     ui::{Constraint, ModNode, PushSpecs},
     widgets::{
         line_numbers::{Align, Numbers},
@@ -35,7 +35,7 @@ use parsec_core::{
         CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
     },
     Manager,
-    Session
+    Parsec
 };
 use parsec_kak::Editor;
 use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};
@@ -54,7 +54,8 @@ fn main() {
     // You can modify `Form`s by using the `set_form()` method.
     // `add_form()` will panic if there is already a `Form` with that
     // name.
-    //palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
+    // palette.set_main_cursor(CursorStyle::new(None,
+    // Form::new().on_cyan()));
     palette.set_form("Mode", Form::new().dark_green());
     palette.set_form("VertRule", Form::new().dark_grey());
     palette.set_form("WrappedLineNumbers", Form::new().cyan().italic());
@@ -77,31 +78,26 @@ fn main() {
     // A `Session` is essentially the application itself, it takes a
     // `Config` argument and a closure that determines what will happen
     // when a new file is opened.
-    let mut session = Session::new(Ui::default(), print_cfg, palette, move |mod_node, file| {
-        let specs = PushSpecs::left(Constraint::Length(1.0));
+    let mut parsec = Parsec::new(Ui::default(), print_cfg, palette, move |mod_node, _file| {
         let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
-        mod_node.push_widget(VertRule::config_fn(file.clone(), cfg), specs);
+        mod_node.push_specd(VertRule::config_fn(cfg));
 
-        let specs = PushSpecs::left(Constraint::Length(1.0));
         let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
-        mod_node.push_widget(LineNumbers::config_fn(file.clone(), cfg), specs);
+        mod_node.push_specd(LineNumbers::config_fn(cfg));
 
-        //let specs = PushSpecs::below(Constraint::Length(1.0));
-        //let (child, _) = mod_node.push_widget(StatusLine::default_fn(file.clone()), specs);
-
-        //let specs = PushSpecs::left(Constraint::Percent(50));
-        //mod_node.push_widget_to_area(CommandLine::default_fn(), child, specs);
+        // let (child, _) =
+        // mod_node.push_specd(StatusLine::default_fn());
+        // mod_node.push_specd_to(CommandLine::default_fn(), child);
     });
 
-    let specs = PushSpecs::below(Constraint::Length(1.0));
-    let (status_line, _) = session.push_widget_to_edge(StatusLine::default_global_fn(), specs);
+    let (status_line, _) = parsec.push_specd(StatusLine::default_global_fn());
     let specs = PushSpecs::left(Constraint::Percent(50));
-    session.push_clustered_widget_to(CommandLine::default_fn(), status_line, specs);
+    parsec.cluster_to(CommandLine::default_fn(), status_line, specs);
 
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
     // Start Parsec.
-    session.start_parsec(&mut file_remapper);
+    parsec.start(&mut file_remapper);
 }

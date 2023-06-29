@@ -34,7 +34,7 @@ use crate::{
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
-    ui::{Ui, PushSpecs}
+    ui::Ui
 };
 
 // TODO: Maybe set up the ability to print images as well.
@@ -125,13 +125,6 @@ where
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
     fn on_unfocus(&mut self, _label: &U::Area) {}
-}
-
-pub trait PreSpecdWidget<U>: NormalWidget<U>
-where
-    U: Ui + 'static
-{
-    fn specs() -> PushSpecs;
 }
 
 /// An enum for handling the 2 types of widget.
