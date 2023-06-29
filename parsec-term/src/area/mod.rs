@@ -313,9 +313,7 @@ impl PrintInfo {
         let mut indices = Vec::with_capacity(limit);
         let mut line_indices = Vec::new();
         for line_index in (0..=pos.true_row()).rev() {
-            let line = text
-                .iter_line(line_index)
-                .filter(|(_, bit)| !bit.as_char().is_some_and(|char| char == '\n'));
+            let line = text.iter_line(line_index);
 
             let iter = indents(line, &cfg.tab_stops, width);
             if let WrapMethod::Word = cfg.wrap_method {
@@ -362,10 +360,7 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let line = text
-            .iter_line(pos.true_row())
-            .filter(|(_, bit)| !bit.as_char().is_some_and(|char| char == '\n'));
-
+        let line = text.iter_line(pos.true_row());
         let target_dist = area.get_width(line, cfg, pos.true_char(), true);
         let max_dist = width - (cfg.scrolloff.x_gap + 1);
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;

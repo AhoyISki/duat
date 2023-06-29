@@ -27,7 +27,7 @@ use parsec_core::{
         form::FormPalette,
         form::{CursorStyle, Form}
     },
-    text::{PrintCfg, ScrollOff, WrapMethod},
+    text::{PrintCfg, ScrollOff, WrapMethod, NewLine},
     ui::{Constraint, ModNode, PushSpecs},
     widgets::{
         line_numbers::{Align, Numbers},
@@ -66,6 +66,7 @@ fn main() {
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
         wrap_method: WrapMethod::NoWrap,
+        new_line: NewLine::AfterSpaceAs('↩'),
         ..PrintCfg::default()
     };
 
