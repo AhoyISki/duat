@@ -360,7 +360,7 @@ where
             .window
             .actionable_widgets()
             .position(|(widget, _, file_id)| {
-                widget.data_is::<Aw>() && (cur_file_id.is_none() || cur_file_id == file_id)
+                widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == file_id)
             })
             .ok_or(())?;
 

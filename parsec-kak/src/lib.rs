@@ -252,7 +252,7 @@ impl Editor {
             KeyEvent {
                 code: Char(':'), ..
             } => {
-                if let Ok(_) = controls.switch_to_widget::<CommandLine<U>>() {
+                if let () = controls.switch_to_widget::<CommandLine<U>>().unwrap() {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
