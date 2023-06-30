@@ -27,7 +27,7 @@
 //! created from a closure like so:
 //!
 //! ```rust
-//! # use parsec_core::commands::{Command, Flags};
+//! # use parsec_core::commands::Command;
 //! # use std::sync::{
 //! #     atomic::{AtomicBool, Ordering},
 //! #     Arc
@@ -77,13 +77,13 @@
 //!
 //! ```
 //! # use parsec_core::{
-//! #     commands::{Command, Commands},
 //! #     data::RwData,
+//! #     session::Parsec,
 //! #     tags::form::FormPalette,
 //! #     text::PrintCfg,
-//! #     ui::{ModNode, PushSpecs, Constraint, Ui},
+//! #     ui::{Constraint, ModNode, PushSpecs, Ui},
 //! #     widgets::CommandLine,
-//! #     Parsec
+//! #     commands::{Command, Commands}
 //! # };
 //! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
 //! # where
@@ -97,23 +97,31 @@
 //!     mod_node.push(CommandLine::default_fn(), specs);
 //! };
 //!
-//! let session = Parsec::new(ui, print_cfg, palette, constructor_hook);
+//! let parsec = Parsec::new(ui, print_cfg, palette, constructor_hook);
 //!
 //! let my_callers = vec!["lol", "lmao"];
 //! let lol_cmd = Command::new(my_callers, |_, _| {
 //!     Ok(Some(String::from("😜")))
 //! });
 //!
-//! session.manager().commands().write().try_add(lol_cmd).unwrap();
+//! parsec.manager().commands().write().try_add(lol_cmd).unwrap();
 //! # }
 //! ```
 //!
 //! The [`Commands`] struct, in this snippet, is chronologically first
-//! accessed through the
-//! `session.manager().commands().write().try_add(lol_cmd);` line. In
-//! this line, the [`Command`] `lol_cmd` is added to the list of
-//! [`Command`]s, with 2 callers, simply returning a `"😜"`, which can
-//! be chained by other [`Command`]s or used in some other way.
+//! accessed through
+//! ```
+//! # use parsec_core::{commands::Command, session::Parsec, ui::Ui};
+//! # fn test_fn<U>(parsec: Parsec<U>, lol_cmd: Command)
+//! # where
+//! #     U: Ui
+//! # {
+//! parsec.manager().commands().write().try_add(lol_cmd);
+//! # }
+//! ```
+//! In this line, the [`Command`] `lol_cmd` is added to the list
+//! of [`Command`]s, with 2 callers, simply returning a `"😜"`, which
+//! can be chained by other [`Command`]s or used in some other way.
 //!
 //! It is then accessed by the `constructor_hook`, where the `"lol"`
 //! caller is called upon, executing the `lol_cmd`. Also in the

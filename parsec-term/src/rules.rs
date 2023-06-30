@@ -7,7 +7,7 @@ use parsec_core::{
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     updaters,
-    widgets::{file_widget::FileWidget, NormalWidget, Widget},
+    widgets::{FileWidget, NormalWidget, Widget},
     Manager
 };
 

@@ -8,7 +8,7 @@ use crate::{
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
-    widgets::{file_widget::FileWidget, ActionableWidget, NormalWidget, Widget},
+    widgets::{ActionableWidget, FileWidget, NormalWidget, Widget},
     Manager
 };
 
@@ -246,7 +246,7 @@ where
 ///     U: Ui
 /// {
 ///     let specs = PushSpecs::left(Constraint::Length(1.0));
-///     mod_node.push(LineNumbers::default_fn(file), specs);
+///     mod_node.push_specd(LineNumbers::default_fn());
 /// }
 /// ```
 ///
@@ -254,7 +254,7 @@ where
 /// argument for [`Session::new()`][crate::Session::new()], every file
 /// that is opened will have a
 /// [`LineNumbers<U>`][crate::widgets::LineNumbers] widget attached to
-/// the [`Left`][Side::Left] side of the [`FileWidget<U>`].
+/// it.
 pub struct ModNode<'a, U>
 where
     U: Ui

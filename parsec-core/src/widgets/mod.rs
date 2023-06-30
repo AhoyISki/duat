@@ -17,10 +17,10 @@
 //! implementation for Parsec, defines "rule" widgets, which are
 //! separators that only really make sense in the context of a
 //! terminal.
-pub mod command_line;
-pub mod file_widget;
-pub mod line_numbers;
-pub mod status_line;
+mod command_line;
+mod file_widget;
+mod line_numbers;
+mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
@@ -601,4 +601,4 @@ macro_rules! updaters {
 pub use command_line::CommandLine;
 pub use file_widget::FileWidget;
 pub use line_numbers::{Align, LineNumbers, LineNumbersCfg, Numbers};
-pub use status_line::{StatusLine, StatusPart};
+pub use status_line::{StatusLine, StatusPart, status_parts, file_parts};

@@ -1,218 +1,23 @@
 #![feature(drain_filter, result_option_inspect, trait_upcasting, let_chains)]
 
+use std::{path::PathBuf, sync::{atomic::{AtomicUsize, AtomicBool, Ordering}, Arc}};
+
+use commands::{Commands, Command, CommandErr};
+use data::{RwData, RoData, RoNestedData};
+use tags::form::FormPalette;
+use ui::{Ui, ParsecWindow, RoWindows, Area};
+use widgets::{FileWidget, ActionableWidget};
+
 pub mod commands;
 pub mod data;
 pub mod history;
 pub mod input;
 pub mod position;
+pub mod session;
 pub mod tags;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-
-use std::{
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc
-    },
-    thread,
-    time::Duration
-};
-
-use commands::{Command, CommandErr, Commands};
-use crossterm::event::{self, Event, KeyEvent};
-use data::{RoData, RoNestedData, RwData};
-use input::{InputScheme, KeyRemapper};
-use tags::form::FormPalette;
-use text::PrintCfg;
-use ui::{activate_hook, Area, ModNode, ParsecWindow, PushSpecs, RoWindows, Ui};
-use widgets::{file_widget::FileWidget, ActionableWidget, Widget};
-
-pub struct Parsec<U>
-where
-    U: Ui
-{
-    ui: U,
-    pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
-    manager: Manager<U>,
-    print_cfg: RwData<PrintCfg>
-}
-
-impl<U> Parsec<U>
-where
-    U: Ui + 'static
-{
-    /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(
-        mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
-        mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
-    ) -> Self {
-        let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
-        let file = FileWidget::<U>::new(file, print_cfg.clone());
-
-        let (window, initial_index) = ParsecWindow::new(&mut ui, file);
-        let mut manager = Manager::new(window, 0, 0, palette);
-        manager.commands.write().file_id = Some(0);
-        activate_hook(&mut manager, initial_index, &mut constructor_hook);
-        manager.commands.write().file_id = None;
-
-        let mut session = Parsec {
-            ui,
-            constructor_hook: Box::new(constructor_hook),
-            manager,
-            print_cfg: RwData::new(print_cfg)
-        };
-
-        session.open_arg_files();
-
-        session
-    }
-
-    fn open_arg_files(&mut self) {
-        for file in std::env::args().skip(2) {
-            self.open_file(PathBuf::from(file))
-        }
-    }
-
-    pub fn open_file(&mut self, path: PathBuf) {
-        let file_widget = FileWidget::new(Some(path), self.print_cfg.read().clone());
-        let (new_area, _) = self.manager.windows.mutate(|windows| {
-            let active_window = &mut windows[self.manager.active_window];
-            active_window.push_file(file_widget, PushSpecs::right_free())
-        });
-
-        activate_hook(&mut self.manager, new_area, &mut self.constructor_hook);
-    }
-
-    pub fn push(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), specs: PushSpecs
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, _) = f(&self.manager);
-        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
-    }
-
-    pub fn push_specd(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs)
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, specs) = f(&self.manager);
-        self.manager.windows.write()[self.manager.active_window].push_to_master(widget, specs)
-    }
-
-    pub fn push_to(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
-        specs: PushSpecs
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, _) = f(&self.manager);
-        let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push(index, widget, specs, None, false)
-    }
-
-    pub fn push_specd_to(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, specs) = f(&self.manager);
-        let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push(index, widget, specs, None, false)
-    }
-
-    pub fn cluster_to(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
-        specs: PushSpecs
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, _) = f(&self.manager);
-        let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push(index, widget, specs, None, true)
-    }
-
-    pub fn cluster_specd_to(
-        &mut self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex
-    ) -> (U::AreaIndex, Option<U::AreaIndex>) {
-        let (widget, specs) = f(&self.manager);
-        let mut windows = self.manager.windows.write();
-        windows[self.manager.active_window].push(index, widget, specs, None, true)
-    }
-
-    /// Start the application, initiating a read/response loop.
-    pub fn start<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
-    where
-        I: InputScheme
-    {
-        self.ui.startup();
-
-        // The main loop.
-        loop {
-            let palette = &self.manager.palette;
-            for (widget, mut area, _) in
-                self.manager.windows.read()[self.manager.active_window].widgets()
-            {
-                widget.update(&mut area);
-                widget.print(&mut area, &palette);
-            }
-
-            self.session_loop(key_remapper);
-
-            let mut files = std::mem::take(&mut *self.manager.files_to_open.write());
-            for file in files.drain(..) {
-                self.open_file(file);
-            }
-
-            if self.manager.should_quit.load(Ordering::Acquire) {
-                break;
-            }
-        }
-
-        self.ui.shutdown();
-    }
-
-    /// The primary application loop, executed while no breaking
-    /// commands have been sent to [`Controls`].
-    fn session_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
-    where
-        I: InputScheme
-    {
-        let palette = &self.manager.palette;
-        let manager = &self.manager;
-        let windows = self.manager.windows.read();
-        thread::scope(|scope| {
-            loop {
-                let active_window = &windows[self.manager.active_window];
-                active_window.print_if_layout_changed(palette);
-
-                if manager.break_loop.load(Ordering::Relaxed) {
-                    manager.break_loop.store(false, Ordering::Relaxed);
-                    break;
-                }
-
-                for (widget, mut label, _) in active_window.widgets() {
-                    if widget.needs_update() {
-                        if widget.is_slow() {
-                            let palette = &palette;
-                            scope.spawn(move || {
-                                widget.update(&mut label);
-                                widget.print(&mut label, palette);
-                            });
-                        } else {
-                            widget.update(&mut label);
-                            widget.print(&mut label, palette);
-                        }
-                    }
-                }
-
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    send_event(key_remapper, &manager);
-                } else {
-                    continue;
-                }
-            }
-        });
-    }
-
-    /// Returns the [`RwData<Manager>`].
-    pub fn manager(&self) -> &Manager<U> {
-        &self.manager
-    }
-}
 
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
@@ -429,56 +234,6 @@ where
     pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
         self.manager.commands.read().try_exec(cmd.to_string())
     }
-}
-
-/// Sends an event to the `Widget` determined by `SessionControl`.
-fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, manager: &Manager<U>)
-where
-    U: Ui + 'static,
-    I: InputScheme
-{
-    if let Event::Key(key_event) = event::read().unwrap() {
-        let windows = manager.windows.read();
-        let window = &windows[manager.active_window];
-
-        let index = manager.active_widget.load(Ordering::Acquire);
-        let actionable_widget = window.actionable_widgets().nth(index);
-
-        let Some((widget, mut area, _)) = actionable_widget else {
-            return;
-        };
-
-        let controls = Controls {
-            manager: &*manager,
-            window
-        };
-
-        blink_cursors_and_send_key(&widget, &mut area, controls, key_event, key_remapper);
-    }
-}
-
-/// Removes the cursors, sends an event, and adds them again.
-fn blink_cursors_and_send_key<U, AW, I>(
-    widget: &RwData<AW>, area: &mut U::Area, controls: Controls<U>, key_event: KeyEvent,
-    key_remapper: &mut KeyRemapper<I>
-) where
-    U: Ui + 'static,
-    AW: ActionableWidget<U> + ?Sized + 'static,
-    I: InputScheme
-{
-    let mut widget_lock = widget.write();
-    let (text, cursors, _) = widget_lock.members_for_cursor_tags();
-    text.remove_cursor_tags(cursors);
-    drop(widget_lock);
-
-    key_remapper.send_key_to_actionable(key_event, widget, area, controls);
-
-    let mut widget_lock = widget.write();
-    let (text, cursors, main_index) = widget_lock.members_for_cursor_tags();
-    text.add_cursor_tags(cursors, main_index);
-    drop((text, cursors, main_index));
-
-    widget_lock.update(area);
 }
 
 //////////// Useful for testing.

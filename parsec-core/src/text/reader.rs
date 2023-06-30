@@ -1,4 +1,4 @@
-use crate::{history::Change, ui::Ui, widgets::file_widget::FileWidget};
+use crate::{history::Change, ui::Ui, widgets::FileWidget};
 
 pub trait Observer<U>
 where
