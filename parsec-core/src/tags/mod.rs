@@ -42,7 +42,11 @@ pub enum Tag {
     HoverBound,
     /// Conceals a character with a string of text of equal lenght,
     /// permanently.
-    PermanentConceal { index: u16 }
+    PermanentConceal { index: u16 },
+    /// Changes the alignment of text to the left of the area.
+    AlignLeft,
+    /// Changes the alignment of text to the right of the area.
+    AlignRight
 }
 
 impl std::fmt::Debug for Tag {

@@ -613,8 +613,7 @@ fn trigger_tag(
         Tag::ExtraCursor => {
             queue!(stdout, SetStyle(form_former.extra_cursor().form.style));
         }
-        Tag::HoverBound => todo!(),
-        Tag::PermanentConceal { .. } => todo!()
+        _ => todo!()
     }
 
     None

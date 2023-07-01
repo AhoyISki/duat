@@ -1,12 +1,18 @@
 #![feature(drain_filter, result_option_inspect, trait_upcasting, let_chains)]
 
-use std::{path::PathBuf, sync::{atomic::{AtomicUsize, AtomicBool, Ordering}, Arc}};
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc
+    }
+};
 
-use commands::{Commands, Command, CommandErr};
-use data::{RwData, RoData, RoNestedData};
+use commands::{Command, CommandErr, Commands};
+use data::{RoData, RoNestedData, RwData};
 use tags::form::FormPalette;
-use ui::{Ui, ParsecWindow, RoWindows, Area};
-use widgets::{FileWidget, ActionableWidget};
+use ui::{Area, ParsecWindow, RoWindows, Ui};
+use widgets::{ActionableWidget, FileWidget};
 
 pub mod commands;
 pub mod data;
@@ -19,6 +25,9 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
+static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
+static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
 pub struct Manager<U>
@@ -29,11 +38,8 @@ where
     active_window: usize,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
-    anchor_file: Arc<AtomicUsize>,
     active_file: RwData<RoData<FileWidget<U>>>,
     active_widget: Arc<AtomicUsize>,
-    break_loop: Arc<AtomicBool>,
-    should_quit: Arc<AtomicBool>,
     pub palette: FormPalette
 }
 
@@ -42,9 +48,7 @@ where
     U: Ui
 {
     /// Returns a new instance of [`Manager`].
-    fn new(
-        window: ParsecWindow<U>, anchor_file: usize, active_widget: usize, palette: FormPalette
-    ) -> Self {
+    fn new(window: ParsecWindow<U>, active_widget: usize, palette: FormPalette) -> Self {
         let active_file = window
             .actionable_widgets()
             .find_map(|(widget, ..)| widget.clone().try_downcast::<FileWidget<U>>().ok())
@@ -55,26 +59,20 @@ where
             active_window: 0,
             commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
-            anchor_file: Arc::new(AtomicUsize::new(anchor_file)),
             active_file: RwData::new(RoData::from(&active_file)),
             active_widget: Arc::new(AtomicUsize::new(active_widget)),
-            break_loop: Arc::new(AtomicBool::from(false)),
-            should_quit: Arc::new(AtomicBool::from(false)),
             palette
         };
 
-        let break_loop = manager.break_loop.clone();
-        let should_quit = manager.should_quit.clone();
         let quit = Command::new(vec!["quit", "q"], move |_, _| {
-            break_loop.store(true, Ordering::Release);
-            should_quit.store(true, Ordering::Release);
+            BREAK_LOOP.store(true, Ordering::Release);
+            SHOULD_QUIT.store(true, Ordering::Release);
             Ok(None)
         });
 
-        let break_loop = manager.break_loop.clone();
         let files_to_open = manager.files_to_open.clone();
         let open_files = Command::new(vec!["edit", "e"], move |_, files| {
-            break_loop.store(true, Ordering::Release);
+            BREAK_LOOP.store(true, Ordering::Release);
             *files_to_open.write() = files.map(|file| PathBuf::from(file)).collect();
             Ok(None)
         });
@@ -124,21 +122,15 @@ where
 {
     /// Quits Parsec.
     pub fn quit(&mut self) {
-        self.manager.should_quit.swap(true, Ordering::Release);
-        self.manager.break_loop.swap(true, Ordering::Release);
+        BREAK_LOOP.store(true, Ordering::Release);
+        SHOULD_QUIT.store(true, Ordering::Release);
     }
 
     /// Switches to the [`FileWidget<U>`] with the given name.
     pub fn switch_to_file(&mut self, target: impl AsRef<str>) -> Result<(), ()> {
         let target = target.as_ref();
-        let (file_index, (widget_index, _)) = self
-            .window
-            .file_names()
-            .enumerate()
-            .find(|(_, (_, name))| name == target)
-            .ok_or(())?;
-
-        self.manager.anchor_file.store(file_index, Ordering::Release);
+        let (widget_index, _) =
+            self.window.file_names().find(|(_, name)| name == target).ok_or(())?;
 
         self.switch_to_widget_index(widget_index)
     }
@@ -148,16 +140,14 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
-            let (file_index, (widget_index, _)) = self
+            let cur_name = self.manager.active_file.inspect(|file| file.read().name());
+            let (widget_index, _) = self
                 .window
                 .file_names()
-                .enumerate()
                 .cycle()
-                .skip(self.manager.anchor_file.load(Ordering::Acquire) + 1)
-                .next()
+                .skip_while(|(_, name)| *name != cur_name)
+                .nth(1)
                 .ok_or(())?;
-
-            self.manager.anchor_file.store(file_index, Ordering::Release);
 
             self.switch_to_widget_index(widget_index)
         }
@@ -168,15 +158,13 @@ where
         if self.window.file_names().count() < 2 {
             Err(())
         } else {
-            let (file_index, (widget_index, _)) = self
+            let cur_name = self.manager.active_file.inspect(|file| file.read().name());
+            let (widget_index, _) = self
                 .window
                 .file_names()
-                .enumerate()
-                .take(self.manager.anchor_file.load(Ordering::Acquire).wrapping_sub(1))
+                .take_while(|(_, name)| *name != cur_name)
                 .last()
                 .ok_or(())?;
-
-            self.manager.anchor_file.store(file_index, Ordering::Release);
 
             self.switch_to_widget_index(widget_index)
         }
@@ -219,14 +207,14 @@ where
     }
 
     /// The name of the active [`FileWidget<U>`].
-    pub fn active_file(&self) -> String {
-        let index = self.manager.anchor_file.load(Ordering::Acquire);
-        self.window.file_names().nth(index).unwrap().1
+    pub fn active_file_name(&self) -> String {
+        self.manager.active_file.inspect(|file| file.read().name())
     }
 
     pub fn return_to_file(&mut self) -> Result<(), ()> {
-        let index = self.manager.anchor_file.load(Ordering::Acquire);
-        let (widget_index, _) = self.window.file_names().nth(index).ok_or(())?;
+        let cur_name = self.manager.active_file.inspect(|file| file.read().name());
+        let (widget_index, _) =
+            self.window.file_names().find(|(_, name)| *name == cur_name).ok_or(())?;
 
         self.switch_to_widget_index(widget_index)
     }

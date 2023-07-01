@@ -445,7 +445,7 @@ pub(crate) fn activate_hook<U, Nw>(
         .flatten();
 
     if let Ok(file_widget) = widget.clone().try_downcast::<FileWidget<U>>() {
-        manager.deref_mut = file_widget;
+        *manager.active_file.write() = file_widget;
     }
 
     let mod_node = ModNode {
@@ -677,8 +677,8 @@ where
         })
     }
 
-    /// Returns an [`Iterator`] over the file names of open
-    /// [`FileWidget<U>`]s.
+    /// Returns an [`Iterator`] over the names of [`FileWidget<U>`]s
+    /// and their respective [`ActionableWidget`] indices.
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
             .iter()

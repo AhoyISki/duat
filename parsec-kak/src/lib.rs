@@ -398,7 +398,7 @@ impl Editor {
                 code: Char('a'), ..
             } => {
                 if let Ok(_) = controls.switch_to_file(&self.last_file) {
-                    self.last_file = controls.active_file().to_string();
+                    self.last_file = controls.active_file_name().to_string();
                 }
             }
             KeyEvent {
@@ -415,14 +415,14 @@ impl Editor {
                 code: Char('n'), ..
             } => {
                 if let Ok(_) = controls.next_file() {
-                    self.last_file = controls.active_file().to_string();
+                    self.last_file = controls.active_file_name().to_string();
                 }
             }
             KeyEvent {
                 code: Char('N'), ..
             } => {
                 if let Ok(_) = controls.prev_file() {
-                    self.last_file = controls.active_file().to_string();
+                    self.last_file = controls.active_file_name().to_string();
                 }
             }
             _ => {}

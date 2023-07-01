@@ -264,7 +264,7 @@ fn write_text(
         cfg.align
     };
 
-    if is_wrapped && cfg.show_wraps {
+    if is_wrapped && !cfg.show_wraps {
         *text = " ".repeat(width) + "\n";
     } else {
         match alignment {
