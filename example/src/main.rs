@@ -19,6 +19,7 @@ use parsec_core::{
     // implemented individually for every editing method.
     input::KeyRemapper,
     join,
+    session::Parsec,
     // Tags are a really powerfull part of Parsec. For now,
     // they handle `Form`s (font styling), cursors, and wrapping,
     // but in the future, they will also allow the creation of buttons
@@ -29,13 +30,8 @@ use parsec_core::{
     },
     text::{NewLine, PrintCfg, ScrollOff, WrapMethod},
     ui::{Constraint, ModNode, PushSpecs},
-    widgets::{
-        line_numbers::{Align, Numbers},
-        status_line::{f_var, text, var},
-        CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
-    },
-    Manager,
-    Parsec
+    widgets::{Align, CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine},
+    Manager
 };
 use parsec_kak::Editor;
 use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};
@@ -83,7 +79,7 @@ fn main() {
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_specd(VertRule::config_fn(cfg));
 
-        let cfg = LineNumbersCfg::new(Numbers::Absolute, Align::Right, Align::Left, true);
+        let cfg = LineNumbersCfg::rel_abs(Align::Right, Align::Left);
         mod_node.push_specd(LineNumbers::config_fn(cfg));
 
         // let (child, _) =

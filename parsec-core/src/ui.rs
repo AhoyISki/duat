@@ -444,6 +444,10 @@ pub(crate) fn activate_hook<U, Nw>(
         .map(|file_id| manager.commands.write().file_id.replace(file_id))
         .flatten();
 
+    if let Ok(file_widget) = widget.clone().try_downcast::<FileWidget<U>>() {
+        manager.deref_mut = file_widget;
+    }
+
     let mod_node = ModNode {
         manager,
         is_file: std::any::TypeId::of::<Nw>() == std::any::TypeId::of::<FileWidget<U>>(),

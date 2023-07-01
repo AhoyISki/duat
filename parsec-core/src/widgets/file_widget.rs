@@ -233,12 +233,17 @@ where
 
     /// The number of [`char`]s in the file.
     pub fn len_chars(&self) -> usize {
-        self.text.inner().len_chars()
+        self.text.len_chars()
     }
 
     /// The number of lines in the file.
     pub fn len_lines(&self) -> usize {
-        self.text.inner().len_lines()
+        self.text.len_lines()
+    }
+
+	/// The number of bytes in the file.
+    pub fn len_bytes(&self) -> usize {
+        self.text.len_bytes()
     }
 }
 

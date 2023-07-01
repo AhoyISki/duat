@@ -141,7 +141,7 @@ where
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
-pub enum Numbers {
+enum Numbers {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Absolute,
@@ -149,7 +149,7 @@ pub enum Numbers {
     /// that line.
     Relative,
     /// Relative line numbers on every line, except the main cursor's.
-    Hybrid
+    RelAbs
 }
 
 /// How to show the line numbers on screen.
@@ -164,20 +164,66 @@ pub enum Align {
 /// Configuration options for the [`LineNumbers<U>`] widget.
 #[derive(Default, Clone, Copy)]
 pub struct LineNumbersCfg {
-    pub numbers: Numbers,
-    pub align: Align,
-    pub main_align: Align,
-    pub hide_wraps: bool
+    numbers: Numbers,
+    align: Align,
+    main_align: Align,
+    show_wraps: bool
 }
 
 impl LineNumbersCfg {
     /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn new(numbers: Numbers, align: Align, main_align: Align, hide_wraps: bool) -> Self {
+    pub fn absolute(align: Align, main_align: Align) -> Self {
         Self {
-            numbers,
+            numbers: Numbers::Absolute,
             align,
             main_align,
-            hide_wraps
+            show_wraps: false
+        }
+    }
+
+    /// Returns a new instance of [`LineNumbersCfg`].
+    pub fn absolute_wraps(align: Align, main_align: Align) -> Self {
+        Self {
+            numbers: Numbers::Absolute,
+            align,
+            main_align,
+            show_wraps: true
+        }
+    }
+
+    pub fn relative(align: Align, main_align: Align) -> Self {
+        Self {
+            numbers: Numbers::Relative,
+            align,
+            main_align,
+            show_wraps: false
+        }
+    }
+
+    pub fn relative_wraps(align: Align, main_align: Align) -> Self {
+        Self {
+            numbers: Numbers::Relative,
+            align,
+            main_align,
+            show_wraps: true
+        }
+    }
+
+    pub fn rel_abs(align: Align, main_align: Align) -> Self {
+        Self {
+            numbers: Numbers::RelAbs,
+            align,
+            main_align,
+            show_wraps: false
+        }
+    }
+
+    pub fn rel_abs_wraps(align: Align, main_align: Align) -> Self {
+        Self {
+            numbers: Numbers::RelAbs,
+            align,
+            main_align,
+            show_wraps: true
         }
     }
 }
@@ -203,7 +249,7 @@ fn write_text(
     let number = match cfg.numbers {
         Numbers::Absolute => line + 1,
         Numbers::Relative => usize::abs_diff(line, main_line),
-        Numbers::Hybrid => {
+        Numbers::RelAbs => {
             if line != main_line {
                 usize::abs_diff(line, main_line)
             } else {
@@ -218,7 +264,7 @@ fn write_text(
         cfg.align
     };
 
-    if is_wrapped && cfg.hide_wraps {
+    if is_wrapped && cfg.show_wraps {
         *text = " ".repeat(width) + "\n";
     } else {
         match alignment {

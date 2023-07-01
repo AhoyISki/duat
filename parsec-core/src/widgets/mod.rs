@@ -600,5 +600,5 @@ macro_rules! updaters {
 
 pub use command_line::CommandLine;
 pub use file_widget::FileWidget;
-pub use line_numbers::{Align, LineNumbers, LineNumbersCfg, Numbers};
+pub use line_numbers::{Align, LineNumbers, LineNumbersCfg};
 pub use status_line::{StatusLine, StatusPart, status_parts, file_parts};

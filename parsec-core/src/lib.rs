@@ -236,6 +236,25 @@ where
     }
 }
 
+/// A convenience macro to join any number of variables that can
+/// be turned into `String`s.
+///
+/// # Examples
+///
+/// ```
+/// # use parsec_core::join;
+/// let my_text = join!["number: ", 21, ", floating: ", 3.14];
+/// assert!(my_text == String::from("number: 21, floating: 3.14"));
+/// ```
+#[macro_export]
+macro_rules! join {
+    () => { String::from("") };
+
+    ($($var:expr),+ $(,)?) => {
+        [$($var.to_string()),+].join("")
+    }
+}
+
 //////////// Useful for testing.
 #[doc(hidden)]
 pub static mut FOR_TEST: usize = 0;
