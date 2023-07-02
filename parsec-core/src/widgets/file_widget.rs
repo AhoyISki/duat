@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{cmp::min, fs, path::PathBuf};
 
-use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
+use super::{SchemeWidget, EditAccum, Widget, WidgetNode, InputTaker};
 use crate::{
     data::DownCastableData,
     history::History,
@@ -51,7 +51,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`FileWidget<U>`].
-    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
+    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
         // TODO: Allow the creation of a new file.
         let file_contents = path
             .as_ref()
@@ -83,19 +83,16 @@ where
         let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
 
-        Widget::actionable(
-            FileWidget {
-                path,
-                text,
-                print_info: U::PrintInfo::default(),
-                main_cursor: 0,
-                cursors,
-                history: History::new(),
-                printed_lines: Vec::new(),
-                print_cfg
-            },
-            Box::new(|| false)
-        )
+        FileWidget {
+            path,
+            text,
+            print_info: U::PrintInfo::default(),
+            main_cursor: 0,
+            cursors,
+            history: History::new(),
+            printed_lines: Vec::new(),
+            print_cfg
+        }
     }
 
     /// Undoes the last [`Moment<U>`][crate::history::Moment] in the
@@ -241,13 +238,13 @@ where
         self.text.len_lines()
     }
 
-	/// The number of bytes in the file.
+    /// The number of bytes in the file.
     pub fn len_bytes(&self) -> usize {
         self.text.len_bytes()
     }
 }
 
-impl<U> NormalWidget<U> for FileWidget<U>
+impl<U> Widget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {
@@ -276,9 +273,13 @@ where
     fn print_cfg(&self) -> PrintCfg {
         self.print_cfg.clone()
     }
+
+    fn input_taker(&mut self) -> Option<InputTaker<U>> {
+        Some(InputTaker::Scheme(self))
+    }
 }
 
-impl<U> ActionableWidget<U> for FileWidget<U>
+impl<U> SchemeWidget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {

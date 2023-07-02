@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
+use super::{SchemeWidget, EditAccum, Widget, WidgetNode};
 use crate::{
     commands::{Command, Commands},
     data::{DownCastableData, RwData, ReadableData},
@@ -48,7 +48,7 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         let prompt = prompt.to_string();
         move |manager| {
             let command_line = CommandLine::<U> {
@@ -61,14 +61,14 @@ where
 
             add_commands(manager, &command_line);
 
-            let widget = Widget::actionable(command_line, Box::new(|| false));
+            let widget = WidgetNode::actionable(command_line, Box::new(|| false));
             (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
@@ -80,13 +80,13 @@ where
 
             add_commands(manager, &command_line);
 
-            let widget = Widget::actionable(command_line, Box::new(|| false));
+            let widget = WidgetNode::actionable(command_line, Box::new(|| false));
             (widget, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }
 
-impl<U> NormalWidget<U> for CommandLine<U>
+impl<U> Widget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {
@@ -101,7 +101,7 @@ where
     }
 }
 
-impl<U> ActionableWidget<U> for CommandLine<U>
+impl<U> SchemeWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {

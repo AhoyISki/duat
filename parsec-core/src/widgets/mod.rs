@@ -13,7 +13,7 @@
 //!
 //! These widgets are supposed to be universal, not needing a specific
 //! [`Ui`] implementation to work. As an example, the
-//! [parsec-term][https://docs.rs/parsec-term] crate, which is a ui
+//! [`parsec-term`](https://docs.rs/parsec-term) crate, which is a ui
 //! implementation for Parsec, defines "rule" widgets, which are
 //! separators that only really make sense in the context of a
 //! terminal.
@@ -30,7 +30,7 @@ use std::{cmp::Ordering, ops::Range, sync::Arc};
 use no_deadlocks::RwLock;
 
 use crate::{
-    data::{DownCastableData, RoData, RwData, ReadableData, RawReadableData},
+    data::{DownCastableData, RawReadableData, ReadableData, RoData, RwData},
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
@@ -39,12 +39,18 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait NormalWidget<U>: DownCastableData + 'static
+pub trait Widget<U>: DownCastableData + 'static
 where
-    U: Ui + ?Sized + 'static
+    U: Ui + 'static
 {
-    /// Updates the widget.
-    fn update(&mut self, label: &mut U::Area);
+    /// Updates the widget, allowing the modification of its
+    /// [`Area`][Ui::Area].
+    ///
+    /// This function will be called when Parsec determines that the
+    /// [`WidgetNode`]
+    ///
+    /// [`Session<U>`]: crate::session::Session
+    fn update(&mut self, area: &mut U::Area);
 
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
@@ -59,10 +65,41 @@ where
     fn print_cfg(&self) -> PrintCfg {
         PrintCfg::default()
     }
+
+    fn input_taker(&mut self) -> Option<InputTaker<U>> {
+        None
+    }
+}
+
+pub enum InputTaker<'a, U>
+where
+    U: Ui
+{
+    Scheme(&'a mut dyn SchemeWidget<U>),
+    Direct(&'a mut dyn DirectWidget<U>)
+}
+
+impl<'a, U> InputTaker<'a, U>
+where
+    U: Ui
+{
+	pub fn on_focus(&self, area: &U::Area) {
+    	match self {
+        InputTaker::Scheme(widget) => widget.on_focus(area),
+        InputTaker::Direct(widget) => widget.on_focus(area),
+    }
+	}
+
+	pub fn on_unfocus(&self, area: &U::Area) {
+    	match self {
+        InputTaker::Scheme(widget) => widget.on_unfocus(area),
+        InputTaker::Direct(widget) => widget.on_unfocus(area),
+    }
+	}
 }
 
 /// A widget that can receive input and show [`Cursor`]s.
-pub trait ActionableWidget<U>: NormalWidget<U>
+pub trait SchemeWidget<U>: Widget<U>
 where
     U: Ui + 'static
 {
@@ -72,7 +109,7 @@ where
 
     /// Returns a [`Mover<U>`], which can move a cursor's position
     /// over [`self`].
-    fn mover<'a>(&'a mut self, index: usize, label: &'a U::Area) -> Mover<U>;
+    fn mover<'a>(&'a mut self, index: usize, area: &'a U::Area) -> Mover<U>;
 
     /// This is used specifically to remove and add the [`Cursor`]
     /// [`Tag`][crate::tags::Tag]s to [`self`]
@@ -108,7 +145,7 @@ where
     ///
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
-    fn undo(&mut self, _label: &U::Area) {
+    fn undo(&mut self, _area: &U::Area) {
         panic!("This ActionableWidget does not have a History of its own.")
     }
 
@@ -116,38 +153,49 @@ where
     ///
     /// Will panic by default, assuming that the [`ActionableWidget`]
     /// does not have a [`History`][crate::history::History].
-    fn redo(&mut self, _label: &U::Area) {
+    fn redo(&mut self, _area: &U::Area) {
         panic!("This ActionableWidget does not have a History of its own.")
     }
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
-    fn on_focus(&mut self, _label: &U::Area) {}
+    fn on_focus(&mut self, _area: &U::Area) {}
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
-    fn on_unfocus(&mut self, _label: &U::Area) {}
+    fn on_unfocus(&mut self, _area: &U::Area) {}
+}
+
+pub trait DirectWidget<U>
+where
+    U: Ui
+{
+    /// Actions to do whenever this [`ActionableWidget`] is focused.
+    fn on_focus(&mut self, _area: &U::Area) {}
+
+    /// Actions to do whenever this [`ActionableWidget`] is unfocused.
+    fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 
 /// An enum for handling the 2 types of widget.
 #[derive(Clone)]
 enum InnerWidget<U>
 where
-    U: Ui + ?Sized
+    U: Ui
 {
-    Normal(RwData<dyn NormalWidget<U>>),
-    Actionable(RwData<dyn ActionableWidget<U>>)
+    Normal(RwData<dyn Widget<U>>),
+    Actionable(RwData<dyn SchemeWidget<U>>)
 }
 
 impl<U> InnerWidget<U>
 where
-    U: Ui + ?Sized
+    U: Ui
 {
-    pub fn update(&self, label: &mut U::Area) {
+    pub fn update(&self, area: &mut U::Area) {
         match self {
             InnerWidget::Normal(widget) => {
-                widget.write().update(label);
+                widget.write().update(area);
             }
             InnerWidget::Actionable(widget) => {
-                widget.write().update(label);
+                widget.write().update(area);
             }
         }
     }
@@ -156,9 +204,9 @@ where
 /// A full representation of a widget.
 ///
 /// This includes information describing wether or not the
-/// [`Widget<U>`] is "slow", and a function that determines if the
-/// [`Widget<U>`] needs to be updated.
-pub struct Widget<U>
+/// [`WidgetNode<U>`] is "slow", and a function that determines if the
+/// [`WidgetNode<U>`] needs to be updated.
+pub struct WidgetNode<U>
 where
     U: Ui
 {
@@ -167,64 +215,64 @@ where
     needs_update: Box<dyn Fn() -> bool>
 }
 
-impl<U> Widget<U>
+impl<U> WidgetNode<U>
 where
     U: Ui + 'static
 {
-    /// Returns a [`NormalWidget`] [`Widget<U>`].
-    pub fn normal(widget: impl NormalWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
-        Widget {
+    /// Returns a [`NormalWidget`] [`WidgetNode<U>`].
+    pub fn normal(widget: impl Widget<U>, f: impl Fn() -> bool + 'static) -> WidgetNode<U> {
+        WidgetNode {
             inner: InnerWidget::Normal(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: false,
             needs_update: Box::new(f)
         }
     }
 
-    /// Returns an [`ActionableWidget`] [`Widget<U>`].
+    /// Returns an [`ActionableWidget`] [`WidgetNode<U>`].
     pub fn actionable(
-        widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static
-    ) -> Widget<U> {
-        Widget {
+        widget: impl SchemeWidget<U>, f: impl Fn() -> bool + 'static
+    ) -> WidgetNode<U> {
+        WidgetNode {
             inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: false,
             needs_update: Box::new(f)
         }
     }
 
-    /// Returns a slow [`NormalWidget`] [`Widget<U>`].
+    /// Returns a slow [`NormalWidget`] [`WidgetNode<U>`].
     ///
-    /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
-    /// down the execution of Parsec.
-    pub fn slow_normal(widget: impl NormalWidget<U>, f: impl Fn() -> bool + 'static) -> Widget<U> {
+    /// Slow [`WidgetNode<U>`]s get updated asynchronously, as to not
+    /// slow down the execution of Parsec.
+    pub fn slow_normal(widget: impl Widget<U>, f: impl Fn() -> bool + 'static) -> WidgetNode<U> {
         // assert!(updaters.len() > 0, "Without any updaters, this widget can
         // never update");
-        Widget {
+        WidgetNode {
             inner: InnerWidget::Normal(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: true,
             needs_update: Box::new(f)
         }
     }
 
-    /// Returns a slow [`ActionableWidget`] [`Widget<U>`].
+    /// Returns a slow [`ActionableWidget`] [`WidgetNode<U>`].
     ///
-    /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
-    /// down the execution of Parsec.
+    /// Slow [`WidgetNode<U>`]s get updated asynchronously, as to not
+    /// slow down the execution of Parsec.
     pub fn slow_actionable(
-        widget: impl ActionableWidget<U>, f: impl Fn() -> bool + 'static
-    ) -> Widget<U> {
-        Widget {
+        widget: impl SchemeWidget<U>, f: impl Fn() -> bool + 'static
+    ) -> WidgetNode<U> {
+        WidgetNode {
             inner: InnerWidget::Actionable(RwData::new_unsized(Arc::new(RwLock::new(widget)))),
             is_slow: true,
             needs_update: Box::new(f)
         }
     }
 
-    /// Updates the [`Widget<U>`].
-    pub(crate) fn update(&self, label: &mut U::Area) {
-        self.inner.update(label);
+    /// Updates the [`WidgetNode<U>`].
+    pub(crate) fn update(&self, area: &mut U::Area) {
+        self.inner.update(area);
     }
 
-    /// Prints the [`Widget<U>`] to its designated
+    /// Prints the [`WidgetNode<U>`] to its designated
     /// [`Area`][crate::ui::Area].
     pub(crate) fn print(&self, area: &mut U::Area, palette: &FormPalette) {
         match &self.inner {
@@ -243,7 +291,7 @@ where
         }
     }
 
-    /// Wether or not the [`Widget<U>`] needs to be updated.
+    /// Wether or not the [`WidgetNode<U>`] needs to be updated.
     pub(crate) fn needs_update(&self) -> bool {
         match &self.inner {
             InnerWidget::Normal(_) => (self.needs_update)(),
@@ -258,14 +306,14 @@ where
     /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
     /// a way that reading from one point would interfere in the
     /// update detection of the other point.
-    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn NormalWidget<U>) -> B) -> B {
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
         match &self.inner {
             InnerWidget::Normal(widget) => f(&*widget.raw_read()),
-            InnerWidget::Actionable(widget) => f(&*widget.raw_read() as &dyn NormalWidget<U>)
+            InnerWidget::Actionable(widget) => f(&*widget.raw_read() as &dyn Widget<U>)
         }
     }
 
-    pub(crate) fn as_actionable(&self) -> Option<&RwData<dyn ActionableWidget<U>>> {
+    pub(crate) fn as_actionable(&self) -> Option<&RwData<dyn SchemeWidget<U>>> {
         match &self.inner {
             InnerWidget::Normal(_) => None,
             InnerWidget::Actionable(widget) => Some(&widget)
@@ -276,7 +324,7 @@ where
     /// [`dyn NormalWidget`][NormalWidget] to a specific type.
     pub fn try_downcast<W>(&self) -> Option<RoData<W>>
     where
-        W: NormalWidget<U> + 'static
+        W: Widget<U> + 'static
     {
         match &self.inner {
             InnerWidget::Normal(widget) => {
@@ -290,16 +338,16 @@ where
         }
     }
 
-    /// Wether or not the [`Widget<U>`] is slow.
+    /// Wether or not the [`WidgetNode<U>`] is slow.
     ///
-    /// Slow [`Widget<U>`]s get updated asynchronously, as to not slow
-    /// down the execution of Parsec.
+    /// Slow [`WidgetNode<U>`]s get updated asynchronously, as to not
+    /// slow down the execution of Parsec.
     pub fn is_slow(&self) -> bool {
         self.is_slow
     }
 }
 
-unsafe impl<U> Sync for Widget<U> where U: Ui {}
+unsafe impl<U> Sync for WidgetNode<U> where U: Ui {}
 
 /// An accumulator used specifically for editing with [`Editor<U>`]s.
 #[derive(Default)]
@@ -313,24 +361,24 @@ pub struct EditAccum {
 pub struct WidgetActor<'a, U, AW>
 where
     U: Ui + 'static,
-    AW: ActionableWidget<U> + ?Sized
+    AW: SchemeWidget<U> + ?Sized
 {
     clearing_needed: bool,
     widget: &'a RwData<AW>,
-    label: &'a U::Area
+    area: &'a U::Area
 }
 
 impl<'a, U, Aw> WidgetActor<'a, U, Aw>
 where
     U: Ui,
-    Aw: ActionableWidget<U> + ?Sized + 'static
+    Aw: SchemeWidget<U> + ?Sized + 'static
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub(crate) fn new(actionable: &'a RwData<Aw>, label: &'a U::Area) -> Self {
+    pub(crate) fn new(actionable: &'a RwData<Aw>, area: &'a U::Area) -> Self {
         WidgetActor {
             clearing_needed: false,
             widget: actionable,
-            label
+            area
         }
     }
 
@@ -382,7 +430,7 @@ where
     {
         let mut widget = self.widget.write();
         for index in 0..widget.cursors().len() {
-            let mover = widget.mover(index, self.label);
+            let mover = widget.mover(index, self.area);
             f(mover);
         }
 
@@ -399,7 +447,7 @@ where
         F: FnMut(Mover<U>)
     {
         let mut widget = self.widget.write();
-        let mover = widget.mover(index, self.label);
+        let mover = widget.mover(index, self.area);
         f(mover);
 
         if let Some(cursors) = widget.mut_cursors() {
@@ -533,12 +581,12 @@ where
 
     /// Undoes the last [`Moment`][crate::history::Moment].
     pub fn undo(&mut self) {
-        self.widget.write().undo(self.label);
+        self.widget.write().undo(self.area);
     }
 
     /// Redoes the last [`Moment`][crate::history::Moment].
     pub fn redo(&mut self) {
-        self.widget.write().redo(self.label);
+        self.widget.write().redo(self.area);
     }
 
     pub fn main_cursor(&self) -> Cursor {
@@ -564,7 +612,8 @@ fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
 
 /// A list of [`RoData<T>`]s to check.
 ///
-/// If any of them return `true`, the [`Widget<U>`] must be updated.
+/// If any of them return `true`, the [`WidgetNode<U>`] must be
+/// updated.
 #[macro_export]
 macro_rules! updaters {
     (@ro_data) => {};

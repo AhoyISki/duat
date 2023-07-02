@@ -11,8 +11,8 @@ use std::{
 use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use tags::form::FormPalette;
-use ui::{Area, ParsecWindow, RoWindows, Ui};
-use widgets::{ActionableWidget, FileWidget};
+use ui::{Area, Node, ParsecWindow, RoWindows, Ui};
+use widgets::{FileWidget, SchemeWidget, Widget};
 
 pub mod commands;
 pub mod data;
@@ -39,7 +39,7 @@ where
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
     active_file: RwData<RoData<FileWidget<U>>>,
-    active_widget: RwLock<RwData<dyn ActionableWidget<U>>>,
+    active_widget: RwLock<RwData<dyn Widget<U>>>,
     pub palette: FormPalette
 }
 
@@ -50,12 +50,9 @@ where
     /// Returns a new instance of [`Controler`].
     fn new(window: ParsecWindow<U>, palette: FormPalette) -> Self {
         // NOTE: For now, we're picking the first file as active.
-        let (widget, _, _) = window
-            .actionable_widgets()
-            .find(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-            .unwrap();
+        let (widget, ..) =
+            window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
 
-        let widget = widget.clone();
         let file = widget.clone().try_downcast::<FileWidget<U>>().unwrap();
 
         let manager = Self {
@@ -93,7 +90,7 @@ where
     /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
     /// `file_id`.
     fn inner_change_to(
-        &self, widget: RwData<dyn ActionableWidget<U>>, mut area: U::Area, file_id: Option<usize>
+        &self, widget: RwData<dyn Widget<U>>, area: &U::Area, file_id: Option<usize>
     ) -> Result<(), ()> {
         area.set_as_active();
 
@@ -104,17 +101,17 @@ where
         let (old_widget, old_area, _) = self
             .inspect_active_window(|window| {
                 window
-                    .actionable_widgets()
+                    .widgets()
                     .find(|(widget, ..)| widget.ptr_eq(&*self.active_widget.read().unwrap()))
                     .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
             })
             .ok_or(())?;
 
-        // Order matters here, since `on_unfocus()` could rely on the
+        // Order matters here, since `on_unfocus` could rely on the
         // `Commands`'s prior `file_id`.
-        old_widget.write().on_unfocus(&old_area);
+        old_widget.write().input_taker().unwrap().on_unfocus(&old_area);
         self.commands.write().file_id = file_id;
-        widget.write().on_focus(&area);
+        widget.write().input_taker().unwrap().on_focus(&area);
 
         *self.active_widget.write().unwrap() = widget;
 
@@ -155,23 +152,23 @@ where
         RoWindows::new(RoData::from(&self.windows))
     }
 
-    /// Returns a special reference that always points the active
+    /// Returns a special reference that always points to the active
     /// [`FileWidget<U>`] of the [`Controler`].
     ///
     /// One place where this function shines is in the
-    /// [`StatusLine<U>`], where the [`parts_global_fn()`] and
-    /// [`default_global_fn()`] methods generate a status line
+    /// [`StatusLine<U>`], where the [`parts_global_fn`] and
+    /// [`default_global_fn`] methods generate a status line
     /// with information that is always pertaining to the active
     /// file, allowing the end user to have only a single status
     /// line for everything.
     ///
     /// If you wish for a reference only to the file that is active
-    /// only at that specific moment, see [`active_file()`]
+    /// only at that specific moment, see [`active_file`]
     ///
     /// [`StatusLine<U>`]: crate::widgets::StatusLine
-    /// [`parts_global_fn()`]: crate::widgets::StatusLine::parts_global_fn
-    /// [`default_global_fn()`]: crate::widgets::StatusLine::default_global_fn
-    /// [`active_file()`]: [Self::active_file]
+    /// [`parts_global_fn`]: crate::widgets::StatusLine::parts_global_fn
+    /// [`default_global_fn`]: crate::widgets::StatusLine::default_global_fn
+    /// [`active_file`]: Self::active_file
     pub fn dynamic_active_file(&self) -> RoNestedData<FileWidget<U>> {
         RoNestedData::from(&self.active_file)
     }
@@ -183,7 +180,7 @@ where
     /// always points to the active file of the [`Controler`], see
     /// [`dynamic_active_file`]
     ///
-    /// [`dynamic_active_file()`]: [Self::dynamic_active_file]
+    /// [`dynamic_active_file`]: Self::dynamic_active_file
     pub fn active_file(&self) -> RoData<FileWidget<U>> {
         self.active_file.read().clone()
     }
@@ -217,7 +214,7 @@ where
         let name = target.as_ref();
         let (widget, area, file_id) = self.inspect_active_window(|window| {
             window
-                .actionable_widgets()
+                .widgets()
                 .find(|(widget, ..)| {
                     widget
                         .inspect_as::<FileWidget<U>, bool>(|file| file.name() == name)
@@ -240,7 +237,7 @@ where
         let (widget, area, file_id) = self
             .inspect_active_window(|window| {
                 window
-                    .actionable_widgets()
+                    .widgets()
                     .cycle()
                     .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
                     .skip_while(|(widget, ..)| {
@@ -265,7 +262,7 @@ where
         let (widget, area, file_id) = self
             .inspect_active_window(|window| {
                 window
-                    .actionable_widgets()
+                    .widgets()
                     .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
                     .take_while(|(widget, ..)| {
                         widget
@@ -283,13 +280,13 @@ where
     /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
     pub fn switch_to<Aw>(&self) -> Result<(), ()>
     where
-        Aw: ActionableWidget<U>
+        Aw: SchemeWidget<U>
     {
         let cur_file_id = self.commands.read().file_id;
         let (widget, area, file_id) = self
             .inspect_active_window(|window| {
                 window
-                    .actionable_widgets()
+                    .widgets()
                     .find(|(widget, _, file_id)| {
                         widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
                     })

@@ -1,4 +1,4 @@
-//! A [`NormalWidget`] that shows the visible line numbers of a
+//! A [`Widget`] that shows the visible line numbers of a
 //! [`FileWidget<U>`].
 //!
 //! This widget has various options to configure the presentation of
@@ -22,7 +22,7 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Write;
 
-use super::{file_widget::FileWidget, NormalWidget, Widget};
+use super::{file_widget::FileWidget, Widget, WidgetNode};
 use crate::{
     data::{DownCastableData, RoData, ReadableData},
     tags::{
@@ -34,7 +34,7 @@ use crate::{
     updaters, Controler
 };
 
-/// A simple [`NormalWidget`] that shows what lines of a
+/// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget<U>`] are shown on screen.
 pub struct LineNumbers<U>
 where
@@ -51,7 +51,7 @@ where
 {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         move |manager| {
             let file = manager.active_file();
 
@@ -64,13 +64,13 @@ where
 
             line_numbers.update_text(width as usize);
 
-            (Widget::normal(line_numbers, updaters![file]), PushSpecs::left_free())
+            (WidgetNode::normal(line_numbers, updaters![file]), PushSpecs::left_free())
         }
     }
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         LineNumbers::config_fn(LineNumbersCfg::default())
     }
 
@@ -114,7 +114,7 @@ where
     }
 }
 
-impl<U> NormalWidget<U> for LineNumbers<U>
+impl<U> Widget<U> for LineNumbers<U>
 where
     U: Ui + 'static
 {

@@ -78,7 +78,7 @@
 //! ```
 //! # use parsec_core::{
 //! #     data::RwData,
-//! #     session::Parsec,
+//! #     session::Session,
 //! #     tags::form::FormPalette,
 //! #     text::PrintCfg,
 //! #     ui::{Constraint, ModNode, PushSpecs, Ui},
@@ -93,30 +93,30 @@
 //!     let commands = mod_node.manager().commands();
 //!     commands.write().try_exec("lol");
 //!
-//!     let specs = PushSpecs::below(Constraint::Length(1.0));
+//!     let specs = PushSpecs::above(Constraint::Length(1.0));
 //!     mod_node.push(CommandLine::default_fn(), specs);
 //! };
 //!
-//! let parsec = Parsec::new(ui, print_cfg, palette, constructor_hook);
+//! let session = Session::new(ui, print_cfg, palette, constructor_hook);
 //!
 //! let my_callers = vec!["lol", "lmao"];
 //! let lol_cmd = Command::new(my_callers, |_, _| {
 //!     Ok(Some(String::from("😜")))
 //! });
 //!
-//! parsec.manager().commands().write().try_add(lol_cmd).unwrap();
+//! session.manager().commands().write().try_add(lol_cmd).unwrap();
 //! # }
 //! ```
 //!
 //! The [`Commands`] struct, in this snippet, is chronologically first
 //! accessed through
 //! ```
-//! # use parsec_core::{commands::Command, session::Parsec, ui::Ui};
-//! # fn test_fn<U>(parsec: Parsec<U>, lol_cmd: Command)
+//! # use parsec_core::{commands::Command, session::Session, ui::Ui};
+//! # fn test_fn<U>(session: Session<U>, lol_cmd: Command)
 //! # where
 //! #     U: Ui
 //! # {
-//! parsec.manager().commands().write().try_add(lol_cmd);
+//! session.manager().commands().write().try_add(lol_cmd);
 //! # }
 //! ```
 //! In this line, the [`Command`] `lol_cmd` is added to the list
@@ -141,7 +141,7 @@ use std::{collections::HashMap, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::data::{RwData, ReadableData};
+use crate::data::{ReadableData, RwData};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -288,7 +288,7 @@ impl<'a> Flags<'a> {
 /// ```rust
 /// # use parsec_core::{
 /// #     commands::{Command, CommandErr, Commands, Flags},
-/// #     data::RwData,
+/// #     data::{RwData, ReadableData},
 /// #     text::Text,
 /// #     ui::Ui
 /// # };
@@ -331,7 +331,7 @@ impl<'a> Flags<'a> {
 /// ```rust
 /// # use parsec_core::{
 /// #     commands::{Command, CommandErr, Commands, Flags},
-/// #     data::RwData,
+/// #     data::{RwData, ReadableData},
 /// #     text::Text,
 /// #     ui::Ui
 /// # };

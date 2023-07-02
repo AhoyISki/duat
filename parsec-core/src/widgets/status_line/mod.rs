@@ -58,9 +58,9 @@ use file_parts::{file_name, len_lines, main_col, main_line, selections};
 pub use status_helpers::status_parts;
 
 use self::Reader::*;
-use super::{file_widget::FileWidget, NormalWidget, Widget};
+use super::{file_widget::FileWidget, Widget, WidgetNode};
 use crate::{
-    data::{DownCastableData, RoNestedData, ReadableData},
+    data::{DownCastableData, ReadableData, RoNestedData},
     tags::{form::FormPalette, Tag},
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
@@ -304,12 +304,12 @@ where
 
     pub fn parts_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) + 'static {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) + 'static {
         move |manager| {
             let file = manager.active_file();
             let palette = &manager.palette;
             let (builder, readers, checker) = build_parts(&file.read(), parts, palette);
-            let widget = Widget::normal(
+            let widget = WidgetNode::normal(
                 StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
                 Box::new(move || file.has_changed() || checker())
             );
@@ -320,30 +320,28 @@ where
 
     pub fn parts_global_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
-        move |manager| {
-            let file = manager.dynamic_active_file();
-            let palette = &manager.palette;
+    ) -> impl FnOnce(&Controler<U>) -> (StatusLine<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        move |controler| {
+            let file = controler.dynamic_active_file();
+            let palette = &controler.palette;
             let (builder, readers, checker) =
                 file.inspect(|file| build_parts(file, parts, palette));
-            let widget = Widget::normal(
-                StatusLine::new(file.clone(), builder, readers),
-                Box::new(move || file.has_changed() || checker())
-            );
+            (    StatusLine::new(file.clone(), builder, readers),
+                Box::new(move || file.has_changed() || checker()),
 
-            (widget, PushSpecs::below(Constraint::Length(1.0)))
+            PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         move |manager| {
             let palette = &manager.palette;
             let file = manager.active_file();
             let parts = default_parts();
             let (builder, readers, _) = build_parts(&file.read(), parts, palette);
-            let widget = Widget::normal(
+            let widget = WidgetNode::normal(
                 StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
                 Box::new(move || file.has_changed())
             );
@@ -354,13 +352,13 @@ where
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_global_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_global_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
         move |manager| {
             let palette = &manager.palette;
             let parts = default_parts();
             let file = manager.dynamic_active_file();
             let (builder, readers, _) = file.inspect(|file| build_parts(file, parts, palette));
-            let widget = Widget::normal(
+            let widget = WidgetNode::normal(
                 StatusLine::new(file.clone(), builder, readers),
                 Box::new(move || file.has_changed())
             );
@@ -370,7 +368,7 @@ where
     }
 }
 
-impl<U> NormalWidget<U> for StatusLine<U>
+impl<U> Widget<U> for StatusLine<U>
 where
     U: Ui + 'static
 {

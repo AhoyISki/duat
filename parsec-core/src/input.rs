@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::{
     data::RwData,
     ui::Ui,
-    widgets::{ActionableWidget, WidgetActor},
+    widgets::{SchemeWidget, WidgetActor},
     Controler
 };
 
@@ -25,13 +25,13 @@ pub trait KeyTakingWidget {
 }
 
 /// A method of editing a file.
-pub trait InputScheme: Send + Sync {
+pub trait Scheme: Send + Sync {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>, controler: &Controler<U>
     ) where
         U: Ui + 'static,
-        A: ActionableWidget<U> + ?Sized;
+        A: SchemeWidget<U> + ?Sized;
 
     /// Wether or not remapped keys should be sent.
     fn send_remapped_keys(&self) -> bool;
@@ -39,9 +39,9 @@ pub trait InputScheme: Send + Sync {
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
-pub struct InputRemap<E>
+pub struct Remap<E>
 where
-    E: InputScheme
+    E: Scheme
 {
     /// Takes this sequence of `KeyEvent`s.
     takes: Vec<KeyEvent>,
@@ -53,9 +53,9 @@ where
 }
 
 // TODO: Add the ability to send keys to an arbitrary object.
-impl<I> InputRemap<I>
+impl<I> Remap<I>
 where
-    I: InputScheme
+    I: Scheme
 {
     pub fn new(
         takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>,
@@ -72,11 +72,11 @@ where
 /// The structure responsible for remapping sequences of characters.
 pub struct KeyRemapper<I>
 where
-    I: InputScheme
+    I: Scheme
 {
     /// The list of remapped sequences to be used with the
     /// `EditingScheme`.
-    remaps: Vec<InputRemap<I>>,
+    remaps: Vec<Remap<I>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
     current_sequence: Vec<KeyEvent>,
@@ -89,7 +89,7 @@ where
 
 impl<I> KeyRemapper<I>
 where
-    I: InputScheme
+    I: Scheme
 {
     pub fn new(editing_scheme: I) -> Self {
         KeyRemapper {
@@ -113,7 +113,7 @@ where
         condition: Box<dyn Fn(&I) -> bool + Send + Sync>
     ) {
         self.unmap(takes, &condition);
-        self.remaps.push(InputRemap::new(takes, gives, condition));
+        self.remaps.push(Remap::new(takes, gives, condition));
     }
 
     /// Send a given key to be processed.
@@ -121,7 +121,7 @@ where
         &mut self, key: KeyEvent, widget: &RwData<A>, area: &U::Area, controler: &Controler<U>
     ) where
         U: Ui + 'static,
-        A: ActionableWidget<U> + ?Sized
+        A: SchemeWidget<U> + ?Sized
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };

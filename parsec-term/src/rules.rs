@@ -7,7 +7,7 @@ use parsec_core::{
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     updaters,
-    widgets::{FileWidget, NormalWidget, Widget},
+    widgets::{FileWidget, Widget, Widget},
     Controler
 };
 
@@ -166,7 +166,7 @@ where
     }
 }
 
-impl<U> NormalWidget<U> for VertRule<U>
+impl<U> Widget> for VertRule<U>
 where
     U: Ui + 'static
 {

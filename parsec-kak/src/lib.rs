@@ -3,9 +3,9 @@ use std::fmt::Display;
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
     data::{RoData, RwData, ReadableData},
-    input::InputScheme,
+    input::Scheme,
     ui::Ui,
-    widgets::{ActionableWidget, CommandLine, WidgetActor},
+    widgets::{SchemeWidget, CommandLine, WidgetActor},
     Controler
 };
 
@@ -49,7 +49,7 @@ impl Editor {
     fn match_insert<U, AW>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>)
     where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized
+        AW: SchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Char(ch), .. } => {
@@ -159,7 +159,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized
+        AW: SchemeWidget<U> + ?Sized
     {
         match key {
             ////////// SessionControl commands.
@@ -276,7 +276,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized
+        AW: SchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Enter, .. } => {
@@ -391,7 +391,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &Controler<U>
     ) where
         U: Ui,
-        E: ActionableWidget<U> + ?Sized
+        E: SchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
@@ -441,12 +441,12 @@ impl Editor {
     }
 }
 
-impl InputScheme for Editor {
+impl Scheme for Editor {
     fn process_key<U, AW>(
         &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: ActionableWidget<U> + ?Sized
+        AW: SchemeWidget<U> + ?Sized
     {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
@@ -466,7 +466,7 @@ impl InputScheme for Editor {
 fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: ActionableWidget<U> + ?Sized
+    E: SchemeWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
@@ -482,7 +482,7 @@ where
 fn move_each_and_select<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: ActionableWidget<U> + ?Sized
+    E: SchemeWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         if !mover.anchor_is_set() {
