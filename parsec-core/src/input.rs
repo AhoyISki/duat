@@ -1,7 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    data::RwData,
     ui::Ui,
     widgets::{SchemeWidget, WidgetActor},
     Controler

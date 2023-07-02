@@ -12,7 +12,7 @@ use cassowary::{
     WeightedRelation::*
 };
 use parsec_core::{
-    data::{RwData, ReadableData},
+    data::{ReadableData, RwData},
     ui::{Axis, Constraint, PushSpecs}
 };
 
@@ -30,7 +30,8 @@ fn unique_rect_index() -> AreaIndex {
 #[derive(Clone)]
 struct VarValue {
     var: Variable,
-    value: Arc<AtomicU16>
+    value: Arc<AtomicU16>,
+    has_changed: Arc<AtomicBool>
 }
 
 impl VarValue {
@@ -38,7 +39,8 @@ impl VarValue {
     fn new() -> Self {
         Self {
             var: Variable::new(),
-            value: Arc::new(AtomicU16::new(0))
+            value: Arc::new(AtomicU16::new(0)),
+            has_changed: Arc::new(AtomicBool::new(false))
         }
     }
 }
@@ -69,6 +71,21 @@ struct VarPoint {
     y: VarValue
 }
 
+impl VarPoint {
+    /// Returns a new instance of [`VarPoint`]
+    fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
+        let element = VarPoint {
+            x: VarValue::new(),
+            y: VarValue::new()
+        };
+
+        vars.insert(element.x.var, (element.x.value.clone(), element.x.has_changed.clone()));
+        vars.insert(element.y.var, (element.y.value.clone(), element.y.has_changed.clone()));
+
+        element
+    }
+}
+
 impl std::fmt::Debug for VarPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
@@ -78,21 +95,6 @@ impl std::fmt::Debug for VarPoint {
             self.y.var,
             self.y.value.load(Ordering::Relaxed)
         ))
-    }
-}
-
-impl VarPoint {
-    /// Returns a new instance of [`VarPoint`]
-    fn new(vars: &mut HashMap<Variable, Arc<AtomicU16>>) -> Self {
-        let element = VarPoint {
-            x: VarValue::new(),
-            y: VarValue::new()
-        };
-
-        vars.insert(element.x.var, element.x.value.clone());
-        vars.insert(element.y.var, element.y.value.clone());
-
-        element
     }
 }
 
@@ -155,7 +157,7 @@ pub struct Rect {
 impl Rect {
     /// Returns a new instance of [`Rect`], already adding its
     /// [`Variable`]s to the list.
-    fn new(vars: &mut HashMap<Variable, Arc<AtomicU16>>) -> Self {
+    fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
         Rect {
             index: unique_rect_index(),
             tl: VarPoint::new(vars),
@@ -168,7 +170,8 @@ impl Rect {
     /// Returns a new [`Rect`], which is supposed to replace an
     /// existing [`Rect`], as its new parent.
     fn new_parent_of(
-        rect: &mut Rect, axis: Axis, vars: &mut HashMap<Variable, Arc<AtomicU16>>, new_glued: bool
+        rect: &mut Rect, axis: Axis,
+        vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>, new_glued: bool
     ) -> Self {
         let parent = Rect {
             index: unique_rect_index(),
@@ -346,8 +349,17 @@ impl Rect {
         self.index
     }
 
+    pub fn has_changed(&self) -> bool {
+        let br_x_changed = self.br.x.has_changed.swap(false, Ordering::Release);
+        let br_y_changed = self.br.y.has_changed.swap(false, Ordering::Release);
+        let tl_x_changed = self.tl.x.has_changed.swap(false, Ordering::Release);
+        let tl_y_changed = self.tl.y.has_changed.swap(false, Ordering::Release);
+
+        br_x_changed || br_y_changed || tl_x_changed || tl_y_changed
+    }
+
     /// Wheter or not [`self`] can be framed.
-    pub fn is_frameable(&self, parent: Option<&Rect>) -> bool {
+    fn is_frameable(&self, parent: Option<&Rect>) -> bool {
         if parent.is_some_and(|parent| parent.lineage.as_ref().unwrap().2) {
             false
         } else if let Some((_, _, clustered)) = &self.lineage {
@@ -625,15 +637,14 @@ impl Frame {
 /// become a thing.
 #[derive(Debug)]
 pub struct Layout {
-    vars: HashMap<Variable, Arc<AtomicU16>>,
+    vars: HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>,
     main: RwData<Rect>,
     max: Coord,
     floating: Vec<RwData<Rect>>,
     frame: Frame,
     edges: Vec<Edge>,
     pub active_index: AreaIndex,
-    pub solver: Solver,
-    pub vars_changed: AtomicBool
+    pub solver: Solver
 }
 
 impl Layout {
@@ -661,8 +672,7 @@ impl Layout {
             edges,
             frame,
             active_index,
-            solver,
-            vars_changed: AtomicBool::new(false)
+            solver
         };
 
         layout.update();
@@ -705,14 +715,11 @@ impl Layout {
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
     pub fn update(&mut self) {
-        let mut vars_changed = false;
-        for (var, value) in self.solver.fetch_changes() {
-            self.vars[var].store(value.round() as u16, Ordering::Release);
-            vars_changed = true;
-        }
+        for (var, new_value) in self.solver.fetch_changes() {
+            let (value, has_changed) = &self.vars[var];
 
-        if vars_changed {
-            self.vars_changed.store(true, Ordering::Release);
+            value.store(new_value.round() as u16, Ordering::Release);
+            has_changed.store(true, Ordering::Release);
         }
     }
 
@@ -866,7 +873,7 @@ impl Layout {
             // This will be useful later, when adding new ratio constraints to the
             // new child.
             let constraint = specs.constraint;
-            let temp = if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
+            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
                 let (children, axis, _) = parent.lineage.as_ref().unwrap();
                 let (res_count, res_len) = children
                     .iter()
@@ -886,9 +893,7 @@ impl Layout {
                 (Some(temp_constraint), new_index)
             } else {
                 (None, new_index)
-            };
-
-            (temp.0, temp.1)
+            }
         });
 
         self.update();

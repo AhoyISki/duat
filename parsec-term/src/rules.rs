@@ -1,13 +1,12 @@
 use parsec_core::{
-    data::{DownCastableData, RoData, ReadableData},
+    data::{DownCastableData, ReadableData, RoData},
     tags::{
         form::{FormPalette, DEFAULT},
         Tag
     },
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
-    updaters,
-    widgets::{FileWidget, Widget, Widget},
+    widgets::{FileWidget, Widget},
     Controler
 };
 
@@ -137,21 +136,27 @@ where
     /// user provided config.
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn config_fn(cfg: VertRuleCfg) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
-        move |manager| {
-            let file = manager.active_file();
+    pub fn config_fn(
+        cfg: VertRuleCfg
+    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+        move |controler| {
+            let file = controler.active_file();
             let builder = file.inspect(|file| setup_builder(&file, &cfg));
 
-            let updater = file.clone();
+            let vert_rule = VertRule {
+                file: file.clone(),
+                builder,
+                cfg
+            };
 
-            let widget = Widget::normal(VertRule { file, builder, cfg }, updaters![updater]);
-            (widget, PushSpecs::left(Constraint::Length(1.0)))
+            let checker = Box::new(move || file.has_changed());
+            (vert_rule, checker, PushSpecs::left(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
         let cfg = VertRuleCfg::default();
         VertRule::config_fn(cfg)
     }
@@ -166,11 +171,11 @@ where
     }
 }
 
-impl<U> Widget> for VertRule<U>
+impl<U> Widget<U> for VertRule<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, _area: &mut U::Area) {
+    fn update(&mut self, _area: &U::Area) {
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;
@@ -192,6 +197,10 @@ where
 
     fn text(&self) -> &Text {
         self.builder.text()
+    }
+
+    fn is_slow(&self) -> bool {
+        false
     }
 }
 

@@ -439,11 +439,6 @@ where
     pub fn manager(&self) -> &Controler<U> {
         &self.manager
     }
-
-    pub fn get_area(&self, index: U::Area) -> Option<U::Area> {
-        let windows = self.manager.windows.read();
-        windows[self.manager.active_window].window.get_area(index)
-    }
 }
 
 pub(crate) fn activate_hook<U, W>(
@@ -511,17 +506,6 @@ impl From<PushSpecs> for Axis {
 /// [`Widget<U>`]s that should be displayed, both static and floating.
 pub trait Window: 'static + Send + Sync {
     type Area: Area;
-
-    /// Gets the [`Area`][Window::Area] associated with a given
-    /// `area_index`.
-    ///
-    /// If the [`Area`][Window::Area] in question is not a
-    /// [`Area`][Window::Area], then returns [`None`].
-    fn get_area(&self, area_index: Self::Area) -> Option<Self::Area>;
-
-    /// Wether or not the layout of the `Ui` (size of widgets, their
-    /// positions, etc) has changed.
-    fn layout_has_changed(&self) -> bool;
 
     /// Bisects the [`Area`][Window::Area] with the given index into
     /// two.
@@ -718,19 +702,6 @@ where
                 .downcast_ref::<FileWidget<U>>()
                 .map(|file_widget| (pos, file_widget.name().to_string()))
         })
-    }
-
-    /// if the layout of [`Window<U>`] has changed (areas resized, new
-    /// areas opened, etc), updates and prints all [`Widget<U>`]s on
-    /// the [`Window`].
-    pub(crate) fn print_if_layout_changed(&self, palette: &FormPalette) {
-        if self.window.layout_has_changed() {
-            for node in &self.nodes {
-                let mut widget = node.widget.write();
-                widget.update(&node.area);
-                widget.print(&node.area, palette);
-            }
-        }
     }
 }
 

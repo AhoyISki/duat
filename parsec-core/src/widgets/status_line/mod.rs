@@ -54,8 +54,6 @@
 mod status_helpers;
 pub mod file_parts;
 
-use std::os::linux::raw::stat;
-
 use file_parts::{file_name, len_lines, main_col, main_line, selections};
 pub use status_helpers::status_parts;
 

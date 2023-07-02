@@ -11,7 +11,7 @@ use std::{
 use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use tags::form::FormPalette;
-use ui::{Area, Node, ParsecWindow, RoWindows, Ui};
+use ui::{Area, ParsecWindow, RoWindows, Ui};
 use widgets::{FileWidget, SchemeWidget, Widget};
 
 pub mod commands;
@@ -229,7 +229,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget, area, file_id);
+            self.inner_change_to(widget, area, file_id)?;
 
             Ok(())
         })
@@ -256,7 +256,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget.clone(), area, file_id);
+            self.inner_change_to(widget.clone(), area, file_id)?;
 
             Ok(())
         })
@@ -300,7 +300,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget, area, file_id);
+            self.inner_change_to(widget, area, file_id)?;
 
             Ok(())
         })

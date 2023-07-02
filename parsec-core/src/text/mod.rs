@@ -13,10 +13,9 @@ use crate::{
     history::Change,
     position::Cursor,
     tags::{
-        form::{FormPalette, EXTRA_SEL, MAIN_SEL},
+        form::{EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
     },
-    ui::{Area, Ui}
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied

@@ -1,6 +1,6 @@
 #![feature(result_option_inspect, iter_collect_into, let_chains)]
 
-use std::{fmt::Debug, io, sync::atomic::Ordering};
+use std::{fmt::Debug, io};
 
 use area::PrintInfo;
 use crossterm::{
@@ -9,7 +9,7 @@ use crossterm::{
 };
 use layout::{Frame, Layout, Line};
 use parsec_core::{
-    data::{RwData, ReadableData},
+    data::{ReadableData, RwData},
     ui::{self, PushSpecs}
 };
 
@@ -31,50 +31,20 @@ pub struct Window {
 }
 
 impl ui::Window for Window {
-    type AreaIndex = AreaIndex;
     type Area = Area;
 
-    fn get_area(&self, index: AreaIndex) -> Option<Self::Area> {
-        let layout = self.layout.clone();
-        if layout.inspect(|layout| {
-            layout.fetch_index(index).filter(|rect| !rect.read().is_parent()).is_some()
-        }) {
-            Some(Area { index, layout })
-        } else {
-            None
-        }
-    }
+    fn bisect(&mut self, area: &Area, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
+        let (child, parent) =
+            self.layout.mutate(|layout| layout.bisect(area.index, specs, is_glued));
 
-    fn layout_has_changed(&self) -> bool {
-        self.layout.inspect(|layout| {
-            let ret = layout.vars_changed.load(Ordering::Acquire);
-            layout.vars_changed.store(false, Ordering::Release);
-            ret
-        })
-    }
-
-    fn bisect(
-        &mut self, index: AreaIndex, specs: PushSpecs, is_glued: bool
-    ) -> (AreaIndex, Option<AreaIndex>) {
-        let mut layout = self.layout.write();
-        layout.bisect(index, specs, is_glued)
+        (
+            Area::new(self.layout.clone(), child),
+            parent.map(|parent| Area::new(self.layout.clone(), parent))
+        )
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {
         todo!()
-    }
-
-    fn is_senior(&self, senior: AreaIndex, mut junior: AreaIndex) -> bool {
-        self.layout.inspect(|layout| {
-            while let Some((parent, _)) = layout.fetch_parent(junior) {
-                junior = parent.read().index();
-                if junior == senior {
-                    break;
-                }
-            }
-
-            junior == senior
-        })
     }
 }
 
@@ -114,7 +84,6 @@ impl Default for Ui {
 }
 
 impl ui::Ui for Ui {
-    type AreaIndex = AreaIndex;
     type PrintInfo = PrintInfo;
     type Area = Area;
     type Window = Window;

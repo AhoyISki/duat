@@ -11,7 +11,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    data::{RwData, ReadableData},
+    data::{ReadableData, RwData},
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},
@@ -68,12 +68,23 @@ impl Coords {
     }
 }
 
+#[derive(Clone)]
 pub struct Area {
     pub layout: RwData<Layout>,
     pub index: AreaIndex
 }
 
+impl PartialEq for Area {
+    fn eq(&self, other: &Self) -> bool {
+        self.layout.ptr_eq(&other.layout) && self.index == other.index
+    }
+}
+
 impl Area {
+    pub fn new(layout: RwData<Layout>, index: AreaIndex) -> Self {
+        Self { layout, index }
+    }
+
     fn is_active(&self) -> bool {
         self.layout.read().active_index == self.index
     }
@@ -107,7 +118,6 @@ impl Area {
 }
 
 impl ui::Area for Area {
-    type AreaIndex = AreaIndex;
     type PrintInfo = PrintInfo;
 
     fn width(&self) -> usize {
@@ -126,11 +136,11 @@ impl ui::Area for Area {
         })
     }
 
-    fn set_as_active(&mut self) {
+    fn set_as_active(&self) {
         self.layout.write().active_index = self.index;
     }
 
-    fn print(&mut self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {
+    fn print(&self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {
         if self.is_active() {
             SHOW_CURSOR.store(false, Ordering::Release);
         }
@@ -182,7 +192,7 @@ impl ui::Area for Area {
         execute!(stdout, ResetColor).unwrap();
     }
 
-    fn change_constraint(&mut self, constraint: Constraint) -> Result<(), ()> {
+    fn change_constraint(&self, constraint: Constraint) -> Result<(), ()> {
         let mut layout = self.layout.write();
         let (parent, index) = layout.fetch_parent(self.index).ok_or(())?;
         if parent.write().change_child_constraint(index, constraint, &mut layout.solver) {
@@ -277,8 +287,24 @@ impl ui::Area for Area {
             .unwrap_or(0)
     }
 
-    fn index(&self) -> AreaIndex {
-        self.index
+    fn has_changed(&self) -> bool {
+        let rect = self.layout.read().fetch_index(self.index).unwrap();
+        let rect = rect.read();
+        rect.has_changed()
+    }
+
+    fn is_senior_of(&self, other: &Self) -> bool {
+        self.layout.inspect(|layout| {
+            let mut parent_index = other.index;
+            while let Some((parent, _)) = layout.fetch_parent(other.index) {
+                parent_index = parent.read().index();
+                if parent_index == self.index {
+                    break;
+                }
+            }
+
+            parent_index == self.index
+        })
     }
 }
 
