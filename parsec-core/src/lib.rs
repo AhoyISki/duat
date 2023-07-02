@@ -47,7 +47,7 @@ impl<U> Controler<U>
 where
     U: Ui
 {
-    /// Returns a new instance of [`Manager`].
+    /// Returns a new instance of [`Controler`].
     fn new(window: ParsecWindow<U>, palette: FormPalette) -> Self {
         // NOTE: For now, we're picking the first file as active.
         let (widget, _, _) = window
@@ -58,7 +58,7 @@ where
         let widget = widget.clone();
         let file = widget.clone().try_downcast::<FileWidget<U>>().unwrap();
 
-        let manager = Controler {
+        let manager = Self {
             windows: RwData::new(vec![window]),
             active_window: 0,
             commands: Commands::new_rw_data(),
@@ -89,119 +89,10 @@ where
         manager
     }
 
-    /// A thread safe, read-write [`Commands`], meant to be used
-    /// globaly.
-    pub fn commands(&self) -> RwData<Commands> {
-        self.commands.clone()
-    }
-
-    pub fn windows(&self) -> RoWindows<U> {
-        RoWindows::new(RoData::from(&self.windows))
-    }
-
-    pub fn dynamic_active_file(&self) -> RoNestedData<FileWidget<U>> {
-        RoNestedData::from(&self.active_file)
-    }
-
-    pub fn active_file(&self) -> RoData<FileWidget<U>> {
-        self.active_file.read().clone()
-    }
-
-    /// Quits Parsec.
-    pub fn quit(&self) {
-        BREAK_LOOP.store(true, Ordering::Release);
-        SHOULD_QUIT.store(true, Ordering::Release);
-    }
-
-    /// Switches to the [`FileWidget<U>`] with the given name.
-    pub fn switch_to_file(&self, target: impl AsRef<str>) -> Result<(), ()> {
-        let name = target.as_ref();
-        let (widget, area, file_id) = self.inspect_active_window(|window| {
-            window
-                .actionable_widgets()
-                .find(|(widget, ..)| {
-                    widget
-                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() == name)
-                        .is_some_and(|name_equals| name_equals)
-                })
-                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-                .ok_or(())
-        })?;
-
-        self.set_active_widget(widget, area, file_id)
-    }
-
-    /// Switches to the next [`FileWidget<U>`].
-    pub fn next_file(&self) -> Result<(), ()> {
-        if self.inspect_active_window(|window| window.file_names().count() < 2) {
-            return Err(());
-        }
-
-        let cur_name = self.active_file.inspect(|file| file.read().name());
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .actionable_widgets()
-                    .cycle()
-                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                    .skip_while(|(widget, ..)| {
-                        widget
-                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                            .unwrap()
-                    })
-                    .nth(1)
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
-
-        self.set_active_widget(widget.clone(), area, file_id)
-    }
-
-    /// Switches to the previous [`FileWidget<U>`].
-    pub fn prev_file(&self) -> Result<(), ()> {
-        if self.inspect_active_window(|window| window.file_names().count() < 2) {
-            return Err(());
-        }
-        let cur_name = self.active_file.inspect(|file| file.read().name());
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .actionable_widgets()
-                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                    .take_while(|(widget, ..)| {
-                        widget
-                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                            .unwrap()
-                    })
-                    .last()
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
-
-        self.set_active_widget(widget, area, file_id)
-    }
-
-    /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
-    pub fn switch_to<Aw>(&self) -> Result<(), ()>
-    where
-        Aw: ActionableWidget<U>
-    {
-        let cur_file_id = self.commands.read().file_id;
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .actionable_widgets()
-                    .find(|(widget, _, file_id)| {
-                        widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
-                    })
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
-
-        self.set_active_widget(widget, area, file_id)
-    }
-
-    fn set_active_widget(
+    /// Changes `self.active_widget`, given the target
+    /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
+    /// `file_id`.
+    fn inner_change_to(
         &self, widget: RwData<dyn ActionableWidget<U>>, mut area: U::Area, file_id: Option<usize>
     ) -> Result<(), ()> {
         area.set_as_active();
@@ -230,11 +121,82 @@ where
         Ok(())
     }
 
+    /// Inspects the currently active window.
+    fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
+        self.windows.inspect(|windows| f(&windows[self.active_window]))
+    }
+}
+
+/// # Querying Functions
+///
+/// These functions do not trigger any internal mutability within the
+/// [`Controler`], and only serve to return information to the caller.
+impl<U> Controler<U>
+where
+    U: Ui
+{
     /// The name of the active [`FileWidget<U>`].
+    ///
+    /// Note that, even while a non [`FileWidget<U>`] is active, this
+    /// will return the name of the last [`FileWidget<U>`] to be
+    /// active.
     pub fn active_file_name(&self) -> String {
         self.active_file.inspect(|file| file.read().name())
     }
 
+    /// A thread safe, read-write [`Commands`], meant to be used
+    /// globaly.
+    pub fn commands(&self) -> RwData<Commands> {
+        self.commands.clone()
+    }
+
+    /// A read only list of [`ParsecWindow<U>`]s.
+    pub fn windows(&self) -> RoWindows<U> {
+        RoWindows::new(RoData::from(&self.windows))
+    }
+
+    /// Returns a special reference that always points the active
+    /// [`FileWidget<U>`] of the [`Controler`].
+    ///
+    /// One place where this function shines is in the
+    /// [`StatusLine<U>`], where the [`parts_global_fn()`] and
+    /// [`default_global_fn()`] methods generate a status line
+    /// with information that is always pertaining to the active
+    /// file, allowing the end user to have only a single status
+    /// line for everything.
+    ///
+    /// If you wish for a reference only to the file that is active
+    /// only at that specific moment, see [`active_file()`]
+    ///
+    /// [`StatusLine<U>`]: crate::widgets::StatusLine
+    /// [`parts_global_fn()`]: crate::widgets::StatusLine::parts_global_fn
+    /// [`default_global_fn()`]: crate::widgets::StatusLine::default_global_fn
+    /// [`active_file()`]: [Self::active_file]
+    pub fn dynamic_active_file(&self) -> RoNestedData<FileWidget<U>> {
+        RoNestedData::from(&self.active_file)
+    }
+
+    /// A read only reference to the currently active
+    /// [`FileWidget<U>`].
+    ///
+    /// If you wish for a reference that updates itself, such that it
+    /// always points to the active file of the [`Controler`], see
+    /// [`dynamic_active_file`]
+    ///
+    /// [`dynamic_active_file()`]: [Self::dynamic_active_file]
+    pub fn active_file(&self) -> RoData<FileWidget<U>> {
+        self.active_file.read().clone()
+    }
+}
+
+/// # Modification Functions
+///
+/// These functions are used to alter the state of Parsec through the
+/// internal mutability pattern.
+impl<U> Controler<U>
+where
+    U: Ui
+{
     pub fn return_to_file(&self) -> Result<(), ()> {
         let cur_name = self.active_file.inspect(|file| file.read().name());
         self.switch_to_file(cur_name)
@@ -244,8 +206,98 @@ where
         self.commands.read().try_exec(cmd.to_string())
     }
 
-    fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
-        self.windows.inspect(|windows| f(&windows[self.active_window]))
+    /// Quits Parsec.
+    pub fn quit(&self) {
+        BREAK_LOOP.store(true, Ordering::Release);
+        SHOULD_QUIT.store(true, Ordering::Release);
+    }
+
+    /// Switches to the [`FileWidget<U>`] with the given name.
+    pub fn switch_to_file(&self, target: impl AsRef<str>) -> Result<(), ()> {
+        let name = target.as_ref();
+        let (widget, area, file_id) = self.inspect_active_window(|window| {
+            window
+                .actionable_widgets()
+                .find(|(widget, ..)| {
+                    widget
+                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() == name)
+                        .is_some_and(|name_equals| name_equals)
+                })
+                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .ok_or(())
+        })?;
+
+        self.inner_change_to(widget, area, file_id)
+    }
+
+    /// Switches to the next [`FileWidget<U>`].
+    pub fn next_file(&self) -> Result<(), ()> {
+        if self.inspect_active_window(|window| window.file_names().count() < 2) {
+            return Err(());
+        }
+
+        let cur_name = self.active_file.inspect(|file| file.read().name());
+        let (widget, area, file_id) = self
+            .inspect_active_window(|window| {
+                window
+                    .actionable_widgets()
+                    .cycle()
+                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
+                    .skip_while(|(widget, ..)| {
+                        widget
+                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                            .unwrap()
+                    })
+                    .nth(1)
+                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+            })
+            .ok_or(())?;
+
+        self.inner_change_to(widget.clone(), area, file_id)
+    }
+
+    /// Switches to the previous [`FileWidget<U>`].
+    pub fn prev_file(&self) -> Result<(), ()> {
+        if self.inspect_active_window(|window| window.file_names().count() < 2) {
+            return Err(());
+        }
+        let cur_name = self.active_file.inspect(|file| file.read().name());
+        let (widget, area, file_id) = self
+            .inspect_active_window(|window| {
+                window
+                    .actionable_widgets()
+                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
+                    .take_while(|(widget, ..)| {
+                        widget
+                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                            .unwrap()
+                    })
+                    .last()
+                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+            })
+            .ok_or(())?;
+
+        self.inner_change_to(widget, area, file_id)
+    }
+
+    /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
+    pub fn switch_to<Aw>(&self) -> Result<(), ()>
+    where
+        Aw: ActionableWidget<U>
+    {
+        let cur_file_id = self.commands.read().file_id;
+        let (widget, area, file_id) = self
+            .inspect_active_window(|window| {
+                window
+                    .actionable_widgets()
+                    .find(|(widget, _, file_id)| {
+                        widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
+                    })
+                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+            })
+            .ok_or(())?;
+
+        self.inner_change_to(widget, area, file_id)
     }
 }
 

@@ -273,7 +273,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::Command`.
     fn match_command<U, AW>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &Controler<U>
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
         AW: ActionableWidget<U> + ?Sized
@@ -281,7 +281,7 @@ impl Editor {
         match key {
             KeyEvent { code: Enter, .. } => {
                 actor.edit_on_main(|mut editor| editor.insert('\n'));
-                if let Ok(_) = controls.return_to_file() {
+                if let Ok(_) = controler.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }
@@ -378,7 +378,7 @@ impl Editor {
             }
 
             KeyEvent { code: Esc, .. } => {
-                if let Ok(_) = controls.return_to_file() {
+                if let Ok(_) = controler.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }

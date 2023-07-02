@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    data::{RoData, RwData, ReadableData, RawReadableData},
+    data::{RawReadableData, ReadableData, RoData, RwData},
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
@@ -773,5 +773,13 @@ where
     pub fn inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
         let windows = self.0.read();
         windows.get(index).map(|window| f(RoWindow(window)))
+    }
+
+    pub fn try_inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
+        self.0
+            .try_read()
+            .map(|windows| windows.get(index).map(|window| f(RoWindow(window))))
+            .ok()
+            .flatten()
     }
 }
