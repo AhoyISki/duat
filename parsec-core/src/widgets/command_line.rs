@@ -14,10 +14,10 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{SchemeWidget, EditAccum, Widget, WidgetNode};
+use super::{EditAccum, SchemeWidget, Widget};
 use crate::{
     commands::{Command, Commands},
-    data::{DownCastableData, RwData, ReadableData},
+    data::{DownCastableData, ReadableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{Constraint, PrintInfo, PushSpecs, Ui},
@@ -48,27 +48,28 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
+    pub fn prompt_fn(
+        prompt: impl ToString
+    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
         let prompt = prompt.to_string();
-        move |manager| {
-            let command_line = CommandLine::<U> {
+        move |controler| {
+            let command_line = Self {
                 text: Text::default_string(),
                 print_info: U::PrintInfo::default(),
                 cursor: [Cursor::default()],
-                commands: manager.commands(),
+                commands: controler.commands(),
                 prompt: RwData::new(prompt + " ")
             };
 
-            add_commands(manager, &command_line);
+            add_commands(controler, &command_line);
 
-            let widget = WidgetNode::actionable(command_line, Box::new(|| false));
-            (widget, PushSpecs::below(Constraint::Length(1.0)))
+            (command_line, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
         move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
@@ -80,8 +81,7 @@ where
 
             add_commands(manager, &command_line);
 
-            let widget = WidgetNode::actionable(command_line, Box::new(|| false));
-            (widget, PushSpecs::below(Constraint::Length(1.0)))
+            (command_line, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }
@@ -90,7 +90,7 @@ impl<U> Widget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, area: &mut U::Area) {
+    fn update(&mut self, area: &U::Area) {
         let print_cfg = PrintCfg::default();
         self.print_info
             .scroll_to_gap(&self.text, self.cursor[0].caret(), area, &print_cfg);
@@ -98,6 +98,14 @@ where
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn is_slow(&self) -> bool {
+        false
+    }
+
+    fn input_taker(&mut self) -> Option<super::InputTaker<U>> {
+        Some(super::InputTaker::Scheme(self))
     }
 }
 

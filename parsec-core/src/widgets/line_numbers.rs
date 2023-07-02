@@ -22,16 +22,16 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Write;
 
-use super::{file_widget::FileWidget, Widget, WidgetNode};
+use super::{file_widget::FileWidget, Widget};
 use crate::{
-    data::{DownCastableData, RoData, ReadableData},
+    data::{DownCastableData, ReadableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag
     },
     text::{Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
-    updaters, Controler
+    Controler
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -51,9 +51,11 @@ where
 {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
-        move |manager| {
-            let file = manager.active_file();
+    pub fn config_fn(
+        cfg: LineNumbersCfg
+    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+        move |controler| {
+            let file = controler.active_file();
 
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
@@ -64,13 +66,13 @@ where
 
             line_numbers.update_text(width as usize);
 
-            (WidgetNode::normal(line_numbers, updaters![file]), PushSpecs::left_free())
+            (line_numbers, Box::new(move || file.has_changed()), PushSpecs::left_free())
         }
     }
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (WidgetNode<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
         LineNumbers::config_fn(LineNumbersCfg::default())
     }
 
@@ -118,7 +120,7 @@ impl<U> Widget<U> for LineNumbers<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, area: &mut U::Area) {
+    fn update(&mut self, area: &U::Area) {
         let width = self.calculate_width();
         area.change_constraint(Constraint::Length(width)).unwrap();
 
@@ -127,6 +129,10 @@ where
 
     fn text(&self) -> &Text {
         &self.builder.text()
+    }
+
+    fn is_slow(&self) -> bool {
+        false
     }
 }
 

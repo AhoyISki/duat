@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{cmp::min, fs, path::PathBuf};
 
-use super::{SchemeWidget, EditAccum, Widget, WidgetNode, InputTaker};
+use super::{EditAccum, InputTaker, SchemeWidget, Widget};
 use crate::{
     data::DownCastableData,
     history::History,
@@ -248,7 +248,7 @@ impl<U> Widget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {
-    fn update(&mut self, area: &mut U::Area) {
+    fn update(&mut self, area: &U::Area) {
         self.print_info.scroll_to_gap(
             &self.text,
             self.main_cursor().caret(),
@@ -260,6 +260,10 @@ where
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn is_slow(&self) -> bool {
+        false
     }
 
     fn scroll_vertically(&mut self, _d_y: i32) {

@@ -8,7 +8,7 @@ use crate::{
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
-    widgets::{FileWidget, SchemeWidget, Widget, WidgetNode},
+    widgets::{FileWidget, Widget},
     Controler
 };
 
@@ -172,12 +172,12 @@ pub trait Area: Clone + Send + Sync + PartialEq {
     ///
     /// Should make [`self`] the active [`Area`] while deactivating
     /// any other active [`Area`].
-    fn set_as_active(&mut self);
+    fn set_as_active(&self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(&mut self, text: &Text, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette);
+    fn print(&self, text: &Text, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette);
 
-    fn change_constraint(&mut self, constraint: Constraint) -> Result<(), ()>;
+    fn change_constraint(&self, constraint: Constraint) -> Result<(), ()>;
 
     //////////////////// Queries
     /// The amount of rows of the screen that the [`Iterator`] takes
@@ -209,18 +209,49 @@ pub trait Area: Clone + Send + Sync + PartialEq {
     fn col_at_dist(
         &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
     ) -> usize;
+
+    fn has_changed(&self) -> bool;
+
+    fn is_senior_of(&self, other: &Self) -> bool;
 }
 
 /// Elements related to the [`Widget<U>`]s.
 pub struct Node<U>
 where
-    U: Ui + ?Sized
+    U: Ui
 {
     widget: RwData<dyn Widget<U>>,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
     file_id: Option<usize>
 }
+
+impl<U> Node<U>
+where
+    U: Ui
+{
+    pub fn needs_update(&self) -> bool {
+        let widget_changed = self.widget.has_changed();
+        let area_changed = self.area.has_changed();
+        (self.checker)() || widget_changed || area_changed
+    }
+
+    pub fn update(&self) {
+        self.widget.write().update(&self.area);
+    }
+
+    pub fn print(&self, palette: &FormPalette) {
+        let widget = self.widget.read();
+        widget.print(&self.area, palette)
+    }
+
+    pub fn is_slow(&self) -> bool {
+        self.widget.read().is_slow()
+    }
+}
+
+unsafe impl<U> Send for Node<U> where U: Ui {}
+unsafe impl<U> Sync for Node<U> where U: Ui {}
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -314,7 +345,7 @@ where
     ) -> (U::Area, Option<U::Area>)
     where
         W: Widget<U>,
-        F: Fn() -> bool
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, _) = f(self.manager);
         let file_id = self.manager.commands.read().file_id;
@@ -323,17 +354,17 @@ where
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(&*mod_area, widget, checker, specs, file_id, true);
 
-            if let (Some(new_parent), true) = (parent, self.is_file) {
-                if window.window.is_senior(new_parent, window.files_area) {
-                    window.files_area = new_parent;
+            if let (Some(parent), true) = (&parent, self.is_file) {
+                if parent.is_senior_of(&window.files_area) {
+                    window.files_area = parent.clone();
                 }
             }
 
             (child, parent)
         });
 
-        if let Some(parent) = parent {
-            *self.mod_area.write().unwrap() = parent;
+        if let Some(parent) = &parent {
+            *self.mod_area.write().unwrap() = parent.clone();
         }
 
         (child, parent)
@@ -359,16 +390,16 @@ where
     ) -> (U::Area, Option<U::Area>)
     where
         W: Widget<U>,
-        F: Fn() -> bool
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, _) = f(self.manager);
         let file_id = self.manager.commands.read().file_id;
-        let (new_area, pushed_area) = self.manager.windows.mutate(|windows| {
+        let (child, parent) = self.manager.windows.mutate(|windows| {
             let window = &mut windows[self.manager.active_window];
             window.push(&area, widget, checker, specs, file_id, true)
         });
 
-        (new_area, pushed_area)
+        (child, parent)
     }
 
     pub fn push_specd<W, F>(
@@ -376,7 +407,7 @@ where
     ) -> (U::Area, Option<U::Area>)
     where
         W: Widget<U>,
-        F: Fn() -> bool
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, specs) = (f)(self.manager);
         let file_id = self.manager.commands.read().file_id;
@@ -385,17 +416,17 @@ where
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(&*mod_area, widget, checker, specs, file_id, true);
 
-            if let (Some(new_parent), true) = (parent, self.is_file) {
-                if window.window.is_senior(new_parent, window.files_area) {
-                    window.files_area = new_parent;
+            if let (Some(parent), true) = (&parent, self.is_file) {
+                if parent.is_senior_of(&window.files_area) {
+                    window.files_area = parent.clone();
                 }
             }
 
             (child, parent)
         });
 
-        if let Some(new_parent) = parent {
-            *self.mod_area.write().unwrap() = new_parent;
+        if let Some(parent) = &parent {
+            *self.mod_area.write().unwrap() = parent.clone();
         }
 
         (child, parent)
@@ -426,7 +457,7 @@ pub(crate) fn activate_hook<U, W>(
         let window = &windows[manager.active_window];
 
         let node = window.nodes.iter().find(|Node { area, .. }| *area == mod_area).unwrap();
-        let widget = node.widget.try_downcast::<W>().unwrap();
+        let widget = node.widget.clone().try_downcast::<W>().unwrap();
 
         (RoData::from(&widget), node.file_id)
     });
@@ -536,8 +567,6 @@ pub trait Window: 'static + Send + Sync {
     /// Requests that the width be enough to fit a certain piece of
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
-
-    fn is_senior(&self, senior: Self::Area, junior: Self::Area) -> bool;
 }
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -576,12 +605,17 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new(ui: &mut U, widget: impl Widget<U>) -> (Self, U::Area) {
+    pub fn new<W, F>(ui: &mut U, mut widget: W, checker: F) -> (Self, U::Area)
+    where
+        W: Widget<U>,
+        F: Fn() -> bool + 'static
+    {
         let (window, mut area) = ui.new_window();
         widget.update(&mut area);
 
         let main_node = Node {
             widget: RwData::new_unsized(Arc::new(RwLock::new(widget))),
+            checker: Box::new(checker),
             area: area.clone(),
             file_id: Some(unique_file_id())
         };
@@ -597,19 +631,24 @@ where
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push(
-        &mut self, area: &U::Area, widget: impl Widget<U>, checker: impl Fn() -> bool,
-        specs: PushSpecs, file_id: Option<usize>, is_glued: bool
-    ) -> (U::Area, Option<U::Area>) {
+    pub fn push<W, Checker>(
+        &mut self, area: &U::Area, widget: W, checker: Checker, specs: PushSpecs,
+        file_id: Option<usize>, is_glued: bool
+    ) -> (U::Area, Option<U::Area>)
+    where
+        W: Widget<U>,
+        Checker: Fn() -> bool + 'static
+    {
         let (child, parent) = self.window.bisect(area, specs, is_glued);
 
         let node = Node {
             widget: RwData::new_unsized(Arc::new(RwLock::new(widget))),
-            area: child,
+            checker: Box::new(checker),
+            area: child.clone(),
             file_id
         };
 
-        if *area == self.master_area && let Some(new_master_node) = parent {
+        if *area == self.master_area && let Some(new_master_node) = parent.clone() {
             self.master_area = new_master_node;
         }
 
@@ -626,13 +665,13 @@ where
     pub fn push_file(
         &mut self, widget: impl Widget<U>, specs: PushSpecs
     ) -> (U::Area, Option<U::Area>) {
-        let area = &self.files_area;
+        let area = self.files_area.clone();
         let file_id = unique_file_id();
 
         let checker = || false;
-        let (child, parent) = self.push(area, widget, checker, specs, Some(file_id), false);
-        if let Some(new_parent) = parent {
-            self.files_area = new_parent;
+        let (child, parent) = self.push(&area, widget, checker, specs, Some(file_id), false);
+        if let Some(parent) = &parent {
+            self.files_area = parent.clone();
         }
 
         (child, parent)
@@ -640,10 +679,15 @@ where
 
     /// Pushes a [`Widget<U>`] to the master node of the current
     /// window.
-    pub fn push_to_master(
-        &mut self, widget: impl Widget<U>, checker: impl Fn() -> bool, specs: PushSpecs
-    ) -> (U::Area, Option<U::Area>) {
-        self.push(&self.master_area, widget, checker, specs, None, false)
+    pub fn push_to_master<W, F>(
+        &mut self, widget: W, checker: F, specs: PushSpecs
+    ) -> (U::Area, Option<U::Area>)
+    where
+        W: Widget<U>,
+        F: Fn() -> bool + 'static
+    {
+        let master_area = self.master_area.clone();
+        self.push(&master_area, widget, checker, specs, None, false)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
@@ -654,7 +698,8 @@ where
             |Node {
                  widget,
                  area,
-                 file_id
+                 file_id,
+                 ..
              }| (widget, area, *file_id)
         )
     }
@@ -682,12 +727,8 @@ where
         if self.window.layout_has_changed() {
             for node in &self.nodes {
                 let mut widget = node.widget.write();
-                widget.update(&mut node.area);
-
-                let text = widget.text();
-                let info = widget.print_info();
-                let cfg = widget.print_cfg();
-                text.print::<U>(&mut node.area, info, cfg, palette);
+                widget.update(&node.area);
+                widget.print(&node.area, palette);
             }
         }
     }

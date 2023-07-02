@@ -117,11 +117,11 @@ where
     }
 
     /// Send a given key to be processed.
-    pub fn send_key_to_actionable<U, A>(
-        &mut self, key: KeyEvent, widget: &RwData<A>, area: &U::Area, controler: &Controler<U>
+    pub fn send_key<U, Sw>(
+        &mut self, key: KeyEvent, widget: &mut Sw, area: &U::Area, controler: &Controler<U>
     ) where
         U: Ui + 'static,
-        A: SchemeWidget<U> + ?Sized
+        Sw: SchemeWidget<U> + ?Sized
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };

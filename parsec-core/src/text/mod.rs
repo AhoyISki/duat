@@ -272,15 +272,6 @@ impl Text {
         }
     }
 
-    /// Prints the contents of a given area in a given `EndNode`.
-    pub(crate) fn print<U>(
-        &self, label: &mut U::Area, info: U::PrintInfo, cfg: PrintCfg, palette: &FormPalette
-    ) where
-        U: Ui
-    {
-        label.print(self, info, cfg, palette);
-    }
-
     /// Merges `String`s with the body of text, given a range to
     /// replace.
     fn replace_range(&mut self, old_range: Range<usize>, edit: impl AsRef<str>) {

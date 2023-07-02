@@ -53,6 +53,7 @@ where
         let (widget, ..) =
             window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
 
+        let widget = widget.clone();
         let file = widget.clone().try_downcast::<FileWidget<U>>().unwrap();
 
         let manager = Self {
@@ -98,18 +99,19 @@ where
             *self.active_file.write() = RoData::from(&file);
         }
 
-        let (old_widget, old_area, _) = self
-            .inspect_active_window(|window| {
-                window
-                    .widgets()
-                    .find(|(widget, ..)| widget.ptr_eq(&*self.active_widget.read().unwrap()))
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
+        self.inspect_active_window(|window| {
+            let (widget, area, _) = window
+                .widgets()
+                .find(|(widget, ..)| widget.ptr_eq(&*self.active_widget.read().unwrap()))
+                .ok_or(())?;
+
+            widget.write().input_taker().unwrap().on_unfocus(&area);
+
+            Ok(())
+        })?;
 
         // Order matters here, since `on_unfocus` could rely on the
         // `Commands`'s prior `file_id`.
-        old_widget.write().input_taker().unwrap().on_unfocus(&old_area);
         self.commands.write().file_id = file_id;
         widget.write().input_taker().unwrap().on_focus(&area);
 
@@ -121,6 +123,10 @@ where
     /// Inspects the currently active window.
     fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
         self.windows.inspect(|windows| f(&windows[self.active_window]))
+    }
+
+    fn mutate_active_window<T>(&mut self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
+        self.windows.mutate(|windows| f(&mut windows[self.active_window]))
     }
 }
 
@@ -212,8 +218,8 @@ where
     /// Switches to the [`FileWidget<U>`] with the given name.
     pub fn switch_to_file(&self, target: impl AsRef<str>) -> Result<(), ()> {
         let name = target.as_ref();
-        let (widget, area, file_id) = self.inspect_active_window(|window| {
-            window
+        self.inspect_active_window(|window| {
+            let (widget, area, file_id) = window
                 .widgets()
                 .find(|(widget, ..)| {
                     widget
@@ -221,10 +227,12 @@ where
                         .is_some_and(|name_equals| name_equals)
                 })
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-                .ok_or(())
-        })?;
+                .ok_or(())?;
 
-        self.inner_change_to(widget, area, file_id)
+            self.inner_change_to(widget, area, file_id);
+
+            Ok(())
+        })
     }
 
     /// Switches to the next [`FileWidget<U>`].
@@ -234,23 +242,24 @@ where
         }
 
         let cur_name = self.active_file.inspect(|file| file.read().name());
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .widgets()
-                    .cycle()
-                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                    .skip_while(|(widget, ..)| {
-                        widget
-                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                            .unwrap()
-                    })
-                    .nth(1)
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
+        self.inspect_active_window(|window| {
+            let (widget, area, file_id) = window
+                .widgets()
+                .cycle()
+                .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
+                .skip_while(|(widget, ..)| {
+                    widget
+                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                        .unwrap()
+                })
+                .nth(1)
+                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .ok_or(())?;
 
-        self.inner_change_to(widget.clone(), area, file_id)
+            self.inner_change_to(widget.clone(), area, file_id);
+
+            Ok(())
+        })
     }
 
     /// Switches to the previous [`FileWidget<U>`].
@@ -259,22 +268,21 @@ where
             return Err(());
         }
         let cur_name = self.active_file.inspect(|file| file.read().name());
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .widgets()
-                    .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                    .take_while(|(widget, ..)| {
-                        widget
-                            .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                            .unwrap()
-                    })
-                    .last()
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
+        self.inspect_active_window(|window| {
+            let (widget, area, file_id) = window
+                .widgets()
+                .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
+                .take_while(|(widget, ..)| {
+                    widget
+                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                        .unwrap()
+                })
+                .last()
+                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .ok_or(())?;
 
-        self.inner_change_to(widget, area, file_id)
+            self.inner_change_to(widget, area, file_id)
+        })
     }
 
     /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
@@ -283,18 +291,19 @@ where
         Aw: SchemeWidget<U>
     {
         let cur_file_id = self.commands.read().file_id;
-        let (widget, area, file_id) = self
-            .inspect_active_window(|window| {
-                window
-                    .widgets()
-                    .find(|(widget, _, file_id)| {
-                        widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
-                    })
-                    .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
-            })
-            .ok_or(())?;
+        self.inspect_active_window(|window| {
+            let (widget, area, file_id) = window
+                .widgets()
+                .find(|(widget, _, file_id)| {
+                    widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
+                })
+                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .ok_or(())?;
 
-        self.inner_change_to(widget, area, file_id)
+            self.inner_change_to(widget, area, file_id);
+
+            Ok(())
+        })
     }
 }
 
