@@ -141,7 +141,7 @@ use std::{collections::HashMap, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::data::RwData;
+use crate::data::{RwData, ReadableData};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.

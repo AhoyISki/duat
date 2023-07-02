@@ -4,12 +4,12 @@ use std::{
 };
 
 use crate::{
-    data::{RoData, RwData},
+    data::{RoData, RwData, ReadableData, RawReadableData},
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
     widgets::{ActionableWidget, FileWidget, NormalWidget, Widget},
-    Manager
+    Controler
 };
 
 fn unique_file_id() -> usize {
@@ -259,7 +259,7 @@ pub struct ModNode<'a, U>
 where
     U: Ui
 {
-    manager: &'a mut Manager<U>,
+    manager: &'a mut Controler<U>,
     is_file: bool,
     mod_area: RwLock<U::AreaIndex>
 }
@@ -313,7 +313,7 @@ where
     /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
     /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
     pub fn push(
-        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), specs: PushSpecs
+        &self, f: impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs), specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let (widget, _) = f(self.manager);
         let file_id = self.manager.commands.read().file_id;
@@ -359,7 +359,7 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to(
-        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
+        &self, f: impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs), index: U::AreaIndex,
         specs: PushSpecs
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let (widget, _) = f(self.manager);
@@ -378,7 +378,7 @@ where
     }
 
     pub fn push_specd(
-        &self, f: impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs)
+        &self, f: impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs)
     ) -> (U::AreaIndex, Option<U::AreaIndex>) {
         let (widget, specs) = (f)(self.manager);
         let file_id = self.manager.commands.read().file_id;
@@ -412,7 +412,7 @@ where
         &self.manager.palette
     }
 
-    pub fn manager(&self) -> &Manager<U> {
+    pub fn manager(&self) -> &Controler<U> {
         &self.manager
     }
 
@@ -423,7 +423,7 @@ where
 }
 
 pub(crate) fn activate_hook<U, Nw>(
-    manager: &mut Manager<U>, mod_area: U::AreaIndex,
+    manager: &mut Controler<U>, mod_area: U::AreaIndex,
     constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<Nw>)
 ) where
     U: Ui,
@@ -668,7 +668,8 @@ where
     /// [`self`].
     pub(crate) fn actionable_widgets(
         &self
-    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Area, Option<usize>)> + '_ {
+    ) -> impl Iterator<Item = (&RwData<dyn ActionableWidget<U>>, U::Area, Option<usize>)> + Clone + '_
+    {
         self.nodes.iter().filter_map(|node| {
             node.widget.as_actionable().map(|widget| {
                 let area = self.window.get_area(node.index).unwrap();

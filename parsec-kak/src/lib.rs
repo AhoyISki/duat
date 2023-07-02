@@ -2,11 +2,11 @@ use std::fmt::Display;
 
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
-    data::{RoData, RwData},
+    data::{RoData, RwData, ReadableData},
     input::InputScheme,
     ui::Ui,
     widgets::{ActionableWidget, CommandLine, WidgetActor},
-    Controls
+    Controler
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -156,7 +156,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U, AW>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &mut Controls<U>
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
         AW: ActionableWidget<U> + ?Sized
@@ -168,7 +168,7 @@ impl Editor {
                 modifiers: KeyModifiers::CONTROL,
                 ..
             } => {
-                controls.quit();
+                controler.quit();
             }
 
             ////////// Movement keys that retain or create selections.
@@ -252,7 +252,7 @@ impl Editor {
             KeyEvent {
                 code: Char(':'), ..
             } => {
-                if let Ok(_) = controls.switch_to_widget::<CommandLine<U>>() {
+                if let Ok(_) = controler.switch_to::<CommandLine<U>>() {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
@@ -273,7 +273,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::Command`.
     fn match_command<U, AW>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &mut Controls<U>
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controls: &Controler<U>
     ) where
         U: Ui,
         AW: ActionableWidget<U> + ?Sized
@@ -388,7 +388,7 @@ impl Editor {
 
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U, E>(
-        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &mut Controls<U>
+        &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &Controler<U>
     ) where
         U: Ui,
         E: ActionableWidget<U> + ?Sized
@@ -443,7 +443,7 @@ impl Editor {
 
 impl InputScheme for Editor {
     fn process_key<U, AW>(
-        &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controls: &mut Controls<U>
+        &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
         AW: ActionableWidget<U> + ?Sized
@@ -451,9 +451,9 @@ impl InputScheme for Editor {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
             Mode::Insert => self.match_insert(key, actor),
-            Mode::Normal => self.match_normal(key, actor, controls),
-            Mode::Command => self.match_command(key, actor, controls),
-            Mode::GoTo => self.match_goto(key, actor, controls),
+            Mode::Normal => self.match_normal(key, actor, controler),
+            Mode::Command => self.match_command(key, actor, controler),
+            Mode::GoTo => self.match_goto(key, actor, controler),
             Mode::View => todo!()
         }
     }

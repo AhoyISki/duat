@@ -60,11 +60,11 @@ pub use status_helpers::status_parts;
 use self::Reader::*;
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    data::{DownCastableData, RoNestedData},
+    data::{DownCastableData, RoNestedData, ReadableData},
     tags::{form::FormPalette, Tag},
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
-    Manager
+    Controler
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -304,7 +304,7 @@ where
 
     pub fn parts_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) + 'static {
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) + 'static {
         move |manager| {
             let file = manager.active_file();
             let palette = &manager.palette;
@@ -320,7 +320,7 @@ where
 
     pub fn parts_global_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let file = manager.dynamic_active_file();
             let palette = &manager.palette;
@@ -337,7 +337,7 @@ where
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let palette = &manager.palette;
             let file = manager.active_file();
@@ -354,7 +354,7 @@ where
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
-    pub fn default_global_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_global_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let palette = &manager.palette;
             let parts = default_parts();

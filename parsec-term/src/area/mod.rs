@@ -11,7 +11,7 @@ use crossterm::{
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
-    data::RwData,
+    data::{RwData, ReadableData},
     position::Pos,
     tags::{
         form::{FormFormer, FormPalette},

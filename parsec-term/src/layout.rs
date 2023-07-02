@@ -12,7 +12,7 @@ use cassowary::{
     WeightedRelation::*
 };
 use parsec_core::{
-    data::RwData,
+    data::{RwData, ReadableData},
     ui::{Axis, Constraint, PushSpecs}
 };
 

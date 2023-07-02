@@ -1,5 +1,5 @@
 use parsec_core::{
-    data::{DownCastableData, RoData},
+    data::{DownCastableData, RoData, ReadableData},
     tags::{
         form::{FormPalette, DEFAULT},
         Tag
@@ -8,7 +8,7 @@ use parsec_core::{
     ui::{Constraint, PushSpecs, Ui},
     updaters,
     widgets::{FileWidget, NormalWidget, Widget},
-    Manager
+    Controler
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -137,7 +137,7 @@ where
     /// user provided config.
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn config_fn(cfg: VertRuleCfg) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn config_fn(cfg: VertRuleCfg) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let file = manager.active_file();
             let builder = file.inspect(|file| setup_builder(&file, &cfg));
@@ -151,7 +151,7 @@ where
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         let cfg = VertRuleCfg::default();
         VertRule::config_fn(cfg)
     }

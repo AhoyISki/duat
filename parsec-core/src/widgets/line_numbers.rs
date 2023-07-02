@@ -24,14 +24,14 @@ use std::fmt::Write;
 
 use super::{file_widget::FileWidget, NormalWidget, Widget};
 use crate::{
-    data::{DownCastableData, RoData},
+    data::{DownCastableData, RoData, ReadableData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag
     },
     text::{Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
-    updaters, Manager
+    updaters, Controler
 };
 
 /// A simple [`NormalWidget`] that shows what lines of a
@@ -51,7 +51,7 @@ where
 {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn config_fn(cfg: LineNumbersCfg) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let file = manager.active_file();
 
@@ -70,7 +70,7 @@ where
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
-    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         LineNumbers::config_fn(LineNumbersCfg::default())
     }
 

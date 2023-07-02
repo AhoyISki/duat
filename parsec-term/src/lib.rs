@@ -9,7 +9,7 @@ use crossterm::{
 };
 use layout::{Frame, Layout, Line};
 use parsec_core::{
-    data::RwData,
+    data::{RwData, ReadableData},
     ui::{self, PushSpecs}
 };
 

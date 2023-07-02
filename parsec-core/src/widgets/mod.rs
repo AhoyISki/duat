@@ -30,7 +30,7 @@ use std::{cmp::Ordering, ops::Range, sync::Arc};
 use no_deadlocks::RwLock;
 
 use crate::{
-    data::{DownCastableData, RoData, RwData},
+    data::{DownCastableData, RoData, RwData, ReadableData, RawReadableData},
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
@@ -260,14 +260,8 @@ where
     /// update detection of the other point.
     pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn NormalWidget<U>) -> B) -> B {
         match &self.inner {
-            InnerWidget::Normal(widget) => {
-                let widget = widget.raw_read();
-                f(&*widget)
-            }
-            InnerWidget::Actionable(widget) => {
-                let widget = widget.raw_read();
-                f(&*widget as &dyn NormalWidget<U>)
-            }
+            InnerWidget::Normal(widget) => f(&*widget.raw_read()),
+            InnerWidget::Actionable(widget) => f(&*widget.raw_read() as &dyn NormalWidget<U>)
         }
     }
 
@@ -601,4 +595,4 @@ macro_rules! updaters {
 pub use command_line::CommandLine;
 pub use file_widget::FileWidget;
 pub use line_numbers::{Align, LineNumbers, LineNumbersCfg};
-pub use status_line::{StatusLine, StatusPart, status_parts, file_parts};
+pub use status_line::{file_parts, status_parts, StatusLine, StatusPart};

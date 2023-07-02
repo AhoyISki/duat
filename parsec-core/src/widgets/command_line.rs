@@ -17,11 +17,11 @@
 use super::{ActionableWidget, EditAccum, NormalWidget, Widget};
 use crate::{
     commands::{Command, Commands},
-    data::{DownCastableData, RwData},
+    data::{DownCastableData, RwData, ReadableData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{Constraint, PrintInfo, PushSpecs, Ui},
-    Manager
+    Controler
 };
 
 /// An [`ActionableWidget<U>`] whose primary purpose is to execute
@@ -48,7 +48,7 @@ where
 {
     /// Returns a function that outputs a [`CommandLine<U>`] with a
     /// custom prompt.
-    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn prompt_fn(prompt: impl ToString) -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         let prompt = prompt.to_string();
         move |manager| {
             let command_line = CommandLine::<U> {
@@ -68,7 +68,7 @@ where
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs) {
+    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Widget<U>, PushSpecs) {
         move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
@@ -164,7 +164,7 @@ where
 
 /// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
 /// [`Commands`].
-fn add_commands<U>(manager: &Manager<U>, command_line: &CommandLine<U>)
+fn add_commands<U>(manager: &Controler<U>, command_line: &CommandLine<U>)
 where
     U: Ui
 {

@@ -4,7 +4,7 @@ use crate::{
     data::RwData,
     ui::Ui,
     widgets::{ActionableWidget, WidgetActor},
-    Controls
+    Controler
 };
 
 /// A widget that can receive and process input.
@@ -28,8 +28,7 @@ pub trait KeyTakingWidget {
 pub trait InputScheme: Send + Sync {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
-        &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>,
-        session_control: &mut Controls<U>
+        &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>, controler: &Controler<U>
     ) where
         U: Ui + 'static,
         A: ActionableWidget<U> + ?Sized;
@@ -119,7 +118,7 @@ where
 
     /// Send a given key to be processed.
     pub fn send_key_to_actionable<U, A>(
-        &mut self, key: KeyEvent, widget: &RwData<A>, area: &U::Area, mut controls: Controls<U>
+        &mut self, key: KeyEvent, widget: &RwData<A>, area: &U::Area, controler: &Controler<U>
     ) where
         U: Ui + 'static,
         A: ActionableWidget<U> + ?Sized
@@ -163,12 +162,12 @@ where
 
         for key in keys_to_send {
             let widget_actor = WidgetActor::new(widget, area);
-            self.input_scheme.process_key(&key, widget_actor, &mut controls);
+            self.input_scheme.process_key(&key, widget_actor, &controler);
         }
 
         if should_check_new.is_empty() {
             let widget_actor = WidgetActor::new(widget, area);
-            self.input_scheme.process_key(&key, widget_actor, &mut controls);
+            self.input_scheme.process_key(&key, widget_actor, &controler);
         }
 
         self.should_check = should_check_new;
