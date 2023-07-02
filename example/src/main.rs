@@ -19,9 +19,9 @@ use parsec_core::{
     // implemented individually for every editing method.
     input::KeyRemapper,
     join,
-    session::Parsec,
+    session::Session,
     // Tags are a really powerfull part of Parsec. For now,
-    // they handle `Form`s (font styling), cursors, and wrapping,
+    // they handle `Form`s (font styling), cursors,
     // but in the future, they will also allow the creation of buttons
     // and folding zones.
     tags::{
@@ -74,7 +74,7 @@ fn main() {
     // A `Session` is essentially the application itself, it takes a `Ui`,
     // a `PrintCfg`, a `FormPalette`, and a closure that determines
     // what will happen when a new file is opened.
-    let mut parsec = Parsec::new(Ui::default(), print_cfg, palette, move |mod_node, _file| {
+    let mut session = Session::new(Ui::default(), print_cfg, palette, move |mod_node, _file| {
         let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_specd(VertRule::config_fn(cfg));
@@ -87,13 +87,13 @@ fn main() {
         // mod_node.push_specd_to(CommandLine::default_fn(), child);
     });
 
-    let (status_line, _) = parsec.push_specd(StatusLine::default_global_fn());
+    let (status_line, _) = session.push_specd(StatusLine::default_global_fn());
     let specs = PushSpecs::left(Constraint::Percent(50));
-    parsec.cluster_to(CommandLine::default_fn(), status_line, specs);
+    session.cluster_to(CommandLine::default_fn(), &status_line, specs);
 
     // that takes the input, remaps it, and sends it to the `Editor`.
     let mut file_remapper = KeyRemapper::new(editor);
 
     // Start Parsec.
-    parsec.start(&mut file_remapper);
+    session.start(&mut file_remapper);
 }
