@@ -287,7 +287,7 @@ pub struct ModNode<'a, U>
 where
     U: Ui
 {
-    manager: &'a mut Controler<U>,
+    controler: &'a mut Controler<U>,
     is_file: bool,
     mod_area: RwLock<U::Area>
 }
@@ -347,10 +347,9 @@ where
         W: Widget<U>,
         F: Fn() -> bool + 'static
     {
-        let (widget, checker, _) = f(self.manager);
-        let file_id = self.manager.commands.read().file_id;
-        let (child, parent) = self.manager.windows.mutate(|windows| {
-            let window = &mut windows[self.manager.active_window];
+        let (widget, checker, _) = f(self.controler);
+        let file_id = self.controler.commands.read().file_id;
+        let (child, parent) = self.controler.mutate_active_window(|window| {
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(&*mod_area, widget, checker, specs, file_id, true);
 
@@ -392,10 +391,10 @@ where
         W: Widget<U>,
         F: Fn() -> bool + 'static
     {
-        let (widget, checker, _) = f(self.manager);
-        let file_id = self.manager.commands.read().file_id;
-        let (child, parent) = self.manager.windows.mutate(|windows| {
-            let window = &mut windows[self.manager.active_window];
+        let (widget, checker, _) = f(self.controler);
+        let file_id = self.controler.commands.read().file_id;
+        let (child, parent) = self.controler.windows.mutate(|windows| {
+            let window = &mut windows[self.controler.active_window];
             window.push(&area, widget, checker, specs, file_id, true)
         });
 
@@ -409,10 +408,9 @@ where
         W: Widget<U>,
         F: Fn() -> bool + 'static
     {
-        let (widget, checker, specs) = (f)(self.manager);
-        let file_id = self.manager.commands.read().file_id;
-        let (child, parent) = self.manager.windows.mutate(|windows| {
-            let window = &mut windows[self.manager.active_window];
+        let (widget, checker, specs) = (f)(self.controler);
+        let file_id = self.controler.commands.read().file_id;
+        let (child, parent) = self.controler.mutate_active_window(|window| {
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(&*mod_area, widget, checker, specs, file_id, true);
 
@@ -433,45 +431,49 @@ where
     }
 
     pub fn palette(&self) -> &FormPalette {
-        &self.manager.palette
+        &self.controler.palette
     }
 
     pub fn manager(&self) -> &Controler<U> {
-        &self.manager
+        &self.controler
     }
 }
 
 pub(crate) fn activate_hook<U, W>(
-    manager: &mut Controler<U>, mod_area: U::Area,
+    controler: &mut Controler<U>, mod_area: U::Area,
     constructor_hook: &mut dyn FnMut(ModNode<U>, RoData<W>)
 ) where
     U: Ui,
     W: Widget<U>
 {
-    let (widget, file_id) = manager.windows.inspect(|windows| {
-        let window = &windows[manager.active_window];
-
+    let (widget, old_file, old_file_id) = controler.inspect_active_window(|window| {
         let node = window.nodes.iter().find(|Node { area, .. }| *area == mod_area).unwrap();
-        let widget = node.widget.clone().try_downcast::<W>().unwrap();
 
-        (RoData::from(&widget), node.file_id)
+        let old_file_id = node
+            .file_id
+            .map(|file_id| controler.commands.write().file_id.replace(file_id))
+            .flatten();
+
+        let old_file = node.widget.clone().try_downcast::<FileWidget<U>>().map(|file| {
+            std::mem::replace(&mut *controler.active_file.write(), RoData::from(&file))
+        }).ok();
+
+        let widget = RoData::from(&node.widget.clone().try_downcast::<W>().unwrap());
+
+        (widget, old_file, old_file_id)
     });
-    let old_file_id = file_id
-        .map(|file_id| manager.commands.write().file_id.replace(file_id))
-        .flatten();
-
-    if let Ok(file) = widget.clone().try_downcast::<FileWidget<U>>() {
-        *manager.active_file.write() = file;
-    }
 
     let mod_node = ModNode {
-        manager,
+        controler,
         is_file: std::any::TypeId::of::<W>() == std::any::TypeId::of::<FileWidget<U>>(),
         mod_area: RwLock::new(mod_area)
     };
+
     (constructor_hook)(mod_node, widget);
 
-    manager.commands.write().file_id = old_file_id;
+	
+    controler.commands.write().file_id = old_file_id;
+    old_file.map(|file| *controler.active_file.write() = file);
 }
 
 /// A dimension on screen, can either be horizontal or vertical.
@@ -589,10 +591,10 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`ParsecWindow<U>`].
-    pub fn new<W, F>(ui: &mut U, mut widget: W, checker: F) -> (Self, U::Area)
+    pub fn new<W, C>(ui: &mut U, mut widget: W, checker: C) -> (Self, U::Area)
     where
         W: Widget<U>,
-        F: Fn() -> bool + 'static
+        C: Fn() -> bool + 'static
     {
         let (window, mut area) = ui.new_window();
         widget.update(&mut area);
@@ -615,13 +617,13 @@ where
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push<W, Checker>(
-        &mut self, area: &U::Area, widget: W, checker: Checker, specs: PushSpecs,
-        file_id: Option<usize>, is_glued: bool
+    pub fn push<W, C>(
+        &mut self, area: &U::Area, widget: W, checker: C, specs: PushSpecs, file_id: Option<usize>,
+        is_glued: bool
     ) -> (U::Area, Option<U::Area>)
     where
         W: Widget<U>,
-        Checker: Fn() -> bool + 'static
+        C: Fn() -> bool + 'static
     {
         let (child, parent) = self.window.bisect(area, specs, is_glued);
 
@@ -663,12 +665,12 @@ where
 
     /// Pushes a [`Widget<U>`] to the master node of the current
     /// window.
-    pub fn push_to_master<W, F>(
-        &mut self, widget: W, checker: F, specs: PushSpecs
+    pub fn push_to_master<W, C>(
+        &mut self, widget: W, checker: C, specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
         W: Widget<U>,
-        F: Fn() -> bool + 'static
+        C: Fn() -> bool + 'static
     {
         let master_area = self.master_area.clone();
         self.push(&master_area, widget, checker, specs, None, false)

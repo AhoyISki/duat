@@ -90,7 +90,7 @@ where
     /// Changes `self.active_widget`, given the target
     /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
     /// `file_id`.
-    fn inner_change_to(
+    fn inner_switch_to(
         &self, widget: RwData<dyn Widget<U>>, area: &U::Area, file_id: Option<usize>
     ) -> Result<(), ()> {
         area.set_as_active();
@@ -125,7 +125,7 @@ where
         self.windows.inspect(|windows| f(&windows[self.active_window]))
     }
 
-    fn mutate_active_window<T>(&mut self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
+    fn mutate_active_window<T>(&self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
         self.windows.mutate(|windows| f(&mut windows[self.active_window]))
     }
 }
@@ -229,7 +229,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget, area, file_id)?;
+            self.inner_switch_to(widget, area, file_id)?;
 
             Ok(())
         })
@@ -256,7 +256,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget.clone(), area, file_id)?;
+            self.inner_switch_to(widget.clone(), area, file_id)?;
 
             Ok(())
         })
@@ -281,7 +281,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget, area, file_id)
+            self.inner_switch_to(widget, area, file_id)
         })
     }
 
@@ -300,7 +300,7 @@ where
                 .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
                 .ok_or(())?;
 
-            self.inner_change_to(widget, area, file_id)?;
+            self.inner_switch_to(widget, area, file_id)?;
 
             Ok(())
         })
