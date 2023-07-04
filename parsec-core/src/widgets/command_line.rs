@@ -153,10 +153,8 @@ where
         self.text.remove_cursor_tags(self.cursor.as_slice());
 
         // A '\n' indicates that the command has been "entered".
-        if let Some('\n') = text.iter_chars_at(0).last() {
-            let cmd = text.iter_chars_at(self.prompt.read().chars().count()).collect::<String>();
-            let _ = self.commands.read().try_exec(cmd);
-        };
+        let cmd = text.iter_chars_at(self.prompt.read().chars().count() - 1).collect::<String>();
+        let _ = self.commands.read().try_exec(cmd);
     }
 }
 

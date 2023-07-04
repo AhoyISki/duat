@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
-    data::{RoData, RwData, ReadableData},
+    data::{ReadableData, RoData, RwData},
     input::Scheme,
     ui::Ui,
-    widgets::{SchemeInputWidget, CommandLine, WidgetActor},
+    widgets::{CommandLine, SchemeInputWidget, WidgetActor},
     Controler
 };
 
@@ -53,18 +53,18 @@ impl Editor {
     {
         match key {
             KeyEvent { code: Char(ch), .. } => {
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     mover.move_hor(1);
                 });
             }
             KeyEvent { code: Enter, .. } => {
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.insert('\n');
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     mover.move_hor(1);
                 });
             }
@@ -72,17 +72,17 @@ impl Editor {
                 code: Backspace, ..
             } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -94,17 +94,17 @@ impl Editor {
             }
             KeyEvent { code: Delete, .. } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -231,20 +231,20 @@ impl Editor {
             KeyEvent {
                 code: Char('i'), ..
             } => {
-                actor.move_each_cursor(|mut mover| mover.switch_ends());
+                actor.move_each_cursor(|mover| mover.switch_ends());
                 *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent {
                 code: Char('a'), ..
             } => {
-                actor.move_each_cursor(|mut mover| mover.set_caret_on_end());
+                actor.move_each_cursor(|mover| mover.set_caret_on_end());
                 *self.cur_mode.write() = Mode::Insert;
             }
             KeyEvent {
                 code: Char('c'), ..
             } => {
-                actor.edit_on_each_cursor(|mut editor| editor.replace(""));
-                actor.move_each_cursor(|mut mover| mover.unset_anchor());
+                actor.edit_on_each_cursor(|editor| editor.replace(""));
+                actor.move_each_cursor(|mover| mover.unset_anchor());
                 *self.cur_mode.write() = Mode::Insert;
             }
 
@@ -280,7 +280,6 @@ impl Editor {
     {
         match key {
             KeyEvent { code: Enter, .. } => {
-                actor.edit_on_main(|mut editor| editor.insert('\n'));
                 if let Ok(_) = controler.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
@@ -289,17 +288,17 @@ impl Editor {
                 code: Backspace, ..
             } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -311,17 +310,17 @@ impl Editor {
             }
             KeyEvent { code: Delete, .. } => {
                 let mut anchors = Vec::with_capacity(actor.cursors_len());
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                actor.edit_on_each_cursor(|mut editor| {
+                actor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                actor.move_each_cursor(|mut mover| {
+                actor.move_each_cursor(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -332,8 +331,8 @@ impl Editor {
                 });
             }
             KeyEvent { code: Char(ch), .. } => {
-                actor.edit_on_main(|mut editor| editor.insert(ch));
-                actor.move_main(|mut mover| mover.move_hor(1));
+                actor.edit_on_main(|editor| editor.insert(ch));
+                actor.move_main(|mover| mover.move_hor(1));
             }
 
             KeyEvent {
@@ -378,6 +377,14 @@ impl Editor {
             }
 
             KeyEvent { code: Esc, .. } => {
+                actor.move_main(|mover| {
+                    mover.move_hor(isize::MIN);
+                    mover.set_anchor();
+                    mover.move_hor(isize::MAX);
+                });
+
+                actor.edit_on_main(|editor| editor.replace(""));
+
                 if let Ok(_) = controler.return_to_file() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
@@ -468,7 +475,7 @@ where
     U: Ui,
     E: SchemeInputWidget<U> + ?Sized
 {
-    file_editor.move_each_cursor(|mut mover| {
+    file_editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
             Side::Top => mover.move_ver(-(amount as isize)),
@@ -484,7 +491,7 @@ where
     U: Ui,
     E: SchemeInputWidget<U> + ?Sized
 {
-    file_editor.move_each_cursor(|mut mover| {
+    file_editor.move_each_cursor(|mover| {
         if !mover.anchor_is_set() {
             mover.set_anchor();
         }

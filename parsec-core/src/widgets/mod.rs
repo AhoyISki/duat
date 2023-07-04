@@ -339,7 +339,7 @@ where
     /// Edits on every cursor selection in the list.
     pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
     where
-        F: FnMut(Editor<U>)
+        F: FnMut(&mut Editor<U>)
     {
         self.clear_intersections();
         let mut widget = self.widget.write();
@@ -347,20 +347,20 @@ where
         let cursors = widget.cursors();
 
         for index in 0..cursors.len() {
-            let editor = widget.editor(index, &mut edit_accum);
-            f(editor);
+            let mut editor = widget.editor(index, &mut edit_accum);
+            f(&mut editor);
         }
     }
 
     /// Alters every selection on the list.
     pub fn move_each_cursor<F>(&mut self, mut f: F)
     where
-        F: FnMut(Mover<U>)
+        F: FnMut(&mut Mover<U>)
     {
         let mut widget = self.widget.write();
         for index in 0..widget.cursors().len() {
-            let mover = widget.mover(index, self.area);
-            f(mover);
+            let mut mover = widget.mover(index, self.area);
+            f(&mut mover);
         }
 
         // TODO: Figure out a better way to sort.
@@ -373,11 +373,11 @@ where
     /// Alters the nth cursor's selection.
     pub fn move_nth<F>(&mut self, mut f: F, index: usize)
     where
-        F: FnMut(Mover<U>)
+        F: FnMut(&mut Mover<U>)
     {
         let mut widget = self.widget.write();
-        let mover = widget.mover(index, self.area);
-        f(mover);
+        let mut mover = widget.mover(index, self.area);
+        f(&mut mover);
 
         if let Some(cursors) = widget.mut_cursors() {
             let cursor = cursors.remove(index);
@@ -401,7 +401,7 @@ where
     /// Alters the main cursor's selection.
     pub fn move_main<F>(&mut self, f: F)
     where
-        F: FnMut(Mover<U>)
+        F: FnMut(&mut Mover<U>)
     {
         self.move_nth(f, self.main_cursor_index());
     }
@@ -409,7 +409,7 @@ where
     /// Alters the last cursor's selection.
     pub fn move_last<F>(&mut self, f: F)
     where
-        F: FnMut(Mover<U>)
+        F: FnMut(&mut Mover<U>)
     {
         let len = self.cursors_len();
         if len > 0 {
@@ -420,7 +420,7 @@ where
     /// Edits on the nth cursor's selection.
     pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
     where
-        F: FnMut(Editor<U>)
+        F: FnMut(&mut Editor<U>)
     {
         let mut widget = self.widget.write();
         assert!(index < widget.cursors().len(), "Index {index} out of bounds.");
@@ -430,8 +430,8 @@ where
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = widget.editor(index, &mut edit_accum);
-        f(editor);
+        let mut editor = widget.editor(index, &mut edit_accum);
+        f(&mut editor);
 
         for index in (index + 1)..(widget.cursors().len() - 1) {
             // A bit hacky, but the creation of an `Editor` automatically
@@ -443,7 +443,7 @@ where
     /// Edits on the main cursor's selection.
     pub fn edit_on_main<F>(&mut self, f: F)
     where
-        F: FnMut(Editor<U>)
+        F: FnMut(&mut Editor<U>)
     {
         self.edit_on_nth(f, self.main_cursor_index());
     }
@@ -451,7 +451,7 @@ where
     /// Edits on the last cursor's selection.
     pub fn edit_on_last<F>(&mut self, f: F)
     where
-        F: FnMut(Editor<U>)
+        F: FnMut(&mut Editor<U>)
     {
         let len = self.cursors_len();
         if len > 0 {
