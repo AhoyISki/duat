@@ -560,8 +560,6 @@ impl Commands {
             }
         }
 
-        panic!("{:?}", CommandErr::NotFound(String::from(caller)));
-
         Err(CommandErr::NotFound(String::from(caller)))
     }
 
