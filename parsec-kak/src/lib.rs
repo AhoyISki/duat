@@ -5,7 +5,7 @@ use parsec_core::{
     data::{RoData, RwData, ReadableData},
     input::Scheme,
     ui::Ui,
-    widgets::{SchemeWidget, CommandLine, WidgetActor},
+    widgets::{SchemeInputWidget, CommandLine, WidgetActor},
     Controler
 };
 
@@ -49,7 +49,7 @@ impl Editor {
     fn match_insert<U, AW>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>)
     where
         U: Ui,
-        AW: SchemeWidget<U> + ?Sized
+        AW: SchemeInputWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Char(ch), .. } => {
@@ -159,7 +159,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeWidget<U> + ?Sized
+        AW: SchemeInputWidget<U> + ?Sized
     {
         match key {
             ////////// SessionControl commands.
@@ -276,7 +276,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeWidget<U> + ?Sized
+        AW: SchemeInputWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Enter, .. } => {
@@ -391,7 +391,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &Controler<U>
     ) where
         U: Ui,
-        E: SchemeWidget<U> + ?Sized
+        E: SchemeInputWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
@@ -446,7 +446,7 @@ impl Scheme for Editor {
         &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeWidget<U> + ?Sized
+        AW: SchemeInputWidget<U> + ?Sized
     {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
@@ -466,7 +466,7 @@ impl Scheme for Editor {
 fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: SchemeWidget<U> + ?Sized
+    E: SchemeInputWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         mover.unset_anchor();
@@ -482,7 +482,7 @@ where
 fn move_each_and_select<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: SchemeWidget<U> + ?Sized
+    E: SchemeInputWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mut mover| {
         if !mover.anchor_is_set() {

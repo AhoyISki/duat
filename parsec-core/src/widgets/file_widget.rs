@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{cmp::min, fs, path::PathBuf};
 
-use super::{EditAccum, InputTaker, SchemeWidget, Widget};
+use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     data::DownCastableData,
     history::History,
@@ -51,7 +51,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`FileWidget<U>`].
-    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> Self {
+    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> WidgetType<U> {
         // TODO: Allow the creation of a new file.
         let file_contents = path
             .as_ref()
@@ -83,7 +83,7 @@ where
         let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
 
-        FileWidget {
+        WidgetType::scheme_input(FileWidget {
             path,
             text,
             print_info: U::PrintInfo::default(),
@@ -92,7 +92,7 @@ where
             history: History::new(),
             printed_lines: Vec::new(),
             print_cfg
-        }
+        })
     }
 
     /// Undoes the last [`Moment<U>`][crate::history::Moment] in the
@@ -277,13 +277,9 @@ where
     fn print_cfg(&self) -> PrintCfg {
         self.print_cfg.clone()
     }
-
-    fn input_taker(&mut self) -> Option<InputTaker<U>> {
-        Some(InputTaker::Scheme(self))
-    }
 }
 
-impl<U> SchemeWidget<U> for FileWidget<U>
+impl<U> SchemeInputWidget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {

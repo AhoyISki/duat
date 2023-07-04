@@ -58,7 +58,7 @@ use file_parts::{file_name, len_lines, main_col, main_line, selections};
 pub use status_helpers::status_parts;
 
 use self::Reader::*;
-use super::{file_widget::FileWidget, Widget};
+use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{DownCastableData, ReadableData, RoNestedData},
     tags::{form::FormPalette, Tag},
@@ -294,80 +294,76 @@ where
 {
     fn new(
         file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
-    ) -> Self {
-        Self {
+    ) -> WidgetType<U> {
+        WidgetType::no_input(Self {
             file,
             builder,
             readers
-        }
+        })
     }
 
     pub fn parts_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) + 'static {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    {
         move |controler| {
             let file = controler.active_file();
             let palette = &controler.palette;
             let (builder, readers, checker) = build_parts(&file.read(), parts, palette);
 
-            (
-                StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
-                Box::new(move || file.has_changed() || checker()),
-                PushSpecs::below(Constraint::Length(1.0))
-            )
+            let widget_type = StatusLine::new(RoNestedData::new(file.clone()), builder, readers);
+            let checker = Box::new(move || file.has_changed() || checker());
+            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     pub fn parts_global_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (StatusLine<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    {
         move |controler| {
             let file = controler.dynamic_active_file();
             let palette = &controler.palette;
             let (builder, readers, checker) =
                 file.inspect(|file| build_parts(file, parts, palette));
-            (
-                StatusLine::new(file.clone(), builder, readers),
-                Box::new(move || file.has_changed() || checker()),
-                PushSpecs::below(Constraint::Length(1.0))
-            )
+
+            let widget_type = StatusLine::new(file.clone(), builder, readers);
+            let checker = Box::new(move || file.has_changed() || checker());
+            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
     pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (StatusLine<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    {
         move |controler| {
             let palette = &controler.palette;
             let file = controler.active_file();
             let parts = default_parts();
             let (builder, readers, _) = build_parts(&file.read(), parts, palette);
 
-            (
-                StatusLine::new(RoNestedData::new(file.clone()), builder, readers),
-                Box::new(move || file.has_changed()),
-                PushSpecs::below(Constraint::Length(1.0))
-            )
+            let widget_type = StatusLine::new(RoNestedData::new(file.clone()), builder, readers);
+            let checker = Box::new(move || file.has_changed());
+            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
     pub fn default_global_fn()
-    -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    {
         move |controler| {
             let palette = &controler.palette;
             let parts = default_parts();
             let file = controler.dynamic_active_file();
             let (builder, readers, _) = file.inspect(|file| build_parts(file, parts, palette));
-            let status_line = StatusLine::new(file.clone(), builder, readers);
 
-            (
-                status_line,
-                Box::new(move || file.has_changed()),
-                PushSpecs::below(Constraint::Length(1.0))
-            )
+            let widget_type = StatusLine::new(file.clone(), builder, readers);
+            let checker = Box::new(move || file.has_changed());
+            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }

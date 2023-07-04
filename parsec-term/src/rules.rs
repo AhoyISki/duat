@@ -6,7 +6,7 @@ use parsec_core::{
     },
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
-    widgets::{FileWidget, Widget},
+    widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
 
@@ -138,7 +138,7 @@ where
     /// default config.
     pub fn config_fn(
         cfg: VertRuleCfg
-    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |controler| {
             let file = controler.active_file();
             let builder = file.inspect(|file| setup_builder(&file, &cfg));
@@ -150,13 +150,15 @@ where
             };
 
             let checker = Box::new(move || file.has_changed());
-            (vert_rule, checker, PushSpecs::left(Constraint::Length(1.0)))
+            let widget_type = WidgetType::no_input(vert_rule);
+            (widget_type, checker, PushSpecs::left(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
     /// default config.
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    pub fn default_fn()
+    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         let cfg = VertRuleCfg::default();
         VertRule::config_fn(cfg)
     }

@@ -12,7 +12,7 @@ use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use tags::form::FormPalette;
 use ui::{Area, ParsecWindow, RoWindows, Ui};
-use widgets::{FileWidget, SchemeWidget, Widget};
+use widgets::{FileWidget, SchemeInputWidget};
 
 pub mod commands;
 pub mod data;
@@ -39,7 +39,7 @@ where
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
     active_file: RwData<RoData<FileWidget<U>>>,
-    active_widget: RwLock<RwData<dyn Widget<U>>>,
+    active_widget: RwLock<RwData<dyn SchemeInputWidget<U>>>,
     pub palette: FormPalette
 }
 
@@ -53,8 +53,8 @@ where
         let (widget, ..) =
             window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
 
-        let widget = widget.clone();
-        let file = widget.clone().try_downcast::<FileWidget<U>>().unwrap();
+        let file = widget.downcast_ref::<FileWidget<U>>().unwrap();
+        let widget = widget.as_scheme_input().unwrap().clone();
 
         let manager = Self {
             windows: RwData::new(vec![window]),
@@ -62,7 +62,7 @@ where
             commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
             active_file: RwData::new(RoData::from(&file)),
-            active_widget: RwLock::new(widget.clone()),
+            active_widget: RwLock::new(widget),
             palette
         };
 
@@ -91,7 +91,7 @@ where
     /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
     /// `file_id`.
     fn inner_switch_to(
-        &self, widget: RwData<dyn Widget<U>>, area: &U::Area, file_id: Option<usize>
+        &self, widget: RwData<dyn SchemeInputWidget<U>>, area: &U::Area, file_id: Option<usize>
     ) -> Result<(), ()> {
         area.set_as_active();
 
@@ -100,12 +100,13 @@ where
         }
 
         self.inspect_active_window(|window| {
-            let (widget, area, _) = window
+            let (widget_type, area) = window
                 .widgets()
-                .find(|(widget, ..)| widget.ptr_eq(&*self.active_widget.read().unwrap()))
+                .find(|(widget, ..)| widget.scheme_ptr_eq(&*self.active_widget.read().unwrap()))
+                .map(|(widget_type, area, _)| (widget_type.as_scheme_input().unwrap(), area))
                 .ok_or(())?;
 
-            widget.write().input_taker().unwrap().on_unfocus(&area);
+            widget_type.write().on_unfocus(&area);
 
             Ok(())
         })?;
@@ -113,7 +114,7 @@ where
         // Order matters here, since `on_unfocus` could rely on the
         // `Commands`'s prior `file_id`.
         self.commands.write().file_id = file_id;
-        widget.write().input_taker().unwrap().on_focus(&area);
+        widget.write().on_focus(&area);
 
         *self.active_widget.write().unwrap() = widget;
 
@@ -221,12 +222,12 @@ where
         self.inspect_active_window(|window| {
             let (widget, area, file_id) = window
                 .widgets()
-                .find(|(widget, ..)| {
-                    widget
-                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() == name)
-                        .is_some_and(|name_equals| name_equals)
+                .find(|(widget_type, ..)| {
+                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() == name)
                 })
-                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .map(|(widget_type, area, file_id)| {
+                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
+                })
                 .ok_or(())?;
 
             self.inner_switch_to(widget, area, file_id)?;
@@ -247,13 +248,13 @@ where
                 .widgets()
                 .cycle()
                 .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                .skip_while(|(widget, ..)| {
-                    widget
-                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                        .unwrap()
+                .skip_while(|(widget_type, ..)| {
+                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() != cur_name)
                 })
                 .nth(1)
-                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .map(|(widget_type, area, file_id)| {
+                    (widget_type.as_scheme_input().unwrap(), area, file_id)
+                })
                 .ok_or(())?;
 
             self.inner_switch_to(widget.clone(), area, file_id)?;
@@ -267,18 +268,19 @@ where
         if self.inspect_active_window(|window| window.file_names().count() < 2) {
             return Err(());
         }
+
         let cur_name = self.active_file.inspect(|file| file.read().name());
         self.inspect_active_window(|window| {
             let (widget, area, file_id) = window
                 .widgets()
-                .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
-                .take_while(|(widget, ..)| {
-                    widget
-                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
-                        .unwrap()
+                .filter(|(widget_type, ..)| widget_type.data_is::<FileWidget<U>>())
+                .take_while(|(widget_type, ..)| {
+                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() != cur_name)
                 })
                 .last()
-                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .map(|(widget_type, area, file_id)| {
+                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
+                })
                 .ok_or(())?;
 
             self.inner_switch_to(widget, area, file_id)
@@ -286,18 +288,20 @@ where
     }
 
     /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
-    pub fn switch_to<Aw>(&self) -> Result<(), ()>
+    pub fn switch_to<Sw>(&self) -> Result<(), ()>
     where
-        Aw: SchemeWidget<U>
+        Sw: SchemeInputWidget<U>
     {
         let cur_file_id = self.commands.read().file_id;
         self.inspect_active_window(|window| {
             let (widget, area, file_id) = window
                 .widgets()
                 .find(|(widget, _, file_id)| {
-                    widget.data_is::<Aw>() && (file_id.is_none() || cur_file_id == *file_id)
+                    widget.data_is::<Sw>() && (file_id.is_none() || cur_file_id == *file_id)
                 })
-                .map(|(widget, area, file_id)| (widget.clone(), area, file_id))
+                .map(|(widget_type, area, file_id)| {
+                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
+                })
                 .ok_or(())?;
 
             self.inner_switch_to(widget, area, file_id)?;

@@ -23,13 +23,14 @@ mod line_numbers;
 mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
-use std::{cmp::Ordering, ops::Range};
+use std::sync::RwLock;
+use std::{cmp::Ordering, ops::Range, sync::Arc};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
 use crate::{
-    data::DownCastableData,
+    data::{DownCastableData, RawReadableData, ReadableData, RwData},
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
@@ -67,44 +68,141 @@ where
         PrintCfg::default()
     }
 
-    fn input_taker(&mut self) -> Option<InputTaker<U>> {
-        None
-    }
-
     fn print(&self, area: &U::Area, palette: &FormPalette) {
         area.print(self.text(), self.print_info(), self.print_cfg(), palette)
     }
 }
 
-pub enum InputTaker<'a, U>
+pub enum WidgetType<U>
 where
     U: Ui
 {
-    Scheme(&'a mut dyn SchemeWidget<U>),
-    Direct(&'a mut dyn DirectWidget<U>)
+    NoInput(RwData<dyn Widget<U>>),
+    SchemeInput(RwData<dyn SchemeInputWidget<U>>),
+    DirectInput(RwData<dyn DirectInputWidget<U>>)
 }
 
-impl<'a, U> InputTaker<'a, U>
+impl<U> WidgetType<U>
 where
     U: Ui
 {
-    pub fn on_focus(&mut self, area: &U::Area) {
+    pub fn no_input(widget: impl Widget<U>) -> Self {
+        WidgetType::NoInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    }
+
+    pub fn scheme_input(widget: impl SchemeInputWidget<U>) -> Self {
+        WidgetType::SchemeInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    }
+
+    pub fn direct_input(widget: impl DirectInputWidget<U>) -> Self {
+        WidgetType::DirectInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    }
+
+    pub fn update(&self, area: &U::Area) {
         match self {
-            InputTaker::Scheme(widget) => widget.on_focus(area),
-            InputTaker::Direct(widget) => widget.on_focus(area)
+            WidgetType::NoInput(widget) => widget.write().update(area),
+            WidgetType::SchemeInput(widget) => widget.write().update(area),
+            WidgetType::DirectInput(widget) => widget.write().update(area)
         }
     }
 
-    pub fn on_unfocus(&mut self, area: &U::Area) {
+    pub fn print(&self, area: &U::Area, palette: &FormPalette) {
         match self {
-            InputTaker::Scheme(widget) => widget.on_unfocus(area),
-            InputTaker::Direct(widget) => widget.on_unfocus(area)
+            WidgetType::NoInput(widget) => widget.read().print(area, palette),
+            WidgetType::SchemeInput(widget) => widget.read().print(area, palette),
+            WidgetType::DirectInput(widget) => widget.read().print(area, palette)
+        }
+    }
+
+    /// Returns the downcast ref of this [`WidgetType<U>`].
+    pub fn downcast_ref<W>(&self) -> Option<RwData<W>>
+    where
+        U: Ui,
+        W: Widget<U> + 'static
+    {
+        match self {
+            WidgetType::NoInput(widget) => widget.clone().try_downcast::<W>().ok(),
+            WidgetType::SchemeInput(widget) => widget.clone().try_downcast::<W>().ok(),
+            WidgetType::DirectInput(widget) => widget.clone().try_downcast::<W>().ok()
+        }
+    }
+
+    pub fn data_is<W>(&self) -> bool
+    where
+        W: Widget<U>
+    {
+        match self {
+            WidgetType::NoInput(widget) => widget.data_is::<W>(),
+            WidgetType::SchemeInput(widget) => widget.data_is::<W>(),
+            WidgetType::DirectInput(widget) => widget.data_is::<W>()
+        }
+    }
+
+    pub fn data_is_and<W>(&self, f: impl FnOnce(&W) -> bool) -> bool
+    where
+        W: Widget<U>
+    {
+        match self {
+            WidgetType::NoInput(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
+            WidgetType::SchemeInput(widget) => {
+                widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
+            }
+            WidgetType::DirectInput(widget) => {
+                widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
+            }
+        }
+    }
+
+    pub fn as_scheme_input(&self) -> Option<&RwData<dyn SchemeInputWidget<U>>> {
+        match self {
+            WidgetType::SchemeInput(widget) => Some(widget),
+            _ => None
+        }
+    }
+
+    pub fn scheme_ptr_eq(&self, other: &RwData<dyn SchemeInputWidget<U>>) -> bool {
+        match self {
+            WidgetType::SchemeInput(widget) => widget.ptr_eq(other),
+            _ => false
+        }
+    }
+
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
+        match self {
+            WidgetType::NoInput(widget) => {
+                let widget = widget.raw_read();
+                f(&*widget)
+            }
+            WidgetType::SchemeInput(widget) => {
+                let widget = widget.raw_read();
+                f(&*widget)
+            }
+            WidgetType::DirectInput(widget) => {
+                let widget = widget.raw_read();
+                f(&*widget)
+            }
+        }
+    }
+
+    pub fn has_changed(&self) -> bool {
+        match self {
+            WidgetType::SchemeInput(widget) => widget.has_changed(),
+            WidgetType::DirectInput(widget) => widget.has_changed(),
+            WidgetType::NoInput(_) => false
+        }
+    }
+
+    pub fn is_slow(&self) -> bool {
+        match self {
+            WidgetType::NoInput(widget) => widget.read().is_slow(),
+            WidgetType::SchemeInput(widget) => widget.read().is_slow(),
+            WidgetType::DirectInput(widget) => widget.read().is_slow()
         }
     }
 }
 
 /// A widget that can receive input and show [`Cursor`]s.
-pub trait SchemeWidget<U>: Widget<U>
+pub trait SchemeInputWidget<U>: Widget<U>
 where
     U: Ui + 'static
 {
@@ -169,7 +267,7 @@ where
     fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 
-pub trait DirectWidget<U>
+pub trait DirectInputWidget<U>: Widget<U>
 where
     U: Ui
 {
@@ -192,20 +290,20 @@ pub struct EditAccum {
 pub struct WidgetActor<'a, U, Sw>
 where
     U: Ui + 'static,
-    Sw: SchemeWidget<U> + ?Sized
+    Sw: SchemeInputWidget<U> + ?Sized
 {
     clearing_needed: bool,
-    widget: &'a mut Sw,
+    widget: &'a RwData<Sw>,
     area: &'a U::Area
 }
 
 impl<'a, U, Sw> WidgetActor<'a, U, Sw>
 where
     U: Ui,
-    Sw: SchemeWidget<U> + ?Sized + 'static
+    Sw: SchemeInputWidget<U> + ?Sized + 'static
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub(crate) fn new(widget: &'a mut Sw, area: &'a U::Area) -> Self {
+    pub(crate) fn new(widget: &'a RwData<Sw>, area: &'a U::Area) -> Self {
         WidgetActor {
             clearing_needed: false,
             widget,
@@ -216,7 +314,8 @@ where
     /// Removes all intersecting [`Cursor`]s from the list, keeping
     /// only the last from the bunch.
     fn clear_intersections(&mut self) {
-        let Some(cursors) = self.widget.mut_cursors() else {
+        let mut widget = self.widget.write();
+        let Some(cursors) = widget.mut_cursors() else {
             return
         };
 
@@ -243,11 +342,12 @@ where
         F: FnMut(Editor<U>)
     {
         self.clear_intersections();
+        let mut widget = self.widget.write();
         let mut edit_accum = EditAccum::default();
-        let cursors = self.widget.cursors();
+        let cursors = widget.cursors();
 
         for index in 0..cursors.len() {
-            let editor = self.widget.editor(index, &mut edit_accum);
+            let editor = widget.editor(index, &mut edit_accum);
             f(editor);
         }
     }
@@ -257,13 +357,14 @@ where
     where
         F: FnMut(Mover<U>)
     {
-        for index in 0..self.widget.cursors().len() {
-            let mover = self.widget.mover(index, self.area);
+        let mut widget = self.widget.write();
+        for index in 0..widget.cursors().len() {
+            let mover = widget.mover(index, self.area);
             f(mover);
         }
 
         // TODO: Figure out a better way to sort.
-        self.widget.mut_cursors().map(|cursors| {
+        widget.mut_cursors().map(|cursors| {
             cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
         });
         self.clearing_needed = true;
@@ -274,10 +375,11 @@ where
     where
         F: FnMut(Mover<U>)
     {
-        let mover = self.widget.mover(index, self.area);
+        let mut widget = self.widget.write();
+        let mover = widget.mover(index, self.area);
         f(mover);
 
-        if let Some(cursors) = self.widget.mut_cursors() {
+        if let Some(cursors) = widget.mut_cursors() {
             let cursor = cursors.remove(index);
             let range = cursor.range();
             let new_index = match cursors.binary_search_by(|j| at_start_ord(&j.range(), &range)) {
@@ -286,7 +388,7 @@ where
             };
             cursors.insert(new_index, cursor);
 
-            if let Some(main_cursor) = self.widget.mut_main_cursor_index() {
+            if let Some(main_cursor) = widget.mut_main_cursor_index() {
                 if index == *main_cursor {
                     *main_cursor = new_index;
                 }
@@ -301,7 +403,7 @@ where
     where
         F: FnMut(Mover<U>)
     {
-        self.move_nth(f, self.widget.main_cursor_index());
+        self.move_nth(f, self.main_cursor_index());
     }
 
     /// Alters the last cursor's selection.
@@ -320,20 +422,21 @@ where
     where
         F: FnMut(Editor<U>)
     {
-        assert!(index < self.widget.cursors().len(), "Index {index} out of bounds.");
+        let mut widget = self.widget.write();
+        assert!(index < widget.cursors().len(), "Index {index} out of bounds.");
         if self.clearing_needed {
             self.clear_intersections();
             self.clearing_needed = false;
         }
 
         let mut edit_accum = EditAccum::default();
-        let editor = self.widget.editor(index, &mut edit_accum);
+        let editor = widget.editor(index, &mut edit_accum);
         f(editor);
 
-        for index in (index + 1)..(self.widget.cursors().len() - 1) {
+        for index in (index + 1)..(widget.cursors().len() - 1) {
             // A bit hacky, but the creation of an `Editor` automatically
             // calibrates the cursor's position.
-            self.widget.editor(index, &mut edit_accum);
+            widget.editor(index, &mut edit_accum);
         }
     }
 
@@ -342,7 +445,7 @@ where
     where
         F: FnMut(Editor<U>)
     {
-        self.edit_on_nth(f, self.widget.main_cursor_index());
+        self.edit_on_nth(f, self.main_cursor_index());
     }
 
     /// Edits on the last cursor's selection.
@@ -358,7 +461,7 @@ where
 
     /// The main cursor index.
     pub fn main_cursor_index(&self) -> usize {
-        self.widget.main_cursor_index()
+        self.widget.read().main_cursor_index()
     }
 
     /// Rotates the main cursor index forward.
@@ -368,7 +471,7 @@ where
             return;
         }
 
-        self.widget.mut_main_cursor_index().map(|main_index| {
+        self.widget.write().mut_main_cursor_index().map(|main_index| {
             *main_index = if *main_index == cursors_len - 1 {
                 0
             } else {
@@ -384,7 +487,7 @@ where
             return;
         }
 
-        self.widget.mut_main_cursor_index().map(|main_index| {
+        self.widget.write().mut_main_cursor_index().map(|main_index| {
             *main_index = if *main_index == 0 {
                 cursors_len - 1
             } else {
@@ -395,30 +498,30 @@ where
 
     /// The amount of active [`Cursor`]s in the [`Text`].
     pub fn cursors_len(&self) -> usize {
-        self.widget.cursors().len()
+        self.widget.read().cursors().len()
     }
 
     /// Starts a new [`Moment`][crate::history::Moment].
     pub fn new_moment(&mut self) {
-        self.widget.new_moment();
+        self.widget.write().new_moment();
     }
 
     /// Undoes the last [`Moment`][crate::history::Moment].
     pub fn undo(&mut self) {
-        self.widget.undo(self.area);
+        self.widget.write().undo(self.area);
     }
 
     /// Redoes the last [`Moment`][crate::history::Moment].
     pub fn redo(&mut self) {
-        self.widget.redo(self.area);
+        self.widget.write().redo(self.area);
     }
 
     pub fn main_cursor(&self) -> Cursor {
-        self.widget.cursors()[self.main_cursor_index()]
+        self.widget.read().cursors()[self.main_cursor_index()]
     }
 
     pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
-        self.widget.cursors().get(index).copied()
+        self.widget.read().cursors().get(index).copied()
     }
 }
 

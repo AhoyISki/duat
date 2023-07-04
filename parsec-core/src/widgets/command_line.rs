@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{EditAccum, SchemeWidget, Widget};
+use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     commands::{Command, Commands},
     data::{DownCastableData, ReadableData, RwData},
@@ -50,7 +50,7 @@ where
     /// custom prompt.
     pub fn prompt_fn(
         prompt: impl ToString
-    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         let prompt = prompt.to_string();
         move |controler| {
             let command_line = Self {
@@ -63,13 +63,15 @@ where
 
             add_commands(controler, &command_line);
 
-            (command_line, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
+            let widget_type = WidgetType::scheme_input(command_line);
+            (widget_type, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    pub fn default_fn()
+    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
@@ -81,7 +83,8 @@ where
 
             add_commands(manager, &command_line);
 
-            (command_line, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
+            let widget_type = WidgetType::scheme_input(command_line);
+            (widget_type, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }
@@ -103,13 +106,9 @@ where
     fn is_slow(&self) -> bool {
         false
     }
-
-    fn input_taker(&mut self) -> Option<super::InputTaker<U>> {
-        Some(super::InputTaker::Scheme(self))
-    }
 }
 
-impl<U> SchemeWidget<U> for CommandLine<U>
+impl<U> SchemeInputWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {

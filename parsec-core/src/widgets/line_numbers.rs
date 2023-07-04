@@ -22,7 +22,7 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Write;
 
-use super::{file_widget::FileWidget, Widget};
+use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{DownCastableData, ReadableData, RoData},
     tags::{
@@ -53,7 +53,7 @@ where
     /// [`LineNumbersCfg`] as argument.
     pub fn config_fn(
         cfg: LineNumbersCfg
-    ) -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |controler| {
             let file = controler.active_file();
 
@@ -66,13 +66,15 @@ where
 
             line_numbers.update_text(width as usize);
 
-            (line_numbers, Box::new(move || file.has_changed()), PushSpecs::left_free())
+            let widget_type = WidgetType::no_input(line_numbers);
+            (widget_type, Box::new(move || file.has_changed()), PushSpecs::left_free())
         }
     }
 
     /// Returns a function that outputs the default instance of
     /// [`LineNumbers<U>`].
-    pub fn default_fn() -> impl FnOnce(&Controler<U>) -> (Self, Box<dyn Fn() -> bool>, PushSpecs) {
+    pub fn default_fn()
+    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         LineNumbers::config_fn(LineNumbersCfg::default())
     }
 

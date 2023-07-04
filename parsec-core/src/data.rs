@@ -30,7 +30,7 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 mod private {
-    use std::sync::{TryLockResult, atomic::AtomicUsize, Arc};
+    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
 
     pub trait Data<T>
     where
@@ -306,9 +306,6 @@ where
     }
 }
 
-impl<T> ReadableData<T> for RwData<T> where T: ?Sized {}
-impl<T> RawReadableData<T> for RwData<T> where T: ?Sized {}
-
 impl<T> Debug for RwData<T>
 where
     T: ?Sized + Debug
@@ -353,13 +350,14 @@ where
     }
 }
 
+impl<T> ReadableData<T> for RwData<T> where T: ?Sized {}
+impl<T> RawReadableData<T> for RwData<T> where T: ?Sized {}
 unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 
 /// A read-only reference to information.
 ///
 /// Can only be created by cloning the [`Arc<RwLock<T>>`] from a
 /// [`RwData<T>`], or through cloning.
-#[derive(Default)]
 pub struct RoData<T>
 where
     T: ?Sized
@@ -482,6 +480,19 @@ where
 
 impl<T> ReadableData<T> for RoData<T> where T: ?Sized {}
 impl<T> RawReadableData<T> for RoData<T> where T: ?Sized {}
+
+impl<T> Default for RoData<T>
+where
+    T: ?Sized + Default
+{
+    fn default() -> Self {
+        Self {
+            data: Arc::new(RwLock::new(T::default())),
+            cur_state: Arc::new(AtomicUsize::new(0)),
+            read_state: AtomicUsize::new(0)
+        }
+    }
+}
 
 impl<T> From<&RwData<T>> for RoData<T>
 where
