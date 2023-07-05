@@ -14,7 +14,7 @@
 //! #     text::PrintCfg,
 //! #     ui::{ModNode, PushSpecs, Constraint, Ui},
 //! #     widgets::StatusLine,
-//! #     session::Parsec
+//! #     session::Session
 //! # };
 //! #
 //! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
@@ -26,9 +26,9 @@
 //!     mod_node.push(StatusLine::default_fn(), specs);
 //! };
 //!
-//! let mut parsec = Parsec::new(ui, print_cfg, palette, constructor_hook);
+//! let mut session = Session::new(ui, print_cfg, palette, constructor_hook);
 //! let specs = PushSpecs::below(Constraint::Length(1.0));
-//! parsec.push(StatusLine::default_global_fn(), specs);
+//! session.push(StatusLine::default_global_fn(), specs);
 //! # }
 //! ```
 //!
@@ -245,35 +245,35 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPale
 /// as well as the main cursor's coordinates.
 ///
 /// ```rust
-/// use parsec_core::{
-///     data::RoData,
-///     tags::form::FormPalette,
-///     ui::{PushSpecs, Ui},
-///     widgets::{
-///         file_parts::{file_name, main_cursor},
-///         status_parts, FileWidget, StatusLine, Widget
-///     },
-///     Manager
-/// };
-/// fn test_fn<U>(
-///     file_fn: impl Fn() -> RoData<FileWidget<U>>,
-///     palette_fn: impl Fn() -> FormPalette
-/// ) -> impl FnOnce(&Manager<U>) -> (Widget<U>, PushSpecs)
-/// where
-///     U: Ui
-/// {
-///     let file: RoData<FileWidget<U>> = file_fn();
-///     let palette: FormPalette = palette_fn();
+/// # use parsec_core::{
+/// #     data::RoData,
+/// #     tags::form::FormPalette,
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{
+/// #         file_parts::{file_name, main_cursor},
+/// #         status_parts, FileWidget, StatusLine, WidgetType
+/// #     },
+/// #     Controler
+/// # };
+/// # fn test_fn<U>(
+/// #     file_fn: impl Fn() -> RoData<FileWidget<U>>,
+/// #     palette_fn: impl Fn() -> FormPalette
+/// # ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs)
+/// # where
+/// #     U: Ui
+/// # {
+/// let file: RoData<FileWidget<U>> = file_fn();
+/// let palette: FormPalette = palette_fn();
 ///
-///     let parts = status_parts![
-///         "file name: [FileName]",
-///         file_name(),
-///         "[Default] main cursor: [Coords]",
-///         main_cursor(),
-///     ];
+/// let parts = status_parts![
+///     "file name: [FileName]",
+///     file_name::<U>(),
+///     "[Default] main cursor: [Coords]",
+///     main_cursor(),
+/// ];
 ///
-///     StatusLine::parts_fn(parts)
-/// }
+/// StatusLine::parts_fn(parts)
+/// # }
 /// ```
 ///
 /// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve

@@ -411,12 +411,12 @@ impl Editor {
             KeyEvent {
                 code: Char('j'), ..
             } => {
-                actor.move_main(|mut cursor| cursor.move_ver(isize::MAX));
+                actor.move_main(|mover| mover.move_ver(isize::MAX));
             }
             KeyEvent {
                 code: Char('k'), ..
             } => {
-                actor.move_main(|mut cursor| cursor.move_to_coords(0, 0));
+                actor.move_main(|mover| mover.move_to_coords(0, 0));
             }
             KeyEvent {
                 code: Char('n'), ..

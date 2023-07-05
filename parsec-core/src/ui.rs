@@ -6,7 +6,8 @@ use std::{fmt::Debug, sync::atomic::AtomicUsize};
 use no_deadlocks::RwLock;
 
 use crate::{
-    data::{ReadableData, RoData},
+    commands::{Commands, CommandErr},
+    data::{ReadableData, RoData, RwData},
     position::Pos,
     tags::form::FormPalette,
     text::{PrintCfg, Text, TextBit},
@@ -432,8 +433,12 @@ where
         &self.controler.palette
     }
 
-    pub fn manager(&self) -> &Controler<U> {
-        &self.controler
+    pub fn commands(&self) -> &RwData<Commands> {
+        &self.controler.commands
+    }
+
+    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
+        self.controler.run_cmd(cmd)
     }
 }
 

@@ -43,94 +43,6 @@ where
     pub palette: FormPalette
 }
 
-impl<U> Controler<U>
-where
-    U: Ui
-{
-    /// Returns a new instance of [`Controler`].
-    fn new(window: ParsecWindow<U>, palette: FormPalette) -> Self {
-        // NOTE: For now, we're picking the first file as active.
-        let (widget, ..) =
-            window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
-
-        let file = widget.downcast_ref::<FileWidget<U>>().unwrap();
-        let widget = widget.as_scheme_input().unwrap().clone();
-
-        let manager = Self {
-            windows: RwData::new(vec![window]),
-            active_window: 0,
-            commands: Commands::new_rw_data(),
-            files_to_open: RwData::new(Vec::new()),
-            active_file: RwData::new(RoData::from(&file)),
-            active_widget: RwLock::new(widget),
-            palette
-        };
-
-        let quit = Command::new(vec!["quit", "q"], move |_, _| {
-            BREAK_LOOP.store(true, Ordering::Release);
-            SHOULD_QUIT.store(true, Ordering::Release);
-            Ok(None)
-        });
-
-        let files_to_open = manager.files_to_open.clone();
-        let open_files = Command::new(vec!["edit", "e"], move |_, files| {
-            BREAK_LOOP.store(true, Ordering::Release);
-            *files_to_open.write() = files.map(|file| PathBuf::from(file)).collect();
-            Ok(None)
-        });
-
-        manager.commands.mutate(|commands| {
-            commands.try_add(quit).unwrap();
-            commands.try_add(open_files).unwrap();
-        });
-
-        manager
-    }
-
-    /// Changes `self.active_widget`, given the target
-    /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
-    /// `file_id`.
-    fn inner_switch_to(
-        &self, widget: RwData<dyn SchemeInputWidget<U>>, area: &U::Area, file_id: Option<usize>
-    ) -> Result<(), ()> {
-        area.set_as_active();
-
-        if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
-            *self.active_file.write() = RoData::from(&file);
-        }
-
-        self.inspect_active_window(|window| {
-            let (widget_type, area) = window
-                .widgets()
-                .find(|(widget, ..)| widget.scheme_ptr_eq(&*self.active_widget.read().unwrap()))
-                .map(|(widget_type, area, _)| (widget_type.as_scheme_input().unwrap(), area))
-                .ok_or(())?;
-
-            widget_type.write().on_unfocus(&area);
-
-            Ok(())
-        })?;
-
-        // Order matters here, since `on_unfocus` could rely on the
-        // `Commands`'s prior `file_id`.
-        self.commands.write().file_id = file_id;
-        widget.write().on_focus(&area);
-
-        *self.active_widget.write().unwrap() = widget;
-
-        Ok(())
-    }
-
-    /// Inspects the currently active window.
-    fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
-        self.windows.inspect(|windows| f(&windows[self.active_window]))
-    }
-
-    fn mutate_active_window<T>(&self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
-        self.windows.mutate(|windows| f(&mut windows[self.active_window]))
-    }
-}
-
 /// # Querying Functions
 ///
 /// These functions do not trigger any internal mutability within the
@@ -206,7 +118,7 @@ where
         self.switch_to_file(cur_name)
     }
 
-    pub fn run_cmd(&mut self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
+    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
         self.commands.read().try_exec(cmd.to_string())
     }
 
@@ -308,6 +220,94 @@ where
 
             Ok(())
         })
+    }
+}
+
+impl<U> Controler<U>
+where
+    U: Ui
+{
+    /// Returns a new instance of [`Controler`].
+    fn new(window: ParsecWindow<U>, palette: FormPalette) -> Self {
+        // NOTE: For now, we're picking the first file as active.
+        let (widget, ..) =
+            window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
+
+        let file = widget.downcast_ref::<FileWidget<U>>().unwrap();
+        let widget = widget.as_scheme_input().unwrap().clone();
+
+        let manager = Self {
+            windows: RwData::new(vec![window]),
+            active_window: 0,
+            commands: Commands::new_rw_data(),
+            files_to_open: RwData::new(Vec::new()),
+            active_file: RwData::new(RoData::from(&file)),
+            active_widget: RwLock::new(widget),
+            palette
+        };
+
+        let quit = Command::new(vec!["quit", "q"], move |_, _| {
+            BREAK_LOOP.store(true, Ordering::Release);
+            SHOULD_QUIT.store(true, Ordering::Release);
+            Ok(None)
+        });
+
+        let files_to_open = manager.files_to_open.clone();
+        let open_files = Command::new(vec!["edit", "e"], move |_, files| {
+            BREAK_LOOP.store(true, Ordering::Release);
+            *files_to_open.write() = files.map(|file| PathBuf::from(file)).collect();
+            Ok(None)
+        });
+
+        manager.commands.mutate(|commands| {
+            commands.try_add(quit).unwrap();
+            commands.try_add(open_files).unwrap();
+        });
+
+        manager
+    }
+
+    /// Changes `self.active_widget`, given the target
+    /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
+    /// `file_id`.
+    fn inner_switch_to(
+        &self, widget: RwData<dyn SchemeInputWidget<U>>, area: &U::Area, file_id: Option<usize>
+    ) -> Result<(), ()> {
+        area.set_as_active();
+
+        if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
+            *self.active_file.write() = RoData::from(&file);
+        }
+
+        self.inspect_active_window(|window| {
+            let (widget_type, area) = window
+                .widgets()
+                .find(|(widget, ..)| widget.scheme_ptr_eq(&*self.active_widget.read().unwrap()))
+                .map(|(widget_type, area, _)| (widget_type.as_scheme_input().unwrap(), area))
+                .ok_or(())?;
+
+            widget_type.write().on_unfocus(&area);
+
+            Ok(())
+        })?;
+
+        // Order matters here, since `on_unfocus` could rely on the
+        // `Commands`'s prior `file_id`.
+        self.commands.write().file_id = file_id;
+        widget.write().on_focus(&area);
+
+        *self.active_widget.write().unwrap() = widget;
+
+        Ok(())
+    }
+
+    /// Inspects the currently active window.
+    fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
+        self.windows.inspect(|windows| f(&windows[self.active_window]))
+    }
+
+    fn mutate_active_window<T>(&self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
+        self.windows.mutate(|windows| f(&mut windows[self.active_window]))
     }
 }
 
