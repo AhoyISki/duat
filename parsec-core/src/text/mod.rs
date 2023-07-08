@@ -8,14 +8,14 @@ use std::{
 
 use ropey::Rope;
 
-use self::{inner::InnerText};
+use self::inner::InnerText;
 use crate::{
     history::Change,
     position::Cursor,
     tags::{
         form::{EXTRA_SEL, MAIN_SEL},
         Lock, Tag, TagOrSkip, Tags
-    },
+    }
 };
 
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -271,6 +271,14 @@ impl Text {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inner.len_chars() == 0
+    }
+
+    pub fn get_char(&self, char_index: usize) -> Option<char> {
+        self.inner.get_char(char_index)
+    }
+
     /// Merges `String`s with the body of text, given a range to
     /// replace.
     fn replace_range(&mut self, old_range: Range<usize>, edit: impl AsRef<str>) {
@@ -295,12 +303,8 @@ impl Text {
         self.replace_range(start..end, &change.taken_text);
     }
 
-    pub fn inner(&self) -> &InnerText {
+    pub(crate) fn inner(&self) -> &InnerText {
         &self.inner
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner.len_chars() == 0
     }
 
     /// Removes the tags for all the cursors, used before they are
@@ -391,20 +395,20 @@ impl Text {
 
 // Iterator methods.
 impl Text {
-    pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
         let chars = self.inner.chars_at(0);
         let tags = self.tags.iter_at(0).peekable();
 
-        Iter::new(self, chars, tags, 0)
+        Iter::new(chars, tags, 0)
     }
 
-    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 
-        Iter::new(self, chars, tags, start)
+        Iter::new(chars, tags, start)
     }
 
     pub fn iter_range(
@@ -425,7 +429,7 @@ impl Text {
         let chars = self.inner.chars_at(start).take(end - start);
         let tags = self.tags.iter_at(start).take_while(move |(index, _)| *index < end).peekable();
 
-        Iter::new(self, chars, tags, start)
+        Iter::new(chars, tags, start)
     }
 }
 
@@ -450,7 +454,10 @@ impl TextBit {
     /// [`Char`]: TextBit::Char
     #[must_use]
     pub fn is_char(&self) -> bool {
-        matches!(self, Self::Char(..))
+        match self {
+            TextBit::Char(_) => true,
+            _ => false
+        }
     }
 
     /// Returns `true` if the text bit is [`Tag`].
@@ -458,7 +465,10 @@ impl TextBit {
     /// [`Tag`]: TextBit::Tag
     #[must_use]
     pub fn is_tag(&self) -> bool {
-        matches!(self, Self::Tag(..))
+        match self {
+            TextBit::Tag(_) => true,
+            _ => false
+        }
     }
 
     pub fn as_char(&self) -> Option<char> {
@@ -468,31 +478,37 @@ impl TextBit {
             None
         }
     }
+
+    pub fn is_new_line(&self) -> bool {
+        match self {
+            TextBit::Char('\n') => true,
+            _ => false
+        }
+    }
 }
 
 /// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
-pub struct Iter<'a, Ci, Ti>
+#[derive(Clone)]
+pub struct Iter<Chars, Tags>
 where
-    Ci: Iterator<Item = char> + 'a,
-    Ti: Iterator<Item = (usize, Tag)> + 'a
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, Tag)> + Clone
 {
-    text: &'a Text,
-    chars: Ci,
-    tags: Peekable<Ti>,
+    chars: Chars,
+    tags: Peekable<Tags>,
     cur_char: usize
 }
 
-impl<'a, Ci, Ti> Iter<'a, Ci, Ti>
+impl<Chars, Tags> Iter<Chars, Tags>
 where
-    Ci: Iterator<Item = char> + 'a,
-    Ti: Iterator<Item = (usize, Tag)> + 'a
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, Tag)> + Clone
 {
-    pub fn new(text: &'a Text, chars: Ci, tags: Peekable<Ti>, cur_char: usize) -> Self {
+    pub fn new(chars: Chars, tags: Peekable<Tags>, cur_char: usize) -> Self {
         Self {
-            text,
             chars,
             tags,
             cur_char
@@ -500,10 +516,10 @@ where
     }
 }
 
-impl<Chars, Tags> Iterator for Iter<'_, Chars, Tags>
+impl<Chars, Tags> Iterator for Iter<Chars, Tags>
 where
-    Chars: Iterator<Item = char>,
-    Tags: Iterator<Item = (usize, Tag)>
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, Tag)> + Clone
 {
     type Item = (usize, TextBit);
 
@@ -518,21 +534,6 @@ where
             Some((self.cur_char - 1, TextBit::Char(char)))
         } else {
             None
-        }
-    }
-}
-
-impl<'a, Chars, Tags> Clone for Iter<'a, Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone + 'a,
-    Tags: Iterator<Item = (usize, Tag)> + Clone + 'a
-{
-    fn clone(&self) -> Self {
-        Iter {
-            text: &self.text,
-            chars: self.chars.clone(),
-            tags: self.tags.clone(),
-            cur_char: self.cur_char
         }
     }
 }

@@ -45,6 +45,7 @@ fn main() {
     // printing the shape is not allowed (e.g. on a terminal, that
     // only has one cursor). Uncomment this if you want a yellow,
     // block like cursor.
+    palette.set_main_cursor(CursorStyle::new(None, Form::new().on_cyan()));
 
     // `FormPalette`s, by default, contain some `Form`s in them.
     // You can modify `Form`s by using the `set_form()` method.
@@ -62,7 +63,7 @@ fn main() {
     // for the end user.
     let print_cfg = PrintCfg {
         scrolloff: ScrollOff { x_gap: 5, y_gap: 5 },
-        wrap_method: WrapMethod::Word,
+        wrap_method: WrapMethod::Capped(150),
         new_line: NewLine::AfterSpaceAs('↩'),
         ..PrintCfg::default()
     };

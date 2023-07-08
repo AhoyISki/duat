@@ -200,7 +200,7 @@ impl Tags {
         })
     }
 
-    pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + '_ {
+    pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
         self.inner.iter_at(ch_index).filter_map(move |(width, t_or_s)| {
             if let TagOrSkip::Tag(tag, _) = t_or_s {
                 Some((width, tag))

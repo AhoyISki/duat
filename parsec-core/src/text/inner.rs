@@ -1,5 +1,6 @@
 use std::ops::RangeBounds;
 
+
 use ropey::{Rope, RopeSlice};
 
 #[derive(Debug)]
@@ -25,10 +26,10 @@ impl InnerText {
         }
     }
 
-    pub fn chars_at(&self, ch_index: usize) -> Box<dyn Iterator<Item = char> + '_> {
+    pub fn chars_at(&self, ch_index: usize) -> Chars {
         match self {
-            InnerText::String(string) => Box::new(string.chars().skip(ch_index)),
-            InnerText::Rope(rope) => Box::new(rope.chars_at(ch_index))
+            InnerText::String(string) => Chars::String(string.chars().skip(ch_index)),
+            InnerText::Rope(rope) => Chars::Rope(rope.chars_at(ch_index))
         }
     }
 
@@ -161,6 +162,30 @@ impl InnerText {
                      `String`."
                 )
             }
+        }
+    }
+
+    pub(crate) fn get_char(&self, char_index: usize) -> Option<char> {
+        match self {
+            InnerText::String(string) => string.chars().nth(char_index),
+            InnerText::Rope(rope) => rope.get_char(char_index)
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum Chars<'a> {
+    String(std::iter::Skip<std::str::Chars<'a>>),
+	Rope(ropey::iter::Chars<'a>)
+}
+
+impl Iterator for Chars<'_> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Chars::String(chars) => chars.next(),
+            Chars::Rope(chars) => chars.next(),
         }
     }
 }
