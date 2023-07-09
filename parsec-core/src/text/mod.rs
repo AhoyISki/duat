@@ -575,25 +575,17 @@ impl WrapMethod {
 
 /// Where the tabs are placed on screen, can be regular or varied.
 #[derive(Debug, Clone)]
-pub enum TabStops {
-    /// The same lenght for every tab.
-    Regular(usize),
-    /// Varying lenghts for different tabs.
-    Varied(Vec<usize>)
-}
+pub struct TabStops(pub usize);
 
 impl TabStops {
     pub fn spaces_at(&self, x: usize) -> usize {
-        match self {
-            TabStops::Regular(step) => step - (x % step),
-            TabStops::Varied(steps) => steps.iter().find(|&s| *s > x).expect("Not enough steps") - x
-        }
+        self.0 - (x % self.0)
     }
 }
 
 impl Default for TabStops {
     fn default() -> Self {
-        TabStops::Regular(4)
+        TabStops(4)
     }
 }
 
@@ -681,11 +673,11 @@ pub struct PrintCfg {
 
 impl Default for PrintCfg {
     fn default() -> Self {
-        PrintCfg {
+        Self {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
+            tab_stops: TabStops(4),
             new_line: NewLine::default(),
-            tab_stops: TabStops::Regular(4),
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '_'..='_'])
         }

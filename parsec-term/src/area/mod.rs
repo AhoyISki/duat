@@ -66,10 +66,6 @@ impl Coords {
     fn width(&self) -> usize {
         (self.br.x - self.tl.x) as usize
     }
-
-    fn height(&self) -> usize {
-        (self.br.y - self.tl.y) as usize
-    }
 }
 
 #[derive(Clone)]
@@ -381,25 +377,52 @@ impl PrintInfo {
             WrapMethod::Width | WrapMethod::Word => return,
             WrapMethod::Capped(cap) => {
                 if cap > width {
-                    (cap - width, cap as u16)
+                    (cap - width, cap)
                 } else {
                     return;
                 }
             }
-            WrapMethod::NoWrap => (usize::MAX, u16::MAX)
+            WrapMethod::NoWrap => (usize::MAX, usize::MAX)
         };
 
         let line = text.iter_line(pos.true_row());
         let char = text.get_char(pos.true_char()).unwrap();
 
-        let start = area.get_width(line, cfg, pos.true_char(), true);
-        let end = start + len_from(char, start as u16, cap, &cfg.tab_stops) as usize;
+        let end = area.get_width(line.clone(), cfg, pos.true_char() + 1, true);
+        let start = match char {
+            '\n' => end - 1,
+            '\t' => {
+                let start = area.get_width(line.clone(), cfg, pos.true_char(), true);
+                // If `start > end`, the start happens before wrapping, which can only
+                // happen on '\t' characters. Since the start needs to be on the same
+                // line as the end, and the end is the first wrapped character, it is
+                // also the start.
+                if start > end {
+                    indents(line, &cfg.tab_stops, cap)
+                        .scan(0, |old_indent, (indent, ..)| {
+                            if *old_indent == indent {
+                                None
+                            } else {
+                                *old_indent = indent;
+                                Some(indent)
+                            }
+                        })
+                        .last()
+                        .unwrap_or(0) as usize
+                } else {
+                    start
+                }
+            }
+            char => end - UnicodeWidthChar::width(char).unwrap_or(0)
+        };
 
         let max_dist = width - cfg.scrolloff.x_gap;
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
 
         if start < min_dist {
             self.x_shift = self.x_shift.saturating_sub(min_dist - start);
+        } else if end < start {
+            self.x_shift = self.x_shift.saturating_sub(min_dist - end);
         } else if end > self.x_shift + max_dist {
             let line = text.iter_line(pos.true_row());
 
@@ -431,7 +454,9 @@ impl ui::PrintInfo for PrintInfo {
 
 fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16 {
     match char {
-        '\t' => (tab_stops.spaces_at(start as usize) as u16).min(max_width.saturating_sub(start)),
+        '\t' => (tab_stops.spaces_at(start as usize) as u16)
+            .min(max_width.saturating_sub(start))
+            .max(1),
         '\n' => 1,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
@@ -466,8 +491,7 @@ pub fn bits<'a>(
         *x += len;
 
         let surpassed_width = *x > width || (*x == width && len == 0);
-        let tag_on_indent = indent > *x - len && bit.is_tag();
-        let nl = if (*next_line && !tag_on_indent) || (!no_wrap && surpassed_width) {
+        let nl = if *next_line || (!no_wrap && surpassed_width) {
             *x = indent + len;
             *next_line = false;
             Some(indent)
