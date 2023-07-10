@@ -479,6 +479,14 @@ impl TextBit {
         }
     }
 
+    pub fn as_tag(&self) -> Option<&Tag> {
+        if let Self::Tag(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     pub fn is_new_line(&self) -> bool {
         match self {
             TextBit::Char('\n') => true,
@@ -523,7 +531,7 @@ where
 {
     type Item = (usize, TextBit);
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         // `<=` because some `Tag`s may be triggered before printing.
         if let Some(&(index, tag)) = self.tags.peek().filter(|(index, _)| *index <= self.cur_char) {

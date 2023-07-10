@@ -101,6 +101,8 @@ where
         let main_line = file.main_cursor().true_line();
         let mut text = String::new();
 
+        //self.builder.push_tag(Tag::AlignRight);
+
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let tag = get_tag(*line, main_line, *is_wrapped);
             write_text(&mut text, *line, main_line, *is_wrapped, width, &self.cfg);

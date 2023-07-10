@@ -1,7 +1,7 @@
 mod line;
 
 use std::{
-    io::{self, StdoutLock},
+    io::{self, sink, Sink, StdoutLock},
     sync::atomic::{AtomicBool, Ordering}
 };
 
@@ -577,6 +577,7 @@ fn words<'a>(
 struct Writer<'a> {
     left: StdoutLock<'a>,
     right: Vec<u8>,
+    sink: Sink,
     rtl: bool,
     go_rtl_on_nl: bool
 }
@@ -586,6 +587,7 @@ impl<'a> Writer<'a> {
         Self {
             left: std::io::stdout().lock(),
             right: Vec::new(),
+            sink: sink(),
             rtl: false,
             go_rtl_on_nl: false
         }
@@ -621,10 +623,11 @@ fn print(
         .map(|(nl, _, bit)| (nl, bit))
         .chain(std::iter::once((None, TextBit::Char(' '))));
     while let Some((nl, bit)) = iter.next() {
+        writer.rtl |= matches!(bit, TextBit::Tag(Tag::AlignRight));
         if let Some(indent) = nl {
             if writer.rtl {
                 let remainder = coords.br.x - cursor.x;
-                print_right_line(remainder, is_active, &mut form_former, writer)
+                print_right_line(cursor, coords, remainder, writer)
             } else if cursor != coords.tl {
                 clear_line(cursor, coords, info.x_shift, writer);
             }
@@ -648,12 +651,22 @@ fn print(
         }
     }
 
+	if writer.rtl {
+        let remainder = coords.br.x - cursor.x;
+        print_right_line(cursor, coords, remainder, writer);
+	}
+
     cursor
 }
 
-fn print_right_line(
-    remainder: u16, is_active: bool, form_former: &mut FormFormer, writer: &mut Writer
-) {
+fn print_right_line(cursor: Coord, coords: Coords, remainder: u16, writer: &mut Writer) {
+    let (x, y) = (coords.tl.x, cursor.y);
+    queue!(
+        writer.left,
+        Print(" ".repeat(remainder as usize)),
+        Print(std::str::from_utf8(&writer.right).unwrap()),
+        cursor::MoveTo(x, y)
+    );
 }
 
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut Writer) {
@@ -724,7 +737,9 @@ fn trigger_tag(
         Tag::ExtraCursor => {
             queue!(writer, SetStyle(form_former.extra_cursor().form.style));
         }
-        _ => todo!()
+        // Tag::AlignRight => writer.rtl = false,
+        // Tag::AlignLeft => writer.rtl = false,
+        _ => {}
     }
 
     None

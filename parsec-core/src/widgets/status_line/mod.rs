@@ -405,6 +405,7 @@ where
     U: Ui
 {
     let mut builder = TextBuilder::default();
+    builder.push_tag(Tag::AlignRight);
     let mut checkers = Vec::new();
     let readers = {
         let mut readers = Vec::new();
