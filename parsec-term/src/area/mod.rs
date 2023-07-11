@@ -2,7 +2,7 @@ mod line;
 
 use std::{
     fmt::Alignment,
-    io::{self, StdoutLock},
+    io::{self, stdout, StdoutLock},
     sync::atomic::{AtomicBool, Ordering}
 };
 
@@ -145,18 +145,18 @@ impl ui::Area for Area {
             SHOW_CURSOR.store(false, Ordering::Release);
         }
 
-        let mut writer = Writer::new();
-        print_edges(self.layout.read().edges(), &mut writer);
+        let mut stdout = stdout().lock();
+        print_edges(self.layout.read().edges(), &mut stdout);
 
         let coords = self.coords();
-        queue!(writer, cursor::MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
+        queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
 
         let width = cfg.wrap_method.wrapping_cap(coords.width());
 
         let indents = {
             let line_char = {
                 let Some(line) = text.get_char_to_line(info.first_char) else {
-                    clear_line(coords.tl, coords, 0, &mut writer);
+                    clear_line(coords.tl, coords, 0, &mut stdout);
                     return;
                 };
                 text.line_to_char(line)
@@ -170,24 +170,24 @@ impl ui::Area for Area {
         let form_former = palette.form_former();
         let mut cursor = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, width, &cfg);
-            print(words, coords, self.is_active(), info, &cfg, form_former, &mut writer)
+            print(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         } else {
             let dont_wrap = cfg.wrap_method.is_no_wrap();
             let bits = bits(indents, width, &cfg.tab_stops, dont_wrap);
-            print(bits, coords, self.is_active(), info, &cfg, form_former, &mut writer)
+            print(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         };
 
         while coords.br.y >= cursor.y {
-            clear_line(cursor, coords, 0, &mut writer);
+            clear_line(cursor, coords, 0, &mut stdout);
             cursor.y += 1;
             cursor.x = coords.tl.x;
         }
 
         if SHOW_CURSOR.load(Ordering::Acquire) {
-            queue!(writer, cursor::RestorePosition, cursor::Show);
+            queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        execute!(writer, ResetColor).unwrap();
+        execute!(stdout, ResetColor).unwrap();
     }
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), ()> {
@@ -576,125 +576,82 @@ fn words<'a>(
     })
 }
 
-struct Writer<'a> {
-    stdout: StdoutLock<'a>,
-    accum: Vec<u8>,
-    alignment: Alignment,
-    next_alignment: Alignment
-}
-
-impl<'a> Writer<'a> {
-    fn new() -> Self {
-        Self {
-            stdout: std::io::stdout().lock(),
-            accum: Vec::new(),
-            alignment: Alignment::Left,
-            next_alignment: Alignment::Left
-        }
-    }
-}
-
-impl<'a> io::Write for Writer<'a> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self.alignment {
-            Alignment::Right | Alignment::Center => self.accum.write(buf),
-            Alignment::Left => self.stdout.write(buf)
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        match self.alignment {
-            Alignment::Right | Alignment::Center => self.accum.flush(),
-            Alignment::Left => self.stdout.flush()
-        }
-    }
-}
-
 fn print(
     iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
-    info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, writer: &mut Writer
+    info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> Coord {
     let x_shift = info.x_shift;
     let mut last_char = 'a';
     let mut cursor = coords.tl;
     let mut prev_style = None;
+    let mut alignment = Alignment::Left;
+    let mut line = Vec::new();
 
     let mut iter = iter
         .map(|(nl, _, bit)| (nl, bit))
         .chain(std::iter::once((None, TextBit::Char(' '))));
     while let Some((nl, bit)) = iter.next() {
-        match bit {
-            TextBit::Tag(Tag::AlignLeft) => writer.next_alignment = Alignment::Left,
-            TextBit::Tag(Tag::AlignRight) => writer.next_alignment = Alignment::Right,
-            TextBit::Tag(Tag::AlignCenter) => writer.next_alignment = Alignment::Center,
-            _ => {}
-        }
         if let Some(indent) = nl {
-            writer.alignment = writer.next_alignment;
             if cursor != coords.tl {
-                if let Alignment::Right | Alignment::Center = writer.alignment {
-                    print_aligned(cursor, coords, writer);
-                    queue!(writer.stdout, cursor::MoveTo(coords.tl.x, cursor.y))
-                } else {
-                    clear_line(cursor, coords, info.x_shift, writer);
-                }
+                print_aligned(cursor, coords, alignment, &mut line, stdout);
+                queue!(stdout, cursor::MoveTo(coords.tl.x, cursor.y));
             }
             if cursor.y + 1 > coords.br.y {
                 cursor.y += 1;
                 break;
             }
             cursor.x = coords.tl.x + indent;
-            indent_line(&form_former, cursor, coords, x_shift, writer);
+            indent_line(&form_former, cursor, coords, x_shift, &mut line);
             cursor.y += 1;
         }
 
         if let &TextBit::Char(char) = &bit {
-            if char == '\n' && let Alignment::Right | Alignment::Center = writer.alignment {
+            if char == '\n' && let Alignment::Right | Alignment::Center = alignment {
                 continue;
             }
             last_char = real_char_from(char, &cfg.new_line, last_char);
-            cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, writer);
+            cursor.x += write_char(last_char, cursor, coords, x_shift, &cfg.tab_stops, &mut line);
             if let Some(style) = prev_style.take() {
-                queue!(writer, ResetColor, SetStyle(style));
+                queue!(&mut line, ResetColor, SetStyle(style));
             }
         } else if let TextBit::Tag(tag) = bit {
-            prev_style = trigger_tag(tag, is_active, &mut form_former, writer);
+            prev_style = trigger_tag(tag, is_active, &mut alignment, &mut form_former, &mut line);
         }
     }
 
-    if !writer.accum.is_empty() {
-        print_aligned(cursor, coords, writer);
+    if !line.is_empty() {
+        print_aligned(cursor, coords, alignment, &mut line, stdout);
     }
 
     cursor
 }
 
-fn print_aligned(cursor: Coord, coords: Coords, writer: &mut Writer) {
-    if let Alignment::Left = writer.alignment {
-        return;
-    }
-
-    let (left, right) = if let Alignment::Right = writer.alignment {
-        (coords.br.x.saturating_sub(cursor.x) as usize, 0)
-    } else {
-        let remainder = coords.br.x.saturating_sub(cursor.x) as usize;
-        let left = remainder / 2;
-        (left, remainder - left)
+fn print_aligned(
+    cursor: Coord, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
+    stdout: &mut StdoutLock
+) {
+    let (left, right) = match alignment {
+        Alignment::Left => (0, coords.br.x.saturating_sub(cursor.x) as usize),
+        Alignment::Right => (coords.br.x.saturating_sub(cursor.x) as usize, 0),
+        Alignment::Center => {
+            let remainder = coords.br.x.saturating_sub(cursor.x) as usize;
+            let left = remainder / 2;
+            (left, remainder - left)
+        }
     };
 
     queue!(
-        writer.stdout,
+        stdout,
         ResetColor,
         Print(" ".repeat(left as usize)),
-        Print(std::str::from_utf8(&writer.accum).unwrap()),
+        Print(std::str::from_utf8(line).unwrap()),
         Print(" ".repeat(right as usize)),
-        ResetColor,
     );
 
-    writer.accum.clear();
+    line.clear();
 }
 
-fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut Writer) {
+fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
     let (x, y) = (coords.tl.x, cursor.y);
     queue!(
@@ -706,64 +663,61 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut Writer
 }
 
 fn indent_line(
-    form_former: &FormFormer, cursor: Coord, coords: Coords, x_shift: usize, writer: &mut Writer
+    form_former: &FormFormer, cursor: Coord, coords: Coords, x_shift: usize, line: &mut Vec<u8>
 ) {
     let prev_style = form_former.make_form().style;
     let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
-    queue!(writer, Print(indent), SetStyle(prev_style));
+    queue!(line, Print(indent), SetStyle(prev_style));
 }
 
-fn print_char(
-    cursor: Coord, char: char, coords: Coords, x_shift: usize, tab_stops: &TabStops,
-    writer: &mut Writer
+fn write_char(
+    char: char, cursor: Coord, coords: Coords, x_shift: usize, tab_stops: &TabStops,
+    line: &mut Vec<u8>
 ) -> u16 {
     let len = len_from(char, cursor.x - coords.tl.x, (coords.width() + x_shift) as u16, tab_stops);
 
     // Case where the cursor hasn't yet reached the left edge.
     if cursor.x < coords.tl.x + x_shift as u16 {
         let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
-        queue!(writer, Print(" ".repeat(len)));
+        queue!(line, Print(" ".repeat(len)));
     // Case where the end of the cursor, after printing, would be
     // located before the right edge.
     } else if cursor.x + len <= coords.br.x + x_shift as u16 {
         match char {
-            '\t' => queue!(writer, Print(" ".repeat(len as usize))),
-            char => queue!(writer, Print(char))
+            '\t' => queue!(line, Print(" ".repeat(len as usize))),
+            char => queue!(line, Print(char))
         };
     // Case where it wouldn't.
     } else if cursor.x < coords.br.x + x_shift as u16 {
         let len = coords.br.x as usize + x_shift - cursor.x as usize;
-        queue!(writer, Print(" ".repeat(len as usize)));
+        queue!(line, Print(" ".repeat(len as usize)));
     }
 
     len
 }
 
 fn trigger_tag(
-    tag: Tag, is_active: bool, form_former: &mut FormFormer, writer: &mut Writer
+    tag: Tag, is_active: bool, alignment: &mut Alignment, form_former: &mut FormFormer,
+    line: &mut Vec<u8>
 ) -> Option<ContentStyle> {
+    use Tag::*;
     match tag {
-        Tag::PushForm(id) => {
-            queue!(writer, ResetColor, SetStyle(form_former.apply(id).style));
-        }
-        Tag::PopForm(id) => {
-            queue!(writer, ResetColor, SetStyle(form_former.remove(id).style));
-        }
-        Tag::MainCursor => {
+        PushForm(id) => queue!(line, ResetColor, SetStyle(form_former.apply(id).style)),
+        PopForm(id) => queue!(line, ResetColor, SetStyle(form_former.remove(id).style)),
+        MainCursor => {
             let cursor_style = form_former.main_cursor();
             if let (Some(caret), true) = (cursor_style.caret, is_active) {
                 SHOW_CURSOR.store(true, Ordering::Release);
-                queue!(writer, caret, cursor::SavePosition);
+                queue!(line, caret, cursor::SavePosition);
             } else {
-                queue!(writer, SetStyle(cursor_style.form.style));
+                queue!(line, SetStyle(cursor_style.form.style));
                 return Some(form_former.make_form().style);
             }
         }
-        Tag::ExtraCursor => {
-            queue!(writer, SetStyle(form_former.extra_cursor().form.style));
-        }
-        // Tag::AlignRight => writer.rtl = false,
-        // Tag::AlignLeft => writer.rtl = false,
+        ExtraCursor => queue!(line, SetStyle(form_former.extra_cursor().form.style)),
+        Tag::AlignLeft => *alignment = Alignment::Left,
+        Tag::AlignRight => *alignment = Alignment::Right,
+        Tag::AlignCenter => *alignment = Alignment::Center,
         _ => {}
     }
 
@@ -787,7 +741,7 @@ fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
     }
 }
 
-fn print_edges(edges: &[Edge], writer: &mut Writer) {
+fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     let edges = edges.iter().map(|edge| edge.line_coords()).collect::<Vec<LineCoords>>();
 
     let mut crossings =
@@ -800,7 +754,7 @@ fn print_edges(edges: &[Edge], writer: &mut Writer) {
                 None => unreachable!()
             };
             let line = char.to_string().repeat((coords.br.x - coords.tl.x + 1) as usize);
-            queue!(writer, cursor::MoveTo(coords.tl.x, coords.tl.y), Print(line))
+            queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), Print(line))
         } else {
             let char = match coords.line {
                 Some(line) => line::vertical(line, line),
@@ -808,7 +762,7 @@ fn print_edges(edges: &[Edge], writer: &mut Writer) {
             };
 
             for y in (coords.tl.y)..=coords.br.y {
-                queue!(writer, cursor::MoveTo(coords.tl.x, y), Print(char))
+                queue!(stdout, cursor::MoveTo(coords.tl.x, y), Print(char))
             }
         }
 
@@ -833,7 +787,7 @@ fn print_edges(edges: &[Edge], writer: &mut Writer) {
 
     for (coord, right, up, left, down) in crossings {
         queue!(
-            writer,
+            stdout,
             cursor::MoveTo(coord.x, coord.y),
             Print(line::crossing(right, up, left, down, true))
         )

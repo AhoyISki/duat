@@ -128,9 +128,9 @@ where
             }
         }
 
-        log_info!("{:#?}", self.builder);
+        // log_info!("{:#?}", self.builder);
 
-        //self.builder.truncate(printed_lines.len());
+        self.builder.truncate(printed_lines.len());
     }
 }
 
@@ -140,7 +140,7 @@ where
 {
     fn update(&mut self, area: &U::Area) {
         let width = self.calculate_width();
-        area.change_constraint(Constraint::Length(width)).unwrap();
+        area.change_constraint(Constraint::Length(width + 1.0)).unwrap();
 
         self.update_text();
     }

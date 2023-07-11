@@ -169,10 +169,6 @@ where
             is_wrapped = false;
             line_num += 1;
         }
-
-		if self.printed_lines.len() > 4 {
-            panic!("{:?}, {len_lines}", self.printed_lines);
-		}
     }
 
     /// Returns the currently printed set of lines.
