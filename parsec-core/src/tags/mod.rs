@@ -37,16 +37,22 @@ pub enum Tag {
     /// Places an extra cursor.
     ExtraCursor,
 
+    /// Changes the alignment of the text to the left of the area.
+    /// This only takes effect after this line terminates.
+    AlignLeft,
+    /// Changes the alignment of the text to the right of the area.
+    /// This only takes effect after this line terminates.
+    AlignRight,
+    /// Changes the alignemet of the text to the center of the area.  
+    /// This only takes effect after this line terminates.
+    AlignCenter,
+
     // Not Implemented:
     /// Begins or ends a hoverable section in the file.
     HoverBound,
     /// Conceals a character with a string of text of equal lenght,
     /// permanently.
-    PermanentConceal { index: u16 },
-    /// Changes the alignment of text to the left of the area.
-    AlignLeft,
-    /// Changes the alignment of text to the right of the area.
-    AlignRight
+    PermanentConceal { index: u16 }
 }
 
 impl std::fmt::Debug for Tag {
@@ -56,6 +62,9 @@ impl std::fmt::Debug for Tag {
             Tag::PopForm(index) => f.write_fmt(format_args!("PopForm({})", index)),
             Tag::MainCursor => f.write_str("MainCursor"),
             Tag::ExtraCursor => f.write_str("ExtraCursor"),
+            Tag::AlignLeft => f.write_str("AlignLeft"),
+            Tag::AlignRight => f.write_str("AlignRight"),
+            Tag::AlignCenter => f.write_str("AlignCenter"),
             _ => todo!()
         }
     }
@@ -76,6 +85,16 @@ impl Tag {
 pub enum TagOrSkip {
     Tag(Tag, Lock),
     Skip(u32)
+}
+
+impl TagOrSkip {
+    pub fn as_skip(&self) -> Option<&u32> {
+        if let Self::Skip(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl std::fmt::Debug for TagOrSkip {
@@ -277,7 +296,7 @@ impl Tags {
         self.inner.width()
     }
 
-    pub fn vec(&mut self) -> &mut Vec<TagOrSkip> {
+    pub fn mut_vec(&mut self) -> &mut Vec<TagOrSkip> {
         match &mut self.inner {
             InnerTags::Vec(vec) => vec,
             InnerTags::Rope(_) => {
@@ -570,8 +589,8 @@ impl Tags {
 // text.    fn recur_match(
 //        &self, lines: &[TextLine], ranges: &mut TagRangeList, info:
 // &mut [(LineInfo, usize)],        last_match: LastMatch,
-//    ) -> (SmallVec<[TagRange; 32]>, LastMatch) {
-//        // The finalized vector with all ranges that were occupied
+//    ) -> (SmallVec<[TagRange; 32]>, LastMatch) { // The finalized
+//      vector with all ranges that were occupied
 // by exclusive patterns.        let mut poked_ranges =
 // SmallVec::<[TagRange; 32]>::new();
 //

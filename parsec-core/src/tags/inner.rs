@@ -65,7 +65,7 @@ impl InnerTags {
             InnerTags::Vec(vec) => {
                 let start = start_ch_to_index(&vec, ch_index);
                 let end = end_ch_to_index(&vec[start..], 0);
-                vec.drain_filter(|tag_or_skip| match tag_or_skip {
+                vec.extract_if(|tag_or_skip| match tag_or_skip {
                     TagOrSkip::Tag(_, cmp_lock) => lock == *cmp_lock,
                     TagOrSkip::Skip(_) => false
                 })

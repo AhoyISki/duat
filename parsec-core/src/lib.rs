@@ -1,4 +1,4 @@
-#![feature(drain_filter, result_option_inspect, trait_upcasting, let_chains)]
+#![feature(extract_if, result_option_inspect, trait_upcasting, let_chains)]
 
 use std::{
     path::PathBuf,

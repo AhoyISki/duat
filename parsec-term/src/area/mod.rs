@@ -1,13 +1,13 @@
 mod line;
 
 use std::{
-    io::{self, sink, Sink, StdoutLock},
+    fmt::Alignment,
+    io::{self, StdoutLock},
     sync::atomic::{AtomicBool, Ordering}
 };
 
 use crossterm::{
-    cursor::{self},
-    execute, queue as crossterm_queue,
+    cursor, execute, queue as crossterm_queue,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
@@ -200,21 +200,17 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize
-    ) -> usize {
+    fn visible_rows(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 bits(indents, coords.width(), &cfg.tab_stops, false)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
-                    .take_while(|index| *index <= max_index)
                     .count()
             }
             WrapMethod::Word => words(indents, coords.width(), &cfg)
                 .filter_map(|(new_line, index, _)| new_line.map(|_| index))
-                .take_while(|index| *index <= max_index)
                 .count(),
             WrapMethod::NoWrap => 1
         }
@@ -242,8 +238,7 @@ impl ui::Area for Area {
     }
 
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, max_index: usize,
-        wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, wrap_around: bool
     ) -> usize {
         let width = self.wrapping_coords(cfg).width();
         let max_width = if wrap_around { width as u16 } else { u16::MAX };
@@ -261,14 +256,10 @@ impl ui::Area for Area {
         };
 
         if let WrapMethod::Word = cfg.wrap_method {
-            words(indents, width, &cfg)
-                .take_while(|(_, index, _)| *index < max_index)
-                .fold(0, fold_fn) as usize
+            words(indents, width, &cfg).fold(0, fold_fn) as usize
         } else {
             let is_no_wrap = cfg.wrap_method.is_no_wrap();
-            bits(indents, width, &cfg.tab_stops, is_no_wrap)
-                .take_while(|(_, index, _)| *index < max_index)
-                .fold(0, fold_fn) as usize
+            bits(indents, width, &cfg.tab_stops, is_no_wrap).fold(0, fold_fn) as usize
         }
     }
 
@@ -360,7 +351,12 @@ impl PrintInfo {
             }
         }
 
-        if let Some(&index) = indices.get(limit - 1).or_else(|| indices.last()) {
+        if let Some(&index) = limit
+            .checked_sub(1)
+            .map(|index| indices.get(index))
+            .flatten()
+            .or_else(|| indices.last())
+        {
             if (index < self.first_char && self.last_main > pos)
                 || (index > self.first_char && self.last_main < pos)
             {
@@ -386,13 +382,19 @@ impl PrintInfo {
         };
 
         let line = text.iter_line(pos.true_row());
-        let char = text.get_char(pos.true_char()).unwrap();
+        let Some(char) = text.get_char(pos.true_char()) else {
+            return;
+        };
 
-        let end = area.get_width(line.clone(), cfg, pos.true_char() + 1, true);
+        let end = {
+            let line = line.clone().take_while(|(index, _)| *index < pos.true_char() + 1);
+            area.get_width(line, cfg, true)
+        };
         let start = match char {
             '\n' => end - 1,
             '\t' => {
-                let start = area.get_width(line.clone(), cfg, pos.true_char(), true);
+                let line = line.take_while(|(index, _)| *index < pos.true_char());
+                let start = area.get_width(line.clone(), cfg, true);
                 // If `start > end`, the start happens before wrapping, which can only
                 // happen on '\t' characters. Since the start needs to be on the same
                 // line as the end, and the end is the first wrapped character, it is
@@ -426,7 +428,7 @@ impl PrintInfo {
         } else if end > self.x_shift + max_dist {
             let line = text.iter_line(pos.true_row());
 
-            if area.get_width(line, cfg, usize::MAX, false) < width {
+            if area.get_width(line, cfg, false) < width {
                 return;
             }
             self.x_shift = end - max_dist;
@@ -575,37 +577,35 @@ fn words<'a>(
 }
 
 struct Writer<'a> {
-    left: StdoutLock<'a>,
-    right: Vec<u8>,
-    sink: Sink,
-    rtl: bool,
-    go_rtl_on_nl: bool
+    stdout: StdoutLock<'a>,
+    accum: Vec<u8>,
+    alignment: Alignment,
+    next_alignment: Alignment
 }
 
 impl<'a> Writer<'a> {
     fn new() -> Self {
         Self {
-            left: std::io::stdout().lock(),
-            right: Vec::new(),
-            sink: sink(),
-            rtl: false,
-            go_rtl_on_nl: false
+            stdout: std::io::stdout().lock(),
+            accum: Vec::new(),
+            alignment: Alignment::Left,
+            next_alignment: Alignment::Left
         }
     }
 }
 
 impl<'a> io::Write for Writer<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self.rtl {
-            true => self.right.write(buf),
-            false => self.left.write(buf)
+        match self.alignment {
+            Alignment::Right | Alignment::Center => self.accum.write(buf),
+            Alignment::Left => self.stdout.write(buf)
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        match self.rtl {
-            true => self.right.flush(),
-            false => self.left.flush()
+        match self.alignment {
+            Alignment::Right | Alignment::Center => self.accum.flush(),
+            Alignment::Left => self.stdout.flush()
         }
     }
 }
@@ -623,13 +623,21 @@ fn print(
         .map(|(nl, _, bit)| (nl, bit))
         .chain(std::iter::once((None, TextBit::Char(' '))));
     while let Some((nl, bit)) = iter.next() {
-        writer.rtl |= matches!(bit, TextBit::Tag(Tag::AlignRight));
+        match bit {
+            TextBit::Tag(Tag::AlignLeft) => writer.next_alignment = Alignment::Left,
+            TextBit::Tag(Tag::AlignRight) => writer.next_alignment = Alignment::Right,
+            TextBit::Tag(Tag::AlignCenter) => writer.next_alignment = Alignment::Center,
+            _ => {}
+        }
         if let Some(indent) = nl {
-            if writer.rtl {
-                let remainder = coords.br.x - cursor.x;
-                print_right_line(cursor, coords, remainder, writer)
-            } else if cursor != coords.tl {
-                clear_line(cursor, coords, info.x_shift, writer);
+            writer.alignment = writer.next_alignment;
+            if cursor != coords.tl {
+                if let Alignment::Right | Alignment::Center = writer.alignment {
+                    print_aligned(cursor, coords, writer);
+                    queue!(writer.stdout, cursor::MoveTo(coords.tl.x, cursor.y))
+                } else {
+                    clear_line(cursor, coords, info.x_shift, writer);
+                }
             }
             if cursor.y + 1 > coords.br.y {
                 cursor.y += 1;
@@ -641,6 +649,9 @@ fn print(
         }
 
         if let &TextBit::Char(char) = &bit {
+            if char == '\n' && let Alignment::Right | Alignment::Center = writer.alignment {
+                continue;
+            }
             last_char = real_char_from(char, &cfg.new_line, last_char);
             cursor.x += print_char(cursor, last_char, coords, x_shift, &cfg.tab_stops, writer);
             if let Some(style) = prev_style.take() {
@@ -651,22 +662,36 @@ fn print(
         }
     }
 
-	if writer.rtl {
-        let remainder = coords.br.x - cursor.x;
-        print_right_line(cursor, coords, remainder, writer);
-	}
+    if !writer.accum.is_empty() {
+        print_aligned(cursor, coords, writer);
+    }
 
     cursor
 }
 
-fn print_right_line(cursor: Coord, coords: Coords, remainder: u16, writer: &mut Writer) {
-    let (x, y) = (coords.tl.x, cursor.y);
+fn print_aligned(cursor: Coord, coords: Coords, writer: &mut Writer) {
+    if let Alignment::Left = writer.alignment {
+        return;
+    }
+
+    let (left, right) = if let Alignment::Right = writer.alignment {
+        (coords.br.x.saturating_sub(cursor.x) as usize, 0)
+    } else {
+        let remainder = coords.br.x.saturating_sub(cursor.x) as usize;
+        let left = remainder / 2;
+        (left, remainder - left)
+    };
+
     queue!(
-        writer.left,
-        Print(" ".repeat(remainder as usize)),
-        Print(std::str::from_utf8(&writer.right).unwrap()),
-        cursor::MoveTo(x, y)
+        writer.stdout,
+        ResetColor,
+        Print(" ".repeat(left as usize)),
+        Print(std::str::from_utf8(&writer.accum).unwrap()),
+        Print(" ".repeat(right as usize)),
+        ResetColor,
     );
+
+    writer.accum.clear();
 }
 
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut Writer) {
@@ -699,7 +724,7 @@ fn print_char(
         let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
         queue!(writer, Print(" ".repeat(len)));
     // Case where the end of the cursor, after printing, would be
-    // within the `Area`.
+    // located before the right edge.
     } else if cursor.x + len <= coords.br.x + x_shift as u16 {
         match char {
             '\t' => queue!(writer, Print(" ".repeat(len as usize))),

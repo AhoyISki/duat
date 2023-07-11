@@ -494,6 +494,15 @@ where
     }
 }
 
+impl<T> Debug for RoData<T>
+where
+    T: ?Sized + Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&*self.data.read().unwrap(), f)
+    }
+}
+
 impl<T> From<&RwData<T>> for RoData<T>
 where
     T: ?Sized

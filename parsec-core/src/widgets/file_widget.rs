@@ -146,8 +146,8 @@ where
         // The beginning of the first line may be offscreen, which would make
         // the first line number a wrapped line.
         let mut is_wrapped = {
-            let line = self.text.iter_line(line_num);
-            area.visible_rows(line, &self.print_cfg, first_char) > 1
+            let line = self.text.iter_line(line_num).take_while(|(index, _)| *index < first_char);
+            area.visible_rows(line, &self.print_cfg) > 1
         };
 
         let height = area.height();
@@ -156,16 +156,12 @@ where
         self.printed_lines.reserve_exact(height);
 
         let mut accum = 0;
-        let lines_len = self.text.len_lines();
-        while accum < height && line_num < lines_len {
+        let len_lines = self.text.len_lines();
+        while accum < height && line_num < len_lines {
             let line = self.text.iter_line(line_num);
-            let mut wrap_count = area.visible_rows(line, &self.print_cfg, usize::MAX);
-            if accum == 0 {
-                let line = self.text.iter_line(line_num);
-                wrap_count -= area.visible_rows(line, &self.print_cfg, first_char) - 1;
-            }
+            let visible_rows = area.visible_rows(line, &self.print_cfg);
             let prev_accum = accum;
-            accum = min(accum + wrap_count, height);
+            accum = min(accum + visible_rows, height);
             for _ in prev_accum..accum {
                 self.printed_lines.push((line_num, is_wrapped));
                 is_wrapped = true;
@@ -173,6 +169,10 @@ where
             is_wrapped = false;
             line_num += 1;
         }
+
+		if self.printed_lines.len() > 4 {
+            panic!("{:?}, {len_lines}", self.printed_lines);
+		}
     }
 
     /// Returns the currently printed set of lines.

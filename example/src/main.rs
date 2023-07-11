@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+use std::fmt::Alignment;
+
 // Even when not on a terminal, Parsec (for the foreseable future)
 // will use the crossterm crate in order to get a baseline access to
 // terminal-like features, such as colors and control of the cursor's
@@ -30,7 +32,7 @@ use parsec_core::{
     },
     text::{NewLine, PrintCfg, ScrollOff, WrapMethod},
     ui::{Constraint, ModNode, PushSpecs},
-    widgets::{Align, CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine},
+    widgets::{CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine},
     Controler
 };
 use parsec_kak::Editor;
@@ -80,7 +82,7 @@ fn main() {
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_specd(VertRule::config_fn(cfg));
 
-        let cfg = LineNumbersCfg::rel_abs(Align::Right, Align::Left);
+        let cfg = LineNumbersCfg::rel_abs(Alignment::Right, Alignment::Left);
         mod_node.push_specd(LineNumbers::config_fn(cfg));
 
         // let (child, _) =

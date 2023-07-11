@@ -20,11 +20,12 @@
 //! numbers will be printed. This struct shows up twice in
 //! [`LineNumbersCfg`], once for the main cursor's line, and once for
 //! all other lines. Its [`Right`][Alignment::Right] by default.
-use std::fmt::Write;
+use std::fmt::Alignment;
 
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{DownCastableData, ReadableData, RoData},
+    log_info,
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag
@@ -62,9 +63,7 @@ where
                 builder: TextBuilder::default(),
                 cfg
             };
-            let width = line_numbers.calculate_width();
-
-            line_numbers.update_text(width as usize);
+            line_numbers.update_text();
 
             let widget_type = WidgetType::no_input(line_numbers);
             (widget_type, Box::new(move || file.has_changed()), PushSpecs::left_free())
@@ -87,7 +86,7 @@ where
 
         while len > num_exp {
             num_exp *= 10;
-            width += 1f64;
+            width += 1.0;
         }
 
         width
@@ -95,28 +94,43 @@ where
 
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
-    fn update_text(&mut self, width: usize) {
+    fn update_text(&mut self) {
         let file = self.file.read();
         let printed_lines = file.printed_lines();
         let main_line = file.main_cursor().true_line();
         let mut text = String::new();
 
-        //self.builder.push_tag(Tag::AlignRight);
-
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let tag = get_tag(*line, main_line, *is_wrapped);
-            write_text(&mut text, *line, main_line, *is_wrapped, width, &self.cfg);
+            write_text(&mut text, *line, main_line, *is_wrapped, &self.cfg);
+
+            let align_tag = {
+                let alignment = if *line == main_line {
+                    self.cfg.main_alignment
+                } else {
+                    self.cfg.alignment
+                };
+                match alignment {
+                    Alignment::Left => Tag::AlignLeft,
+                    Alignment::Right => Tag::AlignRight,
+                    Alignment::Center => Tag::AlignCenter
+                }
+            };
 
             if index < self.builder.ranges_len() {
-                self.builder.swap_tag(index, tag);
+                self.builder.swap_tag(index * 2, align_tag);
+                self.builder.swap_tag(index * 2 + 1, tag);
                 self.builder.swap_range(index, &text);
             } else {
+                self.builder.push_tag(align_tag);
                 self.builder.push_tag(tag);
                 self.builder.push_swappable(&text);
             }
         }
 
-        self.builder.truncate(printed_lines.len());
+        log_info!("{:#?}", self.builder);
+
+        //self.builder.truncate(printed_lines.len());
     }
 }
 
@@ -128,7 +142,7 @@ where
         let width = self.calculate_width();
         area.change_constraint(Constraint::Length(width)).unwrap();
 
-        self.update_text(width as usize);
+        self.update_text();
     }
 
     fn text(&self) -> &Text {
@@ -162,77 +176,79 @@ enum Numbers {
     RelAbs
 }
 
-/// How to show the line numbers on screen.
-#[derive(Default, Debug, Copy, Clone)]
-pub enum Align {
-    #[default]
-    Right,
-    Left,
-    Center
-}
-
 /// Configuration options for the [`LineNumbers<U>`] widget.
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct LineNumbersCfg {
     numbers: Numbers,
-    align: Align,
-    main_align: Align,
+    alignment: Alignment,
+    main_alignment: Alignment,
     show_wraps: bool
+}
+
+impl Default for LineNumbersCfg {
+    fn default() -> Self {
+        Self {
+            numbers: Numbers::Absolute,
+            alignment: Alignment::Left,
+            main_alignment: Alignment::Right,
+            show_wraps: false
+        }
+    }
 }
 
 impl LineNumbersCfg {
     /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn absolute(align: Align, main_align: Align) -> Self {
+    pub fn abs(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::Absolute,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: false
         }
     }
 
     /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn absolute_wraps(align: Align, main_align: Align) -> Self {
+    pub fn abs_with_wraps(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::Absolute,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: true
         }
     }
 
-    pub fn relative(align: Align, main_align: Align) -> Self {
+    pub fn rel(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::Relative,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: false
         }
     }
 
-    pub fn relative_wraps(align: Align, main_align: Align) -> Self {
+    pub fn rel_with_wraps(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::Relative,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: true
         }
     }
 
-    pub fn rel_abs(align: Align, main_align: Align) -> Self {
+    pub fn rel_abs(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::RelAbs,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: false
         }
     }
 
-    pub fn rel_abs_wraps(align: Align, main_align: Align) -> Self {
+    pub fn rel_abs_wraps(align: Alignment, main_align: Alignment) -> Self {
         Self {
             numbers: Numbers::RelAbs,
-            align,
-            main_align,
+            alignment: align,
+            main_alignment: main_align,
             show_wraps: true
         }
     }
@@ -252,35 +268,22 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
 
 /// Writes the text of the line number to a given [`String`].
 fn write_text(
-    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, width: usize,
-    cfg: &LineNumbersCfg
+    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, cfg: &LineNumbersCfg
 ) {
     text.clear();
-    let number = match cfg.numbers {
-        Numbers::Absolute => line + 1,
-        Numbers::Relative => usize::abs_diff(line, main_line),
-        Numbers::RelAbs => {
-            if line != main_line {
-                usize::abs_diff(line, main_line)
-            } else {
-                line + 1
+    *text = if is_wrapped && !cfg.show_wraps {
+        String::from("\n")
+    } else {
+        match cfg.numbers {
+            Numbers::Absolute => (line + 1).to_string() + "\n",
+            Numbers::Relative => usize::abs_diff(line, main_line).to_string() + "\n",
+            Numbers::RelAbs => {
+                if line != main_line {
+                    usize::abs_diff(line, main_line).to_string() + "\n"
+                } else {
+                    (line + 1).to_string() + "\n"
+                }
             }
         }
     };
-
-    let alignment = if line == main_line {
-        cfg.main_align
-    } else {
-        cfg.align
-    };
-
-    if is_wrapped && !cfg.show_wraps {
-        *text = " ".repeat(width) + "\n";
-    } else {
-        match alignment {
-            Align::Left => write!(text, "{:<width$}\n", number).unwrap(),
-            Align::Center => write!(text, "{:^width$}\n", number).unwrap(),
-            Align::Right => write!(text, "{:>width$}\n", number).unwrap()
-        }
-    }
 }

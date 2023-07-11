@@ -139,7 +139,7 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: area.get_width(line.take(pos.true_col()), cfg, usize::MAX, true)
+            desired_x: area.get_width(line.take(pos.true_col()), cfg, true)
         }
     }
 
@@ -178,7 +178,7 @@ impl Cursor {
         caret.col = caret.char - line_char;
 
         let iter_range = text.iter_range(line_char..=caret.char);
-        self.desired_x = area.get_width(iter_range, cfg, usize::MAX, true);
+        self.desired_x = area.get_width(iter_range, cfg, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
@@ -196,7 +196,7 @@ impl Cursor {
         caret.byte = text.char_to_byte(caret.char);
 
         let iter_range = text.iter_range(line_char..caret.char);
-        self.desired_x = area.get_width(iter_range, cfg, usize::MAX, true);
+        self.desired_x = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;
     }

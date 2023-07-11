@@ -38,6 +38,7 @@ use crate::{
 /// These properties allow for quick and easy modification of the
 /// [`Text<U>`] within, which can then be accessed with
 /// [`text()`][Self::text()].
+#[derive(Debug)]
 pub struct TextBuilder {
     text: Text,
     swappables: Vec<usize>
@@ -59,9 +60,9 @@ impl TextBuilder {
         let last_skip = self
             .text
             .tags
-            .vec()
+            .mut_vec()
             .iter()
-            .filter(|tag_or_skip| matches!(tag_or_skip, TagOrSkip::Skip(_)))
+            .filter(|t_or_s| matches!(t_or_s, TagOrSkip::Skip(_)))
             .count();
 
         self.swappables.push(last_skip);
@@ -74,9 +75,9 @@ impl TextBuilder {
     /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, tag: Tag) -> Lock {
         let lock = self.text.tags.new_lock();
-        self.text.tags.vec().push(TagOrSkip::Tag(tag, lock));
+        self.text.tags.mut_vec().push(TagOrSkip::Tag(tag, lock));
         if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.vec().push(TagOrSkip::Tag(inv_tag, lock));
+            self.text.tags.mut_vec().push(TagOrSkip::Tag(inv_tag, lock));
         }
         lock
     }
@@ -96,35 +97,31 @@ impl TextBuilder {
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
-        let tags_vec = self.text.tags.vec();
-        let mut tags =
-            tags_vec
-                .iter_mut()
-                .enumerate()
-                .filter_map(|(index, tag_or_skip)| match tag_or_skip {
-                    TagOrSkip::Tag(Tag::PopForm(_), _) => None,
-                    TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
-                    TagOrSkip::Skip(_) => None
-                });
+        let tags_vec = self.text.tags.mut_vec();
+        let mut tags = tags_vec.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
+            TagOrSkip::Tag(Tag::PopForm(_), _) => None,
+            TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
+            TagOrSkip::Skip(_) => None
+        });
 
         if let Some((index, tag, lock)) = tags.nth(tag_index) {
             let inv_tag = tag.inverse();
 
             *tag = new_tag;
+            let forward = match &tags_vec[index + 1] {
+                TagOrSkip::Tag(_, _) => 1,
+                TagOrSkip::Skip(_) => 2
+            };
 
             if let Some(new_inv_tag) = new_tag.inverse() {
-                let forward = match &tags_vec[index + 1] {
-                    TagOrSkip::Tag(_, _) => 1,
-                    TagOrSkip::Skip(_) => 2
-                };
-
                 if let Some(_) = inv_tag {
                     tags_vec[index + forward] = TagOrSkip::Tag(new_inv_tag, lock);
                 } else {
-                    tags_vec.insert(index + 1, TagOrSkip::Tag(new_inv_tag, lock));
+                    tags_vec.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
                 }
-            } else {
-                tags_vec.remove(index + 1);
+            } else 
+                if let Some(_) = inv_tag {
+                tags_vec.remove(index + forward);
             }
         }
     }
@@ -132,7 +129,7 @@ impl TextBuilder {
     pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut u32)> {
         self.text
             .tags
-            .vec()
+            .mut_vec()
             .iter_mut()
             .filter_map(|tag_or_skip| match tag_or_skip {
                 TagOrSkip::Skip(skip) => Some(skip),
@@ -147,23 +144,21 @@ impl TextBuilder {
     }
 
     fn add_to_last_skip(&mut self, edit_len: u32) {
-        let tags_vec = self.text.tags.vec();
-        let Some(tag_or_skip) = tags_vec.last() else {
-            tags_vec.push(TagOrSkip::Skip(edit_len));
-            return;
-        };
+        let tags_vec = self.text.tags.mut_vec();
 
-        match tag_or_skip {
-            TagOrSkip::Tag(Tag::PopForm(_), _) => {
-                let prev = tags_vec.len() - 1;
-                if let Some(TagOrSkip::Skip(skip)) = tags_vec.get_mut(prev) {
+        let mut tags = tags_vec.iter().enumerate().rev();
+        while let Some((index, TagOrSkip::Tag(tag, _))) = tags.next() {
+            if let Tag::PopForm(_) = tag {
+                if let Some(TagOrSkip::Skip(skip)) = tags_vec.get_mut(index) {
                     *skip += edit_len;
                 } else {
-                    tags_vec.insert(prev, TagOrSkip::Skip(edit_len));
+                    tags_vec.insert(index, TagOrSkip::Skip(edit_len));
                 }
+                return;
             }
-            _ => tags_vec.push(TagOrSkip::Skip(edit_len))
         }
+
+        tags_vec.push(TagOrSkip::Skip(edit_len));
     }
 
     pub fn clear(&mut self) {
@@ -172,28 +167,34 @@ impl TextBuilder {
     }
 
     pub fn truncate(&mut self, range_index: usize) {
-        let tags_vec = self.text.tags.vec();
+        let tags_vec = self.text.tags.mut_vec();
 
-        let Some(swap_index) = self.swappables.get(range_index) else {
+        let Some(&swap_index) = self.swappables.get(range_index) else {
             return;
         };
-        let (cutoff, index) = tags_vec
+        let (mut index, cutoff) = tags_vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(index, tag_or_skip)| match tag_or_skip {
-                TagOrSkip::Skip(skip) => Some((index, skip)),
-                TagOrSkip::Tag(..) => None
-            })
+            .filter_map(|(index, t_or_s)| t_or_s.as_skip().map(|skip| (index, skip)))
             .scan(0, |accum, (index, skip)| {
                 let prev_accum = *accum;
                 *accum += *skip as usize;
-                Some((prev_accum, index))
+                Some((index, prev_accum))
             })
-            .nth(*swap_index)
+            .nth(swap_index)
             .unwrap();
 
         self.swappables.truncate(range_index);
         self.text.inner.string().truncate(cutoff);
+
+        let mut tags = tags_vec.iter().take(index).rev();
+        while let Some(TagOrSkip::Tag(tag, ..)) = tags.next() {
+            if let Tag::PopForm(_) = tag {
+                break;
+            }
+
+            index -= 1;
+        }
         tags_vec.truncate(index);
     }
 
@@ -216,6 +217,7 @@ impl Default for TextBuilder {
 }
 
 /// The text in a given area.
+#[derive(Debug)]
 pub struct Text {
     inner: InnerText,
     pub tags: Tags,
@@ -640,7 +642,7 @@ impl Default for ScrollOff {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct WordChars(Vec<RangeInclusive<char>>);
 
 impl WordChars {
@@ -661,7 +663,7 @@ impl WordChars {
 }
 
 /// Configuration options for printing.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PrintCfg {
     /// How to wrap the file.
     pub wrap_method: WrapMethod,
