@@ -177,7 +177,7 @@ impl ui::Area for Area {
             print(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         };
 
-        while coords.br.y >= cursor.y {
+        while coords.br.y > cursor.y {
             clear_line(cursor, coords, 0, &mut stdout);
             cursor.y += 1;
             cursor.x = coords.tl.x;
@@ -593,7 +593,7 @@ fn print(
     while let Some((nl, bit)) = iter.next() {
         if let Some(indent) = nl {
             if cursor != coords.tl {
-                print_aligned(cursor, coords, alignment, &mut line, stdout);
+                print_line(cursor, coords, alignment, &mut line, stdout);
                 queue!(stdout, cursor::MoveTo(coords.tl.x, cursor.y));
             }
             if cursor.y + 1 > coords.br.y {
@@ -620,13 +620,13 @@ fn print(
     }
 
     if !line.is_empty() {
-        print_aligned(cursor, coords, alignment, &mut line, stdout);
+        print_line(cursor, coords, alignment, &mut line, stdout);
     }
 
     cursor
 }
 
-fn print_aligned(
+fn print_line(
     cursor: Coord, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
     stdout: &mut StdoutLock
 ) {
@@ -640,6 +640,7 @@ fn print_aligned(
         }
     };
 
+    // std::thread::sleep(std::time::Duration::from_millis(50));
     queue!(
         stdout,
         ResetColor,
@@ -651,11 +652,11 @@ fn print_aligned(
     line.clear();
 }
 
-fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, writer: &mut StdoutLock) {
+fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
     let (x, y) = (coords.tl.x, cursor.y);
     queue!(
-        writer,
+        stdout,
         ResetColor,
         Print(" ".repeat(len.min(coords.width()))),
         cursor::MoveTo(x, y)

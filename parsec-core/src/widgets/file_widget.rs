@@ -159,7 +159,15 @@ where
         let len_lines = self.text.len_lines();
         while accum < height && line_num < len_lines {
             let line = self.text.iter_line(line_num);
-            let visible_rows = area.visible_rows(line, &self.print_cfg);
+
+            let visible_rows = if accum == 0 {
+                let total = area.visible_rows(line.clone(), &self.print_cfg);
+                let cut_line = line.take_while(|(index, _)| *index < first_char);
+                total - area.visible_rows(cut_line, &self.print_cfg)
+            } else {
+                area.visible_rows(line, &self.print_cfg)
+            };
+
             let prev_accum = accum;
             accum = min(accum + visible_rows, height);
             for _ in prev_accum..accum {

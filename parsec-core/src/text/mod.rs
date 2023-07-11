@@ -119,8 +119,7 @@ impl TextBuilder {
                 } else {
                     tags_vec.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
                 }
-            } else 
-                if let Some(_) = inv_tag {
+            } else if let Some(_) = inv_tag {
                 tags_vec.remove(index + forward);
             }
         }

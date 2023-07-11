@@ -6,7 +6,7 @@ use std::{fmt::Debug, sync::atomic::AtomicUsize};
 use no_deadlocks::RwLock;
 
 use crate::{
-    commands::{Commands, CommandErr},
+    commands::{CommandErr, Commands},
     data::{ReadableData, RoData, RwData},
     position::Pos,
     tags::form::FormPalette,
@@ -191,8 +191,7 @@ pub trait Area: Clone + Send + Sync + PartialEq {
     /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
     /// then the number of rows must equal the number of lines on the
     /// [`Iterator`].
-    fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
+    fn visible_rows(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize;
 
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
@@ -203,8 +202,7 @@ pub trait Area: Clone + Send + Sync + PartialEq {
 
     /// Gets the visual width of the [`Iterator`].
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg,
-        wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, wrap_around: bool
     ) -> usize;
 
     /// Gets the column at `dist` from the left side on [`Iterator`].
