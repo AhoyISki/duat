@@ -2,7 +2,7 @@ mod line;
 
 use std::{
     fmt::Alignment,
-    io::{self, stdout, StdoutLock},
+    io::{stdout, StdoutLock},
     sync::atomic::{AtomicBool, Ordering}
 };
 
@@ -488,12 +488,18 @@ pub fn bits<'a>(
     no_wrap: bool
 ) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
     let width = width as u16;
-    iter.scan((0, true), move |(x, next_line), (indent, index, bit)| {
-        let len = bit.as_char().map(|char| len_from(char, *x, width, tab_stops)).unwrap_or(0);
+    iter.scan((0, true, false), move |(x, next_line, char_printed), (indent, index, bit)| {
+        let len = bit
+            .as_char()
+            .map(|char| {
+                *char_printed = true;
+                len_from(char, *x, width, tab_stops)
+            })
+            .unwrap_or(0);
         *x += len;
 
         let surpassed_width = *x > width || (*x == width && len == 0);
-        let nl = if *next_line || (!no_wrap && surpassed_width) {
+        let nl = if *next_line && *char_printed || (!no_wrap && surpassed_width) {
             *x = indent + len;
             *next_line = false;
             Some(indent)
@@ -640,12 +646,12 @@ fn print_line(
         }
     };
 
-    // std::thread::sleep(std::time::Duration::from_millis(50));
     queue!(
         stdout,
         ResetColor,
         Print(" ".repeat(left as usize)),
         Print(std::str::from_utf8(line).unwrap()),
+        ResetColor,
         Print(" ".repeat(right as usize)),
     );
 

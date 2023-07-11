@@ -25,7 +25,6 @@ use std::fmt::Alignment;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{DownCastableData, ReadableData, RoData},
-    log_info,
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag
