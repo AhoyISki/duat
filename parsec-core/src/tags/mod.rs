@@ -301,10 +301,6 @@ impl Tags {
             InnerTags::Rope(_) => None
         }
     }
-
-    pub(crate) fn as_rope(&self) -> Option<&AnyRope<TagOrSkip>> {
-        self.inner.as_rope()
-    }
 }
 
 ////////// The following code is under renovation.

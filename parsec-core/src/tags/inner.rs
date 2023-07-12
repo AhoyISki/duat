@@ -176,14 +176,6 @@ impl InnerTags {
             InnerTags::Rope(rope) => *rope = Rope::new()
         }
     }
-
-    pub(super) fn as_rope(&self) -> Option<&Rope<TagOrSkip>> {
-        if let Self::Rope(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
 }
 
 #[derive(Clone)]

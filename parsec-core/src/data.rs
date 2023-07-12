@@ -34,7 +34,7 @@ use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// This trait is meant for very specific uses where we want to access
 /// `T` without notifying that we did so.
-pub(crate) trait RawReadableData<T>: private::Data<T>
+pub(crate) trait RawReadableData<T>: private::Data<T> + Send + Sync
 where
     T: ?Sized
 {
@@ -71,23 +71,96 @@ where
 /// This trait encompasses 2 data types: [`RwData`] and [`RoData`],
 /// which can share information in a selective way, by allowing or
 /// disallowing mutation of data:
-///
 /// ```compile_fail
 /// # use parsec_core::data::{ReadableData, RwData, RoData};
 /// let read_write_data = RwData::new(10);
 /// let shared_read_only = RoData::from(&read_write_data);
 ///
+/// // let mut read_write = shared_read_only.write(); // Doesn`t exist!
 /// let mut read_only = shared_read_only.read();
 /// *read_only = 9;
 /// ```
+/// oth of these data types implement [`Send`], [`Sync`], and
+/// [`Clone`], which means they are safe to clone and share across
+/// threads (with the caveat of deadlocks, which Rust still doesn't
+/// prevent!). One very prominent use for these data types is the
+/// [`LineNumbers<U>`] widget, which contains an
+/// [`RoData<FileWidget<U>>`] inside it, in order to retrieve
+/// information about which lines of the file are currently being
+/// shown.
+///
+/// While this trait is implemented for both types, only [`RwData`]
+/// has access to write methods, such as [`write`] or [`mutate`].
+///
+/// [`LineNumbers<U>`]: crate::widgets::LineNumbers
+/// [`RoData<FileWidget<U>>`]: crate::widgets::FileWidget
+/// [`write`]: RwData::write
+/// [`mutate`]: RwData::mutate
 pub trait ReadableData<T>: private::Data<T>
 where
     T: ?Sized
 {
     /// Blocking reference to the information.
     ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// returns `false`.
+    /// Also makes it so that [`has_changed`] returns `false`.
+    ///
+    /// # Examples
+    ///
+    /// Since this is a blocking read, the thread will hault while the
+    /// data is being written to:
+    /// ```rust
+    /// # use std::{
+    /// #     thread,
+    /// #     time::{Duration, Instant}
+    /// # };
+    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// let read_write_data = RwData::new("☹️");
+    /// let read_only_data = RoData::from(&read_write_data);
+    /// let instant = Instant::now();
+    /// thread::scope(|scope| {
+    ///     scope.spawn(|| {
+    ///         let mut read_write = read_write_data.write();
+    ///         // Supposedly long computations.
+    ///         thread::sleep(Duration::from_millis(100));
+    ///         *read_write = "☺️";
+    ///     });
+    ///
+    /// 	// Just making sure that the read happens slighly after the write.
+    ///     thread::sleep(Duration::from_millis(1));
+    ///
+    ///     let read_only = read_only_data.read();
+    ///     let time_elapsed = Instant::now().duration_since(instant);
+    ///     assert!(time_elapsed >= Duration::from_millis(100));
+    ///     assert!(*read_only == "☺️");
+    /// });
+    /// ```
+    /// Note that other reads will **NOT** block reading in this way,
+    /// only writes:
+    /// ```rust
+    /// # use std::{
+    /// #     thread,
+    /// #     time::{Duration, Instant}
+    /// # };
+    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// let read_write_data = RwData::new("☹️");
+    /// let read_only_data = RoData::from(&read_write_data);
+    /// let instant = Instant::now();
+    /// thread::scope(|scope| {
+    ///     scope.spawn(|| {
+    ///         let read_only = read_write_data.read();
+    ///         // The thread hangs, but reading is still possible.
+    ///         thread::sleep(Duration::from_millis(100));
+    ///     });
+    ///
+    /// 	// Just making sure that this read happens slighly after the last one.
+    ///     thread::sleep(Duration::from_millis(1));
+    ///
+    ///     let read_only = read_only_data.read();
+    ///     let time_elapsed = Instant::now().duration_since(instant);
+    ///     assert!(time_elapsed < Duration::from_millis(100));
+    /// });
+    /// ```
+    /// [`has_changed`]: Self::has_changed
     fn read(&self) -> Self::Deref<'_> {
         let cur_state = self.cur_state().load(Ordering::Acquire);
         self.read_state().store(cur_state, Ordering::Release);
@@ -96,8 +169,80 @@ where
 
     /// Blocking inspection of the inner data.
     ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// returns `false`.
+    /// Also makes it so that [`has_changed`] returns `false`.
+    ///
+    /// # Examples
+    ///
+    /// This method is useful if you want to scope the reading, or
+    /// need to drop the reference quickly, so it can be written to.
+    ///
+    /// You can do this:
+    /// ```rust
+    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # fn add_to_count(count: &mut usize) {}
+    /// # fn new_count() -> usize {
+    /// #     0
+    /// # }
+    /// let count = RwData::new(31);
+    /// let count_reader = RoData::from(&count);
+    ///
+    /// // The read write counterpart to `inspect`.
+    /// count.mutate(|count| {
+    ///     *count += 5;
+    ///     add_to_count(count)
+    /// });
+    ///
+    /// count_reader.inspect(|count| { /* reading operations */ });
+    ///
+    /// *count.write() = new_count();
+    /// ```
+    /// Instead of this:
+    /// ```rust
+    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # fn add_to_count(count: &mut usize) {}
+    /// # fn new_count() -> usize {
+    /// #     0
+    /// # }
+    /// let count = RwData::new(31);
+    /// let count_reader = RoData::from(&count);
+    ///
+    /// // The read write counterpart to `inspect`.
+    /// let mut count_write = count.write();
+    /// *count_write += 5;
+    /// add_to_count(&mut *count_write);
+    /// drop(count_write);
+    ///
+    /// let count_read = count_reader.read();
+    /// // reading operations
+    /// drop(count_read);
+    ///
+    /// *count.write() = new_count();
+    /// ```
+    /// Or this:
+    /// ```rust
+    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # fn add_to_count(count: &mut usize) {}
+    /// # fn new_count() -> usize {
+    /// #     0
+    /// # }
+    /// let count = RwData::new(31);
+    /// let count_reader = RoData::from(&count);
+    ///
+    /// // The read write counterpart to `inspect`.
+    /// {
+    ///     let mut count = count.write();
+    ///     *count += 5;
+    ///     add_to_count(&mut count)
+    /// }
+    ///
+    /// {
+    ///     let count = count.read();
+    ///     // reading operations
+    /// }
+    ///
+    /// *count.write() = new_count();
+    /// ```
+    /// [`has_changed`]: Self::has_changed
     fn inspect<U>(&self, f: impl FnOnce(&T) -> U) -> U {
         let cur_state = self.cur_state().load(Ordering::Acquire);
         self.read_state().store(cur_state, Ordering::Release);
@@ -106,8 +251,27 @@ where
 
     /// Non blocking reference to the information.
     ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// returns `false`.
+    /// If successful, also makes it so that [`has_changed`] returns
+    /// `false`.
+    ///
+    /// # Examples
+    ///
+    /// Unlike [`read`], can fail to return a reference to the
+    /// underlying data:
+    /// ```rust
+    /// # use std::{sync::TryLockError};
+    /// # use parsec_core::data::{ReadableData, RwData};
+    /// let new_data = RwData::new("hello 👋");
+    ///
+    /// let mut blocking_write = new_data.write();
+    /// *blocking_write = "bye 👋";
+    ///
+    /// let try_read = new_data.try_read();
+    /// assert!(matches!(try_read, Err(TryLockError::WouldBlock)));
+    /// ```
+    ///
+    /// [`has_changed`]: Self::has_changed
+    /// [`read`]: Self::read
     fn try_read(&self) -> TryLockResult<Self::Deref<'_>> {
         self.try_data().inspect(|_| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
@@ -117,8 +281,29 @@ where
 
     /// Non blocking inspection of the inner data.
     ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// If successful, also makes it so that [`has_changed`] returns
     /// `false`.
+    ///
+    /// # Examples
+    ///
+    /// Unlike [`inspect`], can fail to return a reference to the
+    /// underlying data:
+    /// ```rust
+    /// # use std::sync::TryLockError;
+    /// # use parsec_core::data::{ReadableData, RwData};
+    /// let new_data = RwData::new("hello 👋");
+    ///
+    /// let try_inspect = new_data.mutate(|blocking_mutate| {
+    ///     *blocking_mutate = "bye 👋";
+    ///
+    ///     new_data.try_inspect(|try_inspect| *try_inspect == "bye 👋")
+    /// });
+    ///
+    /// assert!(matches!(try_inspect, Err(TryLockError::WouldBlock)));
+    /// ```
+    ///
+    /// [`has_changed`]: Self::has_changed
+    /// [`inspect`]: Self::inspect
     fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Result<U, TryLockError<Self::Deref<'_>>> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
@@ -128,13 +313,43 @@ where
     }
 
     /// Wether or not it has changed since it was last read.
+    ///
+    /// A "change" is defined as any time the methods [`write`],
+    /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an
+    /// [`RwData`]. Once `has_changed` is called, the data will be
+    /// considered unchanged since the last `has_changed` call, for
+    /// that specific instance of a [`ReadableData`].
+    ///
+    /// When first creating a [`ReadableData`] type, `has_changed`
+    /// will return `false`;
+    ///
+    /// # Examples
+    /// ```rust
+    /// use parsec_core::data::{ReadableData, RoData, RwData};
+    /// let new_data = RwData::new("Initial text");
+    /// assert!(!new_data.has_changed());
+    ///
+    /// let first_reader = RoData::from(&new_data);
+    ///
+    /// *new_data.write() = "Final text";
+    ///
+    /// let second_reader = RoData::from(&new_data);
+    ///
+    /// assert!(first_reader.has_changed());
+    /// assert!(!second_reader.has_changed());
+    /// ```
+    ///
+    /// [`write`]: RwData::write
+    /// [`mutate`]: RwData::mutate
+    /// [`try_write`]: RwData::try_write
+    /// [`try_mutate`]: RwData::try_mutate
     fn has_changed(&self) -> bool {
         let cur_state = self.cur_state().load(Ordering::Relaxed);
         let read_state = self.read_state().swap(cur_state, Ordering::Relaxed);
         cur_state > read_state
     }
 
-    /// Returns [`true`] if both [`RwData<T>`]s point to the same
+    /// Returns `true` if both [`ReadableData<T>`]s point to the same
     /// data.
     fn ptr_eq(&self, other: &impl ReadableData<T>) -> bool {
         Arc::ptr_eq(self.cur_state(), other.cur_state())
@@ -273,31 +488,6 @@ where
     }
 }
 
-impl<T> private::Data<T> for RwData<T>
-where
-    T: ?Sized
-{
-    type Deref<'a> = RwLockReadGuard<'a, T>
-    where
-        Self: 'a;
-
-    fn data(&self) -> Self::Deref<'_> {
-        self.data.read().unwrap()
-    }
-
-    fn try_data(&self) -> TryLockResult<Self::Deref<'_>> {
-        self.data.try_read()
-    }
-
-    fn cur_state(&self) -> &Arc<AtomicUsize> {
-        &self.cur_state
-    }
-
-    fn read_state(&self) -> &AtomicUsize {
-        &self.read_state
-    }
-}
-
 impl<T> Debug for RwData<T>
 where
     T: ?Sized + Debug
@@ -342,8 +532,35 @@ where
     }
 }
 
+impl<T> private::Data<T> for RwData<T>
+where
+    T: ?Sized
+{
+    type Deref<'a> = RwLockReadGuard<'a, T>
+    where
+        Self: 'a;
+
+    fn data(&self) -> Self::Deref<'_> {
+        self.data.read().unwrap()
+    }
+
+    fn try_data(&self) -> TryLockResult<Self::Deref<'_>> {
+        self.data.try_read()
+    }
+
+    fn cur_state(&self) -> &Arc<AtomicUsize> {
+        &self.cur_state
+    }
+
+    fn read_state(&self) -> &AtomicUsize {
+        &self.read_state
+    }
+}
+
 impl<T> ReadableData<T> for RwData<T> where T: ?Sized {}
 impl<T> RawReadableData<T> for RwData<T> where T: ?Sized {}
+
+unsafe impl<T> Send for RwData<T> where T: ?Sized {}
 unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
 
 /// A read-only reference to information.
@@ -447,32 +664,6 @@ where
     }
 }
 
-impl<T> private::Data<T> for RoData<T>
-where
-    T: ?Sized
-{
-    type Deref<'a> = RwLockReadGuard<'a, T> where Self: 'a;
-
-    fn data(&self) -> Self::Deref<'_> {
-        self.data.read().unwrap()
-    }
-
-    fn try_data(&self) -> TryLockResult<Self::Deref<'_>> {
-        self.data.try_read()
-    }
-
-    fn cur_state(&self) -> &Arc<AtomicUsize> {
-        &self.cur_state
-    }
-
-    fn read_state(&self) -> &AtomicUsize {
-        &self.read_state
-    }
-}
-
-impl<T> ReadableData<T> for RoData<T> where T: ?Sized {}
-impl<T> RawReadableData<T> for RoData<T> where T: ?Sized {}
-
 impl<T> Default for RoData<T>
 where
     T: ?Sized + Default
@@ -503,10 +694,39 @@ where
         RoData {
             data: value.data.clone(),
             cur_state: value.cur_state.clone(),
-            read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed) - 1)
+            read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed))
         }
     }
 }
+
+impl<T> private::Data<T> for RoData<T>
+where
+    T: ?Sized
+{
+    type Deref<'a> = RwLockReadGuard<'a, T> where Self: 'a;
+
+    fn data(&self) -> Self::Deref<'_> {
+        self.data.read().unwrap()
+    }
+
+    fn try_data(&self) -> TryLockResult<Self::Deref<'_>> {
+        self.data.try_read()
+    }
+
+    fn cur_state(&self) -> &Arc<AtomicUsize> {
+        &self.cur_state
+    }
+
+    fn read_state(&self) -> &AtomicUsize {
+        &self.read_state
+    }
+}
+
+impl<T> ReadableData<T> for RoData<T> where T: ?Sized {}
+impl<T> RawReadableData<T> for RoData<T> where T: ?Sized {}
+
+unsafe impl<T> Sync for RoData<T> where T: ?Sized {}
+unsafe impl<T> Send for RoData<T> where T: ?Sized {}
 
 // NOTE: Each `RoState` of a given state will have its own internal
 // update counter.
@@ -707,10 +927,10 @@ pub trait DownCastableData {
 mod private {
     use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
 
-	/// Private trait for the [`RwData`] and [`RoData`] structs.
-	///
-	/// [`RwData`]: super::RwData
-	/// [`RoData`]: super::RoData
+    /// Private trait for the [`RwData`] and [`RoData`] structs.
+    ///
+    /// [`RwData`]: super::RwData
+    /// [`RoData`]: super::RoData
     pub trait Data<T>
     where
         T: ?Sized
@@ -719,16 +939,16 @@ mod private {
         where
             Self: 'a;
 
-		/// The data, usually an [`Arc`]
+        /// The data, usually an [`Arc`]
         fn data(&self) -> Self::Deref<'_>;
 
-		/// Attempt to get the data, that is usually an [`Arc`]
+        /// Attempt to get the data, that is usually an [`Arc`]
         fn try_data(&self) -> TryLockResult<Self::Deref<'_>>;
 
-		/// The most up to date state of the data.
+        /// The most up to date state of the data.
         fn cur_state(&self) -> &Arc<AtomicUsize>;
 
-		/// The last read state of the data.
+        /// The last read state of the data.
         fn read_state(&self) -> &AtomicUsize;
     }
 }
