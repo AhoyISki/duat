@@ -567,7 +567,6 @@ fn words_bit(
         *x = indent;
         Some(indent)
     } else if let TextBit::Char(char) = bit {
-        *next_is_nl = char == '\n';
         let len = len_from(char, *x, width, &cfg.tab_stops);
         let ret = if *x + len > width { Some(indent) } else { None };
         *x = ret.map(|indent| indent + len).unwrap_or(*x + len);
@@ -578,6 +577,8 @@ fn words_bit(
     } else {
         None
     };
+
+    bit.as_char().map(|char| *next_is_nl = char == '\n');
 
     Some((nl, index, bit))
 }
@@ -673,8 +674,11 @@ fn indent_line(
     form_former: &FormFormer, cursor: Coord, coords: Coords, x_shift: usize, line: &mut Vec<u8>
 ) {
     let prev_style = form_former.make_form().style;
-    let indent = " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize);
-    queue!(line, Print(indent), SetStyle(prev_style));
+    let mut indent = Vec::<u8>::from(
+        " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize)
+    );
+    queue!(indent, SetStyle(prev_style));
+    line.splice(0..0, indent);
 }
 
 fn write_char(

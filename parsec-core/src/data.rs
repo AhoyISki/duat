@@ -2,7 +2,7 @@
 //!
 //! The data types revolve around the [`RwLock<T>`] struct from std,
 //! and are adapters that may block the mutation of the inner data,
-//! gor the purpose of making it available for reading to any
+//! for the purpose of making it available for reading to any
 //! extension on Parsec.
 //!
 //! The first data type is [`RwData<T>`], which is a read and write
@@ -13,9 +13,12 @@
 //! one, and cannot mutate the inner data.
 //!
 //! The most common usecase for these data types is in the
-//! [`FileWidget<U>`][crate::widgets::FileWidget], where many readers
-//! can peer into the [`Text<U>`][crate::text::Text] or other useful
+//! [`FileWidget<U>`], where many readers
+//! can peer into the [`Text`] or other useful
 //! information, such as the printed lines, cursors, etc.
+//!
+//! [`FileWidget<U>`]: crate::FileWidget<U>
+//! [`Text`]: crate::text::Text
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
@@ -50,12 +53,54 @@ mod private {
     }
 }
 
-/// A trait that's primarily used for casting widgets to a concrete
-/// types.
+/// A trait that's primarily used for casting [`Widget<U>`]s to a
+/// concrete types.
+///
+/// # Examples
+///
+/// This can be useful if you have a [`Vec<RwData<dyn Trait>>`], and
+/// want to get the concrete type of a specific item:
+///
+/// ```rust
+/// # use std::sync::{Arc, RwLock};
+/// # use parsec_core::data::{DownCastableData, RwData};
+/// trait Emotion: DownCastableData {}
+///
+/// struct Happy;
+/// impl DownCastableData for Happy {
+///     fn as_any(&self) -> &dyn std::any::Any {
+///         self
+///     }
+/// }
+///
+/// struct Sad;
+/// impl DownCastableData for Sad {
+///     fn as_any(&self) -> &dyn std::any::Any {
+///         self
+///     }
+/// }
+///
+/// impl Emotion for Happy {}
+/// impl Emotion for Sad {}
+///
+/// fn is_happy(potentially_boolean: &RwData<dyn Emotion>) -> bool {
+///     potentially_boolean.data_is::<Happy>()
+/// }
+///
+/// let happy = Arc::new(RwLock::new(Happy));
+/// let sad = Arc::new(RwLock::new(Sad));
+/// assert!(is_happy(&RwData::new_unsized(happy)));
+/// assert!(!is_happy(&RwData::new_unsized(sad)));
+/// ```
+///
+/// [`Widget<U>`]: crate::widgets::Widget
+/// [`Vec<dyn Trait>`]: Vec
 pub trait DownCastableData {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
+/// This trait is meant for very specific uses where we want to access
+/// `T` without notifying that we did so.
 pub(crate) trait RawReadableData<T>: private::Data<T>
 where
     T: ?Sized
@@ -88,6 +133,20 @@ where
     }
 }
 
+/// Data that can be read, but can't necessarily be written to.
+///
+/// This trait encompasses 2 data types: [`RwData`] and [`RoData`],
+/// which can share information in a selective way, by allowing or
+/// disallowing mutation of data:
+///
+/// ```compile_fail
+/// # use parsec_core::data::{ReadableData, RwData, RoData};
+/// let read_write_data = RwData::new(10);
+/// let shared_read_only = RoData::from(&read_write_data);
+///
+/// let mut read_only = shared_read_only.read();
+/// *read_only = 9;
+/// ```
 pub trait ReadableData<T>: private::Data<T>
 where
     T: ?Sized
