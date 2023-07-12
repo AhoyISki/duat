@@ -32,73 +32,6 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-mod private {
-    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
-
-    pub trait Data<T>
-    where
-        T: ?Sized
-    {
-        type Deref<'a>: std::ops::Deref<Target = T>
-        where
-            Self: 'a;
-
-        fn data(&self) -> Self::Deref<'_>;
-
-        fn try_data(&self) -> TryLockResult<Self::Deref<'_>>;
-
-        fn cur_state(&self) -> &Arc<AtomicUsize>;
-
-        fn read_state(&self) -> &AtomicUsize;
-    }
-}
-
-/// A trait that's primarily used for casting [`Widget<U>`]s to a
-/// concrete types.
-///
-/// # Examples
-///
-/// This can be useful if you have a [`Vec<RwData<dyn Trait>>`], and
-/// want to get the concrete type of a specific item:
-///
-/// ```rust
-/// # use std::sync::{Arc, RwLock};
-/// # use parsec_core::data::{DownCastableData, RwData};
-/// trait Emotion: DownCastableData {}
-///
-/// struct Happy;
-/// impl DownCastableData for Happy {
-///     fn as_any(&self) -> &dyn std::any::Any {
-///         self
-///     }
-/// }
-///
-/// struct Sad;
-/// impl DownCastableData for Sad {
-///     fn as_any(&self) -> &dyn std::any::Any {
-///         self
-///     }
-/// }
-///
-/// impl Emotion for Happy {}
-/// impl Emotion for Sad {}
-///
-/// fn is_happy(potentially_boolean: &RwData<dyn Emotion>) -> bool {
-///     potentially_boolean.data_is::<Happy>()
-/// }
-///
-/// let happy = Arc::new(RwLock::new(Happy));
-/// let sad = Arc::new(RwLock::new(Sad));
-/// assert!(is_happy(&RwData::new_unsized(happy)));
-/// assert!(!is_happy(&RwData::new_unsized(sad)));
-/// ```
-///
-/// [`Widget<U>`]: crate::widgets::Widget
-/// [`Vec<dyn Trait>`]: Vec
-pub trait DownCastableData {
-    fn as_any(&self) -> &dyn std::any::Any;
-}
-
 /// This trait is meant for very specific uses where we want to access
 /// `T` without notifying that we did so.
 pub(crate) trait RawReadableData<T>: private::Data<T>
@@ -722,5 +655,80 @@ where
             data: RoData::from(value),
             read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed))
         }
+    }
+}
+
+/// A trait that's primarily used for casting [`Widget<U>`]s to a
+/// concrete types.
+///
+/// # Examples
+///
+/// This can be useful if you have a [`Vec<RwData<dyn Trait>>`], and
+/// want to get the concrete type of a specific item:
+///
+/// ```rust
+/// # use std::sync::{Arc, RwLock};
+/// # use parsec_core::data::{DownCastableData, RwData};
+/// trait Emotion: DownCastableData {}
+///
+/// struct Happy;
+/// impl DownCastableData for Happy {
+///     fn as_any(&self) -> &dyn std::any::Any {
+///         self
+///     }
+/// }
+///
+/// struct Sad;
+/// impl DownCastableData for Sad {
+///     fn as_any(&self) -> &dyn std::any::Any {
+///         self
+///     }
+/// }
+///
+/// impl Emotion for Happy {}
+/// impl Emotion for Sad {}
+///
+/// fn is_happy(potentially_boolean: &RwData<dyn Emotion>) -> bool {
+///     potentially_boolean.data_is::<Happy>()
+/// }
+///
+/// let happy = Arc::new(RwLock::new(Happy));
+/// let sad = Arc::new(RwLock::new(Sad));
+/// assert!(is_happy(&RwData::new_unsized(happy)));
+/// assert!(!is_happy(&RwData::new_unsized(sad)));
+/// ```
+///
+/// [`Widget<U>`]: crate::widgets::Widget
+/// [`Vec<dyn Trait>`]: Vec
+pub trait DownCastableData {
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+mod private {
+    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
+
+	/// Private trait for the [`RwData`] and [`RoData`] structs.
+	///
+	/// [`RwData`]: super::RwData
+	/// [`RoData`]: super::RoData
+    pub trait Data<T>
+    where
+        T: ?Sized
+    {
+        type Deref<'a>: std::ops::Deref<Target = T>
+        where
+            Self: 'a;
+
+		/// The data, usually an [`Arc`]
+        fn data(&self) -> Self::Deref<'_>;
+
+		/// Attempt to get the data, that is usually an [`Arc`]
+        fn try_data(&self) -> TryLockResult<Self::Deref<'_>>;
+
+		/// The most up to date state of the data.
+        fn cur_state(&self) -> &Arc<AtomicUsize>;
+
+		/// The last read state of the data.
+        fn read_state(&self) -> &AtomicUsize;
     }
 }
