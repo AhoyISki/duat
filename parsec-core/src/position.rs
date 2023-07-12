@@ -259,6 +259,13 @@ impl Cursor {
         self.caret.byte + 1
     }
 
+    /// The char (relative to the beginning of the file) of the caret.
+    /// Indexed at 1. Intended only for displaying by the end
+    /// user. For internal use, see `true_char()`.
+    pub fn char(&self) -> usize {
+        self.caret.char + 1
+    }
+
     /// The column of the caret. Indexed at 1. Intended only for
     /// displaying by the end user. For internal use, see
     /// `true_col()`.
@@ -277,6 +284,12 @@ impl Cursor {
     /// Indexed at 0.
     pub fn true_byte(&self) -> usize {
         self.caret.byte
+    }
+
+    /// The char (relative to the beginning of the file) of the caret.
+    /// Indexed at 0.
+    pub fn true_char(&self) -> usize {
+        self.caret.char
     }
 
     /// The column of the caret. Indexed at 0.

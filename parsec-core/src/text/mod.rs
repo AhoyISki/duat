@@ -60,7 +60,8 @@ impl TextBuilder {
         let last_skip = self
             .text
             .tags
-            .mut_vec()
+            .as_mut_vec()
+            .unwrap()
             .iter()
             .filter(|t_or_s| matches!(t_or_s, TagOrSkip::Skip(_)))
             .count();
@@ -75,9 +76,10 @@ impl TextBuilder {
     /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, tag: Tag) -> Lock {
         let lock = self.text.tags.new_lock();
-        self.text.tags.mut_vec().push(TagOrSkip::Tag(tag, lock));
+        let tags = self.text.tags.as_mut_vec().unwrap();
+        tags.push(TagOrSkip::Tag(tag, lock));
         if let Some(inv_tag) = tag.inverse() {
-            self.text.tags.mut_vec().push(TagOrSkip::Tag(inv_tag, lock));
+            tags.push(TagOrSkip::Tag(inv_tag, lock));
         }
         lock
     }
@@ -97,7 +99,7 @@ impl TextBuilder {
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
-        let tags_vec = self.text.tags.mut_vec();
+        let tags_vec = self.text.tags.as_mut_vec().unwrap();
         let mut tags = tags_vec.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
             TagOrSkip::Tag(Tag::PopForm(_), _) => None,
             TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
@@ -128,7 +130,8 @@ impl TextBuilder {
     pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut u32)> {
         self.text
             .tags
-            .mut_vec()
+            .as_mut_vec()
+            .unwrap()
             .iter_mut()
             .filter_map(|tag_or_skip| match tag_or_skip {
                 TagOrSkip::Skip(skip) => Some(skip),
@@ -143,7 +146,7 @@ impl TextBuilder {
     }
 
     fn add_to_last_skip(&mut self, edit_len: u32) {
-        let tags_vec = self.text.tags.mut_vec();
+        let tags_vec = self.text.tags.as_mut_vec().unwrap();
 
         let mut tags = tags_vec.iter().enumerate().rev();
         while let Some((index, TagOrSkip::Tag(tag, _))) = tags.next() {
@@ -166,7 +169,7 @@ impl TextBuilder {
     }
 
     pub fn truncate(&mut self, range_index: usize) {
-        let tags_vec = self.text.tags.mut_vec();
+        let tags_vec = self.text.tags.as_mut_vec().unwrap();
 
         let Some(&swap_index) = self.swappables.get(range_index) else {
             return;

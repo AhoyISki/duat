@@ -170,11 +170,11 @@ impl ui::Area for Area {
         let form_former = palette.form_former();
         let mut cursor = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, width, &cfg);
-            print(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
+            print_bits(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         } else {
             let dont_wrap = cfg.wrap_method.is_no_wrap();
             let bits = bits(indents, width, &cfg.tab_stops, dont_wrap);
-            print(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
+            print_bits(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         };
 
         while coords.br.y > cursor.y {
@@ -530,22 +530,7 @@ fn words<'a>(
     let mut next_is_nl = true;
     std::iter::from_fn(move || {
         if let Some((index, bit)) = finished_word.pop() {
-            let nl = if next_is_nl {
-                x = indent;
-                Some(indent)
-            } else if let TextBit::Char(char) = bit {
-                let len = len_from(char, x, width, &cfg.tab_stops);
-                let ret = if x + len > width { Some(indent) } else { None };
-                x = ret.map(|indent| indent + len).unwrap_or(x + len);
-                ret
-            } else if x >= width {
-                x = indent;
-                Some(indent)
-            } else {
-                None
-            };
-
-            return Some((nl, index, bit));
+            return words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg);
         }
 
         let mut word_len = 0;
@@ -562,27 +547,42 @@ fn words<'a>(
             word.push(iter.next().map(|(_, index, bit)| (index, bit)).unwrap());
         }
 
-        let nl = if next_is_nl || x + word_len > width {
-            x = indent;
-            Some(indent)
-        // Wrapping not necessary.
-        } else {
-            None
-        };
+        next_is_nl |= x + word_len > width;
 
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
-        finished_word.pop().map(|(index, bit)| {
-            next_is_nl = bit.is_new_line();
-            if let TextBit::Char(char) = bit {
-                x += len_from(char, x, width, &cfg.tab_stops);
-            }
-            (nl, index, bit)
-        })
+        finished_word
+            .pop()
+            .map(|(index, bit)| words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg))
+            .flatten()
     })
 }
 
-fn print(
+fn words_bit(
+    index: usize, bit: TextBit, indent: u16, x: &mut u16, next_is_nl: &mut bool, width: u16,
+    cfg: &PrintCfg
+) -> Option<(Option<u16>, usize, TextBit)> {
+    let nl = if *next_is_nl {
+        *next_is_nl = false;
+        *x = indent;
+        Some(indent)
+    } else if let TextBit::Char(char) = bit {
+        *next_is_nl = char == '\n';
+        let len = len_from(char, *x, width, &cfg.tab_stops);
+        let ret = if *x + len > width { Some(indent) } else { None };
+        *x = ret.map(|indent| indent + len).unwrap_or(*x + len);
+        ret
+    } else if *x >= width {
+        *x = indent;
+        Some(indent)
+    } else {
+        None
+    };
+
+    Some((nl, index, bit))
+}
+
+fn print_bits(
     iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> Coord {

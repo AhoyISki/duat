@@ -15,12 +15,20 @@ where
     |file| file.main_cursor()
 }
 
-/// The line of the main cursor in the file.
-pub fn main_line<U>() -> impl Fn(&FileWidget<U>) -> usize
+/// The byte of the main cursor in the file.
+pub fn main_byte<U>() -> impl Fn(&FileWidget<U>) -> usize
 where
     U: Ui
 {
-    |file| file.main_cursor().line()
+    |file| file.main_cursor().byte()
+}
+
+/// The char of the main cursor in the file.
+pub fn main_char<U>() -> impl Fn(&FileWidget<U>) -> usize
+where
+    U: Ui
+{
+    |file| file.main_cursor().char()
 }
 
 /// The col of the main cursor in the file.
@@ -29,6 +37,14 @@ where
     U: Ui
 {
     |file| file.main_cursor().col()
+}
+
+/// The line of the main cursor in the file.
+pub fn main_line<U>() -> impl Fn(&FileWidget<U>) -> usize
+where
+    U: Ui
+{
+    |file| file.main_cursor().line()
 }
 
 /// Returns a [`String`] with the number of selections in the file.

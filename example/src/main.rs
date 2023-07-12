@@ -32,8 +32,8 @@ use parsec_core::{
     },
     text::{NewLine, PrintCfg, ScrollOff, WrapMethod},
     ui::{Constraint, ModNode, PushSpecs},
-    widgets::{CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine},
-    Controler
+    widgets::{CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine, file_parts::main_char},
+    Controler, status_parts
 };
 use parsec_kak::Editor;
 use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};

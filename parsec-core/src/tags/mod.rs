@@ -182,7 +182,6 @@ impl Tags {
     /// `ch_index`.
     pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
         self.inner.remove_on(ch_index, lock);
-
         self.merge_surrounding_skips(ch_index);
     }
 
@@ -296,13 +295,15 @@ impl Tags {
         self.inner.width()
     }
 
-    pub fn mut_vec(&mut self) -> &mut Vec<TagOrSkip> {
+    pub(crate) fn as_mut_vec(&mut self) -> Option<&mut Vec<TagOrSkip>> {
         match &mut self.inner {
-            InnerTags::Vec(vec) => vec,
-            InnerTags::Rope(_) => {
-                panic!("Use of vec() in a place where `InnerTags` is not guaranteed to be `Vec`.")
-            }
+            InnerTags::Vec(vec) => Some(vec),
+            InnerTags::Rope(_) => None
         }
+    }
+
+    pub(crate) fn as_rope(&self) -> Option<&AnyRope<TagOrSkip>> {
+        self.inner.as_rope()
     }
 }
 

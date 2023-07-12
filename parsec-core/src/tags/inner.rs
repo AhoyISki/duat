@@ -80,7 +80,7 @@ impl InnerTags {
                 let tags = tags
                     .filter_map(|(_, t_or_s)| {
                         if let TagOrSkip::Tag(tag, cmp_lock) = t_or_s && cmp_lock != lock {
-                            return Some(TagOrSkip::Tag(tag, cmp_lock));
+                            Some(TagOrSkip::Tag(tag, cmp_lock))
                         } else {
                             None
                         }
@@ -174,6 +174,14 @@ impl InnerTags {
         match self {
             InnerTags::Vec(vec) => vec.clear(),
             InnerTags::Rope(rope) => *rope = Rope::new()
+        }
+    }
+
+    pub(super) fn as_rope(&self) -> Option<&Rope<TagOrSkip>> {
+        if let Self::Rope(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 }

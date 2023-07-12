@@ -25,6 +25,7 @@ use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     data::DownCastableData,
     history::History,
+    log_info,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
@@ -69,9 +70,8 @@ where
 
         if cfg!(feature = "wacky-colors") {
             let lock = text.tags.new_lock();
-            text.tags.insert(0, Tag::AlignCenter, lock);
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (0..text.len_chars()).step_by(5) {
+            for index in 0..text.len_chars() {
                 if pushes_pops_you_cant_explain_that {
                     text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
                 } else {
