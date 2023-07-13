@@ -163,6 +163,8 @@ where
     }
 }
 
+unsafe impl<U> Send for CommandLine<U> where U: Ui {}
+
 /// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
 /// [`Commands`].
 fn add_commands<U>(manager: &Controler<U>, command_line: &CommandLine<U>)

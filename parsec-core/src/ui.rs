@@ -1,6 +1,9 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::{fmt::Debug, sync::atomic::AtomicUsize};
+use std::{
+    fmt::Debug,
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering}
+};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
@@ -18,7 +21,7 @@ use crate::{
 fn unique_file_id() -> usize {
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -223,7 +226,8 @@ where
     widget_type: WidgetType<U>,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
-    file_id: Option<usize>
+    file_id: Option<usize>,
+    update_failed: AtomicBool
 }
 
 impl<U> Node<U>
@@ -231,22 +235,29 @@ where
     U: Ui
 {
     pub fn needs_update(&self) -> bool {
+        let update_failed = self.update_failed.fetch_and(false, Ordering::Acquire);
         let widget_changed = self.widget_type.has_changed();
         let area_changed = self.area.has_changed();
-        (self.checker)() || widget_changed || area_changed
+        (self.checker)() || widget_changed || area_changed || update_failed
     }
 
     pub fn update(&self) {
-        self.widget_type.update(&self.area);
+        self.widget_type.update(&self.area)
     }
 
     pub fn print(&self, palette: &FormPalette) {
         self.widget_type.print(&self.area, palette)
     }
+
+    pub fn try_update_and_print<'scope, 'env>(
+        &'env self, scope: &'scope std::thread::Scope<'scope, 'env>, palette: &'env FormPalette
+    ) {
+        let succeeded = self.widget_type.try_update_and_print(scope, &self.area, palette);
+        self.update_failed.store(!succeeded, Ordering::Release);
+    }
 }
 
 unsafe impl<U> Send for Node<U> where U: Ui {}
-unsafe impl<U> Sync for Node<U> where U: Ui {}
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -597,7 +608,8 @@ where
             widget_type,
             checker: Box::new(checker),
             area: area.clone(),
-            file_id: Some(unique_file_id())
+            file_id: Some(unique_file_id()),
+            update_failed: AtomicBool::new(false)
         };
 
         let parsec_window = ParsecWindow {
@@ -624,7 +636,8 @@ where
             widget_type,
             checker: Box::new(checker),
             area: child.clone(),
-            file_id
+            file_id,
+            update_failed: AtomicBool::new(false)
         };
 
         if *area == self.master_area && let Some(new_master_node) = parent.clone() {

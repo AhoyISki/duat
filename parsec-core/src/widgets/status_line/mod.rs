@@ -435,3 +435,5 @@ where
         len_lines()
     ]
 }
+
+unsafe impl<U> Send for StatusLine<U> where U: Ui {}

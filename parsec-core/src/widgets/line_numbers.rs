@@ -126,8 +126,6 @@ where
             }
         }
 
-        // log_info!("{:#?}", self.builder);
-
         self.builder.truncate(printed_lines.len());
     }
 }

@@ -334,3 +334,5 @@ where
         self
     }
 }
+
+unsafe impl<U> Send for FileWidget<U> where U: Ui {}

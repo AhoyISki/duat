@@ -39,7 +39,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait Widget<U>: DownCastableData + 'static
+pub trait Widget<U>: DownCastableData + Send + 'static
 where
     U: Ui + 'static
 {
@@ -94,6 +94,52 @@ where
 
     pub fn direct_input(widget: impl DirectInputWidget<U>) -> Self {
         WidgetType::DirectInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    }
+
+    pub fn try_update_and_print<'scope, 'env>(
+        &'env self, scope: &'scope std::thread::Scope<'scope, 'env>, area: &'env U::Area,
+        palette: &'env FormPalette
+    ) -> bool {
+        // This is, technically speaking, not good enough, but it should cover
+        // 99.9999999999999% of cases without fail.
+        match self {
+            WidgetType::NoInput(widget) => {
+                if widget.try_write().is_ok() {
+                    scope.spawn(|| {
+                        let mut widget = widget.write();
+                        widget.update(area);
+                        widget.print(area, palette);
+                    });
+                    true
+                } else {
+                    false
+                }
+            }
+            WidgetType::SchemeInput(widget) => {
+                if widget.try_write().is_ok() {
+                    scope.spawn(|| {
+                        let mut widget = widget.write();
+                        widget.update(area);
+                        widget.print(area, palette);
+                    });
+                    true
+                } else {
+                    false
+                }
+            }
+            WidgetType::DirectInput(widget) => {
+                if widget.try_write().is_ok() {
+                    scope.spawn(|| {
+                        let mut widget = widget.write();
+                        widget.update(area);
+                        widget.print(area, palette);
+                    });
+                    true
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     pub fn update(&self, area: &U::Area) {
@@ -306,7 +352,7 @@ where
     fn clear_intersections(&mut self) {
         let mut widget = self.widget.write();
         let Some(cursors) = widget.mut_cursors() else {
-            return
+            return;
         };
 
         let (mut start, mut end) = cursors[0].pos_range();

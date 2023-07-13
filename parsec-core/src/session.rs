@@ -194,10 +194,7 @@ where
                 for node in active_window.nodes() {
                     if node.needs_update() {
                         let palette = &palette;
-                        scope.spawn(move || {
-                            node.update();
-                            node.print(palette);
-                        });
+                        node.try_update_and_print(scope, palette);
                     }
                 }
 
