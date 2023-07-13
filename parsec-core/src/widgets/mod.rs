@@ -55,8 +55,6 @@ where
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
 
-    fn is_slow(&self) -> bool;
-
     /// Scrolls the text vertically by an amount.
     fn scroll_vertically(&mut self, _d_y: i32) {}
 
@@ -189,14 +187,6 @@ where
             WidgetType::SchemeInput(widget) => widget.has_changed(),
             WidgetType::DirectInput(widget) => widget.has_changed(),
             WidgetType::NoInput(_) => false
-        }
-    }
-
-    pub fn is_slow(&self) -> bool {
-        match self {
-            WidgetType::NoInput(widget) => widget.read().is_slow(),
-            WidgetType::SchemeInput(widget) => widget.read().is_slow(),
-            WidgetType::DirectInput(widget) => widget.read().is_slow()
         }
     }
 }

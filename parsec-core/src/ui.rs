@@ -243,10 +243,6 @@ where
     pub fn print(&self, palette: &FormPalette) {
         self.widget_type.print(&self.area, palette)
     }
-
-    pub fn is_slow(&self) -> bool {
-        self.widget_type.is_slow()
-    }
 }
 
 unsafe impl<U> Send for Node<U> where U: Ui {}

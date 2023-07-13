@@ -262,10 +262,6 @@ where
         &self.text
     }
 
-    fn is_slow(&self) -> bool {
-        false
-    }
-
     fn scroll_vertically(&mut self, _d_y: i32) {
         // self.print_info.scroll_vertically(d_y, &self.text);
     }

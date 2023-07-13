@@ -383,10 +383,6 @@ where
     fn text(&self) -> &Text {
         &self.builder.text()
     }
-
-    fn is_slow(&self) -> bool {
-        false
-    }
 }
 
 impl<U> DownCastableData for StatusLine<U>

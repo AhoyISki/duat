@@ -200,10 +200,6 @@ where
     fn text(&self) -> &Text {
         self.builder.text()
     }
-
-    fn is_slow(&self) -> bool {
-        false
-    }
 }
 
 /// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.

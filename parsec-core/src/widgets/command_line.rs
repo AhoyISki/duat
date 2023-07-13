@@ -102,10 +102,6 @@ where
     fn text(&self) -> &Text {
         &self.text
     }
-
-    fn is_slow(&self) -> bool {
-        false
-    }
 }
 
 impl<U> SchemeInputWidget<U> for CommandLine<U>
