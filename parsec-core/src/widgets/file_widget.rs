@@ -25,6 +25,7 @@ use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     data::DownCastableData,
     history::History,
+    log_info,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
@@ -144,18 +145,11 @@ where
         let first_char = self.print_info.first_char(&self.text);
         let mut line_num = self.text.char_to_line(first_char);
 
-        // The beginning of the first line may be offscreen, which would make
-        // the first line number a wrapped line.
-        let mut is_wrapped = {
-            let line = self.text.iter_line(line_num).take_while(|(index, _)| *index < first_char);
-            area.visible_rows(line, &self.print_cfg) > 1
-        };
-
         let height = area.height();
-
         self.printed_lines.clear();
         self.printed_lines.reserve_exact(height);
 
+        let mut is_wrapped = false;
         let mut accum = 0;
         let len_lines = self.text.len_lines();
         while accum < height && line_num < len_lines {
@@ -164,7 +158,10 @@ where
             let visible_rows = if accum == 0 {
                 let total = area.visible_rows(line.clone(), &self.print_cfg);
                 let cut_line = line.take_while(|(index, _)| *index < first_char);
-                total - area.visible_rows(cut_line, &self.print_cfg)
+                let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
+                log_info!("\n{total}, {rows}, {line_num}");
+                is_wrapped = rows < total;
+                rows
             } else {
                 area.visible_rows(line, &self.print_cfg)
             };
@@ -178,6 +175,14 @@ where
             is_wrapped = false;
             line_num += 1;
         }
+
+        log_info!(
+            "{:#?}",
+            &self.printed_lines[..5]
+                .iter()
+                .map(|part| format!("{:?}", part))
+                .collect::<Vec<String>>()
+        );
     }
 
     /// Returns the currently printed set of lines.

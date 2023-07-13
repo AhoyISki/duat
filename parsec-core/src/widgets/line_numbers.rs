@@ -101,7 +101,7 @@ where
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let tag = get_tag(*line, main_line, *is_wrapped);
-            write_text(&mut text, *line, main_line, *is_wrapped, &self.cfg);
+            let text = get_text(*line, main_line, *is_wrapped, &self.cfg);
 
             let align_tag = {
                 let alignment = if *line == main_line {
@@ -266,11 +266,8 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
 }
 
 /// Writes the text of the line number to a given [`String`].
-fn write_text(
-    text: &mut String, line: usize, main_line: usize, is_wrapped: bool, cfg: &LineNumbersCfg
-) {
-    text.clear();
-    *text = if is_wrapped && !cfg.show_wraps {
+fn get_text(line: usize, main_line: usize, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {
+    if is_wrapped && !cfg.show_wraps {
         String::from("\n")
     } else {
         match cfg.numbers {
@@ -284,5 +281,5 @@ fn write_text(
                 }
             }
         }
-    };
+    }
 }

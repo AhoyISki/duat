@@ -82,7 +82,7 @@ fn main() {
         let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
         mod_node.push_specd(VertRule::config_fn(cfg));
 
-        let cfg = LineNumbersCfg::rel_abs(Alignment::Right, Alignment::Left);
+        let cfg = LineNumbersCfg::abs(Alignment::Right, Alignment::Left);
         mod_node.push_specd(LineNumbers::config_fn(cfg));
 
         // let (child, _) =

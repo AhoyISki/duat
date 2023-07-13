@@ -204,11 +204,11 @@ impl ui::Area for Area {
         match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Capped(_) => {
                 bits(indents, coords.width(), &cfg.tab_stops, false)
-                    .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                    .filter_map(|(new_line, ..)| new_line)
                     .count()
             }
             WrapMethod::Word => words(indents, coords.width(), &cfg)
-                .filter_map(|(new_line, index, _)| new_line.map(|_| index))
+                .filter_map(|(new_line, ..)| new_line)
                 .count(),
             WrapMethod::NoWrap => 1
         }
@@ -585,7 +585,7 @@ fn print_bits(
     mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> u16 {
-    let x_shift = info.x_shift;
+    let mut passed_first_indent = false;
     let mut last_char = 'a';
     let mut cursor = coords.tl;
     let mut prev_style = None;
@@ -594,26 +594,27 @@ fn print_bits(
 
     while let Some((nl, _, bit)) = iter.next() {
         if let Some(indent) = nl {
-            if cursor != coords.tl {
+            if passed_first_indent {
                 cursor.y += 1;
                 print_line(cursor, coords, alignment, &mut line, stdout);
+            } else {
+                passed_first_indent = true;
             }
             if cursor.y == coords.br.y {
                 break;
             }
             cursor.x = coords.tl.x + indent;
-            indent_line(&form_former, cursor, coords, x_shift, &mut line);
+            indent_line(&form_former, cursor, coords, info.x_shift, &mut line);
         }
 
         if let &TextBit::Char(char) = &bit {
             if char == '\n' && let Alignment::Right | Alignment::Center = alignment {
                 continue;
             }
-            last_char = real_char_from(char, &cfg.new_line, last_char);
-            cursor.x += write_char(last_char, cursor, coords, x_shift, &cfg.tab_stops, &mut line);
-            if let Some(style) = prev_style.take() {
-                queue!(&mut line, ResetColor, SetStyle(style));
-            }
+            let char = real_char_from(char, &cfg.new_line, last_char);
+            cursor.x += write_char(char, cursor, coords, info.x_shift, &cfg.tab_stops, &mut line);
+            last_char = char;
+            prev_style.take().map(|style| queue!(&mut line, ResetColor, SetStyle(style)));
         } else if let TextBit::Tag(tag) = bit {
             prev_style = trigger_tag(tag, is_active, &mut alignment, &mut form_former, &mut line);
         }
@@ -624,7 +625,7 @@ fn print_bits(
         print_line(cursor, coords, alignment, &mut line, stdout);
     }
 
-    coords.br.y.saturating_sub(cursor.y)
+    coords.br.y - cursor.y
 }
 
 fn print_line(
@@ -645,7 +646,7 @@ fn print_line(
         stdout,
         ResetColor,
         Print(" ".repeat(left as usize)),
-        Print(std::str::from_utf8(line).unwrap()),
+        Print(std::str::from_utf8_unchecked(line)),
         ResetColor,
         Print(" ".repeat(right as usize)),
         cursor::MoveTo(coords.tl.x, cursor.y)
