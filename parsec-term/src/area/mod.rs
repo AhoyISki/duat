@@ -168,7 +168,7 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let mut cursor = if let WrapMethod::Word = cfg.wrap_method {
+        let y_left = if let WrapMethod::Word = cfg.wrap_method {
             let words = words(indents, width, &cfg);
             print_bits(words, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         } else {
@@ -177,10 +177,8 @@ impl ui::Area for Area {
             print_bits(bits, coords, self.is_active(), info, &cfg, form_former, &mut stdout)
         };
 
-        while coords.br.y > cursor.y {
-            clear_line(cursor, coords, 0, &mut stdout);
-            cursor.y += 1;
-            cursor.x = coords.tl.x;
+        for y in (0..y_left).rev() {
+            clear_line(Coord::new(coords.tl.x, coords.br.y - y), coords, 0, &mut stdout);
         }
 
         if SHOW_CURSOR.load(Ordering::Acquire) {
@@ -584,9 +582,9 @@ fn words_bit(
 }
 
 fn print_bits(
-    iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
+    mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
-) -> Coord {
+) -> u16 {
     let x_shift = info.x_shift;
     let mut last_char = 'a';
     let mut cursor = coords.tl;
@@ -594,22 +592,17 @@ fn print_bits(
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    let mut iter = iter
-        .map(|(nl, _, bit)| (nl, bit))
-        .chain(std::iter::once((None, TextBit::Char(' '))));
-    while let Some((nl, bit)) = iter.next() {
+    while let Some((nl, _, bit)) = iter.next() {
         if let Some(indent) = nl {
             if cursor != coords.tl {
-                print_line(cursor, coords, alignment, &mut line, stdout);
-                queue!(stdout, cursor::MoveTo(coords.tl.x, cursor.y));
-            }
-            if cursor.y + 1 > coords.br.y {
                 cursor.y += 1;
+                print_line(cursor, coords, alignment, &mut line, stdout);
+            }
+            if cursor.y == coords.br.y {
                 break;
             }
             cursor.x = coords.tl.x + indent;
             indent_line(&form_former, cursor, coords, x_shift, &mut line);
-            cursor.y += 1;
         }
 
         if let &TextBit::Char(char) = &bit {
@@ -627,10 +620,11 @@ fn print_bits(
     }
 
     if !line.is_empty() {
+        cursor.y += 1;
         print_line(cursor, coords, alignment, &mut line, stdout);
     }
 
-    cursor
+    coords.br.y.saturating_sub(cursor.y)
 }
 
 fn print_line(
@@ -654,6 +648,7 @@ fn print_line(
         Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
         Print(" ".repeat(right as usize)),
+        cursor::MoveTo(coords.tl.x, cursor.y)
     );
 
     line.clear();
