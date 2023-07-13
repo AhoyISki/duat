@@ -25,7 +25,6 @@ use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     data::DownCastableData,
     history::History,
-    log_info,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
@@ -159,7 +158,6 @@ where
                 let total = area.visible_rows(line.clone(), &self.print_cfg);
                 let cut_line = line.take_while(|(index, _)| *index < first_char);
                 let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
-                log_info!("\n{total}, {rows}, {line_num}");
                 is_wrapped = rows < total;
                 rows
             } else {
@@ -175,14 +173,6 @@ where
             is_wrapped = false;
             line_num += 1;
         }
-
-        log_info!(
-            "{:#?}",
-            &self.printed_lines[..5]
-                .iter()
-                .map(|part| format!("{:?}", part))
-                .collect::<Vec<String>>()
-        );
     }
 
     /// Returns the currently printed set of lines.

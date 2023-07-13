@@ -97,7 +97,6 @@ where
         let file = self.file.read();
         let printed_lines = file.printed_lines();
         let main_line = file.main_cursor().true_line();
-        let mut text = String::new();
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let tag = get_tag(*line, main_line, *is_wrapped);

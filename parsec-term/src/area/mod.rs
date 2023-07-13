@@ -646,7 +646,7 @@ fn print_line(
         stdout,
         ResetColor,
         Print(" ".repeat(left as usize)),
-        Print(std::str::from_utf8_unchecked(line)),
+        Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
         Print(" ".repeat(right as usize)),
         cursor::MoveTo(coords.tl.x, cursor.y)
