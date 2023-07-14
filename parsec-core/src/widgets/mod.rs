@@ -30,7 +30,7 @@ use std::{cmp::Ordering, ops::Range, sync::Arc};
 use no_deadlocks::RwLock;
 
 use crate::{
-    data::{DownCastableData, RawReadableData, ReadableData, RwData},
+    data::{AsAny, RawReadableData, ReadableData, RwData},
     position::{Cursor, Editor, Mover},
     tags::form::FormPalette,
     text::{PrintCfg, Text},
@@ -39,7 +39,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait Widget<U>: DownCastableData + Send + 'static
+pub trait Widget<U>: AsAny + Send + Sync + 'static
 where
     U: Ui + 'static
 {
@@ -553,11 +553,11 @@ where
     }
 
     pub fn main_cursor(&self) -> Cursor {
-        self.widget.read().cursors()[self.main_cursor_index()]
+        self.widget.read().cursors()[self.main_cursor_index()].clone()
     }
 
     pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
-        self.widget.read().cursors().get(index).copied()
+        self.widget.read().cursors().get(index).cloned()
     }
 }
 

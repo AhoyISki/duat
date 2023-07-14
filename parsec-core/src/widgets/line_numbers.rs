@@ -24,7 +24,7 @@ use std::fmt::Alignment;
 
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
-    data::{DownCastableData, ReadableData, RoData},
+    data::{AsAny, ReadableData, RoData},
     tags::{
         form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
         Tag
@@ -146,7 +146,7 @@ where
     }
 }
 
-impl<U> DownCastableData for LineNumbers<U>
+impl<U> AsAny for LineNumbers<U>
 where
     U: Ui + 'static
 {

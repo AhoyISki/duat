@@ -23,7 +23,7 @@ use std::{cmp::min, fs, path::PathBuf};
 
 use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
-    data::DownCastableData,
+    data::AsAny,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
@@ -208,7 +208,7 @@ where
     ////////// Status line convenience functions:
     /// The main [`Cursor`] of the file.
     pub fn main_cursor(&self) -> Cursor {
-        *self.cursors.get(self.main_cursor).unwrap()
+        self.cursors.get(self.main_cursor).unwrap().clone()
     }
 
     /// The file's name.
@@ -326,7 +326,7 @@ where
     }
 }
 
-impl<U> DownCastableData for FileWidget<U>
+impl<U> AsAny for FileWidget<U>
 where
     U: Ui + 'static
 {

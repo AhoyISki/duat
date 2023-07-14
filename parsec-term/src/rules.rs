@@ -1,5 +1,5 @@
 use parsec_core::{
-    data::{DownCastableData, ReadableData, RoData},
+    data::{AsAny, ReadableData, RoData},
     tags::{
         form::{FormPalette, DEFAULT},
         Tag
@@ -164,7 +164,7 @@ where
     }
 }
 
-impl<U> DownCastableData for VertRule<U>
+impl<U> AsAny for VertRule<U>
 where
     U: Ui + 'static
 {

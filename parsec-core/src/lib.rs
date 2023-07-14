@@ -255,7 +255,7 @@ where
         let files_to_open = manager.files_to_open.clone();
         let open_files = Command::new(vec!["edit", "e"], move |_, files| {
             BREAK_LOOP.store(true, Ordering::Release);
-            *files_to_open.write() = files.map(|file| PathBuf::from(file)).collect();
+            *files_to_open.write() = files.map(PathBuf::from).collect();
             Ok(None)
         });
 
@@ -275,7 +275,7 @@ where
     ) -> Result<(), ()> {
         area.set_as_active();
 
-        if let Some(file) = widget.clone().try_downcast::<FileWidget<U>>().ok() {
+        if let Ok(file) = widget.clone().try_downcast::<FileWidget<U>>() {
             *self.active_file.write() = RoData::from(&file);
         }
 
@@ -286,7 +286,7 @@ where
                 .map(|(widget_type, area, _)| (widget_type.as_scheme_input().unwrap(), area))
                 .ok_or(())?;
 
-            widget_type.write().on_unfocus(&area);
+            widget_type.write().on_unfocus(area);
 
             Ok(())
         })?;
@@ -294,7 +294,7 @@ where
         // Order matters here, since `on_unfocus` could rely on the
         // `Commands`'s prior `file_id`.
         self.commands.write().file_id = file_id;
-        widget.write().on_focus(&area);
+        widget.write().on_focus(area);
 
         *self.active_widget.write().unwrap() = widget;
 

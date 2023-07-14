@@ -17,7 +17,7 @@
 use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
 use crate::{
     commands::{Command, Commands},
-    data::{DownCastableData, ReadableData, RwData},
+    data::{AsAny, ReadableData, RwData},
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{Constraint, PrintInfo, PushSpecs, Ui},
@@ -154,7 +154,7 @@ where
     }
 }
 
-impl<U> DownCastableData for CommandLine<U>
+impl<U> AsAny for CommandLine<U>
 where
     U: Ui + 'static
 {

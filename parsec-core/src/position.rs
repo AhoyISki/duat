@@ -106,7 +106,7 @@ impl std::fmt::Display for Pos {
 
 /// A cursor in the text file. This is an editing cursor, not a
 /// printing cursor.
-#[derive(Default, Copy)]
+#[derive(Default)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
     caret: Pos,

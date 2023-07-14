@@ -47,14 +47,17 @@ use super::{DataCastErr, ReadableData};
 /// [`RwData<FileWidget<U>`]: RoData
 pub struct RwData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize
 }
 
-impl<T> RwData<T> {
+impl<T> RwData<T>
+where
+    T: Send + Sync
+{
     /// Returns a new instance of a [`RwData<T>`], assuming that it is
     /// sized.
     ///
@@ -73,7 +76,7 @@ impl<T> RwData<T> {
 
 impl<T> RwData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + Send + Sync + 'static
 {
     /// Returns a new instance of [`RwData<T>`], assuming that it is
     /// unsized.
@@ -260,7 +263,7 @@ where
 
 impl<T> RwData<T>
 where
-    T: ?Sized + super::AsAny
+    T: ?Sized + Send + Sync + super::AsAny
 {
     /// Tries to downcast to a concrete type.
     ///
@@ -320,7 +323,7 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn try_downcast<U>(self) -> Result<RwData<U>, DataCastErr<RwData<T>, T, U>>
     where
-        U: 'static
+        U: Send + Sync + 'static
     {
         let Self {
             data,
@@ -467,7 +470,7 @@ where
 
 impl<T> std::fmt::Debug for RwData<T>
 where
-    T: ?Sized + std::fmt::Debug
+    T: ?Sized + Send + Sync + std::fmt::Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -476,7 +479,7 @@ where
 
 impl<T> Clone for RwData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     fn clone(&self) -> Self {
         Self {
@@ -489,7 +492,7 @@ where
 
 impl<T> Default for RwData<T>
 where
-    T: Default
+    T: Default + Send + Sync
 {
     fn default() -> Self {
         Self {
@@ -502,7 +505,7 @@ where
 
 impl<T> std::fmt::Display for RwData<T>
 where
-    T: std::fmt::Display + 'static
+    T: std::fmt::Display + Send + Sync + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.read(), f)
@@ -511,7 +514,7 @@ where
 
 impl<T> super::private::Data<T> for RwData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     type Deref<'a> = RwLockReadGuard<'a, T>
     where
@@ -534,8 +537,8 @@ where
     }
 }
 
-impl<T> super::ReadableData<T> for RwData<T> where T: ?Sized {}
-impl<T> super::RawReadableData<T> for RwData<T> where T: ?Sized {}
+impl<T> super::ReadableData<T> for RwData<T> where T: ?Sized + Send + Sync {}
+impl<T> super::RawReadableData<T> for RwData<T> where T: ?Sized + Send + Sync {}
 
-unsafe impl<T> Send for RwData<T> where T: ?Sized {}
-unsafe impl<T> Sync for RwData<T> where T: ?Sized {}
+unsafe impl<T> Send for RwData<T> where T: ?Sized + Send + Sync {}
+unsafe impl<T> Sync for RwData<T> where T: ?Sized + Send + Sync {}

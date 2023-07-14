@@ -60,7 +60,7 @@ pub use status_helpers::status_parts;
 use self::Reader::*;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
-    data::{DownCastableData, ReadableData, RoNestedData},
+    data::{AsAny, ReadableData, RoNestedData},
     tags::{form::FormPalette, Tag},
     text::{Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
@@ -73,8 +73,8 @@ pub enum Reader<U>
 where
     U: Ui
 {
-    Var(Box<dyn Fn() -> String + 'static>),
-    File(Box<dyn Fn(&FileWidget<U>) -> String + 'static>)
+    Var(Box<dyn Fn() -> String + Send + Sync + 'static>),
+    File(Box<dyn Fn(&FileWidget<U>) -> String + Send + Sync + 'static>)
 }
 
 impl<U> Reader<U>
@@ -106,7 +106,7 @@ where
     U: Ui
 {
     reader_or_text: ReaderOrText<U>,
-    checker: Option<Box<dyn Fn() -> bool>>
+    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>
 }
 
 impl<U> StatusPart<U>
@@ -117,7 +117,7 @@ where
     /// swappable ranges, text, and [`Tag`]s.
     fn process(
         self, builder: &mut TextBuilder, file: &FileWidget<U>, palette: &FormPalette
-    ) -> (Option<Reader<U>>, Option<Box<dyn Fn() -> bool>>) {
+    ) -> (Option<Reader<U>>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
         match self.reader_or_text {
             ReaderOrText::Reader(Reader::Var(obj_fn)) => {
                 builder.push_swappable(obj_fn());
@@ -175,8 +175,8 @@ impl<U, S, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for StatusPart<U>
 where
     U: Ui,
     S: ToString,
-    ReadFn: Fn() -> S + 'static,
-    CheckFn: Fn() -> bool + 'static
+    ReadFn: Fn() -> S + Send + Sync + 'static,
+    CheckFn: Fn() -> bool + Send + Sync + 'static
 {
     fn from((reader, checker): (ReadFn, CheckFn)) -> Self {
         let reader = move || reader().to_string();
@@ -191,7 +191,7 @@ impl<U, S, ReadFn> From<ReadFn> for StatusPart<U>
 where
     U: Ui,
     S: ToString,
-    ReadFn: Fn(&FileWidget<U>) -> S + 'static
+    ReadFn: Fn(&FileWidget<U>) -> S + Send + Sync + 'static
 {
     fn from(reader: ReadFn) -> Self {
         let reader = move |file: &FileWidget<U>| reader(file).to_string();
@@ -385,7 +385,7 @@ where
     }
 }
 
-impl<U> DownCastableData for StatusLine<U>
+impl<U> AsAny for StatusLine<U>
 where
     U: Ui + 'static
 {
@@ -396,7 +396,7 @@ where
 
 fn build_parts<U>(
     file: &FileWidget<U>, parts: Vec<StatusPart<U>>, palette: &FormPalette
-) -> (TextBuilder, Vec<Reader<U>>, impl Fn() -> bool)
+) -> (TextBuilder, Vec<Reader<U>>, impl Fn() -> bool + Send + Sync)
 where
     U: Ui
 {

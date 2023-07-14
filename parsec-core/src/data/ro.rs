@@ -3,7 +3,7 @@ use std::sync::{
     Arc, RwLock, RwLockReadGuard, TryLockResult
 };
 
-use super::{private, AsAny, RawReadableData, ReadableData, RwData};
+use super::{private, AsAny, DataCastErr, RawReadableData, ReadableData, RwData};
 
 /// A read-only reference to information.
 ///
@@ -25,14 +25,17 @@ use super::{private, AsAny, RawReadableData, ReadableData, RwData};
 /// [`RoData<FileWidget<U>>`]: RoData
 pub struct RoData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize
 }
 
-impl<T> RoData<T> {
+impl<T> RoData<T>
+where
+    T: Send + Sync
+{
     /// Returns a new instance of a [`RoData<T>`], assuming that it is
     /// sized.
     fn new(data: T) -> Self {
@@ -46,19 +49,19 @@ impl<T> RoData<T> {
 
 impl<T> RoData<T>
 where
-    T: ?Sized + AsAny
+    T: ?Sized + Send + Sync + AsAny
 {
     /// Tries to downcast to a concrete type.
     pub fn try_downcast<U>(self) -> Result<RoData<U>, DataCastErr<RoData<T>, T, U>>
     where
-        U: 'static
+        U: Send + Sync + 'static
     {
         let RoData {
             data,
             cur_state,
             read_state
         } = self;
-        if (&*data.read().unwrap()).as_any().is::<U>() {
+        if (*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Ok(RoData {
@@ -73,8 +76,8 @@ where
                     cur_state,
                     read_state
                 },
-                std::marker::PhantomData::default(),
-                std::marker::PhantomData::default()
+                std::marker::PhantomData,
+                std::marker::PhantomData
             ))
         }
     }
@@ -90,7 +93,7 @@ where
 
 impl<T> Default for RoData<T>
 where
-    T: ?Sized + Default
+    T: ?Sized + Send + Sync + Default
 {
     fn default() -> Self {
         Self {
@@ -103,7 +106,7 @@ where
 
 impl<T> std::fmt::Debug for RoData<T>
 where
-    T: ?Sized + std::fmt::Debug
+    T: ?Sized + Send + Sync + std::fmt::Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -112,7 +115,7 @@ where
 
 impl<T> From<&RwData<T>> for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     fn from(value: &RwData<T>) -> Self {
         RoData {
@@ -125,7 +128,7 @@ where
 
 impl<T> private::Data<T> for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     type Deref<'a> = RwLockReadGuard<'a, T> where Self: 'a;
 
@@ -146,17 +149,17 @@ where
     }
 }
 
-impl<T> ReadableData<T> for RoData<T> where T: ?Sized {}
-impl<T> RawReadableData<T> for RoData<T> where T: ?Sized {}
+impl<T> ReadableData<T> for RoData<T> where T: ?Sized + Send + Sync {}
+impl<T> RawReadableData<T> for RoData<T> where T: ?Sized + Send + Sync {}
 
-unsafe impl<T> Sync for RoData<T> where T: ?Sized {}
-unsafe impl<T> Send for RoData<T> where T: ?Sized {}
+unsafe impl<T> Send for RoData<T> where T: ?Sized + Send + Sync + Send {}
+unsafe impl<T> Sync for RoData<T> where T: ?Sized + Send + Sync + Send + Sync {}
 
 // NOTE: Each `RoState` of a given state will have its own internal
 // update counter.
 impl<T> Clone for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     fn clone(&self) -> Self {
         RoData {
@@ -169,29 +172,10 @@ where
 
 impl<T> std::fmt::Display for RoData<T>
 where
-    T: std::fmt::Display + 'static
+    T: std::fmt::Display + Send + Sync + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.read(), f)
-    }
-}
-
-pub struct DataCastErr<D, T, U>(D, std::marker::PhantomData<T>, std::marker::PhantomData<U>)
-where
-    D: private::Data<T>,
-    T: ?Sized,
-    U: ?Sized;
-
-impl<D, T, U> std::fmt::Debug for DataCastErr<D, T, U>
-where
-    D: private::Data<T>,
-    T: ?Sized,
-    U: ?Sized
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let orig = stringify!(self.0);
-        let cast = std::any::type_name::<U>();
-        f.write_fmt(format_args!("{orig}'s data cannot be coerced to {cast}."))
     }
 }
 
@@ -212,7 +196,7 @@ where
 /// changes to the pointer itself.
 pub struct RoNestedData<T>
 where
-    T: ?Sized
+    T: ?Sized + Send + Sync
 {
     data: RoData<RoData<T>>,
     read_state: AtomicUsize
@@ -220,7 +204,7 @@ where
 
 impl<T> RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + Send + Sync + 'static
 {
     /// Returns a new instance of [`RoNestedData<T>`]
     ///
@@ -280,7 +264,7 @@ where
 
 impl<T> Clone for RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + Send + Sync + 'static
 {
     fn clone(&self) -> Self {
         RoNestedData {
@@ -292,7 +276,7 @@ where
 
 impl<T> From<&RwData<RoData<T>>> for RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + Send + Sync + 'static
 {
     fn from(value: &RwData<RoData<T>>) -> Self {
         RoNestedData {

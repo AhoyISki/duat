@@ -434,8 +434,11 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    function:
-        RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
+    function: RwData<
+        dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
+            + Send
+            + Sync
+    >,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>
 }
@@ -475,11 +478,13 @@ impl Command {
     /// This function will panic if any of the callers contain more
     /// than one word, as commands are only allowed to be one word
     /// long.
-    pub fn new(
-        callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-        + 'static
-    ) -> Self {
+    pub fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
+    where
+        F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
+            + Send
+            + Sync
+            + 'static
+    {
         let callers = callers.into_iter().map(|caller| caller.to_string()).collect::<Vec<String>>();
         if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
             panic!("Command caller \"{caller}\" contains more than one word.");

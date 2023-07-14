@@ -73,7 +73,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler
@@ -84,7 +84,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs)
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler
@@ -96,7 +96,7 @@ where
         specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -108,7 +108,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -121,7 +121,7 @@ where
         specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -133,7 +133,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + Send + Sync + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
