@@ -434,7 +434,7 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    f: CommandFn,
+    f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>
 }
@@ -769,13 +769,13 @@ impl std::fmt::Display for CommandErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandErr::NotSingleWord(caller) => {
-                f.write_fmt(format_args!("The caller \"{caller}\" is not a single word"))
+                write!(f, "The caller \"{caller}\" is not a single word")
             }
             CommandErr::AlreadyExists(caller) => {
-                f.write_fmt(format_args!("The caller \"{caller}\" already exists."))
+                write!(f, "The caller \"{caller}\" already exists.")
             }
             CommandErr::NotFound(caller) => {
-                f.write_fmt(format_args!("The caller \"{caller}\" was not found."))
+                write!(f, "The caller \"{caller}\" was not found.")
             }
             CommandErr::Failed(failure) => f.write_str(failure),
             CommandErr::Empty => f.write_str("No caller supplied.")
@@ -845,6 +845,3 @@ pub fn split_flags<'a>(
 
     (Flags { blob, units }, args)
 }
-
-type CommandFn =
-    RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>;

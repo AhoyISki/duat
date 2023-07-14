@@ -1,4 +1,5 @@
 #![feature(result_option_inspect, iter_collect_into, let_chains)]
+#![allow(clippy::type_complexity)]
 
 use std::{fmt::Debug, io};
 
@@ -7,7 +8,7 @@ use crossterm::{
     cursor, execute,
     terminal::{self, ClearType}
 };
-use layout::{Frame, Layout, Line};
+use layout::{Frame, Layout};
 use parsec_core::{
     data::{ReadableData, RwData},
     ui::{self, PushSpecs}
@@ -42,10 +43,6 @@ impl ui::Window for Window {
             parent.map(|parent| Area::new(self.layout.clone(), parent))
         )
     }
-
-    fn request_width_to_fit(&self, _text: &str) -> Result<(), ()> {
-        todo!()
-    }
 }
 
 unsafe impl Send for Window {}
@@ -60,6 +57,7 @@ impl std::fmt::Debug for AreaIndex {
     }
 }
 
+#[derive(Default)]
 pub struct Ui {
     windows: Vec<Window>,
     frame: Frame
@@ -74,16 +72,8 @@ impl Ui {
     }
 }
 
-impl Default for Ui {
-    fn default() -> Self {
-        Ui {
-            windows: Vec::new(),
-            frame: Frame::Border(Line::Regular)
-        }
-    }
-}
-
 impl ui::Ui for Ui {
+    type ConstraintChangeErr = ConstraintChangeErr;
     type PrintInfo = PrintInfo;
     type Area = Area;
     type Window = Window;
@@ -135,6 +125,25 @@ impl ui::Ui for Ui {
             cursor::Show
         );
         terminal::disable_raw_mode().unwrap();
+    }
+}
+
+pub enum ConstraintChangeErr {
+    NoParent,
+    Impossible
+}
+
+impl std::fmt::Debug for ConstraintChangeErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // NOTE: Might not be true in the future.
+            ConstraintChangeErr::NoParent => {
+                write!(f, "The area does not have a parent, so its constraint cannot be changed.")
+            }
+            ConstraintChangeErr::Impossible => {
+                write!(f, "The constraint change is impossible.")
+            }
+        }
     }
 }
 

@@ -1,6 +1,5 @@
 use std::ops::RangeBounds;
 
-
 use ropey::{Rope, RopeSlice};
 
 #[derive(Debug)]
@@ -176,7 +175,7 @@ impl InnerText {
 #[derive(Clone)]
 pub enum Chars<'a> {
     String(std::iter::Skip<std::str::Chars<'a>>),
-	Rope(ropey::iter::Chars<'a>)
+    Rope(ropey::iter::Chars<'a>)
 }
 
 impl Iterator for Chars<'_> {
@@ -185,7 +184,7 @@ impl Iterator for Chars<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Chars::String(chars) => chars.next(),
-            Chars::Rope(chars) => chars.next(),
+            Chars::Rope(chars) => chars.next()
         }
     }
 }

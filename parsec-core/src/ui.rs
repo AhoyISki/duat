@@ -166,6 +166,7 @@ pub trait PrintInfo: Default + Clone + Copy {
 /// screen where text may be printed.
 pub trait Area: Clone + PartialEq + Send + Sync {
     type PrintInfo: PrintInfo;
+    type ConstraintChangeErr: Debug;
 
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -183,7 +184,11 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
     fn print(&self, text: &Text, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette);
 
-    fn change_constraint(&self, constraint: Constraint) -> Result<(), ()>;
+    fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Requests that the width be enough to fit a certain piece of
+    /// text.
+    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
     //////////////////// Queries
     /// The amount of rows of the screen that the [`Iterator`] takes
@@ -458,8 +463,7 @@ pub(crate) fn activate_hook<U, W>(
 
         let old_file_id = node
             .file_id
-            .map(|file_id| controler.commands.write().file_id.replace(file_id))
-            .flatten();
+            .and_then(|file_id| controler.commands.write().file_id.replace(file_id));
 
         let old_file = node.widget_type.downcast_ref::<FileWidget<U>>().map(|file| {
             std::mem::replace(&mut *controler.active_file.write(), RoData::from(&file))
@@ -479,7 +483,9 @@ pub(crate) fn activate_hook<U, W>(
     (constructor_hook)(mod_node, widget);
 
     controler.commands.write().file_id = old_file_id;
-    old_file.map(|file| *controler.active_file.write() = file);
+    if let Some(file) = old_file {
+        *controler.active_file.write() = file
+    };
 }
 
 /// A dimension on screen, can either be horizontal or vertical.
@@ -555,17 +561,14 @@ pub trait Window: Clone + 'static {
     fn bisect(
         &mut self, index: &Self::Area, specs: PushSpecs, is_glued: bool
     ) -> (Self::Area, Option<Self::Area>);
-
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), ()>;
 }
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Default + 'static {
     type PrintInfo: PrintInfo<Area = Self::Area>;
-    type Area: Area<PrintInfo = Self::PrintInfo>;
+    type ConstraintChangeErr: Debug;
+    type Area: Area<PrintInfo = Self::PrintInfo, ConstraintChangeErr = Self::ConstraintChangeErr>;
     type Window: Window<Area = Self::Area>;
 
     /// Initiates and returns a new [`Window`][Ui::Window].
@@ -601,8 +604,8 @@ where
     where
         Checker: Fn() -> bool + 'static
     {
-        let (window, mut area) = ui.new_window();
-        widget_type.update(&mut area);
+        let (window, area) = ui.new_window();
+        widget_type.update(&area);
 
         let main_node = Node {
             widget_type,
@@ -755,7 +758,7 @@ where
                  ..
              }| {
                 let f = &mut f;
-                widget.raw_inspect(|widget| f(accum, &*widget))
+                widget.raw_inspect(|widget| f(accum, widget))
             }
         )
     }

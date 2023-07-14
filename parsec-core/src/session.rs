@@ -9,7 +9,7 @@ use crate::{
     tags::form::FormPalette,
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
-    widgets::{FileWidget, SchemeInputWidget, WidgetType},
+    widgets::{FileWidget, ActSchemeWidget, WidgetType},
     Controler, BREAK_LOOP, SHOULD_QUIT
 };
 
@@ -18,7 +18,7 @@ where
     U: Ui
 {
     ui: U,
-    pub constructor_hook: ConstructorHook<U>,
+    pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
     controler: Controler<U>,
     print_cfg: RwData<PrintCfg>
 }
@@ -33,7 +33,7 @@ where
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
         let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
-        let file = FileWidget::<U>::new(file, print_cfg.clone());
+        let file = FileWidget::<U>::scheme(file, print_cfg.clone());
 
         let (window, area) = ParsecWindow::new(&mut ui, file, || false);
         let mut controler = Controler::new(window, palette);
@@ -60,7 +60,7 @@ where
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
-        let file_widget = FileWidget::new(Some(path), self.print_cfg.read().clone());
+        let file_widget = FileWidget::scheme(Some(path), self.print_cfg.read().clone());
         let (area, _) = self.controler.windows.mutate(|windows| {
             let active_window = &mut windows[self.controler.active_window];
             active_window.push_file(file_widget, PushSpecs::right_free())
@@ -235,15 +235,13 @@ where
     }
 }
 
-pub type ConstructorHook<U> = Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>;
-
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, Sw, I>(
     widget: &RwData<Sw>, area: &U::Area, controler: &Controler<U>, key_event: KeyEvent,
     key_remapper: &mut KeyRemapper<I>
 ) where
     U: Ui + 'static,
-    Sw: SchemeInputWidget<U> + ?Sized + 'static,
+    Sw: ActSchemeWidget<U> + ?Sized + 'static,
     I: Scheme
 {
     widget.mutate(|widget| {

@@ -75,25 +75,25 @@ pub enum WidgetType<U>
 where
     U: Ui
 {
-    NoInput(RwData<dyn Widget<U>>),
-    SchemeInput(RwData<dyn SchemeInputWidget<U>>),
-    DirectInput(RwData<dyn DirectInputWidget<U>>)
+    Passive(RwData<dyn Widget<U>>),
+    ActScheme(RwData<dyn ActSchemeWidget<U>>),
+    ActDirect(RwData<dyn ActDirectWidget<U>>)
 }
 
 impl<U> WidgetType<U>
 where
     U: Ui
 {
-    pub fn no_input(widget: impl Widget<U>) -> Self {
-        WidgetType::NoInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn passive(widget: impl Widget<U>) -> Self {
+        WidgetType::Passive(RwData::new_unsized(Arc::new(RwLock::new(widget))))
     }
 
-    pub fn scheme_input(widget: impl SchemeInputWidget<U>) -> Self {
-        WidgetType::SchemeInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn scheme_input(widget: impl ActSchemeWidget<U>) -> Self {
+        WidgetType::ActScheme(RwData::new_unsized(Arc::new(RwLock::new(widget))))
     }
 
-    pub fn direct_input(widget: impl DirectInputWidget<U>) -> Self {
-        WidgetType::DirectInput(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn direct_input(widget: impl ActDirectWidget<U>) -> Self {
+        WidgetType::ActDirect(RwData::new_unsized(Arc::new(RwLock::new(widget))))
     }
 
     pub fn try_update_and_print<'scope, 'env>(
@@ -103,7 +103,7 @@ where
         // This is, technically speaking, not good enough, but it should cover
         // 99.9999999999999% of cases without fail.
         match self {
-            WidgetType::NoInput(widget) => {
+            WidgetType::Passive(widget) => {
                 if widget.try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.write();
@@ -115,7 +115,7 @@ where
                     false
                 }
             }
-            WidgetType::SchemeInput(widget) => {
+            WidgetType::ActScheme(widget) => {
                 if widget.try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.write();
@@ -127,7 +127,7 @@ where
                     false
                 }
             }
-            WidgetType::DirectInput(widget) => {
+            WidgetType::ActDirect(widget) => {
                 if widget.try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.write();
@@ -144,17 +144,17 @@ where
 
     pub fn update(&self, area: &U::Area) {
         match self {
-            WidgetType::NoInput(widget) => widget.write().update(area),
-            WidgetType::SchemeInput(widget) => widget.write().update(area),
-            WidgetType::DirectInput(widget) => widget.write().update(area)
+            WidgetType::Passive(widget) => widget.write().update(area),
+            WidgetType::ActScheme(widget) => widget.write().update(area),
+            WidgetType::ActDirect(widget) => widget.write().update(area)
         }
     }
 
     pub fn print(&self, area: &U::Area, palette: &FormPalette) {
         match self {
-            WidgetType::NoInput(widget) => widget.read().print(area, palette),
-            WidgetType::SchemeInput(widget) => widget.read().print(area, palette),
-            WidgetType::DirectInput(widget) => widget.read().print(area, palette)
+            WidgetType::Passive(widget) => widget.read().print(area, palette),
+            WidgetType::ActScheme(widget) => widget.read().print(area, palette),
+            WidgetType::ActDirect(widget) => widget.read().print(area, palette)
         }
     }
 
@@ -165,9 +165,9 @@ where
         W: Widget<U> + 'static
     {
         match self {
-            WidgetType::NoInput(widget) => widget.clone().try_downcast::<W>().ok(),
-            WidgetType::SchemeInput(widget) => widget.clone().try_downcast::<W>().ok(),
-            WidgetType::DirectInput(widget) => widget.clone().try_downcast::<W>().ok()
+            WidgetType::Passive(widget) => widget.clone().try_downcast::<W>().ok(),
+            WidgetType::ActScheme(widget) => widget.clone().try_downcast::<W>().ok(),
+            WidgetType::ActDirect(widget) => widget.clone().try_downcast::<W>().ok()
         }
     }
 
@@ -176,9 +176,9 @@ where
         W: Widget<U>
     {
         match self {
-            WidgetType::NoInput(widget) => widget.data_is::<W>(),
-            WidgetType::SchemeInput(widget) => widget.data_is::<W>(),
-            WidgetType::DirectInput(widget) => widget.data_is::<W>()
+            WidgetType::Passive(widget) => widget.data_is::<W>(),
+            WidgetType::ActScheme(widget) => widget.data_is::<W>(),
+            WidgetType::ActDirect(widget) => widget.data_is::<W>()
         }
     }
 
@@ -187,41 +187,41 @@ where
         W: Widget<U>
     {
         match self {
-            WidgetType::NoInput(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
-            WidgetType::SchemeInput(widget) => {
+            WidgetType::Passive(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
+            WidgetType::ActScheme(widget) => {
                 widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
             }
-            WidgetType::DirectInput(widget) => {
+            WidgetType::ActDirect(widget) => {
                 widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
             }
         }
     }
 
-    pub fn as_scheme_input(&self) -> Option<&RwData<dyn SchemeInputWidget<U>>> {
+    pub fn as_scheme_input(&self) -> Option<&RwData<dyn ActSchemeWidget<U>>> {
         match self {
-            WidgetType::SchemeInput(widget) => Some(widget),
+            WidgetType::ActScheme(widget) => Some(widget),
             _ => None
         }
     }
 
-    pub fn scheme_ptr_eq(&self, other: &RwData<dyn SchemeInputWidget<U>>) -> bool {
+    pub fn scheme_ptr_eq(&self, other: &RwData<dyn ActSchemeWidget<U>>) -> bool {
         match self {
-            WidgetType::SchemeInput(widget) => widget.ptr_eq(other),
+            WidgetType::ActScheme(widget) => widget.ptr_eq(other),
             _ => false
         }
     }
 
     pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
         match self {
-            WidgetType::NoInput(widget) => {
+            WidgetType::Passive(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
-            WidgetType::SchemeInput(widget) => {
+            WidgetType::ActScheme(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
-            WidgetType::DirectInput(widget) => {
+            WidgetType::ActDirect(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
@@ -230,15 +230,15 @@ where
 
     pub fn has_changed(&self) -> bool {
         match self {
-            WidgetType::SchemeInput(widget) => widget.has_changed(),
-            WidgetType::DirectInput(widget) => widget.has_changed(),
-            WidgetType::NoInput(_) => false
+            WidgetType::ActScheme(widget) => widget.has_changed(),
+            WidgetType::ActDirect(widget) => widget.has_changed(),
+            WidgetType::Passive(_) => false
         }
     }
 }
 
 /// A widget that can receive input and show [`Cursor`]s.
-pub trait SchemeInputWidget<U>: Widget<U>
+pub trait ActSchemeWidget<U>: Widget<U>
 where
     U: Ui + 'static
 {
@@ -303,7 +303,7 @@ where
     fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 
-pub trait DirectInputWidget<U>: Widget<U>
+pub trait ActDirectWidget<U>: Widget<U>
 where
     U: Ui
 {
@@ -326,7 +326,7 @@ pub struct EditAccum {
 pub struct WidgetActor<'a, U, Sw>
 where
     U: Ui + 'static,
-    Sw: SchemeInputWidget<U> + ?Sized
+    Sw: ActSchemeWidget<U> + ?Sized
 {
     clearing_needed: bool,
     widget: &'a RwData<Sw>,
@@ -336,7 +336,7 @@ where
 impl<'a, U, Sw> WidgetActor<'a, U, Sw>
 where
     U: Ui,
-    Sw: SchemeInputWidget<U> + ?Sized + 'static
+    Sw: ActSchemeWidget<U> + ?Sized + 'static
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
     pub(crate) fn new(widget: &'a RwData<Sw>, area: &'a U::Area) -> Self {
@@ -400,9 +400,9 @@ where
         }
 
         // TODO: Figure out a better way to sort.
-        widget.mut_cursors().map(|cursors| {
+        if let Some(cursors) = widget.mut_cursors() {
             cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
-        });
+        }
         self.clearing_needed = true;
     }
 
@@ -507,13 +507,13 @@ where
             return;
         }
 
-        self.widget.write().mut_main_cursor_index().map(|main_index| {
+        if let Some(main_index) = self.widget.write().mut_main_cursor_index() {
             *main_index = if *main_index == cursors_len - 1 {
                 0
             } else {
                 *main_index + 1
             }
-        });
+        }
     }
 
     /// Rotates the main cursor index backwards.
@@ -523,13 +523,13 @@ where
             return;
         }
 
-        self.widget.write().mut_main_cursor_index().map(|main_index| {
+        if let Some(main_index) = self.widget.write().mut_main_cursor_index() {
             *main_index = if *main_index == 0 {
                 cursors_len - 1
             } else {
                 *main_index - 1
             }
-        });
+        }
     }
 
     /// The amount of active [`Cursor`]s in the [`Text`].

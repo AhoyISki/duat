@@ -1,5 +1,5 @@
 #![feature(extract_if, result_option_inspect, trait_upcasting, let_chains)]
-#![allow(clippy::arc_with_non_send_sync)]
+#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
 
 use std::{
     marker::PhantomData,
@@ -14,7 +14,7 @@ use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use tags::form::FormPalette;
 use ui::{Area, ParsecWindow, RoWindows, Ui};
-use widgets::{FileWidget, SchemeInputWidget};
+use widgets::{FileWidget, ActSchemeWidget};
 
 pub mod commands;
 pub mod data;
@@ -41,7 +41,7 @@ where
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
     active_file: RwData<RoData<FileWidget<U>>>,
-    active_widget: RwLock<RwData<dyn SchemeInputWidget<U>>>,
+    active_widget: RwLock<RwData<dyn ActSchemeWidget<U>>>,
     pub palette: FormPalette
 }
 
@@ -206,7 +206,7 @@ where
     /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
     pub fn switch_to<Sw>(&self) -> Result<(), WidgetSwitchErr<Sw, U>>
     where
-        Sw: SchemeInputWidget<U>
+        Sw: ActSchemeWidget<U>
     {
         let cur_file_id = self.commands.read().file_id;
         self.inspect_active_window(|window| {
@@ -275,10 +275,10 @@ where
     /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
     /// `file_id`.
     fn inner_switch_to<Sw>(
-        &self, widget: RwData<dyn SchemeInputWidget<U>>, area: &U::Area, file_id: Option<usize>
+        &self, widget: RwData<dyn ActSchemeWidget<U>>, area: &U::Area, file_id: Option<usize>
     ) -> Result<(), WidgetSwitchErr<Sw, U>>
     where
-        Sw: SchemeInputWidget<U>
+        Sw: ActSchemeWidget<U>
     {
         area.set_as_active();
 
@@ -321,7 +321,7 @@ unsafe impl<U> Sync for Controler<U> where U: Ui {}
 
 pub enum WidgetSwitchErr<Sw, U>
 where
-    Sw: SchemeInputWidget<U>,
+    Sw: ActSchemeWidget<U>,
     U: Ui
 {
     NotFound(PhantomData<(Sw, U)>),
@@ -333,7 +333,7 @@ where
 
 impl<Sw, U> std::fmt::Display for WidgetSwitchErr<Sw, U>
 where
-    Sw: SchemeInputWidget<U>,
+    Sw: ActSchemeWidget<U>,
     U: Ui
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -390,6 +390,6 @@ macro_rules! log_info {
     ($($text:tt)*) => {{
         use std::{fs, io::Write};
         let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-        log.write_fmt(format_args!($($text)*)).unwrap();
+        write!(log, $($text)*).unwrap();
     }};
 }

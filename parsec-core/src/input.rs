@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::{
     data::RwData,
     ui::Ui,
-    widgets::{SchemeInputWidget, WidgetActor},
+    widgets::{ActSchemeWidget, WidgetActor},
     Controler
 };
 
@@ -31,7 +31,7 @@ pub trait Scheme: Send + Sync {
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>, controler: &Controler<U>
     ) where
         U: Ui + 'static,
-        A: SchemeInputWidget<U> + ?Sized;
+        A: ActSchemeWidget<U> + ?Sized;
 
     /// Wether or not remapped keys should be sent.
     fn send_remapped_keys(&self) -> bool;
@@ -115,7 +115,7 @@ where
         &mut self, key: KeyEvent, widget: &RwData<Sw>, area: &U::Area, controler: &Controler<U>
     ) where
         U: Ui + 'static,
-        Sw: SchemeInputWidget<U> + ?Sized
+        Sw: ActSchemeWidget<U> + ?Sized
     {
         let found_or_empty =
             |i: usize| -> bool { self.should_check.is_empty() || self.should_check.contains(&i) };

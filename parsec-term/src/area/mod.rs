@@ -24,7 +24,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::{
     layout::{Edge, Layout, Line, LineCoords},
-    AreaIndex
+    AreaIndex, ConstraintChangeErr
 };
 
 static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
@@ -107,7 +107,7 @@ impl Area {
 
         let width = match cfg.wrap_method {
             WrapMethod::Capped(cap) => cap as u16,
-            _ => rect.br().x - rect.tl().x as u16
+            _ => rect.br().x - rect.tl().x
         };
 
         Coords {
@@ -119,7 +119,6 @@ impl Area {
 
 impl ui::Area for Area {
     type PrintInfo = PrintInfo;
-
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
             let rect = layout.fetch_index(self.index).unwrap();
@@ -188,14 +187,19 @@ impl ui::Area for Area {
         execute!(stdout, ResetColor).unwrap();
     }
 
-    fn change_constraint(&self, constraint: Constraint) -> Result<(), ()> {
+    fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {
         let mut layout = self.layout.write();
-        let (parent, index) = layout.fetch_parent(self.index).ok_or(())?;
+        let (parent, index) =
+            layout.fetch_parent(self.index).ok_or(ConstraintChangeErr::NoParent)?;
         if parent.write().change_child_constraint(index, constraint, &mut layout.solver) {
             layout.update();
         }
 
         Ok(())
+    }
+
+    fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
+        todo!();
     }
 
     fn visible_rows(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
@@ -207,7 +211,7 @@ impl ui::Area for Area {
                     .filter_map(|(new_line, ..)| new_line)
                     .count()
             }
-            WrapMethod::Word => words(indents, coords.width(), &cfg)
+            WrapMethod::Word => words(indents, coords.width(), cfg)
                 .filter_map(|(new_line, ..)| new_line)
                 .count(),
             WrapMethod::NoWrap => 1
@@ -254,7 +258,7 @@ impl ui::Area for Area {
         };
 
         if let WrapMethod::Word = cfg.wrap_method {
-            words(indents, width, &cfg).fold(0, fold_fn) as usize
+            words(indents, width, cfg).fold(0, fold_fn) as usize
         } else {
             let is_no_wrap = cfg.wrap_method.is_no_wrap();
             bits(indents, width, &cfg.tab_stops, is_no_wrap).fold(0, fold_fn) as usize
@@ -294,6 +298,8 @@ impl ui::Area for Area {
             parent_index == self.index
         })
     }
+
+    type ConstraintChangeErr = ConstraintChangeErr;
 }
 
 unsafe impl Send for Area {}
@@ -331,7 +337,7 @@ impl PrintInfo {
 
             let iter = indents(line, &cfg.tab_stops, width);
             if let WrapMethod::Word = cfg.wrap_method {
-                words(iter, width, &cfg)
+                words(iter, width, cfg)
                     .filter_map(|(new_line, index, _)| new_line.map(|_| index))
                     .take_while(|index| *index <= pos.true_char())
                     .collect_into(&mut line_indices);
@@ -351,8 +357,7 @@ impl PrintInfo {
 
         if let Some(&index) = limit
             .checked_sub(1)
-            .map(|index| indices.get(index))
-            .flatten()
+            .and_then(|index| indices.get(index))
             .or_else(|| indices.last())
         {
             if (index < self.first_char && self.last_main > pos)
@@ -549,10 +554,9 @@ fn words<'a>(
 
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
-        finished_word
-            .pop()
-            .map(|(index, bit)| words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg))
-            .flatten()
+        finished_word.pop().and_then(|(index, bit)| {
+            words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg)
+        })
     })
 }
 
@@ -576,13 +580,15 @@ fn words_bit(
         None
     };
 
-    bit.as_char().map(|char| *next_is_nl = char == '\n');
+    if let Some(char) = bit.as_char() {
+        *next_is_nl = char == '\n'
+    }
 
     Some((nl, index, bit))
 }
 
 fn print_bits(
-    mut iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
+    iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
     info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> u16 {
     let mut passed_first_indent = false;
@@ -592,7 +598,7 @@ fn print_bits(
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    while let Some((nl, _, bit)) = iter.next() {
+    for (nl, _, bit) in iter {
         if let Some(indent) = nl {
             if passed_first_indent {
                 cursor.y += 1;
@@ -614,7 +620,9 @@ fn print_bits(
             let char = real_char_from(char, &cfg.new_line, last_char);
             cursor.x += write_char(char, cursor, coords, info.x_shift, &cfg.tab_stops, &mut line);
             last_char = char;
-            prev_style.take().map(|style| queue!(&mut line, ResetColor, SetStyle(style)));
+            if let Some(style) = prev_style.take() {
+                queue!(&mut line, ResetColor, SetStyle(style))
+            }
         } else if let TextBit::Tag(tag) = bit {
             prev_style = trigger_tag(tag, is_active, &mut alignment, &mut form_former, &mut line);
         }
@@ -645,10 +653,10 @@ fn print_line(
     queue!(
         stdout,
         ResetColor,
-        Print(" ".repeat(left as usize)),
+        Print(" ".repeat(left)),
         Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
-        Print(" ".repeat(right as usize)),
+        Print(" ".repeat(right)),
         cursor::MoveTo(coords.tl.x, cursor.y)
     );
 
@@ -697,7 +705,7 @@ fn write_char(
     // Case where it wouldn't.
     } else if cursor.x < coords.br.x + x_shift as u16 {
         let len = coords.br.x as usize + x_shift - cursor.x as usize;
-        queue!(line, Print(" ".repeat(len as usize)));
+        queue!(line, Print(" ".repeat(len)));
     }
 
     len

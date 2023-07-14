@@ -100,7 +100,7 @@ impl Pos {
 
 impl std::fmt::Display for Pos {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.col + 1, self.line + 1))
+        write!(f, "{}:{}", self.col + 1, self.line + 1)
     }
 }
 
@@ -326,7 +326,7 @@ impl Cursor {
 
 impl std::fmt::Display for Cursor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.caret.line + 1, self.caret.col + 1))
+        write!(f, "{}:{}", self.caret.line + 1, self.caret.col + 1)
     }
 }
 

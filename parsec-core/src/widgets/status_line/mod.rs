@@ -213,13 +213,11 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPale
             continue;
         };
 
-        if let Some((text_start, (_, form_id))) = text[(l_index + 1)..next_l_index]
-            .find(']')
-            .map(|r_index| {
+        if let Some((text_start, (_, form_id))) =
+            text[(l_index + 1)..next_l_index].find(']').and_then(|r_index| {
                 let form_name = &text[(l_index + 1)..=(l_index + r_index)];
                 palette.get_from_name(form_name).map(|form_id| (l_index + r_index + 2, form_id))
             })
-            .flatten()
         {
             builder.push_tag(Tag::PushForm(form_id));
             builder.push_text(&text[text_start..next_l_index]);
@@ -292,10 +290,10 @@ impl<U> StatusLine<U>
 where
     U: Ui
 {
-    fn new(
+    fn passive(
         file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
     ) -> WidgetType<U> {
-        WidgetType::no_input(Self {
+        WidgetType::passive(Self {
             file,
             builder,
             readers
@@ -311,9 +309,9 @@ where
             let palette = &controler.palette;
             let (builder, readers, checker) = build_parts(&file.read(), parts, palette);
 
-            let widget_type = StatusLine::new(RoNestedData::new(file.clone()), builder, readers);
+            let passive = StatusLine::passive(RoNestedData::new(file.clone()), builder, readers);
             let checker = Box::new(move || file.has_changed() || checker());
-            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
+            (passive, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 
@@ -327,7 +325,7 @@ where
             let (builder, readers, checker) =
                 file.inspect(|file| build_parts(file, parts, palette));
 
-            let widget_type = StatusLine::new(file.clone(), builder, readers);
+            let widget_type = StatusLine::passive(file.clone(), builder, readers);
             let checker = Box::new(move || file.has_changed() || checker());
             (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
@@ -344,7 +342,8 @@ where
             let parts = default_parts();
             let (builder, readers, _) = build_parts(&file.read(), parts, palette);
 
-            let widget_type = StatusLine::new(RoNestedData::new(file.clone()), builder, readers);
+            let widget_type =
+                StatusLine::passive(RoNestedData::new(file.clone()), builder, readers);
             let checker = Box::new(move || file.has_changed());
             (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
@@ -361,7 +360,7 @@ where
             let file = controler.dynamic_active_file();
             let (builder, readers, _) = file.inspect(|file| build_parts(file, parts, palette));
 
-            let widget_type = StatusLine::new(file.clone(), builder, readers);
+            let widget_type = StatusLine::passive(file.clone(), builder, readers);
             let checker = Box::new(move || file.has_changed());
             (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
         }
@@ -375,13 +374,13 @@ where
     fn update(&mut self, _area: &U::Area) {
         self.file.inspect(|file| {
             for (index, reader) in self.readers.iter().enumerate() {
-                self.builder.swap_range(index, reader.read(&file));
+                self.builder.swap_range(index, reader.read(file));
             }
         });
     }
 
     fn text(&self) -> &Text {
-        &self.builder.text()
+        self.builder.text()
     }
 }
 
@@ -406,9 +405,9 @@ where
     let readers = {
         let mut readers = Vec::new();
         for part in parts.into_iter() {
-            let (reader, checker) = part.process(&mut builder, &file, &palette);
-            reader.map(|reader| readers.push(reader));
-            checker.map(|checker| checkers.push(checker));
+            let (reader, checker) = part.process(&mut builder, file, palette);
+            if let Some(reader) = reader { readers.push(reader) }
+            if let Some(checker) = checker { checkers.push(checker) }
         }
         readers
     };

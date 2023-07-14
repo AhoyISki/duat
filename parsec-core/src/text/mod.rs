@@ -446,8 +446,8 @@ pub enum TextBit {
 impl std::fmt::Debug for TextBit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TextBit::Char(char) => f.write_fmt(format_args!("Char({})", char)),
-            TextBit::Tag(tag) => f.write_fmt(format_args!("Tag({:?})", tag))
+            TextBit::Char(char) => write!(f, "Char({char})"),
+            TextBit::Tag(tag) => write!(f, "Tag({:?})", tag)
         }
     }
 }

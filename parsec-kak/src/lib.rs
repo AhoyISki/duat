@@ -5,7 +5,7 @@ use parsec_core::{
     data::{ReadableData, RoData, RwData},
     input::Scheme,
     ui::Ui,
-    widgets::{CommandLine, SchemeInputWidget, WidgetActor},
+    widgets::{CommandLine, ActSchemeWidget, WidgetActor},
     Controler
 };
 
@@ -49,7 +49,7 @@ impl Editor {
     fn match_insert<U, AW>(&mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>)
     where
         U: Ui,
-        AW: SchemeInputWidget<U> + ?Sized
+        AW: ActSchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Char(ch), .. } => {
@@ -159,7 +159,7 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeInputWidget<U> + ?Sized
+        AW: ActSchemeWidget<U> + ?Sized
     {
         match key {
             ////////// SessionControl commands.
@@ -252,7 +252,7 @@ impl Editor {
             KeyEvent {
                 code: Char(':'), ..
             } => {
-                if let Ok(_) = controler.switch_to::<CommandLine<U>>() {
+                if controler.switch_to::<CommandLine<U>>().is_ok() {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
@@ -276,11 +276,11 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeInputWidget<U> + ?Sized
+        AW: ActSchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent { code: Enter, .. } => {
-                if let Ok(_) = controler.return_to_file() {
+                if controler.return_to_file().is_ok() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }
@@ -385,7 +385,7 @@ impl Editor {
 
                 actor.edit_on_main(|editor| editor.replace(""));
 
-                if let Ok(_) = controler.return_to_file() {
+                if controler.return_to_file().is_ok() {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }
@@ -398,13 +398,13 @@ impl Editor {
         &mut self, key: &KeyEvent, mut actor: WidgetActor<U, E>, controls: &Controler<U>
     ) where
         U: Ui,
-        E: SchemeInputWidget<U> + ?Sized
+        E: ActSchemeWidget<U> + ?Sized
     {
         match key {
             KeyEvent {
                 code: Char('a'), ..
             } => {
-                if let Ok(_) = controls.switch_to_file(&self.last_file) {
+                if controls.switch_to_file(&self.last_file).is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
             }
@@ -421,14 +421,14 @@ impl Editor {
             KeyEvent {
                 code: Char('n'), ..
             } => {
-                if let Ok(_) = controls.next_file() {
+                if controls.next_file().is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
             }
             KeyEvent {
                 code: Char('N'), ..
             } => {
-                if let Ok(_) = controls.prev_file() {
+                if controls.prev_file().is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
             }
@@ -453,7 +453,7 @@ impl Scheme for Editor {
         &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where
         U: Ui,
-        AW: SchemeInputWidget<U> + ?Sized
+        AW: ActSchemeWidget<U> + ?Sized
     {
         let cur_mode = *self.cur_mode.read();
         match cur_mode {
@@ -473,7 +473,7 @@ impl Scheme for Editor {
 fn move_each<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: SchemeInputWidget<U> + ?Sized
+    E: ActSchemeWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mover| {
         mover.unset_anchor();
@@ -489,7 +489,7 @@ where
 fn move_each_and_select<U, E>(file_editor: &mut WidgetActor<U, E>, direction: Side, amount: usize)
 where
     U: Ui,
-    E: SchemeInputWidget<U> + ?Sized
+    E: ActSchemeWidget<U> + ?Sized
 {
     file_editor.move_each_cursor(|mover| {
         if !mover.anchor_is_set() {

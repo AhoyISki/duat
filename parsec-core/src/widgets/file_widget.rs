@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{cmp::min, fs, path::PathBuf};
 
-use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
+use super::{EditAccum, ActSchemeWidget, Widget, WidgetType};
 use crate::{
     data::AsAny,
     history::History,
@@ -51,7 +51,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`FileWidget<U>`].
-    pub fn new(path: Option<PathBuf>, print_cfg: PrintCfg) -> WidgetType<U> {
+    pub fn scheme(path: Option<PathBuf>, print_cfg: PrintCfg) -> WidgetType<U> {
         // TODO: Allow the creation of a new file.
         let file_contents = path
             .as_ref()
@@ -110,7 +110,7 @@ where
 
         let mut chars = 0;
         for change in &moment.changes {
-            self.text.undo_change(&change, chars);
+            self.text.undo_change(change, chars);
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, self.text.inner());
@@ -133,7 +133,7 @@ where
         self.cursors.clear();
 
         for change in &moment.changes {
-            self.text.apply_change(&change);
+            self.text.apply_change(change);
 
             let new_pos = Pos::new(change.added_end(), self.text.inner());
             self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.print_cfg));
@@ -215,8 +215,7 @@ where
     pub fn name(&self) -> String {
         self.path
             .as_ref()
-            .map(|path| path.file_name().map(|file| file.to_string_lossy().to_string()))
-            .flatten()
+            .and_then(|path| path.file_name().map(|file| file.to_string_lossy().to_string()))
             .unwrap_or(String::from("scratch file"))
     }
 
@@ -275,7 +274,7 @@ where
     }
 }
 
-impl<U> SchemeInputWidget<U> for FileWidget<U>
+impl<U> ActSchemeWidget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {

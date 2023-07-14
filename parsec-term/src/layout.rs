@@ -53,13 +53,7 @@ impl PartialEq<VarValue> for VarValue {
 
 impl PartialOrd<VarValue> for VarValue {
     fn partial_cmp(&self, other: &VarValue) -> Option<std::cmp::Ordering> {
-        if self.value.load(Ordering::Acquire) > other.value.load(Ordering::Acquire) {
-            Some(std::cmp::Ordering::Greater)
-        } else if self.value.load(Ordering::Acquire) < other.value.load(Ordering::Acquire) {
-            Some(std::cmp::Ordering::Less)
-        } else {
-            Some(std::cmp::Ordering::Equal)
-        }
+        Some(self.value.load(Ordering::Acquire).cmp(&other.value.load(Ordering::Acquire)))
     }
 }
 
@@ -123,10 +117,7 @@ struct Constraints {
 impl Constraints {
     /// Wether or not [`self`] has flexibility in terms of its lenght.
     fn is_resizable(&self) -> bool {
-        match self.defined {
-            Some((_, Constraint::Min(_) | Constraint::Max(_))) | None => true,
-            _ => false
-        }
+        matches!(self.defined, Some((_, Constraint::Min(_) | Constraint::Max(_))) | None)
     }
 }
 
@@ -194,8 +185,6 @@ impl Rect {
     fn set_constraints(
         &mut self, parent: &Rect, axis: Axis, frame: Frame, max: Coord, edges: &mut Vec<Edge>
     ) -> (f64, f64) {
-        let perp = axis.perp();
-
         self.edge_cons.extend([
             self.tl.x.var | GE(REQUIRED) | 0.0,
             self.tl.y.var | GE(REQUIRED) | 0.0,
@@ -210,14 +199,14 @@ impl Rect {
             (0.0, 0.0, 0.0, 0.0)
         };
 
-        let (para_left, para_right, start, end) = match perp {
+        let (para_left, para_right, start, end) = match axis.perp() {
             Axis::Vertical => (up, down, left, right),
             Axis::Horizontal => (left, right, up, down)
         };
 
         self.edge_cons.extend([
-            self.start(perp) | EQ(REQUIRED) | parent.start(perp) + para_left,
-            self.end(perp) + para_right | EQ(REQUIRED) | parent.end(perp)
+            self.start(axis.perp()) | EQ(REQUIRED) | (parent.start(axis.perp()) + para_left),
+            (self.end(axis.perp()) + para_right) | EQ(REQUIRED) | parent.end(axis.perp())
         ]);
 
         (start, end)
@@ -248,8 +237,8 @@ impl Rect {
         self.edge_cons = vec![
             self.tl.x.var | EQ(REQUIRED) | hor_edge,
             self.tl.y.var | EQ(REQUIRED) | ver_edge,
-            self.br.x.var | EQ(REQUIRED) | max.x as f64 - hor_edge,
-            self.br.y.var | EQ(REQUIRED) | max.y as f64 - ver_edge,
+            self.br.x.var | EQ(REQUIRED) | (max.x as f64 - hor_edge),
+            self.br.y.var | EQ(REQUIRED) | (max.y as f64 - ver_edge),
         ];
 
         solver.add_constraints(&self.edge_cons).unwrap();
@@ -392,8 +381,9 @@ impl Rect {
 }
 
 /// What type of line should be used to [`Frame`] a given [`Rect`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 pub enum Line {
+    #[default]
     Regular,
     Thick,
     Dashed,
@@ -564,6 +554,12 @@ pub enum Frame {
     VerBorder(Line),
     Horizontal(Line),
     HorBorder(Line)
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Self::Border(Line::Regular)
+    }
 }
 
 impl Frame {
@@ -852,9 +848,9 @@ impl Layout {
                 })
                 .unwrap();
 
-            specs.constraint.map(|defined| {
+            if let Some(defined) = specs.constraint {
                 set_defined_constraint(defined, parent, index, axis, &mut self.solver);
-            });
+            }
 
             // We initially set the frame to `Frame::Empty`, since that will make
             // the `Rect`s take their "full space". What this means is that, when
@@ -885,7 +881,7 @@ impl Layout {
                 let temp_constraint = {
                     let (new, _) = children[index].clone();
                     let new = new.read();
-                    new.len(*axis) | EQ(WEAK * 2.0) | res_len as f64 / res_count as f64
+                    new.len(*axis) | EQ(WEAK * 2.0) | (res_len as f64 / res_count as f64)
                 };
 
                 self.solver.add_constraint(temp_constraint.clone()).unwrap();
@@ -954,16 +950,16 @@ fn prepare_child(
     let (start, end) = child.set_constraints(parent, *axis, frame, max, edges);
 
     if index == 0 {
-        let constraint = child.start(*axis) | EQ(REQUIRED) | parent.start(*axis) + start;
+        let constraint = child.start(*axis) | EQ(REQUIRED) | (parent.start(*axis) + start);
         child.edge_cons.push(constraint);
     }
 
     // Previous children carry the `Constraint`s for the `start` of their
     // successors.
     let constraint = if let Some((next, _)) = children.get(index + 1) {
-        child.end(*axis) + end | EQ(REQUIRED) | next.read().start(*axis)
+        (child.end(*axis) + end) | EQ(REQUIRED) | next.read().start(*axis)
     } else {
-        child.end(*axis) + end | EQ(REQUIRED) | parent.end(*axis)
+        (child.end(*axis) + end) | EQ(REQUIRED) | parent.end(*axis)
     };
     child.edge_cons.push(constraint);
 
@@ -1003,7 +999,7 @@ fn set_ratio_constraints(parent: &mut Rect, index: usize, solver: &mut Solver) {
             prev.len_value(axis) as f64 / new.len_value(axis) as f64
         };
 
-        let constraint = prev.len(axis) | EQ(WEAK) | ratio * new.len(axis);
+        let constraint = prev.len(axis) | EQ(WEAK) | (ratio * new.len(axis));
         constraints.ratio = Some((constraint.clone(), ratio));
         solver.add_constraint(constraint).unwrap();
     }
@@ -1016,7 +1012,7 @@ fn set_ratio_constraints(parent: &mut Rect, index: usize, solver: &mut Solver) {
             new.len_value(axis) as f64 / next.len_value(axis) as f64
         };
 
-        let constraint = new.len(axis) | EQ(WEAK) | ratio * next.len(axis);
+        let constraint = new.len(axis) | EQ(WEAK) | (ratio * next.len(axis));
         solver.add_constraint(constraint.clone()).unwrap();
 
         (constraint, ratio)
@@ -1039,11 +1035,11 @@ fn set_defined_constraint(
     let constraint = match defined {
         Constraint::Ratio(den, div) => {
             assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-            child.len(axis) | EQ(WEAK * 2.0) | parent_len * (den as f64 / div as f64)
+            child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
         }
         Constraint::Percent(percent) => {
             assert!(percent <= 100, "Constraint::Percent must be smaller than 100");
-            child.len(axis) | EQ(WEAK * 2.0) | parent_len * (percent as f64 / 100.0)
+            child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
         }
         Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
         Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
@@ -1061,12 +1057,9 @@ fn fetch_index(rect: &RwData<Rect>, index: AreaIndex) -> Option<RwData<Rect>> {
         Some(rect.clone())
     } else {
         rect.inspect(|rect| {
-            rect.lineage
-                .as_ref()
-                .map(|(children, ..)| {
-                    children.iter().find_map(|(child, _)| fetch_index(child, index))
-                })
-                .flatten()
+            rect.lineage.as_ref().and_then(|(children, ..)| {
+                children.iter().find_map(|(child, _)| fetch_index(child, index))
+            })
         })
     }
 }

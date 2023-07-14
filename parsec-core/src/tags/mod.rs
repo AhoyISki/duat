@@ -58,8 +58,8 @@ pub enum Tag {
 impl std::fmt::Debug for Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Tag::PushForm(index) => f.write_fmt(format_args!("PushForm({})", index)),
-            Tag::PopForm(index) => f.write_fmt(format_args!("PopForm({})", index)),
+            Tag::PushForm(index) => write!(f, "PushForm({})", index),
+            Tag::PopForm(index) => write!(f, "PopForm({})", index),
             Tag::MainCursor => f.write_str("MainCursor"),
             Tag::ExtraCursor => f.write_str("ExtraCursor"),
             Tag::AlignLeft => f.write_str("AlignLeft"),
@@ -100,8 +100,8 @@ impl TagOrSkip {
 impl std::fmt::Debug for TagOrSkip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TagOrSkip::Tag(tag, _) => f.write_fmt(format_args!("{:?}", tag)),
-            TagOrSkip::Skip(skip) => f.write_fmt(format_args!("Skip({:?})", skip))
+            TagOrSkip::Tag(tag, _) => write!(f, "{:?}", tag),
+            TagOrSkip::Skip(skip) => write!(f, "Skip({:?})", skip)
         }
     }
 }

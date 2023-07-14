@@ -141,7 +141,7 @@ where
     ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |controler| {
             let file = controler.active_file();
-            let builder = file.inspect(|file| setup_builder(&file, &cfg));
+            let builder = file.inspect(|file| setup_builder(file, &cfg));
 
             let vert_rule = VertRule {
                 file: file.clone(),
@@ -150,8 +150,8 @@ where
             };
 
             let checker = Box::new(move || file.has_changed());
-            let widget_type = WidgetType::no_input(vert_rule);
-            (widget_type, checker, PushSpecs::left(Constraint::Length(1.0)))
+            let passive = WidgetType::passive(vert_rule);
+            (passive, checker, PushSpecs::left(Constraint::Length(1.0)))
         }
     }
 

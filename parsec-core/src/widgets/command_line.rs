@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{EditAccum, SchemeInputWidget, Widget, WidgetType};
+use super::{EditAccum, ActSchemeWidget, Widget, WidgetType};
 use crate::{
     commands::{Command, Commands},
     data::{AsAny, ReadableData, RwData},
@@ -104,7 +104,7 @@ where
     }
 }
 
-impl<U> SchemeInputWidget<U> for CommandLine<U>
+impl<U> ActSchemeWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {

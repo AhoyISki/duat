@@ -64,7 +64,7 @@ where
             };
             line_numbers.update_text();
 
-            let widget_type = WidgetType::no_input(line_numbers);
+            let widget_type = WidgetType::passive(line_numbers);
             (widget_type, Box::new(move || file.has_changed()), PushSpecs::left_free())
         }
     }
@@ -142,7 +142,7 @@ where
     }
 
     fn text(&self) -> &Text {
-        &self.builder.text()
+        self.builder.text()
     }
 }
 
@@ -248,14 +248,12 @@ impl LineNumbersCfg {
 
 /// Gets the [`Tag`], according to line positioning.
 fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> Tag {
-    let tag = Tag::PushForm(match (line == main_line, is_wrapped) {
+    Tag::PushForm(match (line == main_line, is_wrapped) {
         (false, false) => LINE_NUMBERS,
         (false, true) => WRAPPED_LINE_NUMBERS,
         (true, false) => MAIN_LINE_NUMBER,
         (true, true) => WRAPPED_MAIN_LINE_NUMBER
-    });
-
-    tag
+    })
 }
 
 /// Writes the text of the line number to a given [`String`].
