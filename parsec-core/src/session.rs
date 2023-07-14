@@ -18,7 +18,7 @@ where
     U: Ui
 {
     ui: U,
-    pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
+    pub constructor_hook: ConstructorHook<U>,
     controler: Controler<U>,
     print_cfg: RwData<PrintCfg>
 }
@@ -32,7 +32,7 @@ where
         mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
-        let file = std::env::args().nth(1).as_ref().map(|file| PathBuf::from(file));
+        let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
         let file = FileWidget::<U>::new(file, print_cfg.clone());
 
         let (window, area) = ParsecWindow::new(&mut ui, file, || false);
@@ -73,7 +73,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler
@@ -84,7 +84,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs)
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler
@@ -96,7 +96,7 @@ where
         specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -108,7 +108,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -121,7 +121,7 @@ where
         specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -133,7 +133,7 @@ where
         &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -199,7 +199,7 @@ where
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    send_event(key_remapper, &controler);
+                    send_event(key_remapper, controler);
                 } else {
                     continue;
                 }
@@ -224,19 +224,18 @@ where
     I: Scheme
 {
     if let Event::Key(key_event) = event::read().unwrap() {
-        let windows = controler.windows.read();
-        let window = &windows[controler.active_window];
-
-        if let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
-            widget_type.scheme_ptr_eq(&*controler.active_widget.read().unwrap())
-        }) {
-            let widget = widget_type.as_scheme_input().unwrap();
-            blink_cursors_and_send_key(&widget, area, controler, key_event, key_remapper);
-        } else {
-            return;
-        };
+        controler.inspect_active_window(|window| {
+            if let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
+                widget_type.scheme_ptr_eq(&*controler.active_widget.read().unwrap())
+            }) {
+                let widget = widget_type.as_scheme_input().unwrap();
+                blink_cursors_and_send_key(widget, area, controler, key_event, key_remapper);
+            }
+        })
     }
 }
+
+pub type ConstructorHook<U> = Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>;
 
 /// Removes the cursors, sends an event, and adds them again.
 fn blink_cursors_and_send_key<U, Sw, I>(

@@ -1,6 +1,8 @@
 #![feature(extract_if, result_option_inspect, trait_upcasting, let_chains)]
+#![allow(clippy::arc_with_non_send_sync)]
 
 use std::{
+    marker::PhantomData,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -113,7 +115,7 @@ impl<U> Controler<U>
 where
     U: Ui
 {
-    pub fn return_to_file(&self) -> Result<(), ()> {
+    pub fn return_to_file(&self) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
         let cur_name = self.active_file.inspect(|file| file.read().name());
         self.switch_to_file(cur_name)
     }
@@ -129,7 +131,9 @@ where
     }
 
     /// Switches to the [`FileWidget<U>`] with the given name.
-    pub fn switch_to_file(&self, target: impl AsRef<str>) -> Result<(), ()> {
+    pub fn switch_to_file(
+        &self, target: impl AsRef<str>
+    ) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
         let name = target.as_ref();
         self.inspect_active_window(|window| {
             let (widget, area, file_id) = window
@@ -140,7 +144,7 @@ where
                 .map(|(widget_type, area, file_id)| {
                     (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
                 })
-                .ok_or(())?;
+                .ok_or(WidgetSwitchErr::FileNotFound(String::from(name), PhantomData))?;
 
             self.inner_switch_to(widget, area, file_id)?;
 
@@ -149,9 +153,9 @@ where
     }
 
     /// Switches to the next [`FileWidget<U>`].
-    pub fn next_file(&self) -> Result<(), ()> {
+    pub fn next_file(&self) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
         if self.inspect_active_window(|window| window.file_names().count() < 2) {
-            return Err(());
+            return Err(WidgetSwitchErr::NoOthersExist(PhantomData));
         }
 
         let cur_name = self.active_file.inspect(|file| file.read().name());
@@ -167,7 +171,7 @@ where
                 .map(|(widget_type, area, file_id)| {
                     (widget_type.as_scheme_input().unwrap(), area, file_id)
                 })
-                .ok_or(())?;
+                .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
             self.inner_switch_to(widget.clone(), area, file_id)?;
 
@@ -176,9 +180,9 @@ where
     }
 
     /// Switches to the previous [`FileWidget<U>`].
-    pub fn prev_file(&self) -> Result<(), ()> {
+    pub fn prev_file(&self) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
         if self.inspect_active_window(|window| window.file_names().count() < 2) {
-            return Err(());
+            return Err(WidgetSwitchErr::NoOthersExist(PhantomData));
         }
 
         let cur_name = self.active_file.inspect(|file| file.read().name());
@@ -193,14 +197,14 @@ where
                 .map(|(widget_type, area, file_id)| {
                     (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
                 })
-                .ok_or(())?;
+                .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
             self.inner_switch_to(widget, area, file_id)
         })
     }
 
     /// Switches to an [`ActionableWidget<U>`] of type `Aw`.
-    pub fn switch_to<Sw>(&self) -> Result<(), ()>
+    pub fn switch_to<Sw>(&self) -> Result<(), WidgetSwitchErr<Sw, U>>
     where
         Sw: SchemeInputWidget<U>
     {
@@ -214,7 +218,7 @@ where
                 .map(|(widget_type, area, file_id)| {
                     (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
                 })
-                .ok_or(())?;
+                .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
             self.inner_switch_to(widget, area, file_id)?;
 
@@ -270,9 +274,12 @@ where
     /// Changes `self.active_widget`, given the target
     /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
     /// `file_id`.
-    fn inner_switch_to(
+    fn inner_switch_to<Sw>(
         &self, widget: RwData<dyn SchemeInputWidget<U>>, area: &U::Area, file_id: Option<usize>
-    ) -> Result<(), ()> {
+    ) -> Result<(), WidgetSwitchErr<Sw, U>>
+    where
+        Sw: SchemeInputWidget<U>
+    {
         area.set_as_active();
 
         if let Ok(file) = widget.clone().try_downcast::<FileWidget<U>>() {
@@ -280,15 +287,13 @@ where
         }
 
         self.inspect_active_window(|window| {
-            let (widget_type, area) = window
+            window
                 .widgets()
                 .find(|(widget, ..)| widget.scheme_ptr_eq(&*self.active_widget.read().unwrap()))
-                .map(|(widget_type, area, _)| (widget_type.as_scheme_input().unwrap(), area))
-                .ok_or(())?;
-
-            widget_type.write().on_unfocus(area);
-
-            Ok(())
+                .map(|(widget_type, area, _)| {
+                    widget_type.as_scheme_input().unwrap().write().on_unfocus(area)
+                })
+                .ok_or(WidgetSwitchErr::CouldNotUnfocus(PhantomData))
         })?;
 
         // Order matters here, since `on_unfocus` could rely on the
@@ -313,6 +318,47 @@ where
 
 unsafe impl<U> Send for Controler<U> where U: Ui {}
 unsafe impl<U> Sync for Controler<U> where U: Ui {}
+
+pub enum WidgetSwitchErr<Sw, U>
+where
+    Sw: SchemeInputWidget<U>,
+    U: Ui
+{
+    NotFound(PhantomData<(Sw, U)>),
+    FileNotFound(String, PhantomData<(Sw, U)>),
+    AlreadyOnIt(PhantomData<(Sw, U)>),
+    NoOthersExist(PhantomData<(Sw, U)>),
+    CouldNotUnfocus(PhantomData<(Sw, U)>)
+}
+
+impl<Sw, U> std::fmt::Display for WidgetSwitchErr<Sw, U>
+where
+    Sw: SchemeInputWidget<U>,
+    U: Ui
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let widget = std::any::type_name::<Sw>();
+        match self {
+            WidgetSwitchErr::NotFound(_) => write!(f, "No {widget} exists."),
+            WidgetSwitchErr::FileNotFound(file, _) => {
+                write!(f, "The file \"{file}\" is not currently open")
+            }
+            WidgetSwitchErr::AlreadyOnIt(_) => {
+                write!(f, "You want to switch to {widget}, but are already on it.")
+            }
+            WidgetSwitchErr::NoOthersExist(_) => {
+                write!(f, "You seem to want to switch to the next {widget}, but no others exist.")
+            }
+            WidgetSwitchErr::CouldNotUnfocus(_) => {
+                write!(
+                    f,
+                    "The previously active widget, prior to the switch atempt, could not be \
+                     unfocused."
+                )
+            }
+        }
+    }
+}
 
 /// A convenience macro to join any number of variables that can
 /// be turned into `String`s.

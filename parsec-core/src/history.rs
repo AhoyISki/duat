@@ -208,9 +208,9 @@ where
     /// Searches for the first [`Change`] that can be merged with the
     /// one inserted on `last_index`.
     fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
-        let mut change_iter = self.changes.iter().enumerate().take(last_index).rev();
         let mut first_index = None;
-        while let Some((index, cur_change)) = change_iter.next() {
+        let change_iter = self.changes.iter().enumerate().take(last_index).rev();
+        for (index, cur_change) in change_iter {
             if change.taken_range().contains(&cur_change.added_end()) {
                 first_index = Some(index);
             } else {
@@ -232,6 +232,7 @@ where
 }
 
 /// The history of edits, contains all moments.
+#[derive(Default)]
 pub struct History<U>
 where
     U: Ui
@@ -258,14 +259,6 @@ impl<U> History<U>
 where
     U: Ui
 {
-    /// Returns a new instance of [History].
-    pub fn new() -> Self {
-        History {
-            moments: Vec::new(),
-            current_moment: 0
-        }
-    }
-
     /// Gets a mutable reference to the current [Moment], if not at
     /// the very beginning.
     fn current_moment_mut(&mut self) -> Option<&mut Moment<U>> {
@@ -336,15 +329,13 @@ where
     /// If The [History] is already at the end, returns [None]
     /// instead.
     pub fn move_forward(&mut self) -> Option<&Moment<U>> {
-        if self.current_moment == self.moments.len() {
-            return None;
+        if self.current_moment == self.moments.len()
+            || self.moments[self.current_moment].changes.is_empty()
+        {
+            None
         } else {
-            if (&self.moments[self.current_moment]).changes.is_empty() {
-                None
-            } else {
-                self.current_moment += 1;
-                Some(&self.moments[self.current_moment - 1])
-            }
+            self.current_moment += 1;
+            Some(&self.moments[self.current_moment - 1])
         }
     }
 
@@ -358,7 +349,7 @@ where
         } else {
             self.current_moment -= 1;
 
-            if (&self.moments[self.current_moment]).changes.is_empty() {
+            if self.moments[self.current_moment].changes.is_empty() {
                 self.move_backwards()
             } else {
                 Some(&self.moments[self.current_moment])

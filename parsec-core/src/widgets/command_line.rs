@@ -164,6 +164,7 @@ where
 }
 
 unsafe impl<U> Send for CommandLine<U> where U: Ui {}
+unsafe impl<U> Sync for CommandLine<U> where U: Ui {}
 
 /// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
 /// [`Commands`].

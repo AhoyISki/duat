@@ -230,7 +230,7 @@ impl Cursor {
     pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, inner: &InnerText) {
         self.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
         self.caret.calibrate(edit_accum.chars, inner);
-        self.anchor.as_mut().map(|anchor| anchor.calibrate(edit_accum.chars, inner));
+        if let Some(anchor) = self.anchor.as_mut() { anchor.calibrate(edit_accum.chars, inner) }
     }
 
     /// Sets the position of the anchor to be the same as the current
@@ -456,13 +456,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver::<U>(count, &self.text, self.area, &self.print_cfg);
+        self.cursor.move_ver::<U>(count, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor::<U>(count, &self.text, self.area, &self.print_cfg);
+        self.cursor.move_hor::<U>(count, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -471,7 +471,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, pos: Pos) {
-        self.cursor.move_to::<U>(pos, &self.text, self.area, &self.print_cfg);
+        self.cursor.move_to::<U>(pos, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a line and a column on the file.
@@ -480,8 +480,8 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let pos = Pos::from_coords(line, col, &self.text.inner());
-        self.cursor.move_to::<U>(pos, &self.text, self.area, &self.print_cfg);
+        let pos = Pos::from_coords(line, col, self.text.inner());
+        self.cursor.move_to::<U>(pos, self.text, self.area, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

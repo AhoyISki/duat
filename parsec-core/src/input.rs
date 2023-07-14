@@ -1,9 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
+    data::RwData,
     ui::Ui,
     widgets::{SchemeInputWidget, WidgetActor},
-    Controler, data::RwData
+    Controler
 };
 
 /// A widget that can receive and process input.
@@ -48,7 +49,7 @@ where
     gives: Vec<KeyEvent>,
     /// A condition to ask the `InputScheme`, if it returns `true`,
     /// then we remap.
-    condition: Box<dyn Fn(&E) -> bool + Send + Sync>
+    condition: Box<dyn Fn(&E) -> bool>
 }
 
 // TODO: Add the ability to send keys to an arbitrary object.
@@ -56,13 +57,10 @@ impl<I> Remap<I>
 where
     I: Scheme
 {
-    pub fn new(
-        takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&I) -> bool + Send + Sync>
-    ) -> Self {
+    pub fn new(takes: &[KeyEvent], gives: &[KeyEvent], condition: Box<dyn Fn(&I) -> bool>) -> Self {
         Self {
-            takes: takes.clone(),
-            gives: gives.clone(),
+            takes: takes.to_vec(),
+            gives: gives.to_vec(),
             condition
         }
     }
@@ -100,16 +98,13 @@ where
     }
 
     /// Removes all remappings with the given sequence.
-    pub fn unmap(
-        &mut self, takes: &Vec<KeyEvent>, condition: &Box<dyn Fn(&I) -> bool + Send + Sync>
-    ) {
-        self.remaps.retain(|r| condition(&self.input_scheme) || &r.takes != takes);
+    pub fn unmap(&mut self, takes: &[KeyEvent], condition: impl Fn(&I) -> bool) {
+        self.remaps.retain(|r| condition(&self.input_scheme) || r.takes != takes);
     }
 
     /// Maps a sequence of characters to another.
     pub fn remap(
-        &mut self, takes: &Vec<KeyEvent>, gives: &Vec<KeyEvent>,
-        condition: Box<dyn Fn(&I) -> bool + Send + Sync>
+        &mut self, takes: &[KeyEvent], gives: &[KeyEvent], condition: Box<dyn Fn(&I) -> bool>
     ) {
         self.unmap(takes, &condition);
         self.remaps.push(Remap::new(takes, gives, condition));
@@ -161,12 +156,12 @@ where
 
         for key in keys_to_send {
             let widget_actor = WidgetActor::new(widget, area);
-            self.input_scheme.process_key(&key, widget_actor, &controler);
+            self.input_scheme.process_key(&key, widget_actor, controler);
         }
 
         if should_check_new.is_empty() {
             let widget_actor = WidgetActor::new(widget, area);
-            self.input_scheme.process_key(&key, widget_actor, &controler);
+            self.input_scheme.process_key(&key, widget_actor, controler);
         }
 
         self.should_check = should_check_new;

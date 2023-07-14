@@ -148,7 +148,7 @@ impl PushSpecs {
 }
 
 // TODO: Add a general scrolling function.
-pub trait PrintInfo: Default + Clone + Copy + Send + Sync {
+pub trait PrintInfo: Default + Clone + Copy {
     type Area: Area;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
@@ -164,7 +164,7 @@ pub trait PrintInfo: Default + Clone + Copy + Send + Sync {
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Clone + PartialEq {
+pub trait Area: Clone + PartialEq + Send + Sync {
     type PrintInfo: PrintInfo;
 
     /// Gets the width of the area.
@@ -224,7 +224,7 @@ where
     U: Ui
 {
     widget_type: WidgetType<U>,
-    checker: Box<dyn Fn() -> bool + Send + Sync>,
+    checker: Box<dyn Fn() -> bool>,
     area: U::Area,
     file_id: Option<usize>,
     update_failed: AtomicBool
@@ -350,7 +350,7 @@ where
         &self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, _) = f(self.controler);
         let file_id = self.controler.commands.read().file_id;
@@ -394,7 +394,7 @@ where
         specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, _) = f(self.controler);
         let file_id = self.controler.commands.read().file_id;
@@ -409,7 +409,7 @@ where
         &self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs)
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + Send + Sync + 'static
+        F: Fn() -> bool + 'static
     {
         let (widget, checker, specs) = (f)(self.controler);
         let file_id = self.controler.commands.read().file_id;
@@ -512,7 +512,7 @@ impl From<PushSpecs> for Axis {
 ///
 /// Only one [`Window`] may be shown at a time, and they contain all
 /// [`Widget<U>`]s that should be displayed, both static and floating.
-pub trait Window: Clone + Send + Sync + 'static {
+pub trait Window: Clone + 'static {
     type Area: Area;
 
     /// Bisects the [`Area`][Window::Area] with the given index into
@@ -563,7 +563,7 @@ pub trait Window: Clone + Send + Sync + 'static {
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
-pub trait Ui: 'static {
+pub trait Ui: Default + 'static {
     type PrintInfo: PrintInfo<Area = Self::Area>;
     type Area: Area<PrintInfo = Self::PrintInfo>;
     type Window: Window<Area = Self::Area>;
@@ -599,7 +599,7 @@ where
     /// Returns a new instance of [`ParsecWindow<U>`].
     pub fn new<Checker>(ui: &mut U, widget_type: WidgetType<U>, checker: Checker) -> (Self, U::Area)
     where
-        Checker: Fn() -> bool + Send + Sync + 'static
+        Checker: Fn() -> bool + 'static
     {
         let (window, mut area) = ui.new_window();
         widget_type.update(&mut area);
@@ -628,7 +628,7 @@ where
         file_id: Option<usize>, is_glued: bool
     ) -> (U::Area, Option<U::Area>)
     where
-        Checker: Fn() -> bool + Send + Sync + 'static
+        Checker: Fn() -> bool + 'static
     {
         let (child, parent) = self.window.bisect(area, specs, is_glued);
 
@@ -675,7 +675,7 @@ where
         &mut self, widget_type: WidgetType<U>, checker: Checker, specs: PushSpecs
     ) -> (U::Area, Option<U::Area>)
     where
-        Checker: Fn() -> bool + Send + Sync + 'static
+        Checker: Fn() -> bool + 'static
     {
         let master_area = self.master_area.clone();
         self.push(widget_type, &master_area, checker, specs, None, false)

@@ -287,8 +287,15 @@ impl Tags {
         self.inner.clear()
     }
 
+    /// Returns the length of this [`Tags`].
     pub fn len(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Returns the is empty of this [`Tags`].
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn width(&self) -> usize {

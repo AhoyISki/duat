@@ -1,9 +1,12 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, RwLock, RwLockReadGuard, TryLockResult
+use std::{
+    marker::PhantomData,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, RwLock, RwLockReadGuard, TryLockResult
+    }
 };
 
-use super::{private, AsAny, DataCastErr, RawReadableData, ReadableData, RwData};
+use super::{private, AsAny, DataCastErr, DataRetrievalErr, RawReadableData, ReadableData, RwData};
 
 /// A read-only reference to information.
 ///
@@ -25,17 +28,14 @@ use super::{private, AsAny, DataCastErr, RawReadableData, ReadableData, RwData};
 /// [`RoData<FileWidget<U>>`]: RoData
 pub struct RoData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize
 }
 
-impl<T> RoData<T>
-where
-    T: Send + Sync
-{
+impl<T> RoData<T> {
     /// Returns a new instance of a [`RoData<T>`], assuming that it is
     /// sized.
     fn new(data: T) -> Self {
@@ -49,12 +49,12 @@ where
 
 impl<T> RoData<T>
 where
-    T: ?Sized + Send + Sync + AsAny
+    T: ?Sized + AsAny
 {
     /// Tries to downcast to a concrete type.
     pub fn try_downcast<U>(self) -> Result<RoData<U>, DataCastErr<RoData<T>, T, U>>
     where
-        U: Send + Sync + 'static
+        U: 'static
     {
         let RoData {
             data,
@@ -93,7 +93,7 @@ where
 
 impl<T> Default for RoData<T>
 where
-    T: ?Sized + Send + Sync + Default
+    T: ?Sized + Default
 {
     fn default() -> Self {
         Self {
@@ -106,7 +106,7 @@ where
 
 impl<T> std::fmt::Debug for RoData<T>
 where
-    T: ?Sized + Send + Sync + std::fmt::Debug
+    T: ?Sized + std::fmt::Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -115,7 +115,7 @@ where
 
 impl<T> From<&RwData<T>> for RoData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     fn from(value: &RwData<T>) -> Self {
         RoData {
@@ -126,9 +126,9 @@ where
     }
 }
 
-impl<T> private::Data<T> for RoData<T>
+impl<T> private::DataHolder<T> for RoData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     type Deref<'a> = RwLockReadGuard<'a, T> where Self: 'a;
 
@@ -149,17 +149,17 @@ where
     }
 }
 
-impl<T> ReadableData<T> for RoData<T> where T: ?Sized + Send + Sync {}
-impl<T> RawReadableData<T> for RoData<T> where T: ?Sized + Send + Sync {}
+impl<T> ReadableData<T> for RoData<T> where T: ?Sized {}
+impl<T> RawReadableData<T> for RoData<T> where T: ?Sized {}
 
-unsafe impl<T> Send for RoData<T> where T: ?Sized + Send + Sync + Send {}
-unsafe impl<T> Sync for RoData<T> where T: ?Sized + Send + Sync + Send + Sync {}
+unsafe impl<T> Send for RoData<T> where T: ?Sized + Send {}
+unsafe impl<T> Sync for RoData<T> where T: ?Sized + Send + Sync {}
 
 // NOTE: Each `RoState` of a given state will have its own internal
 // update counter.
 impl<T> Clone for RoData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     fn clone(&self) -> Self {
         RoData {
@@ -172,7 +172,7 @@ where
 
 impl<T> std::fmt::Display for RoData<T>
 where
-    T: std::fmt::Display + Send + Sync + 'static
+    T: std::fmt::Display + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.read(), f)
@@ -196,7 +196,7 @@ where
 /// changes to the pointer itself.
 pub struct RoNestedData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     data: RoData<RoData<T>>,
     read_state: AtomicUsize
@@ -204,7 +204,7 @@ where
 
 impl<T> RoNestedData<T>
 where
-    T: ?Sized + Send + Sync + 'static
+    T: ?Sized + 'static
 {
     /// Returns a new instance of [`RoNestedData<T>`]
     ///
@@ -235,14 +235,21 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// `false`.
-    pub fn try_inspect<B>(&self, f: impl FnOnce(&T) -> B) -> Result<B, ()> {
-        self.data.try_read().map_err(|_| ()).and_then(|data| {
-            data.raw_try_read().map_err(|_| ()).map(|inner_data| {
-                let cur_state = data.cur_state.load(Ordering::Relaxed);
-                self.read_state.store(cur_state, Ordering::Relaxed);
-                f(&inner_data)
+    pub fn try_inspect<B>(
+        &self, f: impl FnOnce(&T) -> B
+    ) -> Result<B, DataRetrievalErr<RoData<T>, T>> {
+        self.data
+            .try_read()
+            .map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData))
+            .and_then(|data| {
+                data.raw_try_read()
+                    .map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData))
+                    .map(|inner_data| {
+                        let cur_state = data.cur_state.load(Ordering::Relaxed);
+                        self.read_state.store(cur_state, Ordering::Relaxed);
+                        f(&inner_data)
+                    })
             })
-        })
     }
 
     /// Wether or not it has changed since it was last read.
@@ -264,7 +271,7 @@ where
 
 impl<T> Clone for RoNestedData<T>
 where
-    T: ?Sized + Send + Sync + 'static
+    T: ?Sized + 'static
 {
     fn clone(&self) -> Self {
         RoNestedData {
@@ -276,7 +283,7 @@ where
 
 impl<T> From<&RwData<RoData<T>>> for RoNestedData<T>
 where
-    T: ?Sized + Send + Sync + 'static
+    T: ?Sized + 'static
 {
     fn from(value: &RwData<RoData<T>>) -> Self {
         RoNestedData {

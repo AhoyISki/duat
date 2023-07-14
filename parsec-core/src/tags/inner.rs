@@ -27,7 +27,7 @@ impl InnerTags {
     pub fn insert(&mut self, ch_index: usize, t_or_s: TagOrSkip) {
         match self {
             InnerTags::Vec(vec) => {
-                let index = end_ch_to_index(&vec, ch_index);
+                let index = end_ch_to_index(vec, ch_index);
                 vec.insert(index, t_or_s)
             }
             InnerTags::Rope(rope) => rope.insert(ch_index, t_or_s)
@@ -37,8 +37,8 @@ impl InnerTags {
     pub fn insert_slice(&mut self, ch_index: usize, slice: &[TagOrSkip]) {
         match self {
             InnerTags::Vec(vec) => {
-                let index = end_ch_to_index(&vec, ch_index);
-                vec.splice(index..index, slice.iter().map(|tag_or_skip| *tag_or_skip));
+                let index = end_ch_to_index(vec, ch_index);
+                vec.splice(index..index, slice.iter().copied());
             }
             InnerTags::Rope(rope) => rope.insert_slice(ch_index, slice)
         }
@@ -51,8 +51,8 @@ impl InnerTags {
                     return;
                 }
 
-                let start = end_ch_to_index(&vec, range.start);
-                let end = start_ch_to_index(&vec, range.end);
+                let start = end_ch_to_index(vec, range.start);
+                let end = start_ch_to_index(vec, range.end);
                 assert!(start <= end, "{}, {}\n{:?}", range.start, range.end, vec);
                 vec.splice(start..end, []);
             }
@@ -63,7 +63,7 @@ impl InnerTags {
     pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
         match self {
             InnerTags::Vec(vec) => {
-                let start = start_ch_to_index(&vec, ch_index);
+                let start = start_ch_to_index(vec, ch_index);
                 let end = end_ch_to_index(&vec[start..], 0);
                 vec.extract_if(|tag_or_skip| match tag_or_skip {
                     TagOrSkip::Tag(_, cmp_lock) => lock == *cmp_lock,

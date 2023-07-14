@@ -39,7 +39,7 @@ impl InnerText {
                 .split_inclusive('\n')
                 .scan(0, |accum, line| {
                     let old_accum = *accum;
-                    *accum = *accum + line.chars().count();
+                    *accum += line.chars().count();
                     if old_accum <= ch_index {
                         Some(old_accum)
                     } else {
@@ -73,7 +73,7 @@ impl InnerText {
                 .enumerate()
                 .scan(0, |accum, (index, line)| {
                     if *accum <= ch_index {
-                        *accum = *accum + line.chars().count();
+                        *accum += line.chars().count();
                         Some(index)
                     } else {
                         None
@@ -87,7 +87,7 @@ impl InnerText {
     pub fn line(&self, line_index: usize) -> ropey::RopeSlice {
         let line = match self {
             InnerText::String(string) => {
-                string.split_inclusive('\n').nth(line_index).map(|line| RopeSlice::from(line))
+                string.split_inclusive('\n').nth(line_index).map(RopeSlice::from)
             }
             InnerText::Rope(rope) => rope.get_line(line_index)
         };

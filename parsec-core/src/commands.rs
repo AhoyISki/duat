@@ -434,11 +434,7 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    function: RwData<
-        dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + Send
-            + Sync
-    >,
+    f: CommandFn,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>
 }
@@ -481,8 +477,6 @@ impl Command {
     pub fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
         F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + Send
-            + Sync
             + 'static
     {
         let callers = callers.into_iter().map(|caller| caller.to_string()).collect::<Vec<String>>();
@@ -490,7 +484,7 @@ impl Command {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
         Self {
-            function: RwData::new_unsized(Arc::new(RwLock::new(f))),
+            f: RwData::new_unsized(Arc::new(RwLock::new(f))),
             callers
         }
     }
@@ -500,10 +494,10 @@ impl Command {
     fn try_exec<'a>(
         &self, caller: &str, flags: &Flags, args: &mut impl Iterator<Item = &'a str>
     ) -> Result<Option<String>, CommandErr> {
-        if self.callers.iter().any(|name| name == &caller) {
-            return (self.function.write())(flags, args).map_err(|err| CommandErr::Failed(err));
+        if self.callers.iter().any(|name| name == caller) {
+            (self.f.write())(flags, args).map_err(CommandErr::Failed)
         } else {
-            return Err(CommandErr::NotFound(String::from(caller)));
+            Err(CommandErr::NotFound(String::from(caller)))
         }
     }
 
@@ -683,8 +677,7 @@ impl Commands {
 
         let commands = self.list.iter();
         for (caller, file_id) in commands
-            .map(|(cmd, file_id)| cmd.callers().iter().map(|caller| (caller, *file_id)))
-            .flatten()
+            .flat_map(|(cmd, file_id)| cmd.callers().iter().map(|caller| (caller, *file_id)))
         {
             if new_callers.any(|new_caller| new_caller == caller) && file_id == self.file_id {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
@@ -751,13 +744,13 @@ impl Commands {
         }
         let caller = String::from(command.next().ok_or(CommandErr::Empty)?);
 
-        let mut callers = self.list.iter().map(|(cmd, _)| cmd.callers.iter()).flatten();
+        let mut callers = self.list.iter().flat_map(|(cmd, _)| cmd.callers.iter());
 
-        if callers.find(|&name| *name == caller).is_some() {
+        if callers.any(|name| *name == caller) {
             let mut aliases = self.aliases.write();
             Ok(aliases.insert(alias, caller + command.collect::<String>().as_str()))
         } else {
-            Err(CommandErr::NotFound(String::from(caller)))
+            Err(CommandErr::NotFound(caller))
         }
     }
 }
@@ -829,17 +822,17 @@ pub fn split_flags<'a>(
 
     let mut args = args.peekable();
     while let Some(arg) = args.peek() {
-        if arg.starts_with("--") {
-            if arg.len() > 2 {
-                if !units.contains(&&arg[2..]) {
-                    units.push(&arg[2..])
+        if let Some(flag_arg) = arg.strip_prefix("--") {
+            if !flag_arg.is_empty() {
+                if !units.contains(&flag_arg) {
+                    units.push(flag_arg)
                 }
                 args.next();
             } else {
                 break;
             }
-        } else if arg.starts_with("-") {
-            for char in arg[1..].chars() {
+        } else if let Some(blob_arg) = arg.strip_prefix('-') {
+            for char in blob_arg.chars() {
                 if !blob.contains(char) {
                     blob.push(char)
                 }
@@ -852,3 +845,6 @@ pub fn split_flags<'a>(
 
     (Flags { blob, units }, args)
 }
+
+type CommandFn =
+    RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>;

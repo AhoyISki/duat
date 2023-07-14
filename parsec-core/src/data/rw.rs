@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError, TryLockResult
+use std::{
+    marker::PhantomData,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError, TryLockResult
+    }
 };
 
 use super::{DataCastErr, ReadableData};
@@ -47,17 +50,14 @@ use super::{DataCastErr, ReadableData};
 /// [`RwData<FileWidget<U>`]: RoData
 pub struct RwData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize
 }
 
-impl<T> RwData<T>
-where
-    T: Send + Sync
-{
+impl<T> RwData<T> {
     /// Returns a new instance of a [`RwData<T>`], assuming that it is
     /// sized.
     ///
@@ -76,7 +76,7 @@ where
 
 impl<T> RwData<T>
 where
-    T: ?Sized + Send + Sync + 'static
+    T: ?Sized + 'static
 {
     /// Returns a new instance of [`RwData<T>`], assuming that it is
     /// unsized.
@@ -263,7 +263,7 @@ where
 
 impl<T> RwData<T>
 where
-    T: ?Sized + Send + Sync + super::AsAny
+    T: ?Sized + super::AsAny
 {
     /// Tries to downcast to a concrete type.
     ///
@@ -323,14 +323,14 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn try_downcast<U>(self) -> Result<RwData<U>, DataCastErr<RwData<T>, T, U>>
     where
-        U: Send + Sync + 'static
+        U: 'static
     {
         let Self {
             data,
             cur_state,
             read_state
         } = self;
-        if (&*data.read().unwrap()).as_any().is::<U>() {
+        if (*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Ok(RwData {
@@ -345,8 +345,8 @@ where
                     cur_state,
                     read_state
                 },
-                std::marker::PhantomData::default(),
-                std::marker::PhantomData::default()
+                PhantomData,
+                PhantomData
             ))
         }
     }
@@ -408,7 +408,7 @@ where
     where
         U: 'static
     {
-        self.inspect(|data| data.as_any().downcast_ref::<U>().map(|data| f(data)))
+        self.inspect(|data| data.as_any().downcast_ref::<U>().map(f))
     }
 
     /// Returns `true` if the data is of the concrete type `T`.
@@ -470,7 +470,7 @@ where
 
 impl<T> std::fmt::Debug for RwData<T>
 where
-    T: ?Sized + Send + Sync + std::fmt::Debug
+    T: ?Sized + std::fmt::Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -479,7 +479,7 @@ where
 
 impl<T> Clone for RwData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     fn clone(&self) -> Self {
         Self {
@@ -492,7 +492,7 @@ where
 
 impl<T> Default for RwData<T>
 where
-    T: Default + Send + Sync
+    T: Default
 {
     fn default() -> Self {
         Self {
@@ -505,16 +505,16 @@ where
 
 impl<T> std::fmt::Display for RwData<T>
 where
-    T: std::fmt::Display + Send + Sync + 'static
+    T: std::fmt::Display + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.read(), f)
     }
 }
 
-impl<T> super::private::Data<T> for RwData<T>
+impl<T> super::private::DataHolder<T> for RwData<T>
 where
-    T: ?Sized + Send + Sync
+    T: ?Sized
 {
     type Deref<'a> = RwLockReadGuard<'a, T>
     where
@@ -537,8 +537,8 @@ where
     }
 }
 
-impl<T> super::ReadableData<T> for RwData<T> where T: ?Sized + Send + Sync {}
-impl<T> super::RawReadableData<T> for RwData<T> where T: ?Sized + Send + Sync {}
+impl<T> super::ReadableData<T> for RwData<T> where T: ?Sized {}
+impl<T> super::RawReadableData<T> for RwData<T> where T: ?Sized {}
 
-unsafe impl<T> Send for RwData<T> where T: ?Sized + Send + Sync {}
+unsafe impl<T> Send for RwData<T> where T: ?Sized + Send {}
 unsafe impl<T> Sync for RwData<T> where T: ?Sized + Send + Sync {}

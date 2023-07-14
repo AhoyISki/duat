@@ -116,12 +116,12 @@ impl TextBuilder {
             };
 
             if let Some(new_inv_tag) = new_tag.inverse() {
-                if let Some(_) = inv_tag {
+                if inv_tag.is_some() {
                     tags_vec[index + forward] = TagOrSkip::Tag(new_inv_tag, lock);
                 } else {
                     tags_vec.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
                 }
-            } else if let Some(_) = inv_tag {
+            } else if inv_tag.is_some() {
                 tags_vec.remove(index + forward);
             }
         }
@@ -458,10 +458,7 @@ impl TextBit {
     /// [`Char`]: TextBit::Char
     #[must_use]
     pub fn is_char(&self) -> bool {
-        match self {
-            TextBit::Char(_) => true,
-            _ => false
-        }
+        matches!(self, TextBit::Char(_))
     }
 
     /// Returns `true` if the text bit is [`Tag`].
@@ -469,10 +466,7 @@ impl TextBit {
     /// [`Tag`]: TextBit::Tag
     #[must_use]
     pub fn is_tag(&self) -> bool {
-        match self {
-            TextBit::Tag(_) => true,
-            _ => false
-        }
+        matches!(self, TextBit::Tag(_))
     }
 
     pub fn as_char(&self) -> Option<char> {
@@ -492,10 +486,7 @@ impl TextBit {
     }
 
     pub fn is_new_line(&self) -> bool {
-        match self {
-            TextBit::Char('\n') => true,
-            _ => false
-        }
+        matches!(self, TextBit::Char('\n'))
     }
 }
 

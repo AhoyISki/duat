@@ -90,7 +90,7 @@ where
             print_info: U::PrintInfo::default(),
             main_cursor: 0,
             cursors,
-            history: History::new(),
+            history: History::default(),
             printed_lines: Vec::new(),
             print_cfg
         })
@@ -336,3 +336,4 @@ where
 }
 
 unsafe impl<U> Send for FileWidget<U> where U: Ui {}
+unsafe impl<U> Sync for FileWidget<U> where U: Ui {}

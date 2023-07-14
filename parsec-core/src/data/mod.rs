@@ -19,6 +19,7 @@
 //!
 //! [`FileWidget<U>`]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
+use std::marker::PhantomData;
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{atomic::Ordering, Arc, TryLockError, TryLockResult};
 
@@ -32,7 +33,7 @@ mod rw;
 
 /// This trait is meant for very specific uses where we want to access
 /// `T` without notifying that we did so.
-pub(crate) trait RawReadableData<T>: private::Data<T>
+pub(crate) trait RawReadableData<T>: private::DataHolder<T>
 where
     T: ?Sized
 {
@@ -78,7 +79,7 @@ where
 /// let mut read_only = shared_read_only.read();
 /// *read_only = 9;
 /// ```
-/// oth of these data types implement [`Send`], [`Sync`], and
+/// both of these data types implement [`Send`], [`Sync`], and
 /// [`Clone`], which means they are safe to clone and share across
 /// threads (with the caveat of deadlocks, which Rust still doesn't
 /// prevent!). One very prominent use for these data types is the
@@ -94,7 +95,7 @@ where
 /// [`RoData<FileWidget<U>>`]: crate::widgets::FileWidget
 /// [`write`]: RwData::write
 /// [`mutate`]: RwData::mutate
-pub trait ReadableData<T>: private::Data<T>
+pub trait ReadableData<T>: private::DataHolder<T>
 where
     T: ?Sized
 {
@@ -417,22 +418,58 @@ pub trait AsAny {
 /// This failure can happen in either [`RoData::try_downcast`] or
 /// [`RwData::try_downcast`], when the type of the inner data is not
 /// the correct one.
-pub struct DataCastErr<D, T, U>(D, std::marker::PhantomData<T>, std::marker::PhantomData<U>)
+pub struct DataCastErr<Holder, Data, Cast>(Holder, PhantomData<Data>, PhantomData<Cast>)
 where
-    D: private::Data<T>,
-    T: ?Sized,
-    U: ?Sized;
+    Holder: private::DataHolder<Data>,
+    Data: ?Sized,
+    Cast: ?Sized;
 
-impl<D, T, U> std::fmt::Debug for DataCastErr<D, T, U>
+impl<Holder, Data, Cast> std::fmt::Debug for DataCastErr<Holder, Data, Cast>
 where
-    D: private::Data<T>,
-    T: ?Sized,
-    U: ?Sized
+    Holder: private::DataHolder<Data>,
+    Data: ?Sized,
+    Cast: ?Sized
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let orig = stringify!(self.0);
-        let cast = std::any::type_name::<U>();
-        f.write_fmt(format_args!("{orig}'s data cannot be coerced to {cast}."))
+        let orig = std::any::type_name::<Data>();
+        let cast = std::any::type_name::<Cast>();
+        write!(f, "{orig} cannot be coerced to {cast}.")
+    }
+}
+
+pub enum DataRetrievalErr<Holder, T>
+where
+    Holder: private::DataHolder<T>,
+    T: ?Sized
+{
+    WriteBlocked(PhantomData<(Holder, T)>),
+    ReadBlocked(PhantomData<(Holder, T)>),
+    NestedReadBlocked(PhantomData<(Holder, T)>)
+}
+
+impl<Holder, T> std::fmt::Debug for DataRetrievalErr<Holder, T>
+where
+    Holder: private::DataHolder<T>,
+    T: ?Sized
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let holder = std::any::type_name::<Holder>();
+        match self {
+            DataRetrievalErr::WriteBlocked(_) => {
+                write!(f, "The {holder} could not be written to at this moment.")
+            }
+            DataRetrievalErr::ReadBlocked(_) => {
+                write!(f, "The {holder} could not be read this moment.")
+            }
+            DataRetrievalErr::NestedReadBlocked(_) => {
+                let t = std::any::type_name::<T>();
+                write!(
+                    f,
+                    "In the RonestedData<{t}>, the initial RoData<{holder}> could not be read at \
+                     the moment."
+                )
+            }
+        }
     }
 }
 
@@ -443,7 +480,7 @@ mod private {
     ///
     /// [`RwData`]: super::RwData
     /// [`RoData`]: super::RoData
-    pub trait Data<T>
+    pub trait DataHolder<T>
     where
         T: ?Sized
     {
