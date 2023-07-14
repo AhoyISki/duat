@@ -104,11 +104,11 @@ where
         // 99.9999999999999% of cases without fail.
         match self {
             WidgetType::Passive(widget) => {
-                if widget.try_write().is_ok() {
+                if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
-                        let mut widget = widget.write();
+                        let mut widget = widget.raw_write();
                         widget.update(area);
-                        widget.print(area, palette);
+                        widget.print(area, palette)
                     });
                     true
                 } else {
@@ -116,11 +116,11 @@ where
                 }
             }
             WidgetType::ActScheme(widget) => {
-                if widget.try_write().is_ok() {
+                if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
-                        let mut widget = widget.write();
+                        let mut widget = widget.raw_write();
                         widget.update(area);
-                        widget.print(area, palette);
+                        widget.print(area, palette)
                     });
                     true
                 } else {
@@ -128,11 +128,11 @@ where
                 }
             }
             WidgetType::ActDirect(widget) => {
-                if widget.try_write().is_ok() {
+                if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
-                        let mut widget = widget.write();
+                        let mut widget = widget.raw_write();
                         widget.update(area);
-                        widget.print(area, palette);
+                        widget.print(area, palette)
                     });
                     true
                 } else {
@@ -150,11 +150,32 @@ where
         }
     }
 
-    pub fn print(&self, area: &U::Area, palette: &FormPalette) {
+    pub fn try_print(&self, area: &U::Area, palette: &FormPalette) -> bool {
         match self {
-            WidgetType::Passive(widget) => widget.read().print(area, palette),
-            WidgetType::ActScheme(widget) => widget.read().print(area, palette),
-            WidgetType::ActDirect(widget) => widget.read().print(area, palette)
+            WidgetType::Passive(widget) => {
+                if let Ok(widget) = widget.try_read() {
+                    widget.print(area, palette);
+                    true
+                } else {
+                    false
+                }
+            }
+            WidgetType::ActScheme(widget) => {
+                if let Ok(widget) = widget.try_read() {
+                    widget.print(area, palette);
+                    true
+                } else {
+                    false
+                }
+            }
+            WidgetType::ActDirect(widget) => {
+                if let Ok(widget) = widget.try_read() {
+                    widget.print(area, palette);
+                    true
+                } else {
+                    false
+                }
+            }
         }
     }
 
@@ -188,12 +209,8 @@ where
     {
         match self {
             WidgetType::Passive(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
-            WidgetType::ActScheme(widget) => {
-                widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
-            }
-            WidgetType::ActDirect(widget) => {
-                widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
-            }
+            WidgetType::ActScheme(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
+            WidgetType::ActDirect(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
         }
     }
 
@@ -386,6 +403,8 @@ where
             let mut editor = widget.editor(index, &mut edit_accum);
             f(&mut editor);
         }
+
+        widget.update(self.area);
     }
 
     /// Alters every selection on the list.
@@ -404,6 +423,8 @@ where
             cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
         }
         self.clearing_needed = true;
+
+        widget.update(self.area);
     }
 
     /// Alters the nth cursor's selection.
@@ -432,6 +453,8 @@ where
         };
 
         self.clearing_needed = true;
+
+        widget.update(self.area);
     }
 
     /// Alters the main cursor's selection.
@@ -474,6 +497,8 @@ where
             // calibrates the cursor's position.
             widget.editor(index, &mut edit_accum);
         }
+
+        widget.update(self.area);
     }
 
     /// Edits on the main cursor's selection.
@@ -502,23 +527,27 @@ where
 
     /// Rotates the main cursor index forward.
     pub fn rotate_main_forward(&mut self) {
-        let cursors_len = self.cursors_len();
+        let mut widget = self.widget.write();
+        let cursors_len = widget.cursors().len();
         if cursors_len == 0 {
             return;
         }
 
-        if let Some(main_index) = self.widget.write().mut_main_cursor_index() {
+        if let Some(main_index) = widget.mut_main_cursor_index() {
             *main_index = if *main_index == cursors_len - 1 {
                 0
             } else {
                 *main_index + 1
             }
         }
+
+        widget.update(self.area)
     }
 
     /// Rotates the main cursor index backwards.
     pub fn rotate_main_backwards(&mut self) {
-        let cursors_len = self.cursors_len();
+        let mut widget = self.widget.write();
+        let cursors_len = widget.cursors().len();
         if cursors_len == 0 {
             return;
         }
@@ -530,6 +559,8 @@ where
                 *main_index - 1
             }
         }
+
+        widget.update(self.area)
     }
 
     /// The amount of active [`Cursor`]s in the [`Text`].
@@ -539,17 +570,23 @@ where
 
     /// Starts a new [`Moment`][crate::history::Moment].
     pub fn new_moment(&mut self) {
-        self.widget.write().new_moment();
+        let mut widget = self.widget.write();
+        widget.new_moment();
+        widget.update(self.area);
     }
 
     /// Undoes the last [`Moment`][crate::history::Moment].
     pub fn undo(&mut self) {
-        self.widget.write().undo(self.area);
+        let mut widget = self.widget.write();
+        widget.undo(self.area);
+        widget.update(self.area);
     }
 
     /// Redoes the last [`Moment`][crate::history::Moment].
     pub fn redo(&mut self) {
-        self.widget.write().redo(self.area);
+        let mut widget = self.widget.write();
+        widget.redo(self.area);
+        widget.update(self.area);
     }
 
     pub fn main_cursor(&self) -> Cursor {

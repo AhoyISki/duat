@@ -406,8 +406,12 @@ where
         let mut readers = Vec::new();
         for part in parts.into_iter() {
             let (reader, checker) = part.process(&mut builder, file, palette);
-            if let Some(reader) = reader { readers.push(reader) }
-            if let Some(checker) = checker { checkers.push(checker) }
+            if let Some(reader) = reader {
+                readers.push(reader)
+            }
+            if let Some(checker) = checker {
+                checkers.push(checker)
+            }
         }
         readers
     };

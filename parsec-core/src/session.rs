@@ -9,7 +9,7 @@ use crate::{
     tags::form::FormPalette,
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
-    widgets::{FileWidget, ActSchemeWidget, WidgetType},
+    widgets::{ActSchemeWidget, FileWidget, WidgetType},
     Controler, BREAK_LOOP, SHOULD_QUIT
 };
 
@@ -155,7 +155,7 @@ where
                 self.controler.windows.read()[self.controler.active_window].widgets()
             {
                 widget_type.update(area);
-                widget_type.print(area, palette)
+                widget_type.try_print(area, palette);
             }
 
             self.session_loop(key_remapper);
@@ -191,17 +191,14 @@ where
                     break;
                 }
 
-                for node in active_window.nodes() {
-                    if node.needs_update() {
-                        let palette = &palette;
-                        node.try_update_and_print(scope, palette);
-                    }
+                if let Ok(true) = event::poll(Duration::from_millis(10)) {
+                    send_event(key_remapper, controler, palette);
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    send_event(key_remapper, controler);
-                } else {
-                    continue;
+                for node in active_window.nodes() {
+                    if node.needs_update() {
+                        node.try_update_and_print(scope, palette);
+                    }
                 }
             }
         });
@@ -218,41 +215,35 @@ where
 }
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
-fn send_event<U, I>(key_remapper: &mut KeyRemapper<I>, controler: &Controler<U>)
-where
-    U: Ui + 'static,
-    I: Scheme
-{
-    if let Event::Key(key_event) = event::read().unwrap() {
-        controler.inspect_active_window(|window| {
-            if let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
-                widget_type.scheme_ptr_eq(&*controler.active_widget.read().unwrap())
-            }) {
-                let widget = widget_type.as_scheme_input().unwrap();
-                blink_cursors_and_send_key(widget, area, controler, key_event, key_remapper);
-            }
-        })
-    }
-}
-
-/// Removes the cursors, sends an event, and adds them again.
-fn blink_cursors_and_send_key<U, Sw, I>(
-    widget: &RwData<Sw>, area: &U::Area, controler: &Controler<U>, key_event: KeyEvent,
-    key_remapper: &mut KeyRemapper<I>
+fn send_event<U, I>(
+    key_remapper: &mut KeyRemapper<I>, controler: &Controler<U>, palette: &FormPalette
 ) where
     U: Ui + 'static,
-    Sw: ActSchemeWidget<U> + ?Sized + 'static,
     I: Scheme
 {
-    widget.mutate(|widget| {
-        let (text, cursors, _) = widget.members_for_cursor_tags();
-        text.remove_cursor_tags(cursors);
-    });
+    let Event::Key(key_event) = event::read().unwrap() else {
+        return;
+    };
 
-    key_remapper.send_key(key_event, widget, area, controler);
+    controler.inspect_active_window(|window| {
+        let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
+            widget_type.scheme_ptr_eq(&*controler.active_widget.read().unwrap())
+        }) else {
+            return;
+        };
+        let widget = widget_type.as_scheme_input().unwrap();
+        widget.mutate(|widget| {
+            let (text, cursors, _) = widget.members_for_cursor_tags();
+            text.remove_cursor_tags(cursors);
+        });
 
-    widget.mutate(|widget| {
-        let (text, cursors, main_index) = widget.members_for_cursor_tags();
-        text.add_cursor_tags(cursors, main_index);
-    });
+        key_remapper.send_key(key_event, widget, area, controler);
+
+        widget.mutate(|widget| {
+            let (text, cursors, main_index) = widget.members_for_cursor_tags();
+            text.add_cursor_tags(cursors, main_index);
+        });
+
+        widget.read().print(area, palette);
+    })
 }

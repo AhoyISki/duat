@@ -225,8 +225,8 @@ where
     /// returns `false`.
     pub fn inspect<B>(&self, f: impl FnOnce(&T) -> B) -> B {
         let data = self.data.read();
-        let cur_state = data.cur_state.load(Ordering::Relaxed);
-        self.read_state.store(cur_state, Ordering::Relaxed);
+        let cur_state = data.cur_state.load(Ordering::Acquire);
+        self.read_state.store(cur_state, Ordering::Release);
         let inner_data = data.raw_read();
         f(&inner_data)
     }
@@ -245,8 +245,8 @@ where
                 data.raw_try_read()
                     .map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData))
                     .map(|inner_data| {
-                        let cur_state = data.cur_state.load(Ordering::Relaxed);
-                        self.read_state.store(cur_state, Ordering::Relaxed);
+                        let cur_state = data.cur_state.load(Ordering::Acquire);
+                        self.read_state.store(cur_state, Ordering::Release);
                         f(&inner_data)
                     })
             })
@@ -262,9 +262,9 @@ where
     pub fn has_changed(&self) -> bool {
         let mut has_changed = self.data.has_changed();
         let data = self.data.read();
-        let cur_state = data.cur_state.load(Ordering::Relaxed);
-        has_changed |= cur_state > self.read_state.load(Ordering::Relaxed);
-        self.read_state.store(cur_state, Ordering::Relaxed);
+        let cur_state = data.cur_state.load(Ordering::Acquire);
+        has_changed |= cur_state > self.read_state.load(Ordering::Acquire);
+        self.read_state.store(cur_state, Ordering::Release);
         has_changed
     }
 }

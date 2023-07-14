@@ -124,7 +124,7 @@ pub struct Cursor {
     /// desired_col, it will be placed in the desired_col. If the
     /// line is shorter, it will be placed in the last column of
     /// the line.
-    desired_x: usize
+    desired_col: usize
 }
 
 impl Cursor {
@@ -139,7 +139,7 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: area.get_width(line.take(pos.true_col()), cfg, true)
+            desired_col: area.get_width(line.take(pos.true_col()), cfg, true)
         }
     }
 
@@ -157,7 +157,7 @@ impl Cursor {
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        caret.col = area.col_at_dist(line, self.desired_x, cfg);
+        caret.col = area.col_at_dist(line, self.desired_col, cfg);
 
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
@@ -178,7 +178,7 @@ impl Cursor {
         caret.col = caret.char - line_char;
 
         let iter_range = text.iter_range(line_char..=caret.char);
-        self.desired_x = area.get_width(iter_range, cfg, true);
+        self.desired_col = area.get_width(iter_range, cfg, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
@@ -196,7 +196,7 @@ impl Cursor {
         caret.byte = text.char_to_byte(caret.char);
 
         let iter_range = text.iter_range(line_char..caret.char);
-        self.desired_x = area.get_width(iter_range, cfg, true);
+        self.desired_col = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;
     }
@@ -333,7 +333,7 @@ impl std::fmt::Display for Cursor {
 impl Clone for Cursor {
     fn clone(&self) -> Self {
         Cursor {
-            desired_x: self.caret.col,
+            desired_col: self.caret.col,
             assoc_index: None,
             ..*self
         }

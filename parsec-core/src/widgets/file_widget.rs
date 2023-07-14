@@ -21,10 +21,11 @@
 //! the numbers of the currently printed lines.
 use std::{cmp::min, fs, path::PathBuf};
 
-use super::{EditAccum, ActSchemeWidget, Widget, WidgetType};
+use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     data::AsAny,
     history::History,
+    log_info,
     position::{Cursor, Editor, Mover, Pos},
     tags::{form::FILE_NAME, Tag},
     text::{PrintCfg, Text},
@@ -271,6 +272,10 @@ where
 
     fn print_cfg(&self) -> PrintCfg {
         self.print_cfg.clone()
+    }
+
+    fn print(&self, area: &<U as Ui>::Area, palette: &crate::tags::form::FormPalette) {
+        area.print(self.text(), self.print_info(), self.print_cfg(), palette)
     }
 }
 

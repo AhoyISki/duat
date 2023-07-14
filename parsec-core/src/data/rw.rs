@@ -2,11 +2,11 @@ use std::{
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError, TryLockResult
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockResult
     }
 };
 
-use super::{DataCastErr, ReadableData};
+use super::{DataCastErr, DataRetrievalErr, ReadableData};
 
 /// A read-write reference to information, that can tell readers if
 /// said information has changed.
@@ -138,9 +138,12 @@ where
     ///
     ///
     /// [`has_changed`]: ReadableData::has_changed
-    pub fn write(&self) -> RwLockWriteGuard<T> {
-        self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.data.write().unwrap()
+    pub fn write(&self) -> ReadWriteGuard<T> {
+        let data = self.data.write().unwrap();
+        ReadWriteGuard {
+            guard: data,
+            cur_state: &self.cur_state
+        }
     }
 
     /// Non Blocking mutable reference to the information.
@@ -189,11 +192,14 @@ where
     /// which case, you should probably use [`RwData::write`].
     ///
     /// [`has_changed`]: ReadableData::has_changed
-    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
-        self.data.try_write().map(|guard| {
-            self.cur_state.fetch_add(1, Ordering::Relaxed);
-            guard
-        })
+    pub fn try_write(&self) -> Result<ReadWriteGuard<T>, DataRetrievalErr<RwData<T>, T>> {
+        self.data
+            .try_write()
+            .map(|guard| ReadWriteGuard {
+                guard,
+                cur_state: &self.cur_state
+            })
+            .map_err(|_| DataRetrievalErr::WriteBlocked(PhantomData))
     }
 
     /// Blocking mutation of the inner data.
@@ -237,7 +243,7 @@ where
     ///
     /// [`has_changed`]: ReadableData::has_changed
     pub fn mutate<B>(&self, f: impl FnOnce(&mut T) -> B) -> B {
-        f(&mut self.write())
+        f(&mut self.write().guard)
     }
 
     /// Non blocking mutation of the inner data.
@@ -255,9 +261,17 @@ where
     /// [`has_changed`]: ReadableData::has_changed
     pub fn try_mutate<B>(
         &self, f: impl FnOnce(&mut T) -> B
-    ) -> Result<B, TryLockError<RwLockWriteGuard<T>>> {
+    ) -> Result<B, DataRetrievalErr<RwData<T>, T>> {
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
+    }
+
+    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<T> {
+        self.data.write().unwrap()
+    }
+
+    pub(crate) fn raw_try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
+        self.data.try_write()
     }
 }
 
@@ -542,3 +556,37 @@ impl<T> super::RawReadableData<T> for RwData<T> where T: ?Sized {}
 
 unsafe impl<T> Send for RwData<T> where T: ?Sized + Send {}
 unsafe impl<T> Sync for RwData<T> where T: ?Sized + Send + Sync {}
+
+pub struct ReadWriteGuard<'a, T>
+where
+    T: ?Sized
+{
+    guard: RwLockWriteGuard<'a, T>,
+    cur_state: &'a Arc<AtomicUsize>
+}
+
+impl<'a, T> std::ops::Deref for ReadWriteGuard<'a, T>
+where
+    T: ?Sized
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl<'a, T> std::ops::DerefMut for ReadWriteGuard<'a, T>
+where
+    T: ?Sized
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+impl<'a, T> Drop for ReadWriteGuard<'a, T> where T: ?Sized {
+    fn drop(&mut self) {
+        self.cur_state.fetch_add(1, Ordering::Release);
+    }
+}

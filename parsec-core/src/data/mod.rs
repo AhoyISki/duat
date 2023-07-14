@@ -343,6 +343,7 @@ where
     /// [`try_write`]: RwData::try_write
     /// [`try_mutate`]: RwData::try_mutate
     fn has_changed(&self) -> bool {
+        let _ = self.data();
         let cur_state = self.cur_state().load(Ordering::Relaxed);
         let read_state = self.read_state().swap(cur_state, Ordering::Relaxed);
         cur_state > read_state
