@@ -17,5 +17,7 @@ path = "../parsec-core/"
 path = "../parsec-term/"
 #version = "0.1.0"
 
-[profile.release]
-debug = true
+# Just so the process gets called "parsec", and my ego isn't hurt.
+[[bin]]
+name = "parsec"
+path = "src/main.rs"
