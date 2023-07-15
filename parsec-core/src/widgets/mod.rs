@@ -32,7 +32,6 @@ use no_deadlocks::RwLock;
 use crate::{
     data::{AsAny, RawReadableData, ReadableData, RwData},
     position::{Cursor, Editor, Mover},
-    tags::form::FormPalette,
     text::{PrintCfg, Text},
     ui::{Area, Ui}
 };
@@ -66,7 +65,7 @@ where
         PrintCfg::default()
     }
 
-    fn print(&self, area: &U::Area, palette: &FormPalette) {
+    fn print(&self, area: &U::Area, palette: &crate::forms::FormPalette) {
         area.print(self.text(), self.print_info(), self.print_cfg(), palette)
     }
 }
@@ -98,7 +97,7 @@ where
 
     pub fn try_update_and_print<'scope, 'env>(
         &'env self, scope: &'scope std::thread::Scope<'scope, 'env>, area: &'env U::Area,
-        palette: &'env FormPalette
+        palette: &'env crate::forms::FormPalette
     ) -> bool {
         // This is, technically speaking, not good enough, but it should cover
         // 99.9999999999999% of cases without fail.
@@ -150,7 +149,7 @@ where
         }
     }
 
-    pub fn try_print(&self, area: &U::Area, palette: &FormPalette) -> bool {
+    pub fn try_print(&self, area: &U::Area, palette: &crate::forms::FormPalette) -> bool {
         match self {
             WidgetType::Passive(widget) => {
                 if let Ok(widget) = widget.try_read() {

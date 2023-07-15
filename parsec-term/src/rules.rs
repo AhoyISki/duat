@@ -1,10 +1,7 @@
 use parsec_core::{
     data::{AsAny, ReadableData, RoData},
-    tags::{
-        form::{FormPalette, DEFAULT},
-        Tag
-    },
-    text::{Text, TextBuilder},
+    forms::{FormPalette, DEFAULT},
+    text::{Tag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     widgets::{FileWidget, Widget, WidgetType},
     Controler

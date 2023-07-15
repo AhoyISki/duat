@@ -10,12 +10,18 @@ use crate::text::chars::Chars;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Handle(u16);
 
-impl Default for Handle {
-    fn default() -> Self {
+impl Handle {
+    pub fn new() -> Handle {
         use std::sync::atomic::{AtomicU16, Ordering};
         static LOCK_COUNT: AtomicU16 = AtomicU16::new(0);
 
         Handle(LOCK_COUNT.fetch_add(1, Ordering::Acquire))
+    }
+}
+
+impl Default for Handle {
+    fn default() -> Self {
+        Handle::new()
     }
 }
 
@@ -223,16 +229,6 @@ impl Tags {
 
         self.raw_insert(start, TagOrSkip::Skip(skip as u32));
         self.remove_exclusive((removal_start + skip)..(removal_end + skip));
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
-        self.raw_iter_at(0).filter_map(|(width, t_or_s)| {
-            if let TagOrSkip::Tag(tag, _) = t_or_s {
-                Some((width, tag))
-            } else {
-                None
-            }
-        })
     }
 
     pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {

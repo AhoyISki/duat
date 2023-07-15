@@ -7,16 +7,13 @@ use std::{
 };
 
 use crossterm::{
-    cursor, execute, queue as crossterm_queue,
+    cursor,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
 use parsec_core::{
     data::{ReadableData, RwData},
+    forms::{FormFormer, FormPalette},
     position::Pos,
-    tags::{
-        form::{FormFormer, FormPalette},
-        Tag
-    },
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint}
 };
@@ -31,7 +28,7 @@ static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
-        unsafe { crossterm_queue!($writer $(, $command)*).unwrap_unchecked() }
+        unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
     }
 }
 
@@ -184,7 +181,7 @@ impl ui::Area for Area {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        execute!(stdout, ResetColor).unwrap();
+        crossterm::execute!(stdout, ResetColor).unwrap();
     }
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {
@@ -712,10 +709,10 @@ fn write_char(
 }
 
 fn trigger_tag(
-    tag: Tag, is_active: bool, alignment: &mut Alignment, form_former: &mut FormFormer,
-    line: &mut Vec<u8>
+    tag: parsec_core::text::Tag, is_active: bool, alignment: &mut Alignment,
+    form_former: &mut FormFormer, line: &mut Vec<u8>
 ) -> Option<ContentStyle> {
-    use Tag::*;
+    use parsec_core::text::Tag::*;
     match tag {
         PushForm(id) => queue!(line, ResetColor, SetStyle(form_former.apply(id).style)),
         PopForm(id) => queue!(line, ResetColor, SetStyle(form_former.remove(id).style)),
@@ -730,9 +727,9 @@ fn trigger_tag(
             }
         }
         ExtraCursor => queue!(line, SetStyle(form_former.extra_cursor().form.style)),
-        Tag::AlignLeft => *alignment = Alignment::Left,
-        Tag::AlignRight => *alignment = Alignment::Right,
-        Tag::AlignCenter => *alignment = Alignment::Center,
+        AlignLeft => *alignment = Alignment::Left,
+        AlignRight => *alignment = Alignment::Right,
+        AlignCenter => *alignment = Alignment::Center,
         _ => {}
     }
 

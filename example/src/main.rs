@@ -16,24 +16,24 @@ use parsec_core::{
     // The config module handles the `Config` struct and the structs
     // `RwData` and `RoData`, useful for the extension  of Parsec.
     data::{RoData, RwData},
+    // Tags are a really powerfull part of Parsec. For now,
+    // they handle `Form`s (font styling), cursors,
+    // but in the future, they will also allow the creation of buttons
+    // and folding zones.
+    forms::{CursorStyle, Form, FormPalette},
     // The input module handles remapping and input methods.
     // Remapping will always be done in the same way, and is not
     // implemented individually for every editing method.
     input::KeyRemapper,
     join,
     session::Session,
-    // Tags are a really powerfull part of Parsec. For now,
-    // they handle `Form`s (font styling), cursors,
-    // but in the future, they will also allow the creation of buttons
-    // and folding zones.
-    tags::{
-        form::FormPalette,
-        form::{CursorStyle, Form}
-    },
+    status_parts,
     text::{NewLine, PrintCfg, ScrollOff, WrapMethod},
     ui::{Constraint, ModNode, PushSpecs},
-    widgets::{CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine, file_parts::main_char},
-    Controler, status_parts
+    widgets::{
+        file_parts::main_char, CommandLine, FileWidget, LineNumbers, LineNumbersCfg, StatusLine
+    },
+    Controler
 };
 use parsec_kak::Editor;
 use parsec_term::{SepChar, SepForm, Ui, VertRule, VertRuleCfg};

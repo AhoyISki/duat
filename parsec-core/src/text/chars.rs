@@ -1,6 +1,4 @@
-use std::ops::RangeBounds;
-
-use ropey::{Rope, RopeSlice};
+use ropey::Rope;
 
 #[derive(Debug)]
 pub enum Chars {
@@ -9,7 +7,9 @@ pub enum Chars {
 }
 
 impl Chars {
-    pub fn replace(&mut self, range: impl RangeBounds<usize> + Clone, edit: impl AsRef<str>) {
+    pub fn replace(
+        &mut self, range: impl std::ops::RangeBounds<usize> + Clone, edit: impl AsRef<str>
+    ) {
         match self {
             Chars::String(string) => {
                 let (start, end) = get_ends(range, string.chars().count());
@@ -25,32 +25,10 @@ impl Chars {
         }
     }
 
-    pub fn chars_at(&self, ch_index: usize) -> Iter {
+    pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
         match self {
             Chars::String(string) => Iter::String(string.chars().skip(ch_index)),
             Chars::Rope(rope) => Iter::Rope(rope.chars_at(ch_index))
-        }
-    }
-
-    pub fn char_from_line_start(&self, ch_index: usize) -> Option<usize> {
-        match self {
-            Chars::String(string) => string
-                .split_inclusive('\n')
-                .scan(0, |accum, line| {
-                    let old_accum = *accum;
-                    *accum += line.chars().count();
-                    if old_accum <= ch_index {
-                        Some(old_accum)
-                    } else {
-                        None
-                    }
-                })
-                .map(|line_ch| ch_index - line_ch)
-                .last(),
-            Chars::Rope(rope) => rope
-                .try_char_to_line(ch_index)
-                .ok()
-                .map(|line| ch_index - rope.line_to_char(line))
         }
     }
 
@@ -83,17 +61,6 @@ impl Chars {
         }
     }
 
-    pub fn line(&self, line_index: usize) -> ropey::RopeSlice {
-        let line = match self {
-            Chars::String(string) => {
-                string.split_inclusive('\n').nth(line_index).map(RopeSlice::from)
-            }
-            Chars::Rope(rope) => rope.get_line(line_index)
-        };
-        assert!(line.is_some(), "Line index {} not found", line_index);
-        line.unwrap()
-    }
-
     pub fn line_to_char(&self, line_index: usize) -> Option<usize> {
         match self {
             Chars::String(string) => string
@@ -106,21 +73,6 @@ impl Chars {
                 })
                 .nth(line_index),
             Chars::Rope(rope) => rope.try_line_to_char(line_index).ok()
-        }
-    }
-
-    pub fn slice(&self, range: impl RangeBounds<usize> + Clone) -> RopeSlice {
-        let (start, end) = get_ends(range.clone(), self.len_chars());
-        assert!(end <= self.len_chars(), "Range end at {} is out of bounds.", end);
-        match self {
-            Chars::String(string) => {
-                let mut chars = string.char_indices().map(|(index, _)| index);
-                let start = chars.nth(start).unwrap();
-                let mut chars = string.char_indices().map(|(index, _)| index);
-                let end = chars.nth(start).unwrap();
-                RopeSlice::from(&string[start..end])
-            }
-            Chars::Rope(rope) => rope.slice(range)
         }
     }
 

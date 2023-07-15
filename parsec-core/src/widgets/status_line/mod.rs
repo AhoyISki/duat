@@ -61,8 +61,7 @@ use self::Reader::*;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoNestedData},
-    tags::{form::FormPalette, Tag},
-    text::{Text, TextBuilder},
+    text::{Text, TextBuilder, Tag},
     ui::{Constraint, PushSpecs, Ui},
     Controler
 };
@@ -116,7 +115,7 @@ where
     /// Consumes [`self`] and modifies a [`TextBuilder`], adding
     /// swappable ranges, text, and [`Tag`]s.
     fn process(
-        self, builder: &mut TextBuilder, file: &FileWidget<U>, palette: &FormPalette
+        self, builder: &mut TextBuilder, file: &FileWidget<U>, palette: &crate::forms::FormPalette
     ) -> (Option<Reader<U>>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
         match self.reader_or_text {
             ReaderOrText::Reader(Reader::Var(obj_fn)) => {
@@ -204,7 +203,7 @@ where
 
 /// Pushes the [`Form`][crate::tags::form::Form]s found in the `text`,
 /// while keeping the rest of the text intact.
-fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &FormPalette) {
+fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::forms::FormPalette) {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
         let Some(l_index) = prev_l_index else {
@@ -394,7 +393,7 @@ where
 }
 
 fn build_parts<U>(
-    file: &FileWidget<U>, parts: Vec<StatusPart<U>>, palette: &FormPalette
+    file: &FileWidget<U>, parts: Vec<StatusPart<U>>, palette: &crate::forms::FormPalette
 ) -> (TextBuilder, Vec<Reader<U>>, impl Fn() -> bool + Send + Sync)
 where
     U: Ui

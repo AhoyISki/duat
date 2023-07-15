@@ -25,11 +25,8 @@ use std::fmt::Alignment;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoData},
-    tags::{
-        form::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
-        Tag
-    },
-    text::{Text, TextBuilder},
+    forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
+    text::{Tag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler
 };

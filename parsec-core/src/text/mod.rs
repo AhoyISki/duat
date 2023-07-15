@@ -11,9 +11,8 @@ use std::{
 pub use cfg::*;
 use chars::Chars;
 use ropey::Rope;
-pub use tags::Tag;
+pub use tags::{Handle, Tag};
 use tags::{TagOrSkip, Tags};
-pub use tags::Handle;
 
 use crate::{
     forms::{EXTRA_SEL, MAIN_SEL},
@@ -24,7 +23,7 @@ use crate::{
 /// The text in a given area.
 #[derive(Debug)]
 pub struct Text {
-    inner: Chars,
+    chars: Chars,
     tags: Tags,
     handle: Handle,
     _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>
@@ -33,30 +32,28 @@ pub struct Text {
 // TODO: Properly implement _replacements.
 impl Text {
     pub fn default_string() -> Self {
-        let mut tags = Tags::default_vec();
         Text {
-            inner: Chars::String(String::default()),
-            tags,
+            chars: Chars::String(String::default()),
+            tags: Tags::default_vec(),
             handle: Handle::default(),
             _replacements: Vec::new()
         }
     }
 
     pub fn default_rope() -> Self {
-        let mut tags = Tags::default_rope();
         Text {
-            inner: Chars::Rope(Rope::default()),
-            tags,
+            chars: Chars::Rope(Rope::default()),
+            tags: Tags::default_rope(),
             handle: Handle::default(),
             _replacements: Vec::new()
         }
     }
 
     pub fn new_string(string: impl ToString) -> Self {
-        let inner = Chars::String(string.to_string());
-        let mut tags = Tags::new(&inner);
+        let chars = Chars::String(string.to_string());
+        let tags = Tags::new(&chars);
         Text {
-            inner,
+            chars,
             tags,
             handle: Handle::default(),
             _replacements: Vec::new()
@@ -64,10 +61,10 @@ impl Text {
     }
 
     pub fn new_rope(string: impl ToString) -> Self {
-        let inner = Chars::Rope(Rope::from(string.to_string()));
-        let mut tags = Tags::new(&inner);
+        let chars = Chars::Rope(Rope::from(string.to_string()));
+        let tags = Tags::new(&chars);
         Text {
-            inner,
+            chars,
             tags,
             handle: Handle::default(),
             _replacements: Vec::new()
@@ -75,11 +72,11 @@ impl Text {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.len_chars() == 0
+        self.chars.len_chars() == 0
     }
 
     pub fn get_char(&self, char_index: usize) -> Option<char> {
-        self.inner.get_char(char_index)
+        self.chars.get_char(char_index)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -89,7 +86,7 @@ impl Text {
         let edit_len = edit.chars().count();
         let new_range = old_range.start..(old_range.start + edit_len);
 
-        self.inner.replace(old_range.start..old_range.end, edit);
+        self.chars.replace(old_range.start..old_range.end, edit);
 
         if old_range != new_range {
             self.tags.transform_range(old_range, new_range);
@@ -136,58 +133,66 @@ impl Text {
         }
     }
 
+    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
+        Tagger {
+            chars: &self.chars,
+            tags: &mut self.tags,
+            handle
+        }
+    }
+
     pub fn len_chars(&self) -> usize {
-        self.inner.len_chars()
+        self.chars.len_chars()
     }
 
     pub fn len_lines(&self) -> usize {
-        self.inner.len_lines()
+        self.chars.len_lines()
     }
 
     pub fn len_bytes(&self) -> usize {
-        self.inner.len_bytes()
+        self.chars.len_bytes()
     }
 
     fn clear(&mut self) {
-        self.inner.clear();
+        self.chars.clear();
         self.tags.clear();
     }
 
     pub fn char_to_line(&self, char: usize) -> usize {
-        self.inner
+        self.chars
             .char_to_line(char)
             .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 
     pub fn line_to_char(&self, line: usize) -> usize {
-        self.inner
+        self.chars
             .line_to_char(line)
             .unwrap_or_else(|| panic!("Line index {line} out of bounds."))
     }
 
     pub fn char_to_byte(&self, char: usize) -> usize {
-        self.inner
+        self.chars
             .char_to_byte(char)
             .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 
     pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
-        self.inner.char_to_line(char)
+        self.chars.char_to_line(char)
     }
 
     pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
-        self.inner.line_to_char(line)
+        self.chars.line_to_char(line)
     }
 
     pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
-        self.inner.char_to_byte(char)
+        self.chars.char_to_byte(char)
     }
 }
 
 // Iterator methods.
 impl Text {
     pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
-        let chars = self.inner.chars_at(0);
+        let chars = self.chars.iter_at(0);
         let tags = self.tags.iter_at(0).peekable();
 
         Iter::new(chars, tags, 0)
@@ -196,7 +201,7 @@ impl Text {
     pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
-        let chars = self.inner.chars_at(start).take(end - start);
+        let chars = self.chars.iter_at(start).take(end - start);
         let tags = self.tags.iter_at(start).peekable();
 
         Iter::new(chars, tags, start)
@@ -214,17 +219,17 @@ impl Text {
         let end = match range.end_bound() {
             std::ops::Bound::Included(end) => end + 1,
             std::ops::Bound::Excluded(end) => *end,
-            std::ops::Bound::Unbounded => self.inner.len_chars() + 1
+            std::ops::Bound::Unbounded => self.chars.len_chars() + 1
         };
 
-        let chars = self.inner.chars_at(start).take(end - start);
+        let chars = self.chars.iter_at(start).take(end - start);
         let tags = self.tags.iter_at(start).peekable();
 
         Iter::new(chars, tags, start)
     }
 
     pub fn iter_chars_at(&self, char: usize) -> impl Iterator<Item = char> + '_ {
-        self.inner.chars_at(char)
+        self.chars.iter_at(char)
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
@@ -363,7 +368,7 @@ impl TextBuilder {
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count() as u32;
-        self.text.inner.string().push_str(edit);
+        self.text.chars.string().push_str(edit);
 
         self.add_to_last_skip(edit_len);
     }
@@ -382,7 +387,7 @@ impl TextBuilder {
             .count();
 
         self.swappables.push(last_skip);
-        self.text.inner.string().push_str(edit);
+        self.text.chars.string().push_str(edit);
 
         self.add_to_last_skip(edit_len);
     }
@@ -408,7 +413,7 @@ impl TextBuilder {
         let old_skip = *skip as usize;
         *skip = edit.chars().count() as u32;
 
-        self.text.inner.replace(start..(start + old_skip), edit);
+        self.text.chars.replace(start..(start + old_skip), edit);
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
@@ -500,7 +505,7 @@ impl TextBuilder {
             .unwrap();
 
         self.swappables.truncate(range_index);
-        self.text.inner.string().truncate(cutoff);
+        self.text.chars.string().truncate(cutoff);
 
         let mut tags = tags_vec.iter().take(index).rev();
         while let Some(TagOrSkip::Tag(tag, ..)) = tags.next() {
@@ -529,6 +534,58 @@ impl Default for TextBuilder {
             swappables: Vec::default(),
             handle: Handle::default()
         }
+    }
+}
+
+pub struct Tagger<'a> {
+    chars: &'a Chars,
+    tags: &'a mut Tags,
+    handle: Handle
+}
+
+impl<'a> Tagger<'a> {
+    pub fn tags(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
+        self.tags.iter_at(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+    }
+
+    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
+        self.tags.get_from_char(char)
+    }
+
+    pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
+        self.tags.iter_at(ch_index)
+    }
+
+    pub fn chars(&self) -> impl Iterator<Item = char> + Clone + '_ {
+        self.chars.iter_at(0)
+    }
+
+    pub fn chars_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
+        self.chars.iter_at(ch_index)
+    }
+
+    pub fn insert(&mut self, char: usize, tag: Tag) {
+        self.tags.insert(char, tag, self.handle)
+    }
+
+    pub fn remove_on(&mut self, ch_index: usize) {
+        self.tags.remove_on(ch_index, self.handle)
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        self.chars.len_bytes()
+    }
+
+    pub fn len_chars(&self) -> usize {
+        self.chars.len_chars()
+    }
+
+    pub fn len_lines(&self) -> usize {
+        self.chars.len_lines()
     }
 }
 

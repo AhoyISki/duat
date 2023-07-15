@@ -27,7 +27,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     forms::FILE_NAME,
-    text::{PrintCfg, Text, Tag},
+    text::{PrintCfg, Text, Tag, Handle},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -68,14 +68,14 @@ where
         let mut text = Text::new_rope(file_contents);
 
         if cfg!(feature = "wacky-colors") {
-            let lock = text.tags.new_handle();
+            let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            text.tags.insert(0, Tag::AlignCenter, lock);
-            for index in 0..text.len_chars() {
+            tagger.insert(0, Tag::AlignCenter);
+            for index in 0..tagger.len_chars() {
                 if pushes_pops_you_cant_explain_that {
-                    text.tags.insert(index, Tag::PushForm(FILE_NAME), lock);
+                    tagger.insert(index, Tag::PushForm(FILE_NAME));
                 } else {
-                    text.tags.insert(index, Tag::PopForm(FILE_NAME), lock);
+                    tagger.insert(index, Tag::PopForm(FILE_NAME));
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
@@ -113,7 +113,7 @@ where
             self.text.undo_change(change, chars);
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
-            let pos = Pos::new(new_caret_ch, self.text.inner());
+            let pos = Pos::new(new_caret_ch, &self.text);
             self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.print_cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
@@ -135,7 +135,7 @@ where
         for change in &moment.changes {
             self.text.apply_change(change);
 
-            let new_pos = Pos::new(change.added_end(), self.text.inner());
+            let new_pos = Pos::new(change.added_end(), &self.text);
             self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.print_cfg));
         }
     }
@@ -273,7 +273,7 @@ where
         self.print_cfg.clone()
     }
 
-    fn print(&self, area: &<U as Ui>::Area, palette: &crate::tags::form::FormPalette) {
+    fn print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
         area.print(self.text(), self.print_info(), self.print_cfg(), palette)
     }
 }
