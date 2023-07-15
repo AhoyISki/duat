@@ -1,15 +1,15 @@
 use std::{path::PathBuf, sync::atomic::Ordering, thread, time::Duration};
 
-use crossterm::event::{self, Event, KeyEvent};
+use crossterm::event::{self, Event};
 
 use crate::{
     commands::Commands,
     data::{ReadableData, RoData, RwData},
     input::{KeyRemapper, Scheme},
-    tags::form::FormPalette,
+    forms::FormPalette,
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
-    widgets::{ActSchemeWidget, FileWidget, WidgetType},
+    widgets::{FileWidget, WidgetType},
     Controler, BREAK_LOOP, SHOULD_QUIT
 };
 

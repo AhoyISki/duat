@@ -1,4 +1,3 @@
-pub mod form;
 mod inner;
 
 use std::ops::Range;
@@ -9,14 +8,14 @@ use self::inner::InnerTags;
 use crate::text::inner::InnerText;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Lock(u16);
+pub struct Handle(u16);
 
-impl Lock {
-    fn new() -> Lock {
+impl Default for Handle {
+    fn default() -> Self {
         use std::sync::atomic::{AtomicU16, Ordering};
         static LOCK_COUNT: AtomicU16 = AtomicU16::new(0);
 
-        Lock(LOCK_COUNT.fetch_add(1, Ordering::Acquire))
+        Handle(LOCK_COUNT.fetch_add(1, Ordering::Acquire))
     }
 }
 
@@ -48,8 +47,10 @@ pub enum Tag {
     AlignCenter,
 
     // Not Implemented:
-    /// Begins or ends a hoverable section in the file.
-    HoverBound,
+    /// Begins a hoverable section in the file.
+    HoverStart(u16),
+    /// Ends a hoverable section in the file.
+    HoverEnd(u16),
     /// Conceals a character with a string of text of equal lenght,
     /// permanently.
     PermanentConceal { index: u16 }
@@ -75,7 +76,7 @@ impl Tag {
         match self {
             Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
             Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
-            Tag::HoverBound => Some(Tag::HoverBound),
+            Tag::HoverStart(index) => Some(Tag::HoverEnd(*index)),
             _ => None
         }
     }
@@ -83,7 +84,7 @@ impl Tag {
 
 #[derive(Clone, Copy)]
 pub enum TagOrSkip {
-    Tag(Tag, Lock),
+    Tag(Tag, Handle),
     Skip(u32)
 }
 
@@ -118,36 +119,29 @@ impl Measurable for TagOrSkip {
 
 // TODO: Generic container.
 #[derive(Debug)]
-pub struct Tags {
-    inner: InnerTags
+pub enum Tags {
+    Vec(Vec<TagOrSkip>),
+    Rope(AnyRope<TagOrSkip>)
 }
 
 impl Tags {
     pub fn default_vec() -> Self {
-        Tags {
-            inner: InnerTags::Vec(Vec::new())
-        }
+        Tags::Vec(Vec::new())
     }
 
     pub fn default_rope() -> Self {
-        Tags {
-            inner: InnerTags::Rope(AnyRope::new())
-        }
+        Tags::Rope(AnyRope::new())
     }
 
     pub fn new(inner_text: &InnerText) -> Self {
-        Tags {
-            inner: InnerTags::new(inner_text)
+        let skip = TagOrSkip::Skip(inner_text.len_chars() as u32);
+        match inner_text {
+            InnerText::String(_) => Tags::Vec(vec![skip]),
+            InnerText::Rope(_) => Tags::Rope(AnyRope::from_slice(&[skip]))
         }
     }
 
-    /// Gets a unique [`Lock`], for the purpose of "private" [`Tag`]
-    /// insertion and removal.
-    pub fn new_lock(&mut self) -> Lock {
-        Lock::new()
-    }
-
-    pub fn insert(&mut self, ch_index: usize, tag: Tag, lock: Lock) {
+    pub fn insert(&mut self, ch_index: usize, tag: Tag, handle: Handle) {
         assert!(
             ch_index <= self.inner.width(),
             "Char index {} too large, {:#?}",
@@ -156,17 +150,17 @@ impl Tags {
         );
 
         let Some((start, TagOrSkip::Skip(skip))) = self.inner.get_from_ch_index(ch_index) else {
-            self.inner.insert(ch_index, TagOrSkip::Tag(tag, lock));
+            self.inner.insert(ch_index, TagOrSkip::Tag(tag, handle));
             return;
         };
 
         // If inserting at any of the ends, no splitting is necessary.
         if ch_index == start || ch_index == (start + skip as usize) {
-            self.inner.insert(ch_index, TagOrSkip::Tag(tag, lock))
+            self.inner.insert(ch_index, TagOrSkip::Tag(tag, handle))
         } else {
             let insertion = [
                 TagOrSkip::Skip((ch_index - start) as u32),
-                TagOrSkip::Tag(tag, lock),
+                TagOrSkip::Tag(tag, handle),
                 TagOrSkip::Skip(start as u32 + skip - ch_index as u32)
             ];
             self.inner.insert_slice(start, &insertion);
@@ -180,8 +174,8 @@ impl Tags {
 
     /// Removes all [Tag]s associated with a given [Lock] in the
     /// `ch_index`.
-    pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
-        self.inner.remove_on(ch_index, lock);
+    pub fn remove_on(&mut self, ch_index: usize, handle: Handle) {
+        self.inner.remove_on(ch_index, handle);
         self.merge_surrounding_skips(ch_index);
     }
 
@@ -308,9 +302,172 @@ impl Tags {
             InnerTags::Rope(_) => None
         }
     }
+
+    pub(crate) fn as_vec(&self) -> Option<&[TagOrSkip]> {
+        match &self.inner {
+            InnerTags::Vec(vec) => Some(vec),
+            InnerTags::Rope(_) => None
+        }
+    }
 }
 
-////////// The following code is under renovation.
+impl Tags {
+
+    pub fn insert(&mut self, ch_index: usize, t_or_s: TagOrSkip) {
+        match self {
+            InnerTags::Vec(vec) => {
+                let index = end_ch_to_index(vec, ch_index);
+                vec.insert(index, t_or_s)
+            }
+            InnerTags::Rope(rope) => rope.insert(ch_index, t_or_s)
+        }
+    }
+
+    pub fn insert_slice(&mut self, ch_index: usize, slice: &[TagOrSkip]) {
+        match self {
+            InnerTags::Vec(vec) => {
+                let index = end_ch_to_index(vec, ch_index);
+                vec.splice(index..index, slice.iter().copied());
+            }
+            InnerTags::Rope(rope) => rope.insert_slice(ch_index, slice)
+        }
+    }
+
+    pub fn remove_exclusive(&mut self, range: Range<usize>) {
+        match self {
+            InnerTags::Vec(vec) => {
+                if range.start == range.end {
+                    return;
+                }
+
+                let start = end_ch_to_index(vec, range.start);
+                let end = start_ch_to_index(vec, range.end);
+                assert!(start <= end, "{}, {}\n{:?}", range.start, range.end, vec);
+                vec.splice(start..end, []);
+            }
+            InnerTags::Rope(rope) => rope.remove_exclusive(range)
+        }
+    }
+
+    pub fn remove_on(&mut self, ch_index: usize, lock: Handle) {
+        match self {
+            InnerTags::Vec(vec) => {
+                let start = start_ch_to_index(vec, ch_index);
+                let end = end_ch_to_index(&vec[start..], 0);
+                vec.extract_if(|tag_or_skip| match tag_or_skip {
+                    TagOrSkip::Tag(_, cmp_lock) => lock == *cmp_lock,
+                    TagOrSkip::Skip(_) => false
+                })
+                .take(end)
+                .skip(start)
+                .last();
+            }
+            InnerTags::Rope(rope) => {
+                let slice = rope.width_slice(ch_index..ch_index);
+                let tags = slice.iter();
+
+                let tags = tags
+                    .filter_map(|(_, t_or_s)| {
+                        if let TagOrSkip::Tag(tag, cmp_lock) = t_or_s && cmp_lock != lock {
+                            Some(TagOrSkip::Tag(tag, cmp_lock))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<TagOrSkip>>();
+
+                rope.remove_inclusive(ch_index..ch_index);
+                rope.insert_slice(ch_index, tags.as_slice());
+            }
+        }
+    }
+
+    pub fn get_from_ch_index(&self, ch_index: usize) -> Option<(usize, TagOrSkip)> {
+        match self {
+            InnerTags::Vec(vec) => vec
+                .iter()
+                .scan((false, 0), |(end_found, accum), tag_or_skip| {
+                    if *end_found {
+                        return None;
+                    }
+
+                    let old_accum = *accum;
+                    let width = tag_or_skip.width();
+                    *accum += tag_or_skip.width();
+                    if (*accum == ch_index && width == 0) || *accum > ch_index {
+                        *end_found = true;
+                    }
+                    Some((old_accum, *tag_or_skip))
+                })
+                .last(),
+            InnerTags::Rope(rope) => rope.get_from_width(ch_index)
+        }
+    }
+
+    pub fn iter(&self) -> Box<dyn Iterator<Item = (usize, TagOrSkip)> + '_> {
+        match self {
+            InnerTags::Vec(vec) => Box::new(vec.iter().scan(0, |accum, tag_or_skip| {
+                let old_accum = *accum;
+                *accum += tag_or_skip.width();
+
+                Some((old_accum, *tag_or_skip))
+            })),
+            InnerTags::Rope(rope) => Box::new(rope.iter())
+        }
+    }
+
+    pub fn iter_at(
+        &self, ch_index: usize
+    ) -> impl Iterator<Item = (usize, TagOrSkip)> + Clone + '_ {
+        match self {
+            InnerTags::Vec(vec) => Iter::Vec(
+                vec.iter()
+                    .scan(0, forward_tag_start)
+                    .skip_while(move |(accum, _)| *accum < ch_index)
+            ),
+            InnerTags::Rope(rope) => Iter::Rope(rope.iter_at_width(ch_index))
+        }
+    }
+
+    pub fn iter_at_rev(
+        &self, ch_index: usize
+    ) -> impl Iterator<Item = (usize, TagOrSkip)> + Clone + '_ {
+        match self {
+            InnerTags::Vec(vec) => {
+                let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
+                Iter::RevVec(vec.iter().rev().scan(width, reverse_tag_start).skip_while(
+                    move |(accum, t_or_s)| {
+                        *accum > ch_index && t_or_s.width() == 0 || *accum >= ch_index
+                    }
+                ))
+            }
+            InnerTags::Rope(rope) => Iter::Rope(rope.iter_at_width(ch_index).reversed())
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        match self {
+            InnerTags::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
+            InnerTags::Rope(rope) => rope.width()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            InnerTags::Vec(vec) => vec.len(),
+            InnerTags::Rope(rope) => rope.len()
+        }
+    }
+
+    pub fn clear(&mut self) {
+        match self {
+            InnerTags::Vec(vec) => vec.clear(),
+            InnerTags::Rope(rope) => *rope = Rope::new()
+        }
+    }
+}
+////////// The following code is under renovation (But will probably
+////////// be discarded).
 
 ///// A matcher primarily for syntax highlighting.
 //#[derive(Clone, Debug)]

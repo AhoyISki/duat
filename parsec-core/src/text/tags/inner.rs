@@ -1,12 +1,11 @@
 use std::{
     iter::{Rev, Scan, SkipWhile},
-    ops::Range,
-    slice::Iter
+    ops::Range
 };
 
 use any_rope::{Measurable, Rope};
 
-use super::{Lock, TagOrSkip};
+use super::{Handle, TagOrSkip};
 use crate::text::inner::InnerText;
 
 #[derive(Debug)]
@@ -60,7 +59,7 @@ impl InnerTags {
         }
     }
 
-    pub fn remove_on(&mut self, ch_index: usize, lock: Lock) {
+    pub fn remove_on(&mut self, ch_index: usize, lock: Handle) {
         match self {
             InnerTags::Vec(vec) => {
                 let start = start_ch_to_index(vec, ch_index);
@@ -131,12 +130,12 @@ impl InnerTags {
         &self, ch_index: usize
     ) -> impl Iterator<Item = (usize, TagOrSkip)> + Clone + '_ {
         match self {
-            InnerTags::Vec(vec) => Tags::Vec(
+            InnerTags::Vec(vec) => Iter::Vec(
                 vec.iter()
                     .scan(0, forward_tag_start)
                     .skip_while(move |(accum, _)| *accum < ch_index)
             ),
-            InnerTags::Rope(rope) => Tags::Rope(rope.iter_at_width(ch_index))
+            InnerTags::Rope(rope) => Iter::Rope(rope.iter_at_width(ch_index))
         }
     }
 
@@ -146,13 +145,13 @@ impl InnerTags {
         match self {
             InnerTags::Vec(vec) => {
                 let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
-                Tags::RevVec(vec.iter().rev().scan(width, reverse_tag_start).skip_while(
+                Iter::RevVec(vec.iter().rev().scan(width, reverse_tag_start).skip_while(
                     move |(accum, t_or_s)| {
                         *accum > ch_index && t_or_s.width() == 0 || *accum >= ch_index
                     }
                 ))
             }
-            InnerTags::Rope(rope) => Tags::Rope(rope.iter_at_width(ch_index).reversed())
+            InnerTags::Rope(rope) => Iter::Rope(rope.iter_at_width(ch_index).reversed())
         }
     }
 
@@ -179,17 +178,17 @@ impl InnerTags {
 }
 
 #[derive(Clone)]
-pub enum Tags<'a, ScanFn, SkipFn>
+enum Iter<'a, ScanFn, SkipFn>
 where
     ScanFn: FnMut(&mut usize, &TagOrSkip) -> Option<(usize, TagOrSkip)>,
     SkipFn: FnMut(&(usize, TagOrSkip)) -> bool + 'a
 {
-    Vec(SkipWhile<Scan<Iter<'a, TagOrSkip>, usize, ScanFn>, SkipFn>),
-    RevVec(SkipWhile<Scan<Rev<Iter<'a, TagOrSkip>>, usize, ScanFn>, SkipFn>),
+    Vec(SkipWhile<Scan<std::slice::Iter<'a, TagOrSkip>, usize, ScanFn>, SkipFn>),
+    RevVec(SkipWhile<Scan<Rev<std::slice::Iter<'a, TagOrSkip>>, usize, ScanFn>, SkipFn>),
     Rope(any_rope::iter::Iter<'a, TagOrSkip>)
 }
 
-impl<'a, ScanFn, SkipFn> Iterator for Tags<'a, ScanFn, SkipFn>
+impl<'a, ScanFn, SkipFn> Iterator for Iter<'a, ScanFn, SkipFn>
 where
     ScanFn: FnMut(&mut usize, &TagOrSkip) -> Option<(usize, TagOrSkip)>,
     SkipFn: FnMut(&(usize, TagOrSkip)) -> bool + 'a
@@ -198,9 +197,9 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Tags::Vec(iter) => iter.next(),
-            Tags::RevVec(iter) => iter.next(),
-            Tags::Rope(iter) => iter.next()
+            Iter::Vec(tags) => tags.next(),
+            Iter::RevVec(tags) => tags.next(),
+            Iter::Rope(tags) => tags.next()
         }
     }
 }

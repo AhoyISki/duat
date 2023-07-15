@@ -21,7 +21,7 @@ use std::{
     ops::{Range, RangeBounds}
 };
 
-use crate::{text::inner::InnerText, ui::Ui};
+use crate::{text::Text, ui::Ui};
 
 /// A change in a file, empty vectors indicate a pure insertion or
 /// deletion.
@@ -37,7 +37,7 @@ pub struct Change {
 
 impl Change {
     /// Returns a new [Change].
-    pub fn new(edit: impl ToString, range: impl RangeBounds<usize>, backing: &InnerText) -> Self {
+    pub fn new(edit: impl ToString, range: impl RangeBounds<usize>, text: &Text) -> Self {
         let edit = edit.to_string();
         let start = match range.start_bound() {
             std::ops::Bound::Included(&pos) => pos,
@@ -48,10 +48,10 @@ impl Change {
         let end = match range.end_bound() {
             std::ops::Bound::Included(&pos) => pos + 1,
             std::ops::Bound::Excluded(&pos) => pos,
-            std::ops::Bound::Unbounded => backing.len_chars()
+            std::ops::Bound::Unbounded => text.len_chars()
         };
 
-        let taken_text: String = backing.chars_at(start).take(end - start).collect();
+        let taken_text: String = text.iter_chars_at(start).take(end - start).collect();
 
         Change {
             start,

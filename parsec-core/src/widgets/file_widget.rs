@@ -25,10 +25,9 @@ use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     data::AsAny,
     history::History,
-    log_info,
     position::{Cursor, Editor, Mover, Pos},
-    tags::{form::FILE_NAME, Tag},
-    text::{PrintCfg, Text},
+    forms::FILE_NAME,
+    text::{PrintCfg, Text, Tag},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -69,7 +68,7 @@ where
         let mut text = Text::new_rope(file_contents);
 
         if cfg!(feature = "wacky-colors") {
-            let lock = text.tags.new_lock();
+            let lock = text.tags.new_handle();
             let mut pushes_pops_you_cant_explain_that = true;
             text.tags.insert(0, Tag::AlignCenter, lock);
             for index in 0..text.len_chars() {

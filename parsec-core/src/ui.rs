@@ -12,7 +12,7 @@ use crate::{
     commands::{CommandErr, Commands},
     data::{ReadableData, RoData, RwData},
     position::Pos,
-    tags::form::FormPalette,
+    forms::FormPalette,
     text::{PrintCfg, Text, TextBit},
     widgets::{FileWidget, Widget, WidgetType},
     Controler

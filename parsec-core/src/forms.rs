@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use crossterm::{
     cursor::SetCursorStyle,
     style::{Attribute, Attributes, Color, ContentStyle, Stylize}
@@ -90,9 +88,9 @@ impl CursorStyle {
     }
 }
 
-impl Debug for CursorStyle {
+impl std::fmt::Debug for CursorStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.form, f)
+        std::fmt::Debug::fmt(&self.form, f)
     }
 }
 

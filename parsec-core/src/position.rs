@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::{
     history::{Change, History},
-    text::{inner::InnerText, PrintCfg, Text},
+    text::{PrintCfg, Text},
     ui::{Area, Ui},
     widgets::EditAccum
 };
@@ -18,32 +18,32 @@ pub struct Pos {
 }
 
 impl Pos {
-    pub fn from_coords(line: usize, col: usize, inner: &InnerText) -> Self {
-        let line = inner.line_to_char(line);
-        let ch_index = if let Some(line) = line {
-            let rope = inner.line(line);
-            inner.line_to_char(line).unwrap() + col.min(rope.len_chars() - 1)
+    pub fn from_coords(line: usize, col: usize, text: &Text) -> Self {
+        let char = text.get_line_to_char(line);
+        let ch_index = if let Some(char) = char {
+            char + col.min(text.iter_line_chars(line).count() - 1)
         } else {
-            inner.len_chars() - 1
+            text.len_chars() - 1
         };
 
-        Pos::new(ch_index, inner)
+        Pos::new(ch_index, text)
     }
 
-    pub fn new(ch_index: usize, inner: &InnerText) -> Self {
+    pub fn new(char: usize, text: &Text) -> Self {
         Pos {
-            byte: inner.char_to_byte(ch_index).unwrap(),
-            char: ch_index,
-            col: inner.char_from_line_start(ch_index).unwrap(),
-            line: inner.char_to_line(ch_index).unwrap()
+            byte: text.char_to_byte(char),
+            char,
+            col: {
+                let line = text.char_to_line(char);
+                char - text.line_to_char(line)
+            },
+            line: text.char_to_line(char)
         }
     }
 
-    pub fn calibrate(&mut self, ch_diff: isize, inner: &InnerText) {
-        self.char = self.char.saturating_add_signed(ch_diff);
-        self.byte = inner.char_to_byte(self.char).unwrap();
-        self.line = inner.char_to_line(self.char).unwrap();
-        self.col = inner.char_from_line_start(self.char).unwrap();
+    pub fn calibrate(&mut self, ch_diff: isize, text: &Text) {
+        let char = self.char.saturating_add_signed(ch_diff);
+        *self = Pos::new(char, text);
     }
 
     /// Returns the byte (relative to the beginning of the file),
@@ -144,9 +144,8 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver<U>(
-        &mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg
-    ) where
+    pub(crate) fn move_ver<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
+    where
         U: Ui
     {
         let caret = &mut self.caret;
@@ -164,9 +163,8 @@ impl Cursor {
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor<U>(
-        &mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg
-    ) where
+    pub(crate) fn move_hor<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
+    where
         U: Ui
     {
         let caret = &mut self.caret;
@@ -227,10 +225,12 @@ impl Cursor {
     }
 
     /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, inner: &InnerText) {
+    pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, text: &Text) {
         self.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
-        self.caret.calibrate(edit_accum.chars, inner);
-        if let Some(anchor) = self.anchor.as_mut() { anchor.calibrate(edit_accum.chars, inner) }
+        self.caret.calibrate(edit_accum.chars, text);
+        if let Some(anchor) = self.anchor.as_mut() {
+            anchor.calibrate(edit_accum.chars, text)
+        }
     }
 
     /// Sets the position of the anchor to be the same as the current
@@ -362,7 +362,7 @@ where
         cursor: &'a mut Cursor, text: &'a mut Text, edit_accum: &'a mut EditAccum,
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
-        cursor.calibrate_on_accum(edit_accum, text.inner());
+        cursor.calibrate_on_accum(edit_accum, text);
         Self {
             cursor,
             text,
@@ -375,26 +375,26 @@ where
     /// Replaces the entire selection of the `TextCursor` with new
     /// text.
     pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(edit.to_string(), self.cursor.range(), self.text.inner());
+        let change = Change::new(edit.to_string(), self.cursor.range(), self.text);
         let (start, end) = (change.start, change.added_end());
 
         self.edit(change);
 
         if let Some(anchor) = &mut self.cursor.anchor {
             if anchor.char > self.cursor.caret.char {
-                *anchor = Pos::new(end, self.text.inner());
+                *anchor = Pos::new(end, self.text);
                 return;
             }
         }
 
-        self.cursor.caret = Pos::new(end, self.text.inner());
-        self.cursor.anchor = Some(Pos::new(start, self.text.inner()));
+        self.cursor.caret = Pos::new(end, self.text);
+        self.cursor.anchor = Some(Pos::new(start, self.text));
     }
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
         let range = self.cursor.caret.char..self.cursor.caret.char;
-        let change = Change::new(edit.to_string(), range, self.text.inner());
+        let change = Change::new(edit.to_string(), range, self.text);
         let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
         self.edit(change);
@@ -403,7 +403,7 @@ where
 
         if let Some(anchor) = &mut self.cursor.anchor {
             if *anchor > self.cursor.caret {
-                anchor.calibrate(ch_diff, self.text.inner());
+                anchor.calibrate(ch_diff, self.text);
             }
         }
     }
@@ -480,7 +480,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let pos = Pos::from_coords(line, col, self.text.inner());
+        let pos = Pos::from_coords(line, col, self.text);
         self.cursor.move_to::<U>(pos, self.text, self.area, &self.print_cfg);
     }
 
