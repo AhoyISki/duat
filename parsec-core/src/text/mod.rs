@@ -182,7 +182,6 @@ impl Text {
     pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
         self.inner.char_to_byte(char)
     }
-
 }
 
 // Iterator methods.
