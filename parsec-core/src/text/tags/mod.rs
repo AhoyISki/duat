@@ -5,7 +5,7 @@ use std::{
 
 use any_rope::{Measurable, Rope as AnyRope};
 
-use crate::text::inner::InnerText;
+use crate::text::chars::Chars;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Handle(u16);
@@ -133,11 +133,11 @@ impl Tags {
         Tags::Rope(AnyRope::new())
     }
 
-    pub fn new(inner_text: &InnerText) -> Self {
+    pub fn new(inner_text: &Chars) -> Self {
         let skip = TagOrSkip::Skip(inner_text.len_chars() as u32);
         match inner_text {
-            InnerText::String(_) => Tags::Vec(vec![skip]),
-            InnerText::Rope(_) => Tags::Rope(AnyRope::from_slice(&[skip]))
+            Chars::String(_) => Tags::Vec(vec![skip]),
+            Chars::Rope(_) => Tags::Rope(AnyRope::from_slice(&[skip]))
         }
     }
 

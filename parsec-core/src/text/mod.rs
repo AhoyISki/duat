@@ -1,5 +1,5 @@
 mod cfg;
-mod inner;
+mod chars;
 pub mod reader;
 mod tags;
 
@@ -9,7 +9,7 @@ use std::{
 };
 
 pub use cfg::*;
-use inner::InnerText;
+use chars::Chars;
 use ropey::Rope;
 pub use tags::Tag;
 use tags::{TagOrSkip, Tags};
@@ -24,7 +24,7 @@ use crate::{
 /// The text in a given area.
 #[derive(Debug)]
 pub struct Text {
-    inner: InnerText,
+    inner: Chars,
     tags: Tags,
     handle: Handle,
     _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>
@@ -35,7 +35,7 @@ impl Text {
     pub fn default_string() -> Self {
         let mut tags = Tags::default_vec();
         Text {
-            inner: InnerText::String(String::default()),
+            inner: Chars::String(String::default()),
             tags,
             handle: Handle::default(),
             _replacements: Vec::new()
@@ -45,7 +45,7 @@ impl Text {
     pub fn default_rope() -> Self {
         let mut tags = Tags::default_rope();
         Text {
-            inner: InnerText::Rope(Rope::default()),
+            inner: Chars::Rope(Rope::default()),
             tags,
             handle: Handle::default(),
             _replacements: Vec::new()
@@ -53,7 +53,7 @@ impl Text {
     }
 
     pub fn new_string(string: impl ToString) -> Self {
-        let inner = InnerText::String(string.to_string());
+        let inner = Chars::String(string.to_string());
         let mut tags = Tags::new(&inner);
         Text {
             inner,
@@ -64,7 +64,7 @@ impl Text {
     }
 
     pub fn new_rope(string: impl ToString) -> Self {
-        let inner = InnerText::Rope(Rope::from(string.to_string()));
+        let inner = Chars::Rope(Rope::from(string.to_string()));
         let mut tags = Tags::new(&inner);
         Text {
             inner,
