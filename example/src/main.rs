@@ -90,7 +90,8 @@ fn main() {
         // mod_node.push_specd_to(CommandLine::default_fn(), child);
     });
 
-    let (status_line, _) = session.push_specd(StatusLine::default_global_fn());
+	let parts = status_parts![main_char::<Ui>()];
+    let (status_line, _) = session.push_specd(StatusLine::parts_global_fn(parts));
     let specs = PushSpecs::left(Constraint::Percent(50));
     session.cluster_to(CommandLine::default_fn(), &status_line, specs);
 

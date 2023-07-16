@@ -1,10 +1,15 @@
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockResult
+        Arc, TryLockResult
     }
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{DataCastErr, DataRetrievalErr, ReadableData};
 
@@ -88,11 +93,7 @@ where
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
         // second value - 1.
-        Self {
-            data,
-            cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1)
-        }
+        Self { data, cur_state: Arc::new(AtomicUsize::new(1)), read_state: AtomicUsize::new(1) }
     }
 
     /// Blocking mutable reference to the information.
@@ -140,10 +141,7 @@ where
     /// [`has_changed`]: ReadableData::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
         let data = self.data.write().unwrap();
-        ReadWriteGuard {
-            guard: data,
-            cur_state: &self.cur_state
-        }
+        ReadWriteGuard { guard: data, cur_state: &self.cur_state }
     }
 
     /// Non Blocking mutable reference to the information.
@@ -195,10 +193,7 @@ where
     pub fn try_write(&self) -> Result<ReadWriteGuard<T>, DataRetrievalErr<RwData<T>, T>> {
         self.data
             .try_write()
-            .map(|guard| ReadWriteGuard {
-                guard,
-                cur_state: &self.cur_state
-            })
+            .map(|guard| ReadWriteGuard { guard, cur_state: &self.cur_state })
             .map_err(|_| DataRetrievalErr::WriteBlocked(PhantomData))
     }
 
@@ -339,29 +334,13 @@ where
     where
         U: 'static
     {
-        let Self {
-            data,
-            cur_state,
-            read_state
-        } = self;
+        let Self { data, cur_state, read_state } = self;
         if (*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RwData {
-                data,
-                cur_state,
-                read_state
-            })
+            Ok(RwData { data, cur_state, read_state })
         } else {
-            Err(DataCastErr(
-                RwData {
-                    data,
-                    cur_state,
-                    read_state
-                },
-                PhantomData,
-                PhantomData
-            ))
+            Err(DataCastErr(RwData { data, cur_state, read_state }, PhantomData, PhantomData))
         }
     }
 
@@ -522,7 +501,7 @@ where
     T: std::fmt::Display + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.read(), f)
+        std::fmt::Display::fmt(&*self.read(), f)
     }
 }
 
@@ -585,7 +564,10 @@ where
     }
 }
 
-impl<'a, T> Drop for ReadWriteGuard<'a, T> where T: ?Sized {
+impl<'a, T> Drop for ReadWriteGuard<'a, T>
+where
+    T: ?Sized
+{
     fn drop(&mut self) {
         self.cur_state.fetch_add(1, Ordering::Release);
     }

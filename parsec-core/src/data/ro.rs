@@ -1,10 +1,15 @@
+#[cfg(not(feature = "deadlock-detection"))]
+use std::sync::{RwLock, RwLockReadGuard};
 use std::{
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, TryLockResult
+        Arc, TryLockResult
     }
 };
+
+#[cfg(feature = "deadlock-detection")]
+use no_deadlocks::{RwLock, RwLockReadGuard};
 
 use super::{private, AsAny, DataCastErr, DataRetrievalErr, RawReadableData, ReadableData, RwData};
 
@@ -56,26 +61,14 @@ where
     where
         U: 'static
     {
-        let RoData {
-            data,
-            cur_state,
-            read_state
-        } = self;
+        let RoData { data, cur_state, read_state } = self;
         if (*data.read().unwrap()).as_any().is::<U>() {
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RoData {
-                data,
-                cur_state,
-                read_state
-            })
+            Ok(RoData { data, cur_state, read_state })
         } else {
             Err(DataCastErr(
-                RoData {
-                    data,
-                    cur_state,
-                    read_state
-                },
+                RoData { data, cur_state, read_state },
                 std::marker::PhantomData,
                 std::marker::PhantomData
             ))
@@ -175,7 +168,7 @@ where
     T: std::fmt::Display + 'static
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.read(), f)
+        std::fmt::Display::fmt(&*self.read(), f)
     }
 }
 
@@ -213,10 +206,7 @@ where
     /// whole point of this struct.
     pub(crate) fn new(data: RoData<T>) -> Self {
         let read_state = AtomicUsize::new(data.cur_state.load(Ordering::Relaxed));
-        Self {
-            data: RoData::new(data),
-            read_state
-        }
+        Self { data: RoData::new(data), read_state }
     }
 
     /// Blocking inspection of the inner data.
@@ -238,18 +228,17 @@ where
     pub fn try_inspect<B>(
         &self, f: impl FnOnce(&T) -> B
     ) -> Result<B, DataRetrievalErr<RoData<T>, T>> {
-        self.data
-            .try_read()
-            .map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData))
-            .and_then(|data| {
-                data.raw_try_read()
-                    .map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData))
-                    .map(|inner_data| {
+        self.data.try_read().map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData)).and_then(
+            |data| {
+                data.raw_try_read().map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData)).map(
+                    |inner_data| {
                         let cur_state = data.cur_state.load(Ordering::Acquire);
                         self.read_state.store(cur_state, Ordering::Release);
                         f(&inner_data)
-                    })
-            })
+                    }
+                )
+            }
+        )
     }
 
     /// Wether or not it has changed since it was last read.

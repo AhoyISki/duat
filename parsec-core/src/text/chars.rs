@@ -25,21 +25,21 @@ impl Chars {
         }
     }
 
-    pub fn iter_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
+    pub fn iter_at(&self, char: usize) -> impl Iterator<Item = char> + Clone + '_ {
         match self {
-            Chars::String(string) => Iter::String(string.chars().skip(ch_index)),
-            Chars::Rope(rope) => Iter::Rope(rope.chars_at(ch_index))
+            Chars::String(string) => Iter::String(string.chars().skip(char)),
+            Chars::Rope(rope) => Iter::Rope(rope.chars_at(char))
         }
     }
 
-    pub fn char_to_byte(&self, ch_index: usize) -> Option<usize> {
+    pub fn char_to_byte(&self, char: usize) -> Option<usize> {
         match self {
             Chars::String(string) => string
                 .char_indices()
                 .map(|(index, _)| index)
                 .chain(std::iter::once(string.len()))
-                .nth(ch_index),
-            Chars::Rope(rope) => rope.try_char_to_byte(ch_index).ok()
+                .nth(char),
+            Chars::Rope(rope) => rope.try_char_to_byte(char).ok()
         }
     }
 
@@ -121,6 +121,11 @@ impl Chars {
             Chars::String(string) => string.chars().nth(char_index),
             Chars::Rope(rope) => rope.get_char(char_index)
         }
+    }
+
+    pub fn nl_count_in(&self, range: impl std::ops::RangeBounds<usize> + Clone) -> usize {
+        let (start, end) = get_ends(range, self.len_chars());
+        self.iter_at(start).take(end - start).filter(|char| *char == '\n').count()
     }
 }
 

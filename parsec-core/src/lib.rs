@@ -1,4 +1,11 @@
-#![feature(extract_if, result_option_inspect, trait_upcasting, let_chains)]
+#![feature(
+    extract_if,
+    btree_extract_if,
+    result_option_inspect,
+    trait_upcasting,
+    let_chains,
+    option_zip
+)]
 #![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
 
 use std::{
@@ -14,16 +21,16 @@ use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use forms::FormPalette;
 use ui::{Area, ParsecWindow, RoWindows, Ui};
-use widgets::{FileWidget, ActSchemeWidget};
+use widgets::{ActSchemeWidget, FileWidget};
 
 pub mod commands;
 pub mod data;
+pub mod forms;
 pub mod history;
 pub mod input;
 pub mod position;
 pub mod session;
 pub mod text;
-pub mod forms;
 pub mod ui;
 pub mod widgets;
 

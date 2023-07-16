@@ -1,4 +1,5 @@
 /target
 */target
-/testing
-/crossterm
+example/testing
+Cargo.lock
+*/Cargo.lock

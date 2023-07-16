@@ -24,10 +24,11 @@ use std::{cmp::min, fs, path::PathBuf};
 use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     data::AsAny,
-    history::History,
-    position::{Cursor, Editor, Mover, Pos},
     forms::FILE_NAME,
-    text::{PrintCfg, Text, Tag, Handle},
+    history::History,
+    log_info,
+    position::{Cursor, Editor, Mover, Pos},
+    text::{Handle, PrintCfg, Tag, TagRange, Text},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -71,7 +72,7 @@ where
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
             tagger.insert(0, Tag::AlignCenter);
-            for index in 0..tagger.len_chars() {
+            for index in (0..tagger.len_chars()).step_by(15) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index, Tag::PushForm(FILE_NAME));
                 } else {
@@ -80,6 +81,12 @@ where
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
         }
+
+        log_info!(
+            "{:#?}, {}",
+            text.tags.ranges.iter().take(10).collect::<Vec<&TagRange>>(),
+            text.tags.ranges.len()
+        );
 
         let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
