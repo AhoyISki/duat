@@ -163,7 +163,7 @@ impl Tags {
         Tags {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
-            min_ml_range: 2,
+            min_ml_range: 1,
             above_min_ml_count: 0
         }
     }
@@ -172,7 +172,7 @@ impl Tags {
         Tags {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
-            min_ml_range: 2,
+            min_ml_range: 1,
             above_min_ml_count: 0
         }
     }
@@ -183,7 +183,7 @@ impl Tags {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
         };
-        Tags { container, ranges: Vec::new(), min_ml_range: 2, above_min_ml_count: 0 }
+        Tags { container, ranges: Vec::new(), min_ml_range: 1, above_min_ml_count: 0 }
     }
 
     pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle, chars: &Chars) {
