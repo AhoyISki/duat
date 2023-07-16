@@ -154,8 +154,7 @@ impl Measurable for TagOrSkip {
 pub struct Tags {
     container: Container,
     pub ranges: Vec<TagRange>,
-    min_ml_range: usize,
-    above_min_ml_count: usize
+    min_ml_range: usize
 }
 
 impl Tags {
@@ -163,8 +162,7 @@ impl Tags {
         Tags {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
-            min_ml_range: 1,
-            above_min_ml_count: 0
+            min_ml_range: 2
         }
     }
 
@@ -172,8 +170,7 @@ impl Tags {
         Tags {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
-            min_ml_range: 1,
-            above_min_ml_count: 0
+            min_ml_range: 2
         }
     }
 
@@ -183,7 +180,7 @@ impl Tags {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
         };
-        Tags { container, ranges: Vec::new(), min_ml_range: 1, above_min_ml_count: 0 }
+        Tags { container, ranges: Vec::new(), min_ml_range: 2 }
     }
 
     pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle, chars: &Chars) {
@@ -220,7 +217,7 @@ impl Tags {
 
         self.merge_surrounding_skips(pos);
         for entry in removed {
-            remove_from_ranges(entry, &mut self.ranges, &mut self.above_min_ml_count);
+            remove_from_ranges(entry, &mut self.ranges);
         }
     }
 
@@ -257,7 +254,7 @@ impl Tags {
 
         let new_nl_count = chars.nl_count_in(old.start..new_end);
         for entry in removed {
-            remove_from_ranges(entry, &mut self.ranges, &mut self.above_min_ml_count);
+            remove_from_ranges(entry, &mut self.ranges);
         }
         if old_nl_count >= self.min_ml_range && new_nl_count < self.min_ml_range {
             let min_extra_nl = old_nl_count - new_nl_count;
@@ -286,7 +283,7 @@ impl Tags {
                     |(pos, t_or_s)| t_or_s.as_tag().map(|(tag, handle)| (pos, tag, handle))
                 )
             {
-                remove_from_ranges(entry, &mut self.ranges, &mut self.above_min_ml_count);
+                remove_from_ranges(entry, &mut self.ranges);
                 add_or_merge_entry(entry, &mut self.ranges, self.min_ml_range, chars);
             }
         }
@@ -308,6 +305,10 @@ impl Tags {
         });
 
         ml_iter.chain(same_line_iter)
+    }
+
+    pub fn min_ml_range(&self) -> usize {
+        self.min_ml_range
     }
 
     /// Returns the is empty of this [`Tags`].
@@ -548,14 +549,11 @@ impl TagRange {
 ///
 /// This will either lead to a partially unbounded range, or
 /// completely remove it.
-fn remove_from_ranges(
-    entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, above_min_ml_count: &mut usize
-) {
+fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
     let mut iter = ranges.iter();
     if entry.1.is_start() {
         if let Some(index) = iter.position(|range| range.starts_with(entry)) {
             if let TagRange::Bounded(tag, range, _, handle) = &ranges[index] {
-                *above_min_ml_count -= 1;
                 ranges[index] = TagRange::Until(*tag, ..range.end, *handle);
             } else {
                 ranges.remove(index);
@@ -564,7 +562,6 @@ fn remove_from_ranges(
     } else if entry.1.is_end() {
         if let Some(index) = iter.position(|range| range.ends_with(entry)) {
             if let TagRange::Bounded(tag, range, _, handle) = &ranges[index] {
-                *above_min_ml_count -= 1;
                 ranges[index] = TagRange::From(*tag, range.end.., *handle);
             } else {
                 ranges.remove(index);
@@ -584,8 +581,12 @@ fn add_or_merge_entry(
         if let Some(range) = ranges.extract_if(|range| range.can_start_with(entry)).next() {
             let end = range.get_end().unwrap();
             let nl_count = chars.nl_count_in(entry.0..end);
-            (nl_count >= min_ml_range)
-                .then_some(TagRange::Bounded(entry.1, entry.0..end, nl_count, entry.2))
+            (nl_count >= min_ml_range).then_some(TagRange::Bounded(
+                entry.1,
+                entry.0..end,
+                nl_count,
+                entry.2
+            ))
         } else {
             Some(TagRange::From(entry.1, entry.0.., entry.2))
         }

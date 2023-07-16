@@ -76,12 +76,12 @@ impl Text {
         let edit_len = edit.chars().count();
         let new = old.start..(old.start + edit_len);
 
-        let old_has_nl = self.chars.nl_count_in(old.clone());
+        let old_nl_count = self.chars.nl_count_in(old.clone());
 
         self.chars.replace(old.clone(), edit);
 
         if old != new {
-            self.tags.transform_range(old, new.end, old_has_nl, &self.chars);
+            self.tags.transform_range(old, new.end, old_nl_count, &self.chars);
         }
     }
 
@@ -184,7 +184,9 @@ impl Text {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.chars.iter_at(start).take(end - start);
-        let tags = self.tags.iter_at(start).take_while(move |(pos, _)| *pos < end).peekable();
+
+        let tags_start = self.line_to_char(line.saturating_sub(self.tags.min_ml_range() - 1));
+        let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
 
         Iter::new(chars, tags, start)
     }
@@ -205,7 +207,10 @@ impl Text {
         };
 
         let chars = self.chars.iter_at(start).take(end - start);
-        let tags = self.tags.iter_at(start).take_while(move |(pos, _)| *pos < end).peekable();
+
+        let line = self.char_to_line(start);
+        let tags_start = self.line_to_char(line.saturating_sub(self.tags.min_ml_range() - 1));
+        let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
 
         Iter::new(chars, tags, start)
     }
