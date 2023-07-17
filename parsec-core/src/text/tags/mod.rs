@@ -276,6 +276,7 @@ impl Tags {
 
         self.merge_surrounding_skips(pos);
         try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
+        rearrange_ranges(&mut self.ranges, self.min_to_keep);
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -288,7 +289,7 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
-        merge_unbounded(&mut self.ranges, self.min_to_keep);
+        rearrange_ranges(&mut self.ranges, self.min_to_keep);
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
@@ -326,7 +327,7 @@ impl Tags {
 
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new, old.count());
-        merge_unbounded(&mut self.ranges, self.min_to_keep);
+        rearrange_ranges(&mut self.ranges, self.min_to_keep);
     }
 
     fn process_ranges_containing(&mut self, new: Range<usize>, old_count: usize) {
@@ -676,44 +677,51 @@ fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
     }
 }
 
-fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
+fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
     let mut mergers = Vec::new();
     for (index, range) in ranges.iter().enumerate() {
-        if let TagRange::From(_, from, _) = range {
-            let other = ranges
-                .iter()
-                .enumerate()
-                .rev()
-                .map_while(|(index, other)| {
-                    if let TagRange::Until(tag, until, handle) = other {
-                        (until.end >= from.start).then_some((index, (until.end, *tag, *handle)))
-                    } else {
-                        None
-                    }
-                })
-                .filter(|(_, entry)| range.can_end_with(*entry))
-                .last();
+        let (start, tag, handle) = match range {
+            TagRange::Bounded(tag, bounded, handle) => (bounded.start, *tag, *handle),
+            TagRange::From(tag, from, handle) => (from.start, *tag, *handle),
+            TagRange::Until(..) => break
+        };
 
+        let other = ranges
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(index, _)| mergers.iter().all(|(_, other)| other != index))
+            .take_while(|(_, range)| matches!(range, TagRange::Until(..)))
+            .filter(|(_, until)| until.can_start_with((start, tag, handle)))
+            .last();
 
-            if let Some((other, _)) = other {
-                mergers.push((index, other));
-            }
+        if let Some((other, _)) = other {
+            mergers.push((index, other));
         }
     }
 
-    for (from, until) in mergers {
+    for (range, until) in mergers {
         let until = ranges.remove(until);
-        let from = ranges.remove(from);
+        let range = ranges.remove(range);
 
-        let TagRange::From(tag, from, handle) = from else {
-            unreachable!("We filtered out all other types of range.");
+        let (tag, start, handle) = match range {
+            TagRange::Bounded(tag, bounded, handle) => {
+                let new_until = TagRange::Until(tag.inverse().unwrap(), ..bounded.end, handle);
+                let (Ok(index) | Err(index)) = ranges.binary_search(&new_until);
+                ranges.insert(index, new_until);
+
+                (tag, bounded.start, handle)
+            }
+            TagRange::From(tag, from, handle) => (tag, from.start, handle),
+            TagRange::Until(..) => unreachable!("We filtered out this type of range.")
         };
+
         let TagRange::Until(_, until, _) = until else {
             unreachable!("We filtered out all other types of range.");
         };
 
-        if (from.start..until.end).count() >= min_to_keep {
-            let range = TagRange::Bounded(tag, from.start..until.end, handle);
+        if (start..until.end).count() >= min_to_keep {
+            let range = TagRange::Bounded(tag, start..until.end, handle);
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
         }
