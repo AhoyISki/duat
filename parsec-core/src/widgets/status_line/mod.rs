@@ -51,17 +51,16 @@
 //! good showing for the flexibility of this widget.
 
 #[macro_use]
-mod status_helpers;
 pub mod file_parts;
 
-use file_parts::{file_name, len_lines, main_col, main_line, selections};
-pub use status_helpers::status_parts;
+pub use file_parts::{file_name, len_lines, main_col, main_line, selections};
+use crate::status_parts;
 
 use self::Reader::*;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoNestedData},
-    text::{Text, TextBuilder, Tag},
+    text::{Tag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     Controler
 };
@@ -139,10 +138,7 @@ where
     U: Ui
 {
     fn from(value: char) -> Self {
-        StatusPart {
-            reader_or_text: ReaderOrText::Text(String::from(value)),
-            checker: None
-        }
+        StatusPart { reader_or_text: ReaderOrText::Text(String::from(value)), checker: None }
     }
 }
 
@@ -151,10 +147,7 @@ where
     U: Ui
 {
     fn from(value: &'_ str) -> Self {
-        StatusPart {
-            reader_or_text: ReaderOrText::Text(String::from(value)),
-            checker: None
-        }
+        StatusPart { reader_or_text: ReaderOrText::Text(String::from(value)), checker: None }
     }
 }
 
@@ -163,10 +156,7 @@ where
     U: Ui
 {
     fn from(value: String) -> Self {
-        StatusPart {
-            reader_or_text: ReaderOrText::Text(value),
-            checker: None
-        }
+        StatusPart { reader_or_text: ReaderOrText::Text(value), checker: None }
     }
 }
 
@@ -292,11 +282,7 @@ where
     fn passive(
         file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
     ) -> WidgetType<U> {
-        WidgetType::passive(Self {
-            file,
-            builder,
-            readers
-        })
+        WidgetType::passive(Self { file, builder, readers })
     }
 
     pub fn parts_fn(
@@ -439,3 +425,15 @@ where
 }
 
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
+
+#[macro_export]
+macro_rules! status_parts {
+    () => { Vec::new() };
+
+    ($($part:expr),+ $(,)?) => {
+        {
+            use $crate::widgets::StatusPart;
+            vec![$(StatusPart::from($part)),+]
+        }
+    };
+}

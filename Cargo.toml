@@ -6,7 +6,8 @@ members = [
 ]
 
 exclude = [
-	"example"
+	"example",
+	"testing"
 ]
 
 resolver = "2"

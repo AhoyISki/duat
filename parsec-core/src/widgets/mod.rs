@@ -612,4 +612,4 @@ fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
 pub use command_line::CommandLine;
 pub use file_widget::FileWidget;
 pub use line_numbers::{LineNumbers, LineNumbersCfg};
-pub use status_line::{file_parts, status_parts, StatusLine, StatusPart};
+pub use status_line::{file_parts, StatusLine, StatusPart};

@@ -6,7 +6,7 @@ use parsec_core::{
     input::Scheme,
     ui::Ui,
     widgets::{CommandLine, ActSchemeWidget, WidgetActor},
-    Controler
+    Controler, log_info
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -442,9 +442,13 @@ impl Editor {
         RoData::from(&self.cur_mode)
     }
 
-    pub fn mode_fn(&self) -> impl Fn() -> String + Clone {
+    pub fn mode(&self) -> (impl Fn() -> String, impl Fn() -> bool)  {
         let mode = RoData::from(&self.cur_mode);
-        move || mode.to_string()
+        let mode_fn = move || mode.to_string();
+        let mode = RoData::from(&self.cur_mode);
+        let checker = move || mode.has_changed();
+
+        (mode_fn, checker)
     }
 }
 

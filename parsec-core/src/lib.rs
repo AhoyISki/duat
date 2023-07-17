@@ -394,7 +394,6 @@ pub static mut FOR_TEST: usize = 0;
 
 /// Internal macro used to log information.
 #[macro_export]
-#[doc(hidden)]
 macro_rules! log_info {
     ($($text:tt)*) => {{
         use std::{fs, io::Write, time::Instant};
