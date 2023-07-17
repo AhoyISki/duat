@@ -6,7 +6,7 @@ use std::{
 use any_rope::{Measurable, Rope};
 pub use container::Container;
 
-use crate::{log_info, text::chars::Chars};
+use crate::text::chars::Chars;
 
 mod container;
 
@@ -91,7 +91,6 @@ impl Tag {
             Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
             Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
             Tag::HoverStart(index) => Some(Tag::HoverEnd(*index)),
-            Tag::AlignCenter | Tag::AlignRight => Some(Tag::AlignLeft),
             _ => None
         }
     }
@@ -277,11 +276,6 @@ impl Tags {
 
         self.merge_surrounding_skips(pos);
         try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
-
-        log_info!(
-            "Unbounded ranges: {}",
-            self.ranges.iter().filter(|range| !matches!(range, TagRange::Bounded(..))).count()
-        );
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -690,7 +684,6 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
                 .iter()
                 .enumerate()
                 .rev()
-                .inspect(|range| log_info!("Iterated {:?}", range))
                 .map_while(|(index, other)| {
                     if let TagRange::Until(tag, until, handle) = other {
                         (until.end >= from.start).then_some((index, (until.end, *tag, *handle)))
@@ -698,11 +691,9 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
                         None
                     }
                 })
-                .inspect(|range| log_info!("Got to {:?}", range))
                 .filter(|(_, entry)| range.can_end_with(*entry))
                 .last();
 
-            log_info!("Found {:?}", other);
 
             if let Some((other, _)) = other {
                 mergers.push((index, other));
@@ -711,7 +702,6 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
     }
 
     for (from, until) in mergers {
-        log_info!("Merge triggered");
         let until = ranges.remove(until);
         let from = ranges.remove(from);
 
