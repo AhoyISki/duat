@@ -37,6 +37,8 @@ pub mod widgets;
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
+static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
 pub struct Controler<U>
@@ -395,8 +397,21 @@ pub static mut FOR_TEST: usize = 0;
 #[doc(hidden)]
 macro_rules! log_info {
     ($($text:tt)*) => {{
-        use std::{fs, io::Write};
+        use std::{fs, io::Write, time::Instant};
         let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-        write!(log, $($text)*).unwrap();
+        let mut text = format!($($text)*);
+        if text.lines().count() > 1 {
+            let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
+            let nl_indices: Vec<usize> = chars.collect();
+            for index in nl_indices {
+                text.insert_str(index + 1, "  ");
+            }
+
+            let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
+            write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
+        } else {
+            let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
+            write!(log, "\nat {:.4?}: {text}", duration).unwrap();
+        }
     }};
 }
