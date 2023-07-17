@@ -76,12 +76,10 @@ impl Text {
         let edit_len = edit.chars().count();
         let new = old.start..(old.start + edit_len);
 
-        let old_nl_count = self.chars.nl_count_in(old.clone());
-
         self.chars.replace(old.clone(), edit);
 
         if old != new {
-            self.tags.transform_range(old, new.end, old_nl_count, &self.chars);
+            self.tags.transform_range(old, new.end);
         }
     }
 
@@ -108,7 +106,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(pos, tag, self.handle, &self.chars);
+                self.tags.insert(pos, tag, self.handle);
             }
         }
     }
@@ -185,7 +183,7 @@ impl Text {
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.chars.iter_at(start).take(end - start);
 
-        let tags_start = self.line_to_char(line.saturating_sub(self.tags.min_ml_range() - 1));
+        let tags_start = start.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
 
         Iter::new(chars, tags, start)
@@ -209,7 +207,7 @@ impl Text {
         let chars = self.chars.iter_at(start).take(end - start);
 
         let line = self.char_to_line(start);
-        let tags_start = self.line_to_char(line.saturating_sub(self.tags.min_ml_range() - 1));
+        let tags_start = self.line_to_char(line.saturating_sub(self.tags.back_check_amount() - 1));
         let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
 
         Iter::new(chars, tags, start)
@@ -544,7 +542,7 @@ impl<'a> Tagger<'a> {
     }
 
     pub fn insert(&mut self, char: usize, tag: Tag) {
-        self.tags.insert(char, tag, self.handle, self.chars)
+        self.tags.insert(char, tag, self.handle)
     }
 
     pub fn remove_on(&mut self, ch_index: usize) {

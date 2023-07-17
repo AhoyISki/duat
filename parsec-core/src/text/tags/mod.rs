@@ -10,6 +10,12 @@ use crate::text::chars::Chars;
 
 mod container;
 
+const MIN_CHARS_TO_CULL: usize = 50;
+const MAX_CHARS_TO_CULL: usize = 1000;
+
+const BUMP_AMOUNT: usize = 50;
+const RANGES_TO_BUMP: usize = 100;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Handle(u16);
 
@@ -154,7 +160,7 @@ impl Measurable for TagOrSkip {
 pub struct Tags {
     container: Container,
     pub ranges: Vec<TagRange>,
-    min_ml_range: usize
+    max_to_cull: usize
 }
 
 impl Tags {
@@ -162,7 +168,7 @@ impl Tags {
         Tags {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
-            min_ml_range: 2
+            max_to_cull: MIN_CHARS_TO_CULL
         }
     }
 
@@ -170,7 +176,7 @@ impl Tags {
         Tags {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
-            min_ml_range: 2
+            max_to_cull: MIN_CHARS_TO_CULL
         }
     }
 
@@ -180,10 +186,10 @@ impl Tags {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
         };
-        Tags { container, ranges: Vec::new(), min_ml_range: 2 }
+        Tags { container, ranges: Vec::new(), max_to_cull: MIN_CHARS_TO_CULL }
     }
 
-    pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle, chars: &Chars) {
+    pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle) {
         assert!(pos <= self.width(), "Char index {} too large, {:#?}", pos, self);
 
         let Some((start, TagOrSkip::Skip(skip))) = self.get_from_char(pos) else {
@@ -207,7 +213,7 @@ impl Tags {
         }
 
         self.merge_surrounding_skips(pos);
-        add_or_merge_entry((pos, tag, handle), &mut self.ranges, self.min_ml_range, chars);
+        process_entry((pos, tag, handle), &mut self.ranges, self.max_to_cull);
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -216,14 +222,15 @@ impl Tags {
         let removed = self.container.remove_inclusive_on(pos, handle);
 
         self.merge_surrounding_skips(pos);
+        let mut clipped = Vec::new();
         for entry in removed {
-            remove_from_ranges(entry, &mut self.ranges);
+            if let Some(range) = remove_from_ranges(entry, &mut self.ranges) {
+                clipped.push(range);
+            }
         }
     }
 
-    pub fn transform_range(
-        &mut self, old: Range<usize>, new_end: usize, old_nl_count: usize, chars: &Chars
-    ) {
+    pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
         let Some((start, t_or_s)) = self.get_from_char(old.start) else {
             panic!();
         };
@@ -252,39 +259,64 @@ impl Tags {
         self.container.insert(start, TagOrSkip::Skip(skip as u32));
         self.container.remove_exclusive((removal_start + skip)..(removal_end + skip));
 
-        let new_nl_count = chars.nl_count_in(old.start..new_end);
         for entry in removed {
             remove_from_ranges(entry, &mut self.ranges);
         }
-        if old_nl_count >= self.min_ml_range && new_nl_count < self.min_ml_range {
-            let min_extra_nl = old_nl_count - new_nl_count;
-            let ranges = self.ranges.extract_if(|range| {
-                if let TagRange::Bounded(_, range, ..) = range {
-                    if range.start <= old.start && range.end >= new_end {
-                        let prefixed_nls = chars.nl_count_in(range.start..new.start);
-                        let suffixed_nls = chars.nl_count_in(new.end..range.end);
-                        return prefixed_nls + suffixed_nls < min_extra_nl;
+
+        self.shift_ranges_after(new.end, range_diff);
+        self.process_ranges_containing(new, old.count());
+    }
+
+    fn shift_ranges_after(&mut self, after: usize, amount: isize) {
+        for range in self.ranges.iter_mut() {
+            match range {
+                TagRange::From(_, range, _) => {
+                    if range.start >= after {
+                        *range = range.start.saturating_add_signed(amount)..
                     }
                 }
-                false
-            });
-            ranges.last();
-        } else if old_nl_count < self.min_ml_range && new_nl_count >= self.min_ml_range {
-            let (start, end) = {
-                let first_line = chars.char_to_line(new.start).unwrap();
-                let start = chars.line_to_char(first_line).unwrap();
-                let last_line = chars.char_to_line(new.end).unwrap();
-                let end = chars.line_to_char(last_line + 1).unwrap_or(usize::MAX);
-                (start, end)
-            };
+                TagRange::Bounded(_, range, _) => {
+                    if range.start >= after {
+                        let start = range.start.saturating_add_signed(amount);
+                        let end = range.end.saturating_add_signed(amount);
+                        *range = start..end
+                    } else if range.end >= after {
+                        range.end = range.end.saturating_add_signed(amount)
+                    }
+                }
+                TagRange::Until(_, range, _) => {
+                    if range.end >= after {
+                        *range = ..range.end.saturating_add_signed(amount)
+                    }
+                }
+            }
+        }
+    }
 
+    fn process_ranges_containing(&mut self, new: Range<usize>, old_count: usize) {
+        let new_count = new.clone().count();
+        if old_count >= self.max_to_cull && new_count < self.max_to_cull {
+            self.ranges
+                .extract_if(|range| {
+                    if let TagRange::Bounded(_, range, ..) = range {
+                        if range.start <= new.start && range.end >= new.end {
+                            return range.count() <= self.max_to_cull;
+                        }
+                    }
+                    false
+                })
+                .take_while(|range| range.get_start().is_some_and(|start| start <= new.start))
+                .last();
+        } else if old_count < self.max_to_cull && new_count >= self.max_to_cull {
+            let start = new.start.saturating_sub(self.max_to_cull - old_count);
+            let end = new.end + self.max_to_cull - old_count;
             for entry in
                 self.container.iter_at(start).take_while(|(pos, _)| *pos < end).filter_map(
                     |(pos, t_or_s)| t_or_s.as_tag().map(|(tag, handle)| (pos, tag, handle))
                 )
             {
                 remove_from_ranges(entry, &mut self.ranges);
-                add_or_merge_entry(entry, &mut self.ranges, self.min_ml_range, chars);
+                process_entry(entry, &mut self.ranges, self.max_to_cull);
             }
         }
     }
@@ -307,8 +339,8 @@ impl Tags {
         ml_iter.chain(same_line_iter)
     }
 
-    pub fn min_ml_range(&self) -> usize {
-        self.min_ml_range
+    pub fn back_check_amount(&self) -> usize {
+        self.max_to_cull
     }
 
     /// Returns the is empty of this [`Tags`].
@@ -412,10 +444,10 @@ impl Tags {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TagRange {
     From(Tag, RangeFrom<usize>, Handle),
-    Bounded(Tag, Range<usize>, usize, Handle),
+    Bounded(Tag, Range<usize>, Handle),
     Until(Tag, RangeTo<usize>, Handle)
 }
 
@@ -442,14 +474,14 @@ impl PartialOrd for TagRange {
     ///   - Their `Handle`s.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let ordering = match (self, other) {
-            (TagRange::Bounded(_, _, _, _), TagRange::Until(_, _, _))
-            | (TagRange::From(_, _, _), TagRange::Until(_, _, _)) => Less,
-            (TagRange::Until(_, _, _), TagRange::Bounded(_, _, _, _))
-            | (TagRange::Until(_, _, _), TagRange::From(_, _, _)) => Greater,
+            (TagRange::Bounded(..), TagRange::Until(..))
+            | (TagRange::From(..), TagRange::Until(..)) => Less,
+            (TagRange::Until(..), TagRange::Bounded(..))
+            | (TagRange::Until(..), TagRange::From(..)) => Greater,
 
             (
-                TagRange::Bounded(lhs_tag, lhs_range, _, lhs_handle),
-                TagRange::Bounded(rhs_tag, rhs_range, _, rhs_handle)
+                TagRange::Bounded(lhs_tag, lhs_range, lhs_handle),
+                TagRange::Bounded(rhs_tag, rhs_range, rhs_handle)
             ) => {
                 let lhs = (lhs_range.start, lhs_range.end, lhs_tag, lhs_handle);
                 lhs.cmp(&(rhs_range.start, rhs_range.end, rhs_tag, rhs_handle))
@@ -479,9 +511,9 @@ impl PartialOrd for TagRange {
 impl TagRange {
     fn tag(&self) -> Tag {
         match self {
-            TagRange::From(tag, _, _) => *tag,
-            TagRange::Bounded(tag, _, _, _) => *tag,
-            TagRange::Until(tag, _, _) => *tag
+            TagRange::From(tag, ..) => *tag,
+            TagRange::Bounded(tag, ..) => *tag,
+            TagRange::Until(tag, ..) => *tag
         }
     }
 
@@ -503,7 +535,7 @@ impl TagRange {
 
     fn starts_with(&self, other: (usize, Tag, Handle)) -> bool {
         match self {
-            TagRange::Bounded(tag, range, _, handle) => {
+            TagRange::Bounded(tag, range, handle) => {
                 *handle == other.2 && range.end == other.0 && *tag == other.1
             }
             TagRange::From(tag, range, handle) => {
@@ -515,7 +547,7 @@ impl TagRange {
 
     fn ends_with(&self, other: (usize, Tag, Handle)) -> bool {
         match self {
-            TagRange::Bounded(tag, range, _, handle) => {
+            TagRange::Bounded(tag, range, handle) => {
                 *handle == other.2 && range.end == other.0 && *tag == other.1
             }
             TagRange::Until(tag, range, handle) => {
@@ -542,6 +574,13 @@ impl TagRange {
             TagRange::Bounded(..) | TagRange::Until(..) => false
         }
     }
+
+    fn count_ge(&self, other: usize) -> bool {
+        match self {
+            TagRange::Bounded(_, range, _) => range.clone().count() >= other,
+            TagRange::From(..) | TagRange::Until(..) => true
+        }
+    }
 }
 
 /// Removes the given `(usize, Tag, Handle)` triples from any
@@ -549,57 +588,53 @@ impl TagRange {
 ///
 /// This will either lead to a partially unbounded range, or
 /// completely remove it.
-fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
+fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) -> Option<usize> {
     let mut iter = ranges.iter();
     if entry.1.is_start() {
         if let Some(index) = iter.position(|range| range.starts_with(entry)) {
-            if let TagRange::Bounded(tag, range, _, handle) = &ranges[index] {
+            if let TagRange::Bounded(tag, range, handle) = &ranges[index] {
                 ranges[index] = TagRange::Until(*tag, ..range.end, *handle);
+                return Some(index);
             } else {
                 ranges.remove(index);
             }
         }
     } else if entry.1.is_end() {
         if let Some(index) = iter.position(|range| range.ends_with(entry)) {
-            if let TagRange::Bounded(tag, range, _, handle) = &ranges[index] {
+            if let TagRange::Bounded(tag, range, handle) = &ranges[index] {
                 ranges[index] = TagRange::From(*tag, range.end.., *handle);
+                return Some(index);
             } else {
                 ranges.remove(index);
             }
         }
     }
+
+    None
 }
 
-fn add_or_merge_entry(
-    entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, min_ml_range: usize, chars: &Chars
-) {
-    if !(entry.1.is_start() || entry.1.is_end()) {
-        return;
-    }
-
+fn process_entry(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, min_to_cull: usize) {
     let range = if entry.1.is_start() {
+        let (start, tag, handle) = entry;
         if let Some(range) = ranges.extract_if(|range| range.can_start_with(entry)).next() {
             let end = range.get_end().unwrap();
-            let nl_count = chars.nl_count_in(entry.0..end);
-            (nl_count >= min_ml_range).then_some(TagRange::Bounded(
-                entry.1,
-                entry.0..end,
-                nl_count,
-                entry.2
-            ))
+            TagRange::Bounded(tag, start..end, handle)
         } else {
-            Some(TagRange::From(entry.1, entry.0.., entry.2))
+            TagRange::From(tag, start.., handle)
         }
-    } else if let Some(range) = ranges.extract_if(|range| range.can_end_with(entry)).next() {
-        let start = range.get_start().unwrap();
-        let nl_count = chars.nl_count_in(start..entry.0);
-        (nl_count >= min_ml_range)
-            .then(|| TagRange::Bounded(range.tag(), start..entry.0, nl_count, entry.2))
+    } else if entry.1.is_end() {
+        let (end, _, handle) = entry;
+        if let Some(range) = ranges.extract_if(|range| range.can_end_with(entry)).next() {
+            let start = range.get_start().unwrap();
+            TagRange::Bounded(range.tag(), start..end, handle)
+        } else {
+            TagRange::Until(entry.1, ..entry.0, entry.2)
+        }
     } else {
-        Some(TagRange::Until(entry.1, ..entry.0, entry.2))
+        return;
     };
 
-    if let Some(range) = range {
+    if range.count_ge(min_to_cull) {
         let (Ok(index) | Err(index)) = ranges.binary_search(&range);
         ranges.insert(index, range);
     }
