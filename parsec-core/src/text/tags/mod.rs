@@ -237,6 +237,10 @@ impl Tags {
         }
     }
 
+    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
+        self.container.get_from_char(char)
+    }
+
     pub fn clear(&mut self) {
         match &mut self.container {
             Container::Vec(vec) => vec.clear(),
@@ -277,6 +281,7 @@ impl Tags {
         self.merge_surrounding_skips(pos);
         try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
         rearrange_ranges(&mut self.ranges, self.min_to_keep);
+        self.cull_small_ranges()
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -328,6 +333,7 @@ impl Tags {
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new, old.count());
         rearrange_ranges(&mut self.ranges, self.min_to_keep);
+        self.cull_small_ranges()
     }
 
     fn process_ranges_containing(&mut self, new: Range<usize>, old_count: usize) {
@@ -432,8 +438,23 @@ impl Tags {
         }
     }
 
-    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
-        self.container.get_from_char(char)
+    fn cull_small_ranges(&mut self) {
+        let mut cullable =
+            self.ranges.iter().filter(|range| matches!(range, TagRange::Bounded(..))).count();
+
+        while cullable > LIMIT_TO_BUMP {
+            self.min_to_keep += BUMP_AMOUNT;
+            cullable -= self
+                .ranges
+                .extract_if(|range| {
+                    if let TagRange::Bounded(_, bounded, _) = range {
+                        bounded.clone().count() < self.min_to_keep
+                    } else {
+                        false
+                    }
+                })
+                .count()
+        }
     }
 }
 
