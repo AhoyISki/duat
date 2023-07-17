@@ -26,7 +26,6 @@ use crate::{
     data::AsAny,
     forms::FILE_NAME,
     history::History,
-    log_info,
     position::{Cursor, Editor, Mover, Pos},
     text::{Handle, PrintCfg, Tag, TagRange, Text},
     ui::{Area, PrintInfo, Ui}
@@ -81,12 +80,6 @@ where
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
         }
-
-        log_info!(
-            "{:#?}, {}",
-            text.tags.ranges.iter().take(10).collect::<Vec<&TagRange>>(),
-            text.tags.ranges.len()
-        );
 
         let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
