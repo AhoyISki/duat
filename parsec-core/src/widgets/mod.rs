@@ -31,6 +31,7 @@ use no_deadlocks::RwLock;
 
 use crate::{
     data::{AsAny, RawReadableData, ReadableData, RwData},
+    log_info,
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{Area, Ui}
@@ -356,11 +357,7 @@ where
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
     pub(crate) fn new(widget: &'a RwData<Sw>, area: &'a U::Area) -> Self {
-        WidgetActor {
-            clearing_needed: false,
-            widget,
-            area
-        }
+        WidgetActor { clearing_needed: false, widget, area }
     }
 
     /// Removes all intersecting [`Cursor`]s from the list, keeping
@@ -421,9 +418,9 @@ where
         if let Some(cursors) = widget.mut_cursors() {
             cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
         }
-        self.clearing_needed = true;
 
         widget.update(self.area);
+        self.clearing_needed = widget.cursors().len() > 1;
     }
 
     /// Alters the nth cursor's selection.
@@ -451,9 +448,8 @@ where
             }
         };
 
-        self.clearing_needed = true;
-
         widget.update(self.area);
+        self.clearing_needed = widget.cursors().len() > 1;
     }
 
     /// Alters the main cursor's selection.
@@ -469,7 +465,7 @@ where
     where
         F: FnMut(&mut Mover<U>)
     {
-        let len = self.cursors_len();
+        let len = self.len_cursors();
         if len > 0 {
             self.move_nth(f, len - 1);
         }
@@ -480,12 +476,13 @@ where
     where
         F: FnMut(&mut Editor<U>)
     {
-        let mut widget = self.widget.write();
-        assert!(index < widget.cursors().len(), "Index {index} out of bounds.");
+        assert!(index < self.len_cursors(), "Index {index} out of bounds.");
         if self.clearing_needed {
             self.clear_intersections();
             self.clearing_needed = false;
         }
+
+        let mut widget = self.widget.write();
 
         let mut edit_accum = EditAccum::default();
         let mut editor = widget.editor(index, &mut edit_accum);
@@ -513,7 +510,7 @@ where
     where
         F: FnMut(&mut Editor<U>)
     {
-        let len = self.cursors_len();
+        let len = self.len_cursors();
         if len > 0 {
             self.edit_on_nth(f, len - 1);
         }
@@ -533,11 +530,7 @@ where
         }
 
         if let Some(main_index) = widget.mut_main_cursor_index() {
-            *main_index = if *main_index == cursors_len - 1 {
-                0
-            } else {
-                *main_index + 1
-            }
+            *main_index = if *main_index == cursors_len - 1 { 0 } else { *main_index + 1 }
         }
 
         widget.update(self.area)
@@ -552,18 +545,14 @@ where
         }
 
         if let Some(main_index) = self.widget.write().mut_main_cursor_index() {
-            *main_index = if *main_index == 0 {
-                cursors_len - 1
-            } else {
-                *main_index - 1
-            }
+            *main_index = if *main_index == 0 { cursors_len - 1 } else { *main_index - 1 }
         }
 
         widget.update(self.area)
     }
 
     /// The amount of active [`Cursor`]s in the [`Text`].
-    pub fn cursors_len(&self) -> usize {
+    pub fn len_cursors(&self) -> usize {
         self.widget.read().cursors().len()
     }
 

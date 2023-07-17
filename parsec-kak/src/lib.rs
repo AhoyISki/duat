@@ -4,9 +4,10 @@ use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
     data::{ReadableData, RoData, RwData},
     input::Scheme,
+    log_info,
     ui::Ui,
-    widgets::{CommandLine, ActSchemeWidget, WidgetActor},
-    Controler, log_info
+    widgets::{ActSchemeWidget, CommandLine, WidgetActor},
+    Controler
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -68,10 +69,8 @@ impl Editor {
                     mover.move_hor(1);
                 });
             }
-            KeyEvent {
-                code: Backspace, ..
-            } => {
-                let mut anchors = Vec::with_capacity(actor.cursors_len());
+            KeyEvent { code: Backspace, .. } => {
+                let mut anchors = Vec::with_capacity(actor.len_cursors());
                 actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -93,7 +92,7 @@ impl Editor {
                 });
             }
             KeyEvent { code: Delete, .. } => {
-                let mut anchors = Vec::with_capacity(actor.cursors_len());
+                let mut anchors = Vec::with_capacity(actor.len_cursors());
                 actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -114,32 +113,16 @@ impl Editor {
                     }
                 });
             }
-            KeyEvent {
-                code: Left,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Left, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Left, 1);
             }
-            KeyEvent {
-                code: Right,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Right, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Right, 1);
             }
-            KeyEvent {
-                code: Up,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Up, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Top, 1);
             }
-            KeyEvent {
-                code: Down,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Down, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: Left, .. } => move_each(&mut actor, Side::Left, 1),
@@ -163,110 +146,64 @@ impl Editor {
     {
         match key {
             ////////// SessionControl commands.
-            KeyEvent {
-                code: Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            } => {
+            KeyEvent { code: Char('c'), modifiers: KeyModifiers::CONTROL, .. } => {
                 controler.quit();
             }
 
             ////////// Movement keys that retain or create selections.
-            KeyEvent {
-                code: Char('H') | Left,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Char('H') | Left, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Left, 1);
             }
-            KeyEvent {
-                code: Char('J') | Down,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Char('J') | Down, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent {
-                code: Char('K') | Up,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Char('K') | Up, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Top, 1);
             }
-            KeyEvent {
-                code: Char('L') | Right,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Char('L') | Right, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Right, 1);
             }
 
             ////////// Movement keys that get rid of selections.
-            KeyEvent {
-                code: Char('h') | Left,
-                ..
-            } => {
+            KeyEvent { code: Char('h') | Left, .. } => {
                 move_each(&mut actor, Side::Left, 1);
             }
-            KeyEvent {
-                code: Char('j') | Down,
-                ..
-            } => {
+            KeyEvent { code: Char('j') | Down, .. } => {
                 move_each(&mut actor, Side::Bottom, 1);
             }
-            KeyEvent {
-                code: Char('k') | Up,
-                ..
-            } => {
+            KeyEvent { code: Char('k') | Up, .. } => {
                 move_each(&mut actor, Side::Top, 1);
             }
-            KeyEvent {
-                code: Char('l') | Right,
-                ..
-            } => {
+            KeyEvent { code: Char('l') | Right, .. } => {
                 move_each(&mut actor, Side::Right, 1);
             }
 
             ////////// Insertion keys.
-            KeyEvent {
-                code: Char('i'), ..
-            } => {
+            KeyEvent { code: Char('i'), .. } => {
                 actor.move_each_cursor(|mover| mover.switch_ends());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent {
-                code: Char('a'), ..
-            } => {
+            KeyEvent { code: Char('a'), .. } => {
                 actor.move_each_cursor(|mover| mover.set_caret_on_end());
                 *self.cur_mode.write() = Mode::Insert;
             }
-            KeyEvent {
-                code: Char('c'), ..
-            } => {
+            KeyEvent { code: Char('c'), .. } => {
                 actor.edit_on_each_cursor(|editor| editor.replace(""));
                 actor.move_each_cursor(|mover| mover.unset_anchor());
                 *self.cur_mode.write() = Mode::Insert;
             }
 
             ////////// Other mode changing keys.
-            KeyEvent {
-                code: Char(':'), ..
-            } => {
+            KeyEvent { code: Char(':'), .. } => {
                 if controler.switch_to::<CommandLine<U>>().is_ok() {
                     *self.cur_mode.write() = Mode::Command;
                 }
             }
-            KeyEvent {
-                code: Char('g'), ..
-            } => *self.cur_mode.write() = Mode::GoTo,
+            KeyEvent { code: Char('g'), .. } => *self.cur_mode.write() = Mode::GoTo,
 
             ////////// History manipulation.
-            KeyEvent {
-                code: Char('u'), ..
-            } => actor.undo(),
-            KeyEvent {
-                code: Char('U'), ..
-            } => actor.redo(),
+            KeyEvent { code: Char('u'), .. } => actor.undo(),
+            KeyEvent { code: Char('U'), .. } => actor.redo(),
             _ => {}
         }
     }
@@ -284,10 +221,8 @@ impl Editor {
                     *self.cur_mode.write() = Mode::Normal;
                 }
             }
-            KeyEvent {
-                code: Backspace, ..
-            } => {
-                let mut anchors = Vec::with_capacity(actor.cursors_len());
+            KeyEvent { code: Backspace, .. } => {
+                let mut anchors = Vec::with_capacity(actor.len_cursors());
                 actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -309,7 +244,7 @@ impl Editor {
                 });
             }
             KeyEvent { code: Delete, .. } => {
-                let mut anchors = Vec::with_capacity(actor.cursors_len());
+                let mut anchors = Vec::with_capacity(actor.len_cursors());
                 actor.move_each_cursor(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -335,32 +270,16 @@ impl Editor {
                 actor.move_main(|mover| mover.move_hor(1));
             }
 
-            KeyEvent {
-                code: Left,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Left, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Left, 1);
             }
-            KeyEvent {
-                code: Right,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Right, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Right, 1);
             }
-            KeyEvent {
-                code: Up,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Up, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Top, 1);
             }
-            KeyEvent {
-                code: Down,
-                modifiers: KeyModifiers::SHIFT,
-                ..
-            } => {
+            KeyEvent { code: Down, modifiers: KeyModifiers::SHIFT, .. } => {
                 move_each_and_select(&mut actor, Side::Bottom, 1);
             }
             KeyEvent { code: Left, .. } => {
@@ -378,15 +297,23 @@ impl Editor {
 
             KeyEvent { code: Esc, .. } => {
                 actor.move_main(|mover| {
+                    log_info!("Created mover");
                     mover.move_hor(isize::MIN);
+                    log_info!("Moved back");
                     mover.set_anchor();
+                    log_info!("Created anchor");
                     mover.move_hor(isize::MAX);
+                    log_info!("Moved forward");
                 });
+                log_info!("Dropped mover");
 
                 actor.edit_on_main(|editor| editor.replace(""));
+                log_info!("Cleared text");
 
                 if controler.return_to_file().is_ok() {
+                    log_info!("Returned to file");
                     *self.cur_mode.write() = Mode::Normal;
+                    log_info!("Changed mode back");
                 }
             }
             _ => {}
@@ -401,33 +328,23 @@ impl Editor {
         E: ActSchemeWidget<U> + ?Sized
     {
         match key {
-            KeyEvent {
-                code: Char('a'), ..
-            } => {
+            KeyEvent { code: Char('a'), .. } => {
                 if controls.switch_to_file(&self.last_file).is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
             }
-            KeyEvent {
-                code: Char('j'), ..
-            } => {
+            KeyEvent { code: Char('j'), .. } => {
                 actor.move_main(|mover| mover.move_ver(isize::MAX));
             }
-            KeyEvent {
-                code: Char('k'), ..
-            } => {
+            KeyEvent { code: Char('k'), .. } => {
                 actor.move_main(|mover| mover.move_to_coords(0, 0));
             }
-            KeyEvent {
-                code: Char('n'), ..
-            } => {
+            KeyEvent { code: Char('n'), .. } => {
                 if controls.next_file().is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
             }
-            KeyEvent {
-                code: Char('N'), ..
-            } => {
+            KeyEvent { code: Char('N'), .. } => {
                 if controls.prev_file().is_ok() {
                     self.last_file = controls.active_file_name().to_string();
                 }
@@ -442,7 +359,7 @@ impl Editor {
         RoData::from(&self.cur_mode)
     }
 
-    pub fn mode(&self) -> (impl Fn() -> String, impl Fn() -> bool)  {
+    pub fn mode(&self) -> (impl Fn() -> String, impl Fn() -> bool) {
         let mode = RoData::from(&self.cur_mode);
         let mode_fn = move || mode.to_string();
         let mode = RoData::from(&self.cur_mode);

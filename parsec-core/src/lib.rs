@@ -37,7 +37,7 @@ pub mod widgets;
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
-static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
