@@ -22,16 +22,15 @@ mod file_widget;
 mod line_numbers;
 mod status_line;
 
-#[cfg(not(feature = "deadlock-detection"))]
+#[cfg(any(not(feature = "deadlock-detection"), not(feature = "testing-features")))]
 use std::sync::RwLock;
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
-#[cfg(feature = "deadlock-detection")]
+#[cfg(all(feature = "deadlock-detection", feature = "testing-features"))]
 use no_deadlocks::RwLock;
 
 use crate::{
     data::{AsAny, RawReadableData, ReadableData, RwData},
-    log_info,
     position::{Cursor, Editor, Mover},
     text::{PrintCfg, Text},
     ui::{Area, Ui}

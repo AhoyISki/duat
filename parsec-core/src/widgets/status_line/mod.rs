@@ -425,15 +425,3 @@ where
 }
 
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
-
-#[macro_export]
-macro_rules! status_parts {
-    () => { Vec::new() };
-
-    ($($part:expr),+ $(,)?) => {
-        {
-            use $crate::widgets::StatusPart;
-            vec![$(StatusPart::from($part)),+]
-        }
-    };
-}

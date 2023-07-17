@@ -4,7 +4,6 @@ use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
     data::{ReadableData, RoData, RwData},
     input::Scheme,
-    log_info,
     ui::Ui,
     widgets::{ActSchemeWidget, CommandLine, WidgetActor},
     Controler
@@ -297,23 +296,15 @@ impl Editor {
 
             KeyEvent { code: Esc, .. } => {
                 actor.move_main(|mover| {
-                    log_info!("Created mover");
                     mover.move_hor(isize::MIN);
-                    log_info!("Moved back");
                     mover.set_anchor();
-                    log_info!("Created anchor");
                     mover.move_hor(isize::MAX);
-                    log_info!("Moved forward");
                 });
-                log_info!("Dropped mover");
 
                 actor.edit_on_main(|editor| editor.replace(""));
-                log_info!("Cleared text");
 
                 if controler.return_to_file().is_ok() {
-                    log_info!("Returned to file");
                     *self.cur_mode.write() = Mode::Normal;
-                    log_info!("Changed mode back");
                 }
             }
             _ => {}

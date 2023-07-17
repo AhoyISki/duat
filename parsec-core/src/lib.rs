@@ -1,11 +1,4 @@
-#![feature(
-    extract_if,
-    btree_extract_if,
-    result_option_inspect,
-    trait_upcasting,
-    let_chains,
-    option_zip
-)]
+#![feature(extract_if, result_option_inspect, trait_upcasting, let_chains, option_zip)]
 #![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
 
 use std::{
@@ -37,6 +30,7 @@ pub mod widgets;
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
+#[cfg(feature = "testing-features")]
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 /// A general manager for Parsec, that can be called upon by certain
@@ -388,12 +382,21 @@ macro_rules! join {
     }
 }
 
-//////////// Useful for testing.
-#[doc(hidden)]
-pub static mut FOR_TEST: usize = 0;
+#[macro_export]
+macro_rules! status_parts {
+    () => { Vec::new() };
+
+    ($($part:expr),+ $(,)?) => {
+        {
+            use $crate::widgets::StatusPart;
+            vec![$(StatusPart::from($part)),+]
+        }
+    };
+}
 
 /// Internal macro used to log information.
 #[macro_export]
+#[cfg(feature = "testing-features")]
 macro_rules! log_info {
     ($($text:tt)*) => {{
         use std::{fs, io::Write, time::Instant};

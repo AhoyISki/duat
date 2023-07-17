@@ -32,6 +32,7 @@ where
         mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
+        #[cfg(feature = "testing-features")]
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         let file = std::env::args().nth(1).as_ref().map(PathBuf::from);

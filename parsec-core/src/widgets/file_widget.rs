@@ -24,10 +24,9 @@ use std::{cmp::min, fs, path::PathBuf};
 use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     data::AsAny,
-    forms::FILE_NAME,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
-    text::{Handle, PrintCfg, Text},
+    text::{PrintCfg, Text},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -67,8 +66,9 @@ where
 
         let mut text = Text::new_rope(file_contents);
 
-        if cfg!(feature = "wacky-colors") {
-            use crate::text::Tag;
+        #[cfg(all(feature = "wacky-colors", feature = "testing-features"))]
+        {
+            use crate::{forms::FILE_NAME, text::{Tag, Handle}};
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
             for index in (0..tagger.len_chars()).step_by(50) {
