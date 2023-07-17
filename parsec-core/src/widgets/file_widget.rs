@@ -27,7 +27,7 @@ use crate::{
     forms::FILE_NAME,
     history::History,
     position::{Cursor, Editor, Mover, Pos},
-    text::{Handle, PrintCfg, Tag, TagRange, Text},
+    text::{Handle, PrintCfg, Text},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -68,10 +68,10 @@ where
         let mut text = Text::new_rope(file_contents);
 
         if cfg!(feature = "wacky-colors") {
+            use crate::text::Tag;
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            tagger.insert(0, Tag::AlignCenter);
-            for index in (0..tagger.len_chars()).step_by(15) {
+            for index in (0..tagger.len_chars()).step_by(50) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index, Tag::PushForm(FILE_NAME));
                 } else {

@@ -6,14 +6,14 @@ use std::{
 use any_rope::{Measurable, Rope};
 pub use container::Container;
 
-use crate::text::chars::Chars;
+use crate::{log_info, text::chars::Chars};
 
 mod container;
 
-const MIN_CHARS_TO_CULL: usize = 50;
+const MIN_CHARS_TO_KEEP: usize = 50;
 
 const BUMP_AMOUNT: usize = 50;
-const RANGES_TO_BUMP: usize = 500;
+const LIMIT_TO_BUMP: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Handle(u16);
@@ -159,7 +159,7 @@ impl Measurable for TagOrSkip {
 pub struct Tags {
     container: Container,
     pub ranges: Vec<TagRange>,
-    max_to_cull: usize
+    min_to_keep: usize
 }
 
 impl Tags {
@@ -167,7 +167,7 @@ impl Tags {
         Tags {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
-            max_to_cull: MIN_CHARS_TO_CULL
+            min_to_keep: MIN_CHARS_TO_KEEP
         }
     }
 
@@ -175,7 +175,7 @@ impl Tags {
         Tags {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
-            max_to_cull: MIN_CHARS_TO_CULL
+            min_to_keep: MIN_CHARS_TO_KEEP
         }
     }
 
@@ -185,7 +185,70 @@ impl Tags {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
         };
-        Tags { container, ranges: Vec::new(), max_to_cull: MIN_CHARS_TO_CULL }
+        Tags { container, ranges: Vec::new(), min_to_keep: MIN_CHARS_TO_KEEP }
+    }
+
+    pub fn iter_at(&self, at: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
+        let ml_iter = self
+            .ranges
+            .iter()
+            .take_while(move |range| range.get_start().is_some_and(|start| start < at))
+            .filter_map(move |range| {
+                range.get_end().map_or(true, |end| end > at).then(|| unsafe {
+                    range.get_start().map(|start| (start, range.tag())).unwrap_unchecked()
+                })
+            });
+
+        let same_line_iter = self.container.iter_at(at).filter_map(move |(width, t_or_s)| {
+            if let TagOrSkip::Tag(tag, _) = t_or_s { Some((width, tag)) } else { None }
+        });
+
+        ml_iter.chain(same_line_iter)
+    }
+
+    pub fn back_check_amount(&self) -> usize {
+        self.min_to_keep
+    }
+
+    /// Returns the is empty of this [`Tags`].
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn as_vec(&self) -> Option<&[TagOrSkip]> {
+        match &self.container {
+            Container::Vec(vec) => Some(vec),
+            Container::Rope(_) => None
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        match &self.container {
+            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
+            Container::Rope(rope) => rope.width()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match &self.container {
+            Container::Vec(vec) => vec.len(),
+            Container::Rope(rope) => rope.len()
+        }
+    }
+
+    pub fn clear(&mut self) {
+        match &mut self.container {
+            Container::Vec(vec) => vec.clear(),
+            Container::Rope(rope) => *rope = Rope::new()
+        }
+    }
+
+    pub fn as_mut_vec(&mut self) -> Option<&mut Vec<TagOrSkip>> {
+        match &mut self.container {
+            Container::Vec(vec) => Some(vec),
+            Container::Rope(_) => None
+        }
     }
 
     pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle) {
@@ -212,7 +275,9 @@ impl Tags {
         }
 
         self.merge_surrounding_skips(pos);
-        try_insert((pos, tag, handle), &mut self.ranges, self.max_to_cull);
+        try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
+
+        log_info!("Ranges len: {}", self.ranges.len());
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -221,12 +286,11 @@ impl Tags {
         let removed = self.container.remove_inclusive_on(pos, handle);
 
         self.merge_surrounding_skips(pos);
-        let mut clipped = Vec::new();
         for entry in removed {
-            if let Some(range) = remove_from_ranges(entry, &mut self.ranges) {
-                clipped.push(range);
-            }
+            remove_from_ranges(entry, &mut self.ranges);
         }
+
+        merge_unbounded(&mut self.ranges, self.min_to_keep);
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
@@ -262,34 +326,9 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
-        self.shift_ranges_after(new.end, range_diff);
+        shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new, old.count());
-    }
-
-    fn shift_ranges_after(&mut self, after: usize, amount: isize) {
-        for range in self.ranges.iter_mut() {
-            match range {
-                TagRange::From(_, range, _) => {
-                    if range.start >= after {
-                        *range = range.start.saturating_add_signed(amount)..
-                    }
-                }
-                TagRange::Bounded(_, range, _) => {
-                    if range.start >= after {
-                        let start = range.start.saturating_add_signed(amount);
-                        let end = range.end.saturating_add_signed(amount);
-                        *range = start..end
-                    } else if range.end >= after {
-                        range.end = range.end.saturating_add_signed(amount)
-                    }
-                }
-                TagRange::Until(_, range, _) => {
-                    if range.end >= after {
-                        *range = ..range.end.saturating_add_signed(amount)
-                    }
-                }
-            }
-        }
+        merge_unbounded(&mut self.ranges, self.min_to_keep);
     }
 
     fn process_ranges_containing(&mut self, new: Range<usize>, old_count: usize) {
@@ -303,7 +342,7 @@ impl Tags {
                 .extract_if(|range| {
                     if let TagRange::Bounded(_, range, ..) = range {
                         if range.start <= new.start && range.end >= new.end {
-                            return range.clone().count() <= self.max_to_cull;
+                            return range.clone().count() <= self.min_to_keep;
                         }
                     }
                     false
@@ -311,10 +350,9 @@ impl Tags {
                 .take_while(|range| range.get_start().is_some_and(|start| start <= new.start))
                 .last();
         } else {
-            let start = new.start.saturating_sub(self.max_to_cull - old_count);
-            let end = new.end + self.max_to_cull - old_count;
+            let start = new.start.saturating_sub(self.min_to_keep - old_count);
+            let end = new.end + self.min_to_keep - old_count;
             let mut entry_counts = Vec::new();
-            let mut new_ranges = Vec::new();
 
             for entry in
                 self.container.iter_at(start).take_while(|(pos, _)| *pos < end).filter_map(
@@ -332,81 +370,11 @@ impl Tags {
                 };
 
                 if *count == 0 {
-                    try_insert(entry, &mut new_ranges, self.max_to_cull);
+                    try_insert(entry, &mut self.ranges, self.min_to_keep, false);
                 } else {
                     *count -= 1;
                 }
             }
-
-            for range in new_ranges {
-                if let TagRange::Bounded(..) = range {
-                    let (Ok(index) | Err(index)) = self.ranges.binary_search(&range);
-                    self.ranges.insert(index, range);
-                }
-            }
-        }
-    }
-
-    pub fn iter_at(&self, at: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
-        let ml_iter = self
-            .ranges
-            .iter()
-            .take_while(move |range| range.get_start().is_some_and(|start| start < at))
-            .filter_map(move |range| {
-                range.get_end().map_or(true, |end| end > at).then(|| unsafe {
-                    range.get_start().map(|start| (start, range.tag())).unwrap_unchecked()
-                })
-            });
-
-        let same_line_iter = self.container.iter_at(at).filter_map(move |(width, t_or_s)| {
-            if let TagOrSkip::Tag(tag, _) = t_or_s { Some((width, tag)) } else { None }
-        });
-
-        ml_iter.chain(same_line_iter)
-    }
-
-    pub fn back_check_amount(&self) -> usize {
-        self.max_to_cull
-    }
-
-    /// Returns the is empty of this [`Tags`].
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn as_mut_vec(&mut self) -> Option<&mut Vec<TagOrSkip>> {
-        match &mut self.container {
-            Container::Vec(vec) => Some(vec),
-            Container::Rope(_) => None
-        }
-    }
-
-    pub fn as_vec(&self) -> Option<&[TagOrSkip]> {
-        match &self.container {
-            Container::Vec(vec) => Some(vec),
-            Container::Rope(_) => None
-        }
-    }
-
-    pub fn width(&self) -> usize {
-        match &self.container {
-            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
-            Container::Rope(rope) => rope.width()
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match &self.container {
-            Container::Vec(vec) => vec.len(),
-            Container::Rope(rope) => rope.len()
-        }
-    }
-
-    pub fn clear(&mut self) {
-        match &mut self.container {
-            Container::Vec(vec) => vec.clear(),
-            Container::Rope(rope) => *rope = Rope::new()
         }
     }
 
@@ -472,9 +440,84 @@ impl Tags {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TagRange {
-    From(Tag, RangeFrom<usize>, Handle),
     Bounded(Tag, Range<usize>, Handle),
+    From(Tag, RangeFrom<usize>, Handle),
     Until(Tag, RangeTo<usize>, Handle)
+}
+
+impl TagRange {
+    fn tag(&self) -> Tag {
+        match self {
+            TagRange::Bounded(tag, ..) => *tag,
+            TagRange::From(tag, ..) => *tag,
+            TagRange::Until(tag, ..) => *tag
+        }
+    }
+
+    fn get_start(&self) -> Option<usize> {
+        match self {
+            TagRange::Bounded(_, bounded, ..) => Some(bounded.start),
+            TagRange::From(_, from, _) => Some(from.start),
+            TagRange::Until(..) => None
+        }
+    }
+
+    fn get_end(&self) -> Option<usize> {
+        match self {
+            TagRange::Bounded(_, bounded, ..) => Some(bounded.end),
+            TagRange::Until(_, until, _) => Some(until.end),
+            TagRange::From(..) => None
+        }
+    }
+
+    fn starts_with(&self, other: (usize, Tag, Handle)) -> bool {
+        match self {
+            TagRange::Bounded(tag, bounded, handle) => {
+                *handle == other.2 && bounded.start == other.0 && *tag == other.1
+            }
+            TagRange::From(tag, from, handle) => {
+                *handle == other.2 && from.start == other.0 && *tag == other.1
+            }
+            TagRange::Until(..) => false
+        }
+    }
+
+    fn ends_with(&self, other: (usize, Tag, Handle)) -> bool {
+        match self {
+            TagRange::Bounded(tag, bounded, handle) => {
+                *handle == other.2 && bounded.end == other.0 && tag.ends_with(&other.1)
+            }
+            TagRange::Until(tag, until, handle) => {
+                *handle == other.2 && until.end == other.0 && *tag == other.1
+            }
+            TagRange::From(..) => false
+        }
+    }
+
+    fn can_start_with(&self, other: (usize, Tag, Handle)) -> bool {
+        match self {
+            TagRange::Until(tag, until, handle) => {
+                *handle == other.2 && other.0 <= until.end && other.1.ends_with(tag)
+            }
+            TagRange::Bounded(..) | TagRange::From(..) => false
+        }
+    }
+
+    fn can_end_with(&self, other: (usize, Tag, Handle)) -> bool {
+        match self {
+            TagRange::From(tag, from, handle) => {
+                *handle == other.2 && from.start <= other.0 && tag.ends_with(&other.1)
+            }
+            TagRange::Bounded(..) | TagRange::Until(..) => false
+        }
+    }
+
+    fn count_ge(&self, other: usize) -> bool {
+        match self {
+            TagRange::Bounded(_, bounded, _) => bounded.clone().count() >= other,
+            TagRange::From(..) | TagRange::Until(..) => true
+        }
+    }
 }
 
 impl Ord for TagRange {
@@ -534,81 +577,6 @@ impl PartialOrd for TagRange {
     }
 }
 
-impl TagRange {
-    fn tag(&self) -> Tag {
-        match self {
-            TagRange::From(tag, ..) => *tag,
-            TagRange::Bounded(tag, ..) => *tag,
-            TagRange::Until(tag, ..) => *tag
-        }
-    }
-
-    fn get_start(&self) -> Option<usize> {
-        match self {
-            TagRange::Bounded(_, range, ..) => Some(range.start),
-            TagRange::From(_, range, _) => Some(range.start),
-            TagRange::Until(..) => None
-        }
-    }
-
-    fn get_end(&self) -> Option<usize> {
-        match self {
-            TagRange::Bounded(_, range, ..) => Some(range.end),
-            TagRange::Until(_, range, _) => Some(range.end),
-            TagRange::From(..) => None
-        }
-    }
-
-    fn starts_with(&self, other: (usize, Tag, Handle)) -> bool {
-        match self {
-            TagRange::Bounded(tag, range, handle) => {
-                *handle == other.2 && range.start == other.0 && *tag == other.1
-            }
-            TagRange::From(tag, range, handle) => {
-                *handle == other.2 && range.start == other.0 && *tag == other.1
-            }
-            TagRange::Until(..) => false
-        }
-    }
-
-    fn ends_with(&self, other: (usize, Tag, Handle)) -> bool {
-        match self {
-            TagRange::Bounded(tag, range, handle) => {
-                *handle == other.2 && range.end == other.0 && tag.ends_with(&other.1)
-            }
-            TagRange::Until(tag, range, handle) => {
-                *handle == other.2 && range.end == other.0 && *tag == other.1
-            }
-            TagRange::From(..) => false
-        }
-    }
-
-    fn can_start_with(&self, other: (usize, Tag, Handle)) -> bool {
-        match self {
-            TagRange::Until(tag, range, handle) => {
-                *handle == other.2 && other.0 <= range.end && other.1.ends_with(tag)
-            }
-            TagRange::Bounded(..) | TagRange::From(..) => false
-        }
-    }
-
-    fn can_end_with(&self, other: (usize, Tag, Handle)) -> bool {
-        match self {
-            TagRange::From(tag, range, handle) => {
-                *handle == other.2 && range.start <= other.0 && tag.ends_with(&other.1)
-            }
-            TagRange::Bounded(..) | TagRange::Until(..) => false
-        }
-    }
-
-    fn count_ge(&self, other: usize) -> bool {
-        match self {
-            TagRange::Bounded(_, range, _) => range.clone().count() >= other,
-            TagRange::From(..) | TagRange::Until(..) => true
-        }
-    }
-}
-
 /// Removes the given `(usize, Tag, Handle)` triples from any
 /// range in `self.ranges`.
 ///
@@ -616,31 +584,25 @@ impl TagRange {
 /// completely remove it.
 ///
 /// Will return the range as it was, before the removal.
-fn remove_from_ranges(
-    entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>
-) -> Option<(usize, TagRange)> {
+fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
     let mut iter = ranges.iter();
     if entry.1.is_start() {
         if let Some(index) = iter.position(|range| range.starts_with(entry)) {
             if let TagRange::Bounded(tag, range, handle) = ranges[index].clone() {
                 ranges[index] = TagRange::Until(tag, ..range.end, handle);
-                return Some((index, TagRange::Bounded(tag, range, handle)));
             } else {
-                return Some((index, ranges.remove(index)));
+                ranges.remove(index);
             }
         }
     } else if entry.1.is_end() {
         if let Some(index) = iter.position(|range| range.ends_with(entry)) {
             if let TagRange::Bounded(tag, range, handle) = ranges[index].clone() {
                 ranges[index] = TagRange::From(tag, range.end.., handle);
-                return Some((index, TagRange::Bounded(tag, range, handle)));
             } else {
-                return Some((index, ranges.remove(index)));
+                ranges.remove(index);
             }
         }
     }
-
-    None
 }
 
 fn count_entry(entry: (usize, Tag, Handle), ranges: &[TagRange]) -> usize {
@@ -662,30 +624,102 @@ fn count_entry(entry: (usize, Tag, Handle), ranges: &[TagRange]) -> usize {
     }
 }
 
-fn try_insert(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, min_to_cull: usize) {
+fn try_insert(
+    entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, min_to_keep: usize,
+    allow_unbounded: bool
+) {
     let range = if entry.1.is_start() {
         let (start, tag, handle) = entry;
         if let Some(range) = ranges.extract_if(|range| range.can_start_with(entry)).next() {
             let end = range.get_end().unwrap();
-            TagRange::Bounded(tag, start..end, handle)
+            Some(TagRange::Bounded(tag, start..end, handle))
         } else {
-            TagRange::From(tag, start.., handle)
+            allow_unbounded.then_some(TagRange::From(tag, start.., handle))
         }
     } else if entry.1.is_end() {
         let (end, tag, handle) = entry;
         if let Some(index) = ranges.iter().rev().position(|range| range.can_end_with(entry)) {
             let range = ranges.remove(ranges.len() - 1 - index);
             let start = range.get_start().unwrap();
-            TagRange::Bounded(range.tag(), start..end, handle)
+            Some(TagRange::Bounded(range.tag(), start..end, handle))
         } else {
-            TagRange::Until(tag, ..end, handle)
+            allow_unbounded.then_some(TagRange::Until(tag, ..end, handle))
         }
     } else {
         return;
     };
 
-    if range.count_ge(min_to_cull) {
+    if let Some(range) = range.filter(|range| range.count_ge(min_to_keep)) {
         let (Ok(index) | Err(index)) = ranges.binary_search(&range);
         ranges.insert(index, range);
+    }
+}
+
+fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
+    for range in ranges.iter_mut() {
+        match range {
+            TagRange::Bounded(_, bounded, _) => {
+                if bounded.start >= after {
+                    let start = bounded.start.saturating_add_signed(amount);
+                    let end = bounded.end.saturating_add_signed(amount);
+                    *bounded = start..end
+                } else if bounded.end >= after {
+                    bounded.end = bounded.end.saturating_add_signed(amount)
+                }
+            }
+            TagRange::From(_, from, _) => {
+                if from.start >= after {
+                    *from = from.start.saturating_add_signed(amount)..
+                }
+            }
+            TagRange::Until(_, until, _) => {
+                if until.end >= after {
+                    *until = ..until.end.saturating_add_signed(amount)
+                }
+            }
+        }
+    }
+}
+
+fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
+    let mut mergers = Vec::new();
+    for (index, range) in ranges.iter().enumerate() {
+        if let TagRange::From(_, from, _) = range {
+            let other = ranges
+                .iter()
+                .enumerate()
+                .rev()
+                .map_while(|(index, other)| {
+                    if let TagRange::Until(tag, until, handle) = other {
+                        (until.end >= from.start).then_some((index, (until.end, *tag, *handle)))
+                    } else {
+                        None
+                    }
+                })
+                .filter(|(_, entry)| range.can_end_with(*entry))
+                .last();
+
+            if let Some((other, _)) = other {
+                mergers.push((index, other));
+            }
+        }
+    }
+
+    for (from, until) in mergers {
+        let until = ranges.remove(until);
+        let from = ranges.remove(from);
+
+        let TagRange::From(tag, from, handle) = from else {
+            unreachable!("We filtered out all other types of range.");
+        };
+        let TagRange::Until(_, until, _) = until else {
+            unreachable!("We filtered out all other types of range.");
+        };
+
+        if (from.start..until.end).count() >= min_to_keep {
+            let range = TagRange::Bounded(tag, from.start..until.end, handle);
+            let (Ok(index) | Err(index)) = ranges.binary_search(&range);
+            ranges.insert(index, range);
+        }
     }
 }

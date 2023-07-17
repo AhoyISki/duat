@@ -5,8 +5,8 @@ use crossterm::event::{self, Event};
 use crate::{
     commands::Commands,
     data::{ReadableData, RoData, RwData},
-    input::{KeyRemapper, Scheme},
     forms::FormPalette,
+    input::{KeyRemapper, Scheme},
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
     widgets::{FileWidget, WidgetType},
@@ -32,6 +32,8 @@ where
         mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
+        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
+
         let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
         let file = FileWidget::<U>::scheme(file, print_cfg.clone());
 
