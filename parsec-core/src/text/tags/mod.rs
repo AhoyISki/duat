@@ -91,6 +91,7 @@ impl Tag {
             Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
             Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
             Tag::HoverStart(index) => Some(Tag::HoverEnd(*index)),
+            Tag::AlignCenter | Tag::AlignRight => Some(Tag::AlignLeft),
             _ => None
         }
     }
@@ -277,7 +278,10 @@ impl Tags {
         self.merge_surrounding_skips(pos);
         try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
 
-        log_info!("Ranges len: {}", self.ranges.len());
+        log_info!(
+            "Unbounded ranges: {}",
+            self.ranges.iter().filter(|range| !matches!(range, TagRange::Bounded(..))).count()
+        );
     }
 
     /// Removes all [Tag]s associated with a given [Lock] in the
@@ -585,22 +589,19 @@ impl PartialOrd for TagRange {
 ///
 /// Will return the range as it was, before the removal.
 fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
-    let mut iter = ranges.iter();
     if entry.1.is_start() {
-        if let Some(index) = iter.position(|range| range.starts_with(entry)) {
-            if let TagRange::Bounded(tag, range, handle) = ranges[index].clone() {
-                ranges[index] = TagRange::Until(tag, ..range.end, handle);
-            } else {
-                ranges.remove(index);
-            }
+        let range = ranges.extract_if(|range| range.starts_with(entry)).next();
+        if let Some(TagRange::Bounded(tag, bounded, handle)) = range {
+            let range = TagRange::Until(tag.inverse().unwrap(), ..bounded.end, handle);
+            let (Ok(index) | Err(index)) = ranges.binary_search(&range);
+            ranges.insert(index, range);
         }
     } else if entry.1.is_end() {
-        if let Some(index) = iter.position(|range| range.ends_with(entry)) {
-            if let TagRange::Bounded(tag, range, handle) = ranges[index].clone() {
-                ranges[index] = TagRange::From(tag, range.end.., handle);
-            } else {
-                ranges.remove(index);
-            }
+        let range = ranges.extract_if(|range| range.ends_with(entry)).next();
+        if let Some(TagRange::Bounded(tag, bounded, handle)) = range {
+            let range = TagRange::From(tag, bounded.start.., handle);
+            let (Ok(index) | Err(index)) = ranges.binary_search(&range);
+            ranges.insert(index, range);
         }
     }
 }
@@ -689,6 +690,7 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
                 .iter()
                 .enumerate()
                 .rev()
+                .inspect(|range| log_info!("Iterated {:?}", range))
                 .map_while(|(index, other)| {
                     if let TagRange::Until(tag, until, handle) = other {
                         (until.end >= from.start).then_some((index, (until.end, *tag, *handle)))
@@ -696,8 +698,11 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
                         None
                     }
                 })
+                .inspect(|range| log_info!("Got to {:?}", range))
                 .filter(|(_, entry)| range.can_end_with(*entry))
                 .last();
+
+            log_info!("Found {:?}", other);
 
             if let Some((other, _)) = other {
                 mergers.push((index, other));
@@ -706,6 +711,7 @@ fn merge_unbounded(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
     }
 
     for (from, until) in mergers {
+        log_info!("Merge triggered");
         let until = ranges.remove(until);
         let from = ranges.remove(from);
 
