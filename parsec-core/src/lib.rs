@@ -61,7 +61,8 @@ where
     /// will return the name of the last [`FileWidget<U>`] to be
     /// active.
     pub fn active_file_name(&self) -> String {
-        self.active_file.inspect(|file| file.read().name())
+        self.active_file
+            .inspect(|file| file.read().name().unwrap_or(String::from("*scratch file*")))
     }
 
     /// A thread safe, read-write [`Commands`], meant to be used
@@ -118,8 +119,19 @@ where
     U: Ui
 {
     pub fn return_to_file(&self) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
-        let cur_name = self.active_file.inspect(|file| file.read().name());
-        self.switch_to_file(cur_name)
+        self.inspect_active_window(|window| {
+            let (widget, area, file_id) = window
+                .widgets()
+                .find(|(widget_type, ..)| widget_type.ptr_eq(&*self.active_file.read()))
+                .map(|(widget_type, area, file_id)| {
+                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
+                })
+                .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
+
+            self.inner_switch_to(widget, area, file_id)?;
+
+            Ok(())
+        })
     }
 
     pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
@@ -141,7 +153,9 @@ where
             let (widget, area, file_id) = window
                 .widgets()
                 .find(|(widget_type, ..)| {
-                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() == name)
+                    widget_type.data_is_and::<FileWidget<U>>(|file| {
+                        file.name().is_some_and(|cmp| cmp == name)
+                    })
                 })
                 .map(|(widget_type, area, file_id)| {
                     (widget_type.as_scheme_input().unwrap().clone(), area, file_id)

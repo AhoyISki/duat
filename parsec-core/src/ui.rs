@@ -666,9 +666,10 @@ where
     /// and their respective [`ActionableWidget`] indices.
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes.iter().enumerate().filter_map(|(pos, Node { widget_type, .. })| {
-            widget_type
-                .downcast_ref::<FileWidget<U>>()
-                .map(|file| (pos, file.read().name().to_string()))
+            widget_type.downcast_ref::<FileWidget<U>>().map(|file| {
+                let name = file.read().name().unwrap_or_else(|| format!("*scratch file*"));
+                (pos, name)
+            })
         })
     }
 }

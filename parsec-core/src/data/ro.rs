@@ -123,13 +123,11 @@ impl<T> private::DataHolder<T> for RoData<T>
 where
     T: ?Sized
 {
-    type Deref<'a> = RwLockReadGuard<'a, T> where Self: 'a;
-
-    fn data(&self) -> Self::Deref<'_> {
+    fn data(&self) -> RwLockReadGuard<'_, T> {
         self.data.read().unwrap()
     }
 
-    fn try_data(&self) -> TryLockResult<Self::Deref<'_>> {
+    fn try_data(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
         self.data.try_read()
     }
 

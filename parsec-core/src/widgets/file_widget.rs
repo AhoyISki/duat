@@ -66,7 +66,7 @@ where
 
         let mut text = Text::new_rope(file_contents);
 
-        #[cfg(all(feature = "wacky-colors", feature = "testing-features"))]
+        #[cfg(feature = "wacky-colors")]
         {
             use crate::{
                 forms::FILE_NAME,
@@ -215,11 +215,10 @@ where
     }
 
     /// The file's name.
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Option<String> {
         self.path
             .as_ref()
             .and_then(|path| path.file_name().map(|file| file.to_string_lossy().to_string()))
-            .unwrap_or(String::from("scratch file"))
     }
 
     /// The full path of the file.
@@ -343,3 +342,4 @@ where
 
 unsafe impl<U> Send for FileWidget<U> where U: Ui {}
 unsafe impl<U> Sync for FileWidget<U> where U: Ui {}
+

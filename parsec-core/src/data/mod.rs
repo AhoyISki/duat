@@ -19,7 +19,7 @@
 //!
 //! [`FileWidget<U>`]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::RwLockReadGuard};
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{atomic::Ordering, Arc, TryLockError, TryLockResult};
 
@@ -47,7 +47,7 @@ where
     /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
     /// a way that reading from one point would interfere in the
     /// update detection of the other point.
-    fn raw_read(&self) -> Self::Deref<'_> {
+    fn raw_read(&self) -> RwLockReadGuard<'_, T> {
         self.data()
     }
 
@@ -60,7 +60,7 @@ where
     /// it is important to keep the `read_state` of the inner
     /// [`RoData<T>`] intact while other clones of the
     /// [`RoNestedData<T>`] read it.
-    fn raw_try_read(&self) -> TryLockResult<Self::Deref<'_>> {
+    fn raw_try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
         self.try_data()
     }
 }
@@ -160,7 +160,7 @@ where
     /// });
     /// ```
     /// [`has_changed`]: Self::has_changed
-    fn read(&self) -> Self::Deref<'_> {
+    fn read(&self) -> RwLockReadGuard<'_, T> {
         let cur_state = self.cur_state().load(Ordering::Acquire);
         self.read_state().store(cur_state, Ordering::Release);
         self.data()
@@ -271,7 +271,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`read`]: Self::read
-    fn try_read(&self) -> TryLockResult<Self::Deref<'_>> {
+    fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
         self.try_data().inspect(|_| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -303,7 +303,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`inspect`]: Self::inspect
-    fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Result<U, TryLockError<Self::Deref<'_>>> {
+    fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -343,7 +343,6 @@ where
     /// [`try_write`]: RwData::try_write
     /// [`try_mutate`]: RwData::try_mutate
     fn has_changed(&self) -> bool {
-        let _ = self.data();
         let cur_state = self.cur_state().load(Ordering::Relaxed);
         let read_state = self.read_state().swap(cur_state, Ordering::Relaxed);
         cur_state > read_state
@@ -363,8 +362,11 @@ where
     /// assert!(data_1.ptr_eq(&data_1_clone));
     /// assert!(!data_1.ptr_eq(&data_2));
     /// ```
-    fn ptr_eq(&self, other: &impl ReadableData<T>) -> bool {
-        Arc::ptr_eq(self.cur_state(), other.cur_state())
+    fn ptr_eq<U>(&self, other: &impl ReadableData<U>) -> bool
+    where
+        U: ?Sized
+    {
+        Arc::as_ptr(self.cur_state()) as usize == Arc::as_ptr(other.cur_state()) as usize
     }
 }
 
@@ -475,7 +477,7 @@ where
 }
 
 mod private {
-    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
+    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult, RwLockReadGuard};
 
     /// Private trait for the [`RwData`] and [`RoData`] structs.
     ///
@@ -485,15 +487,11 @@ mod private {
     where
         T: ?Sized
     {
-        type Deref<'a>: std::ops::Deref<Target = T>
-        where
-            Self: 'a;
-
         /// The data, usually an [`Arc`]
-        fn data(&self) -> Self::Deref<'_>;
+        fn data(&self) -> RwLockReadGuard<'_, T>;
 
         /// Attempt to get the data, that is usually an [`Arc`]
-        fn try_data(&self) -> TryLockResult<Self::Deref<'_>>;
+        fn try_data(&self) -> TryLockResult<RwLockReadGuard<'_, T>>;
 
         /// The most up to date state of the data.
         fn cur_state(&self) -> &Arc<AtomicUsize>;

@@ -227,6 +227,18 @@ where
         }
     }
 
+    pub fn ptr_eq<R, W>(&self, other: &R) -> bool
+    where
+        R: ReadableData<W>,
+        W: Widget<U>
+    {
+        match self {
+            WidgetType::Passive(widget) => widget.ptr_eq(other),
+            WidgetType::ActScheme(widget) => widget.ptr_eq(other),
+            WidgetType::ActDirect(widget) => widget.ptr_eq(other)
+        }
+    }
+
     pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
         match self {
             WidgetType::Passive(widget) => {
