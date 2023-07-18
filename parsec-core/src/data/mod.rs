@@ -20,10 +20,10 @@
 //! [`FileWidget<U>`]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
 use std::marker::PhantomData;
-#[cfg(any(not(feature = "deadlock-detection"), not(feature = "testing-features")))]
+#[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{atomic::Ordering, Arc, TryLockError, TryLockResult};
 
-#[cfg(all(feature = "deadlock-detection", feature = "testing-features"))]
+#[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use ro::{RoData, RoNestedData};
 pub use rw::RwData;

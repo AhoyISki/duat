@@ -22,11 +22,11 @@ mod file_widget;
 mod line_numbers;
 mod status_line;
 
-#[cfg(any(not(feature = "deadlock-detection"), not(feature = "testing-features")))]
+#[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
-#[cfg(all(feature = "deadlock-detection", feature = "testing-features"))]
+#[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
 use crate::{

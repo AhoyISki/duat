@@ -54,12 +54,12 @@
 pub mod file_parts;
 
 pub use file_parts::{file_name, len_lines, main_col, main_line, selections};
-use crate::status_parts;
 
 use self::Reader::*;
 use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoNestedData},
+    status_parts,
     text::{Tag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     Controler

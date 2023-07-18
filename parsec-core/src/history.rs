@@ -53,11 +53,7 @@ impl Change {
 
         let taken_text: String = text.iter_chars_at(start).take(end - start).collect();
 
-        Change {
-            start,
-            added_text: edit,
-            taken_text
-        }
+        Change { start, added_text: edit, taken_text }
     }
 
     /// In this function, it is assumed that [`self`] happened _after_
@@ -262,21 +258,13 @@ where
     /// Gets a mutable reference to the current [Moment], if not at
     /// the very beginning.
     fn current_moment_mut(&mut self) -> Option<&mut Moment<U>> {
-        if self.current_moment > 0 {
-            self.moments.get_mut(self.current_moment - 1)
-        } else {
-            None
-        }
+        if self.current_moment > 0 { self.moments.get_mut(self.current_moment - 1) } else { None }
     }
 
     /// Gets a reference to the current [Moment], if not at the very
     /// beginning.
     pub fn current_moment(&self) -> Option<&Moment<U>> {
-        if self.current_moment > 0 {
-            self.moments.get(self.current_moment - 1)
-        } else {
-            None
-        }
+        if self.current_moment > 0 { self.moments.get(self.current_moment - 1) } else { None }
     }
 
     /// Adds a [Change] to the current [Moment], or adds it to a new

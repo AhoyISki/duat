@@ -68,7 +68,10 @@ where
 
         #[cfg(all(feature = "wacky-colors", feature = "testing-features"))]
         {
-            use crate::{forms::FILE_NAME, text::{Tag, Handle}};
+            use crate::{
+                forms::FILE_NAME,
+                text::{Handle, Tag}
+            };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
             for index in (0..tagger.len_chars()).step_by(50) {

@@ -483,10 +483,7 @@ impl Command {
         if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
-        Self {
-            f: RwData::new_unsized(Arc::new(RwLock::new(f))),
-            callers
-        }
+        Self { f: RwData::new_unsized(Arc::new(RwLock::new(f))), callers }
     }
 
     /// Executes the inner function if the `caller` matches any of the
@@ -708,22 +705,23 @@ impl Commands {
             file_id: None
         });
 
-        let commands_clone = commands.clone();
-        let alias_callers = vec!["alias"];
-        let alias_command = Command::new(alias_callers, move |flags, args| {
-            if !flags.is_empty() {
-                Err(String::from(
-                    "An alias cannot take any flags, try moving them after the command, like \
-                     \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
-                     my-alias my-caller\""
-                ))
-            } else {
-                let alias = args.next().ok_or(String::from("No alias supplied"))?;
-                commands_clone.read().try_alias(alias, args).map_err(|err| err.to_string())
-            }
-        });
+        let alias = {
+            let commands = commands.clone();
+            Command::new(vec!["alias"], move |flags, args| {
+                if !flags.is_empty() {
+                    Err(String::from(
+                        "An alias cannot take any flags, try moving them after the command, like \
+                         \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
+                         my-alias my-caller\""
+                    ))
+                } else {
+                    let alias = args.next().ok_or(String::from("No alias supplied"))?;
+                    commands.read().try_alias(alias, args).map_err(|err| err.to_string())
+                }
+            })
+        };
 
-        commands.write().try_add(alias_command).unwrap();
+        commands.write().try_add(alias).unwrap();
 
         commands
     }

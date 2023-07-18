@@ -1,4 +1,4 @@
-#[cfg(not(feature = "deadlock-detection"))]
+#[cfg(any(not(feature = "deadlock-detection"), feature = "disable-testing"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     marker::PhantomData,
@@ -8,7 +8,7 @@ use std::{
     }
 };
 
-#[cfg(feature = "deadlock-detection")]
+#[cfg(all(feature = "deadlock-detection", not(feature = "disable-testing")))]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{DataCastErr, DataRetrievalErr, ReadableData};
@@ -93,7 +93,11 @@ where
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
         // second value - 1.
-        Self { data, cur_state: Arc::new(AtomicUsize::new(1)), read_state: AtomicUsize::new(1) }
+        Self {
+            data,
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1)
+        }
     }
 
     /// Blocking mutable reference to the information.

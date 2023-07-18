@@ -332,11 +332,7 @@ impl std::fmt::Display for Cursor {
 
 impl Clone for Cursor {
     fn clone(&self) -> Self {
-        Cursor {
-            desired_col: self.caret.col,
-            assoc_index: None,
-            ..*self
-        }
+        Cursor { desired_col: self.caret.col, assoc_index: None, ..*self }
     }
 }
 
@@ -363,13 +359,7 @@ where
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
         cursor.calibrate_on_accum(edit_accum, text);
-        Self {
-            cursor,
-            text,
-            edit_accum,
-            print_info,
-            history
-        }
+        Self { cursor, text, edit_accum, print_info, history }
     }
 
     /// Replaces the entire selection of the `TextCursor` with new
@@ -443,12 +433,7 @@ where
     pub fn new(
         cursor: &'a mut Cursor, text: &'a Text, area: &'a U::Area, print_cfg: PrintCfg
     ) -> Self {
-        Self {
-            cursor,
-            text,
-            area,
-            print_cfg
-        }
+        Self { cursor, text, area, print_cfg }
     }
 
     ////////// Public movement functions

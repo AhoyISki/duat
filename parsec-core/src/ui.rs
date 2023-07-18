@@ -11,8 +11,8 @@ use no_deadlocks::RwLock;
 use crate::{
     commands::{CommandErr, Commands},
     data::{ReadableData, RoData, RwData},
-    position::Pos,
     forms::FormPalette,
+    position::Pos,
     text::{PrintCfg, Text, TextBit},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
@@ -80,66 +80,42 @@ pub struct PushSpecs {
 impl PushSpecs {
     /// Returns a new instance of [`PushSpecs`].
     pub fn left(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Left,
-            constraint: Some(constraint)
-        }
+        PushSpecs { side: Side::Left, constraint: Some(constraint) }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn right(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Right,
-            constraint: Some(constraint)
-        }
+        PushSpecs { side: Side::Right, constraint: Some(constraint) }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn above(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Above,
-            constraint: Some(constraint)
-        }
+        PushSpecs { side: Side::Above, constraint: Some(constraint) }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn below(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Below,
-            constraint: Some(constraint)
-        }
+        PushSpecs { side: Side::Below, constraint: Some(constraint) }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn left_free() -> Self {
-        PushSpecs {
-            side: Side::Left,
-            constraint: None
-        }
+        PushSpecs { side: Side::Left, constraint: None }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn right_free() -> Self {
-        PushSpecs {
-            side: Side::Right,
-            constraint: None
-        }
+        PushSpecs { side: Side::Right, constraint: None }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn above_free() -> Self {
-        PushSpecs {
-            side: Side::Above,
-            constraint: None
-        }
+        PushSpecs { side: Side::Above, constraint: None }
     }
 
     /// Returns a new instance of [`PushSpecs`].
     pub fn below_free() -> Self {
-        PushSpecs {
-            side: Side::Below,
-            constraint: None
-        }
+        PushSpecs { side: Side::Below, constraint: None }
     }
 
     pub fn comes_earlier(&self) -> bool {
@@ -453,9 +429,8 @@ pub(crate) fn activate_hook<U, W>(
     let (widget, old_file, old_file_id) = controler.inspect_active_window(|window| {
         let node = window.nodes.iter().find(|Node { area, .. }| *area == mod_area).unwrap();
 
-        let old_file_id = node
-            .file_id
-            .and_then(|file_id| controler.commands.write().file_id.replace(file_id));
+        let old_file_id =
+            node.file_id.and_then(|file_id| controler.commands.write().file_id.replace(file_id));
 
         let old_file = node.widget_type.downcast_ref::<FileWidget<U>>().map(|file| {
             std::mem::replace(&mut *controler.active_file.write(), RoData::from(&file))
@@ -498,11 +473,7 @@ impl Axis {
 
 impl From<PushSpecs> for Axis {
     fn from(value: PushSpecs) -> Self {
-        if let Side::Above | Side::Below = value.side {
-            Axis::Vertical
-        } else {
-            Axis::Horizontal
-        }
+        if let Side::Above | Side::Below = value.side { Axis::Vertical } else { Axis::Horizontal }
     }
 }
 
@@ -656,7 +627,7 @@ where
         let file_id = unique_file_id();
 
         let checker = || false;
-        let (child, parent) = self.push(widget_type, &area, checker, specs, Some(file_id), false);
+        let (child, parent) = self.push(widget_type, &area, || false, specs, Some(file_id), false);
         if let Some(parent) = &parent {
             self.files_area = parent.clone();
         }
@@ -680,14 +651,9 @@ where
     pub fn widgets(
         &self
     ) -> impl Iterator<Item = (&WidgetType<U>, &U::Area, Option<usize>)> + Clone + '_ {
-        self.nodes.iter().map(
-            |Node {
-                 widget_type,
-                 area,
-                 file_id,
-                 ..
-             }| (widget_type, area, *file_id)
-        )
+        self.nodes
+            .iter()
+            .map(|Node { widget_type, area, file_id, .. }| (widget_type, area, *file_id))
     }
 
     pub fn nodes(&self) -> impl Iterator<Item = &Node<U>> {
@@ -742,17 +708,10 @@ where
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
     pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn Widget<U>) -> B) -> B {
-        self.0.nodes.iter().fold(
-            init,
-            |accum,
-             Node {
-                 widget_type: widget,
-                 ..
-             }| {
-                let f = &mut f;
-                widget.raw_inspect(|widget| f(accum, widget))
-            }
-        )
+        self.0.nodes.iter().fold(init, |accum, Node { widget_type: widget, .. }| {
+            let f = &mut f;
+            widget.raw_inspect(|widget| f(accum, widget))
+        })
     }
 }
 

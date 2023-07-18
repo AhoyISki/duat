@@ -140,11 +140,7 @@ where
             let file = controler.active_file();
             let builder = file.inspect(|file| setup_builder(file, &cfg));
 
-            let vert_rule = VertRule {
-                file: file.clone(),
-                builder,
-                cfg
-            };
+            let vert_rule = VertRule { file: file.clone(), builder, cfg };
 
             let checker = Box::new(move || file.has_changed());
             let passive = WidgetType::passive(vert_rule);

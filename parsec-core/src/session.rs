@@ -7,6 +7,7 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     input::{KeyRemapper, Scheme},
+    log_info,
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
     widgets::{FileWidget, WidgetType},
@@ -32,7 +33,6 @@ where
         mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
         mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
     ) -> Self {
-        #[cfg(feature = "testing-features")]
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
@@ -64,10 +64,9 @@ where
 
     pub fn open_file(&mut self, path: PathBuf) {
         let file_widget = FileWidget::scheme(Some(path), self.print_cfg.read().clone());
-        let (area, _) = self.controler.windows.mutate(|windows| {
-            let active_window = &mut windows[self.controler.active_window];
-            active_window.push_file(file_widget, PushSpecs::right_free())
-        });
+        let (area, _) = self
+            .controler
+            .mutate_active_window(|window| window.push_file(file_widget, PushSpecs::right_free()));
 
         activate_hook(&mut self.controler, area, &mut self.constructor_hook);
     }
@@ -165,6 +164,7 @@ where
 
             let mut files = std::mem::take(&mut *self.controler.files_to_open.write());
             for file in files.drain(..) {
+                log_info!("Drained one file");
                 self.open_file(file);
             }
 

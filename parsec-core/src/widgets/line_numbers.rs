@@ -54,11 +54,8 @@ where
         move |controler| {
             let file = controler.active_file();
 
-            let mut line_numbers = LineNumbers {
-                file: file.clone(),
-                builder: TextBuilder::default(),
-                cfg
-            };
+            let mut line_numbers =
+                LineNumbers { file: file.clone(), builder: TextBuilder::default(), cfg };
             line_numbers.update_text();
 
             let widget_type = WidgetType::passive(line_numbers);
@@ -100,11 +97,8 @@ where
             let text = get_text(*line, main_line, *is_wrapped, &self.cfg);
 
             let align_tag = {
-                let alignment = if *line == main_line {
-                    self.cfg.main_alignment
-                } else {
-                    self.cfg.alignment
-                };
+                let alignment =
+                    if *line == main_line { self.cfg.main_alignment } else { self.cfg.alignment };
                 match alignment {
                     Alignment::Left => Tag::AlignLeft,
                     Alignment::Right => Tag::AlignRight,

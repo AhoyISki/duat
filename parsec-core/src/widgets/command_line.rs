@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{EditAccum, ActSchemeWidget, Widget, WidgetType};
+use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     commands::{Command, Commands},
     data::{AsAny, ReadableData, RwData},
@@ -95,8 +95,7 @@ where
 {
     fn update(&mut self, area: &U::Area) {
         let print_cfg = PrintCfg::default();
-        self.print_info
-            .scroll_to_gap(&self.text, self.cursor[0].caret(), area, &print_cfg);
+        self.print_info.scroll_to_gap(&self.text, self.cursor[0].caret(), area, &print_cfg);
     }
 
     fn text(&self) -> &Text {

@@ -68,10 +68,7 @@ struct VarPoint {
 impl VarPoint {
     /// Returns a new instance of [`VarPoint`]
     fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
-        let element = VarPoint {
-            x: VarValue::new(),
-            y: VarValue::new()
-        };
+        let element = VarPoint { x: VarValue::new(), y: VarValue::new() };
 
         vars.insert(element.x.var, (element.x.value.clone(), element.x.has_changed.clone()));
         vars.insert(element.y.var, (element.y.value.clone(), element.y.has_changed.clone()));
@@ -218,11 +215,8 @@ impl Rect {
     fn set_main_constraints(
         &mut self, frame: Frame, solver: &mut Solver, edges: &mut Vec<Edge>, max: Coord
     ) {
-        let (hor_edge, ver_edge) = if self.is_frameable(None) {
-            frame.main_edges()
-        } else {
-            (0.0, 0.0)
-        };
+        let (hor_edge, ver_edge) =
+            if self.is_frameable(None) { frame.main_edges() } else { (0.0, 0.0) };
 
         edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         if hor_edge == 1.0 {
@@ -407,12 +401,7 @@ pub struct Edge {
 impl Edge {
     /// Returns a new instance of [`Edge`].
     fn new(center: VarPoint, target: VarPoint, axis: Axis, frame: Frame) -> Self {
-        Self {
-            center,
-            target,
-            axis,
-            frame
-        }
+        Self { center, target, axis, frame }
     }
 
     /// Checks if the [`VarPoint`]s of a given [`Rect`] match with the
@@ -511,10 +500,7 @@ impl LineCoords {
             };
 
             if up.is_some() || down.is_some() {
-                let coord = Coord {
-                    x: other.tl.x,
-                    y: self.tl.y
-                };
+                let coord = Coord { x: other.tl.x, y: self.tl.y };
 
                 Some((coord, right, up, left, down))
             } else {
@@ -692,9 +678,7 @@ impl Layout {
     /// Fetches the [`RwData<Rect>`] of the given index, if there is
     /// one.
     pub fn fetch_index(&self, index: AreaIndex) -> Option<RwData<Rect>> {
-        std::iter::once(&self.main)
-            .chain(&self.floating)
-            .find_map(|rect| fetch_index(rect, index))
+        std::iter::once(&self.main).chain(&self.floating).find_map(|rect| fetch_index(rect, index))
     }
 
     /// Fetches the [`RwData<Rect>`] which holds the [`RwData<Rect>`]
@@ -703,9 +687,7 @@ impl Layout {
     /// Also returns the child's "child index", given an [`Axis`],
     /// going top to bottom or left to right.
     pub fn fetch_parent(&self, index: AreaIndex) -> Option<(RwData<Rect>, usize)> {
-        std::iter::once(&self.main)
-            .chain(&self.floating)
-            .find_map(|rect| fetch_parent(rect, index))
+        std::iter::once(&self.main).chain(&self.floating).find_map(|rect| fetch_parent(rect, index))
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,

@@ -58,11 +58,7 @@ where
     I: Scheme
 {
     pub fn new(takes: &[KeyEvent], gives: &[KeyEvent], condition: Box<dyn Fn(&I) -> bool>) -> Self {
-        Self {
-            takes: takes.to_vec(),
-            gives: gives.to_vec(),
-            condition
-        }
+        Self { takes: takes.to_vec(), gives: gives.to_vec(), condition }
     }
 }
 

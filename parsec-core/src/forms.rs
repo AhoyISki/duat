@@ -148,11 +148,7 @@ impl Default for FormPalette {
             (String::from("Separator"), Named::Form(Form::new().cyan())),
         ];
 
-        Self {
-            main_cursor,
-            extra_cursor: main_cursor,
-            forms
-        }
+        Self { main_cursor, extra_cursor: main_cursor, forms }
     }
 }
 
@@ -228,10 +224,7 @@ impl FormPalette {
     }
 
     pub fn form_former(&self) -> FormFormer {
-        FormFormer {
-            palette: self,
-            forms: Vec::new()
-        }
+        FormFormer { palette: self, forms: Vec::new() }
     }
 }
 
@@ -259,10 +252,7 @@ impl<'a> FormFormer<'a> {
             attributes: Attributes::default()
         };
 
-        let mut form = Form {
-            style,
-            is_final: false
-        };
+        let mut form = Form { style, is_final: false };
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 

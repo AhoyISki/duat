@@ -30,7 +30,6 @@ pub mod widgets;
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
-#[cfg(feature = "testing-features")]
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 /// A general manager for Parsec, that can be called upon by certain
@@ -260,7 +259,7 @@ where
         });
 
         let files_to_open = manager.files_to_open.clone();
-        let open_files = Command::new(vec!["edit", "e"], move |_, files| {
+        let edit = Command::new(vec!["edit", "e"], move |_, files| {
             BREAK_LOOP.store(true, Ordering::Release);
             *files_to_open.write() = files.map(PathBuf::from).collect();
             Ok(None)
@@ -268,7 +267,7 @@ where
 
         manager.commands.mutate(|commands| {
             commands.try_add(quit).unwrap();
-            commands.try_add(open_files).unwrap();
+            commands.try_add(edit).unwrap();
         });
 
         manager
@@ -396,7 +395,6 @@ macro_rules! status_parts {
 
 /// Internal macro used to log information.
 #[macro_export]
-#[cfg(feature = "testing-features")]
 macro_rules! log_info {
     ($($text:tt)*) => {{
         use std::{fs, io::Write, time::Instant};

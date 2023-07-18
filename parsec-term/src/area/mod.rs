@@ -91,10 +91,7 @@ impl Area {
         let rect = layout.fetch_index(self.index).unwrap();
         let rect = rect.read();
 
-        Coords {
-            tl: rect.tl(),
-            br: rect.br()
-        }
+        Coords { tl: rect.tl(), br: rect.br() }
     }
 
     fn wrapping_coords(&self, cfg: &PrintCfg) -> Coords {
@@ -107,10 +104,7 @@ impl Area {
             _ => rect.br().x - rect.tl().x
         };
 
-        Coords {
-            tl: rect.tl(),
-            br: Coord::new(rect.tl().x + width, rect.br().y)
-        }
+        Coords { tl: rect.tl(), br: Coord::new(rect.tl().x + width, rect.br().y) }
     }
 }
 
@@ -208,9 +202,9 @@ impl ui::Area for Area {
                     .filter_map(|(new_line, ..)| new_line)
                     .count()
             }
-            WrapMethod::Word => words(indents, coords.width(), cfg)
-                .filter_map(|(new_line, ..)| new_line)
-                .count(),
+            WrapMethod::Word => {
+                words(indents, coords.width(), cfg).filter_map(|(new_line, ..)| new_line).count()
+            }
             WrapMethod::NoWrap => 1
         }
     }
@@ -352,10 +346,8 @@ impl PrintInfo {
             }
         }
 
-        if let Some(&index) = limit
-            .checked_sub(1)
-            .and_then(|index| indices.get(index))
-            .or_else(|| indices.last())
+        if let Some(&index) =
+            limit.checked_sub(1).and_then(|index| indices.get(index)).or_else(|| indices.last())
         {
             if (index < self.first_char && self.last_main > pos)
                 || (index > self.first_char && self.last_main < pos)
@@ -456,9 +448,9 @@ impl ui::PrintInfo for PrintInfo {
 
 fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16 {
     match char {
-        '\t' => (tab_stops.spaces_at(start as usize) as u16)
-            .min(max_width.saturating_sub(start))
-            .max(1),
+        '\t' => {
+            (tab_stops.spaces_at(start as usize) as u16).min(max_width.saturating_sub(start)).max(1)
+        }
         '\n' => 1,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
@@ -663,12 +655,7 @@ fn print_line(
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
     let (x, y) = (coords.tl.x, cursor.y);
-    queue!(
-        stdout,
-        ResetColor,
-        Print(" ".repeat(len.min(coords.width()))),
-        cursor::MoveTo(x, y)
-    );
+    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), cursor::MoveTo(x, y));
 }
 
 fn indent_line(

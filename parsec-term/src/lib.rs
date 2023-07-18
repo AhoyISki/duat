@@ -65,10 +65,7 @@ pub struct Ui {
 
 impl Ui {
     pub fn new(frame: Frame) -> Self {
-        Self {
-            windows: Vec::new(),
-            frame
-        }
+        Self { windows: Vec::new(), frame }
     }
 }
 
@@ -79,9 +76,7 @@ impl ui::Ui for Ui {
     type Window = Window;
 
     fn new_window(&mut self) -> (Self::Window, Self::Area) {
-        let window = Window {
-            layout: RwData::new(Layout::new(self.frame))
-        };
+        let window = Window { layout: RwData::new(Layout::new(self.frame)) };
 
         let area = Area {
             layout: window.layout.clone(),
