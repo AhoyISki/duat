@@ -1,5 +1,5 @@
 #![feature(extract_if, result_option_inspect, trait_upcasting, let_chains, option_zip)]
-#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
+#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity, clippy::vec_init_then_push)]
 
 use std::{
     marker::PhantomData,
@@ -385,10 +385,24 @@ macro_rules! join {
 macro_rules! status_parts {
     () => { Vec::new() };
 
-    ($($part:expr),+ $(,)?) => {
+    (@process $parts:expr; $part:expr $(,)?) => {
+        $parts.push(StatusPart::from($part));
+    };
+
+    (@process $parts:expr; $part:expr, $($remainder:tt)*) => {
+        $parts.push(StatusPart::from($part));
+
+        status_parts!(@process $parts; $($remainder)*);
+    };
+
+    ($($text:tt)*) => {
         {
             use $crate::widgets::StatusPart;
-            vec![$(StatusPart::from($part)),+]
+            let mut parts = Vec::new();
+
+            status_parts!(@process parts; $($text)*);
+
+            parts
         }
     };
 }

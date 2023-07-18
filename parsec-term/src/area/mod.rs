@@ -15,7 +15,8 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Pos,
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint}};
+    ui::{self, Area as UiArea, Axis, Constraint}
+};
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
