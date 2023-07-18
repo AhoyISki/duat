@@ -15,8 +15,7 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Pos,
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint}
-};
+    ui::{self, Area as UiArea, Axis, Constraint}};
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
@@ -279,7 +278,7 @@ impl ui::Area for Area {
     fn is_senior_of(&self, other: &Self) -> bool {
         self.layout.inspect(|layout| {
             let mut parent_index = other.index;
-            while let Some((parent, _)) = layout.fetch_parent(other.index) {
+            while let Some((parent, _)) = layout.fetch_parent(parent_index) {
                 parent_index = parent.read().index();
                 if parent_index == self.index {
                     break;

@@ -332,8 +332,8 @@ where
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
 
             if let (Some(parent), true) = (&parent, self.is_file) {
-                if parent.is_senior_of(&window.files_area) {
-                    window.files_area = parent.clone();
+                if parent.is_senior_of(&window.files_region) {
+                    window.files_region = parent.clone();
                 }
             }
 
@@ -390,9 +390,11 @@ where
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
 
+            // If a new parent is created, and it owns the old `files_region`
+            // (.i.e all files), then it must become the new files_region.
             if let (Some(parent), true) = (&parent, self.is_file) {
-                if parent.is_senior_of(&window.files_area) {
-                    window.files_area = parent.clone();
+                if parent.is_senior_of(&window.files_region) {
+                    window.files_region = parent.clone();
                 }
             }
 
@@ -451,7 +453,7 @@ pub(crate) fn activate_hook<U, W>(
 
     controler.commands.write().file_id = old_file_id;
     if let Some(file) = old_file {
-        *controler.active_file.write() = file
+        *controler.active_file.write() = file;
     };
 }
 
@@ -554,7 +556,7 @@ where
 {
     window: U::Window,
     nodes: Vec<Node<U>>,
-    files_area: U::Area,
+    files_region: U::Area,
     master_area: U::Area
 }
 
@@ -581,7 +583,7 @@ where
         let parsec_window = ParsecWindow {
             window,
             nodes: vec![main_node],
-            files_area: area.clone(),
+            files_region: area.clone(),
             master_area: area.clone()
         };
 
@@ -623,13 +625,13 @@ where
     pub fn push_file(
         &mut self, widget_type: WidgetType<U>, specs: PushSpecs
     ) -> (U::Area, Option<U::Area>) {
-        let area = self.files_area.clone();
+        let area = self.files_region.clone();
         let file_id = unique_file_id();
 
         let checker = || false;
-        let (child, parent) = self.push(widget_type, &area, || false, specs, Some(file_id), false);
+        let (child, parent) = self.push(widget_type, &area, checker, specs, Some(file_id), false);
         if let Some(parent) = &parent {
-            self.files_area = parent.clone();
+            self.files_region = parent.clone();
         }
 
         (child, parent)

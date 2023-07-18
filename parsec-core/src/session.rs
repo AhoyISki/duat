@@ -7,7 +7,6 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     input::{KeyRemapper, Scheme},
-    log_info,
     text::PrintCfg,
     ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
     widgets::{FileWidget, WidgetType},
@@ -164,7 +163,6 @@ where
 
             let mut files = std::mem::take(&mut *self.controler.files_to_open.write());
             for file in files.drain(..) {
-                log_info!("Drained one file");
                 self.open_file(file);
             }
 
