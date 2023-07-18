@@ -19,9 +19,9 @@
 //!
 //! [`FileWidget<U>`]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
-use std::{marker::PhantomData, sync::RwLockReadGuard};
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{atomic::Ordering, Arc, TryLockError, TryLockResult};
+use std::{marker::PhantomData, sync::RwLockReadGuard};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -303,7 +303,9 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`inspect`]: Self::inspect
-    fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
+    fn try_inspect<U>(
+        &self, f: impl FnOnce(&T) -> U
+    ) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -477,7 +479,7 @@ where
 }
 
 mod private {
-    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult, RwLockReadGuard};
+    use std::sync::{atomic::AtomicUsize, Arc, RwLockReadGuard, TryLockResult};
 
     /// Private trait for the [`RwData`] and [`RoData`] structs.
     ///

@@ -197,6 +197,44 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     fn has_changed(&self) -> bool;
 
     fn is_senior_of(&self, other: &Self) -> bool;
+    /// Bisects the [`Area`][Window::Area] with the given index into
+    /// two.
+    ///
+    /// Will return 2 indices, the first one is the index of a new
+    /// area. The second is an index for a newly created parent
+    ///
+    /// As an example, assuming that [`self`] has an index of `0`,
+    /// pushing an area to [`self`] on [`Side::Left`] would create
+    /// 2 new areas:
+    ///
+    /// ```text
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │                 │     │╭──2───╮╭───1───╮│
+    /// │      self       │ --> ││      ││ self  ││
+    /// │                 │     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// This means that `0` is now the index of the newly created
+    /// parent, `2` is the index of the new area, and `1` is the new
+    /// index of the initial area. In the end, [`Window::bisect()`]
+    /// should return `(2, Some(1))`.
+    ///
+    /// That doesn't always happen though. For example, pushing
+    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
+    /// this situation, should not result in the creation of a new
+    /// parent:
+    ///
+    /// ```text
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
+    /// ││      ││ self  ││     ││   ││self ││   ││
+    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    /// ```
+    ///
+    /// And so [`Window::bisect()`] should return `(3, None)`.
+    fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Self, Option<Self>);
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -479,68 +517,19 @@ impl From<PushSpecs> for Axis {
     }
 }
 
-/// An abstract representation of a "viewport" of Parsec.
-///
-/// Only one [`Window`] may be shown at a time, and they contain all
-/// [`Widget<U>`]s that should be displayed, both static and floating.
-pub trait Window: Clone + 'static {
-    type Area: Area;
-
-    /// Bisects the [`Area`][Window::Area] with the given index into
-    /// two.
-    ///
-    /// Will return 2 indices, the first one is the index of a new
-    /// area. The second is an index for a newly created parent
-    ///
-    /// As an example, assuming that [`self`] has an index of `0`,
-    /// pushing an area to [`self`] on [`Side::Left`] would create
-    /// 2 new areas:
-    ///
-    /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │                 │     │╭──2───╮╭───1───╮│
-    /// │      self       │ --> ││      ││ self  ││
-    /// │                 │     │╰──────╯╰───────╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// This means that `0` is now the index of the newly created
-    /// parent, `2` is the index of the new area, and `1` is the new
-    /// index of the initial area. In the end, [`Window::bisect()`]
-    /// should return `(2, Some(1))`.
-    ///
-    /// That doesn't always happen though. For example, pushing
-    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
-    /// this situation, should not result in the creation of a new
-    /// parent:
-    ///
-    /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
-    /// ││      ││ self  ││     ││   ││self ││   ││
-    /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
-    /// ╰─────────────────╯     ╰─────────────────╯
-    /// ```
-    ///
-    /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(
-        &mut self, index: &Self::Area, specs: PushSpecs, is_glued: bool
-    ) -> (Self::Area, Option<Self::Area>);
-}
-
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Default + 'static {
     type PrintInfo: PrintInfo<Area = Self::Area>;
     type ConstraintChangeErr: Debug;
     type Area: Area<PrintInfo = Self::PrintInfo, ConstraintChangeErr = Self::ConstraintChangeErr>;
-    type Window: Window<Area = Self::Area>;
 
-    /// Initiates and returns a new [`Window`][Ui::Window].
+    /// Initiates and returns a new "master" [`Area`][Ui::Area].
     ///
-    /// Also returns the newly created [`Area`][Ui::Area] of that
-    /// [`Window`][Ui::Window].
-    fn new_window(&mut self) -> (Self::Window, Self::Area);
+    /// This [`Area`][Ui::Area] must not have any parents, and must be
+    /// the located on a new window, that is, a plain region with
+    /// nothing in it.
+    fn new_window(&mut self) -> Self::Area;
 
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
@@ -549,27 +538,26 @@ pub trait Ui: Default + 'static {
     fn shutdown(&mut self);
 }
 
-/// A container for a [`Window`] in Parsec.
-pub struct ParsecWindow<U>
+/// A container for a master [`Area`] in Parsec.
+pub struct Window<U>
 where
     U: Ui
 {
-    window: U::Window,
     nodes: Vec<Node<U>>,
     files_region: U::Area,
     master_area: U::Area
 }
 
-impl<U> ParsecWindow<U>
+impl<U> Window<U>
 where
     U: Ui + 'static
 {
-    /// Returns a new instance of [`ParsecWindow<U>`].
+    /// Returns a new instance of [`Window<U>`].
     pub fn new<Checker>(ui: &mut U, widget_type: WidgetType<U>, checker: Checker) -> (Self, U::Area)
     where
         Checker: Fn() -> bool + 'static
     {
-        let (window, area) = ui.new_window();
+        let area = ui.new_window();
         widget_type.update(&area);
 
         let main_node = Node {
@@ -580,8 +568,7 @@ where
             not_updated: AtomicBool::new(false)
         };
 
-        let parsec_window = ParsecWindow {
-            window,
+        let parsec_window = Self {
             nodes: vec![main_node],
             files_region: area.clone(),
             master_area: area.clone()
@@ -598,7 +585,7 @@ where
     where
         Checker: Fn() -> bool + 'static
     {
-        let (child, parent) = self.window.bisect(area, specs, is_glued);
+        let (child, parent) = area.bisect(specs, is_glued);
 
         let node = Node {
             widget_type,
@@ -674,7 +661,7 @@ where
     }
 }
 
-pub struct RoWindow<'a, U>(&'a ParsecWindow<U>)
+pub struct RoWindow<'a, U>(&'a Window<U>)
 where
     U: Ui;
 
@@ -718,7 +705,7 @@ where
     }
 }
 
-pub struct RoWindows<U>(RoData<Vec<ParsecWindow<U>>>)
+pub struct RoWindows<U>(RoData<Vec<Window<U>>>)
 where
     U: Ui;
 
@@ -726,7 +713,7 @@ impl<U> RoWindows<U>
 where
     U: Ui
 {
-    pub fn new(windows: RoData<Vec<ParsecWindow<U>>>) -> Self {
+    pub fn new(windows: RoData<Vec<Window<U>>>) -> Self {
         RoWindows(windows)
     }
 

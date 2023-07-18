@@ -11,7 +11,7 @@ use crossterm::{
 use layout::{Frame, Layout};
 use parsec_core::{
     data::{ReadableData, RwData},
-    ui::{self, PushSpecs}
+    ui
 };
 
 mod area;
@@ -26,28 +26,6 @@ pub enum Anchor {
     BottomRight
 }
 
-#[derive(Debug, Clone)]
-pub struct Window {
-    layout: RwData<Layout>
-}
-
-impl ui::Window for Window {
-    type Area = Area;
-
-    fn bisect(&mut self, area: &Area, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
-        let (child, parent) =
-            self.layout.mutate(|layout| layout.bisect(area.index, specs, is_glued));
-
-        (
-            Area::new(self.layout.clone(), child),
-            parent.map(|parent| Area::new(self.layout.clone(), parent))
-        )
-    }
-}
-
-unsafe impl Send for Window {}
-unsafe impl Sync for Window {}
-
 #[derive(Clone, Copy, PartialEq)]
 pub struct AreaIndex(usize);
 
@@ -59,7 +37,7 @@ impl std::fmt::Debug for AreaIndex {
 
 #[derive(Default)]
 pub struct Ui {
-    windows: Vec<Window>,
+    windows: Vec<Area>,
     frame: Frame
 }
 
@@ -73,10 +51,13 @@ impl ui::Ui for Ui {
     type ConstraintChangeErr = ConstraintChangeErr;
     type PrintInfo = PrintInfo;
     type Area = Area;
-    type Window = Window;
 
-    fn new_window(&mut self) -> (Self::Window, Self::Area) {
-        let window = Window { layout: RwData::new(Layout::new(self.frame)) };
+    fn new_window(&mut self) -> Self::Area {
+        let layout = Layout::new(self.frame);
+        let window = {
+            let index = layout.main_index();
+            Area::new(RwData::new(layout), index)
+        };
 
         let area = Area {
             layout: window.layout.clone(),
@@ -85,7 +66,7 @@ impl ui::Ui for Ui {
 
         self.windows.push(window.clone());
 
-        (window, area)
+        area
     }
 
     fn startup(&mut self) {

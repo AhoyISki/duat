@@ -8,7 +8,7 @@ use crate::{
     forms::FormPalette,
     input::{KeyRemapper, Scheme},
     text::PrintCfg,
-    ui::{activate_hook, ModNode, ParsecWindow, PushSpecs, Ui},
+    ui::{activate_hook, ModNode, Window, PushSpecs, Ui},
     widgets::{FileWidget, WidgetType},
     Controler, BREAK_LOOP, SHOULD_QUIT
 };
@@ -37,7 +37,7 @@ where
         let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
         let file = FileWidget::<U>::scheme(file, print_cfg.clone());
 
-        let (window, area) = ParsecWindow::new(&mut ui, file, || false);
+        let (window, area) = Window::new(&mut ui, file, || false);
         let mut controler = Controler::new(window, palette);
         controler.commands.write().file_id = Some(0);
         activate_hook(&mut controler, area, &mut constructor_hook);

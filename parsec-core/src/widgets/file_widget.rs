@@ -342,4 +342,3 @@ where
 
 unsafe impl<U> Send for FileWidget<U> where U: Ui {}
 unsafe impl<U> Sync for FileWidget<U> where U: Ui {}
-

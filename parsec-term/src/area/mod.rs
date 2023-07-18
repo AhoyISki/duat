@@ -15,7 +15,7 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Pos,
     text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint}
+    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -128,6 +128,16 @@ impl ui::Area for Area {
 
     fn set_as_active(&self) {
         self.layout.write().active_index = self.index;
+    }
+
+    fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
+        let (child, parent) =
+            self.layout.mutate(|layout| layout.bisect(self.index, specs, is_glued));
+
+        (
+            Area::new(self.layout.clone(), child),
+            parent.map(|parent| Area::new(self.layout.clone(), parent))
+        )
     }
 
     fn print(&self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {

@@ -19,7 +19,7 @@ use parsec_core::{
 use crate::{area::Coord, AreaIndex};
 
 /// Generates a unique index for [`Rect`]s.
-fn unique_rect_index() -> AreaIndex {
+pub(crate) fn unique_area_index() -> AreaIndex {
     static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
     AreaIndex(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
@@ -147,7 +147,7 @@ impl Rect {
     /// [`Variable`]s to the list.
     fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
         Rect {
-            index: unique_rect_index(),
+            index: unique_area_index(),
             tl: VarPoint::new(vars),
             br: VarPoint::new(vars),
             edge_cons: Vec::new(),
@@ -162,7 +162,7 @@ impl Rect {
         vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>, new_glued: bool
     ) -> Self {
         let parent = Rect {
-            index: unique_rect_index(),
+            index: unique_area_index(),
             tl: rect.tl.clone(),
             br: rect.br.clone(),
             edge_cons: rect.edge_cons.clone(),

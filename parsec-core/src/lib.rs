@@ -13,7 +13,7 @@ use std::{
 use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use forms::FormPalette;
-use ui::{Area, ParsecWindow, RoWindows, Ui};
+use ui::{Area, Window, RoWindows, Ui};
 use widgets::{ActSchemeWidget, FileWidget};
 
 pub mod commands;
@@ -38,7 +38,7 @@ pub struct Controler<U>
 where
     U: Ui
 {
-    windows: RwData<Vec<ParsecWindow<U>>>,
+    windows: RwData<Vec<Window<U>>>,
     active_window: usize,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
@@ -248,7 +248,7 @@ where
     U: Ui
 {
     /// Returns a new instance of [`Controler`].
-    fn new(window: ParsecWindow<U>, palette: FormPalette) -> Self {
+    fn new(window: Window<U>, palette: FormPalette) -> Self {
         // NOTE: For now, we're picking the first file as active.
         let (widget, ..) =
             window.widgets().find(|(widget, ..)| widget.data_is::<FileWidget<U>>()).unwrap();
@@ -323,11 +323,11 @@ where
     }
 
     /// Inspects the currently active window.
-    fn inspect_active_window<T>(&self, f: impl FnOnce(&ParsecWindow<U>) -> T) -> T {
+    fn inspect_active_window<T>(&self, f: impl FnOnce(&Window<U>) -> T) -> T {
         self.windows.inspect(|windows| f(&windows[self.active_window]))
     }
 
-    fn mutate_active_window<T>(&self, f: impl FnOnce(&mut ParsecWindow<U>) -> T) -> T {
+    fn mutate_active_window<T>(&self, f: impl FnOnce(&mut Window<U>) -> T) -> T {
         self.windows.mutate(|windows| f(&mut windows[self.active_window]))
     }
 }
