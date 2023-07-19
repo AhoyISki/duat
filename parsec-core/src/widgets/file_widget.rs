@@ -140,7 +140,7 @@ where
         }
     }
 
-    pub fn write(&mut self) -> Result<usize, String> {
+    pub fn write(&self) -> Result<usize, String> {
         if let Some(path) = &self.path {
             self.text.write_to(std::io::BufWriter::new(
                 File::create(path).map_err(|err| err.to_string())?

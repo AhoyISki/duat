@@ -286,7 +286,7 @@ where
             palette
         };
 
-        let quit = Command::new(vec!["quit", "q"], move |_, _| {
+        let quit = Command::new(["quit", "q"], move |_, _| {
             BREAK_LOOP.store(true, Ordering::Release);
             SHOULD_QUIT.store(true, Ordering::Release);
             Ok(None)
@@ -300,9 +300,42 @@ where
             edit_cmd(windows, files_to_open, active_widget, active_file)
         };
 
+        let write = {
+            let active_file = controler.active_file.clone();
+            let windows = RoData::from(&controler.windows);
+            Command::new(["write", "w"], move |_, args| {
+                if let Some(name) = args.next() {
+                    windows
+                        .read()
+                        .iter()
+                        .flat_map(|window| window.widgets())
+                        .find_map(|(widget, ..)| {
+                            type Ret = Option<Result<Option<String>, String>>;
+                            widget.inspect_as::<FileWidget<U>, Ret>(|file| {
+                                file.name().is_some_and(|cmp| cmp == name).then(|| {
+                                    file.write()
+                                        .map(|bytes| Some(format!("Wrote {bytes} to {name}")))
+                                })
+                            })
+                        })
+                        .flatten()
+                        .unwrap_or(Err(String::from("File not found")))
+                } else {
+                    let active_file = active_file.read();
+                    let file = active_file.read();
+                    if let Some(name) = file.name() {
+                        file.write().map(|bytes| Some(format!("Wrote {bytes} bytes to {name}")))
+                    } else {
+                        Err(String::from("File does not have a name, and no name was given."))
+                    }
+                }
+            })
+        };
+
         controler.commands.mutate(|commands| {
             commands.try_add(quit).unwrap();
             commands.try_add(edit).unwrap();
+            commands.try_add(write).unwrap();
         });
 
         controler
@@ -406,8 +439,8 @@ fn edit_cmd<U>(
 where
     U: Ui
 {
-    Command::new(vec!["edit", "e"], move |_, file| {
-        let Some(file) = file.next() else {
+    Command::new(["edit", "e"], move |_, args| {
+        let Some(file) = args.next() else {
             return Err(String::from("No arguments supplied"));
         };
 
