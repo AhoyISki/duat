@@ -1,6 +1,7 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard};
 use std::{
+    any::{TypeId},
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -33,11 +34,12 @@ use super::{private, AsAny, DataCastErr, DataRetrievalErr, RawReadableData, Read
 /// [`RoData<FileWidget<U>>`]: RoData
 pub struct RoData<T>
 where
-    T: ?Sized
+    T: ?Sized + 'static
 {
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
-    read_state: AtomicUsize
+    read_state: AtomicUsize,
+    type_id: TypeId
 }
 
 impl<T> RoData<T> {
@@ -47,7 +49,8 @@ impl<T> RoData<T> {
         Self {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1)
+            read_state: AtomicUsize::new(1),
+            type_id: TypeId::of::<T>()
         }
     }
 }
@@ -61,38 +64,39 @@ where
     where
         U: 'static
     {
-        let RoData { data, cur_state, read_state } = self;
-        if (*data.read().unwrap()).as_any().is::<U>() {
+        if self.type_id == TypeId::of::<U>() {
+            let Self { data, cur_state, read_state, type_id } = self;
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RoData { data, cur_state, read_state })
+            Ok(RoData { data, cur_state, read_state, type_id })
         } else {
-            Err(DataCastErr(
-                RoData { data, cur_state, read_state },
-                std::marker::PhantomData,
-                std::marker::PhantomData
-            ))
+            Err(DataCastErr(self, PhantomData, PhantomData))
         }
     }
+}
 
+impl<T> RoData<T>
+where
+    T: ?Sized
+{
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static
     {
-        let RoData { data, .. } = &self;
-        data.read().unwrap().as_any().is::<U>()
+        self.type_id == std::any::TypeId::of::<Arc<RwLock<U>>>()
     }
 }
 
 impl<T> Default for RoData<T>
 where
-    T: ?Sized + Default
+    T: Default
 {
     fn default() -> Self {
         Self {
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(0)),
-            read_state: AtomicUsize::new(0)
+            read_state: AtomicUsize::new(0),
+            type_id: TypeId::of::<T>()
         }
     }
 }
@@ -114,7 +118,8 @@ where
         RoData {
             data: value.data.clone(),
             cur_state: value.cur_state.clone(),
-            read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed))
+            read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed)),
+            type_id: TypeId::of::<T>()
         }
     }
 }
@@ -156,7 +161,8 @@ where
         RoData {
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
-            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed))
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
+            type_id: TypeId::of::<T>()
         }
     }
 }
@@ -187,7 +193,7 @@ where
 /// changes to the pointer itself.
 pub struct RoNestedData<T>
 where
-    T: ?Sized
+    T: ?Sized + 'static
 {
     data: RoData<RoData<T>>,
     read_state: AtomicUsize
@@ -195,7 +201,7 @@ where
 
 impl<T> RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized
 {
     /// Returns a new instance of [`RoNestedData<T>`]
     ///

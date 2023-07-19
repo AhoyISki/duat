@@ -1,6 +1,7 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
+    any::TypeId,
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -55,11 +56,12 @@ use super::{DataCastErr, DataRetrievalErr, ReadableData};
 /// [`RwData<FileWidget<U>`]: RoData
 pub struct RwData<T>
 where
-    T: ?Sized
+    T: ?Sized + 'static
 {
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
-    read_state: AtomicUsize
+    read_state: AtomicUsize,
+    type_id: TypeId
 }
 
 impl<T> RwData<T> {
@@ -74,7 +76,8 @@ impl<T> RwData<T> {
         Self {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1)
+            read_state: AtomicUsize::new(1),
+            type_id: TypeId::of::<T>()
         }
     }
 }
@@ -89,11 +92,19 @@ where
     /// This method is only required if you're dealing with types that
     /// may not be [`Sized`] (`dyn Trait`, `[Type]`, etc). If the type
     /// in question is sized, use [`RwData::new`] instead.
-    pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
+    pub fn new_unsized<TButNotDyn>(data: Arc<RwLock<T>>) -> Self
+    where
+        TButNotDyn: 'static
+    {
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
         // second value - 1.
-        Self { data, cur_state: Arc::new(AtomicUsize::new(1)), read_state: AtomicUsize::new(1) }
+        Self {
+            data,
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1),
+            type_id: TypeId::of::<TButNotDyn>()
+        }
     }
 
     /// Blocking mutable reference to the information.
@@ -261,6 +272,61 @@ where
         res.map(|mut data| f(&mut *data))
     }
 
+    /// Returns `true` if the data is of the concrete type `T`.
+    ///
+    /// # Examples
+    ///
+    /// You may want this method if you're storing a list of
+    /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
+    /// each element is:
+    /// ```rust
+    /// # use std::{
+    /// #     any::Any,
+    /// #     fmt::Display,
+    /// #     sync::{Arc, RwLock}
+    /// # };
+    /// # use parsec_core::data::{RwData, AsAny};
+    /// # struct DownCastableChar(char);
+    /// # struct DownCastableString(String);
+    /// # impl AsAny for DownCastableChar {
+    /// #     fn as_any(&self) -> &dyn Any {
+    /// #         self
+    /// #     }
+    /// # }
+    /// # impl AsAny for DownCastableString {
+    /// #     fn as_any(&self) -> &dyn Any {
+    /// #         self
+    /// #     }
+    /// # }
+    /// let list: [RwData<dyn AsAny>; 3] = [
+    ///     RwData::new_unsized(Arc::new(RwLock::new(
+    ///         DownCastableString(String::from(
+    ///             "I can show you the world"
+    ///         ))
+    ///     ))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(
+    ///         DownCastableString(String::from(
+    ///             "Shining, shimmering, splendid"
+    ///         ))
+    ///     ))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar(
+    ///         '🧞'
+    ///     ))))
+    /// ];
+    ///
+    /// assert!(list[0].data_is::<DownCastableString>());
+    /// assert!(list[1].data_is::<DownCastableString>());
+    /// assert!(list[2].data_is::<DownCastableChar>());
+    /// ```
+    ///
+    /// [`RwData<dyn Trait>`]: RwData
+    pub fn data_is<U>(&self) -> bool
+    where
+        U: 'static
+    {
+        self.type_id == std::any::TypeId::of::<U>()
+    }
+
     pub(crate) fn raw_write(&self) -> RwLockWriteGuard<T> {
         self.data.write().unwrap()
     }
@@ -334,13 +400,13 @@ where
     where
         U: 'static
     {
-        let Self { data, cur_state, read_state } = self;
-        if (*data.read().unwrap()).as_any().is::<U>() {
+        if self.type_id == TypeId::of::<U>() {
+            let Self { data, cur_state, read_state, type_id } = self;
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RwData { data, cur_state, read_state })
+            Ok(RwData { data, cur_state, read_state, type_id })
         } else {
-            Err(DataCastErr(RwData { data, cur_state, read_state }, PhantomData, PhantomData))
+            Err(DataCastErr(self, PhantomData, PhantomData))
         }
     }
 
@@ -403,62 +469,6 @@ where
     {
         self.inspect(|data| data.as_any().downcast_ref::<U>().map(f))
     }
-
-    /// Returns `true` if the data is of the concrete type `T`.
-    ///
-    /// # Examples
-    ///
-    /// You may want this method if you're storing a list of
-    /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
-    /// each element is:
-    /// ```rust
-    /// # use std::{
-    /// #     any::Any,
-    /// #     fmt::Display,
-    /// #     sync::{Arc, RwLock}
-    /// # };
-    /// # use parsec_core::data::{RwData, AsAny};
-    /// # struct DownCastableChar(char);
-    /// # struct DownCastableString(String);
-    /// # impl AsAny for DownCastableChar {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// # impl AsAny for DownCastableString {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "I can show you the world"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "Shining, shimmering, splendid"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar(
-    ///         '🧞'
-    ///     ))))
-    /// ];
-    ///
-    /// assert!(list[0].data_is::<DownCastableString>());
-    /// assert!(list[1].data_is::<DownCastableString>());
-    /// assert!(list[2].data_is::<DownCastableChar>());
-    /// ```
-    ///
-    /// [`RwData<dyn Trait>`]: RwData
-    pub fn data_is<U>(&self) -> bool
-    where
-        U: 'static
-    {
-        let RwData { data, .. } = &self;
-        data.read().unwrap().as_any().is::<U>()
-    }
 }
 
 impl<T> std::fmt::Debug for RwData<T>
@@ -478,7 +488,8 @@ where
         Self {
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
-            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
+            type_id: self.type_id
         }
     }
 }
@@ -491,7 +502,8 @@ where
         Self {
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1)
+            read_state: AtomicUsize::new(1),
+            type_id: TypeId::of::<T>()
         }
     }
 }
