@@ -467,7 +467,8 @@ where
     where
         U: 'static
     {
-        self.inspect(|data| data.as_any().downcast_ref::<U>().map(f))
+        (self.type_id == TypeId::of::<U>())
+            .then(|| self.inspect(|data| f(data.as_any().downcast_ref::<U>().unwrap())))
     }
 }
 
