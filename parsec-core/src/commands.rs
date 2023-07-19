@@ -439,7 +439,8 @@ pub struct Command {
     /// show a message somewhere on Parsec.
     f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
     /// A list of [`String`]s that act as callers for [`self`].
-    callers: Vec<String>
+    callers: Vec<String>,
+    file_id: Option<FileId>
 }
 
 impl Command {
@@ -486,7 +487,61 @@ impl Command {
         if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
-        Self { f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))), callers }
+        Self {
+            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
+            callers,
+            file_id: None
+        }
+    }
+
+    /// Returns a new instance of [`Command`].
+    ///
+    /// # Arguments
+    ///
+    /// - `callers`: A list of names to call this function by. In
+    ///   other editors, you would see things like `["edit", "e"]`, or
+    ///   `["write-quit", "wq"]`, and this is no different.
+    /// - `f`: The closure to call when running the command. In order
+    ///   for the closure to actually do anything, you would want it
+    ///   to capture shared, multi-threaded objects (e.g. [`Arc`]s,
+    ///   [`RwData`]s, e.t.c.).
+    /// ```rust
+    /// # use parsec_core::{
+    /// #     commands::{Command},
+    /// #     data::{RwData, ReadableData},
+    /// # };
+    /// # use std::sync::atomic::AtomicBool;
+    /// let my_var = RwData::new(AtomicBool::new(false));
+    /// let clone_of_my_var = my_var.clone();
+    /// let callers = ["foo", "bar"];
+    /// let command = Command::new(callers, move |flags, args| {
+    ///     let read_var = my_var.read();
+    ///     todo!();
+    /// });
+    /// ```
+    ///
+    ///   This way, `my_var` will be accessible, both to the command,
+    ///   and to any reader that is interested in its value.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if any of the callers contain more
+    /// than one word, as commands are only allowed to be one word
+    /// long.
+    pub fn new_local<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
+    where
+        F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
+            + 'static
+    {
+        let callers = callers.into_iter().map(|caller| caller.to_string()).collect::<Vec<String>>();
+        if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
+            panic!("Command caller \"{caller}\" contains more than one word.");
+        }
+        Self {
+            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
+            callers,
+            file_id: *crate::CMD_FILE_ID.lock().unwrap()
+        }
     }
 
     /// Executes the inner function if the `caller` matches any of the
@@ -568,7 +623,7 @@ impl Command {
 /// [`CommandLine<U>`]: crate::widgets::CommandLine
 /// [`Commands::try_add`]: Commands::try_add
 pub struct Commands {
-    list: Vec<(Command, Option<FileId>)>,
+    list: Vec<Command>,
     aliases: RwData<HashMap<String, String>>
 }
 
@@ -624,8 +679,8 @@ impl Commands {
         let (flags, mut args) = split_flags(command);
 
         let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
-        for (cmd, file_id) in &self.list {
-            if file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true) {
+        for cmd in &self.list {
+            if cmd.file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true) {
                 let result = cmd.try_exec(caller, &flags, &mut args);
                 let Err(CommandErr::NotFound(_)) = result else {
                     return result;
@@ -678,7 +733,7 @@ impl Commands {
 
         let commands = self.list.iter();
         for (caller, file_id) in commands
-            .flat_map(|(cmd, file_id)| cmd.callers().iter().map(|caller| (caller, *file_id)))
+            .flat_map(|cmd| cmd.callers().iter().map(|caller| (caller, cmd.file_id)))
         {
             if new_callers.any(|new_caller| new_caller == caller)
                 && file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true)
@@ -687,7 +742,7 @@ impl Commands {
             }
         }
 
-        self.list.push((command, cur_file_id));
+        self.list.push(command);
 
         Ok(())
     }
@@ -745,7 +800,7 @@ impl Commands {
         }
         let caller = String::from(command.next().ok_or(CommandErr::Empty)?);
 
-        let mut callers = self.list.iter().flat_map(|(cmd, _)| cmd.callers.iter());
+        let mut callers = self.list.iter().flat_map(|cmd| cmd.callers.iter());
 
         if callers.any(|name| *name == caller) {
             let mut aliases = self.aliases.write();
