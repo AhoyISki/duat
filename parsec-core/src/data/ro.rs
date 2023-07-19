@@ -1,7 +1,7 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard};
 use std::{
-    any::{TypeId},
+    any::TypeId,
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},

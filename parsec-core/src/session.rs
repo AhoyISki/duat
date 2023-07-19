@@ -39,9 +39,8 @@ where
 
         let (window, area) = Window::new(&mut ui, file, || false);
         let mut controler = Controler::new(window, palette);
-        controler.commands.write().file_id = Some(0);
         activate_hook(&mut controler, area, &mut constructor_hook);
-        controler.commands.write().file_id = None;
+        *crate::CMD_FILE_ID.lock().unwrap() = None;
 
         let mut session = Session {
             ui,
@@ -228,7 +227,7 @@ fn send_event<U, I>(
 
     controler.inspect_active_window(|window| {
         let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
-            widget_type.scheme_ptr_eq(&*controler.active_widget.read().unwrap())
+            widget_type.scheme_ptr_eq(&*controler.active_widget.read())
         }) else {
             return;
         };

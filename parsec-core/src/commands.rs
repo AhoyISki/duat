@@ -174,7 +174,10 @@ use std::{collections::HashMap, sync::Arc};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::data::{ReadableData, RwData};
+use crate::{
+    data::{ReadableData, RwData},
+    ui::FileId
+};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -483,7 +486,7 @@ impl Command {
         if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
-        Self { f: RwData::new_unsized(Arc::new(RwLock::new(f))), callers }
+        Self { f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))), callers }
     }
 
     /// Executes the inner function if the `caller` matches any of the
@@ -565,9 +568,8 @@ impl Command {
 /// [`CommandLine<U>`]: crate::widgets::CommandLine
 /// [`Commands::try_add`]: Commands::try_add
 pub struct Commands {
-    list: Vec<(Command, Option<usize>)>,
-    aliases: RwData<HashMap<String, String>>,
-    pub(crate) file_id: Option<usize>
+    list: Vec<(Command, Option<FileId>)>,
+    aliases: RwData<HashMap<String, String>>
 }
 
 impl Commands {
@@ -621,8 +623,9 @@ impl Commands {
 
         let (flags, mut args) = split_flags(command);
 
+        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
         for (cmd, file_id) in &self.list {
-            if file_id.is_none() || *file_id == self.file_id {
+            if file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true) {
                 let result = cmd.try_exec(caller, &flags, &mut args);
                 let Err(CommandErr::NotFound(_)) = result else {
                     return result;
@@ -671,17 +674,20 @@ impl Commands {
     /// ```
     pub fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
         let mut new_callers = command.callers().iter();
+        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
 
         let commands = self.list.iter();
         for (caller, file_id) in commands
             .flat_map(|(cmd, file_id)| cmd.callers().iter().map(|caller| (caller, *file_id)))
         {
-            if new_callers.any(|new_caller| new_caller == caller) && file_id == self.file_id {
+            if new_callers.any(|new_caller| new_caller == caller)
+                && file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true)
+            {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
             }
         }
 
-        self.list.push((command, self.file_id));
+        self.list.push((command, cur_file_id));
 
         Ok(())
     }
@@ -699,11 +705,8 @@ impl Commands {
     /// [`Controler`]: crate::Controler
     /// [`RwData<Commands>`]: crate::data::RwData
     pub(crate) fn new_rw_data() -> RwData<Self> {
-        let commands = RwData::new(Commands {
-            list: Vec::new(),
-            aliases: RwData::new(HashMap::new()),
-            file_id: None
-        });
+        let commands =
+            RwData::new(Commands { list: Vec::new(), aliases: RwData::new(HashMap::new()) });
 
         let alias = {
             let commands = commands.clone();

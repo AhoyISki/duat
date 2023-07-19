@@ -122,11 +122,6 @@ impl Chars {
             Chars::Rope(rope) => rope.get_char(char_index)
         }
     }
-
-    pub fn nl_count_in(&self, range: impl std::ops::RangeBounds<usize> + Clone) -> usize {
-        let (start, end) = get_ends(range, self.len_chars());
-        self.iter_at(start).take(end - start).filter(|char| *char == '\n').count()
-    }
 }
 
 #[derive(Clone)]

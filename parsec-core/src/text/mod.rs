@@ -4,6 +4,7 @@ pub mod reader;
 mod tags;
 
 use std::{
+    io::Write,
     iter::Peekable,
     ops::{Range, RangeBounds, RangeInclusive}
 };
@@ -11,7 +12,7 @@ use std::{
 pub use cfg::*;
 use chars::Chars;
 use ropey::Rope;
-pub use tags::{Handle, Tag, TagRange};
+pub use tags::{Handle, Tag};
 use tags::{TagOrSkip, Tags};
 
 use crate::{
@@ -24,7 +25,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Text {
     chars: Chars,
-    pub tags: Tags,
+    tags: Tags,
     handle: Handle,
     _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>
 }
@@ -67,6 +68,51 @@ impl Text {
 
     pub fn get_char(&self, char_index: usize) -> Option<char> {
         self.chars.get_char(char_index)
+    }
+
+    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
+        Tagger { chars: &self.chars, tags: &mut self.tags, handle }
+    }
+
+    pub fn len_chars(&self) -> usize {
+        self.chars.len_chars()
+    }
+
+    pub fn len_lines(&self) -> usize {
+        self.chars.len_lines()
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        self.chars.len_bytes()
+    }
+
+    fn clear(&mut self) {
+        self.chars.clear();
+        self.tags.clear();
+    }
+
+    pub fn char_to_line(&self, char: usize) -> usize {
+        self.chars.char_to_line(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+    }
+
+    pub fn line_to_char(&self, line: usize) -> usize {
+        self.chars.line_to_char(line).unwrap_or_else(|| panic!("Line index {line} out of bounds."))
+    }
+
+    pub fn char_to_byte(&self, char: usize) -> usize {
+        self.chars.char_to_byte(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+    }
+
+    pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
+        self.chars.char_to_line(char)
+    }
+
+    pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
+        self.chars.line_to_char(line)
+    }
+
+    pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
+        self.chars.char_to_byte(char)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -123,49 +169,15 @@ impl Text {
         }
     }
 
-    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
-        Tagger { chars: &self.chars, tags: &mut self.tags, handle }
-    }
-
-    pub fn len_chars(&self) -> usize {
-        self.chars.len_chars()
-    }
-
-    pub fn len_lines(&self) -> usize {
-        self.chars.len_lines()
-    }
-
-    pub fn len_bytes(&self) -> usize {
-        self.chars.len_bytes()
-    }
-
-    fn clear(&mut self) {
-        self.chars.clear();
-        self.tags.clear();
-    }
-
-    pub fn char_to_line(&self, char: usize) -> usize {
-        self.chars.char_to_line(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
-    }
-
-    pub fn line_to_char(&self, line: usize) -> usize {
-        self.chars.line_to_char(line).unwrap_or_else(|| panic!("Line index {line} out of bounds."))
-    }
-
-    pub fn char_to_byte(&self, char: usize) -> usize {
-        self.chars.char_to_byte(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
-    }
-
-    pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
-        self.chars.char_to_line(char)
-    }
-
-    pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
-        self.chars.line_to_char(line)
-    }
-
-    pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
-        self.chars.char_to_byte(char)
+    pub(crate) fn write_to(
+        &self, mut writer: std::io::BufWriter<std::fs::File>
+    ) -> Result<usize, String> {
+        match &self.chars {
+            Chars::String(string) => writer.write(string.as_bytes()).map_err(|err| err.to_string()),
+            Chars::Rope(rope) => {
+                rope.write_to(writer).map(|_| rope.len_bytes()).map_err(|err| err.to_string())
+            }
+        }
     }
 }
 

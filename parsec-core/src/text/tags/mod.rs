@@ -4,7 +4,7 @@ use std::{
 };
 
 use any_rope::{Measurable, Rope};
-pub use container::Container;
+use container::Container;
 
 use crate::text::chars::Chars;
 
@@ -298,9 +298,7 @@ impl Tags {
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
-        let Some((start, t_or_s)) = self.get_from_char(old.start) else {
-            panic!();
-        };
+        let (start, t_or_s) = self.get_from_char(old.start).unwrap();
         let new = old.start..new_end;
 
         let removal_start = start.min(old.start);

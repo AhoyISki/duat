@@ -83,16 +83,25 @@ impl<U> WidgetType<U>
 where
     U: Ui
 {
-    pub fn passive(widget: impl Widget<U>) -> Self {
-        WidgetType::Passive(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn passive<W>(widget: W) -> Self
+    where
+        W: Widget<U>
+    {
+        WidgetType::Passive(RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))))
     }
 
-    pub fn scheme_input(widget: impl ActSchemeWidget<U>) -> Self {
-        WidgetType::ActScheme(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn scheme_input<ASW>(widget: ASW) -> Self
+    where
+        ASW: ActSchemeWidget<U>
+    {
+        WidgetType::ActScheme(RwData::new_unsized::<ASW>(Arc::new(RwLock::new(widget))))
     }
 
-    pub fn direct_input(widget: impl ActDirectWidget<U>) -> Self {
-        WidgetType::ActDirect(RwData::new_unsized(Arc::new(RwLock::new(widget))))
+    pub fn direct_input<ADW>(widget: ADW) -> Self
+    where
+        ADW: ActDirectWidget<U>
+    {
+        WidgetType::ActDirect(RwData::new_unsized::<ADW>(Arc::new(RwLock::new(widget))))
     }
 
     pub fn try_update_and_print<'scope, 'env>(
@@ -202,14 +211,14 @@ where
         }
     }
 
-    pub fn data_is_and<W>(&self, f: impl FnOnce(&W) -> bool) -> bool
+    pub fn inspect_as<W, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B>
     where
         W: Widget<U>
     {
         match self {
-            WidgetType::Passive(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
-            WidgetType::ActScheme(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret),
-            WidgetType::ActDirect(widget) => widget.inspect_as::<W, bool>(f).is_some_and(|ret| ret)
+            WidgetType::Passive(widget) => widget.inspect_as::<W, B>(f),
+            WidgetType::ActScheme(widget) => widget.inspect_as::<W, B>(f),
+            WidgetType::ActDirect(widget) => widget.inspect_as::<W, B>(f)
         }
     }
 
@@ -230,7 +239,7 @@ where
     pub fn ptr_eq<R, W>(&self, other: &R) -> bool
     where
         R: ReadableData<W>,
-        W: Widget<U>
+        W: Widget<U> + ?Sized
     {
         match self {
             WidgetType::Passive(widget) => widget.ptr_eq(other),

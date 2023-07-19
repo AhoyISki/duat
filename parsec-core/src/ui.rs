@@ -2,7 +2,7 @@
 use std::sync::RwLock;
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering}
+    sync::atomic::{AtomicBool, Ordering}
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -17,12 +17,6 @@ use crate::{
     widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
-
-fn unique_file_id() -> usize {
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    COUNTER.fetch_add(1, Ordering::SeqCst)
-}
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
 /// another.
@@ -197,7 +191,8 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     fn has_changed(&self) -> bool;
 
     fn is_senior_of(&self, other: &Self) -> bool;
-    /// Bisects the [`Area`][Window::Area] with the given index into
+
+    /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
     ///
     /// Will return 2 indices, the first one is the index of a new
@@ -245,7 +240,7 @@ where
     widget_type: WidgetType<U>,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
-    file_id: Option<usize>,
+    file_id: Option<FileId>,
     not_updated: AtomicBool
 }
 
@@ -363,8 +358,8 @@ where
     where
         F: Fn() -> bool + 'static
     {
+        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, _) = f(self.controler);
-        let file_id = self.controler.commands.read().file_id;
         let (child, parent) = self.controler.mutate_active_window(|window| {
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
@@ -407,8 +402,8 @@ where
     where
         F: Fn() -> bool + 'static
     {
+        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, _) = f(self.controler);
-        let file_id = self.controler.commands.read().file_id;
         let (child, parent) = self.controler.mutate_active_window(|window| {
             window.push(widget, &area, checker, specs, file_id, true)
         });
@@ -422,8 +417,8 @@ where
     where
         F: Fn() -> bool + 'static
     {
+        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = (f)(self.controler);
-        let file_id = self.controler.commands.read().file_id;
         let (child, parent) = self.controler.mutate_active_window(|window| {
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
@@ -470,7 +465,7 @@ pub(crate) fn activate_hook<U, W>(
         let node = window.nodes.iter().find(|Node { area, .. }| *area == mod_area).unwrap();
 
         let old_file_id =
-            node.file_id.and_then(|file_id| controler.commands.write().file_id.replace(file_id));
+            node.file_id.and_then(|file_id| crate::CMD_FILE_ID.lock().unwrap().replace(file_id));
 
         let old_file = node.widget_type.downcast_ref::<FileWidget<U>>().map(|file| {
             std::mem::replace(&mut *controler.active_file.write(), RoData::from(&file))
@@ -489,7 +484,7 @@ pub(crate) fn activate_hook<U, W>(
 
     (constructor_hook)(mod_node, widget);
 
-    controler.commands.write().file_id = old_file_id;
+    *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
     if let Some(file) = old_file {
         *controler.active_file.write() = file;
     };
@@ -559,7 +554,6 @@ where
     {
         let area = ui.new_window();
         widget_type.update(&area);
-
         let main_node = Node {
             widget_type,
             checker: Box::new(checker),
@@ -567,6 +561,8 @@ where
             file_id: Some(unique_file_id()),
             not_updated: AtomicBool::new(false)
         };
+
+        *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
 
         let parsec_window = Self {
             nodes: vec![main_node],
@@ -580,7 +576,7 @@ where
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push<Checker>(
         &mut self, widget_type: WidgetType<U>, area: &U::Area, checker: Checker, specs: PushSpecs,
-        file_id: Option<usize>, is_glued: bool
+        file_id: Option<FileId>, is_glued: bool
     ) -> (U::Area, Option<U::Area>)
     where
         Checker: Fn() -> bool + 'static
@@ -613,10 +609,10 @@ where
         &mut self, widget_type: WidgetType<U>, specs: PushSpecs
     ) -> (U::Area, Option<U::Area>) {
         let area = self.files_region.clone();
-        let file_id = unique_file_id();
 
         let checker = || false;
-        let (child, parent) = self.push(widget_type, &area, checker, specs, Some(file_id), false);
+        let file_id = Some(unique_file_id());
+        let (child, parent) = self.push(widget_type, &area, checker, specs, file_id, false);
         if let Some(parent) = &parent {
             self.files_region = parent.clone();
         }
@@ -639,7 +635,7 @@ where
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
     pub fn widgets(
         &self
-    ) -> impl Iterator<Item = (&WidgetType<U>, &U::Area, Option<usize>)> + Clone + '_ {
+    ) -> impl Iterator<Item = (&WidgetType<U>, &U::Area, Option<FileId>)> + Clone + '_ {
         self.nodes
             .iter()
             .map(|Node { widget_type, area, file_id, .. }| (widget_type, area, *file_id))
@@ -729,4 +725,14 @@ where
             .ok()
             .flatten()
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct FileId(u16);
+
+fn unique_file_id() -> FileId {
+    use std::sync::atomic::AtomicU16;
+    static COUNTER: AtomicU16 = AtomicU16::new(0);
+
+    FileId(COUNTER.fetch_add(1, Ordering::SeqCst))
 }

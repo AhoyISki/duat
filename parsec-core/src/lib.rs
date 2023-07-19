@@ -6,14 +6,14 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        RwLock
+        Mutex
     }
 };
 
 use commands::{Command, CommandErr, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use forms::FormPalette;
-use ui::{Area, Window, RoWindows, Ui};
+use ui::{Area, FileId, RoWindows, Ui, Window};
 use widgets::{ActSchemeWidget, FileWidget};
 
 pub mod commands;
@@ -29,6 +29,7 @@ pub mod widgets;
 
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+static CMD_FILE_ID: Mutex<Option<FileId>> = Mutex::new(None);
 
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
@@ -43,7 +44,7 @@ where
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
     active_file: RwData<RoData<FileWidget<U>>>,
-    active_widget: RwLock<RwData<dyn ActSchemeWidget<U>>>,
+    active_widget: RwData<RwData<dyn ActSchemeWidget<U>>>,
     pub palette: FormPalette
 }
 
@@ -128,9 +129,12 @@ where
                 })
                 .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
-            self.inner_switch_to(widget, area, file_id)?;
-
-            Ok(())
+            switch_widget(
+                &self.windows.read(),
+                &self.active_widget,
+                &self.active_file,
+                (widget, area, file_id)
+            )
         })
     }
 
@@ -149,23 +153,23 @@ where
         &self, target: impl AsRef<str>
     ) -> Result<(), WidgetSwitchErr<FileWidget<U>, U>> {
         let name = target.as_ref();
-        self.inspect_active_window(|window| {
-            let (widget, area, file_id) = window
-                .widgets()
-                .find(|(widget_type, ..)| {
-                    widget_type.data_is_and::<FileWidget<U>>(|file| {
+        let windows = self.windows.read();
+        let (widget, area, file_id) = windows
+            .iter()
+            .flat_map(|window| window.widgets())
+            .find(|(widget_type, ..)| {
+                widget_type
+                    .inspect_as::<FileWidget<U>, bool>(|file| {
                         file.name().is_some_and(|cmp| cmp == name)
                     })
-                })
-                .map(|(widget_type, area, file_id)| {
-                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
-                })
-                .ok_or(WidgetSwitchErr::FileNotFound(String::from(name), PhantomData))?;
+                    .unwrap_or(false)
+            })
+            .map(|(widget_type, area, file_id)| {
+                (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
+            })
+            .ok_or(WidgetSwitchErr::FileNotFound(String::from(name), PhantomData))?;
 
-            self.inner_switch_to(widget, area, file_id)?;
-
-            Ok(())
-        })
+        switch_widget(&windows, &self.active_widget, &self.active_file, (widget, area, file_id))
     }
 
     /// Switches to the next [`FileWidget<U>`].
@@ -181,17 +185,22 @@ where
                 .cycle()
                 .filter(|(widget, ..)| widget.data_is::<FileWidget<U>>())
                 .skip_while(|(widget_type, ..)| {
-                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() != cur_name)
+                    widget_type
+                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                        .unwrap_or(false)
                 })
                 .nth(1)
                 .map(|(widget_type, area, file_id)| {
-                    (widget_type.as_scheme_input().unwrap(), area, file_id)
+                    (widget_type.as_scheme_input().unwrap().clone(), area, file_id)
                 })
                 .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
-            self.inner_switch_to(widget.clone(), area, file_id)?;
-
-            Ok(())
+            switch_widget(
+                &self.windows.read(),
+                &self.active_widget,
+                &self.active_file,
+                (widget, area, file_id)
+            )
         })
     }
 
@@ -207,7 +216,9 @@ where
                 .widgets()
                 .filter(|(widget_type, ..)| widget_type.data_is::<FileWidget<U>>())
                 .take_while(|(widget_type, ..)| {
-                    widget_type.data_is_and::<FileWidget<U>>(|file| file.name() != cur_name)
+                    widget_type
+                        .inspect_as::<FileWidget<U>, bool>(|file| file.name() != cur_name)
+                        .unwrap_or(false)
                 })
                 .last()
                 .map(|(widget_type, area, file_id)| {
@@ -215,7 +226,12 @@ where
                 })
                 .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
-            self.inner_switch_to(widget, area, file_id)
+            switch_widget(
+                &self.windows.read(),
+                &self.active_widget,
+                &self.active_file,
+                (widget, area, file_id)
+            )
         })
     }
 
@@ -224,7 +240,7 @@ where
     where
         Sw: ActSchemeWidget<U>
     {
-        let cur_file_id = self.commands.read().file_id;
+        let cur_file_id = *CMD_FILE_ID.lock().unwrap();
         self.inspect_active_window(|window| {
             let (widget, area, file_id) = window
                 .widgets()
@@ -236,9 +252,12 @@ where
                 })
                 .ok_or(WidgetSwitchErr::NotFound(PhantomData))?;
 
-            self.inner_switch_to(widget, area, file_id)?;
-
-            Ok(())
+            switch_widget(
+                &self.windows.read(),
+                &self.active_widget,
+                &self.active_file,
+                (widget, area, file_id)
+            )
         })
     }
 }
@@ -256,13 +275,14 @@ where
         let file = widget.downcast_ref::<FileWidget<U>>().unwrap();
         let widget = widget.as_scheme_input().unwrap().clone();
 
-        let manager = Self {
+        let active_file = RwData::new(RoData::from(&file));
+        let controler = Self {
             windows: RwData::new(vec![window]),
             active_window: 0,
             commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
-            active_file: RwData::new(RoData::from(&file)),
-            active_widget: RwLock::new(widget),
+            active_file,
+            active_widget: RwData::new(widget),
             palette
         };
 
@@ -272,54 +292,20 @@ where
             Ok(None)
         });
 
-        let files_to_open = manager.files_to_open.clone();
-        let edit = Command::new(vec!["edit", "e"], move |_, files| {
-            BREAK_LOOP.store(true, Ordering::Release);
-            *files_to_open.write() = files.map(PathBuf::from).collect();
-            Ok(None)
-        });
+        let edit = {
+            let windows = RoData::from(&controler.windows);
+            let files_to_open = controler.files_to_open.clone();
+            let active_widget = controler.active_widget.clone();
+            let active_file = controler.active_file.clone();
+            edit_cmd(windows, files_to_open, active_widget, active_file)
+        };
 
-        manager.commands.mutate(|commands| {
+        controler.commands.mutate(|commands| {
             commands.try_add(quit).unwrap();
             commands.try_add(edit).unwrap();
         });
 
-        manager
-    }
-
-    /// Changes `self.active_widget`, given the target
-    /// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
-    /// `file_id`.
-    fn inner_switch_to<Sw>(
-        &self, widget: RwData<dyn ActSchemeWidget<U>>, area: &U::Area, file_id: Option<usize>
-    ) -> Result<(), WidgetSwitchErr<Sw, U>>
-    where
-        Sw: ActSchemeWidget<U>
-    {
-        area.set_as_active();
-
-        if let Ok(file) = widget.clone().try_downcast::<FileWidget<U>>() {
-            *self.active_file.write() = RoData::from(&file);
-        }
-
-        self.inspect_active_window(|window| {
-            window
-                .widgets()
-                .find(|(widget, ..)| widget.scheme_ptr_eq(&*self.active_widget.read().unwrap()))
-                .map(|(widget_type, area, _)| {
-                    widget_type.as_scheme_input().unwrap().write().on_unfocus(area)
-                })
-                .ok_or(WidgetSwitchErr::CouldNotUnfocus(PhantomData))
-        })?;
-
-        // Order matters here, since `on_unfocus` could rely on the
-        // `Commands`'s prior `file_id`.
-        self.commands.write().file_id = file_id;
-        widget.write().on_focus(area);
-
-        *self.active_widget.write().unwrap() = widget;
-
-        Ok(())
+        controler
     }
 
     /// Inspects the currently active window.
@@ -374,6 +360,86 @@ where
             }
         }
     }
+}
+
+/// Changes `self.active_widget`, given the target
+/// [`ActionableWidget<U>`], its [`U::Area`][Ui::Area], and a
+/// `file_id`.
+fn switch_widget<Sw, U>(
+    windows: &[Window<U>], active_widget: &RwData<RwData<dyn ActSchemeWidget<U>>>,
+    active_file: &RwData<RoData<FileWidget<U>>>,
+    target: (RwData<dyn ActSchemeWidget<U>>, &U::Area, Option<FileId>)
+) -> Result<(), WidgetSwitchErr<Sw, U>>
+where
+    Sw: ActSchemeWidget<U>,
+    U: Ui
+{
+    target.1.set_as_active();
+
+    if let Ok(file) = target.0.clone().try_downcast::<FileWidget<U>>() {
+        *active_file.write() = RoData::from(&file);
+    }
+
+    let prior_widget = std::mem::replace(&mut *active_widget.write(), target.0);
+    windows
+        .iter()
+        .flat_map(|window| window.widgets())
+        .find(|(widget_type, ..)| widget_type.ptr_eq(&prior_widget))
+        .map(|(widget_type, area, _)| {
+            widget_type.as_scheme_input().unwrap().write().on_unfocus(area);
+        })
+        .ok_or(WidgetSwitchErr::CouldNotUnfocus(PhantomData))?;
+
+    // Order matters here, since `on_unfocus` could rely on the
+    // `Commands`'s prior `file_id`.
+    *CMD_FILE_ID.lock().unwrap() = target.2;
+    active_widget.read().write().on_focus(target.1);
+
+    Ok(())
+}
+
+fn edit_cmd<U>(
+    windows: RoData<Vec<Window<U>>>, files_to_open: RwData<Vec<PathBuf>>,
+    active_widget: RwData<RwData<dyn ActSchemeWidget<U>>>,
+    active_file: RwData<RoData<FileWidget<U>>>
+) -> Command
+where
+    U: Ui
+{
+    Command::new(vec!["edit", "e"], move |_, file| {
+        let Some(file) = file.next() else {
+            return Err(String::from("No arguments supplied"));
+        };
+
+        let path = PathBuf::from(file);
+        let name =
+            path.file_name().ok_or(String::from("No file in path"))?.to_string_lossy().to_string();
+
+        let windows = windows.read();
+        let Some(target) = windows
+            .iter()
+            .flat_map(|window| window.widgets())
+            .find(|(widget_type, ..)| {
+                widget_type
+                    .inspect_as::<FileWidget<U>, bool>(|file| {
+                        file.name().is_some_and(|cmp| cmp == name)
+                    })
+                    .unwrap_or(false)
+            })
+            .map(|(widget_type, area, file_id)| {
+                let ret = (widget_type.as_scheme_input().unwrap().clone(), area, file_id);
+                ret
+            })
+        else {
+            BREAK_LOOP.store(true, Ordering::Release);
+            files_to_open.write().push(path);
+            return Ok(Some(format!("Created {file}")));
+        };
+
+        switch_widget::<FileWidget<U>, U>(&windows, &active_widget, &active_file, target)
+            .map(|_| Some(format!("Switched to {name}")))
+            .map_err(|err: WidgetSwitchErr<FileWidget<U>, U>| err.to_string())
+    })
 }
 
 /// A convenience macro to join any number of variables that can

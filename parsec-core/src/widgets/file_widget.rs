@@ -19,7 +19,7 @@
 //! method. This method is notably used by the
 //! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{cmp::min, fs, path::PathBuf};
+use std::{cmp::min, fs::File, path::PathBuf};
 
 use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
@@ -41,8 +41,8 @@ where
     main_cursor: usize,
     cursors: Vec<Cursor>,
     history: History<U>,
+    print_cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
-    print_cfg: PrintCfg
 }
 
 impl<U> FileWidget<U>
@@ -51,20 +51,17 @@ where
 {
     /// Returns a new instance of [`FileWidget<U>`].
     pub fn scheme(path: Option<PathBuf>, print_cfg: PrintCfg) -> WidgetType<U> {
-        // TODO: Allow the creation of a new file.
-        let file_contents = path
-            .as_ref()
-            .map(|path| {
-                fs::read_to_string(path).map_err(|err| panic!("{}", err.to_string())).unwrap()
-            })
-            .unwrap_or(String::from(""));
+        let contents = path.as_ref().and_then(|path| match std::fs::read_to_string(path) {
+            Ok(contents) => Some(contents),
+            Err(_) => None
+        });
 
         let path = path.map(|path| {
-            let file_name = path.file_name().expect("Invalid path.");
+            let file_name = path.file_name().unwrap();
             std::env::current_dir().unwrap().with_file_name(file_name)
         });
 
-        let mut text = Text::new_rope(file_contents);
+        let mut text = Text::new_rope(contents.unwrap_or(String::from("\n")));
 
         #[cfg(feature = "wacky-colors")]
         {
@@ -94,8 +91,8 @@ where
             main_cursor: 0,
             cursors,
             history: History::default(),
+            print_cfg,
             printed_lines: Vec::new(),
-            print_cfg
         })
     }
 
@@ -143,39 +140,19 @@ where
         }
     }
 
-    fn set_printed_lines(&mut self, area: &U::Area) {
-        let first_char = self.print_info.first_char(&self.text);
-        let mut line_num = self.text.char_to_line(first_char);
-
-        let height = area.height();
-        self.printed_lines.clear();
-        self.printed_lines.reserve_exact(height);
-
-        let mut is_wrapped = false;
-        let mut accum = 0;
-        let len_lines = self.text.len_lines();
-        while accum < height && line_num < len_lines {
-            let line = self.text.iter_line(line_num);
-
-            let visible_rows = if accum == 0 {
-                let total = area.visible_rows(line.clone(), &self.print_cfg);
-                let cut_line = line.take_while(|(index, _)| *index < first_char);
-                let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
-                is_wrapped = rows < total;
-                rows
-            } else {
-                area.visible_rows(line, &self.print_cfg)
-            };
-
-            let prev_accum = accum;
-            accum = min(accum + visible_rows, height);
-            for _ in prev_accum..accum {
-                self.printed_lines.push((line_num, is_wrapped));
-                is_wrapped = true;
-            }
-            is_wrapped = false;
-            line_num += 1;
+    pub fn write(&mut self) -> Result<usize, String> {
+        if let Some(path) = &self.path {
+            self.text.write_to(std::io::BufWriter::new(
+                File::create(path).map_err(|err| err.to_string())?
+            ))
+        } else {
+            Err(String::from("No path given to write to"))
         }
+    }
+
+    /// The number of bytes in the file.
+    pub fn len_bytes(&self) -> usize {
+        self.text.len_bytes()
     }
 
     /// Returns the currently printed set of lines.
@@ -239,9 +216,39 @@ where
         self.text.len_lines()
     }
 
-    /// The number of bytes in the file.
-    pub fn len_bytes(&self) -> usize {
-        self.text.len_bytes()
+    fn set_printed_lines(&mut self, area: &U::Area) {
+        let first_char = self.print_info.first_char(&self.text);
+        let mut line_num = self.text.char_to_line(first_char);
+
+        let height = area.height();
+        self.printed_lines.clear();
+        self.printed_lines.reserve_exact(height);
+
+        let mut is_wrapped = false;
+        let mut accum = 0;
+        let len_lines = self.text.len_lines();
+        while accum < height && line_num < len_lines {
+            let line = self.text.iter_line(line_num);
+
+            let visible_rows = if accum == 0 {
+                let total = area.visible_rows(line.clone(), &self.print_cfg);
+                let cut_line = line.take_while(|(index, _)| *index < first_char);
+                let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
+                is_wrapped = rows < total;
+                rows
+            } else {
+                area.visible_rows(line, &self.print_cfg)
+            };
+
+            let prev_accum = accum;
+            accum = min(accum + visible_rows, height);
+            for _ in prev_accum..accum {
+                self.printed_lines.push((line_num, is_wrapped));
+                is_wrapped = true;
+            }
+            is_wrapped = false;
+            line_num += 1;
+        }
     }
 }
 
