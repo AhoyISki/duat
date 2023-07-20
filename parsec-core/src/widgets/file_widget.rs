@@ -58,7 +58,7 @@ where
 
         let path = path.map(|path| {
             let file_name = path.file_name().unwrap();
-            std::env::current_dir().unwrap().with_file_name(file_name)
+            std::env::current_dir().unwrap().join(file_name)
         });
 
         let mut text = Text::new_rope(contents.unwrap_or(String::from("\n")));
