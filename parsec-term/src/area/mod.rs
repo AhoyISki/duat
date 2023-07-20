@@ -706,10 +706,10 @@ fn write_char(
 }
 
 fn trigger_tag(
-    tag: parsec_core::text::Tag, is_active: bool, alignment: &mut Alignment,
+    tag: parsec_core::text::RawTag, is_active: bool, alignment: &mut Alignment,
     form_former: &mut FormFormer, line: &mut Vec<u8>
 ) -> Option<ContentStyle> {
-    use parsec_core::text::Tag::*;
+    use parsec_core::text::RawTag::*;
     match tag {
         PushForm(id) => queue!(line, ResetColor, SetStyle(form_former.apply(id).style)),
         PopForm(id) => queue!(line, ResetColor, SetStyle(form_former.remove(id).style)),

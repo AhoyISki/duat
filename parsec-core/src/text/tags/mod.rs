@@ -6,7 +6,8 @@ use std::{
 use any_rope::{Measurable, Rope};
 use container::Container;
 
-use crate::text::chars::Chars;
+use super::Text;
+use crate::{forms::FormId, position::Pos, text::chars::Chars};
 
 mod container;
 
@@ -33,17 +34,13 @@ impl Default for Handle {
     }
 }
 
-// NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
-// character indexed. The reason is that modules like `regex` and
-// `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(u16),
+    PushForm(FormId),
     /// Removes a form from the stack. It won't always be the last
     /// one.
-    PopForm(u16),
+    PopForm(FormId),
 
     /// Places the main cursor.
     MainCursor,
@@ -60,62 +57,129 @@ pub enum Tag {
     /// This only takes effect after this line terminates.
     AlignRight,
 
+    // In the process of implementing.
+    ConcealStart,
+    ConcealEnd,
+
+    GhostString(String),
+    GhostText(Text),
+
     // Not Implemented:
     /// Begins a hoverable section in the file.
-    HoverStart(u16),
+    HoverStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    HoverStart(ToggleId),
     /// Ends a hoverable section in the file.
-    HoverEnd(u16),
-    /// Conceals a character with a string of text of equal lenght,
-    /// permanently.
-    PermanentConceal { index: u16 }
+    HoverEnd(ToggleId),
+
+    LeftButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    LeftButtonStart(ToggleId),
+    LeftButtonEnd(ToggleId),
+
+    RightButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    RightButtonStart(ToggleId),
+    RightButtonEnd(ToggleId),
+
+    MiddleButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    MiddleButtonStart(ToggleId),
+    MiddleButtonEnd(ToggleId),
 }
 
-impl std::fmt::Debug for Tag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Tag::PushForm(index) => write!(f, "PushForm({})", index),
-            Tag::PopForm(index) => write!(f, "PopForm({})", index),
-            Tag::MainCursor => f.write_str("MainCursor"),
-            Tag::ExtraCursor => f.write_str("ExtraCursor"),
-            Tag::AlignLeft => f.write_str("AlignLeft"),
-            Tag::AlignCenter => f.write_str("AlignCenter"),
-            Tag::AlignRight => f.write_str("AlignRight"),
-            _ => todo!()
-        }
-    }
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ToggleId(u16);
+
+// NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
+// character indexed. The reason is that modules like `regex` and
+// `tree-sitter` work on `u8`s, rather than `char`s.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RawTag {
+    // Implemented:
+    /// Appends a form to the stack.
+    PushForm(FormId),
+    /// Removes a form from the stack. It won't always be the last
+    /// one.
+    PopForm(FormId),
+
+    /// Places the main cursor.
+    MainCursor,
+    /// Places an extra cursor.
+    ExtraCursor,
+
+    /// Changes the alignment of the text to the left of the area.
+    /// This only takes effect after this line terminates.
+    AlignLeft,
+    /// Changes the alignemet of the text to the center of the area.  
+    /// This only takes effect after this line terminates.
+    AlignCenter,
+    /// Changes the alignment of the text to the right of the area.
+    /// This only takes effect after this line terminates.
+    AlignRight,
+
+    // In the process of implementing.
+    /// Starts concealing the [`Text`], skipping all [`Tag`]s and
+    /// [`char`]s until the [`ConcealEnd`] tag shows up.
+    ///
+    /// [`Text`]: super::Text
+    /// [`ConcealEnd`]: RawTag::ConcealEnd
+    ConcealStart,
+    /// Stops concealing the [`Text`], returning the iteration process
+    /// back to the regular [`Text`] iterator.
+    ///
+    /// [`Text`]: super::Text
+    /// [`ConcealEnd`]: RawTag::ConcealEnd
+    ConcealEnd,
+
+    GhostText(u16),
+
+    // Not Implemented:
+    /// Begins a hoverable section in the file.
+    HoverStart(ToggleId),
+    /// Ends a hoverable section in the file.
+    HoverEnd(ToggleId),
+
+    LeftButtonStart(ToggleId),
+    LeftButtonEnd(ToggleId),
+
+    RightButtonStart(ToggleId),
+    RightButtonEnd(ToggleId),
+
+    MiddleButtonStart(ToggleId),
+    MiddleButtonEnd(ToggleId),
 }
 
-impl Tag {
-    pub fn inverse(&self) -> Option<Tag> {
+impl RawTag {
+    pub fn inverse(&self) -> Option<RawTag> {
         match self {
-            Tag::PushForm(form_id) => Some(Tag::PopForm(*form_id)),
-            Tag::PopForm(form_id) => Some(Tag::PushForm(*form_id)),
-            Tag::HoverStart(index) => Some(Tag::HoverEnd(*index)),
+            RawTag::PushForm(form_id) => Some(RawTag::PopForm(*form_id)),
+            RawTag::PopForm(form_id) => Some(RawTag::PushForm(*form_id)),
+            RawTag::HoverStart(index) => Some(RawTag::HoverEnd(*index)),
             _ => None
         }
     }
 
-    fn ends_with(&self, other: &Tag) -> bool {
+    fn ends_with(&self, other: &RawTag) -> bool {
         match (self, other) {
-            (Tag::PushForm(form), Tag::PopForm(other)) => form == other,
-            (Tag::AlignCenter | Tag::AlignRight, Tag::AlignLeft) => true,
-            (Tag::HoverStart(hover), Tag::HoverEnd(other)) => hover == other,
+            (RawTag::PushForm(form), RawTag::PopForm(other)) => form == other,
+            (RawTag::AlignCenter | RawTag::AlignRight, RawTag::AlignLeft) => true,
+            (RawTag::HoverStart(hover), RawTag::HoverEnd(other)) => hover == other,
             _ => false
         }
     }
 
     fn is_start(&self) -> bool {
-        matches!(self, Tag::PushForm(_) | Tag::AlignCenter | Tag::AlignRight | Tag::HoverStart(_))
+        matches!(
+            self,
+            RawTag::PushForm(_) | RawTag::AlignCenter | RawTag::AlignRight | RawTag::HoverStart(_)
+        )
     }
 
     fn is_end(&self) -> bool {
-        matches!(self, Tag::PopForm(_) | Tag::AlignLeft | Tag::HoverEnd(_))
+        matches!(self, RawTag::PopForm(_) | RawTag::AlignLeft | RawTag::HoverEnd(_))
     }
 }
 
 #[derive(Clone, Copy)]
 pub enum TagOrSkip {
-    Tag(Tag, Handle),
+    Tag(RawTag, Handle),
     Skip(u32)
 }
 
@@ -127,19 +191,10 @@ impl TagOrSkip {
         }
     }
 
-    fn as_tag(&self) -> Option<(Tag, Handle)> {
+    fn as_tag(&self) -> Option<(RawTag, Handle)> {
         match self {
             TagOrSkip::Tag(tag, handle) => Some((*tag, *handle)),
             TagOrSkip::Skip(_) => None
-        }
-    }
-}
-
-impl std::fmt::Debug for TagOrSkip {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TagOrSkip::Tag(tag, _) => write!(f, "{:?}", tag),
-            TagOrSkip::Skip(skip) => write!(f, "Skip({:?})", skip)
         }
     }
 }
@@ -155,10 +210,11 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
-#[derive(Debug)]
 pub struct Tags {
     container: Container,
-    pub ranges: Vec<TagRange>,
+    ranges: Vec<TagRange>,
+    texts: Vec<Text>,
+    toggles: Vec<(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>)>,
     min_to_keep: usize
 }
 
@@ -167,6 +223,8 @@ impl Tags {
         Tags {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
+            texts: Vec::new(),
+            toggles: Vec::new(),
             min_to_keep: MIN_CHARS_TO_KEEP
         }
     }
@@ -175,6 +233,8 @@ impl Tags {
         Tags {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
+            texts: Vec::new(),
+            toggles: Vec::new(),
             min_to_keep: MIN_CHARS_TO_KEEP
         }
     }
@@ -185,10 +245,16 @@ impl Tags {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
         };
-        Tags { container, ranges: Vec::new(), min_to_keep: MIN_CHARS_TO_KEEP }
+        Tags {
+            container,
+            ranges: Vec::new(),
+            texts: Vec::new(),
+            toggles: Vec::new(),
+            min_to_keep: MIN_CHARS_TO_KEEP
+        }
     }
 
-    pub fn iter_at(&self, at: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
+    pub fn iter_at(&self, at: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
         let ml_iter = self
             .ranges
             .iter()
@@ -255,8 +321,56 @@ impl Tags {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, tag: Tag, handle: Handle) {
-        assert!(pos <= self.width(), "Char index {} too large, {:#?}", pos, self);
+    pub fn insert(&mut self, pos: usize, raw_tag: Tag, handle: Handle) {
+        let tag = match raw_tag {
+            Tag::PushForm(id) => RawTag::PushForm(id),
+            Tag::PopForm(id) => RawTag::PopForm(id),
+            Tag::MainCursor => RawTag::MainCursor,
+            Tag::ExtraCursor => RawTag::ExtraCursor,
+            Tag::AlignLeft => RawTag::AlignLeft,
+            Tag::AlignCenter => RawTag::AlignCenter,
+            Tag::AlignRight => RawTag::AlignRight,
+            Tag::ConcealStart => RawTag::ConcealStart,
+            Tag::ConcealEnd => RawTag::ConcealEnd,
+            Tag::GhostString(string) => {
+                let text = Text::new_string(string);
+                self.texts.push(text);
+                RawTag::GhostText((self.texts.len() - 1) as u16)
+            }
+            Tag::GhostText(text) => {
+                self.texts.push(text);
+                RawTag::GhostText((self.texts.len() - 1) as u16)
+            }
+            Tag::HoverStartNew(on_fn, off_fn) => {
+                self.toggles.push((on_fn, off_fn));
+                RawTag::HoverStart(ToggleId((self.toggles.len() - 1) as u16))
+            }
+            Tag::HoverStart(id) => RawTag::HoverStart(id),
+            Tag::HoverEnd(id) => RawTag::HoverEnd(id),
+
+            Tag::LeftButtonStartNew(on_fn, off_fn) => {
+                self.toggles.push((on_fn, off_fn));
+                RawTag::LeftButtonStart(ToggleId((self.texts.len() - 1) as u16))
+            }
+            Tag::LeftButtonStart(id) => RawTag::LeftButtonStart(id),
+            Tag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id),
+
+            Tag::RightButtonStartNew(on_fn, off_fn) => {
+                self.toggles.push((on_fn, off_fn));
+                RawTag::RightButtonStart(ToggleId((self.texts.len() - 1) as u16))
+            }
+            Tag::RightButtonStart(id) => RawTag::RightButtonStart(id),
+            Tag::RightButtonEnd(id) => RawTag::RightButtonEnd(id),
+
+            Tag::MiddleButtonStartNew(on_fn, off_fn) => {
+                self.toggles.push((on_fn, off_fn));
+                RawTag::MiddleButtonStart(ToggleId((self.texts.len() - 1) as u16))
+            }
+            Tag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id),
+            Tag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id),
+        };
+
+        assert!(pos <= self.width(), "Char index {} too large", pos);
 
         let Some((start, TagOrSkip::Skip(skip))) = self.get_from_char(pos) else {
             self.container.insert(pos, TagOrSkip::Tag(tag, handle));
@@ -314,7 +428,7 @@ impl Tags {
         let range_diff = new_end as isize - old.end as isize;
         let skip = (removal_end - removal_start).saturating_add_signed(range_diff);
 
-        let removed: Vec<(usize, Tag, Handle)> = self
+        let removed: Vec<(usize, RawTag, Handle)> = self
             .container
             .iter_at(old.start + 1)
             .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|(tag, handle)| (pos, tag, handle)))
@@ -456,15 +570,15 @@ impl Tags {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum TagRange {
-    Bounded(Tag, Range<usize>, Handle),
-    From(Tag, RangeFrom<usize>, Handle),
-    Until(Tag, RangeTo<usize>, Handle)
+    Bounded(RawTag, Range<usize>, Handle),
+    From(RawTag, RangeFrom<usize>, Handle),
+    Until(RawTag, RangeTo<usize>, Handle)
 }
 
 impl TagRange {
-    fn tag(&self) -> Tag {
+    fn tag(&self) -> RawTag {
         match self {
             TagRange::Bounded(tag, ..) => *tag,
             TagRange::From(tag, ..) => *tag,
@@ -488,7 +602,7 @@ impl TagRange {
         }
     }
 
-    fn starts_with(&self, other: (usize, Tag, Handle)) -> bool {
+    fn starts_with(&self, other: (usize, RawTag, Handle)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded, handle) => {
                 *handle == other.2 && bounded.start == other.0 && *tag == other.1
@@ -500,7 +614,7 @@ impl TagRange {
         }
     }
 
-    fn ends_with(&self, other: (usize, Tag, Handle)) -> bool {
+    fn ends_with(&self, other: (usize, RawTag, Handle)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded, handle) => {
                 *handle == other.2 && bounded.end == other.0 && tag.ends_with(&other.1)
@@ -512,7 +626,7 @@ impl TagRange {
         }
     }
 
-    fn can_start_with(&self, other: (usize, Tag, Handle)) -> bool {
+    fn can_start_with(&self, other: (usize, RawTag, Handle)) -> bool {
         match self {
             TagRange::Until(tag, until, handle) => {
                 *handle == other.2 && other.0 <= until.end && other.1.ends_with(tag)
@@ -521,7 +635,7 @@ impl TagRange {
         }
     }
 
-    fn can_end_with(&self, other: (usize, Tag, Handle)) -> bool {
+    fn can_end_with(&self, other: (usize, RawTag, Handle)) -> bool {
         match self {
             TagRange::From(tag, from, handle) => {
                 *handle == other.2 && from.start <= other.0 && tag.ends_with(&other.1)
@@ -602,7 +716,7 @@ impl PartialOrd for TagRange {
 /// completely remove it.
 ///
 /// Will return the range as it was, before the removal.
-fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
+fn remove_from_ranges(entry: (usize, RawTag, Handle), ranges: &mut Vec<TagRange>) {
     if entry.1.is_start() {
         let range = ranges.extract_if(|range| range.starts_with(entry)).next();
         if let Some(TagRange::Bounded(tag, bounded, handle)) = range {
@@ -620,7 +734,7 @@ fn remove_from_ranges(entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>) {
     }
 }
 
-fn count_entry(entry: (usize, Tag, Handle), ranges: &[TagRange]) -> usize {
+fn count_entry(entry: (usize, RawTag, Handle), ranges: &[TagRange]) -> usize {
     if entry.1.is_start() {
         let (start, tag, handle) = entry;
         let range = TagRange::From(tag, start.., handle);
@@ -640,7 +754,7 @@ fn count_entry(entry: (usize, Tag, Handle), ranges: &[TagRange]) -> usize {
 }
 
 fn try_insert(
-    entry: (usize, Tag, Handle), ranges: &mut Vec<TagRange>, min_to_keep: usize,
+    entry: (usize, RawTag, Handle), ranges: &mut Vec<TagRange>, min_to_keep: usize,
     allow_unbounded: bool
 ) {
     let range = if entry.1.is_start() {

@@ -3,6 +3,9 @@ use crossterm::{
     style::{Attribute, Attributes, Color, ContentStyle, Stylize}
 };
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FormId(u16);
+
 /// A style for text.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Form {
@@ -97,17 +100,17 @@ impl std::fmt::Debug for CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-pub const DEFAULT: u16 = 0;
-pub const LINE_NUMBERS: u16 = 1;
-pub const MAIN_LINE_NUMBER: u16 = 2;
-pub const WRAPPED_LINE_NUMBERS: u16 = 3;
-pub const WRAPPED_MAIN_LINE_NUMBER: u16 = 4;
-pub const MAIN_SEL: u16 = 5;
-pub const EXTRA_SEL: u16 = 6;
-pub const FILE_NAME: u16 = 7;
-pub const SELECTIONS: u16 = 8;
-pub const COORDS: u16 = 9;
-pub const SEPARATOR: u16 = 10;
+pub const DEFAULT: FormId= FormId(0);
+pub const LINE_NUMBERS: FormId= FormId(1);
+pub const MAIN_LINE_NUMBER: FormId= FormId(2);
+pub const WRAPPED_LINE_NUMBERS: FormId= FormId(3);
+pub const WRAPPED_MAIN_LINE_NUMBER: FormId= FormId(4);
+pub const MAIN_SEL: FormId= FormId(5);
+pub const EXTRA_SEL: FormId= FormId(6);
+pub const FILE_NAME: FormId= FormId(7);
+pub const SELECTIONS: FormId= FormId(8);
+pub const COORDS: FormId= FormId(9);
+pub const SEPARATOR: FormId= FormId(10);
 
 #[derive(Clone, Copy)]
 enum Named {
@@ -167,7 +170,7 @@ impl FormPalette {
 
     /// Returns the `Form` associated to a given name with the index
     /// for efficient access.
-    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, u16) {
+    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
         let Some(ret) = self.get_from_name(&name) else {
             panic!("Form with name {} not found.", name.as_ref());
         };
@@ -176,14 +179,14 @@ impl FormPalette {
 
     /// Non-panicking version of
     /// [`from_name()`][FormPalette::from_name]
-    pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, u16)> {
+    pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, FormId)> {
         let mut name = name.as_ref();
 
         while let Some((index, (_, named))) =
             self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name)
         {
             match named {
-                Named::Form(form) => return Some((*form, index as u16)),
+                Named::Form(form) => return Some((*form, FormId(index as u16))),
                 Named::Ref(ref_name) => name = ref_name
             }
         }
@@ -191,9 +194,9 @@ impl FormPalette {
     }
 
     /// Returns a form, given an index.
-    pub fn from_id(&self, form_id: u16) -> Form {
-        let Some(ret) = self.get_from_id(form_id) else {
-            panic!("Form with id {} not found", form_id);
+    pub fn from_id(&self, form_id: FormId) -> Form {
+        let Some(ret) = self.get_from_id(form_id.0) else {
+            panic!("Form with id {} not found", form_id.0);
         };
         ret
     }
@@ -236,9 +239,9 @@ pub struct FormFormer<'a> {
 impl<'a> FormFormer<'a> {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
-    pub fn apply(&mut self, id: u16) -> Form {
+    pub fn apply(&mut self, id: FormId) -> Form {
         let form = self.palette.from_id(id);
-        self.forms.push((form, id));
+        self.forms.push((form, id.0));
         self.make_form()
     }
 
@@ -283,9 +286,9 @@ impl<'a> FormFormer<'a> {
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
-    pub fn remove(&mut self, id: u16) -> Form {
+    pub fn remove(&mut self, id: FormId) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
+        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id.0) {
             self.forms.remove(index);
             self.make_form()
         } else {

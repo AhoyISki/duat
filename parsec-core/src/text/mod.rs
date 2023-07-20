@@ -12,7 +12,7 @@ use std::{
 pub use cfg::*;
 use chars::Chars;
 use ropey::Rope;
-pub use tags::{Handle, Tag};
+pub use tags::{Handle, RawTag, Tag};
 use tags::{TagOrSkip, Tags};
 
 use crate::{
@@ -22,7 +22,6 @@ use crate::{
 };
 
 /// The text in a given area.
-#[derive(Debug)]
 pub struct Text {
     chars: Chars,
     tags: Tags,
@@ -233,95 +232,6 @@ impl Text {
         self.iter_line(line).filter_map(|(_, bit)| bit.as_char())
     }
 }
-
-/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-pub enum TextBit {
-    Tag(Tag),
-    Char(char)
-}
-
-impl std::fmt::Debug for TextBit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TextBit::Char(char) => write!(f, "Char({char})"),
-            TextBit::Tag(tag) => write!(f, "Tag({:?})", tag)
-        }
-    }
-}
-
-impl TextBit {
-    /// Returns `true` if the text bit is [`Char`].
-    ///
-    /// [`Char`]: TextBit::Char
-    #[must_use]
-    pub fn is_char(&self) -> bool {
-        matches!(self, TextBit::Char(_))
-    }
-
-    /// Returns `true` if the text bit is [`Tag`].
-    ///
-    /// [`Tag`]: TextBit::Tag
-    #[must_use]
-    pub fn is_tag(&self) -> bool {
-        matches!(self, TextBit::Tag(_))
-    }
-
-    pub fn as_char(&self) -> Option<char> {
-        if let Self::Char(v) = self { Some(*v) } else { None }
-    }
-
-    pub fn as_tag(&self) -> Option<&Tag> {
-        if let Self::Tag(v) = self { Some(v) } else { None }
-    }
-}
-
-/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
-///
-/// This is useful for both printing and measurement of [`Text`], and
-/// can incorporate string replacements as part of its design.
-#[derive(Clone)]
-pub struct Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, Tag)> + Clone
-{
-    chars: Chars,
-    tags: Peekable<Tags>,
-    cur_char: usize
-}
-
-impl<Chars, Tags> Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, Tag)> + Clone
-{
-    pub fn new(chars: Chars, tags: Peekable<Tags>, cur_char: usize) -> Self {
-        Self { chars, tags, cur_char }
-    }
-}
-
-impl<Chars, Tags> Iterator for Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, Tag)> + Clone
-{
-    type Item = (usize, TextBit);
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        // `<=` because some `Tag`s may be triggered before printing.
-        if let Some(&(pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.cur_char) {
-            self.tags.next();
-            Some((pos, TextBit::Tag(tag)))
-        } else if let Some(char) = self.chars.next() {
-            self.cur_char += 1;
-            Some((self.cur_char - 1, TextBit::Char(char)))
-        } else {
-            None
-        }
-    }
-}
-
 /// Builds and modifies a [`Text<U>`], based on replacements applied
 /// to it.
 ///
@@ -342,7 +252,6 @@ where
 /// These properties allow for quick and easy modification of the
 /// [`Text<U>`] within, which can then be accessed with
 /// [`text()`][Self::text()].
-#[derive(Debug)]
 pub struct TextBuilder {
     text: Text,
     swappables: Vec<usize>,
@@ -379,7 +288,7 @@ impl TextBuilder {
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
-    pub fn push_tag(&mut self, tag: Tag) {
+    pub fn push_tag(&mut self, tag: RawTag) {
         let tags = self.text.tags.as_mut_vec().unwrap();
         tags.push(TagOrSkip::Tag(tag, self.handle));
         if let Some(inv_tag) = tag.inverse() {
@@ -401,10 +310,10 @@ impl TextBuilder {
         self.text.chars.replace(start..(start + old_skip), edit);
     }
 
-    pub fn swap_tag(&mut self, tag_index: usize, new_tag: Tag) {
+    pub fn swap_tag(&mut self, tag_index: usize, new_tag: RawTag) {
         let tags_vec = self.text.tags.as_mut_vec().unwrap();
         let mut tags = tags_vec.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(Tag::PopForm(_), _) => None,
+            TagOrSkip::Tag(RawTag::PopForm(_), _) => None,
             TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
             TagOrSkip::Skip(_) => None
         });
@@ -453,7 +362,7 @@ impl TextBuilder {
 
         let mut tags = tags_vec.iter().enumerate().rev();
         while let Some((index, TagOrSkip::Tag(tag, _))) = tags.next() {
-            if let Tag::PopForm(_) = tag {
+            if let RawTag::PopForm(_) = tag {
                 if let Some(TagOrSkip::Skip(skip)) = tags_vec.get_mut(index) {
                     *skip += edit_len;
                 } else {
@@ -494,7 +403,7 @@ impl TextBuilder {
 
         let mut tags = tags_vec.iter().take(index).rev();
         while let Some(TagOrSkip::Tag(tag, ..)) = tags.next() {
-            if let Tag::PopForm(_) = tag {
+            if let RawTag::PopForm(_) = tag {
                 break;
             }
 
@@ -529,7 +438,7 @@ pub struct Tagger<'a> {
 }
 
 impl<'a> Tagger<'a> {
-    pub fn tags(&self) -> impl Iterator<Item = (usize, Tag)> + '_ {
+    pub fn tags(&self) -> impl Iterator<Item = (usize, RawTag)> + '_ {
         self.tags.iter_at(0)
     }
 
@@ -541,7 +450,7 @@ impl<'a> Tagger<'a> {
         self.tags.get_from_char(char)
     }
 
-    pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, Tag)> + Clone + '_ {
+    pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
         self.tags.iter_at(ch_index)
     }
 
@@ -571,6 +480,85 @@ impl<'a> Tagger<'a> {
 
     pub fn len_lines(&self) -> usize {
         self.chars.len_lines()
+    }
+}
+
+/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+pub enum TextBit {
+    Tag(RawTag),
+    Char(char)
+}
+
+impl TextBit {
+    /// Returns `true` if the text bit is [`Char`].
+    ///
+    /// [`Char`]: TextBit::Char
+    #[must_use]
+    pub fn is_char(&self) -> bool {
+        matches!(self, TextBit::Char(_))
+    }
+
+    /// Returns `true` if the text bit is [`Tag`].
+    ///
+    /// [`Tag`]: TextBit::Tag
+    #[must_use]
+    pub fn is_tag(&self) -> bool {
+        matches!(self, TextBit::Tag(_))
+    }
+
+    pub fn as_char(&self) -> Option<char> {
+        if let Self::Char(v) = self { Some(*v) } else { None }
+    }
+
+    pub fn as_tag(&self) -> Option<&RawTag> {
+        if let Self::Tag(v) = self { Some(v) } else { None }
+    }
+}
+
+/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
+///
+/// This is useful for both printing and measurement of [`Text`], and
+/// can incorporate string replacements as part of its design.
+#[derive(Clone)]
+pub struct Iter<Chars, Tags>
+where
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, RawTag)> + Clone
+{
+    chars: Chars,
+    tags: Peekable<Tags>,
+    cur_char: usize
+}
+
+impl<Chars, Tags> Iter<Chars, Tags>
+where
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, RawTag)> + Clone
+{
+    pub fn new(chars: Chars, tags: Peekable<Tags>, cur_char: usize) -> Self {
+        Self { chars, tags, cur_char }
+    }
+}
+
+impl<Chars, Tags> Iterator for Iter<Chars, Tags>
+where
+    Chars: Iterator<Item = char> + Clone,
+    Tags: Iterator<Item = (usize, RawTag)> + Clone
+{
+    type Item = (usize, TextBit);
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // `<=` because some `Tag`s may be triggered before printing.
+        if let Some(&(pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.cur_char) {
+            self.tags.next();
+            Some((pos, TextBit::Tag(tag)))
+        } else if let Some(char) = self.chars.next() {
+            self.cur_char += 1;
+            Some((self.cur_char - 1, TextBit::Char(char)))
+        } else {
+            None
+        }
     }
 }
 

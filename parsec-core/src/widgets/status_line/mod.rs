@@ -60,7 +60,7 @@ use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoNestedData},
     status_parts,
-    text::{Tag, Text, TextBuilder},
+    text::{RawTag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     Controler
 };
@@ -208,7 +208,7 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
                 palette.get_from_name(form_name).map(|form_id| (l_index + r_index + 2, form_id))
             })
         {
-            builder.push_tag(Tag::PushForm(form_id));
+            builder.push_tag(RawTag::PushForm(form_id));
             builder.push_text(&text[text_start..next_l_index]);
         } else {
             builder.push_text(&text[l_index..next_l_index]);
@@ -385,7 +385,7 @@ where
     U: Ui
 {
     let mut builder = TextBuilder::default();
-    builder.push_tag(Tag::AlignRight);
+    builder.push_tag(RawTag::AlignRight);
     let mut checkers = Vec::new();
     let readers = {
         let mut readers = Vec::new();

@@ -71,7 +71,7 @@ where
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (0..tagger.len_chars()).step_by(50) {
+            for index in (0..tagger.len_chars()).step_by(1) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index, Tag::PushForm(FILE_NAME));
                 } else {

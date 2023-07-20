@@ -2,9 +2,8 @@ use std::marker::PhantomData;
 
 use any_rope::{Measurable, Rope};
 
-use super::{Handle, Tag, TagOrSkip};
+use super::{Handle, RawTag, TagOrSkip};
 
-#[derive(Debug)]
 pub enum Container {
     Vec(Vec<TagOrSkip>),
     Rope(Rope<TagOrSkip>)
@@ -31,7 +30,9 @@ impl Container {
         }
     }
 
-    pub fn remove_inclusive_on(&mut self, pos: usize, handle: Handle) -> Vec<(usize, Tag, Handle)> {
+    pub fn remove_inclusive_on(
+        &mut self, pos: usize, handle: Handle
+    ) -> Vec<(usize, RawTag, Handle)> {
         match self {
             Container::Vec(vec) => {
                 let start = start_ch_to_index(vec, pos);
@@ -79,7 +80,7 @@ impl Container {
 
                 let start = end_ch_to_index(vec, range.start);
                 let end = start_ch_to_index(vec, range.end);
-                assert!(start <= end, "{}, {}\n{:?}", range.start, range.end, vec);
+                assert!(start <= end, "Start ({}) greater than end ({})", range.start, range.end);
                 vec.splice(start..end, []);
             }
             Container::Rope(rope) => rope.remove_exclusive(range)

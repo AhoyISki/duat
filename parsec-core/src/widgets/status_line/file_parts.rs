@@ -5,9 +5,7 @@ pub fn file_name<U>() -> impl Fn(&FileWidget<U>) -> String
 where
     U: Ui
 {
-    |file| //file.name().unwrap_or(String::from("*scratch file*"))
-    file.full_path()
-    // std::env::current_dir().unwrap().to_str().unwrap().to_string()
+    |file| file.name().unwrap_or(String::from("*scratch file*"))
 }
 
 pub fn main_cursor<U>() -> impl Fn(&FileWidget<U>) -> crate::position::Cursor
