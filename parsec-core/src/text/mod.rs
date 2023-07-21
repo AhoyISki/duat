@@ -527,7 +527,7 @@ where
 {
     chars: Chars,
     tags: Peekable<Tags>,
-    cur_char: usize
+    pos: usize
 }
 
 impl<Chars, Tags> Iter<Chars, Tags>
@@ -536,7 +536,7 @@ where
     Tags: Iterator<Item = (usize, RawTag)> + Clone
 {
     pub fn new(chars: Chars, tags: Peekable<Tags>, cur_char: usize) -> Self {
-        Self { chars, tags, cur_char }
+        Self { chars, tags, pos: cur_char }
     }
 }
 
@@ -549,13 +549,30 @@ where
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
+        let mut nth = 0;
         // `<=` because some `Tag`s may be triggered before printing.
-        if let Some(&(pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.cur_char) {
+        if let Some((_, RawTag::ConcealStart)) =
+            self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned()
+        {
+            self.tags.next();
+            for (pos, tag) in self.tags.by_ref() {
+                if let RawTag::ConcealEnd = tag {
+                    nth = pos - self.pos;
+                    break;
+                }
+            }
+
+            if nth == 0 {
+                return None;
+            }
+        }
+
+        if let Some((pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned() {
             self.tags.next();
             Some((pos, TextBit::Tag(tag)))
-        } else if let Some(char) = self.chars.next() {
-            self.cur_char += 1;
-            Some((self.cur_char - 1, TextBit::Char(char)))
+        } else if let Some(char) = self.chars.nth(nth) {
+            self.pos += 1 + nth;
+            Some((self.pos - 1, TextBit::Char(char)))
         } else {
             None
         }
