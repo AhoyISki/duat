@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use any_rope::{Measurable, Rope};
 
 use super::{Handle, RawTag, TagOrSkip};
@@ -109,42 +107,36 @@ impl Container {
         }
     }
 
-    pub fn iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, TagOrSkip)> + Clone + '_ {
+    pub fn iter_at(&self, pos: usize) -> Iter<ForwardTags> {
         match self {
-            Container::Vec(vec) => Iter::Vec(
-                vec.iter().scan(0, forward_tag_start).skip_while(move |(accum, _)| *accum < pos)
-            ),
-            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos), PhantomData)
+            Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, vec.iter())),
+            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos))
         }
     }
 
-    pub fn rev_iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, TagOrSkip)> + Clone + '_ {
+    pub fn rev_iter_at(&self, pos: usize) -> Iter<ReverseTags> {
         match self {
             Container::Vec(vec) => {
                 let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
-                Iter::Vec(vec.iter().rev().scan(width, reverse_tag_start).skip_while(
-                    move |(accum, t_or_s)| *accum > pos && t_or_s.width() == 0 || *accum >= pos
-                ))
+                Iter::Vec(ReverseTags::new(width, pos, vec.iter().rev()))
             }
-            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos).reversed(), PhantomData)
+            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos).reversed())
         }
     }
 }
 
 #[derive(Clone)]
-enum Iter<'a, VecIter, RopeIter>
+pub enum Iter<'a, VecIter>
 where
-    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone + 'a,
-    RopeIter: Iterator<Item = (usize, TagOrSkip)> + Clone + 'a
+    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone
 {
     Vec(VecIter),
-    Rope(RopeIter, PhantomData<&'a ()>)
+    Rope(any_rope::iter::Iter<'a, (usize, TagOrSkip)>)
 }
 
-impl<'a, VecIter, RopeIter> Iterator for Iter<'a, VecIter, RopeIter>
+impl<VecIter> Iterator for Iter<'_, VecIter>
 where
-    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone + 'a,
-    RopeIter: Iterator<Item = (usize, TagOrSkip)> + Clone + 'a
+    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone,
 {
     type Item = (usize, TagOrSkip);
 
@@ -153,6 +145,63 @@ where
             Iter::Vec(iter) => iter.next(),
             Iter::Rope(iter, _) => iter.next()
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ForwardTags<'a> {
+    accum: usize,
+    min: usize,
+    iter: std::slice::Iter<'a, TagOrSkip>
+}
+
+impl ForwardTags<'_> {
+    fn new(min: usize, slice: &[TagOrSkip]) -> Self {
+        Self { accum: 0, min, iter: slice.iter() }
+    }
+}
+
+impl Iterator for ForwardTags<'_> {
+    type Item = (usize, TagOrSkip);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(t_or_s) = self.iter.next() {
+            let old_accum = self.accum;
+            self.accum += t_or_s.width();
+            if self.accum >= self.min {
+                return Some((old_accum, t_or_s));
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Clone)]
+pub struct ReverseTags<'a> {
+    accum: usize,
+    min: usize,
+    iter: std::iter::Rev<std::slice::Iter<'a, TagOrSkip>>
+}
+
+impl<'a> ReverseTags<'a> {
+    fn new(accum: usize, min: usize, slice: &'a [TagOrSkip]) -> Self {
+        Self { accum, min, iter: slice.iter().rev() }
+    }
+}
+
+impl Iterator for ReverseTags<'_> {
+    type Item = (usize, TagOrSkip);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(t_or_s) = self.iter.next() {
+            self.accum -= t_or_s.width();
+            if self.accum >= self.min || (self.accum > self.min && t_or_s.width() == 0) {
+                return Some((self.accum, t_or_s));
+            }
+        }
+
+        None
     }
 }
 
@@ -191,16 +240,4 @@ fn end_ch_to_index(slice: &[TagOrSkip], width: usize) -> usize {
     }
 
     index
-}
-
-fn forward_tag_start(accum: &mut usize, t_or_s: &TagOrSkip) -> Option<(usize, TagOrSkip)> {
-    let old_accum = *accum;
-    *accum += t_or_s.width();
-
-    Some((old_accum, *t_or_s))
-}
-
-fn reverse_tag_start(accum: &mut usize, t_or_s: &TagOrSkip) -> Option<(usize, TagOrSkip)> {
-    *accum -= t_or_s.width();
-    Some((*accum, *t_or_s))
 }

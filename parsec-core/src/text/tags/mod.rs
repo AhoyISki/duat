@@ -81,11 +81,11 @@ pub enum Tag {
 
     MiddleButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
     MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId),
+    MiddleButtonEnd(ToggleId)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ToggleId(u16);
+pub struct ToggleId(usize);
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
 // character indexed. The reason is that modules like `regex` and
@@ -128,7 +128,10 @@ pub enum RawTag {
     /// [`ConcealEnd`]: RawTag::ConcealEnd
     ConcealEnd,
 
-    GhostText(u16),
+    /// More direct skipping method, allowing for full skips without
+    /// the iteration, which could be slow.
+    Skip(usize),
+    GhostText(usize),
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
@@ -143,7 +146,7 @@ pub enum RawTag {
     RightButtonEnd(ToggleId),
 
     MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId),
+    MiddleButtonEnd(ToggleId)
 }
 
 impl RawTag {
@@ -152,6 +155,9 @@ impl RawTag {
             RawTag::PushForm(form_id) => Some(RawTag::PopForm(*form_id)),
             RawTag::PopForm(form_id) => Some(RawTag::PushForm(*form_id)),
             RawTag::HoverStart(index) => Some(RawTag::HoverEnd(*index)),
+            RawTag::HoverEnd(index) => Some(RawTag::HoverStart(*index)),
+            RawTag::ConcealStart => Some(RawTag::ConcealEnd),
+            RawTag::ConcealEnd => Some(RawTag::ConcealStart),
             _ => None
         }
     }
@@ -161,6 +167,7 @@ impl RawTag {
             (RawTag::PushForm(form), RawTag::PopForm(other)) => form == other,
             (RawTag::AlignCenter | RawTag::AlignRight, RawTag::AlignLeft) => true,
             (RawTag::HoverStart(hover), RawTag::HoverEnd(other)) => hover == other,
+            (RawTag::ConcealStart, RawTag::ConcealEnd) => true,
             _ => false
         }
     }
@@ -168,23 +175,30 @@ impl RawTag {
     fn is_start(&self) -> bool {
         matches!(
             self,
-            RawTag::PushForm(_) | RawTag::AlignCenter | RawTag::AlignRight | RawTag::HoverStart(_)
+            RawTag::PushForm(_)
+                | RawTag::AlignCenter
+                | RawTag::AlignRight
+                | RawTag::HoverStart(_)
+                | RawTag::ConcealStart
         )
     }
 
     fn is_end(&self) -> bool {
-        matches!(self, RawTag::PopForm(_) | RawTag::AlignLeft | RawTag::HoverEnd(_))
+        matches!(
+            self,
+            RawTag::PopForm(_) | RawTag::AlignLeft | RawTag::HoverEnd(_) | RawTag::ConcealEnd
+        )
     }
 }
 
 #[derive(Clone, Copy)]
 pub enum TagOrSkip {
     Tag(RawTag, Handle),
-    Skip(u32)
+    Skip(usize)
 }
 
 impl TagOrSkip {
-    pub fn as_skip(&self) -> Option<&u32> {
+    pub fn as_skip(&self) -> Option<&usize> {
         match self {
             Self::Skip(v) => Some(v),
             TagOrSkip::Tag(..) => None
@@ -240,7 +254,7 @@ impl Tags {
     }
 
     pub fn new(chars: &Chars) -> Self {
-        let skip = TagOrSkip::Skip(chars.len_chars() as u32);
+        let skip = TagOrSkip::Skip(chars.len_chars());
         let container = match chars {
             Chars::String(_) => Container::Vec(vec![skip]),
             Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
@@ -254,7 +268,7 @@ impl Tags {
         }
     }
 
-    pub fn iter_at(&self, at: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
+    pub fn iter_at(&self, at: usize) -> Iter {
         let ml_iter = self
             .ranges
             .iter()
@@ -335,39 +349,39 @@ impl Tags {
             Tag::GhostString(string) => {
                 let text = Text::new_string(string);
                 self.texts.push(text);
-                RawTag::GhostText((self.texts.len() - 1) as u16)
+                RawTag::GhostText(self.texts.len() - 1)
             }
             Tag::GhostText(text) => {
                 self.texts.push(text);
-                RawTag::GhostText((self.texts.len() - 1) as u16)
+                RawTag::GhostText(self.texts.len() - 1)
             }
             Tag::HoverStartNew(on_fn, off_fn) => {
                 self.toggles.push((on_fn, off_fn));
-                RawTag::HoverStart(ToggleId((self.toggles.len() - 1) as u16))
+                RawTag::HoverStart(ToggleId(self.toggles.len() - 1))
             }
             Tag::HoverStart(id) => RawTag::HoverStart(id),
             Tag::HoverEnd(id) => RawTag::HoverEnd(id),
 
             Tag::LeftButtonStartNew(on_fn, off_fn) => {
                 self.toggles.push((on_fn, off_fn));
-                RawTag::LeftButtonStart(ToggleId((self.texts.len() - 1) as u16))
+                RawTag::LeftButtonStart(ToggleId(self.texts.len() - 1))
             }
             Tag::LeftButtonStart(id) => RawTag::LeftButtonStart(id),
             Tag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id),
 
             Tag::RightButtonStartNew(on_fn, off_fn) => {
                 self.toggles.push((on_fn, off_fn));
-                RawTag::RightButtonStart(ToggleId((self.texts.len() - 1) as u16))
+                RawTag::RightButtonStart(ToggleId(self.texts.len() - 1))
             }
             Tag::RightButtonStart(id) => RawTag::RightButtonStart(id),
             Tag::RightButtonEnd(id) => RawTag::RightButtonEnd(id),
 
             Tag::MiddleButtonStartNew(on_fn, off_fn) => {
                 self.toggles.push((on_fn, off_fn));
-                RawTag::MiddleButtonStart(ToggleId((self.texts.len() - 1) as u16))
+                RawTag::MiddleButtonStart(ToggleId(self.texts.len() - 1))
             }
             Tag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id),
-            Tag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id),
+            Tag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id)
         };
 
         assert!(pos <= self.width(), "Char index {} too large", pos);
@@ -382,9 +396,9 @@ impl Tags {
             self.container.insert(pos, TagOrSkip::Tag(tag, handle))
         } else {
             let insertion = [
-                TagOrSkip::Skip((pos - start) as u32),
+                TagOrSkip::Skip(pos - start),
                 TagOrSkip::Tag(tag, handle),
-                TagOrSkip::Skip(start as u32 + skip - pos as u32)
+                TagOrSkip::Skip(start + skip - pos)
             ];
             self.container.insert_slice(start, &insertion);
 
@@ -435,7 +449,7 @@ impl Tags {
             .take_while(|(pos, ..)| *pos < old.end)
             .collect();
 
-        self.container.insert(start, TagOrSkip::Skip(skip as u32));
+        self.container.insert(start, TagOrSkip::Skip(skip));
         self.container.remove_exclusive((removal_start + skip)..(removal_end + skip));
 
         for entry in removed {
@@ -857,6 +871,29 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
             let range = TagRange::Bounded(tag, start..until.end, handle);
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
+        }
+    }
+}
+
+pub struct Iter<'a> {
+    width: usize,
+    tags: &'a Tags,
+    iter: container::Iter<'a, container::ForwardTags<'a>>
+}
+
+impl Iterator for Iter<'_> {
+    type Item = (usize, TagOrSkip);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().inspect(|(width, _)| self.width = width)
+    }
+
+    fn advance_by(&mut self, n: usize) -> Result<(), std::num::NonZeroUsize> {
+        if self.tags.width() >= self.width + n {
+            self.iter = self.tags.iter_at(self.width + n);
+            Ok(())
+        } else {
+            Err(self.tags.width() - (self.width + n))
         }
     }
 }

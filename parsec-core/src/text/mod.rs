@@ -15,8 +15,9 @@ use ropey::Rope;
 pub use tags::{Handle, RawTag, Tag};
 use tags::{TagOrSkip, Tags};
 
+use self::tags::ToggleId;
 use crate::{
-    forms::{EXTRA_SEL, MAIN_SEL},
+    forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
     position::Cursor
 };
@@ -182,14 +183,14 @@ impl Text {
 
 // Iterator methods.
 impl Text {
-    pub fn iter(&self) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (usize, TextItem)> + Clone + '_ {
         let chars = self.chars.iter_at(0);
         let tags = self.tags.iter_at(0).peekable();
 
         Iter::new(chars, tags, 0)
     }
 
-    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextBit)> + Clone + '_ {
+    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextItem)> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.chars.iter_at(start).take(end - start);
@@ -202,7 +203,7 @@ impl Text {
 
     pub fn iter_range(
         &self, range: impl RangeBounds<usize>
-    ) -> impl Iterator<Item = (usize, TextBit)> + '_ {
+    ) -> impl Iterator<Item = (usize, usize, TextItem)> + '_ {
         let start = match range.start_bound() {
             std::ops::Bound::Included(start) => *start,
             std::ops::Bound::Excluded(start) => *start + 1,
@@ -484,34 +485,61 @@ impl<'a> Tagger<'a> {
 }
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-pub enum TextBit {
-    Tag(RawTag),
-    Char(char)
+pub enum TextItem {
+    Char(char),
+    PushForm(FormId),
+    PopForm(FormId),
+    MainCursor,
+    ExtraCursor,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    HoverStart(ToggleId),
+    HoverEnd(ToggleId),
+    LeftButtonStart(ToggleId),
+    LeftButtonEnd(ToggleId),
+    RightButtonStart(ToggleId),
+    RightButtonEnd(ToggleId),
+    MiddleButtonStart(ToggleId),
+    MiddleButtonEnd(ToggleId)
 }
 
-impl TextBit {
+impl From<RawTag> for TextItem {
+    fn from(value: RawTag) -> Self {
+        match value {
+            RawTag::PushForm(id) => TextItem::PushForm(id),
+            RawTag::PopForm(id) => TextItem::PopForm(id),
+            RawTag::MainCursor => TextItem::MainCursor,
+            RawTag::ExtraCursor => TextItem::ExtraCursor,
+            RawTag::AlignLeft => TextItem::AlignLeft,
+            RawTag::AlignCenter => TextItem::AlignCenter,
+            RawTag::AlignRight => TextItem::AlignRight,
+            RawTag::HoverStart(id) => TextItem::HoverStart(id),
+            RawTag::HoverEnd(id) => TextItem::HoverEnd(id),
+            RawTag::LeftButtonStart(id) => TextItem::LeftButtonStart(id),
+            RawTag::LeftButtonEnd(id) => TextItem::LeftButtonEnd(id),
+            RawTag::RightButtonStart(id) => TextItem::RightButtonStart(id),
+            RawTag::RightButtonEnd(id) => TextItem::RightButtonEnd(id),
+            RawTag::MiddleButtonStart(id) => TextItem::MiddleButtonStart(id),
+            RawTag::MiddleButtonEnd(id) => TextItem::MiddleButtonEnd(id),
+            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_) | RawTag::GhostText(_) => unsafe {
+                std::hint::unreachable_unchecked()
+            }
+        }
+    }
+}
+
+impl TextItem {
     /// Returns `true` if the text bit is [`Char`].
     ///
     /// [`Char`]: TextBit::Char
     #[must_use]
     pub fn is_char(&self) -> bool {
-        matches!(self, TextBit::Char(_))
-    }
-
-    /// Returns `true` if the text bit is [`Tag`].
-    ///
-    /// [`Tag`]: TextBit::Tag
-    #[must_use]
-    pub fn is_tag(&self) -> bool {
-        matches!(self, TextBit::Tag(_))
+        matches!(self, TextItem::Char(_))
     }
 
     pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self { Some(*v) } else { None }
-    }
-
-    pub fn as_tag(&self) -> Option<&RawTag> {
-        if let Self::Tag(v) = self { Some(v) } else { None }
     }
 }
 
@@ -520,44 +548,37 @@ impl TextBit {
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
-pub struct Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, RawTag)> + Clone
-{
-    chars: Chars,
-    tags: Peekable<Tags>,
-    pos: usize
+pub struct Iter<'a> {
+    chars: chars::Iter<'a>,
+    tags: Peekable<tags::Iter<'a>>,
+    char: usize,
+    line: usize
 }
 
-impl<Chars, Tags> Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, RawTag)> + Clone
-{
-    pub fn new(chars: Chars, tags: Peekable<Tags>, cur_char: usize) -> Self {
-        Self { chars, tags, pos: cur_char }
+impl Iter<'_> {
+    pub fn new(
+        chars: Chars, tags: Peekable<tags::Iter<'_>>, char: usize, line: usize, text: &Text
+    ) -> Self {
+        Self { chars, tags, char, line }
     }
 }
 
-impl<Chars, Tags> Iterator for Iter<Chars, Tags>
-where
-    Chars: Iterator<Item = char> + Clone,
-    Tags: Iterator<Item = (usize, RawTag)> + Clone
-{
-    type Item = (usize, TextBit);
+impl Iterator for Iter<'_> {
+    type Item = (usize, TextItem);
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        let mut nth = 0;
         // `<=` because some `Tag`s may be triggered before printing.
-        if let Some((_, RawTag::ConcealStart)) =
-            self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned()
-        {
+        let mut tag = self.tags.peek().filter(|(pos, _)| *pos <= self.char).cloned();
+        while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_))) = tag {
+            if let (pos, RawTag::Skip(skip)) = tag.unwrap() {
+                self.tags = self.text.tags.iter_at(pos + skip).peekable();
+            }
+            let mut tags = self.tags.clone().enumerate();
             self.tags.next();
-            for (pos, tag) in self.tags.by_ref() {
+            let mut conceal_ended = false;
+            for (skip, (pos, tag)) in self.tags.clone().enumerate() {
                 if let RawTag::ConcealEnd = tag {
-                    nth = pos - self.pos;
                     break;
                 }
             }
@@ -567,12 +588,12 @@ where
             }
         }
 
-        if let Some((pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned() {
+        if let Some((pos, tag)) = tag {
             self.tags.next();
-            Some((pos, TextBit::Tag(tag)))
-        } else if let Some(char) = self.chars.nth(nth) {
-            self.pos += 1 + nth;
-            Some((self.pos - 1, TextBit::Char(char)))
+            Some((pos, TextItem::Tag(tag)))
+        } else if let Some(char) = self.chars.next() {
+            self.char += 1 + nth;
+            Some((self.char - 1, TextItem::Char(char)))
         } else {
             None
         }
