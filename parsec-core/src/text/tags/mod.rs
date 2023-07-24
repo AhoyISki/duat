@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering::*,
-    ops::{Range, RangeFrom, RangeTo}
+    ops::{Range, RangeFrom, RangeTo},
+    os::fd::IntoRawFd
 };
 
 use any_rope::{Measurable, Rope};
@@ -270,7 +271,7 @@ impl Tags {
 
     pub fn iter_at(&self, pos: usize) -> Iter {
         let ranges = Ranges::new(pos, self.ranges.iter());
-        let raw_tags = RawTags::new(self.container.iter_at(pos));
+        let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
         Iter::new(pos, self, ranges, raw_tags)
     }
 
@@ -893,11 +894,12 @@ impl<'a> Iterator for Ranges<'a> {
 
 #[derive(Clone)]
 struct RawTags<'a> {
+    ranges: &'a [TagRange],
     iter: container::Iter<'a, container::ForwardTags<'a>>
 }
 impl RawTags<'_> {
-    fn new(iter: container::Iter<'_, container::ForwardTags<'_>>) -> Self {
-        Self { iter }
+    fn new(ranges: &[TagRange], iter: container::Iter<'_, container::ForwardTags<'_>>) -> Self {
+        Self { ranges, iter }
     }
 }
 
@@ -905,8 +907,21 @@ impl<'a> Iterator for RawTags<'a> {
     type Item = (usize, RawTag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find_map(|(width, t_or_s)| {
-            if let TagOrSkip::Tag(tag, _) = t_or_s { Some((width, tag)) } else { None }
+        self.iter.find_map(|(width, t_or_s)| match t_or_s {
+            TagOrSkip::Tag(RawTag::ConcealStart, handle) => {
+                if let Some(range) = self
+                    .ranges
+                    .iter()
+                    .find(|range| range.starts_with((width, RawTag::ConcealStart, handle)))
+                {
+                    let skip = range.get_end().map_or(usize::MAX, |end| end - width);
+                    Some((width, RawTag::Skip(skip)))
+                } else {
+                    Some((width, RawTag::ConcealStart))
+                }
+            }
+            TagOrSkip::Tag(tag, _) => Some((width, tag)),
+            TagOrSkip::Skip(_) => None
         })
     }
 }
