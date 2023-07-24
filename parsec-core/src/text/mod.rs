@@ -13,9 +13,8 @@ pub use cfg::*;
 use chars::Chars;
 use ropey::Rope;
 pub use tags::{Handle, RawTag, Tag};
-use tags::{TagOrSkip, Tags};
+use tags::{TagOrSkip, Tags, ToggleId};
 
-use self::tags::ToggleId;
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
@@ -183,27 +182,30 @@ impl Text {
 
 // Iterator methods.
 impl Text {
-    pub fn iter(&self) -> impl Iterator<Item = (usize, TextItem)> + Clone + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
         let chars = self.chars.iter_at(0);
-        let tags = self.tags.iter_at(0).peekable();
+        let tags = self.tags.iter_at(0);
 
-        Iter::new(chars, tags, 0)
+        Iter::new(chars, tags, 0, 0)
     }
 
-    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = (usize, TextItem)> + Clone + '_ {
+    /// TO BE DEPRECATED.
+    pub fn iter_line(
+        &self, line: usize
+    ) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
-        let chars = self.chars.iter_at(start).take(end - start);
+        let chars = self.chars.iter_at(start);
 
         let tags_start = start.saturating_sub(self.tags.back_check_amount());
-        let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
+        let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, start)
+        Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
     pub fn iter_range(
         &self, range: impl RangeBounds<usize>
-    ) -> impl Iterator<Item = (usize, usize, TextItem)> + '_ {
+    ) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
         let start = match range.start_bound() {
             std::ops::Bound::Included(start) => *start,
             std::ops::Bound::Excluded(start) => *start + 1,
@@ -216,13 +218,13 @@ impl Text {
             std::ops::Bound::Unbounded => self.chars.len_chars() + 1
         };
 
-        let chars = self.chars.iter_at(start).take(end - start);
+        let chars = self.chars.iter_at(start);
 
         let line = self.char_to_line(start);
-        let tags_start = self.line_to_char(line.saturating_sub(self.tags.back_check_amount() - 1));
-        let tags = self.tags.iter_at(tags_start).take_while(move |(pos, _)| *pos < end).peekable();
+        let tags_start = start.saturating_sub(self.tags.back_check_amount());
+        let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, start)
+        Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
     pub fn iter_chars_at(&self, char: usize) -> impl Iterator<Item = char> + '_ {
@@ -230,7 +232,7 @@ impl Text {
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
-        self.iter_line(line).filter_map(|(_, bit)| bit.as_char())
+        self.iter_line(line).filter_map(|(.., bit)| bit.as_char())
     }
 }
 /// Builds and modifies a [`Text<U>`], based on replacements applied
@@ -262,7 +264,7 @@ pub struct TextBuilder {
 impl TextBuilder {
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
-        let edit_len = edit.chars().count() as u32;
+        let edit_len = edit.chars().count();
         self.text.chars.string().push_str(edit);
 
         self.add_to_last_skip(edit_len);
@@ -270,7 +272,7 @@ impl TextBuilder {
 
     pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
-        let edit_len = edit.chars().count() as u32;
+        let edit_len = edit.chars().count();
 
         let last_skip = self
             .text
@@ -306,7 +308,7 @@ impl TextBuilder {
             return;
         };
         let old_skip = *skip as usize;
-        *skip = edit.chars().count() as u32;
+        *skip = edit.chars().count();
 
         self.text.chars.replace(start..(start + old_skip), edit);
     }
@@ -340,7 +342,7 @@ impl TextBuilder {
         }
     }
 
-    pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut u32)> {
+    pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut usize)> {
         self.text
             .tags
             .as_mut_vec()
@@ -352,13 +354,13 @@ impl TextBuilder {
             })
             .scan(0, |accum, skip| {
                 let prev_accum = *accum;
-                *accum += *skip as usize;
+                *accum += *skip;
                 Some((prev_accum, skip))
             })
             .nth(index)
     }
 
-    fn add_to_last_skip(&mut self, edit_len: u32) {
+    fn add_to_last_skip(&mut self, edit_len: usize) {
         let tags_vec = self.text.tags.as_mut_vec().unwrap();
 
         let mut tags = tags_vec.iter().enumerate().rev();
@@ -485,7 +487,7 @@ impl<'a> Tagger<'a> {
 }
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-pub enum TextItem {
+pub enum Part {
     Char(char),
     PushForm(FormId),
     PopForm(FormId),
@@ -504,24 +506,24 @@ pub enum TextItem {
     MiddleButtonEnd(ToggleId)
 }
 
-impl From<RawTag> for TextItem {
+impl From<RawTag> for Part {
     fn from(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(id) => TextItem::PushForm(id),
-            RawTag::PopForm(id) => TextItem::PopForm(id),
-            RawTag::MainCursor => TextItem::MainCursor,
-            RawTag::ExtraCursor => TextItem::ExtraCursor,
-            RawTag::AlignLeft => TextItem::AlignLeft,
-            RawTag::AlignCenter => TextItem::AlignCenter,
-            RawTag::AlignRight => TextItem::AlignRight,
-            RawTag::HoverStart(id) => TextItem::HoverStart(id),
-            RawTag::HoverEnd(id) => TextItem::HoverEnd(id),
-            RawTag::LeftButtonStart(id) => TextItem::LeftButtonStart(id),
-            RawTag::LeftButtonEnd(id) => TextItem::LeftButtonEnd(id),
-            RawTag::RightButtonStart(id) => TextItem::RightButtonStart(id),
-            RawTag::RightButtonEnd(id) => TextItem::RightButtonEnd(id),
-            RawTag::MiddleButtonStart(id) => TextItem::MiddleButtonStart(id),
-            RawTag::MiddleButtonEnd(id) => TextItem::MiddleButtonEnd(id),
+            RawTag::PushForm(id) => Part::PushForm(id),
+            RawTag::PopForm(id) => Part::PopForm(id),
+            RawTag::MainCursor => Part::MainCursor,
+            RawTag::ExtraCursor => Part::ExtraCursor,
+            RawTag::AlignLeft => Part::AlignLeft,
+            RawTag::AlignCenter => Part::AlignCenter,
+            RawTag::AlignRight => Part::AlignRight,
+            RawTag::HoverStart(id) => Part::HoverStart(id),
+            RawTag::HoverEnd(id) => Part::HoverEnd(id),
+            RawTag::LeftButtonStart(id) => Part::LeftButtonStart(id),
+            RawTag::LeftButtonEnd(id) => Part::LeftButtonEnd(id),
+            RawTag::RightButtonStart(id) => Part::RightButtonStart(id),
+            RawTag::RightButtonEnd(id) => Part::RightButtonEnd(id),
+            RawTag::MiddleButtonStart(id) => Part::MiddleButtonStart(id),
+            RawTag::MiddleButtonEnd(id) => Part::MiddleButtonEnd(id),
             RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_) | RawTag::GhostText(_) => unsafe {
                 std::hint::unreachable_unchecked()
             }
@@ -529,13 +531,13 @@ impl From<RawTag> for TextItem {
     }
 }
 
-impl TextItem {
+impl Part {
     /// Returns `true` if the text bit is [`Char`].
     ///
     /// [`Char`]: TextBit::Char
     #[must_use]
     pub fn is_char(&self) -> bool {
-        matches!(self, TextItem::Char(_))
+        matches!(self, Part::Char(_))
     }
 
     pub fn as_char(&self) -> Option<char> {
@@ -550,29 +552,50 @@ impl TextItem {
 #[derive(Clone)]
 pub struct Iter<'a> {
     chars: chars::Iter<'a>,
-    tags: Peekable<tags::Iter<'a>>,
+    tags: tags::Iter<'a>,
     char: usize,
     line: usize
 }
 
 impl Iter<'_> {
-    pub fn new(
-        chars: Chars, tags: Peekable<tags::Iter<'_>>, char: usize, line: usize, text: &Text
-    ) -> Self {
+    pub fn new(chars: chars::Iter<'_>, tags: tags::Iter<'_>, char: usize, line: usize) -> Self {
         Self { chars, tags, char, line }
     }
 }
 
 impl Iterator for Iter<'_> {
-    type Item = (usize, TextItem);
+    type Item = (usize, usize, Part);
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         // `<=` because some `Tag`s may be triggered before printing.
         let mut tag = self.tags.peek().filter(|(pos, _)| *pos <= self.char).cloned();
+        let mut conceal_count = 0;
         while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_))) = tag {
-            if let (pos, RawTag::Skip(skip)) = tag.unwrap() {
-                self.tags = self.text.tags.iter_at(pos + skip).peekable();
+            self.tags.next();
+            if let Some((pos, RawTag::Skip(skip))) = tag {
+                self.tags.move_forwards_by(skip);
+                self.line = self.chars.move_forwards_by(skip);
+                conceal_count = 0;
+                break;
+            } else if let Some((pos, RawTag::ConcealStart)) = tag {
+                conceal_count += 1;
+                let mut skip = 0;
+                let mut tags = self.tags.clone();
+                while conceal_count > 0 && let Some((new_pos, tag)) = tags.next() {
+                    skip = new_pos - pos;
+                    match tag {
+                        RawTag::ConcealStart => conceal_count += 1,
+                        RawTag::ConcealEnd => conceal_count -= 1,
+                        RawTag::MainCursor | RawTag::ExtraCursor => {
+                            skip = 0;
+                        }
+                        _ => {}
+                    }
+                }
+
+                self.tags.move_forwards_by(skip);
+                self.line = self.chars.move_forwards_by(skip);
             }
             let mut tags = self.tags.clone().enumerate();
             self.tags.next();
@@ -582,18 +605,16 @@ impl Iterator for Iter<'_> {
                     break;
                 }
             }
-
-            if nth == 0 {
-                return None;
-            }
         }
 
         if let Some((pos, tag)) = tag {
             self.tags.next();
-            Some((pos, TextItem::Tag(tag)))
+            Some((pos, self.line, Part::from(tag)))
         } else if let Some(char) = self.chars.next() {
-            self.char += 1 + nth;
-            Some((self.char - 1, TextItem::Char(char)))
+            self.char += 1;
+            let prev_line = self.line;
+            self.line += (char == '\n') as usize;
+            Some((self.char - 1, prev_line, Part::Char(char)))
         } else {
             None
         }

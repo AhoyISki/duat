@@ -25,10 +25,10 @@ impl Chars {
         }
     }
 
-    pub fn iter_at(&self, char: usize) -> impl Iterator<Item = char> + Clone + '_ {
+    pub fn iter_at(&self, width: usize) -> Iter {
         match self {
-            Chars::String(string) => Iter::String(string.chars().skip(char)),
-            Chars::Rope(rope) => Iter::Rope(rope.chars_at(char))
+            Chars::String(string) => Iter::String(string.chars().skip(width)),
+            Chars::Rope(rope) => Iter::Rope(rope, width, rope.chars_at(width))
         }
     }
 
@@ -125,9 +125,35 @@ impl Chars {
 }
 
 #[derive(Clone)]
-enum Iter<'a> {
+pub enum Iter<'a> {
     String(std::iter::Skip<std::str::Chars<'a>>),
-    Rope(ropey::iter::Chars<'a>)
+    Rope(&'a Rope, usize, ropey::iter::Chars<'a>)
+}
+
+impl<'a> Iter<'a> {
+    pub fn move_forwards_by(&mut self, mut n: usize) -> usize {
+        let mut nl_count = 0;
+        match self {
+            Iter::String(chars) => {
+                while n > 0 && let Some(char) = chars.next() {
+                    n -= 1;
+                    nl_count += char == '\n' as usize;
+                }
+                nl_count
+            }
+            Iter::Rope(rope, char_idx, chars) => {
+                let old_line = rope.char_to_line(*char_idx);
+                *char_idx += n;
+                if let Some(chars_forward) = rope.get_chars_at(*char_idx) {
+                    *char_idx += n;
+                    *chars = chars_forward;
+                    rope.char_to_line(*char_idx) - old_line
+                } else {
+                    rope.len_lines() - 1 - old_line
+                }
+            }
+        }
+    }
 }
 
 impl Iterator for Iter<'_> {
@@ -136,7 +162,7 @@ impl Iterator for Iter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::String(chars) => chars.next(),
-            Iter::Rope(chars) => chars.next()
+            Iter::Rope(_, width, chars) => chars.next().inspect(|_| *width += 1)
         }
     }
 }

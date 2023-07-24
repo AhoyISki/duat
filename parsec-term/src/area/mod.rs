@@ -1,3 +1,4 @@
+mod iter;
 mod line;
 
 use std::{
@@ -10,11 +11,12 @@ use crossterm::{
     cursor,
     style::{ContentStyle, Print, ResetColor, SetStyle}
 };
+use iter::Iter;
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
     position::Pos,
-    text::{NewLine, PrintCfg, TabStops, Text, TextBit, WrapMethod},
+    text::{NewLine, PrintCfg, TabStops, Text, Item, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 use unicode_width::UnicodeWidthChar;
@@ -110,6 +112,8 @@ impl Area {
 
 impl ui::Area for Area {
     type PrintInfo = PrintInfo;
+    type ConstraintChangeErr = ConstraintChangeErr;
+
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
             let rect = layout.fetch_index(self.index).unwrap();
@@ -128,16 +132,6 @@ impl ui::Area for Area {
 
     fn set_as_active(&self) {
         self.layout.write().active_index = self.index;
-    }
-
-    fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
-        let (child, parent) =
-            self.layout.mutate(|layout| layout.bisect(self.index, specs, is_glued));
-
-        (
-            Area::new(self.layout.clone(), child),
-            parent.map(|parent| Area::new(self.layout.clone(), parent))
-        )
     }
 
     fn print(&self, text: &Text, info: PrintInfo, cfg: PrintCfg, palette: &FormPalette) {
@@ -162,8 +156,9 @@ impl ui::Area for Area {
                 text.line_to_char(line)
             };
             let iter = text.iter_range(line_char..);
+            iter::Iter::new(iter, info.first_char - line_char, coords.width(), &cfg);
             indents(iter, &cfg.tab_stops, width).filter(move |(_, index, bit)| {
-                *index >= info.first_char || matches!(bit, TextBit::Tag(_))
+                *index >= info.first_char || matches!(bit, Item::Tag(_))
             })
         };
 
@@ -203,7 +198,7 @@ impl ui::Area for Area {
         todo!();
     }
 
-    fn visible_rows(&self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg) -> usize {
+    fn visible_rows(&self, iter: impl Iterator<Item = (usize, Item)>, cfg: &PrintCfg) -> usize {
         let coords = self.wrapping_coords(cfg);
         let indents = indents(iter, &cfg.tab_stops, coords.width());
         match cfg.wrap_method {
@@ -220,7 +215,7 @@ impl ui::Area for Area {
     }
 
     fn char_at_wrap(
-        &self, mut iter: impl Iterator<Item = (usize, TextBit)>, wrap: usize, cfg: &PrintCfg
+        &self, mut iter: impl Iterator<Item = (usize, Item)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize> {
         let width = self.wrapping_coords(cfg).width();
         match cfg.wrap_method {
@@ -241,7 +236,7 @@ impl ui::Area for Area {
     }
 
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, cfg: &PrintCfg, wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, Item)>, cfg: &PrintCfg, wrap_around: bool
     ) -> usize {
         let width = self.wrapping_coords(cfg).width();
         let max_width = if wrap_around { width as u16 } else { u16::MAX };
@@ -251,7 +246,7 @@ impl ui::Area for Area {
                 width = indent;
             };
 
-            if let TextBit::Char(char) = bit {
+            if let Item::Char(char) = bit {
                 width += len_from(char, width, max_width, &cfg.tab_stops)
             }
 
@@ -267,7 +262,7 @@ impl ui::Area for Area {
     }
 
     fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, TextBit)>, dist: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, Item)>, dist: usize, cfg: &PrintCfg
     ) -> usize {
         iter.filter_map(|(_, bit)| bit.as_char())
             .enumerate()
@@ -300,7 +295,15 @@ impl ui::Area for Area {
         })
     }
 
-    type ConstraintChangeErr = ConstraintChangeErr;
+    fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
+        let (child, parent) =
+            self.layout.mutate(|layout| layout.bisect(self.index, specs, is_glued));
+
+        (
+            Area::new(self.layout.clone(), child),
+            parent.map(|parent| Area::new(self.layout.clone(), parent))
+        )
+    }
 }
 
 unsafe impl Send for Area {}
@@ -466,184 +469,67 @@ fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16
     }
 }
 
-/// Returns an [`Iterator`] that also shows the current level of
-/// indentation.
-fn indents<'a>(
-    iter: impl Iterator<Item = (usize, TextBit)> + 'a, tab_stops: &'a TabStops, width: usize
-) -> impl Iterator<Item = (u16, usize, TextBit)> + 'a {
-    iter.scan((0, true), move |(indent, on_indent), (index, bit)| {
-        let old_indent = if *indent < width { *indent } else { 0 };
-        (*indent, *on_indent) = match (&bit, *on_indent) {
-            (&TextBit::Char('\t'), true) => (*indent + tab_stops.spaces_at(*indent), true),
-            (&TextBit::Char(' '), true) => (*indent + 1, true),
-            (&TextBit::Char('\n'), _) => (0, true),
-            (&TextBit::Char(_), _) => (*indent, false),
-            (&TextBit::Tag(_), on_indent) => (*indent, on_indent)
-        };
-
-        Some((old_indent as u16, index, bit))
-    })
-}
-
-pub fn bits<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, tab_stops: &'a TabStops,
-    no_wrap: bool
-) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
-    let width = width as u16;
-    iter.scan((0, true, false), move |(x, next_line, char_printed), (indent, index, bit)| {
-        let len = bit
-            .as_char()
-            .map(|char| {
-                *char_printed = true;
-                len_from(char, *x, width, tab_stops)
-            })
-            .unwrap_or(0);
-        *x += len;
-
-        let surpassed_width = *x > width || (*x == width && len == 0);
-        let nl = if *next_line && *char_printed || (!no_wrap && surpassed_width) {
-            *x = indent + len;
-            *next_line = false;
-            Some(indent)
-        } else {
-            None
-        };
-
-        if let TextBit::Char('\n') = bit {
-            *x = 0;
-            *next_line = true;
-        }
-
-        Some((nl, index, bit))
-    })
-}
-
-/// Returns an [`Iterator`] over the sequences of [`WordChars`].
-fn words<'a>(
-    iter: impl Iterator<Item = (u16, usize, TextBit)> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = (Option<u16>, usize, TextBit)> + 'a {
-    let mut iter = iter.peekable();
-    let width = width as u16;
-    let mut indent = 0;
-    let mut word = Vec::new();
-
-    let mut finished_word = Vec::new();
-    let mut x = 0;
-    let mut next_is_nl = true;
-    std::iter::from_fn(move || {
-        if let Some((index, bit)) = finished_word.pop() {
-            return words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg);
-        }
-
-        let mut word_len = 0;
-        while let Some((new_indent, _, bit)) = iter.peek() {
-            if let &TextBit::Char(char) = bit {
-                indent = *new_indent;
-                if cfg.word_chars.contains(char) {
-                    word_len += len_from(char, x + word_len, width, &cfg.tab_stops)
-                } else {
-                    word.push(iter.next().map(|(_, index, bit)| (index, bit)).unwrap());
-                    break;
-                }
-            }
-            word.push(iter.next().map(|(_, index, bit)| (index, bit)).unwrap());
-        }
-
-        next_is_nl |= x + word_len > width;
-
-        std::mem::swap(&mut word, &mut finished_word);
-        finished_word.reverse();
-        finished_word.pop().and_then(|(index, bit)| {
-            words_bit(index, bit, indent, &mut x, &mut next_is_nl, width, cfg)
-        })
-    })
-}
-
-fn words_bit(
-    index: usize, bit: TextBit, indent: u16, x: &mut u16, next_is_nl: &mut bool, width: u16,
-    cfg: &PrintCfg
-) -> Option<(Option<u16>, usize, TextBit)> {
-    let nl = if *next_is_nl {
-        *next_is_nl = false;
-        *x = indent;
-        Some(indent)
-    } else if let TextBit::Char(char) = bit {
-        let len = len_from(char, *x, width, &cfg.tab_stops);
-        let ret = if *x + len > width { Some(indent) } else { None };
-        *x = ret.map(|indent| indent + len).unwrap_or(*x + len);
-        ret
-    } else if *x >= width {
-        *x = indent;
-        Some(indent)
-    } else {
-        None
-    };
-
-    if let Some(char) = bit.as_char() {
-        *next_is_nl = char == '\n'
-    }
-
-    Some((nl, index, bit))
-}
-
 fn print_bits(
-    iter: impl Iterator<Item = (Option<u16>, usize, TextBit)>, coords: Coords, is_active: bool,
-    info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer, stdout: &mut StdoutLock
+    iter: impl Iterator<Item = ((u16, u16, Option<u16>), (usize, Item))>, coords: Coords,
+    is_active: bool, info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer,
+    stdout: &mut StdoutLock
 ) -> u16 {
     let mut passed_first_indent = false;
     let mut last_char = 'a';
-    let mut cursor = coords.tl;
+    let mut x = coords.tl.x;
+    let mut y = coords.tl.y;
     let mut prev_style = None;
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    for (nl, _, bit) in iter {
-        if let Some(indent) = nl {
+    for ((new_x, len, line_num), (_, bit)) in iter {
+        x = new_x;
+        if let Some(line_num) = line_num {
             if passed_first_indent {
-                cursor.y += 1;
-                print_line(cursor, coords, alignment, &mut line, stdout);
+                y += 1;
+                print_line(x, y, coords, alignment, &mut line, stdout);
             } else {
                 passed_first_indent = true;
             }
-            if cursor.y == coords.br.y {
+            if y == coords.br.y {
                 break;
             }
-            cursor.x = coords.tl.x + indent;
-            indent_line(&form_former, cursor, coords, info.x_shift, &mut line);
+            indent_line(&form_former, x, coords, info.x_shift, &mut line);
         }
 
-        if let &TextBit::Char(char) = &bit {
+        if let &Item::Char(char) = &bit {
+            // TODO: Replace this with a PrintInfo configuration.
             if char == '\n' && let Alignment::Right | Alignment::Center = alignment {
                 continue;
             }
             let char = real_char_from(char, &cfg.new_line, last_char);
-            cursor.x += write_char(char, cursor, coords, info.x_shift, &cfg.tab_stops, &mut line);
+            write_char(char, x, len, coords, info.x_shift, &cfg.tab_stops, &mut line);
             last_char = char;
             if let Some(style) = prev_style.take() {
                 queue!(&mut line, ResetColor, SetStyle(style))
             }
-        } else if let TextBit::Tag(tag) = bit {
+        } else if let Item::Tag(tag) = bit {
             prev_style = trigger_tag(tag, is_active, &mut alignment, &mut form_former, &mut line);
         }
     }
 
     if !line.is_empty() {
-        cursor.y += 1;
-        print_line(cursor, coords, alignment, &mut line, stdout);
+        y += 1;
+        print_line(x, y, coords, alignment, &mut line, stdout);
     }
 
-    coords.br.y - cursor.y
+    coords.br.y - y
 }
 
 fn print_line(
-    cursor: Coord, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
+    x: u16, y: u16, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
     stdout: &mut StdoutLock
 ) {
     let (left, right) = match alignment {
-        Alignment::Left => (0, coords.br.x.saturating_sub(cursor.x) as usize),
-        Alignment::Right => (coords.br.x.saturating_sub(cursor.x) as usize, 0),
+        Alignment::Left => (0, coords.br.x.saturating_sub(x) as usize),
+        Alignment::Right => (coords.br.x.saturating_sub(x) as usize, 0),
         Alignment::Center => {
-            let remainder = coords.br.x.saturating_sub(cursor.x) as usize;
+            let remainder = coords.br.x.saturating_sub(x) as usize;
             let left = remainder / 2;
             (left, remainder - left)
         }
@@ -656,7 +542,7 @@ fn print_line(
         Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
         Print(" ".repeat(right)),
-        cursor::MoveTo(coords.tl.x, cursor.y)
+        cursor::MoveTo(coords.tl.x, y)
     );
 
     line.clear();
@@ -669,40 +555,35 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut Stdout
 }
 
 fn indent_line(
-    form_former: &FormFormer, cursor: Coord, coords: Coords, x_shift: usize, line: &mut Vec<u8>
+    form_former: &FormFormer, x: u16, coords: Coords, x_shift: usize, line: &mut Vec<u8>
 ) {
     let prev_style = form_former.make_form().style;
-    let mut indent = Vec::<u8>::from(
-        " ".repeat((cursor.x.saturating_sub(coords.tl.x + x_shift as u16)) as usize)
-    );
+    let mut indent =
+        Vec::<u8>::from(" ".repeat((x.saturating_sub(coords.tl.x + x_shift as u16)) as usize));
     queue!(indent, SetStyle(prev_style));
     line.splice(0..0, indent);
 }
 
 fn write_char(
-    char: char, cursor: Coord, coords: Coords, x_shift: usize, tab_stops: &TabStops,
+    char: char, x: u16, len: u16, coords: Coords, x_shift: usize, tab_stops: &TabStops,
     line: &mut Vec<u8>
-) -> u16 {
-    let len = len_from(char, cursor.x - coords.tl.x, (coords.width() + x_shift) as u16, tab_stops);
-
+) {
     // Case where the cursor hasn't yet reached the left edge.
-    if cursor.x < coords.tl.x + x_shift as u16 {
-        let len = (cursor.x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
+    if x < coords.tl.x + x_shift as u16 {
+        let len = (x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
         queue!(line, Print(" ".repeat(len)));
     // Case where the end of the cursor, after printing, would be
     // located before the right edge.
-    } else if cursor.x + len <= coords.br.x + x_shift as u16 {
+    } else if x + len <= coords.br.x + x_shift as u16 {
         match char {
             '\t' => queue!(line, Print(" ".repeat(len as usize))),
             char => queue!(line, Print(char))
         };
     // Case where it wouldn't.
-    } else if cursor.x < coords.br.x + x_shift as u16 {
-        let len = coords.br.x as usize + x_shift - cursor.x as usize;
+    } else if x < coords.br.x + x_shift as u16 {
+        let len = coords.br.x as usize + x_shift - x as usize;
         queue!(line, Print(" ".repeat(len)));
     }
-
-    len
 }
 
 fn trigger_tag(

@@ -42,7 +42,7 @@ where
     cursors: Vec<Cursor>,
     history: History<U>,
     print_cfg: PrintCfg,
-    printed_lines: Vec<(usize, bool)>,
+    printed_lines: Vec<(usize, bool)>
 }
 
 impl<U> FileWidget<U>
@@ -71,13 +71,11 @@ where
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            tagger.insert(20, Tag::ConcealStart);
-            tagger.insert(500, Tag::ConcealEnd);
-            for index in (0..tagger.len_chars()).step_by(10) {
+            for index in (20..tagger.len_chars()).step_by(30) {
                 if pushes_pops_you_cant_explain_that {
-                    tagger.insert(index, Tag::PushForm(FILE_NAME));
+                    tagger.insert(index, Tag::ConcealStart);
                 } else {
-                    tagger.insert(index, Tag::PopForm(FILE_NAME));
+                    tagger.insert(index, Tag::ConcealEnd);
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
@@ -94,7 +92,7 @@ where
             cursors,
             history: History::default(),
             print_cfg,
-            printed_lines: Vec::new(),
+            printed_lines: Vec::new()
         })
     }
 
@@ -231,15 +229,16 @@ where
         let len_lines = self.text.len_lines();
         while accum < height && line_num < len_lines {
             let line = self.text.iter_line(line_num);
+            let nl = line.clone().any(|(_, bit)| bit.as_char().is_some_and(|char| char == '\n'));
 
             let visible_rows = if accum == 0 {
                 let total = area.visible_rows(line.clone(), &self.print_cfg);
                 let cut_line = line.take_while(|(index, _)| *index < first_char);
                 let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
                 is_wrapped = rows < total;
-                rows
+                rows.saturating_sub(!nl as usize)
             } else {
-                area.visible_rows(line, &self.print_cfg)
+                area.visible_rows(line, &self.print_cfg).saturating_sub(!nl as usize)
             };
 
             let prev_accum = accum;

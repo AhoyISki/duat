@@ -4,7 +4,7 @@ use crossterm::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FormId(u16);
+pub struct FormId(usize);
 
 /// A style for text.
 #[derive(Default, Debug, Clone, Copy)]
@@ -186,7 +186,7 @@ impl FormPalette {
             self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name)
         {
             match named {
-                Named::Form(form) => return Some((*form, FormId(index as u16))),
+                Named::Form(form) => return Some((*form, FormId(index))),
                 Named::Ref(ref_name) => name = ref_name
             }
         }
@@ -195,15 +195,15 @@ impl FormPalette {
 
     /// Returns a form, given an index.
     pub fn from_id(&self, form_id: FormId) -> Form {
-        let Some(ret) = self.get_from_id(form_id.0) else {
+        let Some(ret) = self.get_from_id(form_id) else {
             panic!("Form with id {} not found", form_id.0);
         };
         ret
     }
 
     /// Non-panicking version of [`from_id()`][Self::from_id]
-    pub fn get_from_id(&self, form_id: u16) -> Option<Form> {
-        let named = self.forms.get(form_id as usize).map(|(_, named)| *named);
+    pub fn get_from_id(&self, form_id: FormId) -> Option<Form> {
+        let named = self.forms.get(form_id.0).map(|(_, named)| *named);
         named.map(|named| match named {
             Named::Form(form) => form,
             Named::Ref(name) => self.from_name(name).0
@@ -233,7 +233,7 @@ impl FormPalette {
 
 pub struct FormFormer<'a> {
     palette: &'a FormPalette,
-    forms: Vec<(Form, u16)>
+    forms: Vec<(Form, FormId)>
 }
 
 impl<'a> FormFormer<'a> {
@@ -241,7 +241,7 @@ impl<'a> FormFormer<'a> {
     /// given previous triggers.
     pub fn apply(&mut self, id: FormId) -> Form {
         let form = self.palette.from_id(id);
-        self.forms.push((form, id.0));
+        self.forms.push((form, id));
         self.make_form()
     }
 
@@ -288,7 +288,7 @@ impl<'a> FormFormer<'a> {
     /// result, given previous triggers.
     pub fn remove(&mut self, id: FormId) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id.0) {
+        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
             self.make_form()
         } else {

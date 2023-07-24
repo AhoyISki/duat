@@ -1,4 +1,11 @@
-#![feature(extract_if, result_option_inspect, trait_upcasting, let_chains, option_zip)]
+#![feature(
+    extract_if,
+    result_option_inspect,
+    trait_upcasting,
+    let_chains,
+    option_zip,
+    iter_advance_by
+)]
 #![allow(clippy::arc_with_non_send_sync, clippy::type_complexity, clippy::vec_init_then_push)]
 
 use std::{

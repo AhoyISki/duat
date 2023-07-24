@@ -109,7 +109,7 @@ impl Container {
 
     pub fn iter_at(&self, pos: usize) -> Iter<ForwardTags> {
         match self {
-            Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, vec.iter())),
+            Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, &vec)),
             Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos))
         }
     }
@@ -118,7 +118,7 @@ impl Container {
         match self {
             Container::Vec(vec) => {
                 let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
-                Iter::Vec(ReverseTags::new(width, pos, vec.iter().rev()))
+                Iter::Vec(ReverseTags::new(width, pos, &vec))
             }
             Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos).reversed())
         }
@@ -131,7 +131,7 @@ where
     VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone
 {
     Vec(VecIter),
-    Rope(any_rope::iter::Iter<'a, (usize, TagOrSkip)>)
+    Rope(any_rope::iter::Iter<'a, TagOrSkip>)
 }
 
 impl<VecIter> Iterator for Iter<'_, VecIter>
@@ -143,7 +143,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::Vec(iter) => iter.next(),
-            Iter::Rope(iter, _) => iter.next()
+            Iter::Rope(iter) => iter.next()
         }
     }
 }
@@ -169,7 +169,7 @@ impl Iterator for ForwardTags<'_> {
             let old_accum = self.accum;
             self.accum += t_or_s.width();
             if self.accum >= self.min {
-                return Some((old_accum, t_or_s));
+                return Some((old_accum, *t_or_s));
             }
         }
 
@@ -197,7 +197,7 @@ impl Iterator for ReverseTags<'_> {
         while let Some(t_or_s) = self.iter.next() {
             self.accum -= t_or_s.width();
             if self.accum >= self.min || (self.accum > self.min && t_or_s.width() == 0) {
-                return Some((self.accum, t_or_s));
+                return Some((self.accum, *t_or_s));
             }
         }
 
