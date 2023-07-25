@@ -5,7 +5,6 @@ mod tags;
 
 use std::{
     io::Write,
-    iter::Peekable,
     ops::{Range, RangeBounds, RangeInclusive}
 };
 
@@ -307,7 +306,7 @@ impl TextBuilder {
         let Some((start, skip)) = self.get_mut_skip(swap_index) else {
             return;
         };
-        let old_skip = *skip as usize;
+        let old_skip = *skip;
         *skip = edit.chars().count();
 
         self.text.chars.replace(start..(start + old_skip), edit);
@@ -395,7 +394,7 @@ impl TextBuilder {
             .filter_map(|(index, t_or_s)| t_or_s.as_skip().map(|skip| (index, skip)))
             .scan(0, |accum, (index, skip)| {
                 let prev_accum = *accum;
-                *accum += *skip as usize;
+                *accum += *skip;
                 Some((index, prev_accum))
             })
             .nth(swap_index)
@@ -543,6 +542,10 @@ impl Part {
     pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self { Some(*v) } else { None }
     }
+
+    pub fn is_tag(&self) -> bool {
+        !self.is_char()
+    }
 }
 
 /// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
@@ -594,7 +597,7 @@ impl Iterator for Iter<'_> {
                     }
                 }
 
-				self.pos = pos + skip;
+                self.pos = pos + skip;
                 self.tags.move_forwards_by(skip);
                 self.line = self.chars.move_forwards_by(skip);
             }

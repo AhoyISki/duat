@@ -109,7 +109,7 @@ impl Container {
 
     pub fn iter_at(&self, pos: usize) -> Iter<ForwardTags> {
         match self {
-            Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, &vec)),
+            Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, vec)),
             Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos))
         }
     }
@@ -118,7 +118,7 @@ impl Container {
         match self {
             Container::Vec(vec) => {
                 let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
-                Iter::Vec(ReverseTags::new(width, pos, &vec))
+                Iter::Vec(ReverseTags::new(width, pos, vec))
             }
             Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos).reversed())
         }

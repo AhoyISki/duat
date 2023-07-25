@@ -279,12 +279,8 @@ where
         self.print_info
     }
 
-    fn print_cfg(&self) -> PrintCfg {
-        self.print_cfg.clone()
-    }
-
-    fn print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
-        area.print(self.text(), self.print_info(), self.print_cfg(), palette)
+    fn print_cfg(&self) -> &PrintCfg {
+        &self.print_cfg
     }
 }
 

@@ -61,8 +61,10 @@ where
         U::PrintInfo::default()
     }
 
-    fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::default()
+    fn print_cfg(&self) -> &PrintCfg {
+        use std::sync::OnceLock;
+        static CFG: OnceLock<PrintCfg> = OnceLock::new();
+        CFG.get_or_init(PrintCfg::default)
     }
 
     fn print(&self, area: &U::Area, palette: &crate::forms::FormPalette) {

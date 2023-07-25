@@ -152,7 +152,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     fn set_as_active(&self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(&self, text: &Text, info: Self::PrintInfo, cfg: PrintCfg, palette: &FormPalette);
+    fn print(&self, text: &Text, info: Self::PrintInfo, cfg: &PrintCfg, palette: &FormPalette);
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
 

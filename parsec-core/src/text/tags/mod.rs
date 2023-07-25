@@ -1,7 +1,6 @@
 use std::{
     cmp::Ordering::*,
     ops::{Range, RangeFrom, RangeTo},
-    os::fd::IntoRawFd
 };
 
 use any_rope::{Measurable, Rope};
@@ -219,7 +218,7 @@ impl Measurable for TagOrSkip {
     fn width(&self) -> usize {
         match self {
             TagOrSkip::Tag(..) => 0,
-            TagOrSkip::Skip(count) => *count as usize
+            TagOrSkip::Skip(skip) => *skip
         }
     }
 }
@@ -381,7 +380,7 @@ impl Tags {
         };
 
         // If inserting at any of the ends, no splitting is necessary.
-        if pos == start || pos == (start + skip as usize) {
+        if pos == start || pos == (start + skip) {
             self.container.insert(pos, TagOrSkip::Tag(tag, handle))
         } else {
             let insertion = [
@@ -391,7 +390,7 @@ impl Tags {
             ];
             self.container.insert_slice(start, &insertion);
 
-            let skip_range = (start + skip as usize)..(start + 2 * skip as usize);
+            let skip_range = (start + skip)..(start + 2 * skip);
             self.container.remove_exclusive(skip_range);
         }
 
@@ -524,7 +523,7 @@ impl Tags {
             // The removal happens after the insertion in order to prevent `Tag`s
             // which are meant to be separate from coming together.
             self.container.insert(from, TagOrSkip::Skip(total_skip));
-            let skip_range = (from + total_skip as usize)..(from + 2 * total_skip as usize);
+            let skip_range = (from + total_skip)..(from + 2 * total_skip);
             self.container.remove_exclusive(skip_range);
         }
 
@@ -548,7 +547,7 @@ impl Tags {
         if first_width != from {
             self.container.insert(first_width, TagOrSkip::Skip(total_skip));
 
-            let range = (first_width + total_skip as usize)..(from + total_skip as usize);
+            let range = (first_width + total_skip)..(from + total_skip);
             self.container.remove_exclusive(range);
         }
     }
