@@ -13,7 +13,7 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     position::Pos,
-    text::{PrintCfg, Text, Part},
+    text::{Part, PrintCfg, Text},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
@@ -169,23 +169,25 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
     /// then the number of rows must equal the number of lines on the
     /// [`Iterator`].
-    fn visible_rows(&self, iter: impl Iterator<Item = (usize, Part)>, cfg: &PrintCfg) -> usize;
+    fn visible_rows(
+        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg
+    ) -> usize;
 
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
     /// times.
     fn char_at_wrap(
-        &self, iter: impl Iterator<Item = (usize, Part)>, wrap: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)>, wrap: usize, cfg: &PrintCfg
     ) -> Option<usize>;
 
     /// Gets the visual width of the [`Iterator`].
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, Part)>, cfg: &PrintCfg, wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg, wrap_around: bool
     ) -> usize;
 
     /// Gets the column at `dist` from the left side on [`Iterator`].
     fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, Part)>, dist: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)>, dist: usize, cfg: &PrintCfg
     ) -> usize;
 
     fn has_changed(&self) -> bool;

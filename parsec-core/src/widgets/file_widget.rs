@@ -229,11 +229,11 @@ where
         let len_lines = self.text.len_lines();
         while accum < height && line_num < len_lines {
             let line = self.text.iter_line(line_num);
-            let nl = line.clone().any(|(_, bit)| bit.as_char().is_some_and(|char| char == '\n'));
+            let nl = line.clone().any(|(.., bit)| bit.as_char().is_some_and(|char| char == '\n'));
 
             let visible_rows = if accum == 0 {
                 let total = area.visible_rows(line.clone(), &self.print_cfg);
-                let cut_line = line.take_while(|(index, _)| *index < first_char);
+                let cut_line = line.take_while(|(index, ..)| *index < first_char);
                 let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
                 is_wrapped = rows < total;
                 rows.saturating_sub(!nl as usize)

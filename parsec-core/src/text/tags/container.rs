@@ -155,8 +155,8 @@ pub struct ForwardTags<'a> {
     iter: std::slice::Iter<'a, TagOrSkip>
 }
 
-impl ForwardTags<'_> {
-    fn new(min: usize, slice: &[TagOrSkip]) -> Self {
+impl<'a> ForwardTags<'a> {
+    fn new(min: usize, slice: &'a [TagOrSkip]) -> Self {
         Self { accum: 0, min, iter: slice.iter() }
     }
 }

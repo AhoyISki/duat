@@ -897,8 +897,8 @@ struct RawTags<'a> {
     ranges: &'a [TagRange],
     iter: container::Iter<'a, container::ForwardTags<'a>>
 }
-impl RawTags<'_> {
-    fn new(ranges: &[TagRange], iter: container::Iter<'_, container::ForwardTags<'_>>) -> Self {
+impl<'a> RawTags<'a> {
+    fn new(ranges: &'a [TagRange], iter: container::Iter<'a, container::ForwardTags<'a>>) -> Self {
         Self { ranges, iter }
     }
 }
@@ -934,14 +934,14 @@ pub struct Iter<'a> {
     peeked: Option<Option<(usize, RawTag)>>
 }
 
-impl Iter<'_> {
-    pub fn new(pos: usize, tags: &'_ Tags, ranges: Ranges<'_>, raw_tags: RawTags<'_>) -> Self {
+impl<'a> Iter<'a> {
+    fn new(pos: usize, tags: &'a Tags, ranges: Ranges<'a>, raw_tags: RawTags<'a>) -> Self {
         let iter = ranges.chain(raw_tags);
         Self { pos, tags, iter, peeked: None }
     }
 
-    pub fn move_forwards_by(&mut self, pos: usize) {
-        *self = self.tags.iter_at(self.pos + pos);
+    pub fn move_forwards_by(&mut self, amount: usize) {
+        *self = self.tags.iter_at(self.pos + amount);
     }
 
     pub fn peek(&mut self) -> Option<&(usize, RawTag)> {

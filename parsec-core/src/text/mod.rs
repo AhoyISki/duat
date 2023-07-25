@@ -553,13 +553,13 @@ impl Part {
 pub struct Iter<'a> {
     chars: chars::Iter<'a>,
     tags: tags::Iter<'a>,
-    char: usize,
+    pos: usize,
     line: usize
 }
 
-impl Iter<'_> {
-    pub fn new(chars: chars::Iter<'_>, tags: tags::Iter<'_>, char: usize, line: usize) -> Self {
-        Self { chars, tags, char, line }
+impl<'a> Iter<'a> {
+    pub fn new(chars: chars::Iter<'a>, tags: tags::Iter<'a>, pos: usize, line: usize) -> Self {
+        Self { chars, tags, pos, line }
     }
 }
 
@@ -569,15 +569,15 @@ impl Iterator for Iter<'_> {
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         // `<=` because some `Tag`s may be triggered before printing.
-        let mut tag = self.tags.peek().filter(|(pos, _)| *pos <= self.char).cloned();
+        let tag = self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned();
         let mut conceal_count = 0;
         while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_))) = tag {
             self.tags.next();
             if let Some((pos, RawTag::Skip(skip))) = tag {
+                self.pos = pos + skip;
                 self.tags.move_forwards_by(skip);
                 self.line = self.chars.move_forwards_by(skip);
                 conceal_count = 0;
-                break;
             } else if let Some((pos, RawTag::ConcealStart)) = tag {
                 conceal_count += 1;
                 let mut skip = 0;
@@ -594,27 +594,20 @@ impl Iterator for Iter<'_> {
                     }
                 }
 
+				self.pos = pos + skip;
                 self.tags.move_forwards_by(skip);
                 self.line = self.chars.move_forwards_by(skip);
             }
-            let mut tags = self.tags.clone().enumerate();
-            self.tags.next();
-            let mut conceal_ended = false;
-            for (skip, (pos, tag)) in self.tags.clone().enumerate() {
-                if let RawTag::ConcealEnd = tag {
-                    break;
-                }
-            }
         }
 
-        if let Some((pos, tag)) = tag {
+        if let Some((pos, tag)) = self.tags.peek().filter(|(pos, _)| *pos <= self.pos).cloned() {
             self.tags.next();
             Some((pos, self.line, Part::from(tag)))
         } else if let Some(char) = self.chars.next() {
-            self.char += 1;
+            self.pos += 1;
             let prev_line = self.line;
             self.line += (char == '\n') as usize;
-            Some((self.char - 1, prev_line, Part::Char(char)))
+            Some((self.pos - 1, prev_line, Part::Char(char)))
         } else {
             None
         }

@@ -137,7 +137,7 @@ impl<'a> Iter<'a> {
             Iter::String(chars) => {
                 while n > 0 && let Some(char) = chars.next() {
                     n -= 1;
-                    nl_count += char == '\n' as usize;
+                    nl_count += (char == '\n') as usize;
                 }
                 nl_count
             }

@@ -6,7 +6,12 @@
     option_zip,
     iter_advance_by
 )]
-#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity, clippy::vec_init_then_push)]
+#![allow(
+    clippy::arc_with_non_send_sync,
+    clippy::type_complexity,
+    clippy::vec_init_then_push,
+    clippy::while_let_on_iterator
+)]
 
 use std::{
     marker::PhantomData,
