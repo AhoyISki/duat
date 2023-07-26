@@ -9,9 +9,9 @@ use super::len_from;
 fn indents<'a>(
     iter: impl Iterator<Item = (usize, usize, Part)> + 'a, width: usize, cfg: &'a PrintCfg
 ) -> impl Iterator<Item = (u16, (usize, usize, Part))> + 'a {
-    iter.scan((0, true), move |(indent, on_indent), (line, index, bit)| {
+    iter.scan((0, true), move |(indent, on_indent), (pos, line, part)| {
         let old_indent = if *indent < width { *indent } else { 0 };
-        (*indent, *on_indent) = match (&bit, *on_indent) {
+        (*indent, *on_indent) = match (&part, *on_indent) {
             (&Part::Char('\t'), true) => (*indent + cfg.tab_stops.spaces_at(*indent), true),
             (&Part::Char(' '), true) => (*indent + 1, true),
             (&Part::Char('\n'), _) => (0, true),
@@ -19,7 +19,7 @@ fn indents<'a>(
             (_, on_indent) => (*indent, on_indent)
         };
 
-        Some((old_indent as u16, (line, index, bit)))
+        Some((old_indent as u16, (pos, line, part)))
     })
 }
 
@@ -27,9 +27,8 @@ fn bits<'a>(
     iter: impl Iterator<Item = (u16, (usize, usize, Part))> + 'a, width: usize, cfg: &'a PrintCfg
 ) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
     let width = width as u16;
-    iter.scan((0, true, false), move |(x, next_line, printed), (indent, (line, index, bit))| {
-        let prev_x = *x;
-        let len = bit
+    iter.scan((0, true, false), move |(x, next_line, printed), (indent, (pos, line, part))| {
+        let len = part
             .as_char()
             .map(|char| {
                 *printed = true;
@@ -39,17 +38,18 @@ fn bits<'a>(
         *x += len;
 
         let surpassed_width = *x > width || (*x == width && len == 0);
-        if (*next_line && *printed) || (!cfg.wrap_method.is_no_wrap() && surpassed_width) {
+        let needs_to_wrap = !cfg.wrap_method.is_no_wrap() && surpassed_width;
+        let go_to_nl = ((*next_line && *printed) || needs_to_wrap).then(|| {
             *x = indent + len;
             *next_line = false;
-            return Some(((prev_x, len, Some(line)), (index, bit)));
-        }
+            line
+        });
 
-        if let Part::Char('\n') = bit {
+        if let Part::Char('\n') = part {
             *next_line = true;
         }
 
-        Some(((prev_x, len, None), (index, bit)))
+        Some(((*x - len, len, go_to_nl), (pos, part)))
     })
 }
 
@@ -95,7 +95,7 @@ fn words<'a>(
 }
 
 fn words_bit(
-    (line, index, part): (usize, usize, Part), indent: u16, x: &mut u16, next_is_nl: &mut bool,
+    (pos, line, part): (usize, usize, Part), indent: u16, x: &mut u16, next_is_nl: &mut bool,
     width: u16, cfg: &PrintCfg
 ) -> Option<((u16, u16, Option<usize>), (usize, Part))> {
     let len = part.as_char().map(|char| len_from(char, *x, width, &cfg.tab_stops)).unwrap_or(0);
@@ -122,7 +122,7 @@ fn words_bit(
         *next_is_nl = char == '\n'
     }
 
-    Some(((*x - len, len, next_line), (index, part)))
+    Some(((*x - len, len, next_line), (pos, part)))
 }
 
 pub enum Iter<'a, Bits, Words>
@@ -130,7 +130,7 @@ where
     Bits: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
     Words: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
 {
-    Bits(Bits, PhantomData<&'a ()>),
+    Parts(Bits, PhantomData<&'a ()>),
     Words(Words)
 }
 
@@ -147,7 +147,7 @@ pub fn print_iter<'a>(
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
             let indents = indents(iter, width, cfg)
                 .filter(move |(_, (pos, _, part))| *pos >= char_start || part.is_tag());
-            Iter::Bits(bits(indents, width, cfg), PhantomData)
+            Iter::Parts(bits(indents, width, cfg), PhantomData)
         }
         WrapMethod::Word => {
             let indents = indents(iter, width, cfg)
@@ -157,16 +157,16 @@ pub fn print_iter<'a>(
     }
 }
 
-impl<'a, Bits, Words> Iterator for Iter<'a, Bits, Words>
+impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
 where
-    Bits: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
+    Parts: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
     Words: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
 {
     type Item = ((u16, u16, Option<usize>), (usize, Part));
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Iter::Bits(bits, _) => bits.next(),
+            Iter::Parts(parts, _) => parts.next(),
             Iter::Words(words) => words.next()
         }
     }

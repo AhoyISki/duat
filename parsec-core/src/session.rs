@@ -34,10 +34,10 @@ where
     ) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
-        let file = std::env::args().nth(1).as_ref().map(PathBuf::from);
-        let file = FileWidget::<U>::scheme(file, print_cfg.clone());
+        let path = std::env::args().nth(1).as_ref().map(PathBuf::from);
+        let widget_type = FileWidget::<U>::scheme(path, print_cfg.clone());
 
-        let (window, area) = Window::new(&mut ui, file, || false);
+        let (window, area) = Window::new(&mut ui, widget_type, || false);
         let mut controler = Controler::new(window, palette);
         activate_hook(&mut controler, area, &mut constructor_hook);
         *crate::CMD_FILE_ID.lock().unwrap() = None;

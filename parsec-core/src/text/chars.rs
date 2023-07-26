@@ -104,9 +104,9 @@ impl Chars {
         }
     }
 
-    pub fn string(&mut self) -> &mut String {
+    pub fn as_mut_string(&mut self) -> Option<&mut String> {
         match self {
-            Chars::String(string) => string,
+            Chars::String(string) => Some(string),
             Chars::Rope(_) => {
                 panic!(
                     "Use of string() in a place where `InnerText` is not guaranteed to be \

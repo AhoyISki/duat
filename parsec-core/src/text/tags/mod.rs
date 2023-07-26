@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering::*,
-    ops::{Range, RangeFrom, RangeTo},
+    ops::{Range, RangeFrom, RangeTo}
 };
 
 use any_rope::{Measurable, Rope};
@@ -84,13 +84,13 @@ pub enum Tag {
     MiddleButtonEnd(ToggleId)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ToggleId(usize);
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
 // character indexed. The reason is that modules like `regex` and
 // `tree-sitter` work on `u8`s, rather than `char`s.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -152,10 +152,10 @@ pub enum RawTag {
 impl RawTag {
     pub fn inverse(&self) -> Option<RawTag> {
         match self {
-            RawTag::PushForm(form_id) => Some(RawTag::PopForm(*form_id)),
-            RawTag::PopForm(form_id) => Some(RawTag::PushForm(*form_id)),
-            RawTag::HoverStart(index) => Some(RawTag::HoverEnd(*index)),
-            RawTag::HoverEnd(index) => Some(RawTag::HoverStart(*index)),
+            RawTag::PushForm(id) => Some(RawTag::PopForm(*id)),
+            RawTag::PopForm(id) => Some(RawTag::PushForm(*id)),
+            RawTag::HoverStart(id) => Some(RawTag::HoverEnd(*id)),
+            RawTag::HoverEnd(id) => Some(RawTag::HoverStart(*id)),
             RawTag::ConcealStart => Some(RawTag::ConcealEnd),
             RawTag::ConcealEnd => Some(RawTag::ConcealStart),
             _ => None
@@ -191,7 +191,7 @@ impl RawTag {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum TagOrSkip {
     Tag(RawTag, Handle),
     Skip(usize)
@@ -906,20 +906,22 @@ impl<'a> Iterator for RawTags<'a> {
     type Item = (usize, RawTag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find_map(|(width, t_or_s)| match t_or_s {
+        self.iter.find_map(|(pos, t_or_s)| match t_or_s {
             TagOrSkip::Tag(RawTag::ConcealStart, handle) => {
                 if let Some(range) = self
                     .ranges
                     .iter()
-                    .find(|range| range.starts_with((width, RawTag::ConcealStart, handle)))
+                    .find(|range| range.starts_with((pos, RawTag::ConcealStart, handle)))
                 {
-                    let skip = range.get_end().map_or(usize::MAX, |end| end - width);
-                    Some((width, RawTag::Skip(skip)))
+                    let skip = range.get_end().map_or(usize::MAX, |end| end - pos);
+                    Some((pos, RawTag::Skip(skip)))
                 } else {
-                    Some((width, RawTag::ConcealStart))
+                    Some((pos, RawTag::ConcealStart))
                 }
             }
-            TagOrSkip::Tag(tag, _) => Some((width, tag)),
+            TagOrSkip::Tag(tag, _) => {
+                Some((pos, tag))
+            }
             TagOrSkip::Skip(_) => None
         })
     }
@@ -953,6 +955,9 @@ impl Iterator for Iter<'_> {
     type Item = (usize, RawTag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().inspect(|(width, _)| self.pos = *width)
+        self.peeked
+            .take()
+            .flatten()
+            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
     }
 }

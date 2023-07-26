@@ -3,7 +3,7 @@ use crossterm::{
     style::{Attribute, Attributes, Color, ContentStyle, Stylize}
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
 
 /// A style for text.

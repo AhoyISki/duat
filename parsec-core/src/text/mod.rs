@@ -264,7 +264,7 @@ impl TextBuilder {
     pub fn push_text(&mut self, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count();
-        self.text.chars.string().push_str(edit);
+        self.text.chars.as_mut_string().unwrap().push_str(edit);
 
         self.add_to_last_skip(edit_len);
     }
@@ -283,7 +283,7 @@ impl TextBuilder {
             .count();
 
         self.swappables.push(last_skip);
-        self.text.chars.string().push_str(edit);
+        self.text.chars.as_mut_string().unwrap().push_str(edit);
 
         self.add_to_last_skip(edit_len);
     }
@@ -313,30 +313,30 @@ impl TextBuilder {
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, new_tag: RawTag) {
-        let tags_vec = self.text.tags.as_mut_vec().unwrap();
-        let mut tags = tags_vec.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
+        let tags = self.text.tags.as_mut_vec().unwrap();
+        let mut iter = tags.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
             TagOrSkip::Tag(RawTag::PopForm(_), _) => None,
             TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
             TagOrSkip::Skip(_) => None
         });
 
-        if let Some((index, tag, lock)) = tags.nth(tag_index) {
+        if let Some((index, tag, lock)) = iter.nth(tag_index) {
             let inv_tag = tag.inverse();
 
             *tag = new_tag;
-            let forward = match &tags_vec[index + 1] {
+            let forward = match &tags[index + 1] {
                 TagOrSkip::Tag(_, _) => 1,
                 TagOrSkip::Skip(_) => 2
             };
 
             if let Some(new_inv_tag) = new_tag.inverse() {
                 if inv_tag.is_some() {
-                    tags_vec[index + forward] = TagOrSkip::Tag(new_inv_tag, lock);
+                    tags[index + forward] = TagOrSkip::Tag(new_inv_tag, lock);
                 } else {
-                    tags_vec.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
+                    tags.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
                 }
             } else if inv_tag.is_some() {
-                tags_vec.remove(index + forward);
+                tags.remove(index + forward);
             }
         }
     }
@@ -360,21 +360,21 @@ impl TextBuilder {
     }
 
     fn add_to_last_skip(&mut self, edit_len: usize) {
-        let tags_vec = self.text.tags.as_mut_vec().unwrap();
+        let tags = self.text.tags.as_mut_vec().unwrap();
 
-        let mut tags = tags_vec.iter().enumerate().rev();
-        while let Some((index, TagOrSkip::Tag(tag, _))) = tags.next() {
+        let mut iter = tags.iter().enumerate().rev();
+        while let Some((index, TagOrSkip::Tag(tag, _))) = iter.next() {
             if let RawTag::PopForm(_) = tag {
-                if let Some(TagOrSkip::Skip(skip)) = tags_vec.get_mut(index) {
+                if let Some(TagOrSkip::Skip(skip)) = tags.get_mut(index) {
                     *skip += edit_len;
                 } else {
-                    tags_vec.insert(index, TagOrSkip::Skip(edit_len));
+                    tags.insert(index, TagOrSkip::Skip(edit_len));
                 }
                 return;
             }
         }
 
-        tags_vec.push(TagOrSkip::Skip(edit_len));
+        tags.push(TagOrSkip::Skip(edit_len));
     }
 
     pub fn clear(&mut self) {
@@ -383,12 +383,12 @@ impl TextBuilder {
     }
 
     pub fn truncate(&mut self, range_index: usize) {
-        let tags_vec = self.text.tags.as_mut_vec().unwrap();
+        let tags = self.text.tags.as_mut_vec().unwrap();
 
         let Some(&swap_index) = self.swappables.get(range_index) else {
             return;
         };
-        let (mut index, cutoff) = tags_vec
+        let (mut index, cutoff) = tags
             .iter_mut()
             .enumerate()
             .filter_map(|(index, t_or_s)| t_or_s.as_skip().map(|skip| (index, skip)))
@@ -401,17 +401,17 @@ impl TextBuilder {
             .unwrap();
 
         self.swappables.truncate(range_index);
-        self.text.chars.string().truncate(cutoff);
+        self.text.chars.as_mut_string().unwrap().truncate(cutoff);
 
-        let mut tags = tags_vec.iter().take(index).rev();
-        while let Some(TagOrSkip::Tag(tag, ..)) = tags.next() {
+        let mut iter = tags.iter().take(index).rev();
+        while let Some(TagOrSkip::Tag(tag, ..)) = iter.next() {
             if let RawTag::PopForm(_) = tag {
                 break;
             }
 
             index -= 1;
         }
-        tags_vec.truncate(index);
+        tags.truncate(index);
     }
 
     pub fn ranges_len(&self) -> usize {
@@ -486,6 +486,7 @@ impl<'a> Tagger<'a> {
 }
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+#[derive(Debug)]
 pub enum Part {
     Char(char),
     PushForm(FormId),
@@ -590,6 +591,12 @@ impl Iterator for Iter<'_> {
                     match tag {
                         RawTag::ConcealStart => conceal_count += 1,
                         RawTag::ConcealEnd => conceal_count -= 1,
+                        RawTag::Skip(skip) => {
+                            self.pos = new_pos + skip;
+                            self.tags.move_forwards_by(skip);
+                            self.line = self.chars.move_forwards_by(skip);
+                            conceal_count = 0;
+                        }
                         RawTag::MainCursor | RawTag::ExtraCursor => {
                             skip = 0;
                         }

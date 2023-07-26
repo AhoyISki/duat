@@ -1,7 +1,6 @@
 use any_rope::{Measurable, Rope};
 
 use super::{Handle, RawTag, TagOrSkip};
-
 pub enum Container {
     Vec(Vec<TagOrSkip>),
     Rope(Rope<TagOrSkip>)
@@ -136,7 +135,7 @@ where
 
 impl<VecIter> Iterator for Iter<'_, VecIter>
 where
-    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone,
+    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone
 {
     type Item = (usize, TagOrSkip);
 

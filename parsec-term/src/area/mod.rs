@@ -145,7 +145,7 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let y = print_bits(iter, coords, self.is_active(), info, cfg, form_former, &mut stdout);
+        let y = print_parts(iter, coords, self.is_active(), info, cfg, form_former, &mut stdout);
 
         for y in (0..y).rev() {
             clear_line(Coord::new(coords.tl.x, coords.br.y - y), coords, 0, &mut stdout);
@@ -194,6 +194,8 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg, wrap_around: bool
     ) -> usize {
         print_iter(iter, 0, self.width(), cfg)
+            .skip_while(|((.., new_line), _)| new_line.is_none())
+            .skip(1)
             .take_while(|((.., new_line), _)| new_line.is_none() || wrap_around)
             .map(|((_, len, _), _)| len as usize)
             .sum::<usize>()
@@ -399,7 +401,7 @@ fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16
     }
 }
 
-fn print_bits(
+fn print_parts(
     iter: impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))>, coords: Coords,
     is_active: bool, info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer,
     stdout: &mut StdoutLock
@@ -413,7 +415,6 @@ fn print_bits(
     let mut line = Vec::new();
 
     for ((new_x, len, line_num), (_, part)) in iter {
-        x = new_x;
         if line_num.is_some() {
             if passed_first_indent {
                 y += 1;
@@ -424,19 +425,17 @@ fn print_bits(
             if y == coords.br.y {
                 break;
             }
-            indent_line(&form_former, x, coords, info.x_shift, &mut line);
+            indent_line(&form_former, new_x, info.x_shift, &mut line);
         }
+
+        x = coords.tl.x + new_x + len;
 
         match part {
             // Char
             Part::Char(char) => {
-                // TODO: Replace this with a PrintInfo configuration.
-                if char == '\n' && let Alignment::Right | Alignment::Center = alignment {
-                continue;
-            }
-                let char = real_char_from(char, &cfg.new_line, last_char);
-                write_char(char, x, len, coords, info.x_shift, &mut line);
+                let real_char = real_char_from(char, &cfg.new_line, last_char);
                 last_char = char;
+                write_char(real_char, coords.tl.x + new_x, len, coords, info.x_shift, &mut line);
                 if let Some(style) = prev_style.take() {
                     queue!(&mut line, ResetColor, SetStyle(style))
                 }
@@ -514,12 +513,10 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut Stdout
     queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), cursor::MoveTo(x, y));
 }
 
-fn indent_line(
-    form_former: &FormFormer, x: u16, coords: Coords, x_shift: usize, line: &mut Vec<u8>
-) {
+fn indent_line(form_former: &FormFormer, x: u16, x_shift: usize, line: &mut Vec<u8>) {
     let prev_style = form_former.make_form().style;
-    let mut indent =
-        Vec::<u8>::from(" ".repeat((x.saturating_sub(coords.tl.x + x_shift as u16)) as usize));
+    let indent_count = x.saturating_sub(x_shift as u16) as usize;
+    let mut indent = Vec::<u8>::from(" ".repeat(indent_count));
     queue!(indent, SetStyle(prev_style));
     line.splice(0..0, indent);
 }
