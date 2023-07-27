@@ -15,7 +15,7 @@ use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
     position::Pos,
-    text::{NewLine, Part, PrintCfg, TabStops, Text, WrapMethod},
+    text::{Part, PrintCfg, TabStops, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 use unicode_width::UnicodeWidthChar;
@@ -145,7 +145,7 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let y = print_parts(iter, coords, self.is_active(), info, cfg, form_former, &mut stdout);
+        let y = print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout);
 
         for y in (0..y).rev() {
             clear_line(Coord::new(coords.tl.x, coords.br.y - y), coords, 0, &mut stdout);
@@ -403,11 +403,9 @@ fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16
 
 fn print_parts(
     iter: impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))>, coords: Coords,
-    is_active: bool, info: PrintInfo, cfg: &PrintCfg, mut form_former: FormFormer,
-    stdout: &mut StdoutLock
+    is_active: bool, info: PrintInfo, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> u16 {
     let mut passed_first_indent = false;
-    let mut last_char = 'a';
     let mut x = coords.tl.x;
     let mut y = coords.tl.y;
     let mut prev_style = None;
@@ -433,11 +431,11 @@ fn print_parts(
         match part {
             // Char
             Part::Char(char) => {
-                let real_char = real_char_from(char, &cfg.new_line, last_char);
-                last_char = char;
-                write_char(real_char, coords.tl.x + new_x, len, coords, info.x_shift, &mut line);
-                if let Some(style) = prev_style.take() {
-                    queue!(&mut line, ResetColor, SetStyle(style))
+                if len > 0 {
+                    write_char(char, coords.tl.x + new_x, len, coords, info.x_shift, &mut line);
+                    if let Some(style) = prev_style.take() {
+                        queue!(&mut line, ResetColor, SetStyle(style))
+                    }
                 }
             }
 
@@ -537,23 +535,6 @@ fn write_char(char: char, x: u16, len: u16, coords: Coords, x_shift: usize, line
     } else if x < coords.br.x + x_shift as u16 {
         let len = coords.br.x as usize + x_shift - x as usize;
         queue!(line, Print(" ".repeat(len)));
-    }
-}
-
-fn real_char_from(char: char, new_line: &NewLine, last_char: char) -> char {
-    match char {
-        '\n' => match *new_line {
-            NewLine::Blank => ' ',
-            NewLine::AlwaysAs(char) => char,
-            NewLine::AfterSpaceAs(char) => {
-                if last_char == ' ' {
-                    char
-                } else {
-                    ' '
-                }
-            }
-        },
-        char => char
     }
 }
 

@@ -44,28 +44,28 @@ impl Default for TabStops {
 /// Wheter to show the new line or not.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum NewLine {
-    #[default]
-    /// Never show new lines.
-    Blank,
     /// Show the given character on every new line.
     AlwaysAs(char),
     /// Show the given character only when there is whitespace at end
     /// of the line.
-    AfterSpaceAs(char)
+    AfterSpaceAs(char),
+    /// Don't print anything for a new line character.
+    #[default]
+    Hidden
 }
 
 impl NewLine {
-    pub fn new_line_char(&self, last_ch: char) -> char {
+    pub fn char(&self, last_char: Option<char>) -> Option<char> {
         match self {
-            NewLine::Blank => ' ',
-            NewLine::AlwaysAs(char) => *char,
+            NewLine::AlwaysAs(char) => Some(*char),
             NewLine::AfterSpaceAs(char) => {
-                if last_ch.is_whitespace() {
-                    *char
+                if last_char.is_some_and(|char| char.is_whitespace()) {
+                    Some(*char)
                 } else {
-                    ' '
+                    Some(' ')
                 }
             }
+            NewLine::Hidden => None
         }
     }
 }
@@ -121,6 +121,22 @@ pub struct PrintCfg {
     // NOTE: This is relevant for printing with `WrapMethod::Word`.
     /// Characters that are considered to be part of a word.
     pub word_chars: WordChars
+}
+
+impl PrintCfg {
+    /// Same as [`default`], but with a hidden new line.
+    ///
+    /// [`default`]: PrintCfg::default
+	pub fn default_for_files() -> Self {
+        Self {
+            wrap_method: WrapMethod::default(),
+            indent_wrap: true,
+            tab_stops: TabStops(4),
+            new_line: NewLine::AlwaysAs(' '),
+            scrolloff: ScrollOff::default(),
+            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_'])
+        }
+	}
 }
 
 impl Default for PrintCfg {

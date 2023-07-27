@@ -486,7 +486,7 @@ impl<'a> Tagger<'a> {
 }
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Part {
     Char(char),
     PushForm(FormId),

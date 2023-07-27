@@ -1,6 +1,7 @@
 use any_rope::{Measurable, Rope};
 
 use super::{Handle, RawTag, TagOrSkip};
+
 pub enum Container {
     Vec(Vec<TagOrSkip>),
     Rope(Rope<TagOrSkip>)

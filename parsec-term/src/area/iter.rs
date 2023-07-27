@@ -27,19 +27,30 @@ fn bits<'a>(
     iter: impl Iterator<Item = (u16, (usize, usize, Part))> + 'a, width: usize, cfg: &'a PrintCfg
 ) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
     let width = width as u16;
-    iter.scan((0, true, false), move |(x, next_line, printed), (indent, (pos, line, part))| {
-        let len = part
-            .as_char()
-            .map(|char| {
-                *printed = true;
-                len_from(char, *x, width, &cfg.tab_stops)
-            })
-            .unwrap_or(0);
+    iter.scan((0, true, None), move |(x, next_line, prev_char), (indent, (pos, line, part))| {
+        let (len, processed_part) = match part {
+            Part::Char(char) => {
+                let ret = if char == '\n' {
+                    let char = cfg.new_line.char(*prev_char);
+                    if let Some(char) = char {
+                        (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+                    } else {
+                        (0, Part::Char('\n'))
+                    }
+                } else {
+                    (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+                };
+
+                *prev_char = Some(char);
+                ret
+            }
+            _ => (0, part)
+        };
         *x += len;
 
         let surpassed_width = *x > width || (*x == width && len == 0);
         let needs_to_wrap = !cfg.wrap_method.is_no_wrap() && surpassed_width;
-        let go_to_nl = ((*next_line && *printed) || needs_to_wrap).then(|| {
+        let go_to_nl = ((*next_line && prev_char.is_some()) || needs_to_wrap).then(|| {
             *x = indent + len;
             *next_line = false;
             line
@@ -49,7 +60,7 @@ fn bits<'a>(
             *next_line = true;
         }
 
-        Some(((*x - len, len, go_to_nl), (pos, part)))
+        Some(((*x - len, len, go_to_nl), (pos, processed_part)))
     })
 }
 
