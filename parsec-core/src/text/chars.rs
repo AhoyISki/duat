@@ -25,10 +25,19 @@ impl Chars {
         }
     }
 
-    pub fn iter_at(&self, width: usize) -> Iter {
+    pub fn iter_at(&self, pos: usize) -> Iter {
         match self {
-            Chars::String(string) => Iter::String(string.chars().skip(width)),
-            Chars::Rope(rope) => Iter::Rope(rope, width, rope.chars_at(width))
+            Chars::String(string) => Iter::String(string.chars().skip(pos)),
+            Chars::Rope(rope) => Iter::Rope(rope, pos, rope.chars_at(pos))
+        }
+    }
+
+    pub fn rev_iter_at(&self, pos: usize) -> Iter {
+        match self {
+            Chars::String(string) => {
+                Iter::StringRev(string.chars().rev().skip(self.len_chars() - pos))
+            }
+            Chars::Rope(rope) => Iter::Rope(rope, pos, rope.chars_at(pos).reversed())
         }
     }
 
@@ -127,6 +136,7 @@ impl Chars {
 #[derive(Clone)]
 pub enum Iter<'a> {
     String(std::iter::Skip<std::str::Chars<'a>>),
+    StringRev(std::iter::Skip<std::iter::Rev<std::str::Chars<'a>>>),
     Rope(&'a Rope, usize, ropey::iter::Chars<'a>)
 }
 
@@ -135,6 +145,13 @@ impl<'a> Iter<'a> {
         let mut nl_count = 0;
         match self {
             Iter::String(chars) => {
+                while n > 0 && let Some(char) = chars.next() {
+                    n -= 1;
+                    nl_count += (char == '\n') as usize;
+                }
+                nl_count
+            }
+            Iter::StringRev(chars) => {
                 while n > 0 && let Some(char) = chars.next() {
                     n -= 1;
                     nl_count += (char == '\n') as usize;
@@ -162,6 +179,7 @@ impl Iterator for Iter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::String(chars) => chars.next(),
+            Iter::StringRev(chars) => chars.next(),
             Iter::Rope(_, width, chars) => chars.next().inspect(|_| *width += 1)
         }
     }

@@ -195,8 +195,9 @@ impl Iterator for ReverseTags<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(t_or_s) = self.iter.next() {
+            let old_accum = self.accum;
             self.accum -= t_or_s.width();
-            if self.accum >= self.min || (self.accum > self.min && t_or_s.width() == 0) {
+            if old_accum <= self.min {
                 return Some((self.accum, *t_or_s));
             }
         }
