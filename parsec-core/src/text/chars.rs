@@ -166,6 +166,7 @@ impl<'a> Iter<'a> {
                     *chars = chars_forward;
                     rope.char_to_line(*char_idx) - old_line
                 } else {
+                    *chars = rope.chars_at(rope.len_chars());
                     rope.len_lines() - 1 - old_line
                 }
             }

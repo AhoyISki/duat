@@ -141,7 +141,7 @@ impl ui::Area for Area {
                 text.line_to_char(line)
             };
             let char_start = info.first_char - start;
-            print_iter(text.iter_range(start..), char_start, coords.width(), cfg)
+            print_iter(text.iter_at(start..), char_start, coords.width(), cfg)
         };
 
         let form_former = palette.form_former();
@@ -441,7 +441,11 @@ fn print_parts(
 
             // Tags
             Part::PushForm(id) => queue!(line, ResetColor, SetStyle(form_former.apply(id).style)),
-            Part::PopForm(id) => queue!(line, ResetColor, SetStyle(form_former.remove(id).style)),
+            Part::PopForm(id) => {
+                if let Some(form) = form_former.remove(id) {
+                    queue!(line, ResetColor, SetStyle(form.style))
+                }
+            }
             Part::MainCursor => {
                 let cursor_style = form_former.main_cursor();
                 if let (Some(caret), true) = (cursor_style.caret, is_active) {
@@ -459,6 +463,10 @@ fn print_parts(
             Part::AlignLeft => alignment = Alignment::Left,
             Part::AlignCenter => alignment = Alignment::Center,
             Part::AlignRight => alignment = Alignment::Right,
+            Part::Termination => {
+                alignment = Alignment::Left;
+                queue!(line, SetStyle(form_former.reset().style));
+            }
             Part::HoverStart(_) => todo!(),
             Part::HoverEnd(_) => todo!(),
             Part::LeftButtonStart(_) => todo!(),

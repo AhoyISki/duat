@@ -175,7 +175,7 @@ impl Cursor {
         let line_char = text.line_to_char(caret.line);
         caret.col = caret.char - line_char;
 
-        let iter_range = text.iter_range(line_char..=caret.char);
+        let iter_range = text.iter_at(line_char..=caret.char);
         self.desired_col = area.get_width(iter_range, cfg, true);
     }
 
@@ -193,7 +193,7 @@ impl Cursor {
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
 
-        let iter_range = text.iter_range(line_char..caret.char);
+        let iter_range = text.iter_at(line_char..caret.char);
         self.desired_col = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;

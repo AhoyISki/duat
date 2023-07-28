@@ -100,17 +100,17 @@ impl std::fmt::Debug for CursorStyle {
 #[derive(Default, Clone)]
 pub struct ExtraForms(Vec<(String, Form)>);
 
-pub const DEFAULT: FormId= FormId(0);
-pub const LINE_NUMBERS: FormId= FormId(1);
-pub const MAIN_LINE_NUMBER: FormId= FormId(2);
-pub const WRAPPED_LINE_NUMBERS: FormId= FormId(3);
-pub const WRAPPED_MAIN_LINE_NUMBER: FormId= FormId(4);
-pub const MAIN_SEL: FormId= FormId(5);
-pub const EXTRA_SEL: FormId= FormId(6);
-pub const FILE_NAME: FormId= FormId(7);
-pub const SELECTIONS: FormId= FormId(8);
-pub const COORDS: FormId= FormId(9);
-pub const SEPARATOR: FormId= FormId(10);
+pub const DEFAULT: FormId = FormId(0);
+pub const LINE_NUMBERS: FormId = FormId(1);
+pub const MAIN_LINE_NUMBER: FormId = FormId(2);
+pub const WRAPPED_LINE_NUMBERS: FormId = FormId(3);
+pub const WRAPPED_MAIN_LINE_NUMBER: FormId = FormId(4);
+pub const MAIN_SEL: FormId = FormId(5);
+pub const EXTRA_SEL: FormId = FormId(6);
+pub const FILE_NAME: FormId = FormId(7);
+pub const SELECTIONS: FormId = FormId(8);
+pub const COORDS: FormId = FormId(9);
+pub const SEPARATOR: FormId = FormId(10);
 
 #[derive(Clone, Copy)]
 enum Named {
@@ -286,14 +286,19 @@ impl<'a> FormFormer<'a> {
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
-    pub fn remove(&mut self, id: FormId) -> Form {
+    pub fn remove(&mut self, id: FormId) -> Option<Form> {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
-            self.make_form()
+            Some(self.make_form())
         } else {
-            Form::default()
+            None
         }
+    }
+
+    pub fn reset(&mut self) -> Form {
+        self.forms.clear();
+        self.make_form()
     }
 
     pub fn main_cursor(&self) -> CursorStyle {

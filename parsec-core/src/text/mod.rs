@@ -202,7 +202,7 @@ impl Text {
         Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
-    pub fn iter_range(
+    pub fn iter_at(
         &self, range: impl RangeBounds<usize>
     ) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
         let start = match range.start_bound() {
@@ -224,6 +224,30 @@ impl Text {
         let tags = self.tags.iter_at(tags_start);
 
         Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
+    }
+
+    pub fn rev_iter_at(
+        &self, range: impl RangeBounds<usize>
+    ) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
+        let start = match range.start_bound() {
+            std::ops::Bound::Included(start) => *start,
+            std::ops::Bound::Excluded(start) => *start + 1,
+            std::ops::Bound::Unbounded => 0
+        };
+
+        let end = match range.end_bound() {
+            std::ops::Bound::Included(end) => end + 1,
+            std::ops::Bound::Excluded(end) => *end,
+            std::ops::Bound::Unbounded => self.chars.len_chars() + 1
+        };
+
+        let chars = self.chars.rev_iter_at(start);
+
+        let line = self.char_to_line(start);
+        let tags_start = start.saturating_sub(self.tags.back_check_amount());
+        let tags = self.tags.rev_iter_at(tags_start);
+
+        RevIter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
     pub fn iter_chars_at(&self, char: usize) -> impl Iterator<Item = char> + '_ {
@@ -503,7 +527,8 @@ pub enum Part {
     RightButtonStart(ToggleId),
     RightButtonEnd(ToggleId),
     MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId)
+    MiddleButtonEnd(ToggleId),
+    Termination
 }
 
 impl From<RawTag> for Part {
@@ -524,7 +549,8 @@ impl From<RawTag> for Part {
             RawTag::RightButtonEnd(id) => Part::RightButtonEnd(id),
             RawTag::MiddleButtonStart(id) => Part::MiddleButtonStart(id),
             RawTag::MiddleButtonEnd(id) => Part::MiddleButtonEnd(id),
-            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_) | RawTag::GhostText(_) => unsafe {
+            RawTag::Skip(_) => Part::Termination,
+            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::GhostText(_) => unsafe {
                 std::hint::unreachable_unchecked()
             }
         }
@@ -558,16 +584,83 @@ pub struct Iter<'a> {
     chars: chars::Iter<'a>,
     tags: tags::Iter<'a>,
     pos: usize,
-    line: usize
+    line: usize,
+    conceal_count: usize
 }
 
 impl<'a> Iter<'a> {
     pub fn new(chars: chars::Iter<'a>, tags: tags::Iter<'a>, pos: usize, line: usize) -> Self {
-        Self { chars, tags, pos, line }
+        Self { chars, tags, pos, line, conceal_count: 0 }
     }
 }
 
 impl Iterator for Iter<'_> {
+    type Item = (usize, usize, Part);
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // `<=` because some `Tag`s may be triggered before printing.
+        let mut tag =
+            self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned();
+        while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
+            match tag.unwrap() {
+                (_, RawTag::ConcealStart) => self.conceal_count += 1,
+                (pos, RawTag::ConcealEnd) => {
+                    self.conceal_count -= 1;
+                    if self.conceal_count == 0 {
+                        self.line += self.chars.move_forwards_by(pos - self.pos);
+                        self.pos = pos;
+                    }
+                }
+                _ => unreachable!()
+            }
+            self.tags.next();
+            tag = self
+                .tags
+                .peek()
+                .filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0)
+                .cloned();
+        }
+
+        if let Some((pos, tag)) = tag {
+            if let RawTag::Skip(skip) = tag {
+                self.pos = pos + skip;
+                self.tags.move_forwards_by(skip);
+                self.line += self.chars.move_forwards_by(skip);
+                self.conceal_count = 0;
+            }
+            self.tags.next();
+            Some((pos, self.line, Part::from(tag)))
+        } else if let Some(char) = self.chars.next() {
+            self.pos += 1;
+            let prev_line = self.line;
+            self.line += (char == '\n') as usize;
+            Some((self.pos - 1, prev_line, Part::Char(char)))
+        } else {
+            None
+        }
+    }
+}
+
+/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
+///
+/// This is useful for both printing and measurement of [`Text`], and
+/// can incorporate string replacements as part of its design.
+#[derive(Clone)]
+pub struct RevIter<'a> {
+    chars: chars::Iter<'a>,
+    tags: tags::RevIter<'a>,
+    pos: usize,
+    line: usize
+}
+
+impl<'a> RevIter<'a> {
+    pub fn new(chars: chars::Iter<'a>, tags: tags::RevIter<'a>, pos: usize, line: usize) -> Self {
+        Self { chars, tags, pos, line }
+    }
+}
+
+impl Iterator for RevIter<'_> {
     type Item = (usize, usize, Part);
 
     #[inline(always)]
@@ -578,19 +671,19 @@ impl Iterator for Iter<'_> {
         while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::Skip(_))) = tag {
             self.tags.next();
             if let Some((pos, RawTag::Skip(skip))) = tag {
-                self.pos = pos + skip;
+                self.pos = pos - skip;
                 self.tags.move_forwards_by(skip);
                 self.line = self.chars.move_forwards_by(skip);
                 conceal_count = 0;
-            } else if let Some((pos, RawTag::ConcealStart)) = tag {
+            } else if let Some((pos, RawTag::ConcealEnd)) = tag {
                 conceal_count += 1;
                 let mut skip = 0;
                 let mut tags = self.tags.clone();
                 while conceal_count > 0 && let Some((new_pos, tag)) = tags.next() {
-                    skip = new_pos - pos;
+                    skip = pos - new_pos;
                     match tag {
-                        RawTag::ConcealStart => conceal_count += 1,
-                        RawTag::ConcealEnd => conceal_count -= 1,
+                        RawTag::ConcealEnd => conceal_count += 1,
+                        RawTag::ConcealStart => conceal_count -= 1,
                         RawTag::Skip(skip) => {
                             self.pos = new_pos + skip;
                             self.tags.move_forwards_by(skip);

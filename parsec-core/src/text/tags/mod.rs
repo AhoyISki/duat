@@ -274,6 +274,22 @@ impl Tags {
         Iter::new(pos, self, ranges, raw_tags)
     }
 
+    pub fn rev_iter_at(&self, pos: usize) -> RevIter {
+        let possible_ranges: Vec<TagRange> = self
+            .ranges
+            .iter()
+            .filter(|range| {
+                range.get_start().is_some_and(|start| start < pos)
+                    && range.get_end().map_or(true, |end| end >= pos)
+            })
+            .cloned()
+            .collect();
+
+        let ranges = RevRanges::new(possible_ranges);
+        let tags = RevRawTags::new(&self.ranges, self.container.rev_iter_at(pos));
+        RevIter::new(pos, self, ranges, tags)
+    }
+
     pub fn back_check_amount(&self) -> usize {
         self.min_to_keep
     }
@@ -711,6 +727,200 @@ impl PartialOrd for TagRange {
     }
 }
 
+#[derive(Clone)]
+struct Ranges<'a> {
+    max_start: usize,
+    iter: std::slice::Iter<'a, TagRange>
+}
+
+impl<'a> Ranges<'a> {
+    fn new(max_start: usize, iter: std::slice::Iter<'a, TagRange>) -> Self {
+        Self { max_start, iter }
+    }
+}
+
+impl<'a> Iterator for Ranges<'a> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter
+            .find(|range| {
+                range.get_start().is_some_and(|start| start < self.max_start)
+                    && range.get_end().map_or(true, |end| end > self.max_start)
+            })
+            .and_then(|range| range.get_start().map(|start| (start, range.tag())))
+    }
+}
+
+#[derive(Clone)]
+struct RevRanges {
+    ranges: Vec<TagRange>
+}
+
+impl RevRanges {
+    fn new(ranges: Vec<TagRange>) -> Self {
+        Self { ranges }
+    }
+}
+
+impl Iterator for RevRanges {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((index, _)) = self
+            .ranges
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, range)| range.get_end().unwrap_or(usize::MAX))
+        {
+            let range = self.ranges.remove(index);
+            let end = range.get_end().unwrap_or(usize::MAX);
+            Some((end, range.tag().inverse().unwrap()))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone)]
+struct RawTags<'a> {
+    ranges: &'a [TagRange],
+    iter: container::Iter<'a, container::ForwardTags<'a>>
+}
+impl<'a> RawTags<'a> {
+    fn new(ranges: &'a [TagRange], iter: container::Iter<'a, container::ForwardTags<'a>>) -> Self {
+        Self { ranges, iter }
+    }
+}
+
+impl<'a> Iterator for RawTags<'a> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.find_map(|(pos, t_or_s)| match t_or_s {
+            TagOrSkip::Tag(RawTag::ConcealStart, handle) => {
+                if let Some(range) = self
+                    .ranges
+                    .iter()
+                    .find(|range| range.starts_with((pos, RawTag::ConcealStart, handle)))
+                {
+                    let skip = range.get_end().map_or(usize::MAX, |end| end - pos);
+                    Some((pos, RawTag::Skip(skip)))
+                } else {
+                    Some((pos, RawTag::ConcealStart))
+                }
+            }
+            TagOrSkip::Tag(tag, _) => Some((pos, tag)),
+            TagOrSkip::Skip(_) => None
+        })
+    }
+}
+
+#[derive(Clone)]
+struct RevRawTags<'a> {
+    ranges: &'a [TagRange],
+    iter: container::Iter<'a, container::ReverseTags<'a>>
+}
+
+impl<'a> RevRawTags<'a> {
+    fn new(ranges: &'a [TagRange], iter: container::Iter<'a, container::ReverseTags<'a>>) -> Self {
+        Self { ranges, iter }
+    }
+}
+
+impl<'a> Iterator for RevRawTags<'a> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.find_map(|(pos, t_or_s)| match t_or_s {
+            TagOrSkip::Tag(RawTag::ConcealEnd, handle) => {
+                if let Some(range) = self
+                    .ranges
+                    .iter()
+                    .find(|range| range.ends_with((pos, RawTag::ConcealEnd, handle)))
+                {
+                    let skip = range.get_start().map_or(0, |start| pos - start);
+                    Some((pos, RawTag::Skip(skip)))
+                } else {
+                    Some((pos, RawTag::ConcealEnd))
+                }
+            }
+            TagOrSkip::Tag(tag, _) => Some((pos, tag)),
+            TagOrSkip::Skip(_) => None
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct Iter<'a> {
+    pos: usize,
+    tags: &'a Tags,
+    iter: std::iter::Chain<Ranges<'a>, RawTags<'a>>,
+    peeked: Option<Option<(usize, RawTag)>>
+}
+
+impl<'a> Iter<'a> {
+    fn new(pos: usize, tags: &'a Tags, ranges: Ranges<'a>, raw_tags: RawTags<'a>) -> Self {
+        let iter = ranges.chain(raw_tags);
+        Self { pos, tags, iter, peeked: None }
+    }
+
+    pub fn move_forwards_by(&mut self, amount: usize) {
+        *self = self.tags.iter_at(self.pos + amount);
+    }
+
+    pub fn peek(&mut self) -> Option<&(usize, RawTag)> {
+        let iter = &mut self.iter;
+        self.peeked.get_or_insert_with(|| iter.next()).as_ref()
+    }
+}
+
+impl Iterator for Iter<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.peeked
+            .take()
+            .flatten()
+            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
+    }
+}
+
+#[derive(Clone)]
+pub struct RevIter<'a> {
+    pos: usize,
+    tags: &'a Tags,
+    iter: std::iter::Chain<RevRanges, RevRawTags<'a>>,
+    peeked: Option<Option<(usize, RawTag)>>
+}
+
+impl<'a> RevIter<'a> {
+    fn new(pos: usize, tags: &'a Tags, ranges: RevRanges, raw_tags: RevRawTags<'a>) -> Self {
+        let iter = ranges.chain(raw_tags);
+        Self { pos, tags, iter, peeked: None }
+    }
+
+    pub fn move_forwards_by(&mut self, amount: usize) {
+        *self = self.tags.rev_iter_at(self.pos + amount);
+    }
+
+    pub fn peek(&mut self) -> Option<&(usize, RawTag)> {
+        let iter = &mut self.iter;
+        self.peeked.get_or_insert_with(|| iter.next()).as_ref()
+    }
+}
+
+impl Iterator for RevIter<'_> {
+    type Item = (usize, RawTag);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.peeked
+            .take()
+            .flatten()
+            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
+    }
+}
+
 /// Removes the given `(usize, Tag, Handle)` triples from any
 /// range in `self.ranges`.
 ///
@@ -860,104 +1070,5 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
         }
-    }
-}
-
-#[derive(Clone)]
-struct Ranges<'a> {
-    max_start: usize,
-    iter: std::slice::Iter<'a, TagRange>
-}
-
-impl<'a> Ranges<'a> {
-    fn new(max_start: usize, iter: std::slice::Iter<'a, TagRange>) -> Self {
-        Self { max_start, iter }
-    }
-}
-
-impl<'a> Iterator for Ranges<'a> {
-    type Item = (usize, RawTag);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(range) = self.iter.next()
-            && range.get_start().is_some_and(|start| start < self.max_start)
-        {
-            if range.get_end().map_or(true, |end| end > self.max_start) {
-                return range.get_start().map(|start| (start, range.tag()));
-            }
-        }
-
-        None
-    }
-}
-
-#[derive(Clone)]
-struct RawTags<'a> {
-    ranges: &'a [TagRange],
-    iter: container::Iter<'a, container::ForwardTags<'a>>
-}
-impl<'a> RawTags<'a> {
-    fn new(ranges: &'a [TagRange], iter: container::Iter<'a, container::ForwardTags<'a>>) -> Self {
-        Self { ranges, iter }
-    }
-}
-
-impl<'a> Iterator for RawTags<'a> {
-    type Item = (usize, RawTag);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find_map(|(pos, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::ConcealStart, handle) => {
-                if let Some(range) = self
-                    .ranges
-                    .iter()
-                    .find(|range| range.starts_with((pos, RawTag::ConcealStart, handle)))
-                {
-                    let skip = range.get_end().map_or(usize::MAX, |end| end - pos);
-                    Some((pos, RawTag::Skip(skip)))
-                } else {
-                    Some((pos, RawTag::ConcealStart))
-                }
-            }
-            TagOrSkip::Tag(tag, _) => {
-                Some((pos, tag))
-            }
-            TagOrSkip::Skip(_) => None
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct Iter<'a> {
-    pos: usize,
-    tags: &'a Tags,
-    iter: std::iter::Chain<Ranges<'a>, RawTags<'a>>,
-    peeked: Option<Option<(usize, RawTag)>>
-}
-
-impl<'a> Iter<'a> {
-    fn new(pos: usize, tags: &'a Tags, ranges: Ranges<'a>, raw_tags: RawTags<'a>) -> Self {
-        let iter = ranges.chain(raw_tags);
-        Self { pos, tags, iter, peeked: None }
-    }
-
-    pub fn move_forwards_by(&mut self, amount: usize) {
-        *self = self.tags.iter_at(self.pos + amount);
-    }
-
-    pub fn peek(&mut self) -> Option<&(usize, RawTag)> {
-        let iter = &mut self.iter;
-        self.peeked.get_or_insert_with(|| iter.next()).as_ref()
-    }
-}
-
-impl Iterator for Iter<'_> {
-    type Item = (usize, RawTag);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.peeked
-            .take()
-            .flatten()
-            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
     }
 }
