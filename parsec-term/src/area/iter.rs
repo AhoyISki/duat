@@ -136,7 +136,7 @@ fn words_bit(
     Some(((*x - len, len, next_line), (pos, part)))
 }
 
-pub enum Iter<'a, Bits, Words>
+enum Iter<'a, Bits, Words>
 where
     Bits: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
     Words: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
@@ -148,11 +148,7 @@ where
 pub fn print_iter<'a>(
     iter: impl Iterator<Item = (usize, usize, Part)> + 'a, char_start: usize, width: usize,
     cfg: &'a PrintCfg
-) -> Iter<
-    'a,
-    impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
-    impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
-> {
+) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
     let width = if let WrapMethod::Capped(cap) = cfg.wrap_method { cap } else { width };
     match cfg.wrap_method {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
@@ -166,6 +162,31 @@ pub fn print_iter<'a>(
             Iter::Words(words(indents, width, cfg))
         }
     }
+}
+
+pub fn rev_print_iter<'a>(
+    mut iter: impl Iterator<Item = (usize, usize, Part)> + 'a, width: usize, cfg: &'a PrintCfg
+) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
+    let mut returns = Vec::new();
+    let mut prev_line_nl = None;
+    std::iter::from_fn(move || {
+        if let Some(next) = returns.pop() {
+            Some(next)
+        } else {
+            let mut units: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
+            while let Some((pos, line, part)) = iter.next() {
+                if let Part::Char('\n') = part {
+                    prev_line_nl = Some((pos, line, Part::Char('\n')));
+                    break;
+                } else {
+                    units.push((pos, line, part));
+                }
+            }
+
+            print_iter(units.into_iter().rev(), 0, width, cfg).collect_into(&mut returns);
+            returns.pop()
+        }
+    })
 }
 
 impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
