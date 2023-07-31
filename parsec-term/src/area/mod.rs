@@ -268,15 +268,15 @@ impl PrintInfo {
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_to_gap(&mut self, point: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
         self.first_char = if self.last_main > point {
-            rev_print_iter(text.rev_iter_at(point.true_char()), area.width(), cfg)
+            rev_print_iter(text.rev_iter_at(point.true_char() + 1), area.width(), cfg)
                 .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
                 .nth(cfg.scrolloff.y_gap)
                 .unwrap_or(0)
                 .min(self.first_char)
         } else {
-            rev_print_iter(text.rev_iter_at(point.true_char()), area.width(), cfg)
+            rev_print_iter(text.rev_iter_at(point.true_char() + 1), area.width(), cfg)
                 .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
-                .nth(area.height().saturating_sub(cfg.scrolloff.y_gap + 2))
+                .nth(area.height().saturating_sub(cfg.scrolloff.y_gap + 1))
                 .unwrap_or(0)
                 .max(self.first_char)
         };
@@ -396,7 +396,8 @@ fn print_parts(
         if line_num.is_some() {
             if passed_first_indent {
                 y += 1;
-                print_line(x, y, coords, alignment, &mut line, stdout);
+                let shifted_x = x.saturating_sub(info.x_shift as u16);
+                print_line(shifted_x, y, coords, alignment, &mut line, stdout);
             } else {
                 passed_first_indent = true;
             }
