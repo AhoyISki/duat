@@ -216,7 +216,7 @@ impl Text {
         let chars = self.chars.rev_iter_at(pos);
 
         let line = self.char_to_line(pos);
-        let tags_start = pos.saturating_add(self.tags.back_check_amount());
+        let tags_start = pos.saturating_add(self.tags.back_check_amount()).min(self.tags.width());
         let tags = self.tags.rev_iter_at(tags_start);
 
         RevIter::new(chars, tags, pos, line)

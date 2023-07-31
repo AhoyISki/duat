@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
 use parsec_core::{
-    log_info,
     text::{Part, PrintCfg, WrapMethod}
 };
 

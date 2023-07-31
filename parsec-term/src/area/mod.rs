@@ -385,7 +385,6 @@ fn print_parts(
     iter: impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))>, coords: Coords,
     is_active: bool, info: PrintInfo, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> u16 {
-    let mut passed_first_indent = false;
     let mut x = coords.tl.x;
     let mut y = coords.tl.y;
     let mut prev_style = None;
@@ -394,17 +393,15 @@ fn print_parts(
 
     for ((new_x, len, line_num), (_, part)) in iter {
         if line_num.is_some() {
-            if passed_first_indent {
-                y += 1;
+            if y > coords.tl.y {
                 let shifted_x = x.saturating_sub(info.x_shift as u16);
                 print_line(shifted_x, y, coords, alignment, &mut line, stdout);
-            } else {
-                passed_first_indent = true;
             }
             if y == coords.br.y {
                 break;
             }
             indent_line(&form_former, new_x, info.x_shift, &mut line);
+            y += 1;
         }
 
         x = coords.tl.x + new_x + len;
@@ -460,11 +457,10 @@ fn print_parts(
     }
 
     if !line.is_empty() {
-        y += 1;
         print_line(x, y, coords, alignment, &mut line, stdout);
     }
-
-    coords.br.y - y
+    
+        coords.br.y - y
 }
 
 fn print_line(
