@@ -1,6 +1,9 @@
 use std::marker::PhantomData;
 
-use parsec_core::text::{Part, PrintCfg, WrapMethod};
+use parsec_core::{
+    log_info,
+    text::{Part, PrintCfg, WrapMethod}
+};
 
 use super::len_from;
 
@@ -176,8 +179,12 @@ pub fn rev_print_iter<'a>(
             let mut units: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
             while let Some((pos, line, part)) = iter.next() {
                 if let Part::Char('\n') = part {
-                    prev_line_nl = Some((pos, line, Part::Char('\n')));
-                    break;
+                    if units.is_empty() {
+                        units.push((pos, line, part));
+                    } else {
+                        prev_line_nl = Some((pos, line, Part::Char('\n')));
+                        break;
+                    }
                 } else {
                     units.push((pos, line, part));
                 }

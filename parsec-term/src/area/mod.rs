@@ -14,13 +14,14 @@ use crossterm::{
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
+    log_info,
     position::Pos,
     text::{Part, PrintCfg, TabStops, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 use unicode_width::UnicodeWidthChar;
 
-use self::iter::print_iter;
+use self::iter::{print_iter, rev_print_iter};
 use crate::{
     layout::{Edge, Layout, Line, LineCoords},
     AreaIndex, ConstraintChangeErr
@@ -140,8 +141,7 @@ impl ui::Area for Area {
                 };
                 text.line_to_char(line)
             };
-            let char_start = info.first_char - start;
-            print_iter(text.iter_at(start..), char_start, coords.width(), cfg)
+            print_iter(text.iter_at(start), info.first_char, coords.width(), cfg)
         };
 
         let form_former = palette.form_former();
@@ -254,7 +254,7 @@ unsafe impl Sync for Area {}
 /// Information about how to print the file on the `Label`.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PrintInfo {
-    /// The index of the first [char] that should be printed on the
+    /// The index of the first [`char`] that should be printed on the
     /// screen.
     first_char: usize,
     /// How shifted the text is to the left.
@@ -267,39 +267,19 @@ impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_to_gap(&mut self, point: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
-        let width = cfg.wrap_method.wrapping_cap(area.width());
-        let limit = if self.last_main > point {
-            cfg.scrolloff.y_gap + 1
+        self.first_char = if self.last_main > point {
+            rev_print_iter(text.rev_iter_at(point.true_char()), area.width(), cfg)
+                .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
+                .nth(cfg.scrolloff.y_gap)
+                .unwrap_or(0)
+                .min(self.first_char)
         } else {
-            area.height().saturating_sub(cfg.scrolloff.y_gap)
+            rev_print_iter(text.rev_iter_at(point.true_char()), area.width(), cfg)
+                .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
+                .nth(area.height().saturating_sub(cfg.scrolloff.y_gap + 2))
+                .unwrap_or(0)
+                .max(self.first_char)
         };
-
-        let mut indices = Vec::with_capacity(limit);
-        let mut line_indices = Vec::new();
-        for line_index in (0..=point.true_row()).rev() {
-            let line = text.iter_line(line_index);
-
-            print_iter(line, 0, width, cfg)
-                .filter_map(|((.., new_line), (pos, _))| new_line.map(|_| pos))
-                .take_while(|pos| *pos <= point.true_char())
-                .collect_into(&mut line_indices);
-
-            line_indices.reverse();
-            indices.append(&mut line_indices);
-            if indices.len() >= limit {
-                break;
-            }
-        }
-
-        if let Some(&index) =
-            limit.checked_sub(1).and_then(|index| indices.get(index)).or_else(|| indices.last())
-        {
-            if (index < self.first_char && self.last_main > point)
-                || (index > self.first_char && self.last_main < point)
-            {
-                self.first_char = index;
-            }
-        }
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
@@ -318,7 +298,7 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let line = text.iter_line(point.true_row());
+        let line = text.iter_line(point.true_line());
         let Some(char) = text.get_char(point.true_char()) else {
             return;
         };
@@ -363,7 +343,7 @@ impl PrintInfo {
         } else if end < start {
             self.x_shift = self.x_shift.saturating_sub(min_dist - end);
         } else if end > self.x_shift + max_dist {
-            let line = text.iter_line(point.true_row());
+            let line = text.iter_line(point.true_line());
 
             if area.get_width(line, cfg, false) < width {
                 return;
@@ -386,7 +366,7 @@ impl ui::PrintInfo for PrintInfo {
         }
     }
 
-    fn first_char(&self, _text: &Text) -> usize {
+    fn first_char(&self) -> usize {
         self.first_char
     }
 }

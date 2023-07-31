@@ -5,7 +5,7 @@ mod tags;
 
 use std::{
     io::Write,
-    ops::{Range, RangeBounds, RangeInclusive}
+    ops::{Range, RangeInclusive}
 };
 
 pub use cfg::*;
@@ -202,56 +202,28 @@ impl Text {
         Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
-    pub fn iter_at(
-        &self, range: impl RangeBounds<usize>
-    ) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
-        let start = match range.start_bound() {
-            std::ops::Bound::Included(start) => *start,
-            std::ops::Bound::Excluded(start) => *start + 1,
-            std::ops::Bound::Unbounded => 0
-        };
+    pub fn iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
+        let chars = self.chars.iter_at(pos);
 
-        let end = match range.end_bound() {
-            std::ops::Bound::Included(end) => end + 1,
-            std::ops::Bound::Excluded(end) => *end,
-            std::ops::Bound::Unbounded => self.chars.len_chars() + 1
-        };
-
-        let chars = self.chars.iter_at(start);
-
-        let line = self.char_to_line(start);
-        let tags_start = start.saturating_sub(self.tags.back_check_amount());
+        let line = self.char_to_line(pos);
+        let tags_start = pos.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
+        Iter::new(chars, tags, pos, line)
     }
 
-    pub fn rev_iter_at(
-        &self, range: impl RangeBounds<usize>
-    ) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
-        let start = match range.start_bound() {
-            std::ops::Bound::Included(start) => *start,
-            std::ops::Bound::Excluded(start) => *start + 1,
-            std::ops::Bound::Unbounded => 0
-        };
+    pub fn rev_iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
+        let chars = self.chars.rev_iter_at(pos);
 
-        let end = match range.end_bound() {
-            std::ops::Bound::Included(end) => end + 1,
-            std::ops::Bound::Excluded(end) => *end,
-            std::ops::Bound::Unbounded => self.chars.len_chars() + 1
-        };
-
-        let chars = self.chars.rev_iter_at(start);
-
-        let line = self.char_to_line(start);
-        let tags_start = start.saturating_sub(self.tags.back_check_amount());
+        let line = self.char_to_line(pos);
+        let tags_start = pos.saturating_add(self.tags.back_check_amount());
         let tags = self.tags.rev_iter_at(tags_start);
 
-        RevIter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
+        RevIter::new(chars, tags, pos, line)
     }
 
-    pub fn iter_chars_at(&self, char: usize) -> impl Iterator<Item = char> + '_ {
-        self.chars.iter_at(char)
+    pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
+        self.chars.iter_at(pos)
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
@@ -678,9 +650,7 @@ impl Iterator for RevIter<'_> {
                         self.conceal_count -= 1;
                     }
                 }
-                (_, RawTag::ConcealEnd) => {
-                    self.conceal_count += 1
-                }
+                (_, RawTag::ConcealEnd) => self.conceal_count += 1,
                 _ => unreachable!()
             }
             self.tags.next();
@@ -702,9 +672,8 @@ impl Iterator for RevIter<'_> {
             Some((pos, self.line, Part::from(tag)))
         } else if let Some(char) = self.chars.next() {
             self.pos -= 1;
-            let prev_line = self.line;
             self.line -= (char == '\n') as usize;
-            Some((self.pos + 1, prev_line, Part::Char(char)))
+            Some((self.pos, self.line, Part::Char(char)))
         } else {
             None
         }

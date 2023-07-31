@@ -127,7 +127,7 @@ pub trait PrintInfo: Default + Clone + Copy {
 
     /// Returns the character index of the first character that would
     /// be printed.
-    fn first_char(&self, text: &Text) -> usize;
+    fn first_char(&self) -> usize;
 }
 
 /// An [`Area`] that supports printing [`Text`].

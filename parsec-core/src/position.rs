@@ -71,7 +71,7 @@ impl Pos {
     /// Returns the line of self. Indexed at 1. Intended only for
     /// displaying by the end user. For a 0 indexed line, see
     /// [true_row()](Self::true_row()).
-    pub fn row(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.line + 1
     }
 
@@ -93,7 +93,7 @@ impl Pos {
     }
 
     /// Returns the line. Indexed at 0.
-    pub fn true_row(&self) -> usize {
+    pub fn true_line(&self) -> usize {
         self.line
     }
 }
@@ -175,7 +175,7 @@ impl Cursor {
         let line_char = text.line_to_char(caret.line);
         caret.col = caret.char - line_char;
 
-        let iter_range = text.iter_at(line_char..=caret.char);
+        let iter_range = text.iter_at(line_char).take_while(|(pos, ..)| *pos <= caret.char);
         self.desired_col = area.get_width(iter_range, cfg, true);
     }
 
@@ -193,7 +193,7 @@ impl Cursor {
         caret.char = text.line_to_char(caret.line) + caret.col;
         caret.byte = text.char_to_byte(caret.char);
 
-        let iter_range = text.iter_at(line_char..caret.char);
+        let iter_range = text.iter_at(line_char).take_while(|(pos, ..)| *pos < caret.char);
         self.desired_col = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;
