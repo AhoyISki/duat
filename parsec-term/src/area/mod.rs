@@ -295,41 +295,14 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let line = text.iter_line(point.true_line());
-        let Some(char) = text.get_char(point.true_char()) else {
-            return;
-        };
-
-        let end = {
-            let line = line.clone().take_while(|(pos, ..)| *pos < point.true_char() + 1);
-            area.get_width(line, cfg, true)
-        };
-        let start = match char {
-            '\n' => end - 1,
-            '\t' => {
-                let line = line.take_while(|(pos, ..)| *pos < point.true_char());
-                // If `start > end`, the start happens before wrapping, which can only
-                // happen on '\t' characters. Since the start needs to be on the same
-                // line as the end, and the end is the first wrapped character, it is
-                // also the start.
-                //
-                // NOTE: Under revision
-                // if start > end {
-                //     indents(line, &cfg.tab_stops, cap)
-                //         .scan(0, |old_indent, (indent, ..)| {
-                //             if *old_indent == indent {
-                //                 None
-                //             } else {
-                //                 *old_indent = indent;
-                //                 Some(indent)
-                //             }
-                //         })
-                //         .last()
-                //         .unwrap_or(0) as usize
-                // } else {
-                area.get_width(line.clone(), cfg, true)
-            }
-            char => end - UnicodeWidthChar::width(char).unwrap_or(0)
+        let (start, end) = {
+            let line_start = text.line_to_char(point.true_line());
+            print_iter(text.iter_at(line_start), 0, area.width(), cfg)
+                .filter_map(|((x, len, _), (_, part))| {
+                    part.as_char().and(Some((x as usize, (x + len) as usize)))
+                })
+                .nth(point.true_char() - line_start)
+                .unwrap_or((0, 0))
         };
 
         let max_dist = width - cfg.scrolloff.x_gap;

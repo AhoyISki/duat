@@ -202,7 +202,7 @@ impl Text {
         Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
     }
 
-    pub fn iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
+    pub fn iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
         let chars = self.chars.iter_at(pos);
 
         let line = self.char_to_line(pos);
