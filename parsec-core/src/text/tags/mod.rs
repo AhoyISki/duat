@@ -271,7 +271,7 @@ impl Tags {
     pub fn iter_at(&self, pos: usize) -> Iter {
         let ranges = Ranges::new(pos, self.ranges.iter());
         let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
-        Iter::new(pos, self, ranges, raw_tags)
+        Iter::new(self, ranges, raw_tags)
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> RevIter {
@@ -287,7 +287,7 @@ impl Tags {
 
         let ranges = RevRanges::new(possible_ranges);
         let tags = RevRawTags::new(&self.ranges, self.container.rev_iter_at(pos));
-        RevIter::new(pos, self, ranges, tags)
+        RevIter::new(self, ranges, tags)
     }
 
     pub fn back_check_amount(&self) -> usize {
@@ -853,20 +853,19 @@ impl<'a> Iterator for RevRawTags<'a> {
 
 #[derive(Clone)]
 pub struct Iter<'a> {
-    pos: usize,
     tags: &'a Tags,
     iter: std::iter::Chain<Ranges<'a>, RawTags<'a>>,
     peeked: Option<Option<(usize, RawTag)>>
 }
 
 impl<'a> Iter<'a> {
-    fn new(pos: usize, tags: &'a Tags, ranges: Ranges<'a>, raw_tags: RawTags<'a>) -> Self {
+    fn new(tags: &'a Tags, ranges: Ranges<'a>, raw_tags: RawTags<'a>) -> Self {
         let iter = ranges.chain(raw_tags);
-        Self { pos, tags, iter, peeked: None }
+        Self { tags, iter, peeked: None }
     }
 
-    pub fn move_forwards_by(&mut self, amount: usize) {
-        *self = self.tags.iter_at(self.pos + amount);
+    pub fn move_to(&mut self, pos: usize) {
+        *self = self.tags.iter_at(pos);
     }
 
     pub fn peek(&mut self) -> Option<&(usize, RawTag)> {
@@ -879,29 +878,25 @@ impl Iterator for Iter<'_> {
     type Item = (usize, RawTag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.peeked
-            .take()
-            .flatten()
-            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
+        self.peeked.take().flatten().or_else(|| self.iter.next())
     }
 }
 
 #[derive(Clone)]
 pub struct RevIter<'a> {
-    pos: usize,
     tags: &'a Tags,
     iter: std::iter::Chain<RevRanges, RevRawTags<'a>>,
     peeked: Option<Option<(usize, RawTag)>>
 }
 
 impl<'a> RevIter<'a> {
-    fn new(pos: usize, tags: &'a Tags, ranges: RevRanges, raw_tags: RevRawTags<'a>) -> Self {
+    fn new(tags: &'a Tags, ranges: RevRanges, raw_tags: RevRawTags<'a>) -> Self {
         let iter = ranges.chain(raw_tags);
-        Self { pos, tags, iter, peeked: None }
+        Self { tags, iter, peeked: None }
     }
 
-    pub fn move_forwards_by(&mut self, amount: usize) {
-        *self = self.tags.rev_iter_at(self.pos + amount);
+    pub fn move_to(&mut self, pos: usize) {
+        *self = self.tags.rev_iter_at(pos);
     }
 
     pub fn peek(&mut self) -> Option<&(usize, RawTag)> {
@@ -914,10 +909,7 @@ impl Iterator for RevIter<'_> {
     type Item = (usize, RawTag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.peeked
-            .take()
-            .flatten()
-            .or_else(|| self.iter.next().inspect(|(width, _)| self.pos = *width))
+        self.peeked.take().flatten().or_else(|| self.iter.next())
     }
 }
 

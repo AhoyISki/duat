@@ -1,5 +1,7 @@
 use ropey::Rope;
 
+use crate::log_info;
+
 #[derive(Debug)]
 pub enum Chars {
     String(String),
@@ -28,7 +30,7 @@ impl Chars {
     pub fn iter_at(&self, pos: usize) -> Iter {
         match self {
             Chars::String(string) => Iter::String(string.chars().skip(pos)),
-            Chars::Rope(rope) => Iter::Rope(rope, pos, rope.chars_at(pos))
+            Chars::Rope(rope) => Iter::Rope(rope, rope.chars_at(pos))
         }
     }
 
@@ -37,7 +39,7 @@ impl Chars {
             Chars::String(string) => {
                 Iter::StringRev(string.chars().rev().skip(self.len_chars() - pos))
             }
-            Chars::Rope(rope) => Iter::Rope(rope, pos, rope.chars_at(pos).reversed())
+            Chars::Rope(rope) => Iter::RopeRev(rope, rope.chars_at(pos).reversed())
         }
     }
 
@@ -137,34 +139,43 @@ impl Chars {
 pub enum Iter<'a> {
     String(std::iter::Skip<std::str::Chars<'a>>),
     StringRev(std::iter::Skip<std::iter::Rev<std::str::Chars<'a>>>),
-    Rope(&'a Rope, usize, ropey::iter::Chars<'a>)
+    Rope(&'a Rope, ropey::iter::Chars<'a>),
+    RopeRev(&'a Rope, ropey::iter::Chars<'a>)
 }
 
 impl<'a> Iter<'a> {
-    pub fn move_forwards_by(&mut self, mut n: usize) -> usize {
+    pub fn move_to(&mut self, mut pos: usize) -> usize {
         let mut nl_count = 0;
         match self {
             Iter::String(chars) => {
-                while n > 0 && let Some(char) = chars.next() {
-                    n -= 1;
+                while pos > 0 && let Some(char) = chars.next() {
+                    pos -= 1;
                     nl_count += (char == '\n') as usize;
                 }
                 nl_count
             }
             Iter::StringRev(chars) => {
-                while n > 0 && let Some(char) = chars.next() {
-                    n -= 1;
+                while pos > 0 && let Some(char) = chars.next() {
+                    pos -= 1;
                     nl_count += (char == '\n') as usize;
                 }
                 nl_count
             }
-            Iter::Rope(rope, char_idx, chars) => {
-                let old_line = rope.char_to_line(*char_idx);
-                *char_idx += n;
-                if let Some(chars_forward) = rope.get_chars_at(*char_idx) {
-                    *char_idx += n;
+            Iter::Rope(rope, chars) => {
+                let old_line = rope.char_to_line(pos);
+                if let Some(chars_forward) = rope.get_chars_at(pos) {
                     *chars = chars_forward;
-                    rope.char_to_line(*char_idx) - old_line
+                    rope.char_to_line(pos) - old_line
+                } else {
+                    *chars = rope.chars_at(rope.len_chars());
+                    rope.len_lines() - 1 - old_line
+                }
+            }
+            Iter::RopeRev(rope, chars) => {
+                let old_line = rope.char_to_line(pos);
+                if let Some(chars_forward) = rope.get_chars_at(pos) {
+                    *chars = chars_forward.reversed();
+                    rope.char_to_line(pos) - old_line
                 } else {
                     *chars = rope.chars_at(rope.len_chars());
                     rope.len_lines() - 1 - old_line
@@ -181,7 +192,8 @@ impl Iterator for Iter<'_> {
         match self {
             Iter::String(chars) => chars.next(),
             Iter::StringRev(chars) => chars.next(),
-            Iter::Rope(_, width, chars) => chars.next().inspect(|_| *width += 1)
+            Iter::Rope(_, chars) => chars.next(),
+            Iter::RopeRev(_, chars) => chars.next()
         }
     }
 }

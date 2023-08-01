@@ -17,6 +17,7 @@ use tags::{TagOrSkip, Tags, ToggleId};
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
+    log_info,
     position::Cursor
 };
 
@@ -573,19 +574,20 @@ impl Iterator for Iter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned();
-        while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
+        while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
             match tag.unwrap() {
                 (_, RawTag::ConcealStart) => self.conceal_count += 1,
-                (pos, RawTag::ConcealEnd) => {
-                    if self.conceal_count == 0 {
-                        self.line += self.chars.move_forwards_by(pos - self.pos);
-                        self.pos = pos;
-                    } else {
-                        self.conceal_count -= 1;
-                    }
+                (_, RawTag::ConcealEnd) => {
+                    self.conceal_count = self.conceal_count.saturating_sub(1)
                 }
                 _ => unreachable!()
             }
+
+            if self.conceal_count == 0 {
+                self.pos = pos;
+                self.line += self.chars.move_to(pos);
+            }
+
             self.tags.next();
             tag = self
                 .tags
@@ -597,8 +599,8 @@ impl Iterator for Iter<'_> {
         if let Some((pos, tag)) = tag {
             if let RawTag::Skip(skip) = tag {
                 self.pos = pos + skip;
-                self.tags.move_forwards_by(skip);
-                self.line += self.chars.move_forwards_by(skip);
+                self.tags.move_to(self.pos);
+                self.line += self.chars.move_to(self.pos);
                 self.conceal_count = 0;
             }
             self.tags.next();
@@ -640,19 +642,20 @@ impl Iterator for RevIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0).cloned();
-        while let Some((_, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
+        while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
             match tag.unwrap() {
-                (pos, RawTag::ConcealStart) => {
-                    if self.conceal_count == 0 {
-                        self.line -= self.chars.move_forwards_by(pos - self.pos);
-                        self.pos = pos;
-                    } else {
-                        self.conceal_count -= 1;
-                    }
+                (_, RawTag::ConcealStart) => {
+                    self.conceal_count = self.conceal_count.saturating_sub(1)
                 }
                 (_, RawTag::ConcealEnd) => self.conceal_count += 1,
                 _ => unreachable!()
             }
+
+            if self.conceal_count == 0 {
+                self.pos = pos;
+                self.line -= self.chars.move_to(pos);
+            }
+
             self.tags.next();
             tag = self
                 .tags
@@ -664,8 +667,8 @@ impl Iterator for RevIter<'_> {
         if let Some((pos, tag)) = tag {
             if let RawTag::Skip(skip) = tag {
                 self.pos = pos - skip;
-                self.tags.move_forwards_by(skip);
-                self.line -= self.chars.move_forwards_by(skip);
+                self.tags.move_to(self.pos);
+                self.line -= self.chars.move_to(self.pos);
                 self.conceal_count = 0;
             }
             self.tags.next();
