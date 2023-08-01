@@ -59,7 +59,7 @@ impl NewLine {
         match self {
             NewLine::AlwaysAs(char) => Some(*char),
             NewLine::AfterSpaceAs(char) => {
-                if last_char.is_some_and(|char| char.is_whitespace()) {
+                if last_char.is_some_and(|char| char.is_whitespace() && char != '\n') {
                     Some(*char)
                 } else {
                     Some(' ')

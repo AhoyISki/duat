@@ -386,6 +386,7 @@ fn print_parts(
     is_active: bool, info: PrintInfo, mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> u16 {
     let mut x = coords.tl.x;
+    // The y here represents the bottom line of the current row of cells.
     let mut y = coords.tl.y;
     let mut prev_style = None;
     let mut alignment = Alignment::Left;
@@ -459,8 +460,8 @@ fn print_parts(
     if !line.is_empty() {
         print_line(x, y, coords, alignment, &mut line, stdout);
     }
-    
-        coords.br.y - y
+
+    coords.br.y - y
 }
 
 fn print_line(

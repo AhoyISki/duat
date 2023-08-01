@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 
-use parsec_core::{
-    text::{Part, PrintCfg, WrapMethod}
-};
+use parsec_core::text::{Part, PrintCfg, WrapMethod};
 
 use super::len_from;
 
@@ -30,24 +28,7 @@ fn bits<'a>(
 ) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
     let width = width as u16;
     iter.scan((0, true, None), move |(x, next_line, prev_char), (indent, (pos, line, part))| {
-        let (len, processed_part) = match part {
-            Part::Char(char) => {
-                let ret = if char == '\n' {
-                    let char = cfg.new_line.char(*prev_char);
-                    if let Some(char) = char {
-                        (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
-                    } else {
-                        (0, Part::Char('\n'))
-                    }
-                } else {
-                    (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
-                };
-
-                *prev_char = Some(char);
-                ret
-            }
-            _ => (0, part)
-        };
+        let (len, processed_part) = process_part(part, cfg, prev_char, x, width);
         *x += len;
 
         let surpassed_width = *x > width || (*x == width && len == 0);
@@ -75,12 +56,13 @@ fn words<'a>(
     let mut indent = 0;
     let mut word = Vec::new();
 
+    let mut prev_char = None;
     let mut finished_word = Vec::new();
     let mut x = 0;
-    let mut next_is_nl = true;
+    let mut needs_to_wrap = true;
     std::iter::from_fn(move || {
         if let Some(unit) = finished_word.pop() {
-            return words_bit(unit, indent, &mut x, &mut next_is_nl, width, cfg);
+            return words_bit(unit, indent, &mut x, &mut needs_to_wrap, &mut prev_char, width, cfg);
         }
 
         let mut word_len = 0;
@@ -97,23 +79,23 @@ fn words<'a>(
             word.push(iter.next().map(|(_, unit)| unit).unwrap());
         }
 
-        next_is_nl |= x + word_len > width;
+        needs_to_wrap |= x + word_len > width;
 
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
-        finished_word
-            .pop()
-            .and_then(|unit| words_bit(unit, indent, &mut x, &mut next_is_nl, width, cfg))
+        finished_word.pop().and_then(|unit| {
+            words_bit(unit, indent, &mut x, &mut needs_to_wrap, &mut prev_char, width, cfg)
+        })
     })
 }
 
 fn words_bit(
-    (pos, line, part): (usize, usize, Part), indent: u16, x: &mut u16, next_is_nl: &mut bool,
-    width: u16, cfg: &PrintCfg
+    (pos, line, part): (usize, usize, Part), indent: u16, x: &mut u16, needs_to_wrap: &mut bool,
+    prev_char: &mut Option<char>, width: u16, cfg: &PrintCfg
 ) -> Option<((u16, u16, Option<usize>), (usize, Part))> {
-    let len = part.as_char().map(|char| len_from(char, *x, width, &cfg.tab_stops)).unwrap_or(0);
-    let next_line = if *next_is_nl {
-        *next_is_nl = false;
+    let (len, processed_part) = process_part(part, cfg, prev_char, x, width);
+    let next_line = if *needs_to_wrap {
+        *needs_to_wrap = false;
         *x = indent;
         Some(line)
     } else if let Part::Char(_) = part {
@@ -132,10 +114,33 @@ fn words_bit(
     };
 
     if let Some(char) = part.as_char() {
-        *next_is_nl = char == '\n'
+        *needs_to_wrap = char == '\n'
     }
 
-    Some(((*x - len, len, next_line), (pos, part)))
+    Some(((*x - len, len, next_line), (pos, processed_part)))
+}
+
+fn process_part(
+    part: Part, cfg: &PrintCfg, prev_char: &mut Option<char>, x: &mut u16, width: u16
+) -> (u16, Part) {
+    match part {
+        Part::Char(char) => {
+            let ret = if char == '\n' {
+                let char = cfg.new_line.char(*prev_char);
+                if let Some(char) = char {
+                    (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+                } else {
+                    (0, Part::Char('\n'))
+                }
+            } else {
+                (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+            };
+
+            *prev_char = Some(char);
+            ret
+        }
+        _ => (0, part)
+    }
 }
 
 enum Iter<'a, Bits, Words>
