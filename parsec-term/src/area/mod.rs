@@ -11,6 +11,7 @@ use crossterm::{
     cursor,
     style::{Print, ResetColor, SetStyle}
 };
+use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
@@ -20,7 +21,6 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use self::iter::{print_iter, rev_print_iter};
 use crate::{
     layout::{Edge, Layout, Line, LineCoords},
     AreaIndex, ConstraintChangeErr
@@ -365,19 +365,6 @@ impl ui::PrintInfo for PrintInfo {
 
     fn first_char(&self) -> usize {
         self.first_char
-    }
-}
-
-fn len_from(
-    char: char, start: u16, max_width: u16, cfg: &PrintCfg, prev_char: Option<char>
-) -> u16 {
-    let char = if char == '\n' { cfg.new_line.char(prev_char).unwrap_or('\n') } else { char };
-    match char {
-        '\t' => (cfg.tab_stops.spaces_at(start as usize) as u16)
-            .min(max_width.saturating_sub(start))
-            .max(1),
-        '\n' => 0,
-        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
 }
 
