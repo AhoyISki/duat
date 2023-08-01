@@ -7,8 +7,8 @@ use unicode_width::UnicodeWidthChar;
 /// indentation.
 #[inline(always)]
 fn indents<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = (u16, (usize, usize, Part))> + 'a {
+    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: &'a PrintCfg
+) -> impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a {
     iter.scan((0, true), move |(indent, on_indent), (pos, line, part)| {
         let old_indent = if *indent < width { *indent } else { 0 };
         (*indent, *on_indent) = match (&part, *on_indent) {
@@ -19,15 +19,15 @@ fn indents<'a>(
             (_, on_indent) => (*indent, on_indent)
         };
 
-        Some((old_indent as u16, (pos, line, part)))
+        Some((old_indent, (pos, line, part)))
     })
 }
 
 #[inline(always)]
 fn parts<'a>(
-    iter: impl Iterator<Item = (u16, (usize, usize, Part))> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
-    let width = width as u16;
+    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
+    cfg: &'a PrintCfg
+) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     iter.scan((0, true, None), move |(x, needs_to_wrap, prev_char), (indent, unit)| {
         item((x, needs_to_wrap, prev_char), indent, unit, width, cfg)
     })
@@ -36,10 +36,9 @@ fn parts<'a>(
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
 fn words<'a>(
-    iter: impl Iterator<Item = (u16, (usize, usize, Part))> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
+    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize, cfg: &'a PrintCfg
+) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut iter = iter.peekable();
-    let width = width as u16;
     let mut indent = 0;
     let mut word = Vec::new();
 
@@ -78,9 +77,9 @@ fn words<'a>(
 
 #[inline(always)]
 fn item(
-    (x, needs_to_wrap, prev_char): (&mut u16, &mut bool, &mut Option<char>), indent: u16,
-    (pos, line, part): (usize, usize, Part), width: u16, cfg: &PrintCfg
-) -> Option<((u16, u16, Option<usize>), (usize, Part))> {
+    (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>), indent: usize,
+    (pos, line, part): (usize, usize, Part), width: usize, cfg: &PrintCfg
+) -> Option<((usize, usize, Option<usize>), (usize, Part))> {
     let (len, processed_part) = process_part(part, cfg, prev_char, x, width);
     *x += len;
 
@@ -101,8 +100,8 @@ fn item(
 
 #[inline(always)]
 fn process_part(
-    part: Part, cfg: &PrintCfg, prev_char: &mut Option<char>, x: &mut u16, width: u16
-) -> (u16, Part) {
+    part: Part, cfg: &PrintCfg, prev_char: &mut Option<char>, x: &mut usize, width: usize
+) -> (usize, Part) {
     match part {
         Part::Char(char) => {
             let ret = if char == '\n' {
@@ -123,19 +122,20 @@ fn process_part(
     }
 }
 
+#[derive(Clone)]
 enum Iter<'a, Bits, Words>
 where
-    Bits: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
-    Words: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
+    Bits: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a,
+    Words: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a
 {
     Parts(Bits, PhantomData<&'a ()>),
     Words(Words)
 }
 
 pub fn print_iter<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + 'a, char_start: usize, width: usize,
+    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, char_start: usize, width: usize,
     cfg: &'a PrintCfg
-) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
+) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let width = if let WrapMethod::Capped(cap) = cfg.wrap_method { cap } else { width };
     match cfg.wrap_method {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
@@ -153,7 +153,7 @@ pub fn print_iter<'a>(
 
 pub fn rev_print_iter<'a>(
     mut iter: impl Iterator<Item = (usize, usize, Part)> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a {
+) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
     std::iter::from_fn(move || {
@@ -182,10 +182,10 @@ pub fn rev_print_iter<'a>(
 
 impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
 where
-    Parts: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a,
-    Words: Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))> + 'a
+    Parts: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a,
+    Words: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a
 {
-    type Item = ((u16, u16, Option<usize>), (usize, Part));
+    type Item = ((usize, usize, Option<usize>), (usize, Part));
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -197,14 +197,12 @@ where
 
 #[inline(always)]
 fn len_from(
-    char: char, start: u16, max_width: u16, cfg: &PrintCfg, prev_char: Option<char>
-) -> u16 {
+    char: char, start: usize, max_width: usize, cfg: &PrintCfg, prev_char: Option<char>
+) -> usize {
     let char = if char == '\n' { cfg.new_line.char(prev_char).unwrap_or('\n') } else { char };
     match char {
-        '\t' => (cfg.tab_stops.spaces_at(start as usize) as u16)
-            .min(max_width.saturating_sub(start))
-            .max(1),
+        '\t' => (cfg.tab_stops.spaces_at(start)).min(max_width.saturating_sub(start)).max(1),
         '\n' => 0,
-        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
+        _ => UnicodeWidthChar::width(char).unwrap_or(0)
     }
 }

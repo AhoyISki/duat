@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc
     }
 };
@@ -30,7 +30,7 @@ pub(crate) fn unique_area_index() -> AreaIndex {
 #[derive(Clone)]
 struct VarValue {
     var: Variable,
-    value: Arc<AtomicU16>,
+    value: Arc<AtomicUsize>,
     has_changed: Arc<AtomicBool>
 }
 
@@ -39,7 +39,7 @@ impl VarValue {
     fn new() -> Self {
         Self {
             var: Variable::new(),
-            value: Arc::new(AtomicU16::new(0)),
+            value: Arc::new(AtomicUsize::new(0)),
             has_changed: Arc::new(AtomicBool::new(false))
         }
     }
@@ -67,7 +67,7 @@ struct VarPoint {
 
 impl VarPoint {
     /// Returns a new instance of [`VarPoint`]
-    fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
+    fn new(vars: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>) -> Self {
         let element = VarPoint { x: VarValue::new(), y: VarValue::new() };
 
         vars.insert(element.x.var, (element.x.value.clone(), element.x.has_changed.clone()));
@@ -145,7 +145,7 @@ pub struct Rect {
 impl Rect {
     /// Returns a new instance of [`Rect`], already adding its
     /// [`Variable`]s to the list.
-    fn new(vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>) -> Self {
+    fn new(vars: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>) -> Self {
         Rect {
             index: unique_area_index(),
             tl: VarPoint::new(vars),
@@ -159,7 +159,7 @@ impl Rect {
     /// existing [`Rect`], as its new parent.
     fn new_parent_of(
         rect: &mut Rect, axis: Axis,
-        vars: &mut HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>, new_glued: bool
+        vars: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>, new_glued: bool
     ) -> Self {
         let parent = Rect {
             index: unique_area_index(),
@@ -275,7 +275,7 @@ impl Rect {
 
     /// The current value for the lenght of [`self`] on a given
     /// [`Axis`].
-    fn len_value(&self, axis: Axis) -> u16 {
+    fn len_value(&self, axis: Axis) -> usize {
         match axis {
             Axis::Horizontal => {
                 self.br.x.value.load(Ordering::Relaxed) - self.tl.x.value.load(Ordering::Relaxed)
@@ -414,18 +414,18 @@ impl Edge {
     pub fn line_coords(&self) -> LineCoords {
         let shift = self.center < self.target;
         let (x_shift, y_shift) = match self.axis {
-            Axis::Horizontal => (!shift as u16, shift as u16),
-            Axis::Vertical => (shift as u16, !shift as u16)
+            Axis::Horizontal => (!shift as usize, shift as usize),
+            Axis::Vertical => (shift as usize, !shift as usize)
         };
 
         let target = match self.axis {
             Axis::Horizontal => Coord::new(
-                self.target.x.value.load(Ordering::Acquire) - shift as u16,
-                self.center.y.value.load(Ordering::Acquire) - shift as u16
+                self.target.x.value.load(Ordering::Acquire),
+                self.center.y.value.load(Ordering::Acquire)
             ),
             Axis::Vertical => Coord::new(
-                self.center.x.value.load(Ordering::Acquire) - shift as u16,
-                self.target.y.value.load(Ordering::Acquire) - shift as u16
+                self.center.x.value.load(Ordering::Acquire),
+                self.target.y.value.load(Ordering::Acquire)
             )
         };
         let center = Coord::new(
@@ -619,7 +619,7 @@ impl Frame {
 /// become a thing.
 #[derive(Debug)]
 pub struct Layout {
-    vars: HashMap<Variable, (Arc<AtomicU16>, Arc<AtomicBool>)>,
+    vars: HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
     main: RwData<Rect>,
     max: Coord,
     floating: Vec<RwData<Rect>>,
@@ -635,7 +635,7 @@ impl Layout {
     pub fn new(frame: Frame) -> Self {
         let max = {
             let (width, height) = crossterm::terminal::size().unwrap();
-            Coord::new(width, height)
+            Coord::new(width as usize, height as usize)
         };
         let mut edges = Vec::new();
         let mut solver = Solver::new();
@@ -696,7 +696,7 @@ impl Layout {
         for (var, new_value) in self.solver.fetch_changes() {
             let (value, has_changed) = &self.vars[var];
 
-            value.store(new_value.round() as u16, Ordering::Release);
+            value.store(new_value.round() as usize, Ordering::Release);
             has_changed.store(true, Ordering::Release);
         }
     }
@@ -904,12 +904,12 @@ impl Layout {
     }
 
     /// The current value for the width of [`self`].
-    pub fn width(&self) -> u16 {
+    pub fn width(&self) -> usize {
         self.main.read().len_value(Axis::Horizontal)
     }
 
     /// The current value for the height of [`self`].
-    pub fn height(&self) -> u16 {
+    pub fn height(&self) -> usize {
         self.main.read().len_value(Axis::Vertical)
     }
 

@@ -4,7 +4,8 @@
     trait_upcasting,
     let_chains,
     option_zip,
-    iter_advance_by
+    iter_advance_by,
+    return_position_impl_trait_in_trait
 )]
 #![allow(
     clippy::arc_with_non_send_sync,

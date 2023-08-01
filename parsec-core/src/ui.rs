@@ -170,29 +170,66 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// then the number of rows must equal the number of lines on the
     /// [`Iterator`].
     fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg
     ) -> usize;
 
     /// Returns the positional index of the char that comes after the
     /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
     /// times.
     fn char_at_wrap(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, wrap: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, wrap: usize,
+        cfg: &PrintCfg
     ) -> Option<usize>;
 
     /// Gets the visual width of the [`Iterator`].
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg, wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg,
+        wrap_around: bool
     ) -> usize;
 
     /// Gets the column at `dist` from the left side on [`Iterator`].
     fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, dist: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, dist: usize,
+        cfg: &PrintCfg
     ) -> usize;
 
     fn has_changed(&self) -> bool;
 
     fn is_senior_of(&self, other: &Self) -> bool;
+
+    /// Returns a printing iterator.
+    ///
+    /// Given an [`Iterator`] with an [`Item`] of type `(usize,
+    /// usize, Part)`, where:
+    ///
+    /// - The first `usize` is the char index from the file's start;
+    /// - The second `usize` is the current line;
+    /// - The [`Part`] is either a `char` or a [`Text`] modifier;
+    ///
+    /// Returns an [`Iterator`] with an [`Item`] of type `((usize,
+    /// usize, Option<usize>), (usize, Part))`, where:
+    ///
+    /// * On the first tuple:
+    ///   - The first `usize` is the current horizontal position;
+    ///   - The second `usize` is the length of the [`Part`]. It is
+    ///     only greater than 0 if the part is a `char`;
+    ///   - The [`Option<usize>`] represents a wrapping. It is
+    ///     [`Some(usize)`], where the number is the current line,
+    ///     only if the `char` wraps around. For example, any `char`
+    ///     following a `'\n'` should return `Some(current_line)`,
+    ///     since they show up in the next line;
+    ///
+    /// * On the second tuple:
+    ///   - The `usize` is the char index from the file's start;
+    ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
+    ///
+    /// [`Item`]: Iterator::Item
+    /// [`Option<usize>`]: Option
+    /// [`Some(usize)`]: Some
+    fn print_iter<'a>(
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, start: usize,
+        cfg: &'a PrintCfg
+    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.

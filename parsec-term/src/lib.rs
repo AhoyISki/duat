@@ -1,4 +1,9 @@
-#![feature(result_option_inspect, iter_collect_into, let_chains)]
+#![feature(
+    result_option_inspect,
+    iter_collect_into,
+    let_chains,
+    return_position_impl_trait_in_trait
+)]
 #![allow(clippy::type_complexity, clippy::while_let_on_iterator)]
 
 use std::{fmt::Debug, io};

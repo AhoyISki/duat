@@ -19,7 +19,6 @@ use parsec_core::{
     text::{Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
-use unicode_width::UnicodeWidthChar;
 
 use crate::{
     layout::{Edge, Layout, Line, LineCoords},
@@ -36,8 +35,8 @@ macro_rules! queue {
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Coord {
-    pub x: u16,
-    pub y: u16
+    pub x: usize,
+    pub y: usize
 }
 
 impl std::fmt::Debug for Coord {
@@ -47,7 +46,7 @@ impl std::fmt::Debug for Coord {
 }
 
 impl Coord {
-    pub fn new(x: u16, y: u16) -> Coord {
+    pub fn new(x: usize, y: usize) -> Coord {
         Coord { x, y }
     }
 }
@@ -63,7 +62,7 @@ impl Coords {
     }
 
     fn width(&self) -> usize {
-        (self.br.x - self.tl.x) as usize
+        self.br.x - self.tl.x
     }
 }
 
@@ -105,7 +104,7 @@ impl ui::Area for Area {
         self.layout.inspect(|layout| {
             let rect = layout.fetch_index(self.index).unwrap();
             let rect = rect.read();
-            rect.br().x as usize - rect.tl().x as usize
+            rect.br().x - rect.tl().x
         })
     }
 
@@ -113,7 +112,7 @@ impl ui::Area for Area {
         self.layout.inspect(|window| {
             let rect = window.fetch_index(self.index).unwrap();
             let rect = rect.read();
-            rect.br().y as usize - rect.tl().y as usize
+            rect.br().y - rect.tl().y
         })
     }
 
@@ -130,7 +129,7 @@ impl ui::Area for Area {
         print_edges(self.layout.read().edges(), &mut stdout);
 
         let coords = self.coords();
-        queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), cursor::Hide);
+        queue!(stdout, cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16), cursor::Hide);
 
         let iter = {
             let start = {
@@ -174,14 +173,15 @@ impl ui::Area for Area {
 
     // NOTE: INCORRECT FUNCTION!!!
     fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg
     ) -> usize {
         print_iter(iter, 0, self.width(), cfg).filter_map(|((.., new_line), _)| new_line).count()
     }
 
     // NOTE: INCORRECT FUNCTION!!!
     fn char_at_wrap(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, wrap: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, wrap: usize,
+        cfg: &PrintCfg
     ) -> Option<usize> {
         print_iter(iter, 0, self.width(), cfg)
             .filter_map(|((.., new_line), (pos, _))| new_line.map(|_| pos))
@@ -190,23 +190,25 @@ impl ui::Area for Area {
 
     // NOTE: INCORRECT FUNCTION!!!
     fn get_width(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, cfg: &PrintCfg, wrap_around: bool
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg,
+        wrap_around: bool
     ) -> usize {
         print_iter(iter, 0, self.width(), cfg)
             .skip_while(|((.., new_line), _)| new_line.is_none())
             .skip(1)
             .take_while(|((.., new_line), _)| new_line.is_none() || wrap_around)
-            .map(|((_, len, _), _)| len as usize)
+            .map(|((_, len, _), _)| len)
             .sum::<usize>()
     }
 
     // NOTE: INCORRECT FUNCTION!!!
     fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)>, dist: usize, cfg: &PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, dist: usize,
+        cfg: &PrintCfg
     ) -> usize {
         print_iter(iter, 0, self.width(), cfg)
             .enumerate()
-            .take_while(|(_, ((x, ..), _))| *x as usize <= dist)
+            .take_while(|(_, ((x, ..), _))| *x <= dist)
             .map(|(index, _)| index)
             .last()
             .unwrap_or(0)
@@ -240,6 +242,13 @@ impl ui::Area for Area {
             Area::new(self.layout.clone(), child),
             parent.map(|parent| Area::new(self.layout.clone(), parent))
         )
+    }
+
+    fn print_iter<'a>(
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, start: usize,
+        cfg: &'a PrintCfg
+    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+        print_iter(iter, start, self.width(), cfg)
     }
 }
 
@@ -298,9 +307,7 @@ impl PrintInfo {
         let (start, end) = {
             let line_start = text.line_to_char(point.true_line());
             print_iter(text.iter_at(line_start), 0, area.width(), cfg)
-                .filter_map(|((x, len, _), (_, part))| {
-                    part.as_char().and(Some((x as usize, (x + len) as usize)))
-                })
+                .filter_map(|((x, len, _), (_, part))| part.as_char().and(Some((x, x + len))))
                 .nth(point.true_char() - line_start)
                 .unwrap_or((0, 0))
         };
@@ -342,9 +349,9 @@ impl ui::PrintInfo for PrintInfo {
 }
 
 fn print_parts(
-    iter: impl Iterator<Item = ((u16, u16, Option<usize>), (usize, Part))>, coords: Coords,
+    iter: impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))>, coords: Coords,
     is_active: bool, info: PrintInfo, mut form_former: FormFormer, stdout: &mut StdoutLock
-) -> u16 {
+) -> usize {
     let mut x = coords.tl.x;
     // The y here represents the bottom line of the current row of cells.
     let mut y = coords.tl.y;
@@ -355,7 +362,7 @@ fn print_parts(
     for ((new_x, len, line_num), (_, part)) in iter {
         if line_num.is_some() {
             if y > coords.tl.y {
-                let shifted_x = x.saturating_sub(info.x_shift as u16);
+                let shifted_x = x.saturating_sub(info.x_shift);
                 print_line(shifted_x, y, coords, alignment, &mut line, stdout);
             }
             if y == coords.br.y {
@@ -425,14 +432,14 @@ fn print_parts(
 }
 
 fn print_line(
-    x: u16, y: u16, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
+    x: usize, y: usize, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
     stdout: &mut StdoutLock
 ) {
     let (left, right) = match alignment {
-        Alignment::Left => (0, coords.br.x.saturating_sub(x) as usize),
-        Alignment::Right => (coords.br.x.saturating_sub(x) as usize, 0),
+        Alignment::Left => (0, (coords.br.x).saturating_sub(x)),
+        Alignment::Right => ((coords.br.x).saturating_sub(x), 0),
         Alignment::Center => {
-            let remainder = coords.br.x.saturating_sub(x) as usize;
+            let remainder = (coords.br.x).saturating_sub(x);
             let left = remainder / 2;
             (left, remainder - left)
         }
@@ -445,41 +452,48 @@ fn print_line(
         Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
         Print(" ".repeat(right)),
-        cursor::MoveTo(coords.tl.x, y)
+        cursor::MoveTo(coords.tl.x as u16, y as u16)
     );
 
     line.clear();
 }
 
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
-    let len = (coords.br.x + x_shift as u16).saturating_sub(cursor.x) as usize;
+    let len = (coords.br.x + x_shift).saturating_sub(cursor.x);
     let (x, y) = (coords.tl.x, cursor.y);
-    queue!(stdout, ResetColor, Print(" ".repeat(len.min(coords.width()))), cursor::MoveTo(x, y));
+    queue!(
+        stdout,
+        ResetColor,
+        Print(" ".repeat(len.min(coords.width()))),
+        cursor::MoveTo(x as u16, y as u16)
+    );
 }
 
-fn indent_line(form_former: &FormFormer, x: u16, x_shift: usize, line: &mut Vec<u8>) {
+fn indent_line(form_former: &FormFormer, x: usize, x_shift: usize, line: &mut Vec<u8>) {
     let prev_style = form_former.make_form().style;
-    let indent_count = x.saturating_sub(x_shift as u16) as usize;
+    let indent_count = x.saturating_sub(x_shift);
     let mut indent = Vec::<u8>::from(" ".repeat(indent_count));
     queue!(indent, SetStyle(prev_style));
     line.splice(0..0, indent);
 }
 
-fn write_char(char: char, x: u16, len: u16, coords: Coords, x_shift: usize, line: &mut Vec<u8>) {
+fn write_char(
+    char: char, x: usize, len: usize, coords: Coords, x_shift: usize, line: &mut Vec<u8>
+) {
     // Case where the cursor hasn't yet reached the left edge.
-    if x < coords.tl.x + x_shift as u16 {
-        let len = (x + len).saturating_sub(coords.tl.x + x_shift as u16) as usize;
+    if x < coords.tl.x + x_shift {
+        let len = (x + len).saturating_sub(coords.tl.x + x_shift);
         queue!(line, Print(" ".repeat(len)));
     // Case where the end of the cursor, after printing, would be
     // located before the right edge.
-    } else if x + len <= coords.br.x + x_shift as u16 {
+    } else if x + len <= coords.br.x + x_shift {
         match char {
-            '\t' => queue!(line, Print(" ".repeat(len as usize))),
+            '\t' => queue!(line, Print(" ".repeat(len))),
             char => queue!(line, Print(char))
         };
     // Case where it wouldn't.
-    } else if x < coords.br.x + x_shift as u16 {
-        let len = coords.br.x as usize + x_shift - x as usize;
+    } else if x < coords.br.x + x_shift {
+        let len = coords.br.x + x_shift - x;
         queue!(line, Print(" ".repeat(len)));
     }
 }
@@ -496,8 +510,8 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
                 Some(line) => line::horizontal(line, line),
                 None => unreachable!()
             };
-            let line = char.to_string().repeat((coords.br.x - coords.tl.x + 1) as usize);
-            queue!(stdout, cursor::MoveTo(coords.tl.x, coords.tl.y), Print(line))
+            let line = char.to_string().repeat(coords.br.x - coords.tl.x + 1);
+            queue!(stdout, cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16), Print(line))
         } else {
             let char = match coords.line {
                 Some(line) => line::vertical(line, line),
@@ -505,7 +519,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
             };
 
             for y in (coords.tl.y)..=coords.br.y {
-                queue!(stdout, cursor::MoveTo(coords.tl.x, y), Print(char))
+                queue!(stdout, cursor::MoveTo(coords.tl.x as u16, y as u16), Print(char))
             }
         }
 
@@ -531,7 +545,7 @@ fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     for (coord, right, up, left, down) in crossings {
         queue!(
             stdout,
-            cursor::MoveTo(coord.x, coord.y),
+            cursor::MoveTo(coord.x as u16, coord.y as u16),
             Print(line::crossing(right, up, left, down, true))
         )
     }
