@@ -70,7 +70,7 @@ fn words<'a>(
             if let &Part::Char(char) = bit {
                 indent = *new_indent;
                 if cfg.word_chars.contains(char) {
-                    word_len += len_from(char, x + word_len, width, &cfg.tab_stops)
+                    word_len += len_from(char, x + word_len, width, cfg, prev_char)
                 } else {
                     word.push(iter.next().map(|(_, unit)| unit).unwrap());
                     break;
@@ -128,12 +128,12 @@ fn process_part(
             let ret = if char == '\n' {
                 let char = cfg.new_line.char(*prev_char);
                 if let Some(char) = char {
-                    (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+                    (len_from(char, *x, width, cfg, *prev_char), Part::Char(char))
                 } else {
                     (0, Part::Char('\n'))
                 }
             } else {
-                (len_from(char, *x, width, &cfg.tab_stops), Part::Char(char))
+                (len_from(char, *x, width, cfg, *prev_char), Part::Char(char))
             };
 
             *prev_char = Some(char);

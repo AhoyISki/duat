@@ -14,9 +14,8 @@ use crossterm::{
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
-    log_info,
     position::Pos,
-    text::{Part, PrintCfg, TabStops, Text, WrapMethod},
+    text::{Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 use unicode_width::UnicodeWidthChar;
@@ -201,16 +200,14 @@ impl ui::Area for Area {
             .sum::<usize>()
     }
 
+    // NOTE: INCORRECT FUNCTION!!!
     fn col_at_dist(
         &self, iter: impl Iterator<Item = (usize, usize, Part)>, dist: usize, cfg: &PrintCfg
     ) -> usize {
-        iter.filter_map(|(.., bit)| bit.as_char())
+        print_iter(iter, 0, self.width(), cfg)
             .enumerate()
-            .scan(0, |width, (index, char)| {
-                let old_width = *width as usize;
-                *width += len_from(char, *width, u16::MAX, &cfg.tab_stops);
-                if old_width < dist { Some(index) } else { None }
-            })
+            .take_while(|(_, ((x, ..), _))| *x as usize <= dist)
+            .map(|(index, _)| index)
             .last()
             .unwrap_or(0)
     }
@@ -371,12 +368,15 @@ impl ui::PrintInfo for PrintInfo {
     }
 }
 
-fn len_from(char: char, start: u16, max_width: u16, tab_stops: &TabStops) -> u16 {
+fn len_from(
+    char: char, start: u16, max_width: u16, cfg: &PrintCfg, prev_char: Option<char>
+) -> u16 {
+    let char = if char == '\n' { cfg.new_line.char(prev_char).unwrap_or('\n') } else { char };
     match char {
-        '\t' => {
-            (tab_stops.spaces_at(start as usize) as u16).min(max_width.saturating_sub(start)).max(1)
-        }
-        '\n' => 1,
+        '\t' => (cfg.tab_stops.spaces_at(start as usize) as u16)
+            .min(max_width.saturating_sub(start))
+            .max(1),
+        '\n' => 0,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u16
     }
 }
