@@ -41,7 +41,7 @@ where
     main_cursor: usize,
     cursors: Vec<Cursor>,
     history: History<U>,
-    print_cfg: PrintCfg,
+    cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>
 }
 
@@ -99,7 +99,7 @@ where
             main_cursor: 0,
             cursors,
             history: History::default(),
-            print_cfg,
+            cfg: print_cfg,
             printed_lines: Vec::new()
         })
     }
@@ -122,7 +122,7 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Pos::new(new_caret_ch, &self.text);
-            self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.print_cfg));
+            self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -144,7 +144,7 @@ where
             self.text.apply_change(change);
 
             let new_pos = Pos::new(change.added_end(), &self.text);
-            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.print_cfg));
+            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.cfg));
         }
     }
 
@@ -225,39 +225,22 @@ where
     }
 
     fn set_printed_lines(&mut self, area: &U::Area) {
-        let first_char = self.print_info.first_char();
-        let mut line_num = self.text.char_to_line(first_char);
+        let start = self.print_info.first_char();
 
-        let height = area.height();
-        self.printed_lines.clear();
-        self.printed_lines.reserve_exact(height);
+        let mut last_line_num = area
+            .rev_print_iter(self.text.rev_iter_at(start), &self.cfg)
+            .find_map(|((.., new_line), _)| new_line);
 
-        let mut is_wrapped = false;
-        let mut accum = 0;
-        let len_lines = self.text.len_lines();
-        while accum < height && line_num < len_lines {
-            let line = self.text.iter_line(line_num);
-            let nl = line.clone().any(|(.., bit)| bit.as_char().is_some_and(|char| char == '\n'));
-
-            let visible_rows = if accum == 0 {
-                let total = area.visible_rows(line.clone(), &self.print_cfg);
-                let cut_line = line.take_while(|(index, ..)| *index < first_char);
-                let rows = total.saturating_sub(area.visible_rows(cut_line, &self.print_cfg));
-                is_wrapped = rows < total;
-                rows.saturating_sub(!nl as usize)
-            } else {
-                area.visible_rows(line, &self.print_cfg).saturating_sub(!nl as usize)
-            };
-
-            let prev_accum = accum;
-            accum = min(accum + visible_rows, height);
-            for _ in prev_accum..accum {
-                self.printed_lines.push((line_num, is_wrapped));
-                is_wrapped = true;
-            }
-            is_wrapped = false;
-            line_num += 1;
-        }
+        self.printed_lines = area
+            .print_iter(self.text.iter_at(start), start, &self.cfg)
+            .filter_map(|((.., new_line), _)| new_line)
+            .map(|line_num| {
+                let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line_num);
+                last_line_num = Some(line_num);
+                (line_num, wrapped)
+            })
+            .take(area.height())
+            .collect();
     }
 }
 
@@ -266,12 +249,7 @@ where
     U: Ui + 'static
 {
     fn update(&mut self, area: &U::Area) {
-        self.print_info.scroll_to_gap(
-            &self.text,
-            self.main_cursor().caret(),
-            area,
-            &self.print_cfg
-        );
+        self.print_info.scroll_to_gap(&self.text, self.main_cursor().caret(), area, &self.cfg);
         self.set_printed_lines(area);
     }
 
@@ -288,7 +266,7 @@ where
     }
 
     fn print_cfg(&self) -> &PrintCfg {
-        &self.print_cfg
+        &self.cfg
     }
 }
 
@@ -307,7 +285,7 @@ where
     }
 
     fn mover<'a>(&'a mut self, index: usize, area: &'a U::Area) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, area, self.print_cfg.clone())
+        Mover::new(&mut self.cursors[index], &self.text, area, self.cfg.clone())
     }
 
     fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize) {

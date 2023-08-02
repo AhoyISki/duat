@@ -231,6 +231,40 @@ pub trait Area: Clone + PartialEq + Send + Sync {
         cfg: &'a PrintCfg
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
 
+    /// Returns a reverse printing iterator.
+    ///
+    /// Given an [`Iterator`] with an [`Item`] of type `(usize,
+    /// usize, Part)`, where:
+    ///
+    /// - The first `usize` is the char index from the file's start;
+    /// - The second `usize` is the current line;
+    /// - The [`Part`] is either a `char` or a [`Text`] modifier;
+    ///
+    /// Returns an [`Iterator`] with an [`Item`] of type `((usize,
+    /// usize, Option<usize>), (usize, Part))`, where:
+    ///
+    /// * On the first tuple:
+    ///   - The first `usize` is the current horizontal position;
+    ///   - The second `usize` is the length of the [`Part`]. It is
+    ///     only greater than 0 if the part is a `char`;
+    ///   - The [`Option<usize>`] represents a wrapping. It is
+    ///     [`Some(usize)`], where the number is the current line,
+    ///     only if the `char` wraps around. For example, any `char`
+    ///     following a `'\n'` should return `Some(current_line)`,
+    ///     since they show up in the next line;
+    ///
+    /// * On the second tuple:
+    ///   - The `usize` is the char index from the file's start;
+    ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
+    ///
+    /// [`Item`]: Iterator::Item
+    /// [`Option<usize>`]: Option
+    /// [`Some(usize)`]: Some
+    fn rev_print_iter<'a>(
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a,
+        cfg: &'a PrintCfg
+    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
+
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
     ///

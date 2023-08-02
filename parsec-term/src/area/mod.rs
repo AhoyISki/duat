@@ -257,6 +257,13 @@ impl ui::Area for Area {
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
         print_iter(iter, start, self.width(), cfg)
     }
+
+    fn rev_print_iter<'a>(
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a,
+        cfg: &'a PrintCfg
+    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+        rev_print_iter(iter, self.width(), cfg)
+    }
 }
 
 unsafe impl Send for Area {}
