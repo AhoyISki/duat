@@ -218,7 +218,6 @@ where
 
     fn set_printed_lines(&mut self, area: &U::Area) {
         let first_char = self.print_info.first_char();
-        log_info!("@ FileWidget::set_printed_lines");
         let mut line_num = self.text.char_to_line(first_char);
 
         let height = area.height();

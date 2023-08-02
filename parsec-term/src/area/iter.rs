@@ -36,7 +36,8 @@ fn parts<'a>(
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
 fn words<'a>(
-    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize, cfg: &'a PrintCfg
+    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
+    cfg: &'a PrintCfg
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut iter = iter.peekable();
     let mut indent = 0;

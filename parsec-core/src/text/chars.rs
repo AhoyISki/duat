@@ -1,7 +1,5 @@
 use ropey::Rope;
 
-use crate::log_info;
-
 #[derive(Debug)]
 pub enum Chars {
     String(String),
@@ -175,10 +173,10 @@ impl<'a> Iter<'a> {
                 let old_line = rope.char_to_line(pos);
                 if let Some(chars_forward) = rope.get_chars_at(pos) {
                     *chars = chars_forward.reversed();
-                    rope.char_to_line(pos) - old_line
+                    old_line - rope.char_to_line(pos)
                 } else {
-                    *chars = rope.chars_at(rope.len_chars());
-                    rope.len_lines() - 1 - old_line
+                    *chars = rope.chars_at(0).reversed();
+                    old_line
                 }
             }
         }

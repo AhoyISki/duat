@@ -17,8 +17,7 @@ use tags::{TagOrSkip, Tags, ToggleId};
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
-    log_info,
-    position::Cursor
+    position::Cursor, log_info
 };
 
 /// The text in a given area.
@@ -217,7 +216,7 @@ impl Text {
         let chars = self.chars.rev_iter_at(pos);
 
         let line = self.char_to_line(pos);
-        let tags_start = pos.saturating_add(self.tags.back_check_amount()).min(self.tags.width());
+        let tags_start = (pos + self.tags.back_check_amount()).min(self.tags.width());
         let tags = self.tags.rev_iter_at(tags_start);
 
         RevIter::new(chars, tags, pos, line)
@@ -584,8 +583,8 @@ impl Iterator for Iter<'_> {
             }
 
             if self.conceal_count == 0 {
-                self.pos = pos;
-                self.line += self.chars.move_to(pos);
+                self.pos = self.pos.max(pos);
+                self.line += self.chars.move_to(self.pos);
             }
 
             self.tags.next();
@@ -652,8 +651,8 @@ impl Iterator for RevIter<'_> {
             }
 
             if self.conceal_count == 0 {
-                self.pos = pos;
-                self.line -= self.chars.move_to(pos);
+                self.pos = self.pos.min(pos);
+                self.line -= self.chars.move_to(self.pos);
             }
 
             self.tags.next();

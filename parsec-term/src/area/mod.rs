@@ -15,6 +15,7 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
+    log_info,
     position::Pos,
     text::{Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
@@ -304,13 +305,25 @@ impl PrintInfo {
             WrapMethod::NoWrap => usize::MAX
         };
 
-        let (start, end) = {
-            let line_start = text.line_to_char(point.true_line());
-            print_iter(text.iter_at(line_start), 0, area.width(), cfg)
-                .filter_map(|((x, len, _), (_, part))| part.as_char().and(Some((x, x + len))))
-                .nth(point.true_char() - line_start)
-                .unwrap_or((0, 0))
+        let (line_start, start, end) = {
+            let inclusive_pos = point.true_char() + 1;
+            let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg)
+                .scan(false, |last_was_nl, item| {
+                    let prev_last_was_nl = *last_was_nl;
+                    *last_was_nl = item.0.2.is_some();
+                    (!prev_last_was_nl).then_some(item)
+                });
+
+            let (pos, start, end) = iter
+                .find_map(|((x, len, _), (pos, part))| part.as_char().and(Some((pos, x, x + len))))
+                .unwrap_or((0, 0, 0));
+
+            let line_start =
+                iter.find_map(|((.., new_line), (pos, _))| new_line.and(Some(pos))).unwrap_or(pos);
+
+            (line_start, start, end)
         };
+        log_info!("line_start: {line_start}, start: {start}, end: {end}");
 
         let max_dist = width - cfg.scrolloff.x_gap;
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
@@ -320,9 +333,15 @@ impl PrintInfo {
         } else if end < start {
             self.x_shift = self.x_shift.saturating_sub(min_dist - end);
         } else if end > self.x_shift + max_dist {
-            let line = text.iter_line(point.true_line());
+            let line_width = print_iter(text.iter_at(line_start), 0, width, cfg)
+                .skip_while(|((.., new_line), _)| new_line.is_none())
+                .skip(1)
+                .take_while(|((.., new_line), _)| new_line.is_none())
+                .inspect(|(_, (_, part))| log_info!("{:?}", part))
+                .map(|((_, len, _), _)| len)
+                .sum::<usize>();
 
-            if area.get_width(line, cfg, false) < width {
+            if line_width < width {
                 return;
             }
             self.x_shift = end - max_dist;
