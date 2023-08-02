@@ -17,7 +17,7 @@ use tags::{TagOrSkip, Tags, ToggleId};
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
-    position::Cursor, log_info
+    position::Cursor
 };
 
 /// The text in a given area.
@@ -212,7 +212,9 @@ impl Text {
         Iter::new(chars, tags, pos, line)
     }
 
-    pub fn rev_iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + '_ {
+    pub fn rev_iter_at(
+        &self, pos: usize
+    ) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
         let chars = self.chars.rev_iter_at(pos);
 
         let line = self.char_to_line(pos);

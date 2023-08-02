@@ -27,8 +27,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}, log_info
-};
+    ui::{Area, PrintInfo, Ui}};
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>

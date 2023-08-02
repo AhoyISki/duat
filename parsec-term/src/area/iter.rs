@@ -153,8 +153,8 @@ pub fn print_iter<'a>(
 }
 
 pub fn rev_print_iter<'a>(
-    mut iter: impl Iterator<Item = (usize, usize, Part)> + 'a, width: usize, cfg: &'a PrintCfg
-) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + 'a {
+    mut iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: &'a PrintCfg
+) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
     std::iter::from_fn(move || {

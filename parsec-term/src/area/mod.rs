@@ -122,24 +122,30 @@ impl ui::Area for Area {
     }
 
     fn print(&self, text: &Text, info: PrintInfo, cfg: &PrintCfg, palette: &FormPalette) {
+        let coords = self.coords();
+        let mut stdout = stdout().lock();
+        print_edges(self.layout.read().edges(), &mut stdout);
+
         if self.is_active() {
             SHOW_CURSOR.store(false, Ordering::Release);
         }
 
-        let mut stdout = stdout().lock();
-        print_edges(self.layout.read().edges(), &mut stdout);
-
-        let coords = self.coords();
         queue!(stdout, cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16), cursor::Hide);
 
+        if text.len_chars() == 0 {
+            for y in coords.tl.y..coords.br.y {
+                clear_line(Coord::new(coords.tl.x, coords.br.y - y), coords, 0, &mut stdout);
+            }
+            return;
+        }
+
         let iter = {
-            let start = {
-                let Some(line) = text.get_char_to_line(info.first_char) else {
-                    clear_line(coords.tl, coords, 0, &mut stdout);
-                    return;
-                };
-                text.line_to_char(line)
-            };
+            let start = text
+                .rev_iter_at(info.first_char)
+                .find_map(|(pos, .., part)| {
+                    part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
+                })
+                .unwrap_or(0);
             print_iter(text.iter_at(start), info.first_char, coords.width(), cfg)
         };
 
@@ -274,18 +280,32 @@ impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_to_gap(&mut self, point: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
+        let inclusive_pos = point.true_char() + 1;
+        let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), area.width(), cfg)
+            .filter_map(|((.., new_line), (pos, _))| new_line.zip(Some(pos)))
+            .peekable();
+
+        let point_line_nl_was_skipped = iter
+            .peek()
+            .is_some_and(|(new_line, _)| *new_line < point.true_line() && point.true_col() == 0);
+
+        let mut iter = iter.map(|(_, pos)| pos);
+
         self.first_char = if self.last_main > point {
-            rev_print_iter(text.rev_iter_at(point.true_char() + 1), area.width(), cfg)
-                .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
-                .nth(cfg.scrolloff.y_gap)
-                .unwrap_or(0)
-                .min(self.first_char)
+            if point_line_nl_was_skipped {
+                let skipped_nl = std::iter::once(point.true_char());
+                skipped_nl.chain(iter).nth(cfg.scrolloff.y_gap).unwrap_or(0).min(self.first_char)
+            } else {
+                iter.nth(cfg.scrolloff.y_gap).unwrap_or(0).min(self.first_char)
+            }
         } else {
-            rev_print_iter(text.rev_iter_at(point.true_char() + 1), area.width(), cfg)
-                .filter_map(|((.., new_line), (pos, _))| new_line.and(Some(pos)))
-                .nth(area.height().saturating_sub(cfg.scrolloff.y_gap + 1))
-                .unwrap_or(0)
-                .max(self.first_char)
+            let target = area.height().saturating_sub(cfg.scrolloff.y_gap + 1);
+            if point_line_nl_was_skipped {
+                let skipped_nl = std::iter::once(point.true_char());
+                skipped_nl.chain(iter).nth(target).unwrap_or(0).max(self.first_char)
+            } else {
+                iter.nth(target).unwrap_or(0).max(self.first_char)
+            }
         };
     }
 
@@ -454,6 +474,7 @@ fn print_parts(
     coords.br.y - y
 }
 
+#[inline(always)]
 fn print_line(
     x: usize, y: usize, coords: Coords, alignment: Alignment, line: &mut Vec<u8>,
     stdout: &mut StdoutLock
@@ -481,6 +502,7 @@ fn print_line(
     line.clear();
 }
 
+#[inline(always)]
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
     let len = (coords.br.x + x_shift).saturating_sub(cursor.x);
     let (x, y) = (coords.tl.x, cursor.y);
@@ -492,6 +514,7 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut Stdout
     );
 }
 
+#[inline(always)]
 fn indent_line(form_former: &FormFormer, x: usize, x_shift: usize, line: &mut Vec<u8>) {
     let prev_style = form_former.make_form().style;
     let indent_count = x.saturating_sub(x_shift);
@@ -500,6 +523,7 @@ fn indent_line(form_former: &FormFormer, x: usize, x_shift: usize, line: &mut Ve
     line.splice(0..0, indent);
 }
 
+#[inline(always)]
 fn write_char(
     char: char, x: usize, len: usize, coords: Coords, x_shift: usize, line: &mut Vec<u8>
 ) {
