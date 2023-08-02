@@ -576,12 +576,10 @@ impl Iterator for Iter<'_> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned();
         while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
-            match tag.unwrap() {
-                (_, RawTag::ConcealStart) => self.conceal_count += 1,
-                (_, RawTag::ConcealEnd) => {
-                    self.conceal_count = self.conceal_count.saturating_sub(1)
-                }
-                _ => unreachable!()
+            if let (_, RawTag::ConcealStart) = tag.unwrap() {
+                self.conceal_count += 1
+            } else {
+                self.conceal_count = self.conceal_count.saturating_sub(1)
             }
 
             if self.conceal_count == 0 {
@@ -599,7 +597,7 @@ impl Iterator for Iter<'_> {
 
         if let Some((pos, tag)) = tag {
             if let RawTag::Skip(skip) = tag {
-                self.pos = pos + skip;
+                self.pos = pos.saturating_add(skip);
                 self.tags.move_to(self.pos);
                 self.line += self.chars.move_to(self.pos);
                 self.conceal_count = 0;
@@ -644,12 +642,10 @@ impl Iterator for RevIter<'_> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0).cloned();
         while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
-            match tag.unwrap() {
-                (_, RawTag::ConcealStart) => {
-                    self.conceal_count = self.conceal_count.saturating_sub(1)
-                }
-                (_, RawTag::ConcealEnd) => self.conceal_count += 1,
-                _ => unreachable!()
+            if let (_, RawTag::ConcealStart) = tag.unwrap() {
+                self.conceal_count = self.conceal_count.saturating_sub(1)
+            } else {
+                self.conceal_count += 1
             }
 
             if self.conceal_count == 0 {
@@ -667,7 +663,7 @@ impl Iterator for RevIter<'_> {
 
         if let Some((pos, tag)) = tag {
             if let RawTag::Skip(skip) = tag {
-                self.pos = pos - skip;
+                self.pos = pos.saturating_sub(skip);
                 self.tags.move_to(self.pos);
                 self.line -= self.chars.move_to(self.pos);
                 self.conceal_count = 0;

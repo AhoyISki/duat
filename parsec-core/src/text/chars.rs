@@ -160,6 +160,7 @@ impl<'a> Iter<'a> {
                 nl_count
             }
             Iter::Rope(rope, chars) => {
+                let pos = pos.min(rope.len_chars());
                 let old_line = rope.char_to_line(pos);
                 if let Some(chars_forward) = rope.get_chars_at(pos) {
                     *chars = chars_forward;

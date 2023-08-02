@@ -269,6 +269,7 @@ impl Tags {
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter {
+        let pos = pos.min(self.width());
         let ranges = Ranges::new(pos, self.ranges.iter());
         let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
         Iter::new(self, ranges, raw_tags)
@@ -865,7 +866,7 @@ impl<'a> Iter<'a> {
     }
 
     pub fn move_to(&mut self, pos: usize) {
-        *self = self.tags.iter_at(pos);
+        *self = self.tags.iter_at(pos.saturating_sub(self.tags.back_check_amount()));
     }
 
     pub fn peek(&mut self) -> Option<&(usize, RawTag)> {

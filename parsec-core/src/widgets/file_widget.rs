@@ -27,7 +27,8 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Pos},
     text::{PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}};
+    ui::{Area, PrintInfo, Ui}
+};
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
@@ -70,7 +71,7 @@ where
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (20..tagger.len_chars()).step_by(30) {
+            for index in (20..tagger.len_chars()).step_by(50000) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index, Tag::ConcealStart);
                 } else {
