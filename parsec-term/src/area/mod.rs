@@ -307,12 +307,14 @@ impl PrintInfo {
 
         let (line_start, start, end) = {
             let inclusive_pos = point.true_char() + 1;
-            let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg)
-                .scan(false, |last_was_nl, item| {
+            let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg).scan(
+                false,
+                |last_was_nl, item| {
                     let prev_last_was_nl = *last_was_nl;
                     *last_was_nl = item.0.2.is_some();
                     (!prev_last_was_nl).then_some(item)
-                });
+                }
+            );
 
             let (pos, start, end) = iter
                 .find_map(|((x, len, _), (pos, part))| part.as_char().and(Some((pos, x, x + len))))
@@ -323,7 +325,6 @@ impl PrintInfo {
 
             (line_start, start, end)
         };
-        log_info!("line_start: {line_start}, start: {start}, end: {end}");
 
         let max_dist = width - cfg.scrolloff.x_gap;
         let min_dist = self.x_shift + cfg.scrolloff.x_gap;
@@ -333,15 +334,18 @@ impl PrintInfo {
         } else if end < start {
             self.x_shift = self.x_shift.saturating_sub(min_dist - end);
         } else if end > self.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), 0, width, cfg)
-                .skip_while(|((.., new_line), _)| new_line.is_none())
-                .skip(1)
-                .take_while(|((.., new_line), _)| new_line.is_none())
-                .inspect(|(_, (_, part))| log_info!("{:?}", part))
-                .map(|((_, len, _), _)| len)
-                .sum::<usize>();
+            let line_width = print_iter(text.iter_at(line_start), 0, width, cfg).try_fold(
+                (0, 0),
+                |(right_end, some_count), ((x, len, new_line), _)| {
+                    let some_count = some_count + new_line.is_some() as usize;
+                    match some_count < 2 {
+                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
+                        false => std::ops::ControlFlow::Break(right_end)
+                    }
+                }
+            );
 
-            if line_width < width {
+            if let std::ops::ControlFlow::Break(line_width) = line_width && line_width <= width {
                 return;
             }
             self.x_shift = end - max_dist;
