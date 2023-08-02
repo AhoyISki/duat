@@ -897,7 +897,7 @@ impl<'a> RevIter<'a> {
     }
 
     pub fn move_to(&mut self, pos: usize) {
-        *self = self.tags.rev_iter_at(pos);
+        *self = self.tags.rev_iter_at(pos + self.tags.back_check_amount());
     }
 
     pub fn peek(&mut self) -> Option<&(usize, RawTag)> {

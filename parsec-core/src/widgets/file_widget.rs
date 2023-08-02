@@ -66,15 +66,23 @@ where
         #[cfg(feature = "wacky-colors")]
         {
             use crate::{
-                forms::FILE_NAME,
+                forms,
                 text::{Handle, Tag}
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (20..tagger.len_chars()).step_by(50000) {
+            for index in (20..tagger.len_chars()).step_by(50) {
                 if pushes_pops_you_cant_explain_that {
+                    tagger.insert(index - 15, Tag::PushForm(forms::MAIN_SEL));
+                    tagger.insert(index - 5, Tag::PushForm(forms::COORDS));
+                    tagger.insert(index - 3, Tag::PopForm(forms::MAIN_SEL));
+                    tagger.insert(index + 10, Tag::PopForm(forms::COORDS));
                     tagger.insert(index, Tag::ConcealStart);
                 } else {
+                    tagger.insert(index - 15, Tag::PushForm(forms::EXTRA_SEL));
+                    tagger.insert(index - 5, Tag::PushForm(forms::SEPARATOR));
+                    tagger.insert(index + 3, Tag::PopForm(forms::EXTRA_SEL));
+                    tagger.insert(index + 10, Tag::PopForm(forms::SEPARATOR));
                     tagger.insert(index, Tag::ConcealEnd);
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
