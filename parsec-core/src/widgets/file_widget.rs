@@ -27,7 +27,7 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Point},
     text::{IterCfg, PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}
+    ui::{Area, PrintInfo, Ui}, log_info
 };
 
 /// The widget that is used to print and edit files.
@@ -71,7 +71,7 @@ where
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (20..tagger.len_chars()).step_by(50) {
+            for index in (20..tagger.len_chars()).step_by(500) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index - 15, Tag::PushForm(forms::MAIN_SEL));
                     tagger.insert(index - 5, Tag::PushForm(forms::COORDS));
@@ -237,6 +237,7 @@ where
             .map(|line_num| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line_num);
                 last_line_num = Some(line_num);
+                log_info!("{line_num}, {wrapped}");
                 (line_num, wrapped)
             })
             .take(area.height())

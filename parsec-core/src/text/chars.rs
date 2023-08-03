@@ -161,24 +161,22 @@ impl<'a> Iter<'a> {
             }
             Iter::Rope(rope, chars) => {
                 let pos = pos.min(rope.len_chars());
-                let old_line = rope.char_to_line(pos);
                 if let Some(chars_forward) = rope.get_chars_at(pos) {
                     *chars = chars_forward;
-                    rope.char_to_line(pos) - old_line
+                    rope.char_to_line(pos)
                 } else {
                     *chars = rope.chars_at(rope.len_chars());
-                    rope.len_lines() - 1 - old_line
+                    rope.len_lines() - 1
                 }
             }
             Iter::RopeRev(rope, chars) => {
                 let pos = pos.min(rope.len_chars());
-                let old_line = rope.char_to_line(pos);
                 if let Some(chars_forward) = rope.get_chars_at(pos) {
                     *chars = chars_forward.reversed();
-                    old_line - rope.char_to_line(pos)
+                    rope.char_to_line(pos)
                 } else {
                     *chars = rope.chars_at(0).reversed();
-                    old_line
+                    0
                 }
             }
         }

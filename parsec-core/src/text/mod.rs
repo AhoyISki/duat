@@ -18,7 +18,6 @@ use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
     position::Cursor,
-    ui::Area
 };
 
 /// The text in a given area.
@@ -593,7 +592,7 @@ impl Iterator for Iter<'_> {
 
             if self.conceal_count == 0 {
                 self.pos = self.pos.max(pos);
-                self.line += self.chars.move_to(self.pos);
+                self.line = self.chars.move_to(self.pos);
             }
 
             self.tags.next();
@@ -608,7 +607,7 @@ impl Iterator for Iter<'_> {
             if let RawTag::Skip(skip) = tag {
                 self.pos = pos.saturating_add(skip);
                 self.tags.move_to(self.pos);
-                self.line += self.chars.move_to(self.pos);
+                self.line = self.chars.move_to(self.pos);
                 self.conceal_count = 0;
             }
             self.tags.next();
@@ -659,7 +658,7 @@ impl Iterator for RevIter<'_> {
 
             if self.conceal_count == 0 {
                 self.pos = self.pos.min(pos);
-                self.line -= self.chars.move_to(self.pos);
+                self.line = self.chars.move_to(self.pos);
             }
 
             self.tags.next();
@@ -674,7 +673,7 @@ impl Iterator for RevIter<'_> {
             if let RawTag::Skip(skip) = tag {
                 self.pos = pos.saturating_sub(skip);
                 self.tags.move_to(self.pos);
-                self.line -= self.chars.move_to(self.pos);
+                self.line = self.chars.move_to(self.pos);
                 self.conceal_count = 0;
             }
             self.tags.next();
