@@ -13,7 +13,7 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     position::Point,
-    text::{Part, PrintCfg, Text},
+    text::{IterCfg, Part, PrintCfg, Text},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
@@ -227,8 +227,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Option<usize>`]: Option
     /// [`Some(usize)`]: Some
     fn print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, start: usize,
-        cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
 
     /// Returns a reverse printing iterator.
@@ -261,7 +260,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Option<usize>`]: Option
     /// [`Some(usize)`]: Some
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into

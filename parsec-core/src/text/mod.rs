@@ -109,9 +109,9 @@ impl Text {
         self.chars.char_to_byte(char)
     }
 
-    pub fn visual_line_start(&self, pos: usize, area: &impl Area, cfg: &PrintCfg) -> usize {
-        area.rev_print_iter(self.rev_iter_at(pos), cfg)
-            .find_map(|((..), (pos, part))| {
+    pub fn visual_line_start(&self, pos: usize) -> usize {
+        self.rev_iter_at(pos)
+            .find_map(|(pos, _, part)| {
                 part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
             })
             .unwrap_or(0)

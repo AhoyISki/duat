@@ -16,7 +16,7 @@ use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
     position::Point,
-    text::{Part, PrintCfg, Text, WrapMethod},
+    text::{IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 
@@ -138,15 +138,11 @@ impl ui::Area for Area {
             return;
         }
 
-        let iter = {
-            let start = text
-                .rev_iter_at(info.first_char)
-                .find_map(|(pos, .., part)| {
-                    part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
-                })
-                .unwrap_or(0);
-            print_iter(text.iter_at(start), info.first_char, coords.width(), cfg)
-        };
+        let iter = print_iter(
+            text.iter_at(text.visual_line_start(info.first_char)),
+            coords.width(),
+            IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs()
+        );
 
         let form_former = palette.form_former();
         let y = print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout);
@@ -181,7 +177,9 @@ impl ui::Area for Area {
     fn visible_rows(
         &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg
     ) -> usize {
-        print_iter(iter, 0, self.width(), cfg).filter_map(|((.., new_line), _)| new_line).count()
+        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
+            .filter_map(|((.., new_line), _)| new_line)
+            .count()
     }
 
     // NOTE: INCORRECT FUNCTION!!!
@@ -189,7 +187,7 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, wrap: usize,
         cfg: &PrintCfg
     ) -> Option<usize> {
-        print_iter(iter, 0, self.width(), cfg)
+        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
             .filter_map(|((.., new_line), (pos, _))| new_line.map(|_| pos))
             .nth(wrap)
     }
@@ -199,7 +197,7 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg,
         wrap_around: bool
     ) -> usize {
-        print_iter(iter, 0, self.width(), cfg)
+        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
             .skip_while(|((.., new_line), _)| new_line.is_none())
             .skip(1)
             .take_while(|((.., new_line), _)| new_line.is_none() || wrap_around)
@@ -212,7 +210,7 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, dist: usize,
         cfg: &PrintCfg
     ) -> usize {
-        print_iter(iter, 0, self.width(), cfg)
+        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
             .enumerate()
             .take_while(|(_, ((x, ..), _))| *x <= dist)
             .map(|(index, _)| index)
@@ -251,14 +249,13 @@ impl ui::Area for Area {
     }
 
     fn print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, start: usize,
-        cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
-        print_iter(iter, start, self.width(), cfg)
+        print_iter(iter, self.width(), cfg)
     }
 
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
         rev_print_iter(iter, self.width(), cfg)
     }
@@ -284,7 +281,7 @@ pub struct PrintInfo {
 impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: &PrintCfg) {
+    fn scroll_ver_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: IterCfg) {
         let inclusive_pos = point.true_char() + 1;
         let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), area.width(), cfg)
             .filter_map(|((.., new_line), (pos, _))| new_line.zip(Some(pos)))
@@ -299,12 +296,12 @@ impl PrintInfo {
         self.first_char = if self.last_main > point {
             if point_line_nl_was_skipped {
                 let skipped_nl = std::iter::once(point.true_char());
-                skipped_nl.chain(iter).nth(cfg.scrolloff.y_gap).unwrap_or(0).min(self.first_char)
+                skipped_nl.chain(iter).nth(cfg.scrolloff().y_gap).unwrap_or(0).min(self.first_char)
             } else {
-                iter.nth(cfg.scrolloff.y_gap).unwrap_or(0).min(self.first_char)
+                iter.nth(cfg.scrolloff().y_gap).unwrap_or(0).min(self.first_char)
             }
         } else {
-            let target = area.height().saturating_sub(cfg.scrolloff.y_gap + 1);
+            let target = area.height().saturating_sub(cfg.scrolloff().y_gap + 1);
             if point_line_nl_was_skipped {
                 let skipped_nl = std::iter::once(point.true_char());
                 skipped_nl.chain(iter).nth(target).unwrap_or(0).max(self.first_char)
@@ -316,9 +313,9 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: &PrintCfg) {
+    fn scroll_hor_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: IterCfg) {
         let width = area.width();
-        let max_x_shift = match cfg.wrap_method {
+        let max_x_shift = match cfg.wrap_method() {
             WrapMethod::Width | WrapMethod::Word => return,
             WrapMethod::Capped(cap) => {
                 if cap > width {
@@ -351,15 +348,15 @@ impl PrintInfo {
             (line_start, start, end)
         };
 
-        let max_dist = width - cfg.scrolloff.x_gap;
-        let min_dist = self.x_shift + cfg.scrolloff.x_gap;
+        let max_dist = width - cfg.scrolloff().x_gap;
+        let min_dist = self.x_shift + cfg.scrolloff().x_gap;
 
         if start < min_dist {
             self.x_shift = self.x_shift.saturating_sub(min_dist - start);
         } else if end < start {
             self.x_shift = self.x_shift.saturating_sub(min_dist - end);
         } else if end > self.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), 0, width, cfg).try_fold(
+            let line_width = print_iter(text.iter_at(line_start), width, cfg).try_fold(
                 (0, 0),
                 |(right_end, some_count), ((x, len, new_line), _)| {
                     let some_count = some_count + new_line.is_some() as usize;
@@ -385,8 +382,8 @@ impl ui::PrintInfo for PrintInfo {
 
     fn scroll_to_gap(&mut self, text: &Text, pos: Point, area: &Area, cfg: &PrintCfg) {
         if self.last_main != pos {
-            self.scroll_hor_to_gap(pos, text, area, cfg);
-            self.scroll_ver_to_gap(pos, text, area, cfg);
+            self.scroll_hor_to_gap(pos, text, area, IterCfg::new(cfg).outsource_lfs());
+            self.scroll_ver_to_gap(pos, text, area, IterCfg::new(cfg).outsource_lfs());
             self.last_main = pos;
         }
     }

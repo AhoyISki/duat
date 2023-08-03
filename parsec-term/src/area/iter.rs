@@ -1,18 +1,18 @@
 use std::marker::PhantomData;
 
-use parsec_core::text::{Part, PrintCfg, WrapMethod};
+use parsec_core::text::{IterCfg, Part, PrintCfg, WrapMethod};
 use unicode_width::UnicodeWidthChar;
 
 /// Returns an [`Iterator`] that also shows the current level of
 /// indentation.
 #[inline(always)]
 fn indents<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: &'a PrintCfg
+    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
 ) -> impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a {
     iter.scan((0, true), move |(indent, on_indent), (pos, line, part)| {
         let old_indent = if *indent < width { *indent } else { 0 };
         (*indent, *on_indent) = match (&part, *on_indent) {
-            (&Part::Char('\t'), true) => (*indent + cfg.tab_stops.spaces_at(*indent), true),
+            (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
             (&Part::Char(' '), true) => (*indent + 1, true),
             (&Part::Char('\n'), _) => (0, true),
             (&Part::Char(_), _) => (*indent, false),
@@ -26,10 +26,10 @@ fn indents<'a>(
 #[inline(always)]
 fn parts<'a>(
     iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
-    cfg: &'a PrintCfg
+    cfg: IterCfg<'a>
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     iter.scan((0, true, None), move |(x, needs_to_wrap, prev_char), (indent, unit)| {
-        item((x, needs_to_wrap, prev_char), indent, unit, width, cfg)
+        item((x, needs_to_wrap, prev_char), indent, unit, width, &cfg)
     })
 }
 
@@ -37,7 +37,7 @@ fn parts<'a>(
 #[inline(always)]
 fn words<'a>(
     iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
-    cfg: &'a PrintCfg
+    cfg: IterCfg<'a>
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut iter = iter.peekable();
     let mut indent = 0;
@@ -49,15 +49,15 @@ fn words<'a>(
     let mut needs_to_wrap = true;
     std::iter::from_fn(move || {
         if let Some(unit) = finished_word.pop() {
-            return item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, cfg);
+            return item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, &cfg);
         }
 
         let mut word_len = 0;
         while let Some((new_indent, (.., bit))) = iter.peek() {
             if let &Part::Char(char) = bit {
                 indent = *new_indent;
-                if cfg.word_chars.contains(char) {
-                    word_len += len_from(char, x + word_len, width, cfg, prev_char)
+                if cfg.word_chars().contains(char) {
+                    word_len += len_from(char, x + word_len, width, &cfg, prev_char)
                 } else {
                     word.push(iter.next().map(|(_, unit)| unit).unwrap());
                     break;
@@ -71,7 +71,7 @@ fn words<'a>(
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
         finished_word.pop().and_then(|unit| {
-            item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, cfg)
+            item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, &cfg)
         })
     })
 }
@@ -79,12 +79,12 @@ fn words<'a>(
 #[inline(always)]
 fn item(
     (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>), indent: usize,
-    (pos, line, part): (usize, usize, Part), width: usize, cfg: &PrintCfg
+    (pos, line, part): (usize, usize, Part), width: usize, cfg: &IterCfg
 ) -> Option<((usize, usize, Option<usize>), (usize, Part))> {
     let (len, processed_part) = process_part(part, cfg, prev_char, x, width);
     *x += len;
 
-    let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method.is_no_wrap();
+    let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
     let go_to_nl = (nl_wrap || width_wrap).then(|| {
         *x = indent + len;
@@ -101,12 +101,12 @@ fn item(
 
 #[inline(always)]
 fn process_part(
-    part: Part, cfg: &PrintCfg, prev_char: &mut Option<char>, x: &mut usize, width: usize
+    part: Part, cfg: &IterCfg, prev_char: &mut Option<char>, x: &mut usize, width: usize
 ) -> (usize, Part) {
     match part {
         Part::Char(char) => {
             let ret = if char == '\n' {
-                let char = cfg.new_line.char(*prev_char);
+                let char = cfg.new_line().char(*prev_char);
                 if let Some(char) = char {
                     (len_from(char, *x, width, cfg, *prev_char), Part::Char(char))
                 } else {
@@ -134,27 +134,24 @@ where
 }
 
 pub fn print_iter<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, char_start: usize, width: usize,
-    cfg: &'a PrintCfg
+    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
-    let width = if let WrapMethod::Capped(cap) = cfg.wrap_method { cap } else { width };
-    match cfg.wrap_method {
+    let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() { cap } else { width };
+
+    let indents = indents(iter, width, cfg)
+        .filter(move |(_, (pos, _, part))| *pos >= cfg.first_char() || part.is_tag());
+
+    match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
-            let indents = indents(iter, width, cfg)
-                .filter(move |(_, (pos, _, part))| *pos >= char_start || part.is_tag());
             Iter::Parts(parts(indents, width, cfg), PhantomData)
         }
-        WrapMethod::Word => {
-            let indents = indents(iter, width, cfg)
-                .filter(move |(_, (pos, _, part))| *pos >= char_start || part.is_tag());
-            Iter::Words(words(indents, width, cfg))
-        }
+        WrapMethod::Word => Iter::Words(words(indents, width, cfg))
     }
 }
 
 pub fn rev_print_iter<'a>(
     mut iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize,
-    cfg: &'a PrintCfg
+    cfg: IterCfg<'a>
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
@@ -176,7 +173,7 @@ pub fn rev_print_iter<'a>(
                 }
             }
 
-            print_iter(units.into_iter().rev(), 0, width, cfg).collect_into(&mut returns);
+            print_iter(units.into_iter().rev(), width, cfg).collect_into(&mut returns);
             returns.pop()
         }
     })
@@ -199,11 +196,11 @@ where
 
 #[inline(always)]
 fn len_from(
-    char: char, start: usize, max_width: usize, cfg: &PrintCfg, prev_char: Option<char>
+    char: char, start: usize, max_width: usize, cfg: &IterCfg, prev_char: Option<char>
 ) -> usize {
-    let char = if char == '\n' { cfg.new_line.char(prev_char).unwrap_or('\n') } else { char };
+    let char = if char == '\n' { cfg.new_line().char(prev_char).unwrap_or('\n') } else { char };
     match char {
-        '\t' => (cfg.tab_stops.spaces_at(start)).min(max_width.saturating_sub(start)).max(1),
+        '\t' => (cfg.tab_stops().spaces_at(start)).min(max_width.saturating_sub(start)).max(1),
         '\n' => 0,
         _ => UnicodeWidthChar::width(char).unwrap_or(0)
     }

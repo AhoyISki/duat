@@ -26,7 +26,7 @@ use crate::{
     data::AsAny,
     history::History,
     position::{Cursor, Editor, Mover, Point},
-    text::{PrintCfg, Text},
+    text::{IterCfg, PrintCfg, Text},
     ui::{Area, PrintInfo, Ui}
 };
 
@@ -228,11 +228,11 @@ where
         let start = self.print_info.first_char();
 
         let mut last_line_num = area
-            .rev_print_iter(self.text.rev_iter_at(start), &self.cfg)
+            .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
             .find_map(|((.., new_line), _)| new_line);
 
         self.printed_lines = area
-            .print_iter(self.text.iter_at(start), start, &self.cfg)
+            .print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg))
             .filter_map(|((.., new_line), _)| new_line)
             .map(|line_num| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line_num);

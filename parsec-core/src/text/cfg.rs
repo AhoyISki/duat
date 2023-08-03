@@ -26,7 +26,7 @@ impl WrapMethod {
 }
 
 /// Where the tabs are placed on screen, can be regular or varied.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TabStops(pub usize);
 
 impl TabStops {
@@ -127,7 +127,7 @@ impl PrintCfg {
     /// Same as [`default`], but with a hidden new line.
     ///
     /// [`default`]: PrintCfg::default
-	pub fn default_for_files() -> Self {
+    pub fn default_for_files() -> Self {
         Self {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
@@ -136,7 +136,7 @@ impl PrintCfg {
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_'])
         }
-	}
+    }
 }
 
 impl Default for PrintCfg {
@@ -149,5 +149,63 @@ impl Default for PrintCfg {
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_'])
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct IterCfg<'a> {
+    cfg: &'a PrintCfg,
+    iter_lfs: bool,
+    first_char: Option<usize>,
+    dont_wrap: bool
+}
+
+impl<'a> IterCfg<'a> {
+    pub fn new(cfg: &'a PrintCfg) -> Self {
+        Self { cfg, iter_lfs: true, first_char: None, dont_wrap: false }
+    }
+
+    pub fn outsource_lfs(self) -> Self {
+        Self { iter_lfs: false, ..self }
+    }
+
+    pub fn dont_wrap(self) -> Self {
+        Self { dont_wrap: true, ..self }
+    }
+
+    pub fn chars_at(self, first_char: usize) -> Self {
+        Self { first_char: Some(first_char), ..self }
+    }
+
+    pub fn show_lf(&self) -> bool {
+        self.iter_lfs
+    }
+
+    pub fn first_char(&self) -> usize {
+        self.first_char.unwrap_or(0)
+    }
+
+    pub fn wrap_method(&self) -> WrapMethod {
+        if self.dont_wrap { WrapMethod::NoWrap } else { self.cfg.wrap_method }
+    }
+
+    pub fn indent_wrap(&self) -> bool {
+        self.cfg.indent_wrap
+    }
+
+    pub fn tab_stops(&self) -> TabStops {
+        self.cfg.tab_stops
+    }
+
+    pub fn new_line(&self) -> NewLine {
+        if self.iter_lfs { NewLine::Hidden } else { self.cfg.new_line }
+    }
+
+    pub fn scrolloff(&self) -> ScrollOff {
+        self.cfg.scrolloff
+    }
+
+    pub fn word_chars(&self) -> &WordChars {
+        &self.cfg.word_chars
     }
 }
