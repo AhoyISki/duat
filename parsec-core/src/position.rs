@@ -106,6 +106,7 @@ impl std::fmt::Display for Point {
 
 /// A cursor in the text file. This is an editing cursor, not a
 /// printing cursor.
+#[derive(Default)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
     caret: Point,
@@ -123,13 +124,7 @@ pub struct Cursor {
     /// desired_col, it will be placed in the desired_col. If the
     /// line is shorter, it will be placed in the last column of
     /// the line.
-    desired_x: usize
-}
-
-impl Default for Cursor {
-    fn default() -> Self {
-        Self { caret: Point::default(), anchor: None, assoc_index: None, desired_x: 0 }
-    }
+    desired_col: usize
 }
 
 impl Cursor {
@@ -140,7 +135,7 @@ impl Cursor {
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_x: area
+            desired_col: area
                 .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
                 .next()
                 .map(|((x, ..), _)| x)
@@ -150,11 +145,11 @@ impl Cursor {
 
     /// Internal vertical movement function.
     pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        let cfg = IterCfg::new(cfg).dont_wrap();
+
         if by == 0 {
             return;
         }
-
-        let cfg = IterCfg::new(cfg).dont_wrap();
 
         self.caret.pos = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
             text.len_chars() - 1
@@ -163,7 +158,7 @@ impl Cursor {
                 .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
                 .try_fold(0, |lfs, (char, (x, pos))| {
                     let new_lfs = lfs + (char == '\n') as isize;
-                    match (lfs == by && x >= self.desired_x) || new_lfs > by {
+                    match (lfs == by && x >= self.desired_col) || new_lfs > by {
                         true => std::ops::ControlFlow::Break(pos),
                         false => std::ops::ControlFlow::Continue(new_lfs)
                     }
@@ -185,7 +180,7 @@ impl Cursor {
 
             area.print_iter(text.iter_at(start), cfg)
                 .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
-                .try_fold((), |_, (char, (x, pos))| match x >= self.desired_x || char == '\n' {
+                .try_fold((), |_, (char, (x, pos))| match x >= self.desired_col || char == '\n' {
                     true => std::ops::ControlFlow::Break(pos),
                     false => std::ops::ControlFlow::Continue(())
                 })
@@ -193,7 +188,8 @@ impl Cursor {
                 .unwrap_or(text.len_chars().saturating_sub(1))
         };
 
-        self.caret.line = self.caret.line.saturating_add_signed(by).min(text.len_lines());
+        self.caret.line = text.char_to_line(self.caret.pos);
+        self.caret.byte = text.char_to_byte(self.caret.pos);
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
@@ -201,8 +197,6 @@ impl Cursor {
             .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), cfg)
             .find_map(|((x, ..), (_, part))| part.as_char().and(Some(x)))
             .unwrap();
-
-        self.caret.byte = text.char_to_byte(self.caret.pos);
     }
 
     /// Internal vertical movement function.
@@ -211,17 +205,37 @@ impl Cursor {
     }
 
     /// Internal horizontal movement function.
-    pub fn move_hor(&mut self, count: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        let caret = &mut self.caret;
-        let max = text.len_chars().saturating_sub(1);
-        caret.pos = caret.pos.saturating_add_signed(count).min(max);
-        caret.byte = text.char_to_byte(caret.pos);
-        caret.line = text.char_to_line(caret.pos);
-        let line_char = text.line_to_char(caret.line);
-        caret.col = caret.pos - line_char;
+    pub fn move_hor(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        let cfg = IterCfg::new(cfg).dont_wrap();
 
-        let iter_range = text.iter_at(line_char).take_while(|(point, ..)| *point <= caret.pos);
-        self.desired_x = area.get_width(iter_range, cfg, true);
+        if by == 0 {
+            return;
+        }
+
+        self.caret.pos = if self.caret.pos.saturating_add_signed(by) >= text.len_chars() {
+            text.len_chars().saturating_sub(1)
+        } else if by > 0 {
+            text.iter_at(self.caret.pos)
+                .filter_map(|(pos, _, part)| part.as_char().and(Some(pos)))
+                .nth(by as usize)
+                .unwrap_or(text.len_chars().saturating_sub(1))
+        } else if self.caret.pos.checked_add_signed(by).is_none() {
+            0
+        } else {
+            text.rev_iter_at(self.caret.pos + 1)
+                .filter_map(|(pos, _, part)| part.as_char().and(Some(pos)))
+                .nth(by.unsigned_abs())
+                .unwrap_or(text.len_chars().saturating_sub(1))
+        };
+
+        self.caret.line = text.char_to_line(self.caret.pos);
+        self.caret.byte = text.char_to_byte(self.caret.pos);
+
+        self.caret.col = area
+            .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), cfg)
+            .find_map(|((x, ..), (_, part))| part.as_char().and(Some(x)))
+            .unwrap();
+        self.desired_col = self.caret.col;
     }
 
     /// Internal absolute movement function. Assumes that the `col`
@@ -236,7 +250,7 @@ impl Cursor {
         caret.byte = text.char_to_byte(caret.pos);
 
         let iter_range = text.iter_at(line_char).take_while(|(point, ..)| *point < caret.pos);
-        self.desired_x = area.get_width(iter_range, cfg, true);
+        self.desired_col = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;
     }
@@ -370,7 +384,7 @@ impl std::fmt::Display for Cursor {
 
 impl Clone for Cursor {
     fn clone(&self) -> Self {
-        Cursor { desired_x: self.caret.col, assoc_index: None, ..*self }
+        Cursor { desired_col: self.caret.col, assoc_index: None, ..*self }
     }
 }
 
