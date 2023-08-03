@@ -7,7 +7,7 @@ use any_rope::{Measurable, Rope};
 use container::Container;
 
 use super::Text;
-use crate::{forms::FormId, position::Pos, text::chars::Chars};
+use crate::{forms::FormId, position::Point, text::chars::Chars};
 
 mod container;
 
@@ -66,20 +66,20 @@ pub enum Tag {
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
-    HoverStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    HoverStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
     HoverStart(ToggleId),
     /// Ends a hoverable section in the file.
     HoverEnd(ToggleId),
 
-    LeftButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    LeftButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
     LeftButtonStart(ToggleId),
     LeftButtonEnd(ToggleId),
 
-    RightButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    RightButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
     RightButtonStart(ToggleId),
     RightButtonEnd(ToggleId),
 
-    MiddleButtonStartNew(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>),
+    MiddleButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
     MiddleButtonStart(ToggleId),
     MiddleButtonEnd(ToggleId)
 }
@@ -228,7 +228,7 @@ pub struct Tags {
     container: Container,
     ranges: Vec<TagRange>,
     texts: Vec<Text>,
-    toggles: Vec<(Box<dyn Fn(Pos) + Send + Sync>, Box<dyn Fn(Pos) + Send + Sync>)>,
+    toggles: Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>,
     min_to_keep: usize
 }
 

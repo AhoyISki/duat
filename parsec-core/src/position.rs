@@ -10,14 +10,26 @@ use crate::{
 // NOTE: `col` and `line` are line based, while `byte` is file based.
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pos {
+pub struct Point {
     byte: usize,
-    char: usize,
+    pos: usize,
     col: usize,
     line: usize
 }
 
-impl Pos {
+impl Point {
+    pub fn new(pos: usize, text: &Text) -> Self {
+        Point {
+            byte: text.char_to_byte(pos),
+            pos,
+            col: {
+                let line = text.char_to_line(pos);
+                pos - text.line_to_char(line)
+            },
+            line: text.char_to_line(pos)
+        }
+    }
+
     pub fn from_coords(line: usize, col: usize, text: &Text) -> Self {
         let char = text.get_line_to_char(line);
         let ch_index = if let Some(char) = char {
@@ -26,24 +38,12 @@ impl Pos {
             text.len_chars() - 1
         };
 
-        Pos::new(ch_index, text)
-    }
-
-    pub fn new(char: usize, text: &Text) -> Self {
-        Pos {
-            byte: text.char_to_byte(char),
-            char,
-            col: {
-                let line = text.char_to_line(char);
-                char - text.line_to_char(line)
-            },
-            line: text.char_to_line(char)
-        }
+        Point::new(ch_index, text)
     }
 
     pub fn calibrate(&mut self, ch_diff: isize, text: &Text) {
-        let char = self.char.saturating_add_signed(ch_diff);
-        *self = Pos::new(char, text);
+        let char = self.pos.saturating_add_signed(ch_diff);
+        *self = Point::new(char, text);
     }
 
     /// Returns the byte (relative to the beginning of the file),
@@ -58,7 +58,7 @@ impl Pos {
     /// end user. For a 0 indexed char index, see
     /// [true_char()](Self::true_char()).
     pub fn char(&self) -> usize {
-        self.char + 1
+        self.pos + 1
     }
 
     /// Returns the column, indexed at 1. Intended only for displaying
@@ -84,7 +84,7 @@ impl Pos {
     /// Returns the char index (relative to the beginning of the
     /// file). Indexed at 0.
     pub fn true_char(&self) -> usize {
-        self.char
+        self.pos
     }
 
     /// Returns the column. Indexed at 0.
@@ -98,7 +98,7 @@ impl Pos {
     }
 }
 
-impl std::fmt::Display for Pos {
+impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.col + 1, self.line + 1)
     }
@@ -109,10 +109,10 @@ impl std::fmt::Display for Pos {
 #[derive(Default)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
-    caret: Pos,
+    caret: Point,
 
     /// An anchor for a selection.
-    anchor: Option<Pos>,
+    anchor: Option<Point>,
 
     /// The index to a `Change` in the current `Moment`, used for
     /// greater efficiency.
@@ -124,77 +124,107 @@ pub struct Cursor {
     /// desired_col, it will be placed in the desired_col. If the
     /// line is shorter, it will be placed in the last column of
     /// the line.
-    desired_col: usize
+    desired_x: usize
 }
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(pos: Pos, text: &Text, area: &U::Area, cfg: &PrintCfg) -> Cursor
+    pub fn new<U>(point: Point, text: &Text, area: &U::Area, cfg: &PrintCfg) -> Cursor
     where
         U: Ui
     {
-        let line = text.iter_line(pos.line);
         Cursor {
-            caret: pos,
+            caret: point,
             // This should be fine.
             anchor: None,
             assoc_index: None,
-            desired_col: area.get_width(line.take(pos.true_col()), cfg, true)
+            desired_x: area
+                .rev_print_iter(text.rev_iter_at(point.pos + 1), cfg)
+                .next()
+                .map(|((x, ..), _)| x)
+                .unwrap()
         }
     }
 
     /// Internal vertical movement function.
-    pub(crate) fn move_ver<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
+    pub fn move_ver<U>(&mut self, by: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui
     {
-        let caret = &mut self.caret;
-        let max = text.len_lines().saturating_sub(1);
-        caret.line = caret.line.saturating_add_signed(count).min(max);
+        let cfg = PrintCfg { new_line: crate::text::NewLine::Hidden, ..cfg.clone() };
+        self.caret.pos = if by > 0 {
+            let start = text.visual_line_start(self.caret.pos, area, &cfg);
+            area.print_iter(text.iter_at(start), self.caret.pos, &cfg)
+                .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
+                .try_fold(0, |lf_count, (char, (x, pos))| {
+                    match (lf_count == by && (x >= self.desired_x)) || (lf_count > by) {
+                        true => std::ops::ControlFlow::Break(pos),
+                        false => std::ops::ControlFlow::Continue(lf_count + (char == '\n') as isize)
+                    }
+                })
+                .break_value()
+                .unwrap_or(text.len_chars().saturating_sub(1))
+        } else {
+            let start = self.caret.pos + 1;
+            area.rev_print_iter(text.rev_iter_at(start), &cfg)
+                .filter_map(|((x, len, _), (pos, part))| part.as_char().zip(Some((x, len, pos))))
+                .try_fold(0, |lf_count, (char, (x, len, pos))| {
+                    let first_lesser = x + len >= self.desired_x && x < self.desired_x;
+                    let lf_count = lf_count - (char == '\n') as isize;
+                    match (lf_count == by && first_lesser) || (lf_count < by) {
+                        true => std::ops::ControlFlow::Break(pos + 1),
+                        false => std::ops::ControlFlow::Continue(lf_count),
+                    }
+                })
+                .break_value()
+                .unwrap_or(0)
+        };
 
-        let line = text.iter_line(caret.line);
+        self.caret.line = self.caret.line.saturating_add_signed(by).min(text.len_lines());
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
-        caret.col = area.col_at_dist(line, self.desired_col, cfg);
+        self.caret.col = area
+            .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), &cfg)
+            .find_map(|((x, ..), (_, part))| part.as_char().and(Some(x)))
+            .unwrap();
 
-        caret.char = text.line_to_char(caret.line) + caret.col;
-        caret.byte = text.char_to_byte(caret.char);
+        self.caret.byte = text.char_to_byte(self.caret.pos);
     }
 
     /// Internal horizontal movement function.
-    pub(crate) fn move_hor<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
+    pub fn move_hor<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui
     {
         let caret = &mut self.caret;
         let max = text.len_chars().saturating_sub(1);
-        caret.char = caret.char.saturating_add_signed(count).min(max);
-        caret.byte = text.char_to_byte(caret.char);
-        caret.line = text.char_to_line(caret.char);
+        caret.pos = caret.pos.saturating_add_signed(count).min(max);
+        caret.byte = text.char_to_byte(caret.pos);
+        caret.line = text.char_to_line(caret.pos);
         let line_char = text.line_to_char(caret.line);
-        caret.col = caret.char - line_char;
+        caret.col = caret.pos - line_char;
 
-        let iter_range = text.iter_at(line_char).take_while(|(pos, ..)| *pos <= caret.char);
-        self.desired_col = area.get_width(iter_range, cfg, true);
+        let iter_range = text.iter_at(line_char).take_while(|(point, ..)| *point <= caret.pos);
+        self.desired_x = area.get_width(iter_range, cfg, true);
     }
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `line` of th [Pos] are correct.
-    pub(crate) fn move_to<U>(&mut self, pos: Pos, text: &Text, area: &U::Area, cfg: &PrintCfg)
+    pub fn move_to<U>(&mut self, point: Point, text: &Text, area: &U::Area, cfg: &PrintCfg)
     where
         U: Ui
     {
         let caret = &mut self.caret;
 
-        caret.line = pos.line.min(text.len_lines().saturating_sub(1));
-        let line_char = text.line_to_char(pos.line);
-        caret.col = pos.col.min(text.iter_line_chars(caret.line).count());
-        caret.char = text.line_to_char(caret.line) + caret.col;
-        caret.byte = text.char_to_byte(caret.char);
+        caret.line = point.line.min(text.len_lines().saturating_sub(1));
+        let line_char = text.line_to_char(point.line);
+        caret.col = point.col.min(text.iter_line_chars(caret.line).count());
+        caret.pos = text.line_to_char(caret.line) + caret.col;
+        caret.byte = text.char_to_byte(caret.pos);
 
-        let iter_range = text.iter_at(line_char).take_while(|(pos, ..)| *pos < caret.char);
-        self.desired_col = area.get_width(iter_range, cfg, true);
+        let iter_range = text.iter_at(line_char).take_while(|(point, ..)| *point < caret.pos);
+        self.desired_x = area.get_width(iter_range, cfg, true);
 
         self.anchor = None;
     }
@@ -204,23 +234,19 @@ impl Cursor {
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> Range<usize> {
         let anchor = self.anchor.unwrap_or(self.caret);
-        if anchor < self.caret {
-            anchor.char..self.caret.char
-        } else {
-            self.caret.char..anchor.char
-        }
+        if anchor < self.caret { anchor.pos..self.caret.pos } else { self.caret.pos..anchor.pos }
     }
 
     /// Returns the range between `target` and `anchor`.
     ///
     /// If `anchor` isn't set, returns an empty range on `target`.
-    pub fn pos_range(&self) -> (Pos, Pos) {
+    pub fn pos_range(&self) -> (Point, Point) {
         let anchor = self.anchor.unwrap_or(self.caret);
         (self.caret.min(anchor), self.caret.max(anchor))
     }
 
     /// Returns the cursor's position on the screen.
-    pub fn caret(&self) -> Pos {
+    pub fn caret(&self) -> Point {
         self.caret
     }
 
@@ -248,7 +274,7 @@ impl Cursor {
         self.anchor = None;
     }
 
-    pub fn anchor(&self) -> Option<Pos> {
+    pub fn anchor(&self) -> Option<Point> {
         self.anchor
     }
 
@@ -263,7 +289,7 @@ impl Cursor {
     /// Indexed at 1. Intended only for displaying by the end
     /// user. For internal use, see `true_char()`.
     pub fn char(&self) -> usize {
-        self.caret.char + 1
+        self.caret.pos + 1
     }
 
     /// The column of the caret. Indexed at 1. Intended only for
@@ -289,7 +315,7 @@ impl Cursor {
     /// The char (relative to the beginning of the file) of the caret.
     /// Indexed at 0.
     pub fn true_char(&self) -> usize {
-        self.caret.char
+        self.caret.pos
     }
 
     /// The column of the caret. Indexed at 0.
@@ -302,7 +328,7 @@ impl Cursor {
         self.caret.line
     }
 
-    pub(crate) fn try_merge(&mut self, start: Pos, end: Pos) -> Result<(), ()> {
+    pub(crate) fn try_merge(&mut self, start: Point, end: Point) -> Result<(), ()> {
         if !pos_intersects(self.pos_range(), (start, end)) {
             return Err(());
         }
@@ -332,7 +358,7 @@ impl std::fmt::Display for Cursor {
 
 impl Clone for Cursor {
     fn clone(&self) -> Self {
-        Cursor { desired_col: self.caret.col, assoc_index: None, ..*self }
+        Cursor { desired_x: self.caret.col, assoc_index: None, ..*self }
     }
 }
 
@@ -371,19 +397,19 @@ where
         self.edit(change);
 
         if let Some(anchor) = &mut self.cursor.anchor {
-            if anchor.char > self.cursor.caret.char {
-                *anchor = Pos::new(end, self.text);
+            if anchor.pos > self.cursor.caret.pos {
+                *anchor = Point::new(end, self.text);
                 return;
             }
         }
 
-        self.cursor.caret = Pos::new(end, self.text);
-        self.cursor.anchor = Some(Pos::new(start, self.text));
+        self.cursor.caret = Point::new(end, self.text);
+        self.cursor.anchor = Some(Point::new(start, self.text));
     }
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.caret.char..self.cursor.caret.char;
+        let range = self.cursor.caret.pos..self.cursor.caret.pos;
         let change = Change::new(edit.to_string(), range, self.text);
         let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
@@ -455,8 +481,8 @@ where
     /// - If the position isn't valid, it will move to the "maximum"
     ///   position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, pos: Pos) {
-        self.cursor.move_to::<U>(pos, self.text, self.area, &self.print_cfg);
+    pub fn move_to(&mut self, point: Point) {
+        self.cursor.move_to::<U>(point, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a line and a column on the file.
@@ -465,22 +491,22 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let pos = Pos::from_coords(line, col, self.text);
-        self.cursor.move_to::<U>(pos, self.text, self.area, &self.print_cfg);
+        let point = Point::from_coords(line, col, self.text);
+        self.cursor.move_to::<U>(point, self.text, self.area, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.
-    pub fn anchor(&self) -> Option<Pos> {
+    pub fn anchor(&self) -> Option<Point> {
         self.cursor.anchor
     }
 
     /// Returns the anchor of the `TextCursor`.
-    pub fn caret(&self) -> Pos {
+    pub fn caret(&self) -> Point {
         self.cursor.caret
     }
 
     /// Returns and takes the anchor of the `TextCursor`.
-    pub fn take_anchor(&mut self) -> Option<Pos> {
+    pub fn take_anchor(&mut self) -> Option<Point> {
         self.cursor.anchor.take()
     }
 
@@ -530,6 +556,6 @@ where
     }
 }
 
-fn pos_intersects(left: (Pos, Pos), right: (Pos, Pos)) -> bool {
+fn pos_intersects(left: (Point, Point), right: (Point, Point)) -> bool {
     (left.0 > right.0 && right.1 > left.0) || (right.0 > left.0 && left.1 > right.0)
 }

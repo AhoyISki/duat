@@ -12,7 +12,7 @@ use crate::{
     commands::{CommandErr, Commands},
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
-    position::Pos,
+    position::Point,
     text::{Part, PrintCfg, Text},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
@@ -123,7 +123,7 @@ pub trait PrintInfo: Default + Clone + Copy {
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_to_gap(&mut self, text: &Text, pos: Pos, area: &Self::Area, cfg: &PrintCfg);
+    fn scroll_to_gap(&mut self, text: &Text, pos: Point, area: &Self::Area, cfg: &PrintCfg);
 
     /// Returns the character index of the first character that would
     /// be printed.
@@ -261,8 +261,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Option<usize>`]: Option
     /// [`Some(usize)`]: Some
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a,
-        cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: &'a PrintCfg
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into

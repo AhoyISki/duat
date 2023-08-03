@@ -5,6 +5,7 @@
     let_chains,
     option_zip,
     iter_advance_by,
+    control_flow_enum,
     return_position_impl_trait_in_trait
 )]
 #![allow(

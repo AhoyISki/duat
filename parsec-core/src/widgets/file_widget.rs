@@ -19,13 +19,13 @@
 //! method. This method is notably used by the
 //! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{cmp::min, fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 
 use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
 use crate::{
     data::AsAny,
     history::History,
-    position::{Cursor, Editor, Mover, Pos},
+    position::{Cursor, Editor, Mover, Point},
     text::{PrintCfg, Text},
     ui::{Area, PrintInfo, Ui}
 };
@@ -121,7 +121,7 @@ where
             self.text.undo_change(change, chars);
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
-            let pos = Pos::new(new_caret_ch, &self.text);
+            let pos = Point::new(new_caret_ch, &self.text);
             self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
@@ -143,7 +143,7 @@ where
         for change in &moment.changes {
             self.text.apply_change(change);
 
-            let new_pos = Pos::new(change.added_end(), &self.text);
+            let new_pos = Point::new(change.added_end(), &self.text);
             self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.cfg));
         }
     }

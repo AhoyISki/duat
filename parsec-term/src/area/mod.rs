@@ -15,8 +15,7 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
-    log_info,
-    position::Pos,
+    position::Point,
     text::{Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
@@ -259,8 +258,7 @@ impl ui::Area for Area {
     }
 
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a,
-        cfg: &'a PrintCfg
+        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: &'a PrintCfg
     ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
         rev_print_iter(iter, self.width(), cfg)
     }
@@ -280,13 +278,13 @@ pub struct PrintInfo {
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.
-    last_main: Pos
+    last_main: Point
 }
 
 impl PrintInfo {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_to_gap(&mut self, point: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
+    fn scroll_ver_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: &PrintCfg) {
         let inclusive_pos = point.true_char() + 1;
         let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), area.width(), cfg)
             .filter_map(|((.., new_line), (pos, _))| new_line.zip(Some(pos)))
@@ -318,7 +316,7 @@ impl PrintInfo {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap(&mut self, point: Pos, text: &Text, area: &Area, cfg: &PrintCfg) {
+    fn scroll_hor_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: &PrintCfg) {
         let width = area.width();
         let max_x_shift = match cfg.wrap_method {
             WrapMethod::Width | WrapMethod::Word => return,
@@ -385,7 +383,7 @@ impl PrintInfo {
 impl ui::PrintInfo for PrintInfo {
     type Area = Area;
 
-    fn scroll_to_gap(&mut self, text: &Text, pos: Pos, area: &Area, cfg: &PrintCfg) {
+    fn scroll_to_gap(&mut self, text: &Text, pos: Point, area: &Area, cfg: &PrintCfg) {
         if self.last_main != pos {
             self.scroll_hor_to_gap(pos, text, area, cfg);
             self.scroll_ver_to_gap(pos, text, area, cfg);

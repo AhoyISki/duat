@@ -17,7 +17,8 @@ use tags::{TagOrSkip, Tags, ToggleId};
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
-    position::Cursor
+    position::Cursor,
+    ui::Area
 };
 
 /// The text in a given area.
@@ -60,16 +61,16 @@ impl Text {
         Text { chars, tags, handle: Handle::default(), _replacements: Vec::new() }
     }
 
+    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
+        Tagger { chars: &self.chars, tags: &mut self.tags, handle }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.chars.len_chars() == 0
     }
 
     pub fn get_char(&self, char_index: usize) -> Option<char> {
         self.chars.get_char(char_index)
-    }
-
-    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
-        Tagger { chars: &self.chars, tags: &mut self.tags, handle }
     }
 
     pub fn len_chars(&self) -> usize {
@@ -82,11 +83,6 @@ impl Text {
 
     pub fn len_bytes(&self) -> usize {
         self.chars.len_bytes()
-    }
-
-    fn clear(&mut self) {
-        self.chars.clear();
-        self.tags.clear();
     }
 
     pub fn char_to_line(&self, char: usize) -> usize {
@@ -113,18 +109,12 @@ impl Text {
         self.chars.char_to_byte(char)
     }
 
-    /// Merges `String`s with the body of text, given a range to
-    /// replace.
-    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-        let edit_len = edit.chars().count();
-        let new = old.start..(old.start + edit_len);
-
-        self.chars.replace(old.clone(), edit);
-
-        if old != new {
-            self.tags.transform_range(old, new.end);
-        }
+    pub fn visual_line_start(&self, pos: usize, area: &impl Area, cfg: &PrintCfg) -> usize {
+        area.rev_print_iter(self.rev_iter_at(pos + 1), cfg)
+            .find_map(|((..), (pos, part))| {
+                part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
+            })
+            .unwrap_or(0)
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -175,6 +165,25 @@ impl Text {
             Chars::Rope(rope) => {
                 rope.write_to(writer).map(|_| rope.len_bytes()).map_err(|err| err.to_string())
             }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.chars.clear();
+        self.tags.clear();
+    }
+
+    /// Merges `String`s with the body of text, given a range to
+    /// replace.
+    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
+        let edit = edit.as_ref();
+        let edit_len = edit.chars().count();
+        let new = old.start..(old.start + edit_len);
+
+        self.chars.replace(old.clone(), edit);
+
+        if old != new {
+            self.tags.transform_range(old, new.end);
         }
     }
 }
