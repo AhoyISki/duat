@@ -138,7 +138,7 @@ where
     fn on_focus(&mut self, area: &U::Area) {
         self.text = Text::new_string(&self.prompt);
         let chars = self.prompt.read().chars().count() as isize;
-        self.cursor[0].move_hor::<U>(chars, &self.text, area, &PrintCfg::default());
+        self.cursor[0].move_hor(chars, &self.text, area, &PrintCfg::default());
         self.text.add_cursor_tags(self.cursor.as_slice(), 0);
     }
 

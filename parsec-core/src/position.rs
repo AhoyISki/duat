@@ -2,7 +2,8 @@ use std::ops::Range;
 
 use crate::{
     history::{Change, History},
-    text::{PrintCfg, Text},
+    log_info,
+    text::{NewLine, PrintCfg, Text},
     ui::{Area, Ui},
     widgets::EditAccum
 };
@@ -129,10 +130,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Returns a new instance of `FileCursor`.
-    pub fn new<U>(point: Point, text: &Text, area: &U::Area, cfg: &PrintCfg) -> Cursor
-    where
-        U: Ui
-    {
+    pub fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Cursor {
         Cursor {
             caret: point,
             // This should be fine.
@@ -147,33 +145,90 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub fn move_ver<U>(&mut self, by: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        if by == 0 {
+            return;
+        }
+
         let cfg = PrintCfg { new_line: crate::text::NewLine::Hidden, ..cfg.clone() };
-        self.caret.pos = if by > 0 {
+        self.caret.pos = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
+            text.len_chars() - 1
+        } else if by > 0 {
             let start = text.visual_line_start(self.caret.pos, area, &cfg);
             area.print_iter(text.iter_at(start), self.caret.pos, &cfg)
                 .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
                 .try_fold(0, |lf_count, (char, (x, pos))| {
-                    match (lf_count == by && (x >= self.desired_x)) || (lf_count > by) {
+                    let new_lf_count = lf_count + (char == '\n') as isize;
+                    match (lf_count == by && (x >= self.desired_x)) || new_lf_count > by {
                         true => std::ops::ControlFlow::Break(pos),
-                        false => std::ops::ControlFlow::Continue(lf_count + (char == '\n') as isize)
+                        false => std::ops::ControlFlow::Continue(new_lf_count)
                     }
                 })
                 .break_value()
                 .unwrap_or(text.len_chars().saturating_sub(1))
+        } else if self.caret.line.checked_add_signed(by).is_none() {
+            0
+        } else {
+            area.rev_print_iter(text.rev_iter_at(self.caret.pos), &cfg)
+                .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
+                .try_fold(0, |lf_count, (char, (x, pos))| {
+                    let new_lf_count = lf_count - ((char == '\n') as isize);
+                    match (lf_count == by && (x < self.desired_x)) || new_lf_count < by {
+                        true => std::ops::ControlFlow::Break(pos + 1),
+                        false => std::ops::ControlFlow::Continue(new_lf_count)
+                    }
+                })
+                .break_value()
+                .unwrap_or(0)
+        };
+
+        self.caret.line = self.caret.line.saturating_add_signed(by).min(text.len_lines());
+
+        // In vertical movement, the `desired_x` dictates in what column the
+        // cursor will be placed.
+        self.caret.col = area
+            .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), &cfg)
+            .find_map(|((x, ..), (_, part))| part.as_char().and(Some(x)))
+            .unwrap();
+
+        self.caret.byte = text.char_to_byte(self.caret.pos);
+    }
+
+    /// Internal vertical movement function.
+    pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        if by == 0 {
+            return;
+        }
+
+        let cfg = PrintCfg { new_line: crate::text::NewLine::Hidden, ..cfg.clone() };
+        self.caret.pos = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
+            text.len_chars() - 1
+        } else if by > 0 {
+            let start = text.visual_line_start(self.caret.pos, area, &cfg);
+            area.print_iter(text.iter_at(start), self.caret.pos, &cfg)
+                .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
+                .try_fold(0, |lf_count, (char, (x, pos))| {
+                    let new_lf_count = lf_count + (char == '\n') as isize;
+                    let not_long_enough = new_lf_count > by && x < self.desired_x;
+                    match (lf_count == by && x >= self.desired_x) || not_long_enough {
+                        true => std::ops::ControlFlow::Break(pos),
+                        false => std::ops::ControlFlow::Continue(new_lf_count)
+                    }
+                })
+                .break_value()
+                .unwrap_or(text.len_chars().saturating_sub(1))
+        } else if self.caret.line.saturating_add_signed(by) == 0 {
+            0
         } else {
             let start = self.caret.pos + 1;
             area.rev_print_iter(text.rev_iter_at(start), &cfg)
                 .filter_map(|((x, len, _), (pos, part))| part.as_char().zip(Some((x, len, pos))))
                 .try_fold(0, |lf_count, (char, (x, len, pos))| {
                     let first_lesser = x + len >= self.desired_x && x < self.desired_x;
-                    let lf_count = lf_count - (char == '\n') as isize;
-                    match (lf_count == by && first_lesser) || (lf_count < by) {
+                    let new_lf_count = lf_count - (char == '\n') as isize;
+                    match (new_lf_count == by && first_lesser) || (lf_count < by) {
                         true => std::ops::ControlFlow::Break(pos + 1),
-                        false => std::ops::ControlFlow::Continue(lf_count),
+                        false => std::ops::ControlFlow::Continue(new_lf_count)
                     }
                 })
                 .break_value()
@@ -193,10 +248,7 @@ impl Cursor {
     }
 
     /// Internal horizontal movement function.
-    pub fn move_hor<U>(&mut self, count: isize, text: &Text, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    pub fn move_hor(&mut self, count: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
         let caret = &mut self.caret;
         let max = text.len_chars().saturating_sub(1);
         caret.pos = caret.pos.saturating_add_signed(count).min(max);
@@ -211,10 +263,7 @@ impl Cursor {
 
     /// Internal absolute movement function. Assumes that the `col`
     /// and `line` of th [Pos] are correct.
-    pub fn move_to<U>(&mut self, point: Point, text: &Text, area: &U::Area, cfg: &PrintCfg)
-    where
-        U: Ui
-    {
+    pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
         let caret = &mut self.caret;
 
         caret.line = point.line.min(text.len_lines().saturating_sub(1));
@@ -467,13 +516,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// vertical movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver::<U>(count, self.text, self.area, &self.print_cfg);
+        self.cursor.move_ver(count, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor::<U>(count, self.text, self.area, &self.print_cfg);
+        self.cursor.move_hor(count, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -482,7 +531,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to::<U>(point, self.text, self.area, &self.print_cfg);
+        self.cursor.move_to(point, self.text, self.area, &self.print_cfg);
     }
 
     /// Moves the cursor to a line and a column on the file.
@@ -492,7 +541,7 @@ where
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let point = Point::from_coords(line, col, self.text);
-        self.cursor.move_to::<U>(point, self.text, self.area, &self.print_cfg);
+        self.cursor.move_to(point, self.text, self.area, &self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

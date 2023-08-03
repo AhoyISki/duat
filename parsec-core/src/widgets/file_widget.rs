@@ -122,7 +122,7 @@ where
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let pos = Point::new(new_caret_ch, &self.text);
-            self.cursors.push(Cursor::new::<U>(pos, &self.text, area, &self.cfg));
+            self.cursors.push(Cursor::new(pos, &self.text, area, &self.cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -144,7 +144,7 @@ where
             self.text.apply_change(change);
 
             let new_pos = Point::new(change.added_end(), &self.text);
-            self.cursors.push(Cursor::new::<U>(new_pos, &self.text, area, &self.cfg));
+            self.cursors.push(Cursor::new(new_pos, &self.text, area, &self.cfg));
         }
     }
 

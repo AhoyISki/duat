@@ -110,7 +110,7 @@ impl Text {
     }
 
     pub fn visual_line_start(&self, pos: usize, area: &impl Area, cfg: &PrintCfg) -> usize {
-        area.rev_print_iter(self.rev_iter_at(pos + 1), cfg)
+        area.rev_print_iter(self.rev_iter_at(pos), cfg)
             .find_map(|((..), (pos, part))| {
                 part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
             })
