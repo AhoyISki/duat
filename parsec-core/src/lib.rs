@@ -544,7 +544,7 @@ macro_rules! log_info {
         if text.lines().count() > 1 {
             let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
             let nl_indices: Vec<usize> = chars.collect();
-            for index in nl_indices {
+            for index in nl_indices.iter().rev() {
                 text.insert_str(index + 1, "  ");
             }
 

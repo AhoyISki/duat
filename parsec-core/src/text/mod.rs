@@ -17,7 +17,7 @@ use tags::{TagOrSkip, Tags, ToggleId};
 use crate::{
     forms::{FormId, EXTRA_SEL, MAIN_SEL},
     history::Change,
-    position::Cursor,
+    position::Cursor, log_info,
 };
 
 /// The text in a given area.

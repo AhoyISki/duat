@@ -36,7 +36,7 @@ impl Container {
                 let start = start_ch_to_index(vec, pos);
                 let end = end_ch_to_index(&vec[start..], 0);
                 vec.extract_if(|t_or_s| match t_or_s {
-                    TagOrSkip::Tag(_, cmp_handle) => handle == *cmp_handle,
+                    TagOrSkip::Tag(_, other) => handle == *other,
                     TagOrSkip::Skip(_) => false
                 })
                 .take(end)
@@ -50,11 +50,11 @@ impl Container {
                 let kept = slice
                     .iter()
                     .filter_map(|(_, t_or_s)| {
-                        if let TagOrSkip::Tag(tag, cmp_handle) = t_or_s {
-                            if cmp_handle != handle {
-                                return Some(TagOrSkip::Tag(tag, cmp_handle));
+                        if let TagOrSkip::Tag(tag, other) = t_or_s {
+                            if other != handle {
+                                return Some(TagOrSkip::Tag(tag, other));
                             } else {
-                                removed.push((pos, tag, cmp_handle))
+                                removed.push((pos, tag, other))
                             }
                         }
                         None

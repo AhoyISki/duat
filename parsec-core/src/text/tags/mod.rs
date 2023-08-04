@@ -191,10 +191,19 @@ impl RawTag {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum TagOrSkip {
     Tag(RawTag, Handle),
     Skip(usize)
+}
+
+impl std::fmt::Debug for TagOrSkip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagOrSkip::Tag(tag, handle) => write!(f, "Tag({:?}, {:?})", tag, handle),
+            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})")
+        }
+    }
 }
 
 impl TagOrSkip {
@@ -251,79 +260,6 @@ impl Tags {
             toggles: Vec::new(),
             min_to_keep: MIN_CHARS_TO_KEEP
         }
-    }
-
-    pub fn new(chars: &Chars) -> Self {
-        let skip = TagOrSkip::Skip(chars.len_chars());
-        let container = match chars {
-            Chars::String(_) => Container::Vec(vec![skip]),
-            Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
-        };
-        Tags {
-            container,
-            ranges: Vec::new(),
-            texts: Vec::new(),
-            toggles: Vec::new(),
-            min_to_keep: MIN_CHARS_TO_KEEP
-        }
-    }
-
-    pub fn iter_at(&self, pos: usize) -> Iter {
-        let pos = pos.min(self.width());
-        let ranges = Ranges::new(pos, self.ranges.iter());
-        let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
-        Iter::new(self, ranges, raw_tags)
-    }
-
-    pub fn rev_iter_at(&self, pos: usize) -> RevIter {
-        let possible_ranges: Vec<TagRange> = self
-            .ranges
-            .iter()
-            .filter(|range| {
-                range.get_start().is_some_and(|start| start < pos)
-                    && range.get_end().map_or(true, |end| end >= pos)
-            })
-            .cloned()
-            .collect();
-
-        let ranges = RevRanges::new(possible_ranges);
-        let tags = RevRawTags::new(&self.ranges, self.container.rev_iter_at(pos));
-        RevIter::new(self, ranges, tags)
-    }
-
-    pub fn back_check_amount(&self) -> usize {
-        self.min_to_keep
-    }
-
-    /// Returns the is empty of this [`Tags`].
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn as_vec(&self) -> Option<&[TagOrSkip]> {
-        match &self.container {
-            Container::Vec(vec) => Some(vec),
-            Container::Rope(_) => None
-        }
-    }
-
-    pub fn width(&self) -> usize {
-        match &self.container {
-            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
-            Container::Rope(rope) => rope.width()
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match &self.container {
-            Container::Vec(vec) => vec.len(),
-            Container::Rope(rope) => rope.len()
-        }
-    }
-
-    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
-        self.container.get_from_char(char)
     }
 
     pub fn clear(&mut self) {
@@ -411,7 +347,6 @@ impl Tags {
             self.container.remove_exclusive(skip_range);
         }
 
-        self.merge_surrounding_skips(pos);
         try_insert((pos, tag, handle), &mut self.ranges, self.min_to_keep, true);
         rearrange_ranges(&mut self.ranges, self.min_to_keep);
         self.cull_small_ranges()
@@ -520,7 +455,13 @@ impl Tags {
     /// This is crucial to prevent the gradual deterioration of the
     /// [`InnerTags`]'s structure.
     fn merge_surrounding_skips(&mut self, from: usize) {
-        let (total_skip, last_width) = {
+        let tags_in_middle = self
+            .container
+            .iter_at(from)
+            .next()
+            .is_some_and(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+
+        let (next_skip, last_width) = {
             let mut total_skip = 0;
             let mut last_width = from;
             let mut next_tags = self
@@ -536,15 +477,7 @@ impl Tags {
             (total_skip, last_width)
         };
 
-        if last_width != from {
-            // The removal happens after the insertion in order to prevent `Tag`s
-            // which are meant to be separate from coming together.
-            self.container.insert(from, TagOrSkip::Skip(total_skip));
-            let skip_range = (from + total_skip)..(from + 2 * total_skip);
-            self.container.remove_exclusive(skip_range);
-        }
-
-        let (total_skip, first_width) = {
+        let (prev_skip, first_width) = {
             let mut total_skip = 0;
             let mut first_width = from;
 
@@ -561,10 +494,27 @@ impl Tags {
             (total_skip, first_width)
         };
 
-        if first_width != from {
-            self.container.insert(first_width, TagOrSkip::Skip(total_skip));
+		// Merge groups of ranges around `from` into 2 groups.
+        if tags_in_middle {
+            if last_width > from {
+                // The removal happens after the insertion in order to prevent `Tag`s
+                // which are meant to be separate from coming together.
+                self.container.insert(from, TagOrSkip::Skip(next_skip));
+                let skip_range = (from + next_skip)..(from + 2 * next_skip);
+                self.container.remove_exclusive(skip_range);
+            }
+            if first_width < from {
+                self.container.insert(first_width, TagOrSkip::Skip(prev_skip));
 
-            let range = (first_width + total_skip)..(from + total_skip);
+                let range = (first_width + prev_skip)..(from + prev_skip);
+                self.container.remove_exclusive(range);
+            }
+		// Merge groups of ranges around `from` into 1 group.
+        } else if first_width < last_width {
+            let total_skip = prev_skip + next_skip;
+
+            self.container.insert(first_width, TagOrSkip::Skip(total_skip));
+            let range = (first_width + total_skip)..(first_width + 2 * total_skip);
             self.container.remove_exclusive(range);
         }
     }
@@ -586,6 +536,79 @@ impl Tags {
                 })
                 .count()
         }
+    }
+
+    pub fn new(chars: &Chars) -> Self {
+        let skip = TagOrSkip::Skip(chars.len_chars());
+        let container = match chars {
+            Chars::String(_) => Container::Vec(vec![skip]),
+            Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
+        };
+        Tags {
+            container,
+            ranges: Vec::new(),
+            texts: Vec::new(),
+            toggles: Vec::new(),
+            min_to_keep: MIN_CHARS_TO_KEEP
+        }
+    }
+
+    pub fn back_check_amount(&self) -> usize {
+        self.min_to_keep
+    }
+
+    /// Returns the is empty of this [`Tags`].
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn as_vec(&self) -> Option<&[TagOrSkip]> {
+        match &self.container {
+            Container::Vec(vec) => Some(vec),
+            Container::Rope(_) => None
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        match &self.container {
+            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
+            Container::Rope(rope) => rope.width()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match &self.container {
+            Container::Vec(vec) => vec.len(),
+            Container::Rope(rope) => rope.len()
+        }
+    }
+
+    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
+        self.container.get_from_char(char)
+    }
+
+    pub fn iter_at(&self, pos: usize) -> Iter {
+        let pos = pos.min(self.width());
+        let ranges = Ranges::new(pos, self.ranges.iter());
+        let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
+        Iter::new(self, ranges, raw_tags)
+    }
+
+    pub fn rev_iter_at(&self, pos: usize) -> RevIter {
+        let possible_ranges: Vec<TagRange> = self
+            .ranges
+            .iter()
+            .filter(|range| {
+                range.get_start().is_some_and(|start| start < pos)
+                    && range.get_end().map_or(true, |end| end >= pos)
+            })
+            .cloned()
+            .collect();
+
+        let ranges = RevRanges::new(possible_ranges);
+        let tags = RevRawTags::new(&self.ranges, self.container.rev_iter_at(pos));
+        RevIter::new(self, ranges, tags)
     }
 }
 
