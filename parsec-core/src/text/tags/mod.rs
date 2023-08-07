@@ -8,7 +8,7 @@ use container::Container;
 pub use types::{InsertionTag, RawTag};
 
 use super::Text;
-use crate::{position::Point, text::chars::Chars};
+use crate::{log_info, position::Point, text::chars::Chars};
 
 mod container;
 mod types;
@@ -86,7 +86,7 @@ pub struct Tags {
     ranges: Vec<TagRange>,
     texts: Vec<Text>,
     toggles: Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>,
-    min_to_keep: usize
+    range_min: usize
 }
 
 impl Tags {
@@ -96,7 +96,7 @@ impl Tags {
             ranges: Vec::new(),
             texts: Vec::new(),
             toggles: Vec::new(),
-            min_to_keep: MIN_CHARS_TO_KEEP
+            range_min: MIN_CHARS_TO_KEEP
         }
     }
 
@@ -106,7 +106,7 @@ impl Tags {
             ranges: Vec::new(),
             texts: Vec::new(),
             toggles: Vec::new(),
-            min_to_keep: MIN_CHARS_TO_KEEP
+            range_min: MIN_CHARS_TO_KEEP
         }
     }
 
@@ -149,8 +149,8 @@ impl Tags {
             self.container.remove_exclusive(skip_range);
         }
 
-        try_insert((pos, raw_tag), &mut self.ranges, self.min_to_keep, true);
-        rearrange_ranges(&mut self.ranges, self.min_to_keep);
+        try_insert((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
+        rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges()
     }
 
@@ -164,7 +164,7 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
-        rearrange_ranges(&mut self.ranges, self.min_to_keep);
+        rearrange_ranges(&mut self.ranges, self.range_min);
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
@@ -200,7 +200,7 @@ impl Tags {
 
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new, old.count());
-        rearrange_ranges(&mut self.ranges, self.min_to_keep);
+        rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges()
     }
 
@@ -210,44 +210,54 @@ impl Tags {
             return;
         }
 
-        if new_count < old_count {
+        // Removing old ranges containing.
+        if new.clone().count() < old_count {
             self.ranges
                 .extract_if(|range| {
                     if let TagRange::Bounded(_, range, ..) = range {
                         if range.start <= new.start && range.end >= new.end {
-                            return range.clone().count() <= self.min_to_keep;
+                            return range.clone().count() <= self.range_min;
                         }
                     }
                     false
                 })
                 .take_while(|range| range.get_start().is_some_and(|start| start <= new.start))
                 .last();
-        } else {
-            let start = new.start.saturating_sub(self.min_to_keep - old_count);
-            let end = new.end + self.min_to_keep - old_count;
-            let mut entry_counts = Vec::new();
+        }
 
-            for entry in self
-                .container
-                .iter_at(start)
-                .take_while(|(pos, _)| *pos < end)
-                .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
+        // Adding new unbounded ranges.
+        let mut entry_counts = Vec::new();
+
+        let before = {
+            let start = new.start.saturating_sub(self.range_min - old_count);
+            self.container.iter_at(start).take_while(|(pos, _)| *pos <= new.start)
+        };
+        let after = {
+            let end = new.end + self.range_min - old_count;
+            self.container.rev_iter_at(end).take_while(|(pos, _)| *pos >= new.end)
+        };
+
+        for entry in
+            before.chain(after).filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
+        {
+            let count = if let Some((count, _)) =
+                entry_counts.iter_mut().find(|(_, other)| *other == entry)
             {
-                let count = if let Some((count, _)) =
-                    entry_counts.iter_mut().find(|(_, other)| *other == entry)
-                {
-                    count
-                } else {
-                    let count = count_entry(entry, &self.ranges);
-                    entry_counts.push((count, entry));
-                    &mut entry_counts.last_mut().unwrap().0
-                };
+                count
+            } else {
+                let count = count_entry(entry, &self.ranges);
+                entry_counts.push((count, entry));
+                &mut entry_counts.last_mut().unwrap().0
+            };
 
-                if *count == 0 {
-                    try_insert(entry, &mut self.ranges, self.min_to_keep, false);
+            if *count == 0 {
+                if entry.0 <= new.start {
+                    try_insert(entry, &mut self.ranges, self.range_min, true, false);
                 } else {
-                    *count -= 1;
+                    try_insert(entry, &mut self.ranges, self.range_min, false, true);
                 }
+            } else {
+                *count -= 1;
             }
         }
     }
@@ -327,12 +337,12 @@ impl Tags {
             self.ranges.iter().filter(|range| matches!(range, TagRange::Bounded(..))).count();
 
         while cullable > LIMIT_TO_BUMP {
-            self.min_to_keep += BUMP_AMOUNT;
+            self.range_min += BUMP_AMOUNT;
             cullable -= self
                 .ranges
                 .extract_if(|range| {
                     if let TagRange::Bounded(_, bounded) = range {
-                        bounded.clone().count() < self.min_to_keep
+                        bounded.clone().count() < self.range_min
                     } else {
                         false
                     }
@@ -352,12 +362,12 @@ impl Tags {
             ranges: Vec::new(),
             texts: Vec::new(),
             toggles: Vec::new(),
-            min_to_keep: MIN_CHARS_TO_KEEP
+            range_min: MIN_CHARS_TO_KEEP
         }
     }
 
     pub fn back_check_amount(&self) -> usize {
-        self.min_to_keep
+        self.range_min
     }
 
     /// Returns the is empty of this [`Tags`].
@@ -415,7 +425,7 @@ impl Tags {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagRange {
     Bounded(RawTag, Range<usize>),
     From(RawTag, RangeFrom<usize>),
@@ -768,7 +778,8 @@ fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
 }
 
 fn try_insert(
-    entry: (usize, RawTag), ranges: &mut Vec<TagRange>, min_to_keep: usize, allow_unbounded: bool
+    entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: usize, allow_from: bool,
+    allow_until: bool
 ) {
     let range = if entry.1.is_start() {
         let (start, tag) = entry;
@@ -776,7 +787,7 @@ fn try_insert(
             let end = range.get_end().unwrap();
             Some(TagRange::Bounded(tag, start..end))
         } else {
-            allow_unbounded.then_some(TagRange::From(tag, start..))
+            allow_from.then_some(TagRange::From(tag, start..))
         }
     } else if entry.1.is_end() {
         let (end, tag) = entry;
@@ -785,13 +796,13 @@ fn try_insert(
             let start = range.get_start().unwrap();
             Some(TagRange::Bounded(range.tag(), start..end))
         } else {
-            allow_unbounded.then_some(TagRange::Until(tag, ..end))
+            allow_until.then_some(TagRange::Until(tag, ..end))
         }
     } else {
         return;
     };
 
-    if let Some(range) = range.filter(|range| range.count_ge(min_to_keep)) {
+    if let Some(range) = range.filter(|range| range.count_ge(range_min)) {
         let (Ok(index) | Err(index)) = ranges.binary_search(&range);
         ranges.insert(index, range);
     }

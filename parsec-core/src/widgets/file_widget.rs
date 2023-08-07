@@ -70,7 +70,7 @@ where
             };
             let mut tagger = text.tag_with(Handle::new());
             let mut pushes_pops_you_cant_explain_that = true;
-            for index in (20..5020).step_by(500) {
+            for index in (20..tagger.len_chars()).step_by(30) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index - 15, Tag::PushForm(forms::MAIN_SEL));
                     tagger.insert(index - 5, Tag::PushForm(forms::COORDS));
