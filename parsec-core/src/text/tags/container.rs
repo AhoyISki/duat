@@ -28,20 +28,18 @@ impl Container {
         }
     }
 
-    pub fn remove_inclusive_on(
-        &mut self, pos: usize, handle: Handle
-    ) -> Vec<(usize, RawTag, Handle)> {
+    pub fn remove_inclusive_on(&mut self, pos: usize, handle: Handle) -> Vec<(usize, RawTag)> {
         match self {
             Container::Vec(vec) => {
                 let start = start_ch_to_index(vec, pos);
                 let end = end_ch_to_index(&vec[start..], 0);
                 vec.extract_if(|t_or_s| match t_or_s {
-                    TagOrSkip::Tag(_, other) => handle == *other,
+                    TagOrSkip::Tag(tag) => handle == tag.handle(),
                     TagOrSkip::Skip(_) => false
                 })
                 .take(end)
                 .skip(start)
-                .filter_map(|t_or_s| t_or_s.as_tag().map(|(tag, handle)| (pos, tag, handle)))
+                .filter_map(|t_or_s| t_or_s.as_tag().map(|tag| (pos, tag)))
                 .collect()
             }
             Container::Rope(rope) => {
@@ -50,11 +48,11 @@ impl Container {
                 let kept = slice
                     .iter()
                     .filter_map(|(_, t_or_s)| {
-                        if let TagOrSkip::Tag(tag, other) = t_or_s {
-                            if other != handle {
-                                return Some(TagOrSkip::Tag(tag, other));
+                        if let TagOrSkip::Tag(tag) = t_or_s {
+                            if handle != tag.handle() {
+                                return Some(TagOrSkip::Tag(tag));
                             } else {
-                                removed.push((pos, tag, other))
+                                removed.push((pos, tag))
                             }
                         }
                         None

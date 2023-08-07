@@ -2,6 +2,7 @@ mod cfg;
 mod chars;
 pub mod reader;
 mod tags;
+mod types;
 
 use std::{
     io::Write,
@@ -11,13 +12,14 @@ use std::{
 pub use cfg::*;
 use chars::Chars;
 use ropey::Rope;
-pub use tags::{Handle, RawTag, Tag};
-use tags::{TagOrSkip, Tags, ToggleId};
+pub use tags::{Handle, InsertionTag as Tag};
+use tags::{RawTag, TagOrSkip, Tags};
+pub use types::{BuilderTag, Part};
 
 use crate::{
-    forms::{FormId, EXTRA_SEL, MAIN_SEL},
+    forms::{EXTRA_SEL, MAIN_SEL},
     history::Change,
-    position::Cursor, log_info,
+    position::{Cursor, Point}
 };
 
 /// The text in a given area.
@@ -263,7 +265,8 @@ impl Text {
 pub struct TextBuilder {
     text: Text,
     swappables: Vec<usize>,
-    handle: Handle
+    handle: Handle,
+    toggles: Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>
 }
 
 impl TextBuilder {
@@ -296,11 +299,12 @@ impl TextBuilder {
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
-    pub fn push_tag(&mut self, tag: RawTag) {
+    pub fn push_tag(&mut self, builder_tag: BuilderTag) {
+        let raw_tag = builder_tag.to_raw(self.handle, &mut self.toggles);
         let tags = self.text.tags.as_mut_vec().unwrap();
-        tags.push(TagOrSkip::Tag(tag, self.handle));
-        if let Some(inv_tag) = tag.inverse() {
-            tags.push(TagOrSkip::Tag(inv_tag, self.handle));
+        tags.push(TagOrSkip::Tag(raw_tag));
+        if let Some(inv_tag) = raw_tag.inverse() {
+            tags.push(TagOrSkip::Tag(inv_tag));
         }
     }
 
@@ -318,28 +322,29 @@ impl TextBuilder {
         self.text.chars.replace(start..(start + old_skip), edit);
     }
 
-    pub fn swap_tag(&mut self, tag_index: usize, new_tag: RawTag) {
+    pub fn swap_tag(&mut self, tag_index: usize, builder_tag: BuilderTag) {
+        let raw_tag = builder_tag.to_raw(self.handle, &mut self.toggles);
         let tags = self.text.tags.as_mut_vec().unwrap();
         let mut iter = tags.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::PopForm(_), _) => None,
-            TagOrSkip::Tag(tag, lock) => Some((index, tag, *lock)),
+            TagOrSkip::Tag(RawTag::PopForm(..)) => None,
+            TagOrSkip::Tag(tag) => Some((index, tag)),
             TagOrSkip::Skip(_) => None
         });
 
-        if let Some((index, tag, lock)) = iter.nth(tag_index) {
+        if let Some((index, tag)) = iter.nth(tag_index) {
             let inv_tag = tag.inverse();
 
-            *tag = new_tag;
+            *tag = raw_tag;
             let forward = match &tags[index + 1] {
-                TagOrSkip::Tag(_, _) => 1,
+                TagOrSkip::Tag(_) => 1,
                 TagOrSkip::Skip(_) => 2
             };
 
-            if let Some(new_inv_tag) = new_tag.inverse() {
+            if let Some(new_inv_tag) = raw_tag.inverse() {
                 if inv_tag.is_some() {
-                    tags[index + forward] = TagOrSkip::Tag(new_inv_tag, lock);
+                    tags[index + forward] = TagOrSkip::Tag(new_inv_tag);
                 } else {
-                    tags.insert(index + forward, TagOrSkip::Tag(new_inv_tag, lock));
+                    tags.insert(index + forward, TagOrSkip::Tag(new_inv_tag));
                 }
             } else if inv_tag.is_some() {
                 tags.remove(index + forward);
@@ -369,8 +374,8 @@ impl TextBuilder {
         let tags = self.text.tags.as_mut_vec().unwrap();
 
         let mut iter = tags.iter().enumerate().rev();
-        while let Some((index, TagOrSkip::Tag(tag, _))) = iter.next() {
-            if let RawTag::PopForm(_) = tag {
+        while let Some((index, TagOrSkip::Tag(tag))) = iter.next() {
+            if let RawTag::PopForm(..) = tag {
                 if let Some(TagOrSkip::Skip(skip)) = tags.get_mut(index) {
                     *skip += edit_len;
                 } else {
@@ -411,7 +416,7 @@ impl TextBuilder {
 
         let mut iter = tags.iter().take(index).rev();
         while let Some(TagOrSkip::Tag(tag, ..)) = iter.next() {
-            if let RawTag::PopForm(_) = tag {
+            if let RawTag::PopForm(..) = tag {
                 break;
             }
 
@@ -434,7 +439,8 @@ impl Default for TextBuilder {
         TextBuilder {
             text: Text::default_string(),
             swappables: Vec::default(),
-            handle: Handle::default()
+            handle: Handle::default(),
+            toggles: Vec::default()
         }
     }
 }
@@ -491,54 +497,6 @@ impl<'a> Tagger<'a> {
     }
 }
 
-/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-#[derive(Debug, Clone, Copy)]
-pub enum Part {
-    Char(char),
-    PushForm(FormId),
-    PopForm(FormId),
-    MainCursor,
-    ExtraCursor,
-    AlignLeft,
-    AlignCenter,
-    AlignRight,
-    HoverStart(ToggleId),
-    HoverEnd(ToggleId),
-    LeftButtonStart(ToggleId),
-    LeftButtonEnd(ToggleId),
-    RightButtonStart(ToggleId),
-    RightButtonEnd(ToggleId),
-    MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId),
-    Termination
-}
-
-impl From<RawTag> for Part {
-    fn from(value: RawTag) -> Self {
-        match value {
-            RawTag::PushForm(id) => Part::PushForm(id),
-            RawTag::PopForm(id) => Part::PopForm(id),
-            RawTag::MainCursor => Part::MainCursor,
-            RawTag::ExtraCursor => Part::ExtraCursor,
-            RawTag::AlignLeft => Part::AlignLeft,
-            RawTag::AlignCenter => Part::AlignCenter,
-            RawTag::AlignRight => Part::AlignRight,
-            RawTag::HoverStart(id) => Part::HoverStart(id),
-            RawTag::HoverEnd(id) => Part::HoverEnd(id),
-            RawTag::LeftButtonStart(id) => Part::LeftButtonStart(id),
-            RawTag::LeftButtonEnd(id) => Part::LeftButtonEnd(id),
-            RawTag::RightButtonStart(id) => Part::RightButtonStart(id),
-            RawTag::RightButtonEnd(id) => Part::RightButtonEnd(id),
-            RawTag::MiddleButtonStart(id) => Part::MiddleButtonStart(id),
-            RawTag::MiddleButtonEnd(id) => Part::MiddleButtonEnd(id),
-            RawTag::Skip(_) => Part::Termination,
-            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::GhostText(_) => unsafe {
-                std::hint::unreachable_unchecked()
-            }
-        }
-    }
-}
-
 impl Part {
     /// Returns `true` if the text bit is [`Char`].
     ///
@@ -583,8 +541,8 @@ impl Iterator for Iter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned();
-        while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
-            if let (_, RawTag::ConcealStart) = tag.unwrap() {
+        while let Some((pos, RawTag::ConcealStart(_) | RawTag::ConcealEnd(_))) = tag {
+            if let (_, RawTag::ConcealStart(_)) = tag.unwrap() {
                 self.conceal_count += 1
             } else {
                 self.conceal_count = self.conceal_count.saturating_sub(1)
@@ -604,7 +562,7 @@ impl Iterator for Iter<'_> {
         }
 
         if let Some((pos, tag)) = tag {
-            if let RawTag::Skip(skip) = tag {
+            if let RawTag::Concealed(skip) = tag {
                 self.pos = pos.saturating_add(skip);
                 self.tags.move_to(self.pos);
                 self.line = self.chars.move_to(self.pos);
@@ -649,8 +607,8 @@ impl Iterator for RevIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0).cloned();
-        while let Some((pos, RawTag::ConcealStart | RawTag::ConcealEnd)) = tag {
-            if let (_, RawTag::ConcealStart) = tag.unwrap() {
+        while let Some((pos, RawTag::ConcealStart(_) | RawTag::ConcealEnd(_))) = tag {
+            if let (_, RawTag::ConcealStart(_)) = tag.unwrap() {
                 self.conceal_count = self.conceal_count.saturating_sub(1)
             } else {
                 self.conceal_count += 1
@@ -670,7 +628,7 @@ impl Iterator for RevIter<'_> {
         }
 
         if let Some((pos, tag)) = tag {
-            if let RawTag::Skip(skip) = tag {
+            if let RawTag::Concealed(skip) = tag {
                 self.pos = pos.saturating_sub(skip);
                 self.tags.move_to(self.pos);
                 self.line = self.chars.move_to(self.pos);

@@ -26,7 +26,7 @@ use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
-    text::{RawTag, Text, TextBuilder},
+    text::{Text, TextBuilder, BuilderTag},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler
 };
@@ -100,9 +100,9 @@ where
                 let alignment =
                     if *line == main_line { self.cfg.main_alignment } else { self.cfg.alignment };
                 match alignment {
-                    Alignment::Left => RawTag::AlignLeft,
-                    Alignment::Right => RawTag::AlignRight,
-                    Alignment::Center => RawTag::AlignCenter
+                    Alignment::Left => BuilderTag::AlignLeft,
+                    Alignment::Right => BuilderTag::AlignRight,
+                    Alignment::Center => BuilderTag::AlignCenter
                 }
             };
 
@@ -238,8 +238,8 @@ impl LineNumbersCfg {
 }
 
 /// Gets the [`Tag`], according to line positioning.
-fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> RawTag {
-    RawTag::PushForm(match (line == main_line, is_wrapped) {
+fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> BuilderTag {
+    BuilderTag::PushForm(match (line == main_line, is_wrapped) {
         (false, false) => LINE_NUMBERS,
         (false, true) => WRAPPED_LINE_NUMBERS,
         (true, false) => MAIN_LINE_NUMBER,

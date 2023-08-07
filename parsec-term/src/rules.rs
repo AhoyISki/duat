@@ -1,7 +1,7 @@
 use parsec_core::{
     data::{AsAny, ReadableData, RoData},
     forms::{FormPalette, DEFAULT, FormId},
-    text::{RawTag, Text, TextBuilder},
+    text::{BuilderTag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
@@ -182,11 +182,11 @@ where
         let forms = self.cfg.sep_form.forms();
         let chars = self.cfg.sep_char.chars();
 
-        builder.swap_tag(0, RawTag::PushForm(forms[0]));
+        builder.swap_tag(0, BuilderTag::PushForm(forms[0]));
         builder.swap_range(0, [chars[0], '\n'].into_iter().collect::<String>().repeat(above));
-        builder.swap_tag(1, RawTag::PushForm(forms[1]));
+        builder.swap_tag(1, BuilderTag::PushForm(forms[1]));
         builder.swap_range(1, [chars[1], '\n'].into_iter().collect::<String>().repeat(equal));
-        builder.swap_tag(2, RawTag::PushForm(forms[2]));
+        builder.swap_tag(2, BuilderTag::PushForm(forms[2]));
         builder.swap_range(2, [chars[2], '\n'].into_iter().collect::<String>().repeat(below));
     }
 
@@ -209,11 +209,11 @@ where
     let forms = cfg.sep_form.forms();
     let chars = cfg.sep_char.chars();
 
-    builder.push_tag(RawTag::PushForm(forms[0]));
+    builder.push_tag(BuilderTag::PushForm(forms[0]));
     builder.push_swappable([chars[0], '\n'].into_iter().collect::<String>().repeat(upper));
-    builder.push_tag(RawTag::PushForm(forms[1]));
+    builder.push_tag(BuilderTag::PushForm(forms[1]));
     builder.push_swappable([chars[1], '\n'].into_iter().collect::<String>());
-    builder.push_tag(RawTag::PushForm(forms[2]));
+    builder.push_tag(BuilderTag::PushForm(forms[2]));
     builder.push_swappable([chars[2], '\n'].into_iter().collect::<String>().repeat(lower));
 
     builder

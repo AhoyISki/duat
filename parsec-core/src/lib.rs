@@ -6,7 +6,8 @@
     option_zip,
     iter_advance_by,
     control_flow_enum,
-    return_position_impl_trait_in_trait
+    return_position_impl_trait_in_trait,
+    decl_macro
 )]
 #![allow(
     clippy::arc_with_non_send_sync,
