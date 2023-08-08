@@ -21,7 +21,7 @@ use parsec_core::{
 };
 
 use crate::{
-    layout::{Edge, Layout, Line, LineCoords},
+    layout::{Edge, Layout, EdgeBrush, EdgeCoords},
     AreaIndex, ConstraintChangeErr
 };
 
@@ -507,10 +507,10 @@ fn write_char(
 }
 
 fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
-    let edges = edges.iter().map(|edge| edge.line_coords()).collect::<Vec<LineCoords>>();
+    let edges = edges.iter().map(|edge| edge.line_coords()).collect::<Vec<EdgeCoords>>();
 
     let mut crossings =
-        Vec::<(Coord, Option<Line>, Option<Line>, Option<Line>, Option<Line>)>::new();
+        Vec::<(Coord, Option<EdgeBrush>, Option<EdgeBrush>, Option<EdgeBrush>, Option<EdgeBrush>)>::new();
 
     for (index, &coords) in edges.iter().enumerate() {
         if let Axis::Horizontal = coords.axis {

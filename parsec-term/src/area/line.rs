@@ -1,7 +1,8 @@
-use crate::layout::Line::{self, *};
+use crate::layout::EdgeBrush::{self, *};
 
 pub fn crossing(
-    right: Option<Line>, up: Option<Line>, left: Option<Line>, down: Option<Line>, cut_ends: bool
+    right: Option<EdgeBrush>, up: Option<EdgeBrush>, left: Option<EdgeBrush>,
+    down: Option<EdgeBrush>, cut_ends: bool
 ) -> char {
     match (right, up, left, down, cut_ends) {
         (Some(right), None, Some(left), None, _) => horizontal(right, left),
@@ -29,7 +30,7 @@ pub fn crossing(
     }
 }
 
-pub fn horizontal(right: Line, left: Line) -> char {
+pub fn horizontal(right: EdgeBrush, left: EdgeBrush) -> char {
     match (left, right) {
         (_, Ascii) | (Ascii, _) => '-',
 
@@ -54,7 +55,7 @@ pub fn horizontal(right: Line, left: Line) -> char {
     }
 }
 
-pub fn vertical(up: Line, down: Line) -> char {
+pub fn vertical(up: EdgeBrush, down: EdgeBrush) -> char {
     match (up, down) {
         (Ascii, _) | (_, Ascii) => '|',
 
@@ -79,7 +80,7 @@ pub fn vertical(up: Line, down: Line) -> char {
     }
 }
 
-fn right_end(line: Line) -> char {
+fn right_end(line: EdgeBrush) -> char {
     match line {
         Regular | Dashed | Rounded => '╶',
         Thick | ThickDashed | Double => '╺',
@@ -88,7 +89,7 @@ fn right_end(line: Line) -> char {
     }
 }
 
-fn up_end(line: Line) -> char {
+fn up_end(line: EdgeBrush) -> char {
     match line {
         Regular | Dashed | Rounded => '╵',
         Thick | ThickDashed | Double => '╹',
@@ -97,7 +98,7 @@ fn up_end(line: Line) -> char {
     }
 }
 
-fn left_end(line: Line) -> char {
+fn left_end(line: EdgeBrush) -> char {
     match line {
         Regular | Dashed | Rounded => '╴',
         Thick | ThickDashed | Double => '╸',
@@ -106,7 +107,7 @@ fn left_end(line: Line) -> char {
     }
 }
 
-fn down_end(line: Line) -> char {
+fn down_end(line: EdgeBrush) -> char {
     match line {
         Regular | Dashed | Rounded => '╷',
         Thick | ThickDashed | Double => '╻',
@@ -115,7 +116,7 @@ fn down_end(line: Line) -> char {
     }
 }
 
-fn left_down(left: Line, down: Line) -> char {
+fn left_down(left: EdgeBrush, down: EdgeBrush) -> char {
     match (left, down) {
         (Ascii, _) | (_, Ascii) => '+',
 
@@ -139,7 +140,7 @@ fn left_down(left: Line, down: Line) -> char {
     }
 }
 
-fn right_down(right: Line, down: Line) -> char {
+fn right_down(right: EdgeBrush, down: EdgeBrush) -> char {
     match (right, down) {
         (Ascii, _) | (_, Ascii) => '+',
 
@@ -163,7 +164,7 @@ fn right_down(right: Line, down: Line) -> char {
     }
 }
 
-fn right_up(right: Line, up: Line) -> char {
+fn right_up(right: EdgeBrush, up: EdgeBrush) -> char {
     match (right, up) {
         (Ascii, _) | (_, Ascii) => '+',
 
@@ -187,7 +188,7 @@ fn right_up(right: Line, up: Line) -> char {
     }
 }
 
-fn left_up(left: Line, up: Line) -> char {
+fn left_up(left: EdgeBrush, up: EdgeBrush) -> char {
     match (left, up) {
         (Ascii, _) | (_, Ascii) => '+',
 
@@ -223,7 +224,7 @@ macro_rules! thick {
     };
 }
 
-fn right_vertical(right: Line, up: Line, down: Line) -> char {
+fn right_vertical(right: EdgeBrush, up: EdgeBrush, down: EdgeBrush) -> char {
     match (right, up, down) {
         (Ascii, _, _) | (_, Ascii, _) | (_, _, Ascii) => '+',
 
@@ -253,7 +254,7 @@ fn right_vertical(right: Line, up: Line, down: Line) -> char {
     }
 }
 
-fn up_horizontal(up: Line, left: Line, right: Line) -> char {
+fn up_horizontal(up: EdgeBrush, left: EdgeBrush, right: EdgeBrush) -> char {
     match (up, left, right) {
         (Ascii, _, _) | (_, Ascii, _) | (_, _, Ascii) => '+',
 
@@ -283,7 +284,7 @@ fn up_horizontal(up: Line, left: Line, right: Line) -> char {
     }
 }
 
-fn left_vertical(left: Line, up: Line, down: Line) -> char {
+fn left_vertical(left: EdgeBrush, up: EdgeBrush, down: EdgeBrush) -> char {
     match (left, up, down) {
         (Ascii, _, _) | (_, Ascii, _) | (_, _, Ascii) => '+',
 
@@ -313,7 +314,7 @@ fn left_vertical(left: Line, up: Line, down: Line) -> char {
     }
 }
 
-fn down_horizontal(down: Line, left: Line, right: Line) -> char {
+fn down_horizontal(down: EdgeBrush, left: EdgeBrush, right: EdgeBrush) -> char {
     match (down, left, right) {
         (Ascii, _, _) | (_, Ascii, _) | (_, _, Ascii) => '+',
 
@@ -343,7 +344,7 @@ fn down_horizontal(down: Line, left: Line, right: Line) -> char {
     }
 }
 
-fn cross(right: Line, up: Line, left: Line, down: Line) -> char {
+fn cross(right: EdgeBrush, up: EdgeBrush, left: EdgeBrush, down: EdgeBrush) -> char {
     match (right, up, left, down) {
         (Ascii, _, _, _) | (_, Ascii, _, _) | (_, _, Ascii, _) | (_, _, _, Ascii) => '+',
 

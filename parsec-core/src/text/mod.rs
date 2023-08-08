@@ -111,6 +111,9 @@ impl Text {
     }
 
     pub fn close_visual_line_start(&self, pos: usize) -> Option<usize> {
+        if pos == 0 {
+            return Some(0);
+        }
         // NOTE: 20000 is a magic number, being a guess for what a reasonable limit would be.
         self.rev_iter_at(pos).take(20000).find_map(|(pos, _, part)| {
             if part.as_char().is_some_and(|char| char == '\n') {
