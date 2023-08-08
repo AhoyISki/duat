@@ -157,12 +157,19 @@ pub struct IterCfg<'a> {
     cfg: &'a PrintCfg,
     iter_lfs: bool,
     first_char: Option<usize>,
-    dont_wrap: bool
+    force_wrap: Option<WrapMethod>,
+    no_indent_wrap: bool
 }
 
 impl<'a> IterCfg<'a> {
     pub fn new(cfg: &'a PrintCfg) -> Self {
-        Self { cfg, iter_lfs: true, first_char: None, dont_wrap: false }
+        Self {
+            cfg,
+            iter_lfs: true,
+            first_char: None,
+            force_wrap: None,
+            no_indent_wrap: false
+        }
     }
 
     pub fn outsource_lfs(self) -> Self {
@@ -170,11 +177,23 @@ impl<'a> IterCfg<'a> {
     }
 
     pub fn dont_wrap(self) -> Self {
-        Self { dont_wrap: true, ..self }
+        Self { force_wrap: Some(WrapMethod::NoWrap), ..self }
+    }
+
+    pub fn no_word_wrap(self) -> Self {
+        match self.cfg.wrap_method {
+            WrapMethod::Word if matches!(self.force_wrap, Some(WrapMethod::NoWrap)) => self,
+            WrapMethod::Word => Self { force_wrap: Some(WrapMethod::Width), ..self },
+            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self,
+        }
     }
 
     pub fn chars_at(self, first_char: usize) -> Self {
         Self { first_char: Some(first_char), ..self }
+    }
+
+    pub fn no_indent_wrap(self) -> Self {
+        Self { no_indent_wrap: true, ..self }
     }
 
     pub fn show_lf(&self) -> bool {
@@ -186,11 +205,11 @@ impl<'a> IterCfg<'a> {
     }
 
     pub fn wrap_method(&self) -> WrapMethod {
-        if self.dont_wrap { WrapMethod::NoWrap } else { self.cfg.wrap_method }
+        self.force_wrap.unwrap_or(self.cfg.wrap_method)
     }
 
     pub fn indent_wrap(&self) -> bool {
-        self.cfg.indent_wrap
+        !self.no_indent_wrap && self.cfg.indent_wrap
     }
 
     pub fn tab_stops(&self) -> TabStops {

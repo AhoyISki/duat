@@ -139,16 +139,13 @@ impl ui::Area for Area {
         }
 
         let iter = {
-            let start = if let Some(start) = text.close_visual_line_start(info.first_char) {
-                start
+            let (start, cfg) = if let Some(start) = text.close_visual_line_start(info.first_char) {
+                (start, IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs())
             } else {
-                info.first_char
+                (info.first_char, IterCfg::new(cfg).no_word_wrap().no_indent_wrap())
             };
-            print_iter(
-                text.iter_at(start),
-                coords.width(),
-                IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs()
-            )
+
+            print_iter(text.iter_at(start), coords.width(), cfg)
         };
 
         let form_former = palette.form_former();
@@ -178,51 +175,6 @@ impl ui::Area for Area {
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
         todo!();
-    }
-
-    // NOTE: INCORRECT FUNCTION!!!
-    fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg
-    ) -> usize {
-        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
-            .filter_map(|((.., new_line), _)| new_line)
-            .count()
-    }
-
-    // NOTE: INCORRECT FUNCTION!!!
-    fn char_at_wrap(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, wrap: usize,
-        cfg: &PrintCfg
-    ) -> Option<usize> {
-        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
-            .filter_map(|((.., new_line), (pos, _))| new_line.map(|_| pos))
-            .nth(wrap)
-    }
-
-    // NOTE: INCORRECT FUNCTION!!!
-    fn get_width(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg,
-        wrap_around: bool
-    ) -> usize {
-        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
-            .skip_while(|((.., new_line), _)| new_line.is_none())
-            .skip(1)
-            .take_while(|((.., new_line), _)| new_line.is_none() || wrap_around)
-            .map(|((_, len, _), _)| len)
-            .sum::<usize>()
-    }
-
-    // NOTE: INCORRECT FUNCTION!!!
-    fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, dist: usize,
-        cfg: &PrintCfg
-    ) -> usize {
-        print_iter(iter, self.width(), IterCfg::new(cfg).outsource_lfs())
-            .enumerate()
-            .take_while(|(_, ((x, ..), _))| *x <= dist)
-            .map(|(index, _)| index)
-            .last()
-            .unwrap_or(0)
     }
 
     fn has_changed(&self) -> bool {

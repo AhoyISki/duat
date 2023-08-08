@@ -161,40 +161,17 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
     //////////////////// Queries
-    /// The amount of rows of the screen that the [`Iterator`] takes
-    /// up.
+    /// Wether or not [`self`] has changed.
     ///
-    /// Must take the [`PrintCfg`] into account, as in, if the
-    /// [`WrapMethod`][crate::text::WrapMethod] is
-    /// [`NoWrap`][crate::text::WrapMethod::NoWrap],
-    /// then the number of rows must equal the number of lines on the
-    /// [`Iterator`].
-    fn visible_rows(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg
-    ) -> usize;
-
-    /// Returns the positional index of the char that comes after the
-    /// [`TextBit`][crate::text::TextBit] [`Iterator`] wraps `wrap`
-    /// times.
-    fn char_at_wrap(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, wrap: usize,
-        cfg: &PrintCfg
-    ) -> Option<usize>;
-
-    /// Gets the visual width of the [`Iterator`].
-    fn get_width(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, cfg: &PrintCfg,
-        wrap_around: bool
-    ) -> usize;
-
-    /// Gets the column at `dist` from the left side on [`Iterator`].
-    fn col_at_dist(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone, dist: usize,
-        cfg: &PrintCfg
-    ) -> usize;
-
+    /// This would mean anything relevant that wouldn't be determined
+    /// by [`PrintInfo`], this is most likely going to be the bounding
+    /// box, but it may be something else.
     fn has_changed(&self) -> bool;
 
+    /// Wether or not [`self`] has seniority over `other`
+    ///
+    /// This can only happen if, by following [`self`]'s children, you
+    /// would eventually reach `other`.
     fn is_senior_of(&self, other: &Self) -> bool;
 
     /// Returns a printing iterator.

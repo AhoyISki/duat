@@ -10,16 +10,20 @@ fn indents<'a>(
     iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
 ) -> impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a {
     iter.scan((0, true), move |(indent, on_indent), (pos, line, part)| {
-        let old_indent = if *indent < width { *indent } else { 0 };
-        (*indent, *on_indent) = match (&part, *on_indent) {
-            (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
-            (&Part::Char(' '), true) => (*indent + 1, true),
-            (&Part::Char('\n'), _) => (0, true),
-            (&Part::Char(_), _) => (*indent, false),
-            (_, on_indent) => (*indent, on_indent)
-        };
+        if cfg.indent_wrap() {
+            let old_indent = if *indent < width { *indent } else { 0 };
+            (*indent, *on_indent) = match (&part, *on_indent) {
+                (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
+                (&Part::Char(' '), true) => (*indent + 1, true),
+                (&Part::Char('\n'), _) => (0, true),
+                (&Part::Char(_), _) => (*indent, false),
+                (_, on_indent) => (*indent, on_indent)
+            };
 
-        Some((old_indent, (pos, line, part)))
+            Some((old_indent, (pos, line, part)))
+        } else {
+            Some((0, (pos, line, part)))
+        }
     })
 }
 
@@ -151,7 +155,7 @@ pub fn print_iter<'a>(
 
 pub fn rev_print_iter<'a>(
     mut iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize,
-    cfg: IterCfg<'a>
+    mut cfg: IterCfg<'a>
 ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
@@ -159,6 +163,7 @@ pub fn rev_print_iter<'a>(
         if let Some(next) = returns.pop() {
             Some(next)
         } else {
+            let mut give_up = false;
             let mut items: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
             while let Some((pos, line, part)) = iter.next() {
                 if let Part::Char('\n') = part {
@@ -168,11 +173,18 @@ pub fn rev_print_iter<'a>(
                         prev_line_nl = Some((pos, line, Part::Char('\n')));
                         break;
                     }
-                } else if items.len() == 5000 {
+                // NOTE: 20000 is a magic number, it's merely a guess
+                // at what would be reasonable.
+                } else if items.len() == 20000 {
+                    give_up = true;
                     break;
                 } else {
                     items.push((pos, line, part));
                 }
+            }
+
+            if give_up {
+                cfg = cfg.no_word_wrap().no_indent_wrap();
             }
 
             print_iter(items.into_iter().rev(), width, cfg).collect_into(&mut returns);
