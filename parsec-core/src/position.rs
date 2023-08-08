@@ -238,21 +238,15 @@ impl Cursor {
         self.desired_col = self.caret.col;
     }
 
-    /// Internal absolute movement function. Assumes that the `col`
-    /// and `line` of th [Pos] are correct.
+    /// Moves to specific, pre calculated [`Point`].
     pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        let caret = &mut self.caret;
+        self.caret = point;
 
-        caret.line = point.line.min(text.len_lines().saturating_sub(1));
-        let line_char = text.line_to_char(point.line);
-        caret.col = point.col.min(text.iter_line_chars(caret.line).count());
-        caret.pos = text.line_to_char(caret.line) + caret.col;
-        caret.byte = text.char_to_byte(caret.pos);
-
-        let iter_range = text.iter_at(line_char).take_while(|(point, ..)| *point < caret.pos);
-        self.desired_col = area.get_width(iter_range, cfg, true);
-
-        self.anchor = None;
+        self.desired_col = area
+                .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
+                .next()
+                .map(|((x, ..), _)| x)
+                .unwrap();
     }
 
     /// Returns the range between `target` and `anchor`.
