@@ -693,11 +693,12 @@ impl Layout {
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
     pub fn update(&mut self) {
-        for (var, new_value) in self.solver.fetch_changes() {
+        for (var, new) in self.solver.fetch_changes() {
             let (value, has_changed) = &self.vars[var];
 
-            value.store(new_value.round() as usize, Ordering::Release);
-            has_changed.store(true, Ordering::Release);
+			let new = new.round() as usize;
+            let old = value.swap(new, Ordering::Release);
+            has_changed.store(old != new, Ordering::Release);
         }
     }
 

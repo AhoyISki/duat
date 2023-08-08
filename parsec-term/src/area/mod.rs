@@ -79,7 +79,7 @@ impl PartialEq for Area {
 }
 
 impl Area {
-    pub fn new(layout: RwData<Layout>, index: AreaIndex) -> Self {
+    pub fn new(index: AreaIndex, layout: RwData<Layout>) -> Self {
         Self { layout, index }
     }
 
@@ -138,11 +138,18 @@ impl ui::Area for Area {
             return;
         }
 
-        let iter = print_iter(
-            text.iter_at(text.visual_line_start(info.first_char)),
-            coords.width(),
-            IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs()
-        );
+        let iter = {
+            let start = if let Some(start) = text.close_visual_line_start(info.first_char) {
+                start
+            } else {
+                info.first_char
+            };
+            print_iter(
+                text.iter_at(start),
+                coords.width(),
+                IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs()
+            )
+        };
 
         let form_former = palette.form_former();
         let y = print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout);
@@ -243,8 +250,8 @@ impl ui::Area for Area {
             self.layout.mutate(|layout| layout.bisect(self.index, specs, is_glued));
 
         (
-            Area::new(self.layout.clone(), child),
-            parent.map(|parent| Area::new(self.layout.clone(), parent))
+            Area::new(child, self.layout.clone()),
+            parent.map(|parent| Area::new(parent, self.layout.clone()))
         )
     }
 

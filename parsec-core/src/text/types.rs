@@ -78,7 +78,7 @@ pub enum BuilderTag {
 }
 
 impl BuilderTag {
-    pub(super) fn to_raw(
+    pub(super) fn into_raw(
         self, handle: Handle,
         toggles: &mut Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>
     ) -> RawTag {

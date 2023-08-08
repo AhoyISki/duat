@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use parsec_core::text::{IterCfg, Part, PrintCfg, WrapMethod};
+use parsec_core::text::{IterCfg, Part, WrapMethod};
 use unicode_width::UnicodeWidthChar;
 
 /// Returns an [`Iterator`] that also shows the current level of
@@ -159,21 +159,23 @@ pub fn rev_print_iter<'a>(
         if let Some(next) = returns.pop() {
             Some(next)
         } else {
-            let mut units: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
+            let mut items: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
             while let Some((pos, line, part)) = iter.next() {
                 if let Part::Char('\n') = part {
-                    if units.is_empty() {
-                        units.push((pos, line, part));
+                    if items.is_empty() {
+                        items.push((pos, line, part));
                     } else {
                         prev_line_nl = Some((pos, line, Part::Char('\n')));
                         break;
                     }
+                } else if items.len() == 5000 {
+                    break;
                 } else {
-                    units.push((pos, line, part));
+                    items.push((pos, line, part));
                 }
             }
 
-            print_iter(units.into_iter().rev(), width, cfg).collect_into(&mut returns);
+            print_iter(items.into_iter().rev(), width, cfg).collect_into(&mut returns);
             returns.pop()
         }
     })

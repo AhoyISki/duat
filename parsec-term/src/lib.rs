@@ -57,19 +57,13 @@ impl ui::Ui for Ui {
     type PrintInfo = PrintInfo;
     type Area = Area;
 
-    fn new_window(&mut self) -> Self::Area {
+    fn new_root(&mut self) -> Self::Area {
         let layout = Layout::new(self.frame);
-        let window = {
-            let index = layout.main_index();
-            Area::new(RwData::new(layout), index)
-        };
+        let root = Area::new(layout.main_index(), RwData::new(layout));
 
-        let area = Area {
-            layout: window.layout.clone(),
-            index: window.layout.read().main_index()
-        };
+        let area = Area { layout: root.layout.clone(), index: root.layout.read().main_index() };
 
-        self.windows.push(window.clone());
+        self.windows.push(root);
 
         area
     }
@@ -81,12 +75,12 @@ impl ui::Ui for Ui {
         use std::panic;
         let orig_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
-            let _ = execute!(
+            execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
                 terminal::LeaveAlternateScreen,
                 cursor::Show
-            );
+            ).unwrap();
 
             terminal::disable_raw_mode().unwrap();
 
@@ -94,17 +88,17 @@ impl ui::Ui for Ui {
             std::process::exit(1)
         }));
 
-        let _ = execute!(io::stdout(), terminal::EnterAlternateScreen);
+        execute!(io::stdout(), terminal::EnterAlternateScreen).unwrap();
         terminal::enable_raw_mode().unwrap();
     }
 
     fn shutdown(&mut self) {
-        let _ = execute!(
+        execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),
             terminal::LeaveAlternateScreen,
             cursor::Show
-        );
+        ).unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 }

@@ -595,7 +595,7 @@ pub trait Ui: Default + 'static {
     /// This [`Area`][Ui::Area] must not have any parents, and must be
     /// the located on a new window, that is, a plain region with
     /// nothing in it.
-    fn new_window(&mut self) -> Self::Area;
+    fn new_root(&mut self) -> Self::Area;
 
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
@@ -623,7 +623,7 @@ where
     where
         Checker: Fn() -> bool + 'static
     {
-        let area = ui.new_window();
+        let area = ui.new_root();
         widget_type.update(&area);
         let main_node = Node {
             widget_type,

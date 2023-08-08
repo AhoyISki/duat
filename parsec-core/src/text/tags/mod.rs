@@ -8,7 +8,7 @@ use container::Container;
 pub use types::{InsertionTag, RawTag};
 
 use super::Text;
-use crate::{log_info, position::Point, text::chars::Chars};
+use crate::{position::Point, text::chars::Chars};
 
 mod container;
 mod types;

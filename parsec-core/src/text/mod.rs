@@ -110,12 +110,14 @@ impl Text {
         self.chars.char_to_byte(char)
     }
 
-    pub fn visual_line_start(&self, pos: usize) -> usize {
-        self.rev_iter_at(pos)
-            .find_map(|(pos, _, part)| {
-                part.as_char().filter(|char| *char == '\n').and(Some(pos + 1))
-            })
-            .unwrap_or(0)
+    pub fn close_visual_line_start(&self, pos: usize) -> Option<usize> {
+        self.rev_iter_at(pos).take(5000).find_map(|(pos, _, part)| {
+            if part.as_char().is_some_and(|char| char == '\n') {
+                Some(pos + 1)
+            } else {
+                (pos == 0).then_some(0)
+            }
+        })
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -300,7 +302,7 @@ impl TextBuilder {
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
     pub fn push_tag(&mut self, builder_tag: BuilderTag) {
-        let raw_tag = builder_tag.to_raw(self.handle, &mut self.toggles);
+        let raw_tag = builder_tag.into_raw(self.handle, &mut self.toggles);
         let tags = self.text.tags.as_mut_vec().unwrap();
         tags.push(TagOrSkip::Tag(raw_tag));
         if let Some(inv_tag) = raw_tag.inverse() {
@@ -323,7 +325,7 @@ impl TextBuilder {
     }
 
     pub fn swap_tag(&mut self, tag_index: usize, builder_tag: BuilderTag) {
-        let raw_tag = builder_tag.to_raw(self.handle, &mut self.toggles);
+        let raw_tag = builder_tag.into_raw(self.handle, &mut self.toggles);
         let tags = self.text.tags.as_mut_vec().unwrap();
         let mut iter = tags.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
             TagOrSkip::Tag(RawTag::PopForm(..)) => None,

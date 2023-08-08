@@ -200,7 +200,7 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+    pub fn move_ver_wrapped(&mut self, _by: isize, _text: &Text, _area: &impl Area, _cfg: &PrintCfg) {
         todo!()
     }
 
@@ -243,10 +243,10 @@ impl Cursor {
         self.caret = point;
 
         self.desired_col = area
-                .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
-                .next()
-                .map(|((x, ..), _)| x)
-                .unwrap();
+            .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
+            .next()
+            .map(|((x, ..), _)| x)
+            .unwrap();
     }
 
     /// Returns the range between `target` and `anchor`.
@@ -268,15 +268,6 @@ impl Cursor {
     /// Returns the cursor's position on the screen.
     pub fn caret(&self) -> Point {
         self.caret
-    }
-
-    /// Calibrates a cursor's positions based on some splice.
-    pub(crate) fn calibrate_on_accum(&mut self, edit_accum: &EditAccum, text: &Text) {
-        self.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
-        self.caret.calibrate(edit_accum.chars, text);
-        if let Some(anchor) = self.anchor.as_mut() {
-            anchor.calibrate(edit_accum.chars, text)
-        }
     }
 
     /// Sets the position of the anchor to be the same as the current
@@ -404,7 +395,11 @@ where
         cursor: &'a mut Cursor, text: &'a mut Text, edit_accum: &'a mut EditAccum,
         print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
     ) -> Self {
-        cursor.calibrate_on_accum(edit_accum, text);
+        cursor.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
+        cursor.caret.calibrate(edit_accum.chars, text);
+        if let Some(anchor) = cursor.anchor.as_mut() {
+            anchor.calibrate(edit_accum.chars, text)
+        }
         Self { cursor, text, edit_accum, print_info, history }
     }
 
