@@ -89,7 +89,20 @@ impl InsertionTag {
             InsertionTag::ConcealStart => RawTag::ConcealStart(handle),
             InsertionTag::ConcealEnd => RawTag::ConcealEnd(handle),
             InsertionTag::GhostString(string) => {
+                #[cfg(not(feature = "wacky-colors"))]
                 let text = Text::new_string(string);
+
+                #[cfg(feature = "wacky-colors")]
+                let text = {
+                    use crate::{forms, text::Tag};
+                    let mut text = Text::new_string(string);
+                    let mut tagger = text.tag_with(Handle::new());
+                    tagger.insert(0, Tag::PushForm(forms::COORDS));
+                    tagger.insert(tagger.len_chars(), Tag::PopForm(forms::COORDS));
+
+                    text
+                };
+
                 texts.push(text);
                 RawTag::GhostText(texts.len() - 1, handle)
             }

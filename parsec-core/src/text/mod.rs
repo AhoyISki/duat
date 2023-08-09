@@ -512,24 +512,6 @@ impl<'a> Tagger<'a> {
     }
 }
 
-impl Part {
-    /// Returns `true` if the text bit is [`Char`].
-    ///
-    /// [`Char`]: TextBit::Char
-    #[must_use]
-    pub fn is_char(&self) -> bool {
-        matches!(self, Part::Char(_))
-    }
-
-    pub fn as_char(&self) -> Option<char> {
-        if let Self::Char(v) = self { Some(*v) } else { None }
-    }
-
-    pub fn is_tag(&self) -> bool {
-        !self.is_char()
-    }
-}
-
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
         (Tag::MainCursor, Tag::PushForm(forms::MAIN_SEL), Tag::PopForm(forms::MAIN_SEL))

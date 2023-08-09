@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use super::{
     chars,
     tags::{self, RawTag},
@@ -52,80 +54,91 @@ impl<'a> Iter<'a> {
         Self { ghosts: false, ..self }
     }
 
-    fn peek_valid_tag(&mut self) -> Option<(usize, RawTag)> {
-        self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned()
-    }
-}
-
-impl Iterator for Iter<'_> {
-    type Item = (usize, usize, Part);
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut tag = self.peek_valid_tag();
-        while let Some((
-            pos,
-            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..)
-        )) = tag
-        {
-            self.tags.next();
-
-            match tag.unwrap() {
-                (_, RawTag::ConcealStart(_)) => self.conceal_count += 1,
-                (_, RawTag::ConcealEnd(_)) => {
-                    self.conceal_count = self.conceal_count.saturating_sub(1);
-                    if self.conceal_count == 0 {
-                        self.pos = self.pos.max(pos);
-                        self.line = self.chars.move_to(self.pos);
-                    }
+	#[inline(always)]
+    fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
+        match tag {
+            RawTag::ConcealStart(_) => {
+                self.conceal_count += 1;
+                ControlFlow::Continue(())
+            }
+            RawTag::ConcealEnd(_) => {
+                self.conceal_count = self.conceal_count.saturating_sub(1);
+                if self.conceal_count == 0 {
+                    self.pos = self.pos.max(pos);
+                    self.line = self.chars.move_to(self.pos);
                 }
-                (_, RawTag::GhostText(id, _)) if self.ghosts => {
-                    if let Some(text) = self.texts.get(id) {
-                        let iter = if pos >= self.pos {
-                            text.iter()
-                        } else {
-                            text.iter_at(text.len_chars())
-                        };
 
-                        let pos = std::mem::replace(&mut self.pos, iter.pos);
-                        let chars = std::mem::replace(&mut self.chars, iter.chars);
-                        let tags = std::mem::replace(&mut self.tags, iter.tags);
+                ControlFlow::Continue(())
+            }
+            RawTag::GhostText(id, _) => {
+                if self.ghosts && let Some(text) = self.texts.get(id) {
+                    let iter =
+                        if pos >= self.pos { text.iter() } else { text.iter_at(text.len_chars()) };
 
-                        self.backup_iters.push((pos, chars, tags));
-                    }
+                    let pos = std::mem::replace(&mut self.pos, iter.pos);
+                    let chars = std::mem::replace(&mut self.chars, iter.chars);
+                    let tags = std::mem::replace(&mut self.tags, iter.tags);
+
+                    self.backup_iters.push((pos, chars, tags));
                 }
-                _ => {}
+
+                ControlFlow::Continue(())
             }
 
-            tag = self.peek_valid_tag()
-        }
-
-        if let Some((pos, tag)) = tag {
-            if let RawTag::Concealed(skip) = tag {
+            RawTag::Concealed(skip) => {
                 self.pos = pos.saturating_add(skip);
                 self.tags.move_to(self.pos);
                 self.line = self.chars.move_to(self.pos);
                 self.conceal_count = 0;
+                ControlFlow::Break(())
             }
-            self.tags.next();
-            Some((pos, self.line, Part::from(tag)))
-        } else if let Some(char) = self.chars.next().or_else(|| {
-            self.backup_iters.pop().and_then(|(pos, chars, tags)| {
+            _ => ControlFlow::Break(())
+        }
+    }
+}
+
+impl Iterator for Iter<'_> {
+    /// In order:
+    ///
+    /// - The position of the [`Part`] in the [`Text`], it can be
+    ///   [`None`], when iterating over ghost text.
+    /// - The line the [`Part`] would be situated in, given a count of
+    ///   `'\n'`s before it, iterating over the unconcealed text
+    ///   without any ghost texts within.
+    /// - The [`Part`] itself, giving either a [`char`] or a text
+    ///   modifier, which should be used to change the way the
+    ///   [`Text`] is printed.
+    type Item = (usize, usize, Part);
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let tag = self.tags.peek();
+
+            if let Some(&(pos, tag)) =
+                tag.filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0)
+            {
+                self.tags.next();
+
+                if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                    break Some((pos, self.line, Part::from(tag)));
+                }
+            } else if let Some(char) = self.chars.next() {
+                let prev_line = self.line;
+                self.pos += 1;
+                let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                    pos
+                } else {
+                    self.line += (char == '\n') as usize;
+                    self.pos - 1
+                };
+
+                break Some((pos, prev_line, Part::Char(char)));
+            } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
-                self.chars.next()
-            })
-        }) {
-            let prev_line = self.line;
-            self.pos += 1;
-            let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                pos
             } else {
-                self.line += (char == '\n') as usize;
-                self.pos - 1
-            };
-            Some((pos, prev_line, Part::Char(char)))
-        } else {
-            None
+                break None;
+            }
         }
     }
 }
@@ -181,6 +194,48 @@ impl<'a> RevIter<'a> {
     pub fn no_ghosts(self) -> Self {
         Self { ghosts: false, ..self }
     }
+
+	#[inline(always)]
+    fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<()> {
+        match tag {
+            RawTag::ConcealStart(_) => {
+                self.conceal_count = self.conceal_count.saturating_sub(1);
+                if self.conceal_count == 0 {
+                    self.pos = self.pos.min(pos);
+                    self.line = self.chars.move_to(self.pos);
+                }
+
+                ControlFlow::Continue(())
+            }
+            RawTag::ConcealEnd(_) => {
+                self.conceal_count += 1;
+
+                ControlFlow::Continue(())
+            }
+            RawTag::GhostText(id, _) => {
+                if self.ghosts && let Some(text) = self.texts.get(id) {
+                    let iter = if pos <= self.pos { text.rev_iter() } else { text.rev_iter_at(0) };
+
+                    let pos = std::mem::replace(&mut self.pos, iter.pos);
+                    let chars = std::mem::replace(&mut self.chars, iter.chars);
+                    let tags = std::mem::replace(&mut self.tags, iter.tags);
+
+                    self.backup_iters.push((pos, chars, tags));
+                }
+
+                ControlFlow::Continue(())
+            }
+            RawTag::Concealed(skip) => {
+                self.pos = pos.saturating_sub(skip);
+                self.tags.move_to(self.pos);
+                self.line = self.chars.move_to(self.pos);
+                self.conceal_count = 0;
+
+                ControlFlow::Break(())
+            }
+            _ => ControlFlow::Break(())
+        }
+    }
 }
 
 impl Iterator for RevIter<'_> {
@@ -188,74 +243,32 @@ impl Iterator for RevIter<'_> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        let mut tag =
-            self.tags.peek().filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0).cloned();
-        while let Some((
-            pos,
-            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..)
-        )) = tag
-        {
-            let prev_conceal_count = self.conceal_count;
+        loop {
+            let tag = self.tags.peek();
 
-            self.tags.next();
+            if let Some(&(pos, tag)) =
+                tag.filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0)
+            {
+                self.tags.next();
 
-            match tag.unwrap() {
-                (_, RawTag::ConcealStart(_)) => {
-                    self.conceal_count = self.conceal_count.saturating_sub(1)
+                if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                    break Some((pos, self.line, Part::from(tag)));
                 }
-                (_, RawTag::ConcealEnd(_)) => self.conceal_count += 1,
-                (_, RawTag::GhostText(id, _)) if self.ghosts => {
-                    if let Some(text) = self.texts.get(id) {
-                        let iter =
-                            if pos <= self.pos { text.rev_iter() } else { text.rev_iter_at(0) };
+            } else if let Some(char) = self.chars.next() {
+                self.pos -= 1;
+                let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                    pos
+                } else {
+                    self.line -= (char == '\n') as usize;
+                    self.pos
+                };
 
-                        let pos = std::mem::replace(&mut self.pos, iter.pos);
-                        let chars = std::mem::replace(&mut self.chars, iter.chars);
-                        let tags = std::mem::replace(&mut self.tags, iter.tags);
-
-                        self.backup_iters.push((pos, chars, tags));
-                    }
-                }
-                _ => {}
-            }
-
-            if self.conceal_count == 0 && prev_conceal_count == 1 {
-                self.pos = self.pos.min(pos);
-                self.line = self.chars.move_to(self.pos);
-            }
-
-            tag = self
-                .tags
-                .peek()
-                .filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0)
-                .cloned();
-        }
-
-        if let Some((pos, tag)) = tag {
-            if let RawTag::Concealed(skip) = tag {
-                self.pos = pos.saturating_sub(skip);
-                self.tags.move_to(self.pos);
-                self.line = self.chars.move_to(self.pos);
-                self.conceal_count = 0;
-            }
-            self.tags.next();
-            Some((pos, self.line, Part::from(tag)))
-        } else if let Some(char) = self.chars.next().or_else(|| {
-            self.backup_iters.pop().and_then(|(pos, chars, tags)| {
+                break Some((pos, self.line, Part::Char(char)));
+            } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
-                self.chars.next()
-            })
-        }) {
-            self.pos -= 1;
-            let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                pos
             } else {
-                self.line -= (char == '\n') as usize;
-                self.pos
-            };
-            Some((pos, self.line, Part::Char(char)))
-        } else {
-            None
+                break None;
+            }
         }
     }
 }

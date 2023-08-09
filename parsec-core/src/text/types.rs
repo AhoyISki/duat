@@ -52,6 +52,24 @@ impl From<RawTag> for Part {
     }
 }
 
+impl Part {
+    /// Returns `true` if the text bit is [`Char`].
+    ///
+    /// [`Char`]: TextBit::Char
+    #[must_use]
+    pub fn is_char(&self) -> bool {
+        matches!(self, Part::Char(_))
+    }
+
+    pub fn as_char(&self) -> Option<char> {
+        if let Self::Char(v) = self { Some(*v) } else { None }
+    }
+
+    pub fn is_tag(&self) -> bool {
+        !self.is_char()
+    }
+}
+
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 pub enum BuilderTag {
     PushForm(FormId),
