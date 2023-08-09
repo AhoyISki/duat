@@ -17,11 +17,11 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Point,
     text::{IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}, log_info
+    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
 };
 
 use crate::{
-    layout::{Edge, Layout, EdgeBrush, EdgeCoords},
+    layout::{Edge, EdgeBrush, EdgeCoords, Layout},
     AreaIndex, ConstraintChangeErr
 };
 
@@ -122,9 +122,6 @@ impl ui::Area for Area {
 
     fn print(&self, text: &Text, info: PrintInfo, cfg: &PrintCfg, palette: &FormPalette) {
         let coords = self.coords();
-        if self.height() > 20 && self.width() > 30 {
-        log_info!("printing");
-        }
         let mut stdout = stdout().lock();
         print_edges(self.layout.read().edges(), &mut stdout);
 
@@ -512,8 +509,13 @@ fn write_char(
 fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
     let edges = edges.iter().map(|edge| edge.line_coords()).collect::<Vec<EdgeCoords>>();
 
-    let mut crossings =
-        Vec::<(Coord, Option<EdgeBrush>, Option<EdgeBrush>, Option<EdgeBrush>, Option<EdgeBrush>)>::new();
+    let mut crossings = Vec::<(
+        Coord,
+        Option<EdgeBrush>,
+        Option<EdgeBrush>,
+        Option<EdgeBrush>,
+        Option<EdgeBrush>
+    )>::new();
 
     for (index, &coords) in edges.iter().enumerate() {
         if let Axis::Horizontal = coords.axis {
