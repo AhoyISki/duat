@@ -27,7 +27,8 @@ use crate::{
     history::History,
     position::{Cursor, Editor, Mover, Point},
     text::{IterCfg, PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}};
+    ui::{Area, PrintInfo, Ui}
+};
 
 /// The widget that is used to print and edit files.
 pub struct FileWidget<U>
@@ -72,17 +73,9 @@ where
             let mut pushes_pops_you_cant_explain_that = true;
             for index in (20..tagger.len_chars()).step_by(30) {
                 if pushes_pops_you_cant_explain_that {
-                    tagger.insert(index - 15, Tag::PushForm(forms::MAIN_SEL));
-                    tagger.insert(index - 5, Tag::PushForm(forms::COORDS));
-                    tagger.insert(index - 3, Tag::PopForm(forms::MAIN_SEL));
-                    tagger.insert(index + 10, Tag::PopForm(forms::COORDS));
-                    tagger.insert(index, Tag::ConcealStart);
+                    tagger.insert(index, Tag::ghost_string("   Ayy lmao   "));
                 } else {
-                    tagger.insert(index - 15, Tag::PushForm(forms::EXTRA_SEL));
-                    tagger.insert(index - 5, Tag::PushForm(forms::SEPARATOR));
-                    tagger.insert(index + 3, Tag::PopForm(forms::EXTRA_SEL));
-                    tagger.insert(index + 10, Tag::PopForm(forms::SEPARATOR));
-                    tagger.insert(index, Tag::ConcealEnd);
+                    tagger.insert(index, Tag::ghost_string("   Hello World   "));
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }

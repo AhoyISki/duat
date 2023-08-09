@@ -154,7 +154,7 @@ impl Cursor {
         self.caret.pos = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
             text.len_chars() - 1
         } else if by > 0 {
-            area.print_iter(text.iter_at(self.caret.pos), cfg)
+            area.print_iter(text.iter_at(self.caret.pos).no_ghosts(), cfg)
                 .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
                 .try_fold(0, |lfs, (char, (x, pos))| {
                     let new_lfs = lfs + (char == '\n') as isize;
@@ -169,7 +169,7 @@ impl Cursor {
             0
         } else {
             let start = area
-                .rev_print_iter(text.rev_iter_at(self.caret.pos), cfg)
+                .rev_print_iter(text.rev_iter_at(self.caret.pos).no_ghosts(), cfg)
                 .filter_map(|(_, (pos, part))| part.as_char().zip(Some(pos)))
                 .try_fold(0, |lfs, (char, pos)| match (lfs - ((char == '\n') as isize)) < by {
                     true => std::ops::ControlFlow::Break(pos + 1),
@@ -178,7 +178,7 @@ impl Cursor {
                 .break_value()
                 .unwrap_or(0);
 
-            area.print_iter(text.iter_at(start), cfg)
+            area.print_iter(text.iter_at(start).no_ghosts(), cfg)
                 .filter_map(|((x, ..), (pos, part))| part.as_char().zip(Some((x, pos))))
                 .try_fold((), |_, (char, (x, pos))| match x >= self.desired_col || char == '\n' {
                     true => std::ops::ControlFlow::Break(pos),
@@ -200,7 +200,9 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub fn move_ver_wrapped(&mut self, _by: isize, _text: &Text, _area: &impl Area, _cfg: &PrintCfg) {
+    pub fn move_ver_wrapped(
+        &mut self, _by: isize, _text: &Text, _area: &impl Area, _cfg: &PrintCfg
+    ) {
         todo!()
     }
 
@@ -216,6 +218,7 @@ impl Cursor {
             text.len_chars().saturating_sub(1)
         } else if by > 0 {
             text.iter_at(self.caret.pos)
+                .no_ghosts()
                 .filter_map(|(pos, _, part)| part.as_char().and(Some(pos)))
                 .nth(by as usize)
                 .unwrap_or(text.len_chars().saturating_sub(1))
@@ -223,6 +226,7 @@ impl Cursor {
             0
         } else {
             text.rev_iter_at(self.caret.pos + 1)
+                .no_ghosts()
                 .filter_map(|(pos, _, part)| part.as_char().and(Some(pos)))
                 .nth(by.unsigned_abs())
                 .unwrap_or(text.len_chars().saturating_sub(1))

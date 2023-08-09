@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering::*,
-    ops::{Range, RangeFrom, RangeTo}
+    ops::{Range, RangeFrom, RangeTo},
 };
 
 use any_rope::{Measurable, Rope};
@@ -84,14 +84,14 @@ impl Measurable for TagOrSkip {
 pub struct Tags {
     container: Container,
     ranges: Vec<TagRange>,
-    texts: Vec<Text>,
-    toggles: Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>,
+    pub texts: Vec<Text>,
+    toggles: Vec<(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>)>,
     range_min: usize
 }
 
 impl Tags {
     pub fn default_vec() -> Self {
-        Tags {
+        Self {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
             texts: Vec::new(),
@@ -101,8 +101,23 @@ impl Tags {
     }
 
     pub fn default_rope() -> Self {
-        Tags {
+        Self {
             container: Container::Rope(Rope::new()),
+            ranges: Vec::new(),
+            texts: Vec::new(),
+            toggles: Vec::new(),
+            range_min: MIN_CHARS_TO_KEEP
+        }
+    }
+
+    pub fn new(chars: &Chars) -> Self {
+        let skip = TagOrSkip::Skip(chars.len_chars());
+        let container = match chars {
+            Chars::String(_) => Container::Vec(vec![skip]),
+            Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
+        };
+        Self {
+            container,
             ranges: Vec::new(),
             texts: Vec::new(),
             toggles: Vec::new(),
@@ -351,21 +366,6 @@ impl Tags {
         }
     }
 
-    pub fn new(chars: &Chars) -> Self {
-        let skip = TagOrSkip::Skip(chars.len_chars());
-        let container = match chars {
-            Chars::String(_) => Container::Vec(vec![skip]),
-            Chars::Rope(_) => Container::Rope(Rope::from_slice(&[skip]))
-        };
-        Tags {
-            container,
-            ranges: Vec::new(),
-            texts: Vec::new(),
-            toggles: Vec::new(),
-            range_min: MIN_CHARS_TO_KEEP
-        }
-    }
-
     pub fn back_check_amount(&self) -> usize {
         self.range_min
     }
@@ -424,6 +424,9 @@ impl Tags {
         RevIter::new(self, ranges, tags)
     }
 }
+
+unsafe impl Send for Tags {}
+unsafe impl Sync for Tags {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagRange {

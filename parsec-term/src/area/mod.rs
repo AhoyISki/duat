@@ -17,7 +17,7 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Point,
     text::{IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
+    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}, log_info
 };
 
 use crate::{
@@ -122,6 +122,9 @@ impl ui::Area for Area {
 
     fn print(&self, text: &Text, info: PrintInfo, cfg: &PrintCfg, palette: &FormPalette) {
         let coords = self.coords();
+        if self.height() > 20 && self.width() > 30 {
+        log_info!("printing");
+        }
         let mut stdout = stdout().lock();
         print_edges(self.layout.read().edges(), &mut stdout);
 

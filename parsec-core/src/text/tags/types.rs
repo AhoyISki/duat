@@ -33,28 +33,50 @@ pub enum InsertionTag {
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
-    HoverStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    NewHoverStart(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>),
     HoverStart(ToggleId),
     /// Ends a hoverable section in the file.
     HoverEnd(ToggleId),
 
-    LeftButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    NewLeftButtonStart(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>),
     LeftButtonStart(ToggleId),
     LeftButtonEnd(ToggleId),
 
-    RightButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    NewRightButtonStart(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>),
     RightButtonStart(ToggleId),
     RightButtonEnd(ToggleId),
 
-    MiddleButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    NewMiddleButtonStart(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>),
     MiddleButtonStart(ToggleId),
     MiddleButtonEnd(ToggleId)
 }
 
 impl InsertionTag {
+    pub fn ghost_string(to_string: impl ToString) -> Self {
+        Self::GhostString(to_string.to_string())
+    }
+
+    pub fn hover_start(on: impl Fn(Point) + 'static, off: impl Fn(Point) + 'static) -> Self {
+        Self::NewHoverStart(Box::new(on), Box::new(off))
+    }
+
+    pub fn left_button_start(on: impl Fn(Point) + 'static, off: impl Fn(Point) + 'static) -> Self {
+        Self::NewLeftButtonStart(Box::new(on), Box::new(off))
+    }
+
+    pub fn right_button_start(on: impl Fn(Point) + 'static, off: impl Fn(Point) + 'static) -> Self {
+        Self::NewRightButtonStart(Box::new(on), Box::new(off))
+    }
+
+    pub fn middle_button_start(
+        on: impl Fn(Point) + 'static, off: impl Fn(Point) + 'static
+    ) -> Self {
+        Self::NewMiddleButtonStart(Box::new(on), Box::new(off))
+    }
+
     pub fn to_raw(
         self, handle: Handle, texts: &mut Vec<Text>,
-        toggles: &mut Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>
+        toggles: &mut Vec<(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>)>
     ) -> RawTag {
         match self {
             InsertionTag::PushForm(id) => RawTag::PushForm(id, handle),
@@ -75,28 +97,28 @@ impl InsertionTag {
                 texts.push(text);
                 RawTag::GhostText(texts.len() - 1, handle)
             }
-            InsertionTag::HoverStartNew(on_fn, off_fn) => {
+            InsertionTag::NewHoverStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
                 RawTag::HoverStart(ToggleId(toggles.len() - 1), handle)
             }
             InsertionTag::HoverStart(id) => RawTag::HoverStart(id, handle),
             InsertionTag::HoverEnd(id) => RawTag::HoverEnd(id, handle),
 
-            InsertionTag::LeftButtonStartNew(on_fn, off_fn) => {
+            InsertionTag::NewLeftButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
                 RawTag::LeftButtonStart(ToggleId(texts.len() - 1), handle)
             }
             InsertionTag::LeftButtonStart(id) => RawTag::LeftButtonStart(id, handle),
             InsertionTag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id, handle),
 
-            InsertionTag::RightButtonStartNew(on_fn, off_fn) => {
+            InsertionTag::NewRightButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
                 RawTag::RightButtonStart(ToggleId(texts.len() - 1), handle)
             }
             InsertionTag::RightButtonStart(id) => RawTag::RightButtonStart(id, handle),
             InsertionTag::RightButtonEnd(id) => RawTag::RightButtonEnd(id, handle),
 
-            InsertionTag::MiddleButtonStartNew(on_fn, off_fn) => {
+            InsertionTag::NewMiddleButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
                 RawTag::MiddleButtonStart(ToggleId(texts.len() - 1), handle)
             }

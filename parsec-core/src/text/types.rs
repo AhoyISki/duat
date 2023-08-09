@@ -45,8 +45,8 @@ impl From<RawTag> for Part {
             RawTag::MiddleButtonStart(id, _) => Part::MiddleButtonStart(id),
             RawTag::MiddleButtonEnd(id, _) => Part::MiddleButtonEnd(id),
             RawTag::Concealed(..) => Part::Termination,
-            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => unsafe {
-                std::hint::unreachable_unchecked()
+            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => {
+                unreachable!()
             }
         }
     }

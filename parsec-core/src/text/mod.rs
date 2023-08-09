@@ -114,7 +114,8 @@ impl Text {
         if pos == 0 {
             return Some(0);
         }
-        // NOTE: 20000 is a magic number, being a guess for what a reasonable limit would be.
+        // NOTE: 20000 is a magic number, being a guess for what a reasonable
+        // limit would be.
         self.rev_iter_at(pos).take(20000).find_map(|(pos, _, part)| {
             if part.as_char().is_some_and(|char| char == '\n') {
                 Some(pos + 1)
@@ -197,11 +198,11 @@ impl Text {
 
 // Iterator methods.
 impl Text {
-    pub fn iter(&self) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
+    pub fn iter(&self) -> Iter<'_> {
         let chars = self.chars.iter_at(0);
         let tags = self.tags.iter_at(0);
 
-        Iter::new(chars, tags, 0, 0)
+        Iter::new(chars, tags, &self.tags.texts, 0, 0)
     }
 
     /// TO BE DEPRECATED.
@@ -215,29 +216,35 @@ impl Text {
         let tags_start = start.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, start, line).take_while(move |(pos, ..)| *pos < end)
+        Iter::new(chars, tags, &self.tags.texts, start, line)
+            .take_while(move |(pos, ..)| *pos < end)
     }
 
-    pub fn iter_at(&self, pos: usize) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
+    pub fn iter_at(&self, pos: usize) -> Iter<'_> {
         let chars = self.chars.iter_at(pos);
 
         let line = self.char_to_line(pos);
         let tags_start = pos.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, pos, line)
+        Iter::new(chars, tags, &self.tags.texts, pos, line)
     }
 
-    pub fn rev_iter_at(
-        &self, pos: usize
-    ) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
+    pub fn rev_iter(&self) -> RevIter {
+        let start = self.len_chars();
+        let chars = self.chars.rev_iter_at(start);
+        let tags = self.tags.rev_iter_at(start);
+
+        RevIter::new(chars, tags, &self.tags.texts, start, start)
+    }
+
+    pub fn rev_iter_at(&self, pos: usize) -> RevIter<'_> {
         let chars = self.chars.rev_iter_at(pos);
 
         let line = self.char_to_line(pos);
-        let tags_start = (pos + self.tags.back_check_amount()).min(self.tags.width());
-        let tags = self.tags.rev_iter_at(tags_start);
+        let tags = self.tags.rev_iter_at(pos);
 
-        RevIter::new(chars, tags, pos, line)
+        RevIter::new(chars, tags, &self.tags.texts, pos, line)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
@@ -531,12 +538,45 @@ pub struct Iter<'a> {
     tags: tags::Iter<'a>,
     pos: usize,
     line: usize,
-    conceal_count: usize
+    conceal_count: usize,
+    texts: &'a [Text],
+    backup_iters: Vec<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
+
+    ghosts: bool,
+    conceals: Conceal<'a>
 }
 
 impl<'a> Iter<'a> {
-    pub fn new(chars: chars::Iter<'a>, tags: tags::Iter<'a>, pos: usize, line: usize) -> Self {
-        Self { chars, tags, pos, line, conceal_count: 0 }
+    fn new(
+        chars: chars::Iter<'a>, tags: tags::Iter<'a>, texts: &'a [Text], pos: usize, line: usize
+    ) -> Self {
+        Self {
+            chars,
+            tags,
+            pos,
+            line,
+            conceal_count: 0,
+            texts,
+            backup_iters: Vec::new(),
+            ghosts: true,
+            conceals: Conceal::All
+        }
+    }
+
+    pub fn no_conceals(self) -> Self {
+        Self { conceals: Conceal::None, ..self }
+    }
+
+    pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
+        Self { conceals: Conceal::Excluding(list), ..self }
+    }
+
+    pub fn no_ghosts(self) -> Self {
+        Self { ghosts: false, ..self }
+    }
+
+    fn peek_valid_tag(&mut self) -> Option<(usize, RawTag)> {
+        self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned()
     }
 }
 
@@ -545,26 +585,42 @@ impl Iterator for Iter<'_> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        let mut tag =
-            self.tags.peek().filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0).cloned();
-        while let Some((pos, RawTag::ConcealStart(_) | RawTag::ConcealEnd(_))) = tag {
-            if let (_, RawTag::ConcealStart(_)) = tag.unwrap() {
-                self.conceal_count += 1
-            } else {
-                self.conceal_count = self.conceal_count.saturating_sub(1)
-            }
-
-            if self.conceal_count == 0 {
-                self.pos = self.pos.max(pos);
-                self.line = self.chars.move_to(self.pos);
-            }
-
+        let mut tag = self.peek_valid_tag();
+        while let Some((
+            pos,
+            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..)
+        )) = tag
+        {
             self.tags.next();
-            tag = self
-                .tags
-                .peek()
-                .filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0)
-                .cloned();
+
+            match tag.unwrap() {
+                (_, RawTag::ConcealStart(_)) => self.conceal_count += 1,
+                (_, RawTag::ConcealEnd(_)) => {
+                    self.conceal_count = self.conceal_count.saturating_sub(1);
+                    if self.conceal_count == 0 {
+                        self.pos = self.pos.max(pos);
+                        self.line = self.chars.move_to(self.pos);
+                    }
+                }
+                (_, RawTag::GhostText(id, _)) if self.ghosts => {
+                    if let Some(text) = self.texts.get(id) {
+                        let iter = if pos >= self.pos {
+                            text.iter()
+                        } else {
+                            text.iter_at(text.len_chars())
+                        };
+
+                        let pos = std::mem::replace(&mut self.pos, iter.pos);
+                        let chars = std::mem::replace(&mut self.chars, iter.chars);
+                        let tags = std::mem::replace(&mut self.tags, iter.tags);
+
+                        self.backup_iters.push((pos, chars, tags));
+                    }
+                }
+                _ => {}
+            }
+
+            tag = self.peek_valid_tag()
         }
 
         if let Some((pos, tag)) = tag {
@@ -576,18 +632,28 @@ impl Iterator for Iter<'_> {
             }
             self.tags.next();
             Some((pos, self.line, Part::from(tag)))
-        } else if let Some(char) = self.chars.next() {
-            self.pos += 1;
+        } else if let Some(char) = self.chars.next().or_else(|| {
+            self.backup_iters.pop().and_then(|(pos, chars, tags)| {
+                (self.pos, self.chars, self.tags) = (pos, chars, tags);
+                self.chars.next()
+            })
+        }) {
             let prev_line = self.line;
-            self.line += (char == '\n') as usize;
-            Some((self.pos - 1, prev_line, Part::Char(char)))
+            self.pos += 1;
+            let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                pos
+            } else {
+                self.line += (char == '\n') as usize;
+                self.pos - 1
+            };
+            Some((pos, prev_line, Part::Char(char)))
         } else {
             None
         }
     }
 }
 
-/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
+/// An [`Iterator`] over the [`Part`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
@@ -597,12 +663,46 @@ pub struct RevIter<'a> {
     tags: tags::RevIter<'a>,
     pos: usize,
     line: usize,
-    conceal_count: usize
+    conceal_count: usize,
+    texts: &'a [Text],
+    backup_iters: Vec<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
+
+    // Iteration options:
+    ghosts: bool,
+    conceals: Conceal<'a>
 }
 
 impl<'a> RevIter<'a> {
-    pub fn new(chars: chars::Iter<'a>, tags: tags::RevIter<'a>, pos: usize, line: usize) -> Self {
-        Self { chars, tags, pos, line, conceal_count: 0 }
+    pub fn new(
+        chars: chars::Iter<'a>, tags: tags::RevIter<'a>, texts: &'a [Text], pos: usize, line: usize
+    ) -> Self {
+        Self {
+            chars,
+            tags,
+            pos,
+            line,
+            conceal_count: 0,
+            texts,
+            backup_iters: Vec::new(),
+            ghosts: true,
+            conceals: Conceal::All
+        }
+    }
+
+    pub fn no_conceals(self) -> Self {
+        Self { conceals: Conceal::None, ..self }
+    }
+
+    pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
+        Self { conceals: Conceal::Excluding(list), ..self }
+    }
+
+    pub fn dont_conceal_on_lines(self, list: &'a [Cursor]) -> Self {
+        Self { conceals: Conceal::NotOnLineOf(list), ..self }
+    }
+
+    pub fn no_ghosts(self) -> Self {
+        Self { ghosts: false, ..self }
     }
 }
 
@@ -613,19 +713,40 @@ impl Iterator for RevIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut tag =
             self.tags.peek().filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0).cloned();
-        while let Some((pos, RawTag::ConcealStart(_) | RawTag::ConcealEnd(_))) = tag {
-            if let (_, RawTag::ConcealStart(_)) = tag.unwrap() {
-                self.conceal_count = self.conceal_count.saturating_sub(1)
-            } else {
-                self.conceal_count += 1
+        while let Some((
+            pos,
+            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..)
+        )) = tag
+        {
+            let prev_conceal_count = self.conceal_count;
+
+            self.tags.next();
+
+            match tag.unwrap() {
+                (_, RawTag::ConcealStart(_)) => {
+                    self.conceal_count = self.conceal_count.saturating_sub(1)
+                }
+                (_, RawTag::ConcealEnd(_)) => self.conceal_count += 1,
+                (_, RawTag::GhostText(id, _)) if self.ghosts => {
+                    if let Some(text) = self.texts.get(id) {
+                        let iter =
+                            if pos <= self.pos { text.rev_iter() } else { text.rev_iter_at(0) };
+
+                        let pos = std::mem::replace(&mut self.pos, iter.pos);
+                        let chars = std::mem::replace(&mut self.chars, iter.chars);
+                        let tags = std::mem::replace(&mut self.tags, iter.tags);
+
+                        self.backup_iters.push((pos, chars, tags));
+                    }
+                }
+                _ => {}
             }
 
-            if self.conceal_count == 0 {
+            if self.conceal_count == 0 && prev_conceal_count == 1 {
                 self.pos = self.pos.min(pos);
                 self.line = self.chars.move_to(self.pos);
             }
 
-            self.tags.next();
             tag = self
                 .tags
                 .peek()
@@ -642,14 +763,33 @@ impl Iterator for RevIter<'_> {
             }
             self.tags.next();
             Some((pos, self.line, Part::from(tag)))
-        } else if let Some(char) = self.chars.next() {
+        } else if let Some(char) = self.chars.next().or_else(|| {
+            self.backup_iters.pop().and_then(|(pos, chars, tags)| {
+                (self.pos, self.chars, self.tags) = (pos, chars, tags);
+                self.chars.next()
+            })
+        }) {
             self.pos -= 1;
-            self.line -= (char == '\n') as usize;
-            Some((self.pos, self.line, Part::Char(char)))
+            let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                pos
+            } else {
+                self.line -= (char == '\n') as usize;
+                self.pos
+            };
+            Some((pos, self.line, Part::Char(char)))
         } else {
             None
         }
     }
+}
+
+#[derive(Clone, Default)]
+enum Conceal<'a> {
+    #[default]
+    All,
+    None,
+    Excluding(&'a [Cursor]),
+    NotOnLineOf(&'a [Cursor])
 }
 
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
