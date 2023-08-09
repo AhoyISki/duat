@@ -54,7 +54,7 @@ impl<'a> Iter<'a> {
         Self { ghosts: false, ..self }
     }
 
-	#[inline(always)]
+    #[inline(always)]
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
             RawTag::ConcealStart(_) => {
@@ -121,19 +121,19 @@ impl Iterator for Iter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                    let pos = self.backup_iters.first().map(|(pos, ..)| *pos).unwrap_or(self.pos);
                     break Some((pos, self.line, Part::from(tag)));
                 }
             } else if let Some(char) = self.chars.next() {
                 let prev_line = self.line;
                 self.pos += 1;
-                let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                    pos
+
+                if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                    break Some((pos, prev_line, Part::Char(char)));
                 } else {
                     self.line += (char == '\n') as usize;
-                    self.pos - 1
-                };
-
-                break Some((pos, prev_line, Part::Char(char)));
+                    break Some((self.pos - 1, prev_line, Part::Char(char)));
+                }
             } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
             } else {
@@ -195,7 +195,7 @@ impl<'a> RevIter<'a> {
         Self { ghosts: false, ..self }
     }
 
-	#[inline(always)]
+    #[inline(always)]
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
             RawTag::ConcealStart(_) => {
@@ -252,18 +252,18 @@ impl Iterator for RevIter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                    let pos = self.backup_iters.first().map(|(pos, ..)| *pos).unwrap_or(self.pos);
+
                     break Some((pos, self.line, Part::from(tag)));
                 }
             } else if let Some(char) = self.chars.next() {
                 self.pos -= 1;
-                let pos = if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                    pos
+                if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
+                    break Some((pos, self.line, Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
-                    self.pos
-                };
-
-                break Some((pos, self.line, Part::Char(char)));
+                    break Some((self.pos, self.line, Part::Char(char)));
+                }
             } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
             } else {
