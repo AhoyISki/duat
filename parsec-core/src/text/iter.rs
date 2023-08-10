@@ -7,6 +7,20 @@ use super::{
 };
 use crate::position::Cursor;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Item {
+    pub pos: usize,
+    pub line: usize,
+    pub ghost_pos: Option<usize>,
+    pub part: Part
+}
+
+impl Item {
+    fn new(pos: usize, line: usize, ghost_pos: Option<usize>, part: Part) -> Self {
+        Self { pos, line, ghost_pos, part }
+    }
+}
+
 /// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
@@ -19,9 +33,10 @@ pub struct Iter<'a> {
     line: usize,
     conceals: usize,
     texts: &'a [Text],
-    backup_iters: Vec<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
+    backup_iter: Option<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
+    ghosts: usize,
 
-    ghosts: bool,
+    print_ghosts: bool,
     _conceals: Conceal<'a>
 }
 
@@ -36,8 +51,9 @@ impl<'a> Iter<'a> {
             line,
             conceals: 0,
             texts,
-            backup_iters: Vec::new(),
-            ghosts: true,
+            backup_iter: None,
+            ghosts: 0,
+            print_ghosts: true,
             _conceals: Conceal::All
         }
     }
@@ -51,7 +67,7 @@ impl<'a> Iter<'a> {
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self { ghosts: false, ..self }
+        Self { print_ghosts: false, ..self }
     }
 
     #[inline(always)]
@@ -71,7 +87,7 @@ impl<'a> Iter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::GhostText(id, _) => {
-                if self.ghosts && let Some(text) = self.texts.get(usize::from(id)) {
+                if self.print_ghosts && let Some(text) = self.texts.get(usize::from(id)) {
                     let iter = if pos >= self.pos && self.conceals == 0 {
                         text.iter()
                     } else {
@@ -82,7 +98,7 @@ impl<'a> Iter<'a> {
                     let chars = std::mem::replace(&mut self.chars, iter.chars);
                     let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                    self.backup_iters.push((pos, chars, tags));
+                    self.backup_iter = Some((pos, chars, tags));
                 }
 
                 ControlFlow::Continue(())
@@ -111,7 +127,7 @@ impl Iterator for Iter<'_> {
     /// - The [`Part`] itself, giving either a [`char`] or a text
     ///   modifier, which should be used to change the way the
     ///   [`Text`] is printed.
-    type Item = (usize, usize, Part);
+    type Item = Item;
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
@@ -123,20 +139,25 @@ impl Iterator for Iter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
-                    let pos = self.backup_iters.first().map(|(pos, ..)| *pos).unwrap_or(self.pos);
-                    break Some((pos, self.line, Part::from(tag)));
+                    if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
+                        break Some(Item::new(pos, self.line, Some(self.ghosts), Part::from(tag)));
+                    } else {
+                        break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
+                    }
                 }
             } else if let Some(char) = self.chars.next() {
                 let prev_line = self.line;
                 self.pos += 1;
 
-                if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                    break Some((pos, prev_line, Part::Char(char)));
+                if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
+                    self.ghosts += 1;
+                    break Some(Item::new(pos, prev_line, Some(self.ghosts - 1), Part::Char(char)));
                 } else {
                     self.line += (char == '\n') as usize;
-                    break Some((self.pos - 1, prev_line, Part::Char(char)));
+                    break Some(Item::new(self.pos - 1, prev_line, None, Part::Char(char)));
                 }
-            } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
+            } else if let Some((pos, chars, tags)) = self.backup_iter.take() {
+                self.ghosts = 0;
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
             } else {
                 break None;
@@ -157,10 +178,11 @@ pub struct RevIter<'a> {
     line: usize,
     conceals: usize,
     texts: &'a [Text],
-    backup_iters: Vec<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
+    backup_iter: Option<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
+    ghosts: usize,
 
     // Iteration options:
-    ghosts: bool,
+    print_ghosts: bool,
     _conceals: Conceal<'a>
 }
 
@@ -175,8 +197,9 @@ impl<'a> RevIter<'a> {
             line,
             conceals: 0,
             texts,
-            backup_iters: Vec::new(),
-            ghosts: true,
+            backup_iter: None,
+            ghosts: 0,
+            print_ghosts: true,
             _conceals: Conceal::All
         }
     }
@@ -194,7 +217,7 @@ impl<'a> RevIter<'a> {
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self { ghosts: false, ..self }
+        Self { print_ghosts: false, ..self }
     }
 
     #[inline(always)]
@@ -215,8 +238,9 @@ impl<'a> RevIter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::GhostText(id, _) => {
-                if self.ghosts && let Some(text) = self.texts.get(usize::from(id)) {
+                if self.print_ghosts && let Some(text) = self.texts.get(usize::from(id)) {
                     let iter = if pos <= self.pos && self.conceals == 0 {
+                        self.ghosts = text.len_chars();
                         text.rev_iter()
                     } else {
                         text.rev_iter_at(0)
@@ -226,7 +250,7 @@ impl<'a> RevIter<'a> {
                     let chars = std::mem::replace(&mut self.chars, iter.chars);
                     let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                    self.backup_iters.push((pos, chars, tags));
+                    self.backup_iter = Some((pos, chars, tags));
                 }
 
                 ControlFlow::Continue(())
@@ -245,7 +269,7 @@ impl<'a> RevIter<'a> {
 }
 
 impl Iterator for RevIter<'_> {
-    type Item = (usize, usize, Part);
+    type Item = Item;
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
@@ -257,20 +281,24 @@ impl Iterator for RevIter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
-                    let pos = self.backup_iters.first().map(|(pos, ..)| *pos).unwrap_or(self.pos);
-
-                    break Some((pos, self.line, Part::from(tag)));
+                    if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
+                        break Some(Item::new(pos, self.line, Some(self.ghosts), Part::from(tag)));
+                    } else {
+                        break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
+                    }
                 }
             } else if let Some(char) = self.chars.next() {
                 self.pos -= 1;
 
-                if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
-                    break Some((pos, self.line, Part::Char(char)));
+                if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
+                    self.ghosts -= 1;
+                    break Some(Item::new(pos, self.line, Some(self.ghosts), Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
-                    break Some((self.pos, self.line, Part::Char(char)));
+                    break Some(Item::new(self.pos, self.line, None, Part::Char(char)));
                 }
-            } else if let Some(last_iter) = self.backup_iters.pop() {
+            } else if let Some(last_iter) = self.backup_iter.take() {
+                self.ghosts = 0;
                 (self.pos, self.chars, self.tags) = last_iter;
             } else {
                 break None;

@@ -71,12 +71,12 @@ where
             for index in (20..tagger.len_chars()).step_by(30) {
                 if pushes_pops_you_cant_explain_that {
                     tagger.insert(index, Tag::ConcealStart);
-                    //tagger.insert(index, Tag::ghost_from("   Ayy lmao   "));
+                    // tagger.insert(index, Tag::ghost_from("   Ayy lmao   "));
                     tagger.insert(index, Tag::PushForm(crate::forms::SEPARATOR));
                     tagger.insert(index + 10, Tag::ConcealEnd);
                     tagger.insert(index + 11, Tag::PopForm(crate::forms::SEPARATOR));
                 } else {
-                    tagger.insert(index, Tag::ghost_from("   Hello World   "));
+                    tagger.insert(index, Tag::ghost_from("   Hello World\n lmao deal with this"));
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
@@ -222,15 +222,15 @@ where
 
         let mut last_line_num = area
             .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
-            .find_map(|((.., new_line), _)| new_line);
+            .find_map(|(caret, item)| caret.wrap.then_some(item.line));
 
         self.printed_lines = area
             .print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg))
-            .filter_map(|((.., new_line), _)| new_line)
-            .map(|line_num| {
-                let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line_num);
-                last_line_num = Some(line_num);
-                (line_num, wrapped)
+            .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
+            .map(|line| {
+                let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
+                last_line_num = Some(line);
+                (line, wrapped)
             })
             .take(area.height())
             .collect();

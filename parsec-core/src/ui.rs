@@ -13,7 +13,7 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     position::Point,
-    text::{IterCfg, Part, PrintCfg, Text},
+    text::{Item, IterCfg, Part, PrintCfg, Text},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
@@ -130,6 +130,19 @@ pub trait PrintInfo: Default + Clone + Copy {
     fn first_char(&self) -> usize;
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Caret {
+    pub x: usize,
+    pub len: usize,
+    pub wrap: bool
+}
+
+impl Caret {
+    pub fn new(x: usize, len: usize, wrap: bool) -> Self {
+        Self { x, len, wrap }
+    }
+}
+
 /// An [`Area`] that supports printing [`Text`].
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
@@ -204,8 +217,8 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Option<usize>`]: Option
     /// [`Some(usize)`]: Some
     fn print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
-    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Returns a reverse printing iterator.
     ///
@@ -237,8 +250,8 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Option<usize>`]: Option
     /// [`Some(usize)`]: Some
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
-    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a;
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.

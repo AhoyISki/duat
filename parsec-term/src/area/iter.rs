@@ -1,18 +1,21 @@
 use std::marker::PhantomData;
 
-use parsec_core::text::{IterCfg, Part, WrapMethod};
+use parsec_core::{
+    text::{Item, IterCfg, Part, WrapMethod},
+    ui::Caret
+};
 use unicode_width::UnicodeWidthChar;
 
 /// Returns an [`Iterator`] that also shows the current level of
 /// indentation.
 #[inline(always)]
 fn indents<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
-) -> impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a {
-    iter.scan((0, true), move |(indent, on_indent), (pos, line, part)| {
+    iter: impl Iterator<Item = Item> + Clone + 'a, width: usize, cfg: IterCfg<'a>
+) -> impl Iterator<Item = (usize, Item)> + Clone + 'a {
+    iter.scan((0, true), move |(indent, on_indent), item| {
         if cfg.indent_wrap() {
             let old_indent = if *indent < width { *indent } else { 0 };
-            (*indent, *on_indent) = match (&part, *on_indent) {
+            (*indent, *on_indent) = match (&item.part, *on_indent) {
                 (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
                 (&Part::Char(' '), true) => (*indent + 1, true),
                 (&Part::Char('\n'), _) => (0, true),
@@ -20,29 +23,27 @@ fn indents<'a>(
                 (_, on_indent) => (*indent, on_indent)
             };
 
-            Some((old_indent, (pos, line, part)))
+            Some((old_indent, item))
         } else {
-            Some((0, (pos, line, part)))
+            Some((0, item))
         }
     })
 }
 
 #[inline(always)]
 fn parts<'a>(
-    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
-    cfg: IterCfg<'a>
-) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+    iter: impl Iterator<Item = (usize, Item)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     iter.scan((0, true, None), move |(x, needs_to_wrap, prev_char), (indent, unit)| {
-        item((x, needs_to_wrap, prev_char), indent, unit, width, &cfg)
+        attach_caret((x, needs_to_wrap, prev_char), indent, unit, width, &cfg)
     })
 }
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
 fn words<'a>(
-    iter: impl Iterator<Item = (usize, (usize, usize, Part))> + Clone + 'a, width: usize,
-    cfg: IterCfg<'a>
-) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+    iter: impl Iterator<Item = (usize, Item)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut iter = iter.peekable();
     let mut indent = 0;
     let mut word = Vec::new();
@@ -53,12 +54,18 @@ fn words<'a>(
     let mut needs_to_wrap = true;
     std::iter::from_fn(move || {
         if let Some(unit) = finished_word.pop() {
-            return item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, &cfg);
+            return attach_caret(
+                (&mut x, &mut needs_to_wrap, &mut prev_char),
+                indent,
+                unit,
+                width,
+                &cfg
+            );
         }
 
         let mut word_len = 0;
-        while let Some((new_indent, (.., bit))) = iter.peek() {
-            if let &Part::Char(char) = bit {
+        while let Some((new_indent, item)) = iter.peek() {
+            if let Part::Char(char) = item.part {
                 indent = *new_indent;
                 if cfg.word_chars().contains(char) {
                     word_len += len_from(char, x + word_len, width, &cfg, prev_char)
@@ -75,32 +82,32 @@ fn words<'a>(
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
         finished_word.pop().and_then(|unit| {
-            item((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, &cfg)
+            attach_caret((&mut x, &mut needs_to_wrap, &mut prev_char), indent, unit, width, &cfg)
         })
     })
 }
 
 #[inline(always)]
-fn item(
+fn attach_caret(
     (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>), indent: usize,
-    (pos, line, part): (usize, usize, Part), width: usize, cfg: &IterCfg
-) -> Option<((usize, usize, Option<usize>), (usize, Part))> {
-    let (len, processed_part) = process_part(part, cfg, prev_char, x, width);
+    mut item: Item, width: usize, cfg: &IterCfg
+) -> Option<(Caret, Item)> {
+    let (len, processed_part) = process_part(item.part, cfg, prev_char, x, width);
     *x += len;
 
     let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
-    let go_to_nl = (nl_wrap || width_wrap).then(|| {
+    if nl_wrap || width_wrap {
         *x = indent + len;
         *needs_to_wrap = false;
-        line
-    });
+    };
 
-    if let Some(char) = part.as_char() {
+    if let Some(char) = item.part.as_char() {
         *needs_to_wrap = char == '\n'
     }
 
-    Some(((*x - len, len, go_to_nl), (pos, processed_part)))
+    item.part = processed_part;
+    Some((Caret::new(*x - len, len, nl_wrap || width_wrap), item))
 }
 
 #[inline(always)]
@@ -130,20 +137,35 @@ fn process_part(
 #[derive(Clone)]
 enum Iter<'a, Bits, Words>
 where
-    Bits: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a,
-    Words: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a
+    Bits: Iterator<Item = (Caret, Item)> + Clone + 'a,
+    Words: Iterator<Item = (Caret, Item)> + Clone + 'a
 {
     Parts(Bits, PhantomData<&'a ()>),
     Words(Words)
 }
 
+impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
+where
+    Parts: Iterator<Item = (Caret, Item)> + Clone + 'a,
+    Words: Iterator<Item = (Caret, Item)> + Clone + 'a
+{
+    type Item = (Caret, Item);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Iter::Parts(parts, _) => parts.next(),
+            Iter::Words(words) => words.next()
+        }
+    }
+}
+
 pub fn print_iter<'a>(
-    iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize, cfg: IterCfg<'a>
-) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+    iter: impl Iterator<Item = Item> + Clone + 'a, width: usize, cfg: IterCfg<'a>
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() { cap } else { width };
 
     let indents = indents(iter, width, cfg)
-        .filter(move |(_, (pos, _, part))| *pos >= cfg.first_char() || part.is_tag());
+        .filter(move |(_, item)| item.pos >= cfg.first_char() || item.part.is_tag());
 
     match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
@@ -154,9 +176,8 @@ pub fn print_iter<'a>(
 }
 
 pub fn rev_print_iter<'a>(
-    mut iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, width: usize,
-    mut cfg: IterCfg<'a>
-) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+    mut iter: impl Iterator<Item = Item> + Clone + 'a, width: usize, mut cfg: IterCfg<'a>
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
     std::iter::from_fn(move || {
@@ -164,13 +185,13 @@ pub fn rev_print_iter<'a>(
             Some(next)
         } else {
             let mut give_up = false;
-            let mut items: Vec<(usize, usize, Part)> = prev_line_nl.take().into_iter().collect();
-            while let Some((pos, line, part)) = iter.next() {
-                if let Part::Char('\n') = part {
+            let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
+            while let Some(item) = iter.next() {
+                if let Part::Char('\n') = item.part {
                     if items.is_empty() {
-                        items.push((pos, line, part));
+                        items.push(item);
                     } else {
-                        prev_line_nl = Some((pos, line, Part::Char('\n')));
+                        prev_line_nl = Some(item);
                         break;
                     }
                 // NOTE: 20000 is a magic number, it's merely a guess
@@ -179,7 +200,7 @@ pub fn rev_print_iter<'a>(
                     give_up = true;
                     break;
                 } else {
-                    items.push((pos, line, part));
+                    items.push(item);
                 }
             }
 
@@ -191,21 +212,6 @@ pub fn rev_print_iter<'a>(
             returns.pop()
         }
     })
-}
-
-impl<'a, Parts, Words> Iterator for Iter<'a, Parts, Words>
-where
-    Parts: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a,
-    Words: Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a
-{
-    type Item = ((usize, usize, Option<usize>), (usize, Part));
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Iter::Parts(parts, _) => parts.next(),
-            Iter::Words(words) => words.next()
-        }
-    }
 }
 
 #[inline(always)]

@@ -15,9 +15,10 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
+    log_info,
     position::Point,
-    text::{IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
+    text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
 };
 
 use crate::{
@@ -138,18 +139,22 @@ impl ui::Area for Area {
             return;
         }
 
-        let iter = {
-            let (start, cfg) = if let Some(start) = text.close_visual_line_start(info.first_char) {
-                (start, IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs())
-            } else {
-                (info.first_char, IterCfg::new(cfg).no_word_wrap().no_indent_wrap())
-            };
-
-            print_iter(text.iter_at(start), coords.width(), cfg)
+        let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first_char) {
+            let cfg = IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs();
+            (text.iter_at(start), cfg)
+        } else {
+            let cfg = IterCfg::new(cfg).outsource_lfs().no_word_wrap().no_indent_wrap();
+            (text.iter_at(info.first_char), cfg)
         };
 
         let form_former = palette.form_former();
-        let y = print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout);
+        let y = if info.ghost_pos > 0 {
+            let iter = print_iter(iter, coords.width(), cfg);
+            print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout)
+        } else {
+            let iter = print_iter(iter, coords.width(), cfg);
+            print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout)
+        };
 
         for y in (0..y).rev() {
             clear_line(Coord::new(coords.tl.x, coords.br.y - y), coords, 0, &mut stdout);
@@ -208,14 +213,14 @@ impl ui::Area for Area {
     }
 
     fn print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
-    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         print_iter(iter, self.width(), cfg)
     }
 
     fn rev_print_iter<'a>(
-        &self, iter: impl Iterator<Item = (usize, usize, Part)> + Clone + 'a, cfg: IterCfg<'a>
-    ) -> impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))> + Clone + 'a {
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         rev_print_iter(iter, self.width(), cfg)
     }
 }
@@ -231,6 +236,9 @@ pub struct PrintInfo {
     /// The index of the first [`char`] that should be printed on the
     /// screen.
     first_char: usize,
+    /// The index of the first [`char`] that should be printed,
+    /// relative to the beginning of a ghost text.
+    ghost_pos: usize,
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.
@@ -243,30 +251,33 @@ impl PrintInfo {
     fn scroll_ver_to_gap(&mut self, point: Point, text: &Text, area: &Area, cfg: IterCfg) {
         let inclusive_pos = point.true_char() + 1;
         let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), area.width(), cfg)
-            .filter_map(|((.., new_line), (pos, _))| new_line.zip(Some(pos)))
+            .filter_map(|(caret, item)| caret.wrap.then_some(item))
             .peekable();
 
-        let point_line_nl_was_skipped = iter
-            .peek()
-            .is_some_and(|(new_line, _)| *new_line < point.true_line() && point.true_col() == 0);
+        let point_line_nl_was_concealed =
+            iter.peek().is_some_and(|item| item.line < point.true_line() && point.true_col() == 0);
 
-        let mut iter = iter.map(|(_, pos)| pos);
+        let mut iter = iter.map(|item| (item.ghost_pos, item.pos));
 
-        self.first_char = if self.last_main > point {
-            if point_line_nl_was_skipped {
-                let skipped_nl = std::iter::once(point.true_char());
-                skipped_nl.chain(iter).nth(cfg.scrolloff().y_gap).unwrap_or(0).min(self.first_char)
+        (self.ghost_pos, self.first_char) = if self.last_main > point {
+            let (ghosts, first_char) = if point_line_nl_was_concealed {
+                let skipped_nl = std::iter::once((None, point.true_char()));
+                skipped_nl.chain(iter).nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
             } else {
-                iter.nth(cfg.scrolloff().y_gap).unwrap_or(0).min(self.first_char)
-            }
+                iter.nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
+            };
+
+            (ghosts.unwrap_or(0), first_char.min(self.first_char))
         } else {
             let target = area.height().saturating_sub(cfg.scrolloff().y_gap + 1);
-            if point_line_nl_was_skipped {
-                let skipped_nl = std::iter::once(point.true_char());
-                skipped_nl.chain(iter).nth(target).unwrap_or(0).max(self.first_char)
+            let (ghosts, first_char) = if point_line_nl_was_concealed {
+                let skipped_nl = std::iter::once((None, point.true_char()));
+                skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
             } else {
-                iter.nth(target).unwrap_or(0).max(self.first_char)
-            }
+                iter.nth(target).unwrap_or((None, 0))
+            };
+
+            (ghosts.unwrap_or(0), first_char.max(self.first_char))
         };
     }
 
@@ -290,19 +301,22 @@ impl PrintInfo {
             let inclusive_pos = point.true_char() + 1;
             let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg).scan(
                 false,
-                |last_was_nl, item| {
-                    let prev_last_was_nl = *last_was_nl;
-                    *last_was_nl = item.0.2.is_some();
-                    (!prev_last_was_nl).then_some(item)
+                |wrapped, (caret, item)| {
+                    let prev_wrapped = *wrapped;
+                    *wrapped = caret.wrap;
+                    (!prev_wrapped).then_some((caret, item))
                 }
             );
 
             let (pos, start, end) = iter
-                .find_map(|((x, len, _), (pos, part))| part.as_char().and(Some((pos, x, x + len))))
+                .find_map(|(Caret { x, len, .. }, Item { pos, part, .. })| {
+                    part.as_char().and(Some((pos, x, x + len)))
+                })
                 .unwrap_or((0, 0, 0));
 
-            let line_start =
-                iter.find_map(|((.., new_line), (pos, _))| new_line.and(Some(pos))).unwrap_or(pos);
+            let line_start = iter
+                .find_map(|(Caret { wrap, .. }, Item { pos, .. })| wrap.then_some(pos))
+                .unwrap_or(pos);
 
             (line_start, start, end)
         };
@@ -317,8 +331,8 @@ impl PrintInfo {
         } else if end > self.x_shift + max_dist {
             let line_width = print_iter(text.iter_at(line_start), width, cfg).try_fold(
                 (0, 0),
-                |(right_end, some_count), ((x, len, new_line), _)| {
-                    let some_count = some_count + new_line.is_some() as usize;
+                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
+                    let some_count = some_count + wrap as usize;
                     match some_count < 2 {
                         true => std::ops::ControlFlow::Continue((x + len, some_count)),
                         false => std::ops::ControlFlow::Break(right_end)
@@ -353,8 +367,8 @@ impl ui::PrintInfo for PrintInfo {
 }
 
 fn print_parts(
-    iter: impl Iterator<Item = ((usize, usize, Option<usize>), (usize, Part))>, coords: Coords,
-    is_active: bool, info: PrintInfo, mut form_former: FormFormer, stdout: &mut StdoutLock
+    iter: impl Iterator<Item = (Caret, Item)>, coords: Coords, is_active: bool, info: PrintInfo,
+    mut form_former: FormFormer, stdout: &mut StdoutLock
 ) -> usize {
     let mut x = coords.tl.x;
     // The y here represents the bottom line of the current row of cells.
@@ -363,8 +377,8 @@ fn print_parts(
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    for ((new_x, len, line_num), (_, part)) in iter {
-        if line_num.is_some() {
+    for (Caret { x: new_x, len, wrap }, Item { part, .. }) in iter {
+        if wrap {
             if y > coords.tl.y {
                 let shifted_x = x.saturating_sub(info.x_shift);
                 print_line(shifted_x, y, coords, alignment, &mut line, stdout);

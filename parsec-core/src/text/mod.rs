@@ -14,7 +14,7 @@ use ropey::Rope;
 
 pub use self::{
     cfg::*,
-    iter::{Iter, RevIter},
+    iter::{Item, Iter, RevIter},
     tags::{Handle, InsertionTag as Tag},
     types::{BuilderTag, Part}
 };
@@ -25,7 +25,7 @@ use self::{
 use crate::{
     forms,
     history::Change,
-    position::{Cursor, Point}
+    position::{Cursor, Point}, log_info
 };
 
 /// The text in a given area.
@@ -122,7 +122,7 @@ impl Text {
         }
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
-        self.rev_iter_at(pos).take(20000).find_map(|(pos, _, part)| {
+        self.rev_iter_at(pos).take(20000).find_map(|Item { pos, part, .. }| {
             if part.as_char().is_some_and(|char| char == '\n') {
                 Some(pos + 1)
             } else {
@@ -212,9 +212,7 @@ impl Text {
     }
 
     /// TO BE DEPRECATED.
-    pub fn iter_line(
-        &self, line: usize
-    ) -> impl Iterator<Item = (usize, usize, Part)> + Clone + '_ {
+    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = Item> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
         let chars = self.chars.iter_at(start);
@@ -223,7 +221,7 @@ impl Text {
         let tags = self.tags.iter_at(tags_start);
 
         Iter::new(chars, tags, &self.tags.texts, start, line)
-            .take_while(move |(pos, ..)| *pos < end)
+            .take_while(move |item| item.pos < end)
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<'_> {
@@ -258,7 +256,7 @@ impl Text {
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
-        self.iter_line(line).filter_map(|(.., bit)| bit.as_char())
+        self.iter_line(line).filter_map(|item| item.part.as_char())
     }
 }
 /// Builds and modifies a [`Text<U>`], based on replacements applied
