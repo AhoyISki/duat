@@ -10,18 +10,23 @@ use std::{
     ops::{Range, RangeInclusive}
 };
 
-pub use cfg::*;
-use chars::Chars;
-pub use iter::{Iter, RevIter};
 use ropey::Rope;
-pub use tags::{Handle, InsertionTag as Tag};
-use tags::{RawTag, TagOrSkip, Tags};
-pub use types::{BuilderTag, Part};
 
+pub use self::{
+    cfg::*,
+    iter::{Iter, RevIter},
+    tags::{Handle, InsertionTag as Tag},
+    types::{BuilderTag, Part}
+};
+use self::{
+    chars::Chars,
+    tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId}
+};
 use crate::{
     forms,
     history::Change,
-    position::{Cursor, Point}};
+    position::{Cursor, Point}
+};
 
 /// The text in a given area.
 pub struct Text {
@@ -490,7 +495,7 @@ impl<'a> Tagger<'a> {
         self.chars.iter_at(ch_index)
     }
 
-    pub fn insert(&mut self, char: usize, tag: Tag) {
+    pub fn insert(&mut self, char: usize, tag: Tag) -> (Option<TextId>, Option<ToggleId>) {
         self.tags.insert(char, tag, self.handle)
     }
 

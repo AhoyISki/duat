@@ -80,7 +80,8 @@ impl ui::Ui for Ui {
                 terminal::Clear(ClearType::All),
                 terminal::LeaveAlternateScreen,
                 cursor::Show
-            ).unwrap();
+            )
+            .unwrap();
 
             terminal::disable_raw_mode().unwrap();
 
@@ -98,7 +99,8 @@ impl ui::Ui for Ui {
             terminal::Clear(ClearType::All),
             terminal::LeaveAlternateScreen,
             cursor::Show
-        ).unwrap();
+        )
+        .unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 }

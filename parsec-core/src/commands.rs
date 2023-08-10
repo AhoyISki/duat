@@ -732,8 +732,8 @@ impl Commands {
         let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
 
         let commands = self.list.iter();
-        for (caller, file_id) in commands
-            .flat_map(|cmd| cmd.callers().iter().map(|caller| (caller, cmd.file_id)))
+        for (caller, file_id) in
+            commands.flat_map(|cmd| cmd.callers().iter().map(|caller| (caller, cmd.file_id)))
         {
             if new_callers.any(|new_caller| new_caller == caller)
                 && file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true)

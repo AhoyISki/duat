@@ -8,7 +8,7 @@ use crate::{
     forms::FormPalette,
     input::{KeyRemapper, Scheme},
     text::PrintCfg,
-    ui::{activate_hook, ModNode, Window, PushSpecs, Ui},
+    ui::{activate_hook, ModNode, PushSpecs, Ui, Window},
     widgets::{FileWidget, WidgetType},
     Controler, BREAK_LOOP, SHOULD_QUIT
 };
@@ -226,9 +226,10 @@ fn send_event<U, I>(
     };
 
     controler.inspect_active_window(|window| {
-        let Some((widget_type, area, _)) = window.widgets().find(|(widget_type, ..)| {
-            widget_type.scheme_ptr_eq(&*controler.active_widget.read())
-        }) else {
+        let Some((widget_type, area, _)) = window
+            .widgets()
+            .find(|(widget_type, ..)| widget_type.scheme_ptr_eq(&*controler.active_widget.read()))
+        else {
             return;
         };
         let widget = widget_type.as_scheme_input().unwrap();

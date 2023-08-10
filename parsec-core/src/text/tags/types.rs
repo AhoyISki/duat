@@ -1,5 +1,35 @@
-use super::{Handle, ToggleId};
+use super::Handle;
 use crate::{forms::FormId, position::Point, text::Text};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TextId(usize);
+
+impl TextId {
+	pub fn new(id: usize) -> Self {
+    	Self(id)
+	}
+}
+
+impl From<TextId> for usize {
+    fn from(value: TextId) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ToggleId(usize);
+
+impl ToggleId {
+	pub fn new(id: usize) -> Self {
+    	Self(id)
+	}
+}
+
+impl From<ToggleId> for usize {
+    fn from(value: ToggleId) -> Self {
+        value.0
+    }
+}
 
 pub enum InsertionTag {
     // Implemented:
@@ -25,11 +55,10 @@ pub enum InsertionTag {
     AlignRight,
 
     // In the process of implementing.
+    NewGhostText(Text),
+    GhostText(TextId),
     ConcealStart,
     ConcealEnd,
-
-    GhostString(String),
-    GhostText(Text),
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
@@ -52,8 +81,8 @@ pub enum InsertionTag {
 }
 
 impl InsertionTag {
-    pub fn ghost_string(to_string: impl ToString) -> Self {
-        Self::GhostString(to_string.to_string())
+    pub fn ghost_from(to_string: impl ToString) -> Self {
+        Self::NewGhostText(Text::new_string(to_string))
     }
 
     pub fn hover_start(on: impl Fn(Point) + 'static, off: impl Fn(Point) + 'static) -> Self {
@@ -77,25 +106,21 @@ impl InsertionTag {
     pub fn to_raw(
         self, handle: Handle, texts: &mut Vec<Text>,
         toggles: &mut Vec<(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>)>
-    ) -> RawTag {
-        match self {
-            InsertionTag::PushForm(id) => RawTag::PushForm(id, handle),
-            InsertionTag::PopForm(id) => RawTag::PopForm(id, handle),
-            InsertionTag::MainCursor => RawTag::MainCursor(handle),
-            InsertionTag::ExtraCursor => RawTag::ExtraCursor(handle),
-            InsertionTag::AlignLeft => RawTag::AlignLeft(handle),
-            InsertionTag::AlignCenter => RawTag::AlignCenter(handle),
-            InsertionTag::AlignRight => RawTag::AlignRight(handle),
-            InsertionTag::ConcealStart => RawTag::ConcealStart(handle),
-            InsertionTag::ConcealEnd => RawTag::ConcealEnd(handle),
-            InsertionTag::GhostString(string) => {
-                #[cfg(not(feature = "wacky-colors"))]
-                let text = Text::new_string(string);
-
+    ) -> (Option<TextId>, Option<ToggleId>, RawTag) {
+        let (mut text_id, mut toggle_id) = (None, None);
+        let tag = match self {
+            Self::PushForm(id) => RawTag::PushForm(id, handle),
+            Self::PopForm(id) => RawTag::PopForm(id, handle),
+            Self::MainCursor => RawTag::MainCursor(handle),
+            Self::ExtraCursor => RawTag::ExtraCursor(handle),
+            Self::AlignLeft => RawTag::AlignLeft(handle),
+            Self::AlignCenter => RawTag::AlignCenter(handle),
+            Self::AlignRight => RawTag::AlignRight(handle),
+            Self::NewGhostText(text) => {
                 #[cfg(feature = "wacky-colors")]
                 let text = {
                     use crate::{forms, text::Tag};
-                    let mut text = Text::new_string(string);
+                    let mut text = text;
                     let mut tagger = text.tag_with(Handle::new());
                     tagger.insert(0, Tag::PushForm(forms::COORDS));
                     tagger.insert(tagger.len_chars(), Tag::PopForm(forms::COORDS));
@@ -104,40 +129,46 @@ impl InsertionTag {
                 };
 
                 texts.push(text);
-                RawTag::GhostText(texts.len() - 1, handle)
+                text_id = Some(TextId(texts.len() - 1));
+                RawTag::GhostText(TextId(texts.len() - 1), handle)
             }
-            InsertionTag::GhostText(text) => {
-                texts.push(text);
-                RawTag::GhostText(texts.len() - 1, handle)
-            }
-            InsertionTag::NewHoverStart(on_fn, off_fn) => {
+            Self::GhostText(id) => RawTag::GhostText(id, handle),
+            Self::ConcealStart => RawTag::ConcealStart(handle),
+            Self::ConcealEnd => RawTag::ConcealEnd(handle),
+            Self::NewHoverStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
+                toggle_id = Some(ToggleId(toggles.len() - 1));
                 RawTag::HoverStart(ToggleId(toggles.len() - 1), handle)
             }
-            InsertionTag::HoverStart(id) => RawTag::HoverStart(id, handle),
-            InsertionTag::HoverEnd(id) => RawTag::HoverEnd(id, handle),
+            Self::HoverStart(id) => RawTag::HoverStart(id, handle),
+            Self::HoverEnd(id) => RawTag::HoverEnd(id, handle),
 
-            InsertionTag::NewLeftButtonStart(on_fn, off_fn) => {
+            Self::NewLeftButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
+                toggle_id = Some(ToggleId(toggles.len() - 1));
                 RawTag::LeftButtonStart(ToggleId(texts.len() - 1), handle)
             }
-            InsertionTag::LeftButtonStart(id) => RawTag::LeftButtonStart(id, handle),
-            InsertionTag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id, handle),
+            Self::LeftButtonStart(id) => RawTag::LeftButtonStart(id, handle),
+            Self::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id, handle),
 
-            InsertionTag::NewRightButtonStart(on_fn, off_fn) => {
+            Self::NewRightButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
+                toggle_id = Some(ToggleId(toggles.len() - 1));
                 RawTag::RightButtonStart(ToggleId(texts.len() - 1), handle)
             }
-            InsertionTag::RightButtonStart(id) => RawTag::RightButtonStart(id, handle),
-            InsertionTag::RightButtonEnd(id) => RawTag::RightButtonEnd(id, handle),
+            Self::RightButtonStart(id) => RawTag::RightButtonStart(id, handle),
+            Self::RightButtonEnd(id) => RawTag::RightButtonEnd(id, handle),
 
-            InsertionTag::NewMiddleButtonStart(on_fn, off_fn) => {
+            Self::NewMiddleButtonStart(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
+                toggle_id = Some(ToggleId(toggles.len() - 1));
                 RawTag::MiddleButtonStart(ToggleId(texts.len() - 1), handle)
             }
-            InsertionTag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id, handle),
-            InsertionTag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle)
-        }
+            Self::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id, handle),
+            Self::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle)
+        };
+
+        (text_id, toggle_id, tag)
     }
 }
 
@@ -186,7 +217,7 @@ pub enum RawTag {
     /// the iteration, which could be slow.
     Concealed(usize),
 
-    GhostText(usize, Handle),
+    GhostText(TextId, Handle),
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
@@ -241,7 +272,7 @@ impl RawTag {
                 | RawTag::AlignCenter(_)
                 | RawTag::AlignRight(_)
                 | RawTag::HoverStart(..)
-                | RawTag::ConcealStart(_)
+                | RawTag::ConcealStart(..)
         )
     }
 
@@ -251,7 +282,7 @@ impl RawTag {
             RawTag::PopForm(..)
                 | RawTag::AlignLeft(_)
                 | RawTag::HoverEnd(..)
-                | RawTag::ConcealEnd(_)
+                | RawTag::ConcealEnd(..)
         )
     }
 
@@ -275,7 +306,7 @@ impl RawTag {
             | RawTag::RightButtonEnd(_, handle)
             | RawTag::MiddleButtonStart(_, handle)
             | RawTag::MiddleButtonEnd(_, handle) => *handle,
-            RawTag::Concealed(_) => unreachable!()
+            RawTag::Concealed(..) => unreachable!()
         }
     }
 }

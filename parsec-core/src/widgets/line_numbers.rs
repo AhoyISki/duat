@@ -26,7 +26,7 @@ use super::{file_widget::FileWidget, Widget, WidgetType};
 use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
-    text::{Text, TextBuilder, BuilderTag},
+    text::{BuilderTag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler
 };

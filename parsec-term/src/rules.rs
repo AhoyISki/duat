@@ -1,6 +1,6 @@
 use parsec_core::{
     data::{AsAny, ReadableData, RoData},
-    forms::{FormPalette, DEFAULT, FormId},
+    forms::{FormId, FormPalette, DEFAULT},
     text::{BuilderTag, Text, TextBuilder},
     ui::{Constraint, PushSpecs, Ui},
     widgets::{FileWidget, Widget, WidgetType},

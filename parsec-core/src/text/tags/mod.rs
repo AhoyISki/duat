@@ -1,11 +1,11 @@
 use std::{
     cmp::Ordering::*,
-    ops::{Range, RangeFrom, RangeTo},
+    ops::{Range, RangeFrom, RangeTo}
 };
 
 use any_rope::{Measurable, Rope};
 use container::Container;
-pub use types::{InsertionTag, RawTag};
+pub use types::{InsertionTag, RawTag, TextId, ToggleId};
 
 use super::Text;
 use crate::{position::Point, text::chars::Chars};
@@ -35,9 +35,6 @@ impl Default for Handle {
         Handle::new()
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ToggleId(pub(super) usize);
 
 #[derive(Clone, Copy)]
 pub enum TagOrSkip {
@@ -139,38 +136,42 @@ impl Tags {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, insertion_tag: InsertionTag, handle: Handle) {
-        let raw_tag = insertion_tag.to_raw(handle, &mut self.texts, &mut self.toggles);
+    pub fn insert(
+        &mut self, pos: usize, insertion_tag: InsertionTag, handle: Handle
+    ) -> (Option<TextId>, Option<ToggleId>) {
+        let (text_id, toggle_id, raw_tag) =
+            insertion_tag.to_raw(handle, &mut self.texts, &mut self.toggles);
 
         assert!(pos <= self.width(), "Char index {} too large", pos);
 
-        let Some((start, TagOrSkip::Skip(skip))) = self.get_from_char(pos) else {
-            self.container.insert(pos, TagOrSkip::Tag(raw_tag));
-            return;
-        };
+        if let Some((start, TagOrSkip::Skip(skip))) = self.get_from_char(pos) {
+            // If inserting at any of the ends, no splitting is necessary.
+            if pos == start || pos == (start + skip) {
+                self.container.insert(pos, TagOrSkip::Tag(raw_tag))
+            } else {
+                let insertion = [
+                    TagOrSkip::Skip(pos - start),
+                    TagOrSkip::Tag(raw_tag),
+                    TagOrSkip::Skip(start + skip - pos)
+                ];
+                self.container.insert_slice(start, &insertion);
 
-        // If inserting at any of the ends, no splitting is necessary.
-        if pos == start || pos == (start + skip) {
-            self.container.insert(pos, TagOrSkip::Tag(raw_tag))
+                let skip_range = (start + skip)..(start + 2 * skip);
+                self.container.remove_exclusive(skip_range);
+            }
         } else {
-            let insertion = [
-                TagOrSkip::Skip(pos - start),
-                TagOrSkip::Tag(raw_tag),
-                TagOrSkip::Skip(start + skip - pos)
-            ];
-            self.container.insert_slice(start, &insertion);
-
-            let skip_range = (start + skip)..(start + 2 * skip);
-            self.container.remove_exclusive(skip_range);
+            self.container.insert(pos, TagOrSkip::Tag(raw_tag));
         }
 
         try_insert((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
         rearrange_ranges(&mut self.ranges, self.range_min);
-        self.cull_small_ranges()
+        self.cull_small_ranges();
+
+        (text_id, toggle_id)
     }
 
-    /// Removes all [Tag]s associated with a given [Lock] in the
-    /// `ch_index`.
+    /// Removes all [`Tag`]s associated with a given [`Handle`] in the
+    /// `pos`.
     pub fn remove_on(&mut self, pos: usize, handle: Handle) {
         let removed = self.container.remove_inclusive_on(pos, handle);
 
@@ -281,7 +282,7 @@ impl Tags {
     /// single one.
     ///
     /// This is crucial to prevent the gradual deterioration of the
-    /// [`InnerTags`]'s structure.
+    /// [`Container`]'s structure.
     fn merge_surrounding_skips(&mut self, from: usize) {
         let tags_in_middle = self
             .container
@@ -808,6 +809,9 @@ fn try_insert(
     if let Some(range) = range.filter(|range| range.count_ge(range_min)) {
         let (Ok(index) | Err(index)) = ranges.binary_search(&range);
         ranges.insert(index, range);
+        if ranges.len() > 4 {
+            panic!();
+        }
     }
 }
 

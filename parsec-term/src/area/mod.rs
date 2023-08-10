@@ -17,7 +17,8 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Point,
     text::{IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}};
+    ui::{self, Area as UiArea, Axis, Constraint, PushSpecs}
+};
 
 use crate::{
     layout::{Edge, EdgeBrush, EdgeCoords, Layout},

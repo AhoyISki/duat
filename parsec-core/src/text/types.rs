@@ -108,31 +108,32 @@ impl BuilderTag {
             BuilderTag::AlignRight => RawTag::AlignRight(handle),
             BuilderTag::HoverStartNew(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
-                RawTag::HoverStart(ToggleId(toggles.len() - 1), handle)
+                RawTag::HoverStart(ToggleId::new(toggles.len() - 1), handle)
             }
             BuilderTag::HoverStart(id) => RawTag::HoverStart(id, handle),
             BuilderTag::HoverEnd(id) => RawTag::HoverEnd(id, handle),
 
             BuilderTag::LeftButtonStartNew(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
-                RawTag::LeftButtonStart(ToggleId(toggles.len() - 1), handle)
+                RawTag::LeftButtonStart(ToggleId::new(toggles.len() - 1), handle)
             }
             BuilderTag::LeftButtonStart(id) => RawTag::LeftButtonStart(id, handle),
             BuilderTag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id, handle),
 
             BuilderTag::RightButtonStartNew(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
-                RawTag::RightButtonStart(ToggleId(toggles.len() - 1), handle)
+                RawTag::RightButtonStart(ToggleId::new(toggles.len() - 1), handle)
             }
             BuilderTag::RightButtonStart(id) => RawTag::RightButtonStart(id, handle),
             BuilderTag::RightButtonEnd(id) => RawTag::RightButtonEnd(id, handle),
 
             BuilderTag::MiddleButtonStartNew(on_fn, off_fn) => {
                 toggles.push((on_fn, off_fn));
-                RawTag::MiddleButtonStart(ToggleId(toggles.len() - 1), handle)
+                RawTag::MiddleButtonStart(ToggleId::new(toggles.len() - 1), handle)
             }
             BuilderTag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id, handle),
             BuilderTag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle)
         }
     }
 }
+

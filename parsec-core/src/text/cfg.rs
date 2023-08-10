@@ -184,7 +184,7 @@ impl<'a> IterCfg<'a> {
         match self.cfg.wrap_method {
             WrapMethod::Word if matches!(self.force_wrap, Some(WrapMethod::NoWrap)) => self,
             WrapMethod::Word => Self { force_wrap: Some(WrapMethod::Width), ..self },
-            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self,
+            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self
         }
     }
 

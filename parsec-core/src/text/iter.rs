@@ -17,7 +17,7 @@ pub struct Iter<'a> {
     tags: tags::Iter<'a>,
     pos: usize,
     line: usize,
-    conceal_count: usize,
+    conceals: usize,
     texts: &'a [Text],
     backup_iters: Vec<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
 
@@ -34,7 +34,7 @@ impl<'a> Iter<'a> {
             tags,
             pos,
             line,
-            conceal_count: 0,
+            conceals: 0,
             texts,
             backup_iters: Vec::new(),
             ghosts: true,
@@ -58,12 +58,12 @@ impl<'a> Iter<'a> {
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
             RawTag::ConcealStart(_) => {
-                self.conceal_count += 1;
+                self.conceals += 1;
                 ControlFlow::Continue(())
             }
             RawTag::ConcealEnd(_) => {
-                self.conceal_count = self.conceal_count.saturating_sub(1);
-                if self.conceal_count == 0 {
+                self.conceals = self.conceals.saturating_sub(1);
+                if self.conceals == 0 {
                     self.pos = self.pos.max(pos);
                     self.line = self.chars.move_to(self.pos);
                 }
@@ -71,9 +71,12 @@ impl<'a> Iter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::GhostText(id, _) => {
-                if self.ghosts && let Some(text) = self.texts.get(id) {
-                    let iter =
-                        if pos >= self.pos { text.iter() } else { text.iter_at(text.len_chars()) };
+                if self.ghosts && let Some(text) = self.texts.get(usize::from(id)) {
+                    let iter = if pos >= self.pos && self.conceals == 0 {
+                        text.iter()
+                    } else {
+                        text.iter_at(text.len_chars())
+                    };
 
                     let pos = std::mem::replace(&mut self.pos, iter.pos);
                     let chars = std::mem::replace(&mut self.chars, iter.chars);
@@ -89,7 +92,7 @@ impl<'a> Iter<'a> {
                 self.pos = pos.saturating_add(skip);
                 self.tags.move_to(self.pos);
                 self.line = self.chars.move_to(self.pos);
-                self.conceal_count = 0;
+                self.conceals = 0;
                 ControlFlow::Break(())
             }
             _ => ControlFlow::Break(())
@@ -115,8 +118,7 @@ impl Iterator for Iter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(pos, tag)) =
-                tag.filter(|(pos, _)| *pos <= self.pos || self.conceal_count > 0)
+            if let Some(&(pos, tag)) = tag.filter(|(pos, _)| *pos <= self.pos || self.conceals > 0)
             {
                 self.tags.next();
 
@@ -153,7 +155,7 @@ pub struct RevIter<'a> {
     tags: tags::RevIter<'a>,
     pos: usize,
     line: usize,
-    conceal_count: usize,
+    conceals: usize,
     texts: &'a [Text],
     backup_iters: Vec<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
 
@@ -171,7 +173,7 @@ impl<'a> RevIter<'a> {
             tags,
             pos,
             line,
-            conceal_count: 0,
+            conceals: 0,
             texts,
             backup_iters: Vec::new(),
             ghosts: true,
@@ -199,8 +201,8 @@ impl<'a> RevIter<'a> {
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
             RawTag::ConcealStart(_) => {
-                self.conceal_count = self.conceal_count.saturating_sub(1);
-                if self.conceal_count == 0 {
+                self.conceals = self.conceals.saturating_sub(1);
+                if self.conceals == 0 {
                     self.pos = self.pos.min(pos);
                     self.line = self.chars.move_to(self.pos);
                 }
@@ -208,13 +210,17 @@ impl<'a> RevIter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::ConcealEnd(_) => {
-                self.conceal_count += 1;
+                self.conceals += 1;
 
                 ControlFlow::Continue(())
             }
             RawTag::GhostText(id, _) => {
-                if self.ghosts && let Some(text) = self.texts.get(id) {
-                    let iter = if pos <= self.pos { text.rev_iter() } else { text.rev_iter_at(0) };
+                if self.ghosts && let Some(text) = self.texts.get(usize::from(id)) {
+                    let iter = if pos <= self.pos && self.conceals == 0 {
+                        text.rev_iter()
+                    } else {
+                        text.rev_iter_at(0)
+                    };
 
                     let pos = std::mem::replace(&mut self.pos, iter.pos);
                     let chars = std::mem::replace(&mut self.chars, iter.chars);
@@ -229,7 +235,7 @@ impl<'a> RevIter<'a> {
                 self.pos = pos.saturating_sub(skip);
                 self.tags.move_to(self.pos);
                 self.line = self.chars.move_to(self.pos);
-                self.conceal_count = 0;
+                self.conceals = 0;
 
                 ControlFlow::Break(())
             }
@@ -246,8 +252,7 @@ impl Iterator for RevIter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(pos, tag)) =
-                tag.filter(|(pos, _)| *pos >= self.pos || self.conceal_count > 0)
+            if let Some(&(pos, tag)) = tag.filter(|(pos, _)| *pos >= self.pos || self.conceals > 0)
             {
                 self.tags.next();
 
@@ -258,14 +263,15 @@ impl Iterator for RevIter<'_> {
                 }
             } else if let Some(char) = self.chars.next() {
                 self.pos -= 1;
+
                 if let Some(pos) = self.backup_iters.first().map(|(pos, ..)| *pos) {
                     break Some((pos, self.line, Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
                     break Some((self.pos, self.line, Part::Char(char)));
                 }
-            } else if let Some((pos, chars, tags)) = self.backup_iters.pop() {
-                (self.pos, self.chars, self.tags) = (pos, chars, tags);
+            } else if let Some(last_iter) = self.backup_iters.pop() {
+                (self.pos, self.chars, self.tags) = last_iter;
             } else {
                 break None;
             }
