@@ -15,13 +15,13 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
-    log_info,
     position::Point,
     text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
 };
 
 use crate::{
+    area::iter::counted_print_iter,
     layout::{Edge, EdgeBrush, EdgeCoords, Layout},
     AreaIndex, ConstraintChangeErr
 };
@@ -149,7 +149,7 @@ impl ui::Area for Area {
 
         let form_former = palette.form_former();
         let y = if info.ghost_pos > 0 {
-            let iter = print_iter(iter, coords.width(), cfg);
+            let iter = counted_print_iter(iter, coords.width(), cfg, info.ghost_pos);
             print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout)
         } else {
             let iter = print_iter(iter, coords.width(), cfg);
@@ -216,6 +216,13 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         print_iter(iter, self.width(), cfg)
+    }
+
+    fn precise_print_iter<'a>(
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>,
+        info: Self::PrintInfo
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+        counted_print_iter(iter, self.width(), cfg, info.ghost_pos)
     }
 
     fn rev_print_iter<'a>(

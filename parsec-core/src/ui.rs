@@ -13,7 +13,7 @@ use crate::{
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     position::Point,
-    text::{Item, IterCfg, Part, PrintCfg, Text},
+    text::{Item, IterCfg, PrintCfg, Text},
     widgets::{FileWidget, Widget, WidgetType},
     Controler
 };
@@ -218,6 +218,11 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// [`Some(usize)`]: Some
     fn print_iter<'a>(
         &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+
+    fn precise_print_iter<'a>(
+        &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>,
+        info: Self::PrintInfo
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Returns a reverse printing iterator.

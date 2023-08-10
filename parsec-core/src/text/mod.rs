@@ -25,8 +25,7 @@ use self::{
 use crate::{
     forms,
     history::Change,
-    position::{Cursor, Point}, log_info
-};
+    position::{Cursor, Point}};
 
 /// The text in a given area.
 pub struct Text {

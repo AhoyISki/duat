@@ -225,7 +225,7 @@ where
             .find_map(|(caret, item)| caret.wrap.then_some(item.line));
 
         self.printed_lines = area
-            .print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg))
+            .precise_print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg), self.print_info)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
             .map(|line| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);

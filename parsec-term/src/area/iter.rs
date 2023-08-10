@@ -175,6 +175,35 @@ pub fn print_iter<'a>(
     }
 }
 
+pub fn counted_print_iter<'a>(
+    iter: impl Iterator<Item = Item> + Clone + 'a, width: usize, cfg: IterCfg<'a>, mut count: usize
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() { cap } else { width };
+
+    let indents = indents(iter, width, cfg).filter(move |(_, item)| {
+        if item.part.is_char() {
+            if item.pos >= cfg.first_char() {
+                if count == 0 {
+                    return true;
+                } else {
+                    count -= 1;
+                }
+            }
+
+            false
+        } else {
+            true
+        }
+    });
+
+    match cfg.wrap_method() {
+        WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
+            Iter::Parts(parts(indents, width, cfg), PhantomData)
+        }
+        WrapMethod::Word => Iter::Words(words(indents, width, cfg))
+    }
+}
+
 pub fn rev_print_iter<'a>(
     mut iter: impl Iterator<Item = Item> + Clone + 'a, width: usize, mut cfg: IterCfg<'a>
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
