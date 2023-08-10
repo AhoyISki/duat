@@ -266,26 +266,32 @@ impl PrintInfo {
 
         let mut iter = iter.map(|item| (item.ghost_pos, item.pos));
 
-        (self.ghost_pos, self.first_char) = if self.last_main > point {
-            let (ghosts, first_char) = if point_line_nl_was_concealed {
+        if self.last_main > point {
+            let (ghost_pos, first_char) = if point_line_nl_was_concealed {
                 let skipped_nl = std::iter::once((None, point.true_char()));
                 skipped_nl.chain(iter).nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
             } else {
                 iter.nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
             };
 
-            (ghosts.unwrap_or(0), first_char.min(self.first_char))
+            if first_char <= self.first_char {
+                self.first_char = first_char;
+                self.ghost_pos = ghost_pos.map(|pos| pos.min(self.ghost_pos)).unwrap_or(0);
+            }
         } else {
             let target = area.height().saturating_sub(cfg.scrolloff().y_gap + 1);
-            let (ghosts, first_char) = if point_line_nl_was_concealed {
+            let (ghost_pos, first_char) = if point_line_nl_was_concealed {
                 let skipped_nl = std::iter::once((None, point.true_char()));
                 skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
             } else {
                 iter.nth(target).unwrap_or((None, 0))
             };
 
-            (ghosts.unwrap_or(0), first_char.max(self.first_char))
-        };
+            if first_char >= self.first_char {
+                self.first_char = first_char;
+                self.ghost_pos = ghost_pos.map(|pos| pos.max(self.ghost_pos)).unwrap_or(0);
+            }
+        }
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
