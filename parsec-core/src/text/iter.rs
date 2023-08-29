@@ -34,7 +34,7 @@ pub struct Iter<'a> {
     conceals: usize,
     texts: &'a [Text],
     backup_iter: Option<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
-    ghosts: usize,
+    ghost_pos: usize,
 
     print_ghosts: bool,
     _conceals: Conceal<'a>
@@ -52,7 +52,7 @@ impl<'a> Iter<'a> {
             conceals: 0,
             texts,
             backup_iter: None,
-            ghosts: 0,
+            ghost_pos: 0,
             print_ghosts: true,
             _conceals: Conceal::All
         }
@@ -140,7 +140,7 @@ impl Iterator for Iter<'_> {
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(pos, self.line, Some(self.ghosts), Part::from(tag)));
+                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::from(tag)));
                     } else {
                         break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
                     }
@@ -150,14 +150,14 @@ impl Iterator for Iter<'_> {
                 self.pos += 1;
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                    self.ghosts += 1;
-                    break Some(Item::new(pos, prev_line, Some(self.ghosts - 1), Part::Char(char)));
+                    self.ghost_pos += 1;
+                    break Some(Item::new(pos, prev_line, Some(self.ghost_pos - 1), Part::Char(char)));
                 } else {
                     self.line += (char == '\n') as usize;
                     break Some(Item::new(self.pos - 1, prev_line, None, Part::Char(char)));
                 }
             } else if let Some((pos, chars, tags)) = self.backup_iter.take() {
-                self.ghosts = 0;
+                self.ghost_pos = 0;
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
             } else {
                 break None;
@@ -179,7 +179,7 @@ pub struct RevIter<'a> {
     conceals: usize,
     texts: &'a [Text],
     backup_iter: Option<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
-    ghosts: usize,
+    ghost_pos: usize,
 
     // Iteration options:
     print_ghosts: bool,
@@ -198,7 +198,7 @@ impl<'a> RevIter<'a> {
             conceals: 0,
             texts,
             backup_iter: None,
-            ghosts: 0,
+            ghost_pos: 0,
             print_ghosts: true,
             _conceals: Conceal::All
         }
@@ -240,7 +240,7 @@ impl<'a> RevIter<'a> {
             RawTag::GhostText(id, _) => {
                 if self.print_ghosts && let Some(text) = self.texts.get(usize::from(id)) {
                     let iter = if pos <= self.pos && self.conceals == 0 {
-                        self.ghosts = text.len_chars();
+                        self.ghost_pos = text.len_chars();
                         text.rev_iter()
                     } else {
                         text.rev_iter_at(0)
@@ -282,7 +282,7 @@ impl Iterator for RevIter<'_> {
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(pos, self.line, Some(self.ghosts), Part::from(tag)));
+                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::from(tag)));
                     } else {
                         break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
                     }
@@ -291,14 +291,14 @@ impl Iterator for RevIter<'_> {
                 self.pos -= 1;
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                    self.ghosts -= 1;
-                    break Some(Item::new(pos, self.line, Some(self.ghosts), Part::Char(char)));
+                    self.ghost_pos -= 1;
+                    break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
                     break Some(Item::new(self.pos, self.line, None, Part::Char(char)));
                 }
             } else if let Some(last_iter) = self.backup_iter.take() {
-                self.ghosts = 0;
+                self.ghost_pos = 0;
                 (self.pos, self.chars, self.tags) = last_iter;
             } else {
                 break None;

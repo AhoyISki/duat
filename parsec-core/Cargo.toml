@@ -1,6 +1,6 @@
 [package]
 name = "parsec-core"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["AhoyISki"]
 description = "A Hihgly customizable text editor, configured through a rust crate."
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"

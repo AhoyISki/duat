@@ -148,8 +148,8 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let y = if info.ghost_pos > 0 {
-            let iter = counted_print_iter(iter, coords.width(), cfg, info.ghost_pos);
+        let y = if let Some(pos) = info.ghost_pos && pos > 0 {
+            let iter = counted_print_iter(iter, coords.width(), cfg, pos);
             print_parts(iter, coords, self.is_active(), info, form_former, &mut stdout)
         } else {
             let iter = print_iter(iter, coords.width(), cfg);
@@ -222,7 +222,7 @@ impl ui::Area for Area {
         &self, iter: impl Iterator<Item = Item> + Clone + 'a, cfg: IterCfg<'a>,
         info: Self::PrintInfo
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        counted_print_iter(iter, self.width(), cfg, info.ghost_pos)
+        counted_print_iter(iter, self.width(), cfg, info.ghost_pos.unwrap_or(usize::MAX))
     }
 
     fn rev_print_iter<'a>(
@@ -245,7 +245,7 @@ pub struct PrintInfo {
     first_char: usize,
     /// The index of the first [`char`] that should be printed,
     /// relative to the beginning of a ghost text.
-    ghost_pos: usize,
+    ghost_pos: Option<usize>,
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.
@@ -266,31 +266,27 @@ impl PrintInfo {
 
         let mut iter = iter.map(|item| (item.ghost_pos, item.pos));
 
-        if self.last_main > point {
-            let (ghost_pos, first_char) = if point_line_nl_was_concealed {
-                let skipped_nl = std::iter::once((None, point.true_char()));
-                skipped_nl.chain(iter).nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
-            } else {
-                iter.nth(cfg.scrolloff().y_gap).unwrap_or((None, 0))
-            };
+        let target = if self.last_main > point {
+            cfg.scrolloff().y_gap
+        } else {
+            area.height().saturating_sub(cfg.scrolloff().y_gap + 1)
+        };
 
+        let (ghost_pos, first_char) = if point_line_nl_was_concealed {
+            let skipped_nl = std::iter::once((None, point.true_char()));
+            skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
+        } else {
+            iter.nth(target).unwrap_or((None, 0))
+        };
+
+        if self.last_main > point {
             if first_char <= self.first_char {
                 self.first_char = first_char;
-                self.ghost_pos = ghost_pos.map(|pos| pos.min(self.ghost_pos)).unwrap_or(0);
+                self.ghost_pos = ghost_pos;
             }
-        } else {
-            let target = area.height().saturating_sub(cfg.scrolloff().y_gap + 1);
-            let (ghost_pos, first_char) = if point_line_nl_was_concealed {
-                let skipped_nl = std::iter::once((None, point.true_char()));
-                skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
-            } else {
-                iter.nth(target).unwrap_or((None, 0))
-            };
-
-            if first_char >= self.first_char {
-                self.first_char = first_char;
-                self.ghost_pos = ghost_pos.map(|pos| pos.max(self.ghost_pos)).unwrap_or(0);
-            }
+        } else if first_char >= self.first_char {
+            self.first_char = first_char;
+            self.ghost_pos = ghost_pos;
         }
     }
 

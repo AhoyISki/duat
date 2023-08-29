@@ -182,15 +182,15 @@ pub fn counted_print_iter<'a>(
 
     let indents = indents(iter, width, cfg).filter(move |(_, item)| {
         if item.part.is_char() {
-            if item.pos >= cfg.first_char() {
-                if count == 0 {
-                    return true;
-                } else {
+            match item.pos.cmp(&cfg.first_char()) {
+                std::cmp::Ordering::Greater => true,
+                std::cmp::Ordering::Equal if count == 0 || item.ghost_pos.is_none() => true,
+                std::cmp::Ordering::Equal => {
                     count -= 1;
+                    false
                 }
+                std::cmp::Ordering::Less => false
             }
-
-            false
         } else {
             true
         }

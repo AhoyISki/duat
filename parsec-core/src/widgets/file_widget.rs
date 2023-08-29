@@ -70,10 +70,8 @@ where
             let mut pushes_pops_you_cant_explain_that = true;
             for index in (20..tagger.len_chars()).step_by(30) {
                 if pushes_pops_you_cant_explain_that {
-                    tagger.insert(index, Tag::ConcealStart);
-                    // tagger.insert(index, Tag::ghost_from("   Ayy lmao   "));
+                    tagger.insert(index, Tag::ghost_from("\n\n   Ayy lmao   \n\n"));
                     tagger.insert(index, Tag::PushForm(crate::forms::SEPARATOR));
-                    tagger.insert(index + 10, Tag::ConcealEnd);
                     tagger.insert(index + 11, Tag::PopForm(crate::forms::SEPARATOR));
                 } else {
                     tagger.insert(index, Tag::ghost_from("   Hello World\n lmao deal with this"));

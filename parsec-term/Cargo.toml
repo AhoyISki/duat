@@ -1,6 +1,6 @@
 [package]
 name = "parsec-term"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["AhoyISki"]
 description = "A frontend for Parsec for the terminal"
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-term"
