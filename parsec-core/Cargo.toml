@@ -19,7 +19,7 @@ ropey = "1.6.0"
 any-rope = { path = "../../any-rope/", version = "1.1.0" }
 
 [dev-dependencies]
-no_deadlocks = { path = "../../no-deadlocks/", optional = true }
+no_deadlocks = "../../no-deadlocks/"
 
 [features]
 # NOTE: Features meant for testing only by myself.
