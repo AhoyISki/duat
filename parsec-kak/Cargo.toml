@@ -1,6 +1,6 @@
 [package]
 name = "parsec-kak"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-kak"
@@ -11,6 +11,6 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
 [dependencies]
-parsec-core = { path = "../parsec-core/", version = "^0.1.0" }
+parsec-core = { path = "../parsec-core/", version = ">=0.1.2" }
 
-crossterm = "^0.26.0"
+crossterm = ">=0.26.0"
