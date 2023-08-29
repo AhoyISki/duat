@@ -12,11 +12,11 @@ edition = "2021"
 
 [dependencies]
 # Style handling
-crossterm = "0.26.0"
+crossterm = "^0.26.0"
 
 # Utility
-ropey = "1.6.0"
-any-rope = { path = "../../any-rope/", version = "1.1.0" }
+ropey = "^1.6.0"
+any-rope = { path = "../../any-rope/", version = "^1.1.0" }
 
 [dev-dependencies]
 no_deadlocks = { path = "../../no-deadlocks/" }
