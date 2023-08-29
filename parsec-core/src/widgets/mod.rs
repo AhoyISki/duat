@@ -38,7 +38,7 @@ use crate::{
 
 // TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait Widget<U>: AsAny + Send + Sync + 'static
+pub trait PassiveWidget<U>: AsAny + Send + Sync + 'static
 where
     U: Ui + 'static
 {
@@ -72,38 +72,38 @@ where
     }
 }
 
-pub enum WidgetType<U>
+pub enum Widget<U>
 where
     U: Ui
 {
-    Passive(RwData<dyn Widget<U>>),
+    Passive(RwData<dyn PassiveWidget<U>>),
     ActScheme(RwData<dyn ActSchemeWidget<U>>),
     ActDirect(RwData<dyn ActDirectWidget<U>>)
 }
 
-impl<U> WidgetType<U>
+impl<U> Widget<U>
 where
     U: Ui
 {
     pub fn passive<W>(widget: W) -> Self
     where
-        W: Widget<U>
+        W: PassiveWidget<U>
     {
-        WidgetType::Passive(RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))))
+        Widget::Passive(RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))))
     }
 
     pub fn scheme_input<ASW>(widget: ASW) -> Self
     where
         ASW: ActSchemeWidget<U>
     {
-        WidgetType::ActScheme(RwData::new_unsized::<ASW>(Arc::new(RwLock::new(widget))))
+        Widget::ActScheme(RwData::new_unsized::<ASW>(Arc::new(RwLock::new(widget))))
     }
 
     pub fn direct_input<ADW>(widget: ADW) -> Self
     where
         ADW: ActDirectWidget<U>
     {
-        WidgetType::ActDirect(RwData::new_unsized::<ADW>(Arc::new(RwLock::new(widget))))
+        Widget::ActDirect(RwData::new_unsized::<ADW>(Arc::new(RwLock::new(widget))))
     }
 
     pub fn try_update_and_print<'scope, 'env>(
@@ -113,7 +113,7 @@ where
         // This is, technically speaking, not good enough, but it should cover
         // 99.9999999999999% of cases without fail.
         match self {
-            WidgetType::Passive(widget) => {
+            Widget::Passive(widget) => {
                 if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.raw_write();
@@ -125,7 +125,7 @@ where
                     false
                 }
             }
-            WidgetType::ActScheme(widget) => {
+            Widget::ActScheme(widget) => {
                 if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.raw_write();
@@ -137,7 +137,7 @@ where
                     false
                 }
             }
-            WidgetType::ActDirect(widget) => {
+            Widget::ActDirect(widget) => {
                 if widget.raw_try_write().is_ok() {
                     scope.spawn(|| {
                         let mut widget = widget.raw_write();
@@ -154,15 +154,15 @@ where
 
     pub fn update(&self, area: &U::Area) {
         match self {
-            WidgetType::Passive(widget) => widget.write().update(area),
-            WidgetType::ActScheme(widget) => widget.write().update(area),
-            WidgetType::ActDirect(widget) => widget.write().update(area)
+            Widget::Passive(widget) => widget.write().update(area),
+            Widget::ActScheme(widget) => widget.write().update(area),
+            Widget::ActDirect(widget) => widget.write().update(area)
         }
     }
 
     pub fn try_print(&self, area: &U::Area, palette: &crate::forms::FormPalette) -> bool {
         match self {
-            WidgetType::Passive(widget) => {
+            Widget::Passive(widget) => {
                 if let Ok(widget) = widget.try_read() {
                     widget.print(area, palette);
                     true
@@ -170,7 +170,7 @@ where
                     false
                 }
             }
-            WidgetType::ActScheme(widget) => {
+            Widget::ActScheme(widget) => {
                 if let Ok(widget) = widget.try_read() {
                     widget.print(area, palette);
                     true
@@ -178,7 +178,7 @@ where
                     false
                 }
             }
-            WidgetType::ActDirect(widget) => {
+            Widget::ActDirect(widget) => {
                 if let Ok(widget) = widget.try_read() {
                     widget.print(area, palette);
                     true
@@ -193,47 +193,47 @@ where
     pub fn downcast_ref<W>(&self) -> Option<RwData<W>>
     where
         U: Ui,
-        W: Widget<U> + 'static
+        W: PassiveWidget<U> + 'static
     {
         match self {
-            WidgetType::Passive(widget) => widget.clone().try_downcast::<W>().ok(),
-            WidgetType::ActScheme(widget) => widget.clone().try_downcast::<W>().ok(),
-            WidgetType::ActDirect(widget) => widget.clone().try_downcast::<W>().ok()
+            Widget::Passive(widget) => widget.clone().try_downcast::<W>().ok(),
+            Widget::ActScheme(widget) => widget.clone().try_downcast::<W>().ok(),
+            Widget::ActDirect(widget) => widget.clone().try_downcast::<W>().ok()
         }
     }
 
     pub fn data_is<W>(&self) -> bool
     where
-        W: Widget<U>
+        W: PassiveWidget<U>
     {
         match self {
-            WidgetType::Passive(widget) => widget.data_is::<W>(),
-            WidgetType::ActScheme(widget) => widget.data_is::<W>(),
-            WidgetType::ActDirect(widget) => widget.data_is::<W>()
+            Widget::Passive(widget) => widget.data_is::<W>(),
+            Widget::ActScheme(widget) => widget.data_is::<W>(),
+            Widget::ActDirect(widget) => widget.data_is::<W>()
         }
     }
 
     pub fn inspect_as<W, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B>
     where
-        W: Widget<U>
+        W: PassiveWidget<U>
     {
         match self {
-            WidgetType::Passive(widget) => widget.inspect_as::<W, B>(f),
-            WidgetType::ActScheme(widget) => widget.inspect_as::<W, B>(f),
-            WidgetType::ActDirect(widget) => widget.inspect_as::<W, B>(f)
+            Widget::Passive(widget) => widget.inspect_as::<W, B>(f),
+            Widget::ActScheme(widget) => widget.inspect_as::<W, B>(f),
+            Widget::ActDirect(widget) => widget.inspect_as::<W, B>(f)
         }
     }
 
     pub fn as_scheme_input(&self) -> Option<&RwData<dyn ActSchemeWidget<U>>> {
         match self {
-            WidgetType::ActScheme(widget) => Some(widget),
+            Widget::ActScheme(widget) => Some(widget),
             _ => None
         }
     }
 
     pub fn scheme_ptr_eq(&self, other: &RwData<dyn ActSchemeWidget<U>>) -> bool {
         match self {
-            WidgetType::ActScheme(widget) => widget.ptr_eq(other),
+            Widget::ActScheme(widget) => widget.ptr_eq(other),
             _ => false
         }
     }
@@ -241,26 +241,26 @@ where
     pub fn ptr_eq<R, W>(&self, other: &R) -> bool
     where
         R: ReadableData<W>,
-        W: Widget<U> + ?Sized
+        W: PassiveWidget<U> + ?Sized
     {
         match self {
-            WidgetType::Passive(widget) => widget.ptr_eq(other),
-            WidgetType::ActScheme(widget) => widget.ptr_eq(other),
-            WidgetType::ActDirect(widget) => widget.ptr_eq(other)
+            Widget::Passive(widget) => widget.ptr_eq(other),
+            Widget::ActScheme(widget) => widget.ptr_eq(other),
+            Widget::ActDirect(widget) => widget.ptr_eq(other)
         }
     }
 
-    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn PassiveWidget<U>) -> B) -> B {
         match self {
-            WidgetType::Passive(widget) => {
+            Widget::Passive(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
-            WidgetType::ActScheme(widget) => {
+            Widget::ActScheme(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
-            WidgetType::ActDirect(widget) => {
+            Widget::ActDirect(widget) => {
                 let widget = widget.raw_read();
                 f(&*widget)
             }
@@ -269,15 +269,15 @@ where
 
     pub fn has_changed(&self) -> bool {
         match self {
-            WidgetType::ActScheme(widget) => widget.has_changed(),
-            WidgetType::ActDirect(widget) => widget.has_changed(),
-            WidgetType::Passive(_) => false
+            Widget::ActScheme(widget) => widget.has_changed(),
+            Widget::ActDirect(widget) => widget.has_changed(),
+            Widget::Passive(_) => false
         }
     }
 }
 
 /// A widget that can receive input and show [`Cursor`]s.
-pub trait ActSchemeWidget<U>: Widget<U>
+pub trait ActSchemeWidget<U>: PassiveWidget<U>
 where
     U: Ui + 'static
 {
@@ -342,7 +342,7 @@ where
     fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 
-pub trait ActDirectWidget<U>: Widget<U>
+pub trait ActDirectWidget<U>: PassiveWidget<U>
 where
     U: Ui
 {

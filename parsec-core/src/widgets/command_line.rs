@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine<U>`],
 //! by running the `set-prompt` [`Command`].
-use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
+use super::{ActSchemeWidget, EditAccum, PassiveWidget, Widget};
 use crate::{
     commands::{Command, Commands},
     data::{AsAny, ReadableData, RwData},
@@ -50,7 +50,7 @@ where
     /// custom prompt.
     pub fn prompt_fn(
         prompt: impl ToString
-    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         let prompt = prompt.to_string();
         move |controler| {
             let command_line = Self {
@@ -63,7 +63,7 @@ where
 
             add_commands(controler, &command_line);
 
-            let widget_type = WidgetType::scheme_input(command_line);
+            let widget_type = Widget::scheme_input(command_line);
             (widget_type, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
@@ -71,7 +71,7 @@ where
     /// Returns a function that outputs a [`CommandLine<U>`] with
     /// `":"` as a prompt.
     pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |manager| {
             let command_line = CommandLine::<U> {
                 text: Text::default_string(),
@@ -83,13 +83,13 @@ where
 
             add_commands(manager, &command_line);
 
-            let widget_type = WidgetType::scheme_input(command_line);
+            let widget_type = Widget::scheme_input(command_line);
             (widget_type, Box::new(|| false), PushSpecs::below(Constraint::Length(1.0)))
         }
     }
 }
 
-impl<U> Widget<U> for CommandLine<U>
+impl<U> PassiveWidget<U> for CommandLine<U>
 where
     U: Ui + 'static
 {

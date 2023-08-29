@@ -7,7 +7,7 @@ mod types;
 
 use std::{
     io::Write,
-    ops::{Range, RangeInclusive}
+    ops::{Range, RangeInclusive},
 };
 
 use ropey::Rope;
@@ -16,23 +16,25 @@ pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     tags::{Handle, InsertionTag as Tag},
-    types::{BuilderTag, Part}
+    types::{BuilderTag, Part},
 };
 use self::{
     chars::Chars,
-    tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId}
+    tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId},
 };
 use crate::{
     forms,
     history::Change,
-    position::{Cursor, Point}};
+    position::{Cursor, Point},
+};
 
 /// The text in a given area.
+#[derive(Debug)]
 pub struct Text {
     chars: Chars,
     tags: Tags,
     handle: Handle,
-    _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>
+    _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>,
 }
 
 // TODO: Properly implement _replacements.
@@ -42,7 +44,7 @@ impl Text {
             chars: Chars::String(String::default()),
             tags: Tags::default_vec(),
             handle: Handle::default(),
-            _replacements: Vec::new()
+            _replacements: Vec::new(),
         }
     }
 
@@ -51,24 +53,38 @@ impl Text {
             chars: Chars::Rope(Rope::default()),
             tags: Tags::default_rope(),
             handle: Handle::default(),
-            _replacements: Vec::new()
+            _replacements: Vec::new(),
         }
     }
 
     pub fn new_string(string: impl ToString) -> Self {
         let chars = Chars::String(string.to_string());
         let tags = Tags::new(&chars);
-        Text { chars, tags, handle: Handle::default(), _replacements: Vec::new() }
+        Text {
+            chars,
+            tags,
+            handle: Handle::default(),
+            _replacements: Vec::new(),
+        }
     }
 
     pub fn new_rope(string: impl ToString) -> Self {
         let chars = Chars::Rope(Rope::from(string.to_string()));
         let tags = Tags::new(&chars);
-        Text { chars, tags, handle: Handle::default(), _replacements: Vec::new() }
+        Text {
+            chars,
+            tags,
+            handle: Handle::default(),
+            _replacements: Vec::new(),
+        }
     }
 
     pub fn tag_with(&mut self, handle: Handle) -> Tagger {
-        Tagger { chars: &self.chars, tags: &mut self.tags, handle }
+        Tagger {
+            chars: &self.chars,
+            tags: &mut self.tags,
+            handle,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -92,15 +108,21 @@ impl Text {
     }
 
     pub fn char_to_line(&self, char: usize) -> usize {
-        self.chars.char_to_line(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+        self.chars
+            .char_to_line(char)
+            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 
     pub fn line_to_char(&self, line: usize) -> usize {
-        self.chars.line_to_char(line).unwrap_or_else(|| panic!("Line index {line} out of bounds."))
+        self.chars
+            .line_to_char(line)
+            .unwrap_or_else(|| panic!("Line index {line} out of bounds."))
     }
 
     pub fn char_to_byte(&self, char: usize) -> usize {
-        self.chars.char_to_byte(char).unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+        self.chars
+            .char_to_byte(char)
+            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
     }
 
     pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
@@ -121,13 +143,15 @@ impl Text {
         }
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
-        self.rev_iter_at(pos).take(20000).find_map(|Item { pos, part, .. }| {
-            if part.as_char().is_some_and(|char| char == '\n') {
-                Some(pos + 1)
-            } else {
-                (pos == 0).then_some(0)
-            }
-        })
+        self.rev_iter_at(pos)
+            .take(20000)
+            .find_map(|Item { pos, part, .. }| {
+                if part.as_char().is_some_and(|char| char == '\n') {
+                    Some(pos + 1)
+                } else {
+                    (pos == 0).then_some(0)
+                }
+            })
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -147,8 +171,11 @@ impl Text {
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
 
-            let pos_list =
-                [(start, start_tag), (end, end_tag), (cursor.caret().true_char(), caret_tag)];
+            let pos_list = [
+                (start, start_tag),
+                (end, end_tag),
+                (cursor.caret().true_char(), caret_tag),
+            ];
 
             let no_selection = if start == end { 2 } else { 0 };
 
@@ -171,13 +198,17 @@ impl Text {
     }
 
     pub(crate) fn write_to(
-        &self, mut writer: std::io::BufWriter<std::fs::File>
+        &self,
+        mut writer: std::io::BufWriter<std::fs::File>,
     ) -> Result<usize, String> {
         match &self.chars {
-            Chars::String(string) => writer.write(string.as_bytes()).map_err(|err| err.to_string()),
-            Chars::Rope(rope) => {
-                rope.write_to(writer).map(|_| rope.len_bytes()).map_err(|err| err.to_string())
-            }
+            Chars::String(string) => writer
+                .write(string.as_bytes())
+                .map_err(|err| err.to_string()),
+            Chars::Rope(rope) => rope
+                .write_to(writer)
+                .map(|_| rope.len_bytes())
+                .map_err(|err| err.to_string()),
         }
     }
 
@@ -219,8 +250,7 @@ impl Text {
         let tags_start = start.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, &self.tags.texts, start, line)
-            .take_while(move |item| item.pos < end)
+        Iter::new(chars, tags, &self.tags.texts, start, line).take_while(move |item| item.pos < end)
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<'_> {
@@ -265,11 +295,9 @@ impl Text {
 /// peculiarities that are convenient in the situations where it is
 /// useful:
 ///
-/// - The user cannot insert [`Tag`]s directly, only by appending and
-///   modifying
+/// - The user cannot insert [`Tag`]s directly, only by appending and modifying
 /// existing tags.
-/// - All [`Tag`]s that are appended result in an inverse [`Tag`]
-///   being placed
+/// - All [`Tag`]s that are appended result in an inverse [`Tag`] being placed
 /// before the next one, or at the end of the [`Tags`] (e.g.
 /// [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
 /// - You can insert swappable text with
@@ -282,7 +310,10 @@ pub struct TextBuilder {
     text: Text,
     swappables: Vec<usize>,
     handle: Handle,
-    toggles: Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>
+    toggles: Vec<(
+        Box<dyn Fn(Point) + Send + Sync>,
+        Box<dyn Fn(Point) + Send + Sync>,
+    )>,
 }
 
 impl TextBuilder {
@@ -341,11 +372,14 @@ impl TextBuilder {
     pub fn swap_tag(&mut self, tag_index: usize, builder_tag: BuilderTag) {
         let raw_tag = builder_tag.into_raw(self.handle, &mut self.toggles);
         let tags = self.text.tags.as_mut_vec().unwrap();
-        let mut iter = tags.iter_mut().enumerate().filter_map(|(index, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::PopForm(..)) => None,
-            TagOrSkip::Tag(tag) => Some((index, tag)),
-            TagOrSkip::Skip(_) => None
-        });
+        let mut iter = tags
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, t_or_s)| match t_or_s {
+                TagOrSkip::Tag(RawTag::PopForm(..)) => None,
+                TagOrSkip::Tag(tag) => Some((index, tag)),
+                TagOrSkip::Skip(_) => None,
+            });
 
         if let Some((index, tag)) = iter.nth(tag_index) {
             let inv_tag = tag.inverse();
@@ -353,7 +387,7 @@ impl TextBuilder {
             *tag = raw_tag;
             let forward = match &tags[index + 1] {
                 TagOrSkip::Tag(_) => 1,
-                TagOrSkip::Skip(_) => 2
+                TagOrSkip::Skip(_) => 2,
             };
 
             if let Some(new_inv_tag) = raw_tag.inverse() {
@@ -376,7 +410,7 @@ impl TextBuilder {
             .iter_mut()
             .filter_map(|tag_or_skip| match tag_or_skip {
                 TagOrSkip::Skip(skip) => Some(skip),
-                TagOrSkip::Tag(..) => None
+                TagOrSkip::Tag(..) => None,
             })
             .scan(0, |accum, skip| {
                 let prev_accum = *accum;
@@ -456,7 +490,7 @@ impl Default for TextBuilder {
             text: Text::default_string(),
             swappables: Vec::default(),
             handle: Handle::default(),
-            toggles: Vec::default()
+            toggles: Vec::default(),
         }
     }
 }
@@ -464,7 +498,7 @@ impl Default for TextBuilder {
 pub struct Tagger<'a> {
     chars: &'a Chars,
     tags: &'a mut Tags,
-    handle: Handle
+    handle: Handle,
 }
 
 impl<'a> Tagger<'a> {
@@ -515,8 +549,16 @@ impl<'a> Tagger<'a> {
 
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
-        (Tag::MainCursor, Tag::PushForm(forms::MAIN_SEL), Tag::PopForm(forms::MAIN_SEL))
+        (
+            Tag::MainCursor,
+            Tag::PushForm(forms::MAIN_SEL),
+            Tag::PopForm(forms::MAIN_SEL),
+        )
     } else {
-        (Tag::MainCursor, Tag::PushForm(forms::EXTRA_SEL), Tag::PopForm(forms::EXTRA_SEL))
+        (
+            Tag::MainCursor,
+            Tag::PushForm(forms::EXTRA_SEL),
+            Tag::PopForm(forms::EXTRA_SEL),
+        )
     }
 }

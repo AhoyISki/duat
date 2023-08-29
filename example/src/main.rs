@@ -75,29 +75,31 @@ fn main() {
     // text.
     let editor = Editor::default();
     // A `Session` is essentially the application itself, it takes a `Ui`,
+    // A KeyRemapper takes the input, remaps it, and sends it to the
+    // `Editor`.
+    let remapper = KeyRemapper::new(editor);
+
     // a `PrintCfg`, a `FormPalette`, and a closure that determines
     // what will happen when a new file is opened.
-    let mut session = Session::new(Ui::default(), print_cfg, palette, move |mod_node, _file| {
-        let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
-        let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
-        mod_node.push_specd(VertRule::config_fn(cfg));
+    let mut session =
+        Session::new(Ui::default(), remapper, print_cfg, palette, move |mod_node, _file| {
+            let sep_form = SepForm::uniform(mod_node.palette(), "VertRule");
+            let cfg = VertRuleCfg::new(SepChar::Uniform('┃'), sep_form);
+            mod_node.push_specd(VertRule::config_fn(cfg));
 
-        let cfg = LineNumbersCfg::rel_abs(Alignment::Right, Alignment::Left);
-        mod_node.push_specd(LineNumbers::config_fn(cfg));
+            let cfg = LineNumbersCfg::rel_abs(Alignment::Right, Alignment::Left);
+            mod_node.push_specd(LineNumbers::config_fn(cfg));
 
-        // let (child, _) =
-        // mod_node.push_specd(StatusLine::default_fn());
-        // mod_node.push_specd_to(CommandLine::default_fn(), child);
-    });
+            // let (child, _) =
+            // mod_node.push_specd(StatusLine::default_fn());
+            // mod_node.push_specd_to(CommandLine::default_fn(),
+            // child);
+        });
 
-	let parts = status_parts![main_char::<Ui>()];
-    let (status_line, _) = session.push_specd(StatusLine::parts_global_fn(parts));
+    let (status_line, _) = session.push_specd_widget(StatusLine::default_global_fn());
     let specs = PushSpecs::left(Constraint::Percent(50));
-    session.cluster_to(CommandLine::default_fn(), &status_line, specs);
-
-    // that takes the input, remaps it, and sends it to the `Editor`.
-    let mut file_remapper = KeyRemapper::new(editor);
+    session.cluster_widget_with(CommandLine::default_fn(), &status_line, specs);
 
     // Start Parsec.
-    session.start(&mut file_remapper);
+    session.start();
 }

@@ -56,7 +56,7 @@ pub mod file_parts;
 pub use file_parts::{file_name, len_lines, main_col, main_line, selections};
 
 use self::Reader::*;
-use super::{file_widget::FileWidget, Widget, WidgetType};
+use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RoNestedData},
     status_parts,
@@ -281,13 +281,13 @@ where
 {
     fn passive(
         file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
-    ) -> WidgetType<U> {
-        WidgetType::passive(Self { file, builder, readers })
+    ) -> Widget<U> {
+        Widget::passive(Self { file, builder, readers })
     }
 
     pub fn parts_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
     {
         move |controler| {
             let file = controler.active_file();
@@ -302,7 +302,7 @@ where
 
     pub fn parts_global_fn(
         parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
     {
         move |controler| {
             let file = controler.dynamic_active_file();
@@ -319,7 +319,7 @@ where
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
     pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
     {
         move |controler| {
             let palette = &controler.palette;
@@ -337,7 +337,7 @@ where
     /// Returns a function that outputs the default version of
     /// [`StatusLine<U>`].
     pub fn default_global_fn()
-    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
+    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
     {
         move |controler| {
             let palette = &controler.palette;
@@ -352,7 +352,7 @@ where
     }
 }
 
-impl<U> Widget<U> for StatusLine<U>
+impl<U> PassiveWidget<U> for StatusLine<U>
 where
     U: Ui + 'static
 {

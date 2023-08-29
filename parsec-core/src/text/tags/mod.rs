@@ -86,6 +86,17 @@ pub struct Tags {
     range_min: usize,
 }
 
+impl std::fmt::Debug for Tags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tags")
+            .field("container", &self.container)
+            .field("ranges", &self.ranges)
+            .field("texts", &self.texts)
+            .field("range_min", &self.range_min)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Tags {
     pub fn default_vec() -> Self {
         Self {
@@ -255,7 +266,7 @@ impl Tags {
                 .take_while(|(pos, _)| *pos <= new.start)
         };
         let after = {
-            let end = new.end + self.range_min - old_count;
+            let end = (new.end + self.range_min - old_count).min(self.width());
             self.container
                 .rev_iter_at(end)
                 .take_while(|(pos, _)| *pos >= new.end)

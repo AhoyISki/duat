@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{fs::File, path::PathBuf};
 
-use super::{ActSchemeWidget, EditAccum, Widget, WidgetType};
+use super::{ActSchemeWidget, EditAccum, PassiveWidget, Widget};
 use crate::{
     data::AsAny,
     history::History,
@@ -50,7 +50,7 @@ where
     U: Ui + 'static
 {
     /// Returns a new instance of [`FileWidget<U>`].
-    pub fn scheme(path: Option<PathBuf>, print_cfg: PrintCfg) -> WidgetType<U> {
+    pub fn build(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
         let contents = path.as_ref().and_then(|path| match std::fs::read_to_string(path) {
             Ok(contents) => Some(contents),
             Err(_) => None
@@ -83,7 +83,7 @@ where
         let cursors = vec![Cursor::default()];
         text.add_cursor_tags(&cursors, 0);
 
-        WidgetType::scheme_input(FileWidget {
+        Widget::scheme_input(FileWidget {
             path,
             text,
             print_info: U::PrintInfo::default(),
@@ -235,7 +235,7 @@ where
     }
 }
 
-impl<U> Widget<U> for FileWidget<U>
+impl<U> PassiveWidget<U> for FileWidget<U>
 where
     U: Ui + 'static
 {

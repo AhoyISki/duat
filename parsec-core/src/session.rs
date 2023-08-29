@@ -8,8 +8,8 @@ use crate::{
     forms::FormPalette,
     input::{InputScheme, KeyRemapper},
     text::PrintCfg,
-    ui::{activate_hook, ModNode, PushSpecs, Ui, Window},
-    widgets::{FileWidget, WidgetType},
+    ui::{build_file, FileBuilder, PushSpecs, Ui, Window},
+    widgets::{FileWidget, Widget},
     Controler, BREAK_LOOP, SHOULD_QUIT,
 };
 
@@ -19,7 +19,7 @@ where
     S: InputScheme,
 {
     ui: U,
-    pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
+    pub constructor_hook: Box<dyn FnMut(FileBuilder<U>, RoData<FileWidget<U>>)>,
     controler: Controler<U>,
     print_cfg: RwData<PrintCfg>,
     remapper: KeyRemapper<S>,
@@ -36,16 +36,16 @@ where
         remapper: KeyRemapper<S>,
         print_cfg: PrintCfg,
         palette: FormPalette,
-        mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static,
+        mut constructor_hook: impl FnMut(FileBuilder<U>, RoData<FileWidget<U>>) + 'static,
     ) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         let path = std::env::args().nth(1).as_ref().map(PathBuf::from);
-        let widget_type = FileWidget::<U>::scheme(path, print_cfg.clone());
+        let widget_type = FileWidget::<U>::build(path, print_cfg.clone());
 
         let (window, area) = Window::new(&mut ui, widget_type, || false);
         let mut controler = Controler::new(window, palette);
-        activate_hook(&mut controler, area, &mut constructor_hook);
+        build_file(&mut controler, area, &mut constructor_hook);
         *crate::CMD_FILE_ID.lock().unwrap() = None;
 
         let mut session = Session {
@@ -61,24 +61,18 @@ where
         session
     }
 
-    fn open_arg_files(&mut self) {
-        for file in std::env::args().skip(2) {
-            self.open_file(PathBuf::from(file))
-        }
-    }
-
     pub fn open_file(&mut self, path: PathBuf) {
-        let file_widget = FileWidget::scheme(Some(path), self.print_cfg.read().clone());
+        let file_widget = FileWidget::build(Some(path), self.print_cfg.read().clone());
         let (area, _) = self
             .controler
             .mutate_active_window(|window| window.push_file(file_widget, PushSpecs::right_free()));
 
-        activate_hook(&mut self.controler, area, &mut self.constructor_hook);
+        build_file(&mut self.controler, area, &mut self.constructor_hook);
     }
 
     pub fn push_widget<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
@@ -91,7 +85,7 @@ where
 
     pub fn push_specd_widget<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
@@ -103,7 +97,7 @@ where
 
     pub fn push_widget_to<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: &U::Area,
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
@@ -118,7 +112,7 @@ where
 
     pub fn push_specd_widget_to<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: &U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
@@ -132,7 +126,7 @@ where
 
     pub fn cluster_widget_with<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: &U::Area,
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
@@ -147,7 +141,7 @@ where
 
     pub fn cluster_specd_widget_with<F>(
         &mut self,
-        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        f: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: &U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
@@ -188,10 +182,24 @@ where
         self.ui.shutdown();
     }
 
+    /// Returns the [`RwData<Manager>`].
+    pub fn controler(&self) -> &Controler<U> {
+        &self.controler
+    }
+
+    pub fn commands(&self) -> &RwData<Commands> {
+        &self.controler.commands
+    }
+
+    fn open_arg_files(&mut self) {
+        for file in std::env::args().skip(2) {
+            self.open_file(PathBuf::from(file))
+        }
+    }
+
     /// The primary application loop, executed while no breaking
     /// commands have been sent to [`Controls`].
-    fn session_loop(&mut self)
-    {
+    fn session_loop(&mut self) {
         let palette = &self.controler.palette;
         let controler = &self.controler;
         let windows = self.controler.windows.read();
@@ -215,15 +223,6 @@ where
                 }
             }
         });
-    }
-
-    /// Returns the [`RwData<Manager>`].
-    pub fn controler(&self) -> &Controler<U> {
-        &self.controler
-    }
-
-    pub fn commands(&self) -> &RwData<Commands> {
-        &self.controler.commands
     }
 }
 

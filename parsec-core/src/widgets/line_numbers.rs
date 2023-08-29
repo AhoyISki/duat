@@ -22,52 +22,35 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use super::{file_widget::FileWidget, Widget, WidgetType};
+use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
-    Controler
+    Controler,
 };
 
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget<U>`] are shown on screen.
 pub struct LineNumbers<U>
 where
-    U: Ui
+    U: Ui,
 {
     file: RoData<FileWidget<U>>,
     builder: TextBuilder,
-    cfg: LineNumbersCfg
+    cfg: LineNumbersCfg,
 }
 
 impl<U> LineNumbers<U>
 where
-    U: Ui + 'static
+    U: Ui + 'static,
 {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    pub fn config_fn(
-        cfg: LineNumbersCfg
-    ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move |controler| {
-            let file = controler.active_file();
-
-            let mut line_numbers =
-                LineNumbers { file: file.clone(), builder: TextBuilder::default(), cfg };
-            line_numbers.update_text();
-
-            let widget_type = WidgetType::passive(line_numbers);
-            (widget_type, Box::new(move || file.has_changed()), PushSpecs::left_free())
-        }
-    }
-
-    /// Returns a function that outputs the default instance of
-    /// [`LineNumbers<U>`].
-    pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        LineNumbers::config_fn(LineNumbersCfg::default())
+    pub fn build_default()
+    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        LineNumbersCfg::default().build()
     }
 
     /// The minimum width that would be needed to show the last line.
@@ -97,12 +80,15 @@ where
             let text = get_text(*line, main_line, *is_wrapped, &self.cfg);
 
             let align_tag = {
-                let alignment =
-                    if *line == main_line { self.cfg.main_alignment } else { self.cfg.alignment };
+                let alignment = if *line == main_line {
+                    self.cfg.main_alignment
+                } else {
+                    self.cfg.alignment
+                };
                 match alignment {
                     Alignment::Left => BuilderTag::AlignLeft,
                     Alignment::Right => BuilderTag::AlignRight,
-                    Alignment::Center => BuilderTag::AlignCenter
+                    Alignment::Center => BuilderTag::AlignCenter,
                 }
             };
 
@@ -121,13 +107,14 @@ where
     }
 }
 
-impl<U> Widget<U> for LineNumbers<U>
+impl<U> PassiveWidget<U> for LineNumbers<U>
 where
-    U: Ui + 'static
+    U: Ui + 'static,
 {
     fn update(&mut self, area: &U::Area) {
         let width = self.calculate_width();
-        area.change_constraint(Constraint::Length(width + 1.0)).unwrap();
+        area.change_constraint(Constraint::Length(width + 1.0))
+            .unwrap();
 
         self.update_text();
     }
@@ -139,7 +126,7 @@ where
 
 impl<U> AsAny for LineNumbers<U>
 where
-    U: Ui + 'static
+    U: Ui + 'static,
 {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -156,7 +143,7 @@ enum Numbers {
     /// that line.
     Relative,
     /// Relative line numbers on every line, except the main cursor's.
-    RelAbs
+    RelAbs,
 }
 
 /// Configuration options for the [`LineNumbers<U>`] widget.
@@ -165,75 +152,131 @@ pub struct LineNumbersCfg {
     numbers: Numbers,
     alignment: Alignment,
     main_alignment: Alignment,
-    show_wraps: bool
+    show_wraps: bool,
+    specs: PushSpecs,
 }
 
 impl Default for LineNumbersCfg {
     fn default() -> Self {
-        Self {
-            numbers: Numbers::Absolute,
-            alignment: Alignment::Left,
-            main_alignment: Alignment::Right,
-            show_wraps: false
-        }
+        Self::new()
     }
 }
 
 impl LineNumbersCfg {
-    /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn abs(align: Alignment, main_align: Alignment) -> Self {
+    pub fn new() -> Self {
         Self {
             numbers: Numbers::Absolute,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: false
+            alignment: Alignment::Left,
+            main_alignment: Alignment::Right,
+            show_wraps: false,
+            specs: PushSpecs::left_free(),
         }
     }
 
-    /// Returns a new instance of [`LineNumbersCfg`].
-    pub fn abs_with_wraps(align: Alignment, main_align: Alignment) -> Self {
+    pub fn build<U>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+    {
+        move |controler| {
+            let file = controler.active_file();
+            let specs = self.specs;
+
+            let mut line_numbers = LineNumbers {
+                file: file.clone(),
+                builder: TextBuilder::default(),
+                cfg: self,
+            };
+            line_numbers.update_text();
+
+            let widget = Widget::passive(line_numbers);
+            (widget, Box::new(move || file.has_changed()), specs)
+        }
+    }
+
+    pub fn absolute(self) -> Self {
         Self {
             numbers: Numbers::Absolute,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: true
+            ..self
         }
     }
 
-    pub fn rel(align: Alignment, main_align: Alignment) -> Self {
+    pub fn relative(self) -> Self {
         Self {
             numbers: Numbers::Relative,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: false
+            ..self
         }
     }
 
-    pub fn rel_with_wraps(align: Alignment, main_align: Alignment) -> Self {
-        Self {
-            numbers: Numbers::Relative,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: true
-        }
-    }
-
-    pub fn rel_abs(align: Alignment, main_align: Alignment) -> Self {
+    pub fn rel_abs(self) -> Self {
         Self {
             numbers: Numbers::RelAbs,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: false
+            ..self
         }
     }
 
-    pub fn rel_abs_wraps(align: Alignment, main_align: Alignment) -> Self {
+    pub fn align_left(self) -> Self {
         Self {
-            numbers: Numbers::RelAbs,
-            alignment: align,
-            main_alignment: main_align,
-            show_wraps: true
+            main_alignment: Alignment::Left,
+            alignment: Alignment::Left,
+            ..self
         }
+    }
+
+    pub fn align_center(self) -> Self {
+        Self {
+            main_alignment: Alignment::Center,
+            alignment: Alignment::Center,
+            ..self
+        }
+    }
+
+    pub fn align_right(self) -> Self {
+        Self {
+            main_alignment: Alignment::Right,
+            alignment: Alignment::Right,
+            ..self
+        }
+    }
+
+    pub fn align_main_left(self) -> Self {
+        Self {
+            main_alignment: Alignment::Left,
+            ..self
+        }
+    }
+
+    pub fn align_main_center(self) -> Self {
+        Self {
+            main_alignment: Alignment::Center,
+            ..self
+        }
+    }
+
+    pub fn align_main_right(self) -> Self {
+        Self {
+            main_alignment: Alignment::Right,
+            ..self
+        }
+    }
+
+    pub fn show_wraps(self) -> Self {
+        Self {
+            show_wraps: true,
+            ..self
+        }
+    }
+
+    pub fn hide_wraps(self) -> Self {
+        Self {
+            show_wraps: false,
+            ..self
+        }
+    }
+
+    pub fn with_specs(self, specs: PushSpecs) -> Self {
+        Self { specs, ..self }
     }
 }
 
@@ -243,7 +286,7 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> BuilderTag {
         (false, false) => LINE_NUMBERS,
         (false, true) => WRAPPED_LINE_NUMBERS,
         (true, false) => MAIN_LINE_NUMBER,
-        (true, true) => WRAPPED_MAIN_LINE_NUMBER
+        (true, true) => WRAPPED_MAIN_LINE_NUMBER,
     })
 }
 
