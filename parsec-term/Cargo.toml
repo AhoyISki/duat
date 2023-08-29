@@ -1,6 +1,6 @@
 [package]
 name = "parsec-term"
-version = "0.1.2"
+version = "0.1.4"
 authors = ["AhoyISki"]
 description = "A frontend for Parsec for the terminal"
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-term"
@@ -13,7 +13,7 @@ edition = "2021"
 [dependencies]
 parsec-core = { path = "../parsec-core/", version = "^0.1.0" }
 
-unicode-width = "^0.1.10"
-crossterm = "^0.26.0"
-smallvec = "^1.10.0"
-cassowary = "^0.3.0"
+unicode-width = ">=0.1.10"
+crossterm = ">=0.26.0"
+smallvec = ">=1.10.0"
+cassowary = ">=0.3.0"
