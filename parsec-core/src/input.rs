@@ -25,7 +25,7 @@ pub trait KeyTakingWidget {
 }
 
 /// A method of editing a file.
-pub trait Scheme: Send + Sync {
+pub trait InputScheme: Send + Sync {
     /// Affects a file, given a certain key input.
     fn process_key<U, A>(
         &mut self, key: &KeyEvent, widget_actor: WidgetActor<U, A>, controler: &Controler<U>
@@ -41,7 +41,7 @@ pub trait Scheme: Send + Sync {
 /// sequence of characters.
 pub struct Remap<E>
 where
-    E: Scheme
+    E: InputScheme
 {
     /// Takes this sequence of `KeyEvent`s.
     takes: Vec<KeyEvent>,
@@ -55,7 +55,7 @@ where
 // TODO: Add the ability to send keys to an arbitrary object.
 impl<I> Remap<I>
 where
-    I: Scheme
+    I: InputScheme
 {
     pub fn new(takes: &[KeyEvent], gives: &[KeyEvent], condition: Box<dyn Fn(&I) -> bool>) -> Self {
         Self { takes: takes.to_vec(), gives: gives.to_vec(), condition }
@@ -65,7 +65,7 @@ where
 /// The structure responsible for remapping sequences of characters.
 pub struct KeyRemapper<I>
 where
-    I: Scheme
+    I: InputScheme
 {
     /// The list of remapped sequences to be used with the
     /// `EditingScheme`.
@@ -82,7 +82,7 @@ where
 
 impl<I> KeyRemapper<I>
 where
-    I: Scheme
+    I: InputScheme
 {
     pub fn new(editing_scheme: I) -> Self {
         KeyRemapper {

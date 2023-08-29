@@ -110,7 +110,7 @@ fn attach_caret(
     width: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, cfg, prev_char, x, width);
+    let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
     *x += len;
 
     let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
@@ -133,7 +133,7 @@ fn process_part(
     part: Part,
     cfg: &IterCfg,
     prev_char: &mut Option<char>,
-    x: &mut usize,
+    x: usize,
     width: usize,
 ) -> (usize, Part) {
     match part {
@@ -141,12 +141,12 @@ fn process_part(
             let ret = if char == '\n' {
                 let char = cfg.new_line().char(*prev_char);
                 if let Some(char) = char {
-                    (len_from(char, *x, width, cfg, *prev_char), Part::Char(char))
+                    (len_from(char, x, width, cfg, *prev_char), Part::Char(char))
                 } else {
                     (0, Part::Char('\n'))
                 }
             } else {
-                (len_from(char, *x, width, cfg, *prev_char), Part::Char(char))
+                (len_from(char, x, width, cfg, *prev_char), Part::Char(char))
             };
 
             *prev_char = Some(char);

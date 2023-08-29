@@ -6,31 +6,37 @@ use crate::{
     commands::Commands,
     data::{ReadableData, RoData, RwData},
     forms::FormPalette,
-    input::{KeyRemapper, Scheme},
+    input::{InputScheme, KeyRemapper},
     text::PrintCfg,
     ui::{activate_hook, ModNode, PushSpecs, Ui, Window},
     widgets::{FileWidget, WidgetType},
-    Controler, BREAK_LOOP, SHOULD_QUIT
+    Controler, BREAK_LOOP, SHOULD_QUIT,
 };
 
-pub struct Session<U>
+pub struct Session<U, S>
 where
-    U: Ui
+    U: Ui,
+    S: InputScheme,
 {
     ui: U,
     pub constructor_hook: Box<dyn FnMut(ModNode<U>, RoData<FileWidget<U>>)>,
     controler: Controler<U>,
-    print_cfg: RwData<PrintCfg>
+    print_cfg: RwData<PrintCfg>,
+    remapper: KeyRemapper<S>,
 }
 
-impl<U> Session<U>
+impl<U, S> Session<U, S>
 where
-    U: Ui + 'static
+    U: Ui + 'static,
+    S: InputScheme,
 {
     /// Returns a new instance of `OneStatusLayout`.
     pub fn new(
-        mut ui: U, print_cfg: PrintCfg, palette: FormPalette,
-        mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static
+        mut ui: U,
+        remapper: KeyRemapper<S>,
+        print_cfg: PrintCfg,
+        palette: FormPalette,
+        mut constructor_hook: impl FnMut(ModNode<U>, RoData<FileWidget<U>>) + 'static,
     ) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
@@ -46,7 +52,8 @@ where
             ui,
             constructor_hook: Box::new(constructor_hook),
             controler,
-            print_cfg: RwData::new(print_cfg)
+            print_cfg: RwData::new(print_cfg),
+            remapper,
         };
 
         session.open_arg_files();
@@ -69,34 +76,39 @@ where
         activate_hook(&mut self.controler, area, &mut self.constructor_hook);
     }
 
-    pub fn push<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), specs: PushSpecs
+    pub fn push_widget<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler
             .mutate_active_window(|window| window.push_to_master(widget_type, checker, specs))
     }
 
-    pub fn push_specd<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs)
+    pub fn push_specd_widget<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler
             .mutate_active_window(|window| window.push_to_master(widget_type, checker, specs))
     }
 
-    pub fn push_to<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area,
-        specs: PushSpecs
+    pub fn push_widget_to<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        area: &U::Area,
+        specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -104,11 +116,13 @@ where
         })
     }
 
-    pub fn push_specd_to<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
+    pub fn push_specd_widget_to<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        area: &U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -116,12 +130,14 @@ where
         })
     }
 
-    pub fn cluster_to<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area,
-        specs: PushSpecs
+    pub fn cluster_widget_with<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        area: &U::Area,
+        specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, _) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -129,11 +145,13 @@ where
         })
     }
 
-    pub fn cluster_specd_to<F>(
-        &mut self, f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs), area: &U::Area
+    pub fn cluster_specd_widget_with<F>(
+        &mut self,
+        f: impl FnOnce(&Controler<U>) -> (WidgetType<U>, F, PushSpecs),
+        area: &U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
-        F: Fn() -> bool + 'static
+        F: Fn() -> bool + 'static,
     {
         let (widget_type, checker, specs) = f(&self.controler);
         self.controler.mutate_active_window(|window| {
@@ -142,10 +160,7 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
-    where
-        I: Scheme
-    {
+    pub fn start(&mut self) {
         self.ui.startup();
 
         // The main loop.
@@ -158,7 +173,7 @@ where
                 widget_type.try_print(area, palette);
             }
 
-            self.session_loop(key_remapper);
+            self.session_loop();
 
             let mut files = std::mem::take(&mut *self.controler.files_to_open.write());
             for file in files.drain(..) {
@@ -175,9 +190,7 @@ where
 
     /// The primary application loop, executed while no breaking
     /// commands have been sent to [`Controls`].
-    fn session_loop<I>(&mut self, key_remapper: &mut KeyRemapper<I>)
-    where
-        I: Scheme
+    fn session_loop(&mut self)
     {
         let palette = &self.controler.palette;
         let controler = &self.controler;
@@ -192,7 +205,7 @@ where
                 }
 
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    send_event(key_remapper, controler, palette);
+                    send_event(&mut self.remapper, controler, palette);
                 }
 
                 for node in active_window.nodes() {
@@ -216,10 +229,12 @@ where
 
 /// Sends an event to the `Widget` determined by `SessionControl`.
 fn send_event<U, I>(
-    key_remapper: &mut KeyRemapper<I>, controler: &Controler<U>, palette: &FormPalette
+    key_remapper: &mut KeyRemapper<I>,
+    controler: &Controler<U>,
+    palette: &FormPalette,
 ) where
     U: Ui + 'static,
-    I: Scheme
+    I: InputScheme,
 {
     let Event::Key(key_event) = event::read().unwrap() else {
         return;

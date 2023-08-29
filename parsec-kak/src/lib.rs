@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
     data::{ReadableData, RoData, RwData},
-    input::Scheme,
+    input::InputScheme,
     ui::Ui,
     widgets::{ActSchemeWidget, CommandLine, WidgetActor},
     Controler
@@ -360,7 +360,7 @@ impl Editor {
     }
 }
 
-impl Scheme for Editor {
+impl InputScheme for Editor {
     fn process_key<U, AW>(
         &mut self, key: &KeyEvent, actor: WidgetActor<U, AW>, controler: &Controler<U>
     ) where

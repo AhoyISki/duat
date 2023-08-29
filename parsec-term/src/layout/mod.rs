@@ -667,9 +667,9 @@ impl Layout {
                     rect.set_main_constraints(self.frame, solver, edges, self.max);
                 } else {
                     let (parent, index) = self.fetch_parent(rect.read().index).unwrap();
-                    let mut parent = parent.write();
+                    let parent = parent.write();
                     let (solver, edges) = (&mut self.solver, &mut self.edges);
-                    prepare_child(&mut parent, index, solver, self.frame, self.max, edges)
+                    prepare_child(&parent, index, solver, self.frame, self.max, edges)
                 }
             }
 
@@ -790,7 +790,7 @@ impl Layout {
 /// Assigns all [`CassowaryConstraint`]s that are appropriate to a
 /// given child, with the exception of defined and ratio constraints.
 fn prepare_child(
-    parent: &mut Rect,
+    parent: &Rect,
     index: usize,
     solver: &mut Solver,
     frame: Frame,
@@ -822,7 +822,7 @@ fn prepare_child(
     if let Some((children, ..)) = &mut child.lineage {
         let len = children.len();
         for index in 0..len {
-            prepare_child(&mut child, index, solver, frame, max, edges);
+            prepare_child(&child, index, solver, frame, max, edges);
         }
     }
 }
