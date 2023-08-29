@@ -11,12 +11,12 @@ use std::{fmt::Debug, io};
 use area::PrintInfo;
 use crossterm::{
     cursor, execute,
-    terminal::{self, ClearType}
+    terminal::{self, ClearType},
 };
 use layout::{Frame, Layout};
 use parsec_core::{
     data::{ReadableData, RwData},
-    ui
+    ui,
 };
 
 mod area;
@@ -28,7 +28,7 @@ pub enum Anchor {
     TopLeft,
     TopRight,
     BottomLeft,
-    BottomRight
+    BottomRight,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -43,25 +43,31 @@ impl std::fmt::Debug for AreaIndex {
 #[derive(Default)]
 pub struct Ui {
     windows: Vec<Area>,
-    frame: Frame
+    frame: Frame,
 }
 
 impl Ui {
     pub fn new(frame: Frame) -> Self {
-        Self { windows: Vec::new(), frame }
+        Self {
+            windows: Vec::new(),
+            frame,
+        }
     }
 }
 
 impl ui::Ui for Ui {
+    type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
     type PrintInfo = PrintInfo;
-    type Area = Area;
 
     fn new_root(&mut self) -> Self::Area {
         let layout = Layout::new(self.frame);
         let root = Area::new(layout.main_index(), RwData::new(layout));
 
-        let area = Area { layout: root.layout.clone(), index: root.layout.read().main_index() };
+        let area = Area {
+            layout: root.layout.clone(),
+            index: root.layout.read().main_index(),
+        };
 
         self.windows.push(root);
 
@@ -107,7 +113,7 @@ impl ui::Ui for Ui {
 
 pub enum ConstraintChangeErr {
     NoParent,
-    Impossible
+    Impossible,
 }
 
 impl std::fmt::Debug for ConstraintChangeErr {
@@ -115,7 +121,10 @@ impl std::fmt::Debug for ConstraintChangeErr {
         match self {
             // NOTE: Might not be true in the future.
             ConstraintChangeErr::NoParent => {
-                write!(f, "The area does not have a parent, so its constraint cannot be changed.")
+                write!(
+                    f,
+                    "The area does not have a parent, so its constraint cannot be changed."
+                )
             }
             ConstraintChangeErr::Impossible => {
                 write!(f, "The constraint change is impossible.")
