@@ -42,7 +42,7 @@ impl Default for TabStops {
 }
 
 /// Wheter to show the new line or not.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewLine {
     /// Show the given character on every new line.
     AlwaysAs(char),

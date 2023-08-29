@@ -110,6 +110,7 @@ fn attach_caret(
     width: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
+    let old_x = *x;
     let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
     *x += len;
 
@@ -121,11 +122,14 @@ fn attach_caret(
     };
 
     if let Some(char) = item.part.as_char() {
-        *needs_to_wrap = char == '\n'
+        if char == '\n' {
+            *needs_to_wrap = true;
+            *x = 0;
+        }
     }
 
     item.part = processed_part;
-    Some((Caret::new(*x - len, len, nl_wrap || width_wrap), item))
+    Some((Caret::new(old_x, len, nl_wrap || width_wrap), item))
 }
 
 #[inline(always)]

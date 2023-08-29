@@ -53,6 +53,10 @@ where
         LineNumbersCfg::default().build()
     }
 
+    pub fn config() -> LineNumbersCfg {
+        LineNumbersCfg::new()
+    }
+
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
         let mut width = 1f64;
