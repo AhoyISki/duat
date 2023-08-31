@@ -7,16 +7,17 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-pub use self::builder::FileBuilder;
+pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
-    data::{ReadableData, RoData},
+    data::{ReadableData, RoData, RwData},
     forms::FormPalette,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
-    widgets::{FileWidget, PassiveWidget, Widget},
+    widgets::{ActiveWidget, FileWidget, PassiveWidget, Widget},
     Controler,
 };
 
@@ -143,7 +144,7 @@ impl PushSpecs {
 }
 
 // TODO: Add a general scrolling function.
-pub trait PrintInfo: Default + Clone + Copy {
+pub trait PrintInfo: Default + Clone + Copy + Sized {
     type Area: Area;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
@@ -182,6 +183,10 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// Gets the height of the area.
     fn height(&self) -> usize;
 
+    /// Returns the current information on how the widget's [`Text`] should be
+    /// printed.
+    fn print_info(&self) -> Self::PrintInfo;
+
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
     ///
@@ -190,7 +195,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     fn set_as_active(&self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(&self, text: &Text, info: Self::PrintInfo, cfg: &PrintCfg, palette: &FormPalette);
+    fn print(&self, text: &Text, cfg: &PrintCfg, palette: &FormPalette);
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
 
@@ -332,7 +337,7 @@ pub struct Node<U>
 where
     U: Ui,
 {
-    widget: Widget<U>,
+    widget: Widget,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
     file_id: Option<FileId>,
@@ -365,7 +370,7 @@ unsafe impl<U> Send for Node<U> where U: Ui {}
 pub(crate) fn build_file<U>(
     controler: &mut Controler<U>,
     mod_area: U::Area,
-    file_builder_fn: &mut dyn FnMut(FileBuilder<U>, RoData<FileWidget<U>>),
+    file_builder_fn: impl FnMut(FileBuilder<U>, RoData<FileWidget>),
 ) where
     U: Ui,
 {
@@ -454,6 +459,8 @@ where
     nodes: Vec<Node<U>>,
     files_region: U::Area,
     master_area: U::Area,
+    active_file: RwData<Option<RoData<FileWidget>>>,
+    active_widget: RwData<Option<RoData<dyn ActiveWidget>>>,
 }
 
 impl<U> Window<U>
@@ -461,7 +468,7 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of [`Window<U>`].
-    pub fn new<Checker>(ui: &mut U, widget: Widget<U>, checker: Checker) -> (Self, U::Area)
+    pub fn new<Checker>(ui: &mut U, widget: Widget, checker: Checker) -> (Self, U::Area)
     where
         Checker: Fn() -> bool + 'static,
     {
@@ -477,10 +484,15 @@ where
 
         *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
 
+        let active_widget = RwData::new(widget.as_active().map(RoData::from));
+        let active_file = RwData::new(widget.downcast_ref::<FileWidget>().map(RoData::from));
+
         let parsec_window = Self {
             nodes: vec![main_node],
             files_region: area.clone(),
             master_area: area.clone(),
+            active_file,
+            active_widget,
         };
 
         (parsec_window, area)
@@ -489,7 +501,7 @@ where
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push<Checker>(
         &mut self,
-        widget: Widget<U>,
+        widget: Widget,
         area: &U::Area,
         checker: Checker,
         specs: PushSpecs,
@@ -523,7 +535,7 @@ where
     /// This is an area, usually in the center, that contains all
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
-    pub fn push_file(&mut self, widget: Widget<U>, specs: PushSpecs) -> (U::Area, Option<U::Area>) {
+    pub fn push_file(&mut self, widget: Widget, specs: PushSpecs) -> (U::Area, Option<U::Area>) {
         let area = self.files_region.clone();
 
         let checker = || false;
@@ -540,7 +552,7 @@ where
     /// window.
     pub fn push_to_master<Checker>(
         &mut self,
-        widget: Widget<U>,
+        widget: Widget,
         checker: Checker,
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
@@ -554,7 +566,7 @@ where
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
     pub fn widgets(
         &self,
-    ) -> impl Iterator<Item = (&Widget<U>, &U::Area, Option<FileId>)> + Clone + '_ {
+    ) -> impl Iterator<Item = (&Widget, &U::Area, Option<FileId>)> + Clone + '_ {
         self.nodes.iter().map(
             |Node {
                  widget,
@@ -585,6 +597,24 @@ where
                 })
             })
     }
+
+    #[must_use]
+    pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) -> bool {
+        if let Some(active_widget) = *self.active_widget.read()
+            && let Some((w_and_i, area)) = self
+            	.nodes()
+            	.find_map(|node| if node.widget.ptr_eq(&active_widget) {
+                	node.widget.as_active().zip(Some(&node.area))
+            	} else {
+                	None
+            	})
+        {
+            w_and_i.send_key(key, area, controler);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 pub struct RoWindow<'a, U>(&'a Window<U>)
@@ -604,12 +634,12 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &FileWidget<U>) -> B) -> B {
+    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &FileWidget) -> B) -> B {
         self.0
             .nodes
             .iter()
             .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast_ref::<FileWidget<U>>() {
+                if let Some(file) = widget.downcast_ref::<FileWidget>() {
                     f(accum, &file.read())
                 } else {
                     accum
@@ -626,7 +656,7 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn PassiveWidget<U>) -> B) -> B {
+    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn PassiveWidget) -> B) -> B {
         self.0
             .nodes
             .iter()
