@@ -26,6 +26,7 @@ use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
+    input::InputMethod,
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler,
@@ -33,33 +34,21 @@ use crate::{
 
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget<U>`] are shown on screen.
-pub struct LineNumbers<U>
-where
-    U: Ui,
-{
-    file: RoData<FileWidget<U>>,
+pub struct LineNumbers {
+    file: RoData<FileWidget>,
+    input: RoData<dyn InputMethod>,
     builder: TextBuilder,
     cfg: LineNumbersCfg,
 }
 
-impl<U> LineNumbers<U>
-where
-    U: Ui + 'static,
-{
-    /// Returns a function that outputs a [`LineNumbers<U>`], taking a
-    /// [`LineNumbersCfg`] as argument.
-    pub fn build_default()
-    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        LineNumbersCfg::default().build()
-    }
-
+impl LineNumbers {
     pub fn config() -> LineNumbersCfg {
         LineNumbersCfg::new()
     }
 
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
-        let mut width = 1f64;
+        let mut width = 1.0;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
         let len = self.file.read().text().len_lines() + 1;
@@ -77,14 +66,20 @@ where
     fn update_text(&mut self) {
         let file = self.file.read();
         let printed_lines = file.printed_lines();
-        let main_line = file.main_cursor().true_line();
+        let main_line: Option<usize> = self
+            .input
+            .read()
+            .cursors()
+            .and_then(|cursors| cursors.main())
+            .map(|main| main.true_line());
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-            let tag = get_tag(*line, main_line, *is_wrapped);
+            let is_main_line = main_line.is_some_and(|main| main == *line);
+            let tag = get_tag(is_main_line, *is_wrapped);
             let text = get_text(*line, main_line, *is_wrapped, &self.cfg);
 
             let align_tag = {
-                let alignment = if *line == main_line {
+                let alignment = if is_main_line {
                     self.cfg.main_alignment
                 } else {
                     self.cfg.alignment
@@ -111,11 +106,17 @@ where
     }
 }
 
-impl<U> PassiveWidget<U> for LineNumbers<U>
-where
-    U: Ui + 'static,
-{
-    fn update(&mut self, area: &U::Area) {
+impl PassiveWidget for LineNumbers {
+    /// Returns a function that outputs a [`LineNumbers<U>`], taking a
+    /// [`LineNumbersCfg`] as argument.
+    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+    {
+        LineNumbersCfg::default().builder()(controler)
+    }
+
+    fn update(&mut self, area: &impl Area) {
         let width = self.calculate_width();
         area.change_constraint(Constraint::Length(width + 1.0))
             .unwrap();
@@ -128,10 +129,7 @@ where
     }
 }
 
-impl<U> AsAny for LineNumbers<U>
-where
-    U: Ui + 'static,
-{
+impl AsAny for LineNumbers {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -173,22 +171,23 @@ impl LineNumbersCfg {
             alignment: Alignment::Left,
             main_alignment: Alignment::Right,
             show_wraps: false,
-            specs: PushSpecs::left_free(),
+            specs: PushSpecs::left(),
         }
     }
 
-    pub fn build<U>(
+    pub fn builder<U>(
         self,
     ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
     where
         U: Ui,
     {
         move |controler| {
-            let file = controler.active_file();
+            let file = controler.current_file();
             let specs = self.specs;
 
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
+                input: controler.current_input(),
                 builder: TextBuilder::default(),
                 cfg: self,
             };
@@ -285,8 +284,8 @@ impl LineNumbersCfg {
 }
 
 /// Gets the [`Tag`], according to line positioning.
-fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> BuilderTag {
-    BuilderTag::PushForm(match (line == main_line, is_wrapped) {
+fn get_tag(is_main_line: bool, is_wrapped: bool) -> BuilderTag {
+    BuilderTag::PushForm(match (is_main_line, is_wrapped) {
         (false, false) => LINE_NUMBERS,
         (false, true) => WRAPPED_LINE_NUMBERS,
         (true, false) => MAIN_LINE_NUMBER,
@@ -295,20 +294,22 @@ fn get_tag(line: usize, main_line: usize, is_wrapped: bool) -> BuilderTag {
 }
 
 /// Writes the text of the line number to a given [`String`].
-fn get_text(line: usize, main_line: usize, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {
+fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {
     if is_wrapped && !cfg.show_wraps {
         String::from("\n")
-    } else {
+    } else if let Some(main) = main {
         match cfg.numbers {
             Numbers::Absolute => (line + 1).to_string() + "\n",
-            Numbers::Relative => usize::abs_diff(line, main_line).to_string() + "\n",
+            Numbers::Relative => usize::abs_diff(line, main).to_string() + "\n",
             Numbers::RelAbs => {
-                if line != main_line {
-                    usize::abs_diff(line, main_line).to_string() + "\n"
+                if line != main {
+                    usize::abs_diff(line, main).to_string() + "\n"
                 } else {
                     (line + 1).to_string() + "\n"
                 }
             }
         }
+    } else {
+        (line + 1).to_string() + "\n"
     }
 }

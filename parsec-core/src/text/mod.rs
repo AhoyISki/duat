@@ -25,7 +25,7 @@ use self::{
 use crate::{
     forms,
     history::Change,
-    position::{Cursor, Point},
+    position::{Cursor, Point}, input::Cursors,
 };
 
 /// The text in a given area.
@@ -166,10 +166,10 @@ impl Text {
 
     /// Removes the tags for all the cursors, used before they are
     /// expected to move.
-    pub(crate) fn add_cursor_tags(&mut self, cursors: &[Cursor], main_index: usize) {
-        for (index, cursor) in cursors.iter().enumerate() {
+    pub(crate) fn add_cursor_tags(&mut self, cursors: &Cursors) {
+        for (cursor, is_main) in cursors.iter() {
             let Range { start, end } = cursor.range();
-            let (caret_tag, start_tag, end_tag) = cursor_tags(index == main_index);
+            let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
 
             let pos_list = [
                 (start, start_tag),

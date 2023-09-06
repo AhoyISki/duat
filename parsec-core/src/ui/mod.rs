@@ -17,7 +17,7 @@ use crate::{
     forms::FormPalette,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
-    widgets::{ActiveWidget, FileWidget, PassiveWidget, Widget},
+    widgets::{FileWidget, PassiveWidget, Widget},
     Controler,
 };
 
@@ -70,90 +70,89 @@ pub enum Constraint {
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
-    pub constraint: Option<Constraint>,
+    constraint: Option<Constraint>,
 }
 
 impl PushSpecs {
     /// Returns a new instance of [`PushSpecs`].
-    pub fn left(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Left,
-            constraint: Some(constraint),
-        }
-    }
-
-    /// Returns a new instance of [`PushSpecs`].
-    pub fn right(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Right,
-            constraint: Some(constraint),
-        }
-    }
-
-    /// Returns a new instance of [`PushSpecs`].
-    pub fn above(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Above,
-            constraint: Some(constraint),
-        }
-    }
-
-    /// Returns a new instance of [`PushSpecs`].
-    pub fn below(constraint: Constraint) -> Self {
-        PushSpecs {
-            side: Side::Below,
-            constraint: Some(constraint),
-        }
-    }
-
-    /// Returns a new instance of [`PushSpecs`].
-    pub fn left_free() -> Self {
-        PushSpecs {
+    pub fn left() -> Self {
+        Self {
             side: Side::Left,
             constraint: None,
         }
     }
 
     /// Returns a new instance of [`PushSpecs`].
-    pub fn right_free() -> Self {
-        PushSpecs {
+    pub fn right() -> Self {
+        Self {
             side: Side::Right,
             constraint: None,
         }
     }
 
     /// Returns a new instance of [`PushSpecs`].
-    pub fn above_free() -> Self {
-        PushSpecs {
+    pub fn above() -> Self {
+        Self {
             side: Side::Above,
             constraint: None,
         }
     }
 
     /// Returns a new instance of [`PushSpecs`].
-    pub fn below_free() -> Self {
-        PushSpecs {
+    pub fn below() -> Self {
+        Self {
             side: Side::Below,
             constraint: None,
+        }
+    }
+
+    pub fn with_lenght(self, len: f64) -> Self {
+        Self {
+            constraint: Some(Constraint::Length(len)),
+            ..self
+        }
+    }
+
+    pub fn with_minimum(self, min: f64) -> Self {
+        Self {
+            constraint: Some(Constraint::Min(min)),
+            ..self
+        }
+    }
+
+    pub fn with_maximum(self, max: f64) -> Self {
+        Self {
+            constraint: Some(Constraint::Max(max)),
+            ..self
+        }
+    }
+
+    pub fn with_percent(self, percent: u16) -> Self {
+        Self {
+            constraint: Some(Constraint::Percent(percent)),
+            ..self
+        }
+    }
+
+    pub fn with_ratio(self, den: u16, div: u16) -> Self {
+        Self {
+            constraint: Some(Constraint::Ratio(den, div)),
+            ..self
         }
     }
 
     pub fn comes_earlier(&self) -> bool {
         matches!(self.side, Side::Left | Side::Above)
     }
+
+    pub fn constraint(&self) -> Option<Constraint> {
+        self.constraint
+    }
 }
 
 // TODO: Add a general scrolling function.
 pub trait PrintInfo: Default + Clone + Copy + Sized {
     type Area: Area;
-
-    /// Scrolls the [`Text`] (up or down) until the main cursor is
-    /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_to_gap(&mut self, text: &Text, pos: Point, area: &Self::Area, cfg: &PrintCfg);
-
-    /// Returns the character index of the first character that would
-    /// be printed.
-    fn first_char(&self) -> usize;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -183,9 +182,16 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// Gets the height of the area.
     fn height(&self) -> usize;
 
-    /// Returns the current information on how the widget's [`Text`] should be
-    /// printed.
-    fn print_info(&self) -> Self::PrintInfo;
+    /// Scrolls the [`Text`] (up or down) until the main cursor is
+    /// within the [`ScrollOff`][crate::text::ScrollOff] range.
+    fn scroll_around_point(&mut self, text: &Text, point: Point, cfg: &PrintCfg);
+
+    /// Returns the character index of the first character that would
+    /// be printed.
+    fn first_char(&self) -> usize;
+
+    /// Mutates the area's [`PrintInfo`] from within.
+    fn mutate_print_info(&self, f: impl FnMut(&mut Self::PrintInfo));
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
@@ -255,7 +261,6 @@ pub trait Area: Clone + PartialEq + Send + Sync {
         &self,
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
-        info: Self::PrintInfo,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Returns a reverse printing iterator.
@@ -337,7 +342,7 @@ pub struct Node<U>
 where
     U: Ui,
 {
-    widget: Widget,
+    widget: Widget<U>,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
     file_id: Option<FileId>,
@@ -360,7 +365,9 @@ where
         scope: &'scope std::thread::Scope<'scope, 'env>,
         palette: &'env FormPalette,
     ) {
-        let succeeded = self.widget.try_update_and_print(scope, &self.area, palette);
+        let succeeded = self
+            .widget
+            .threaded_try_update_and_print(scope, &self.area, palette);
         self.not_updated.store(!succeeded, Ordering::Release);
     }
 }
@@ -370,7 +377,7 @@ unsafe impl<U> Send for Node<U> where U: Ui {}
 pub(crate) fn build_file<U>(
     controler: &mut Controler<U>,
     mod_area: U::Area,
-    file_builder_fn: impl FnMut(FileBuilder<U>, RoData<FileWidget>),
+    f: &mut impl FnMut(&FileBuilder<U>, &RwData<FileWidget>),
 ) where
     U: Ui,
 {
@@ -385,18 +392,19 @@ pub(crate) fn build_file<U>(
             .file_id
             .and_then(|file_id| crate::CMD_FILE_ID.lock().unwrap().replace(file_id));
 
-        let old_file = node.widget.downcast_ref::<FileWidget<U>>().map(|file| {
-            std::mem::replace(&mut *controler.active_file.write(), RoData::from(&file))
-        });
+        let old_file = node
+            .widget
+            .downcast_ref::<FileWidget>()
+            .map(|file| std::mem::replace(&mut *controler.active_file.write(), file));
 
-        let widget = RoData::from(&node.widget.downcast_ref::<FileWidget<U>>().unwrap());
+        let widget = node.widget.downcast_ref::<FileWidget>().unwrap();
 
         (widget, old_file, old_file_id)
     });
 
     let file_builder = FileBuilder::new(controler, RwLock::new(mod_area));
 
-    file_builder_fn(file_builder, widget);
+    f(&file_builder, &widget);
 
     *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
     if let Some(file) = old_file {
@@ -432,16 +440,17 @@ impl From<PushSpecs> for Axis {
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
-pub trait Ui: Default + 'static {
+pub trait Ui: Sized + Default + 'static {
     type PrintInfo: PrintInfo<Area = Self::Area>;
     type ConstraintChangeErr: Debug;
     type Area: Area<PrintInfo = Self::PrintInfo, ConstraintChangeErr = Self::ConstraintChangeErr>;
 
-    /// Initiates and returns a new "master" [`Area`][Ui::Area].
+    /// Initiates and returns a new "master" [`Area`].
     ///
-    /// This [`Area`][Ui::Area] must not have any parents, and must be
-    /// the located on a new window, that is, a plain region with
-    /// nothing in it.
+    /// This [`Area`] must not have any parents, and must be placed on a new
+    /// window, that is, a plain region with nothing in it.
+    ///
+    /// [`Area`]: Ui::Area
     fn new_root(&mut self) -> Self::Area;
 
     /// Functions to trigger when the program begins.
@@ -459,8 +468,6 @@ where
     nodes: Vec<Node<U>>,
     files_region: U::Area,
     master_area: U::Area,
-    active_file: RwData<Option<RoData<FileWidget>>>,
-    active_widget: RwData<Option<RoData<dyn ActiveWidget>>>,
 }
 
 impl<U> Window<U>
@@ -468,7 +475,7 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of [`Window<U>`].
-    pub fn new<Checker>(ui: &mut U, widget: Widget, checker: Checker) -> (Self, U::Area)
+    pub fn new<Checker>(ui: &mut U, widget: Widget<U>, checker: Checker) -> (Self, U::Area)
     where
         Checker: Fn() -> bool + 'static,
     {
@@ -484,15 +491,10 @@ where
 
         *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
 
-        let active_widget = RwData::new(widget.as_active().map(RoData::from));
-        let active_file = RwData::new(widget.downcast_ref::<FileWidget>().map(RoData::from));
-
         let parsec_window = Self {
             nodes: vec![main_node],
             files_region: area.clone(),
             master_area: area.clone(),
-            active_file,
-            active_widget,
         };
 
         (parsec_window, area)
@@ -501,7 +503,7 @@ where
     /// Pushes a [`Widget<U>`] onto an existing one.
     pub fn push<Checker>(
         &mut self,
-        widget: Widget,
+        widget: Widget<U>,
         area: &U::Area,
         checker: Checker,
         specs: PushSpecs,
@@ -535,10 +537,14 @@ where
     /// This is an area, usually in the center, that contains all
     /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
-    pub fn push_file(&mut self, widget: Widget, specs: PushSpecs) -> (U::Area, Option<U::Area>) {
+    pub fn push_file(
+        &mut self,
+        widget: Widget<U>,
+        checker: Box<dyn Fn() -> bool>,
+        specs: PushSpecs,
+    ) -> (U::Area, Option<U::Area>) {
         let area = self.files_region.clone();
 
-        let checker = || false;
         let file_id = Some(unique_file_id());
         let (child, parent) = self.push(widget, &area, checker, specs, file_id, false);
         if let Some(parent) = &parent {
@@ -552,7 +558,7 @@ where
     /// window.
     pub fn push_to_master<Checker>(
         &mut self,
-        widget: Widget,
+        widget: Widget<U>,
         checker: Checker,
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
@@ -566,7 +572,7 @@ where
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
     pub fn widgets(
         &self,
-    ) -> impl Iterator<Item = (&Widget, &U::Area, Option<FileId>)> + Clone + '_ {
+    ) -> impl Iterator<Item = (&Widget<U>, &U::Area, Option<FileId>)> + Clone + '_ {
         self.nodes.iter().map(
             |Node {
                  widget,
@@ -588,7 +594,7 @@ where
             .iter()
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
-                widget.downcast_ref::<FileWidget<U>>().map(|file| {
+                widget.downcast_ref::<FileWidget>().map(|file| {
                     let name = file
                         .read()
                         .name()
@@ -600,20 +606,13 @@ where
 
     #[must_use]
     pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) -> bool {
-        if let Some(active_widget) = *self.active_widget.read()
-            && let Some((w_and_i, area)) = self
-            	.nodes()
-            	.find_map(|node| if node.widget.ptr_eq(&active_widget) {
-                	node.widget.as_active().zip(Some(&node.area))
-            	} else {
-                	None
-            	})
-        {
-            w_and_i.send_key(key, area, controler);
-            true
-        } else {
-            false
-        }
+        self.nodes().any(|node| {
+            if node.widget.ptr_eq(&controler.active_widget) {
+                node.widget.send_key(key, &node.area, controler)
+            } else {
+                false
+            }
+        })
     }
 }
 

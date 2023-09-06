@@ -5,7 +5,8 @@ use crate::{
     commands::{CommandErr, Commands},
     data::RwData,
     forms::FormPalette,
-    widgets::Widget,
+    input::InputMethod,
+    widgets::{ActiveWidget, FileWidget, PassiveWidget, Widget},
     Controler,
 };
 
@@ -99,19 +100,15 @@ where
     /// │╰──────╯╰───────╯│     │╰───────────────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
-    ///
-    /// If you wish to, for example, push on [`Side::Bottom`] of `1`,
-    /// checkout [`push_widget_to_area`][Self::push_widget_to_area].
-    pub fn push_with_specs<F>(
+    pub fn push<F>(
         &self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
-        specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
         let file_id = *crate::CMD_FILE_ID.lock().unwrap();
-        let (widget, checker, _) = builder(self.controler);
+        let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
@@ -147,17 +144,16 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    pub fn push_with_specs_to<F>(
+    pub fn push_to<F>(
         &self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: U::Area,
-        specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
         let file_id = *crate::CMD_FILE_ID.lock().unwrap();
-        let (widget, checker, _) = builder(self.controler);
+        let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
             window.push(widget, &area, checker, specs, file_id, true)
         });
@@ -165,7 +161,84 @@ where
         (child, parent)
     }
 
-    pub fn push_specd<F>(
+    pub fn palette(&self) -> &FormPalette {
+        &self.controler.palette
+    }
+
+    pub fn commands(&self) -> &RwData<Commands> {
+        &self.controler.commands
+    }
+
+    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
+        self.controler.run_cmd(cmd)
+    }
+}
+
+pub struct WindowBuilder<'a, U>
+where
+    U: Ui,
+{
+    controler: &'a mut Controler<U>,
+    mod_area: RwLock<U::Area>,
+}
+
+impl<'a, U> WindowBuilder<'a, U>
+where
+    U: Ui,
+{
+    /// Creates a new [`FileBuilder<U>`].
+    pub fn new(controler: &'a mut Controler<U>, mod_area: RwLock<U::Area>) -> Self {
+        Self {
+            controler,
+            mod_area,
+        }
+    }
+
+    /// Pushes a [`Widget<U>`] to the file's area, given a [`Widget<U>`] builder
+    /// function.
+    ///
+    /// In Parsec, windows have two parts: the central area and the periphery.
+    /// The central part is the "file's region", it contains all
+    /// [`FileWidget<U>`]s, as well as all directly related [`Widget<U>`]s
+    /// ([`LineNumbers<U>`]s, [`StatusLine<U>`]s, etc.). These widgets are all
+    /// "clustered" to their main file, that is, moving the file will move the
+    /// widget with it.
+    ///
+    /// The periphery contains all widgets that are _not_ directly related to
+    /// any file in particular. One example of this would be a file explorer, or
+    /// a global status line, that switches to display information about the
+    /// currently active file. These widgets may be clustered together (not with
+    /// any widget in the central area), and be moved in unison. One could, for
+    /// example, cluster a [`CommandLine<U>`] with a [`StatusLine<U>`], to keep
+    /// them together when moving either of them around. By default, no widgets
+    /// are clustered together, but you can cluster them with the
+    /// [`cluster_to`] function.
+    ///
+    /// # Returns
+    ///
+    /// The first element is the area occupied by the new widget. You can use
+    /// [`push_to`] or [`cluster_to`] methods to push widgets to this one
+    /// directly, instead of the parent area.
+    ///
+    /// The second element is a possible newly created area to house the
+    /// previously existing and newly created widgets. It may not be
+    /// created, for example, if you push two widgets to another on the same
+    /// axis, only one parent is necessary to house all three of them.
+    ///
+    /// # Examples
+    ///
+    /// This method would be used when defining how a new window will be opened,
+    /// from Parsec's [`Session`]
+    ///
+    /// ```rust
+    /// ```
+    ///
+    /// [`FileWidget<U>`]: crate::widgets::FileWidget
+    /// [`LineNumbers<U>`]: crate::widgets::LineNumbers
+    /// [`StatusLine<U>`]: crate::widgets::StatusLine
+    /// [`push_to`]: Self::<U>::push_to
+    /// [`Session`]: crate::session::Session
+    pub fn push<F>(
         &self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
@@ -178,20 +251,44 @@ where
             let mod_area = self.mod_area.read().unwrap();
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
 
-            // If a new parent is created, and it owns the old `files_region`
-            // (.i.e all files), then it must become the new files_region.
-            if let Some(parent) = &parent {
-                if parent.is_senior_of(&window.files_region) {
-                    window.files_region = parent.clone();
-                }
-            }
-
             (child, parent)
         });
 
         if let Some(parent) = &parent {
             *self.mod_area.write().unwrap() = parent.clone();
         }
+
+        (child, parent)
+    }
+
+    /// Pushes a [`Widget<U>`] to a specific `area`, given
+    /// [`PushSpecs`] and a constructor function.
+    ///
+    /// # Examples
+    ///
+    /// Given that [`self`] has an index of `0`, and other widgets
+    /// have already been pushed, one can push to a specific
+    /// [`Widget<U>`], given an area index.
+    ///
+    /// ╭────────0────────╮     ╭────────0────────╮
+    /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
+    /// ││      ││       ││ --> ││      │╰───────╯│
+    /// ││      ││       ││     ││      │╭───3───╮│
+    /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
+    /// ╰─────────────────╯     ╰─────────────────╯
+    pub fn push_to<F>(
+        &self,
+        builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
+        area: U::Area,
+    ) -> (U::Area, Option<U::Area>)
+    where
+        F: Fn() -> bool + 'static,
+    {
+        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
+        let (widget, checker, specs) = builder(self.controler);
+        let (child, parent) = self.controler.mutate_active_window(|window| {
+            window.push(widget, &area, checker, specs, file_id, true)
+        });
 
         (child, parent)
     }

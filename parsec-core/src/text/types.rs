@@ -1,6 +1,6 @@
 use super::{
     tags::{RawTag, ToggleId},
-    Handle
+    Handle,
 };
 use crate::{forms::FormId, position::Point};
 
@@ -23,7 +23,7 @@ pub enum Part {
     RightButtonEnd(ToggleId),
     MiddleButtonStart(ToggleId),
     MiddleButtonEnd(ToggleId),
-    Termination
+    Termination,
 }
 
 impl From<RawTag> for Part {
@@ -62,7 +62,11 @@ impl Part {
     }
 
     pub fn as_char(&self) -> Option<char> {
-        if let Self::Char(v) = self { Some(*v) } else { None }
+        if let Self::Char(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     pub fn is_tag(&self) -> bool {
@@ -70,7 +74,12 @@ impl Part {
     }
 }
 
-/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+pub type ButtonFn = Box<dyn Fn(Point) + Send + Sync>;
+
+/// A subset of [`Tag`], that can be used by a [`TextBuilder`].
+///
+/// This subset excludes, for example, all cursor related tags, and all text
+/// hiding/ghost text tags.
 pub enum BuilderTag {
     PushForm(FormId),
     PopForm(FormId),
@@ -78,27 +87,28 @@ pub enum BuilderTag {
     AlignCenter,
     AlignRight,
 
-    HoverStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    HoverStartNew(ButtonFn, ButtonFn),
     HoverStart(ToggleId),
     HoverEnd(ToggleId),
 
-    LeftButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    LeftButtonStartNew(ButtonFn, ButtonFn),
     LeftButtonStart(ToggleId),
     LeftButtonEnd(ToggleId),
 
-    RightButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    RightButtonStartNew(ButtonFn, ButtonFn),
     RightButtonStart(ToggleId),
     RightButtonEnd(ToggleId),
 
-    MiddleButtonStartNew(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>),
+    MiddleButtonStartNew(ButtonFn, ButtonFn),
     MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId)
+    MiddleButtonEnd(ToggleId),
 }
 
 impl BuilderTag {
     pub(super) fn into_raw(
-        self, handle: Handle,
-        toggles: &mut Vec<(Box<dyn Fn(Point) + Send + Sync>, Box<dyn Fn(Point) + Send + Sync>)>
+        self,
+        handle: Handle,
+        toggles: &mut Vec<(ButtonFn, ButtonFn)>,
     ) -> RawTag {
         match self {
             BuilderTag::PushForm(id) => RawTag::PushForm(id, handle),
@@ -132,8 +142,7 @@ impl BuilderTag {
                 RawTag::MiddleButtonStart(ToggleId::new(toggles.len() - 1), handle)
             }
             BuilderTag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id, handle),
-            BuilderTag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle)
+            BuilderTag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle),
         }
     }
 }
-

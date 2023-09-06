@@ -404,7 +404,7 @@ impl Rect {
     fn is_frameable(&self, parent: Option<&Rect>) -> bool {
         if parent.is_some_and(|parent| parent.lineage.as_ref().unwrap().2) {
             false
-        } else if let Some((_, _, clustered)) = &self.lineage {
+        } else if let Some((.., clustered)) = &self.lineage {
             *clustered
         } else {
             true

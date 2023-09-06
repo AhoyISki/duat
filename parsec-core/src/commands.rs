@@ -562,6 +562,9 @@ impl Command {
     }
 }
 
+unsafe impl Send for Command {}
+unsafe impl Sync for Command {}
+
 /// A list of [`Command`]s, meant to be used in a
 /// [`CommandLine<U>`].
 ///

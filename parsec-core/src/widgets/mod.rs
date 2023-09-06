@@ -22,25 +22,112 @@ mod file_widget;
 mod line_numbers;
 mod status_line;
 
+use std::sync::Arc;
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::{cmp::Ordering, ops::Range, sync::Arc};
 
+use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
+pub use self::{
+    command_line::{CommandLine, CommandLineCfg},
+    file_widget::{FileWidget, FileWidgetCfg},
+    line_numbers::{LineNumbers, LineNumbersCfg},
+    status_line::{file_parts, StatusLine, StatusPart},
+};
 use crate::{
     data::{AsAny, RawReadableData, ReadableData, RwData},
-    position::{Cursor, Editor, Mover},
+    input::InputMethod,
     text::{PrintCfg, Text},
-    ui::{Area, Ui}
+    ui::{Area, PushSpecs, Ui},
+    Controler,
 };
 
-// TODO: Maybe set up the ability to print images as well.
 /// An area where text will be printed to the screen.
-pub trait PassiveWidget<U>: AsAny + Send + Sync + 'static
+pub trait PassiveWidget: AsAny + Send + Sync + 'static {
+    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+        Self: Sized;
+
+    /// Updates the widget, allowing the modification of its
+    /// [`Area`][Ui::Area].
+    ///
+    /// This function will be called when Parsec determines that the
+    /// [`WidgetNode`]
+    ///
+    /// [`Session<U>`]: crate::session::Session
+    fn update(&mut self, area: &impl Area)
+    where
+        Self: Sized;
+
+    /// The text that this widget prints out.
+    fn text(&self) -> &Text;
+
+    fn print_cfg(&self) -> &PrintCfg {
+        use std::sync::LazyLock;
+        static CFG: LazyLock<PrintCfg> = LazyLock::new(|| PrintCfg::default());
+
+        &CFG
+    }
+
+    fn print(&self, area: &impl Area, palette: &crate::forms::FormPalette)
+    where
+        Self: Sized,
+    {
+        area.print(self.text(), self.print_cfg(), palette)
+    }
+}
+
+pub trait ActiveWidgetCfg: Sized + Clone {
+    type Widget: ActiveWidget;
+    type WithInput<NewI>: ActiveWidgetCfg
+    where
+        NewI: InputMethod<Widget = Self::Widget> + Clone;
+
+    fn builder<U>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui;
+
+    fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
+    where
+        NewI: InputMethod<Widget = Self::Widget> + Clone;
+}
+
+/// A widget that can receive input and show [`Cursor`]s.
+pub trait ActiveWidget: PassiveWidget {
+    type Config: ActiveWidgetCfg<Widget = Self>
+    where
+        Self: Sized;
+
+    /// A mutable reference to the [`Text`] printed by this cursor.
+    fn mut_text(&mut self) -> &mut Text;
+
+    fn config() -> Self::Config
+    where
+        Self: Sized;
+
+    /// Actions to do whenever this [`ActionableWidget`] is focused.
+    fn on_focus(&mut self, _area: &impl Area)
+    where
+        Self: Sized,
+    {
+    }
+
+    /// Actions to do whenever this [`ActionableWidget`] is unfocused.
+    fn on_unfocus(&mut self, _area: &impl Area)
+    where
+        Self: Sized,
+    {
+    }
+}
+
+trait WidgetHolder<U>: Send + Sync
 where
-    U: Ui + 'static
+    U: Ui,
 {
     /// Updates the widget, allowing the modification of its
     /// [`Area`][Ui::Area].
@@ -49,101 +136,204 @@ where
     /// [`WidgetNode`]
     ///
     /// [`Session<U>`]: crate::session::Session
-    fn update(&mut self, area: &U::Area);
+    fn update_and_print(&self, area: &U::Area, palette: &crate::forms::FormPalette);
 
-    /// The text that this widget prints out.
-    fn text(&self) -> &Text;
+    fn update(&self, area: &U::Area);
+}
 
-    /// Scrolls the text vertically by an amount.
-    fn scroll_vertically(&mut self, _d_y: i32) {}
+trait PassiveWidgetHolder<U>: WidgetHolder<U>
+where
+    U: Ui,
+{
+    fn passive_widget(&self) -> &RwData<dyn PassiveWidget>;
+}
 
-    fn print_info(&self) -> U::PrintInfo {
-        U::PrintInfo::default()
+trait ActiveWidgetHolder<U>: WidgetHolder<U>
+where
+    U: Ui,
+{
+    fn active_widget(&self) -> &RwData<dyn ActiveWidget>;
+
+    fn input(&self) -> &RwData<dyn InputMethod>;
+
+    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool;
+
+    fn on_focus(&self, area: &U::Area);
+
+    fn on_unfocus(&self, area: &U::Area);
+}
+
+#[derive(Clone)]
+struct InnerPassiveWidget<W>
+where
+    W: PassiveWidget,
+{
+    widget: RwData<W>,
+    dyn_widget: RwData<dyn PassiveWidget>,
+}
+
+impl<U, W> WidgetHolder<U> for InnerPassiveWidget<W>
+where
+    U: Ui,
+    W: PassiveWidget,
+{
+    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
+        let mut widget = self.widget.write();
+        widget.update(area);
+        widget.print(area, palette);
     }
 
-    fn print_cfg(&self) -> &PrintCfg {
-        use std::sync::OnceLock;
-        static CFG: OnceLock<PrintCfg> = OnceLock::new();
-        CFG.get_or_init(PrintCfg::default)
+    fn update(&self, area: &<U as Ui>::Area) {
+        self.widget.write().update(area);
+    }
+}
+
+impl<U, W> PassiveWidgetHolder<U> for InnerPassiveWidget<W>
+where
+    U: Ui,
+    W: PassiveWidget,
+{
+    fn passive_widget(&self) -> &RwData<dyn PassiveWidget> {
+        &self.dyn_widget
+    }
+}
+
+#[derive(Clone)]
+struct InnerActiveWidget<W, I>
+where
+    W: ActiveWidget,
+    I: InputMethod<Widget = W>,
+{
+    widget: RwData<W>,
+    dyn_widget: RwData<dyn ActiveWidget>,
+    input: RwData<I>,
+    dyn_input: RwData<dyn InputMethod>,
+}
+
+impl<U, W, I> WidgetHolder<U> for InnerActiveWidget<W, I>
+where
+    U: Ui,
+    W: ActiveWidget,
+    I: InputMethod<Widget = W>,
+{
+    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
+        let mut widget = self.widget.write();
+        widget.update(area);
+        widget.print(area, palette);
     }
 
-    fn print(&self, area: &U::Area, palette: &crate::forms::FormPalette) {
-        area.print(self.text(), self.print_info(), self.print_cfg(), palette)
+    fn update(&self, area: &<U as Ui>::Area) {
+        self.widget.write().update(area)
+    }
+}
+
+impl<U, W, I> ActiveWidgetHolder<U> for InnerActiveWidget<W, I>
+where
+    U: Ui,
+    W: ActiveWidget,
+    I: InputMethod<Widget = W>,
+{
+    fn active_widget(&self) -> &RwData<dyn ActiveWidget> {
+        &self.dyn_widget
+    }
+
+    fn input(&self) -> &RwData<dyn InputMethod> {
+        &self.dyn_input
+    }
+
+    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool {
+        self.input
+            .write()
+            .send_key(key, &self.widget, area, controler)
+    }
+
+    fn on_focus(&self, area: &<U as Ui>::Area) {
+        self.widget.write().on_focus(area)
+    }
+
+    fn on_unfocus(&self, area: &<U as Ui>::Area) {
+        self.widget.write().on_unfocus(area)
     }
 }
 
 pub enum Widget<U>
 where
-    U: Ui
+    U: Ui,
 {
-    Passive(RwData<dyn PassiveWidget<U>>),
-    ActScheme(RwData<dyn ActSchemeWidget<U>>),
-    ActDirect(RwData<dyn ActDirectWidget<U>>)
+    Passive(Box<dyn PassiveWidgetHolder<U>>),
+    Active(Box<dyn ActiveWidgetHolder<U>>),
 }
 
 impl<U> Widget<U>
 where
-    U: Ui
+    U: Ui,
 {
     pub fn passive<W>(widget: W) -> Self
     where
-        W: PassiveWidget<U>
+        W: PassiveWidget,
     {
-        Widget::Passive(RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))))
+        let dyn_widget: RwData<dyn PassiveWidget> =
+            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+
+        let inner_widget = InnerPassiveWidget {
+            widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
+            dyn_widget,
+        };
+
+        Widget::Passive(Box::new(inner_widget))
     }
 
-    pub fn scheme_input<ASW>(widget: ASW) -> Self
+    pub fn active<W, I>(widget: W, input: RwData<I>) -> Self
     where
-        ASW: ActSchemeWidget<U>
+        W: ActiveWidget,
+        I: InputMethod<Widget = W>,
     {
-        Widget::ActScheme(RwData::new_unsized::<ASW>(Arc::new(RwLock::new(widget))))
+        let dyn_widget: RwData<dyn ActiveWidget> =
+            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+
+        let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod>>;
+
+        let inner_widget = InnerActiveWidget {
+            widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
+            dyn_widget,
+            input,
+            dyn_input: RwData::new_unsized::<I>(input_data),
+        };
+
+        Widget::Active(Box::new(inner_widget))
     }
 
-    pub fn direct_input<ADW>(widget: ADW) -> Self
-    where
-        ADW: ActDirectWidget<U>
-    {
-        Widget::ActDirect(RwData::new_unsized::<ADW>(Arc::new(RwLock::new(widget))))
+    pub fn update_and_print(&self, area: &U::Area, palette: &crate::forms::FormPalette) {
+        match self {
+            Widget::Passive(inner) => {
+                inner.update_and_print(area, palette);
+            }
+            Widget::Active(inner) => {
+                inner.update_and_print(area, palette);
+            }
+        }
     }
 
-    pub fn try_update_and_print<'scope, 'env>(
-        &'env self, scope: &'scope std::thread::Scope<'scope, 'env>, area: &'env U::Area,
-        palette: &'env crate::forms::FormPalette
+    pub fn threaded_try_update_and_print<'scope, 'env>(
+        &'env self,
+        scope: &'scope std::thread::Scope<'scope, 'env>,
+        area: &'env U::Area,
+        palette: &'env crate::forms::FormPalette,
     ) -> bool {
         // This is, technically speaking, not good enough, but it should cover
         // 99.9999999999999% of cases without fail.
         match self {
-            Widget::Passive(widget) => {
-                if widget.raw_try_write().is_ok() {
-                    scope.spawn(|| {
-                        let mut widget = widget.raw_write();
-                        widget.update(area);
-                        widget.print(area, palette)
-                    });
+            Widget::Passive(inner) => {
+                if inner.passive_widget().raw_try_write().is_ok() {
+                    scope.spawn(|| inner.update_and_print(area, palette));
                     true
                 } else {
                     false
                 }
             }
-            Widget::ActScheme(widget) => {
-                if widget.raw_try_write().is_ok() {
-                    scope.spawn(|| {
-                        let mut widget = widget.raw_write();
-                        widget.update(area);
-                        widget.print(area, palette)
-                    });
-                    true
-                } else {
-                    false
-                }
-            }
-            Widget::ActDirect(widget) => {
-                if widget.raw_try_write().is_ok() {
-                    scope.spawn(|| {
-                        let mut widget = widget.raw_write();
-                        widget.update(area);
-                        widget.print(area, palette)
-                    });
+            Widget::Active(inner) => {
+                if inner.active_widget().raw_try_write().is_ok() {
+                    scope.spawn(|| inner.update_and_print(area, palette));
                     true
                 } else {
                     false
@@ -152,475 +342,101 @@ where
         }
     }
 
-    pub fn update(&self, area: &U::Area) {
-        match self {
-            Widget::Passive(widget) => widget.write().update(area),
-            Widget::ActScheme(widget) => widget.write().update(area),
-            Widget::ActDirect(widget) => widget.write().update(area)
-        }
-    }
-
-    pub fn try_print(&self, area: &U::Area, palette: &crate::forms::FormPalette) -> bool {
-        match self {
-            Widget::Passive(widget) => {
-                if let Ok(widget) = widget.try_read() {
-                    widget.print(area, palette);
-                    true
-                } else {
-                    false
-                }
-            }
-            Widget::ActScheme(widget) => {
-                if let Ok(widget) = widget.try_read() {
-                    widget.print(area, palette);
-                    true
-                } else {
-                    false
-                }
-            }
-            Widget::ActDirect(widget) => {
-                if let Ok(widget) = widget.try_read() {
-                    widget.print(area, palette);
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    /// Returns the downcast ref of this [`WidgetType<U>`].
+    /// Returns the downcast ref of this [`Widget<U>`].
     pub fn downcast_ref<W>(&self) -> Option<RwData<W>>
     where
-        U: Ui,
-        W: PassiveWidget<U> + 'static
+        W: PassiveWidget,
     {
         match self {
-            Widget::Passive(widget) => widget.clone().try_downcast::<W>().ok(),
-            Widget::ActScheme(widget) => widget.clone().try_downcast::<W>().ok(),
-            Widget::ActDirect(widget) => widget.clone().try_downcast::<W>().ok()
+            Widget::Passive(inner) => inner.passive_widget().clone().try_downcast::<W>().ok(),
+            Widget::Active(inner) => inner.active_widget().clone().try_downcast::<W>().ok(),
         }
     }
 
     pub fn data_is<W>(&self) -> bool
     where
-        W: PassiveWidget<U>
+        W: 'static,
     {
         match self {
-            Widget::Passive(widget) => widget.data_is::<W>(),
-            Widget::ActScheme(widget) => widget.data_is::<W>(),
-            Widget::ActDirect(widget) => widget.data_is::<W>()
+            Widget::Passive(inner) => inner.passive_widget().data_is::<W>(),
+            Widget::Active(inner) => inner.active_widget().data_is::<W>(),
         }
     }
 
     pub fn inspect_as<W, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B>
     where
-        W: PassiveWidget<U>
+        W: PassiveWidget,
     {
         match self {
-            Widget::Passive(widget) => widget.inspect_as::<W, B>(f),
-            Widget::ActScheme(widget) => widget.inspect_as::<W, B>(f),
-            Widget::ActDirect(widget) => widget.inspect_as::<W, B>(f)
+            Widget::Passive(inner) => inner.passive_widget().inspect_as::<W, B>(f),
+            Widget::Active(inner) => inner.active_widget().inspect_as::<W, B>(f),
         }
     }
 
-    pub fn as_scheme_input(&self) -> Option<&RwData<dyn ActSchemeWidget<U>>> {
+    pub fn as_active(&self) -> Option<&RwData<dyn ActiveWidget>> {
         match self {
-            Widget::ActScheme(widget) => Some(widget),
-            _ => None
+            Widget::Active(inner) => Some(inner.active_widget()),
+            _ => None,
         }
     }
 
-    pub fn scheme_ptr_eq(&self, other: &RwData<dyn ActSchemeWidget<U>>) -> bool {
+    pub fn input(&self) -> Option<&RwData<dyn InputMethod>> {
         match self {
-            Widget::ActScheme(widget) => widget.ptr_eq(other),
-            _ => false
+            Widget::Active(inner) => Some(inner.input()),
+            Widget::Passive(_) => None,
         }
     }
 
     pub fn ptr_eq<R, W>(&self, other: &R) -> bool
     where
         R: ReadableData<W>,
-        W: PassiveWidget<U> + ?Sized
+        W: ?Sized,
     {
         match self {
-            Widget::Passive(widget) => widget.ptr_eq(other),
-            Widget::ActScheme(widget) => widget.ptr_eq(other),
-            Widget::ActDirect(widget) => widget.ptr_eq(other)
-        }
-    }
-
-    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn PassiveWidget<U>) -> B) -> B {
-        match self {
-            Widget::Passive(widget) => {
-                let widget = widget.raw_read();
-                f(&*widget)
-            }
-            Widget::ActScheme(widget) => {
-                let widget = widget.raw_read();
-                f(&*widget)
-            }
-            Widget::ActDirect(widget) => {
-                let widget = widget.raw_read();
-                f(&*widget)
-            }
+            Widget::Passive(inner) => inner.passive_widget().ptr_eq(other),
+            Widget::Active(inner) => inner.active_widget().ptr_eq(other),
         }
     }
 
     pub fn has_changed(&self) -> bool {
         match self {
-            Widget::ActScheme(widget) => widget.has_changed(),
-            Widget::ActDirect(widget) => widget.has_changed(),
-            Widget::Passive(_) => false
+            Widget::Active(inner) => inner.active_widget().has_changed(),
+            Widget::Passive(_) => false,
+        }
+    }
+
+    pub fn update(&self, area: &U::Area) {
+        match self {
+            Widget::Active(inner) => inner.update(area),
+            Widget::Passive(inner) => inner.update(area),
+        }
+    }
+
+    pub(crate) fn on_focus(&self, area: &U::Area) {
+        match self {
+            Widget::Active(inner) => inner.on_focus(area),
+            Widget::Passive(_) => {}
+        }
+    }
+
+    pub(crate) fn on_unfocus(&self, area: &U::Area) {
+        match self {
+            Widget::Active(inner) => inner.on_unfocus(area),
+            Widget::Passive(_) => {}
+        }
+    }
+
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool {
+        match self {
+            Widget::Active(inner) => inner.send_key(key, area, controler),
+            Widget::Passive(_) => false,
+        }
+    }
+
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn PassiveWidget) -> B) -> B {
+        match self {
+            Widget::Passive(inner) => f(&*inner.passive_widget().read()),
+            Widget::Active(inner) => f(&*inner.active_widget().read()),
         }
     }
 }
-
-/// A widget that can receive input and show [`Cursor`]s.
-pub trait ActSchemeWidget<U>: PassiveWidget<U>
-where
-    U: Ui + 'static
-{
-    /// Returns an [`Editor<U>`], which uses a cursor to input text to
-    /// [`self`].
-    fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U>;
-
-    /// Returns a [`Mover<U>`], which can move a cursor's position
-    /// over [`self`].
-    fn mover<'a>(&'a mut self, index: usize, area: &'a U::Area) -> Mover<U>;
-
-    /// This is used specifically to remove and add the [`Cursor`]
-    /// [`Tag`][crate::tags::Tag]s to [`self`]
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize);
-
-    /// The list of active [`Cursor`]s on [`self`].
-    fn cursors(&self) -> &[Cursor];
-
-    /// A mutable list of active [`Cursor`]s
-    ///
-    /// As this is an [`Option`], the widget may or may not pass this
-    /// reference.
-    fn mut_cursors(&mut self) -> Option<&mut Vec<Cursor>>;
-
-    /// The index of the main cursor of [`self`].
-    fn main_cursor_index(&self) -> usize;
-
-    /// A mutable reference to the main cursor index of [`self`].
-    ///
-    /// As this is an [`Option`], the widget may or may not pass this
-    /// reference.
-    fn mut_main_cursor_index(&mut self) -> Option<&mut usize>;
-
-    /// Starts a new [`Moment`][crate::history::Moment].
-    ///
-    /// Will panic by default, assuming that the [`ActionableWidget`]
-    /// does not have a [`History`][crate::history::History].
-    fn new_moment(&mut self) {
-        panic!("This ActionableWidget does not have a History of its own.")
-    }
-
-    /// Undoes the last [`Moment`][crate::history::Moment].
-    ///
-    /// Will panic by default, assuming that the [`ActionableWidget`]
-    /// does not have a [`History`][crate::history::History].
-    fn undo(&mut self, _area: &U::Area) {
-        panic!("This ActionableWidget does not have a History of its own.")
-    }
-
-    /// Redoes the last [`Moment`][crate::history::Moment].
-    ///
-    /// Will panic by default, assuming that the [`ActionableWidget`]
-    /// does not have a [`History`][crate::history::History].
-    fn redo(&mut self, _area: &U::Area) {
-        panic!("This ActionableWidget does not have a History of its own.")
-    }
-
-    /// Actions to do whenever this [`ActionableWidget`] is focused.
-    fn on_focus(&mut self, _area: &U::Area) {}
-
-    /// Actions to do whenever this [`ActionableWidget`] is unfocused.
-    fn on_unfocus(&mut self, _area: &U::Area) {}
-}
-
-pub trait ActDirectWidget<U>: PassiveWidget<U>
-where
-    U: Ui
-{
-    /// Actions to do whenever this [`ActionableWidget`] is focused.
-    fn on_focus(&mut self, _area: &U::Area) {}
-
-    /// Actions to do whenever this [`ActionableWidget`] is unfocused.
-    fn on_unfocus(&mut self, _area: &U::Area) {}
-}
-
-/// An accumulator used specifically for editing with [`Editor<U>`]s.
-#[derive(Default)]
-pub struct EditAccum {
-    pub chars: isize,
-    pub changes: isize
-}
-
-/// A struct used by [`InputMethod`][crate::input::InputScheme]s to
-/// edit [`Text`].
-pub struct WidgetActor<'a, U, Sw>
-where
-    U: Ui + 'static,
-    Sw: ActSchemeWidget<U> + ?Sized
-{
-    clearing_needed: bool,
-    widget: &'a RwData<Sw>,
-    area: &'a U::Area
-}
-
-impl<'a, U, Sw> WidgetActor<'a, U, Sw>
-where
-    U: Ui,
-    Sw: ActSchemeWidget<U> + ?Sized + 'static
-{
-    /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub(crate) fn new(widget: &'a RwData<Sw>, area: &'a U::Area) -> Self {
-        WidgetActor { clearing_needed: false, widget, area }
-    }
-
-    /// Removes all intersecting [`Cursor`]s from the list, keeping
-    /// only the last from the bunch.
-    fn clear_intersections(&mut self) {
-        let mut widget = self.widget.write();
-        let Some(cursors) = widget.mut_cursors() else {
-            return;
-        };
-
-        let (mut start, mut end) = cursors[0].pos_range();
-        let mut last_index = 0;
-        let mut to_remove = Vec::new();
-
-        for (index, cursor) in cursors.iter_mut().enumerate().skip(1) {
-            if cursor.try_merge(start, end).is_ok() {
-                to_remove.push(last_index);
-            }
-            (start, end) = cursor.pos_range();
-            last_index = index;
-        }
-
-        for index in to_remove.iter().rev() {
-            cursors.remove(*index);
-        }
-    }
-
-    /// Edits on every cursor selection in the list.
-    pub fn edit_on_each_cursor<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut Editor<U>)
-    {
-        self.clear_intersections();
-        let mut widget = self.widget.write();
-        let mut edit_accum = EditAccum::default();
-        let cursors = widget.cursors();
-
-        for index in 0..cursors.len() {
-            let mut editor = widget.editor(index, &mut edit_accum);
-            f(&mut editor);
-        }
-
-        widget.update(self.area);
-    }
-
-    /// Alters every selection on the list.
-    pub fn move_each_cursor<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut Mover<U>)
-    {
-        let mut widget = self.widget.write();
-        for index in 0..widget.cursors().len() {
-            let mut mover = widget.mover(index, self.area);
-            f(&mut mover);
-        }
-
-        // TODO: Figure out a better way to sort.
-        if let Some(cursors) = widget.mut_cursors() {
-            cursors.sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
-        }
-
-        widget.update(self.area);
-        self.clearing_needed = widget.cursors().len() > 1;
-    }
-
-    /// Alters the nth cursor's selection.
-    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Mover<U>)
-    {
-        let mut widget = self.widget.write();
-        let mut mover = widget.mover(index, self.area);
-        f(&mut mover);
-
-        if let Some(cursors) = widget.mut_cursors() {
-            let cursor = cursors.remove(index);
-            let range = cursor.range();
-            let new_index = match cursors.binary_search_by(|j| at_start_ord(&j.range(), &range)) {
-                Ok(index) => index,
-                Err(index) => index
-            };
-            cursors.insert(new_index, cursor);
-
-            if let Some(main_cursor) = widget.mut_main_cursor_index() {
-                if index == *main_cursor {
-                    *main_cursor = new_index;
-                }
-            }
-        };
-
-        widget.update(self.area);
-        self.clearing_needed = widget.cursors().len() > 1;
-    }
-
-    /// Alters the main cursor's selection.
-    pub fn move_main<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover<U>)
-    {
-        self.move_nth(f, self.main_cursor_index());
-    }
-
-    /// Alters the last cursor's selection.
-    pub fn move_last<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover<U>)
-    {
-        let len = self.len_cursors();
-        if len > 0 {
-            self.move_nth(f, len - 1);
-        }
-    }
-
-    /// Edits on the nth cursor's selection.
-    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Editor<U>)
-    {
-        assert!(index < self.len_cursors(), "Index {index} out of bounds.");
-        if self.clearing_needed {
-            self.clear_intersections();
-            self.clearing_needed = false;
-        }
-
-        let mut widget = self.widget.write();
-
-        let mut edit_accum = EditAccum::default();
-        let mut editor = widget.editor(index, &mut edit_accum);
-        f(&mut editor);
-
-        for index in (index + 1)..(widget.cursors().len() - 1) {
-            // A bit hacky, but the creation of an `Editor` automatically
-            // calibrates the cursor's position.
-            widget.editor(index, &mut edit_accum);
-        }
-
-        widget.update(self.area);
-    }
-
-    /// Edits on the main cursor's selection.
-    pub fn edit_on_main<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Editor<U>)
-    {
-        self.edit_on_nth(f, self.main_cursor_index());
-    }
-
-    /// Edits on the last cursor's selection.
-    pub fn edit_on_last<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Editor<U>)
-    {
-        let len = self.len_cursors();
-        if len > 0 {
-            self.edit_on_nth(f, len - 1);
-        }
-    }
-
-    /// The main cursor index.
-    pub fn main_cursor_index(&self) -> usize {
-        self.widget.read().main_cursor_index()
-    }
-
-    /// Rotates the main cursor index forward.
-    pub fn rotate_main_forward(&mut self) {
-        let mut widget = self.widget.write();
-        let cursors_len = widget.cursors().len();
-        if cursors_len == 0 {
-            return;
-        }
-
-        if let Some(main_index) = widget.mut_main_cursor_index() {
-            *main_index = if *main_index == cursors_len - 1 { 0 } else { *main_index + 1 }
-        }
-
-        widget.update(self.area)
-    }
-
-    /// Rotates the main cursor index backwards.
-    pub fn rotate_main_backwards(&mut self) {
-        let mut widget = self.widget.write();
-        let cursors_len = widget.cursors().len();
-        if cursors_len == 0 {
-            return;
-        }
-
-        if let Some(main_index) = self.widget.write().mut_main_cursor_index() {
-            *main_index = if *main_index == 0 { cursors_len - 1 } else { *main_index - 1 }
-        }
-
-        widget.update(self.area)
-    }
-
-    /// The amount of active [`Cursor`]s in the [`Text`].
-    pub fn len_cursors(&self) -> usize {
-        self.widget.read().cursors().len()
-    }
-
-    /// Starts a new [`Moment`][crate::history::Moment].
-    pub fn new_moment(&mut self) {
-        let mut widget = self.widget.write();
-        widget.new_moment();
-        widget.update(self.area);
-    }
-
-    /// Undoes the last [`Moment`][crate::history::Moment].
-    pub fn undo(&mut self) {
-        let mut widget = self.widget.write();
-        widget.undo(self.area);
-        widget.update(self.area);
-    }
-
-    /// Redoes the last [`Moment`][crate::history::Moment].
-    pub fn redo(&mut self) {
-        let mut widget = self.widget.write();
-        widget.redo(self.area);
-        widget.update(self.area);
-    }
-
-    pub fn main_cursor(&self) -> Cursor {
-        self.widget.read().cursors()[self.main_cursor_index()].clone()
-    }
-
-    pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
-        self.widget.read().cursors().get(index).cloned()
-    }
-}
-
-/// Comparets the `left` and `right` [`Range`]s, returning an
-/// [`Ordering`], based on the intersection at the start.
-fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
-    if left.end > right.start && right.start > left.start {
-        std::cmp::Ordering::Equal
-    } else if left.start > right.end {
-        std::cmp::Ordering::Greater
-    } else {
-        std::cmp::Ordering::Less
-    }
-}
-
-pub use command_line::CommandLine;
-pub use file_widget::FileWidget;
-pub use line_numbers::{LineNumbers, LineNumbersCfg};
-pub use status_line::{file_parts, StatusLine, StatusPart};

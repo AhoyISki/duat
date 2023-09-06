@@ -21,42 +21,55 @@
 //! the numbers of the currently printed lines.
 use std::{fs::File, path::PathBuf};
 
-use super::{ActSchemeWidget, EditAccum, PassiveWidget, Widget};
+use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    data::AsAny,
-    history::History,
-    position::{Cursor, Editor, Mover, Point},
+    data::{AsAny, ReadableData, RwData},
+    input::{Editor, InputMethod},
     text::{IterCfg, PrintCfg, Text},
-    ui::{Area, PrintInfo, Ui}
+    ui::{Area, PushSpecs, Ui},
+    Controler,
 };
 
-/// The widget that is used to print and edit files.
-pub struct FileWidget<U>
+#[derive(Clone)]
+pub struct FileWidgetCfg<I>
 where
-    U: Ui + 'static
+    I: InputMethod<Widget = FileWidget>,
 {
     path: Option<PathBuf>,
-    text: Text,
-    print_info: U::PrintInfo,
-    main_cursor: usize,
-    cursors: Vec<Cursor>,
-    history: History<U>,
+    input: RwData<I>,
     cfg: PrintCfg,
-    printed_lines: Vec<(usize, bool)>
+    specs: PushSpecs,
 }
 
-impl<U> FileWidget<U>
-where
-    U: Ui + 'static
-{
-    /// Returns a new instance of [`FileWidget<U>`].
-    pub fn build(path: Option<PathBuf>, print_cfg: PrintCfg) -> Widget<U> {
-        let contents = path.as_ref().and_then(|path| match std::fs::read_to_string(path) {
-            Ok(contents) => Some(contents),
-            Err(_) => None
-        });
+impl FileWidgetCfg<Editor> {
+    pub fn new() -> Self {
+        FileWidgetCfg {
+            path: None,
+            input: RwData::new(Editor::new()),
+            cfg: PrintCfg::default_for_files(),
+            // Kinda arbitrary.
+            specs: PushSpecs::above(),
+        }
+    }
+}
 
-        let path = path.map(|path| {
+impl<I> FileWidgetCfg<I>
+where
+    I: InputMethod<Widget = FileWidget>,
+{
+    pub(crate) fn build<U>(self) -> (Widget<U>, Box<dyn Fn() -> bool>)
+    where
+        U: Ui,
+    {
+        let contents = self
+            .path
+            .as_ref()
+            .and_then(|path| match std::fs::read_to_string(path) {
+                Ok(contents) => Some(contents),
+                Err(_) => None,
+            });
+
+        let full_path = self.path.map(|path| {
             let file_name = path.file_name().unwrap();
             std::env::current_dir().unwrap().join(file_name)
         });
@@ -74,75 +87,89 @@ where
                     tagger.insert(index, Tag::PushForm(crate::forms::SEPARATOR));
                     tagger.insert(index + 11, Tag::PopForm(crate::forms::SEPARATOR));
                 } else {
-                    tagger.insert(index, Tag::ghost_from("   Hello World\n lmao deal with this"));
+                    tagger.insert(
+                        index,
+                        Tag::ghost_from("   Hello World\n lmao deal with this"),
+                    );
                 }
                 pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
             }
         }
 
-        let cursors = vec![Cursor::default()];
-        text.add_cursor_tags(&cursors, 0);
+        text.add_cursor_tags(self.input.read().cursors().unwrap());
 
-        Widget::scheme_input(FileWidget {
-            path,
-            text,
-            print_info: U::PrintInfo::default(),
-            main_cursor: 0,
-            cursors,
-            history: History::default(),
-            cfg: print_cfg,
-            printed_lines: Vec::new()
-        })
+        (
+            Widget::active(
+                FileWidget {
+                    path: full_path,
+                    text,
+                    cfg: self.cfg,
+                    printed_lines: Vec::new(),
+                },
+                self.input,
+            ),
+            Box::new(|| false),
+        )
     }
 
-    /// Undoes the last [`Moment<U>`][crate::history::Moment] in the
-    /// [`History`].
-    pub fn undo(&mut self, area: &U::Area) {
-        let moment = match self.history.move_backwards() {
-            Some(moment) => moment,
-            None => return
-        };
-
-        self.print_info = moment.starting_print_info;
-
-        self.cursors.clear();
-
-        let mut chars = 0;
-        for change in &moment.changes {
-            self.text.undo_change(change, chars);
-
-            let new_caret_ch = change.taken_end().saturating_add_signed(chars);
-            let pos = Point::new(new_caret_ch, &self.text);
-            self.cursors.push(Cursor::new(pos, &self.text, area, &self.cfg));
-
-            chars += change.taken_end() as isize - change.added_end() as isize;
+    pub fn open(self, path: PathBuf) -> Self {
+        Self {
+            path: Some(path),
+            ..self
         }
     }
 
-    /// Redoes the last [`Moment<U>`][crate::history::Moment] in the
-    /// [`History`].
-    pub fn redo(&mut self, area: &U::Area) {
-        let moment = match self.history.move_forward() {
-            Some(moment) => moment,
-            None => return
-        };
+    pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {
+        Self { cfg, ..self }
+    }
+}
 
-        self.print_info = moment.ending_print_info;
+impl<I> ActiveWidgetCfg for FileWidgetCfg<I>
+where
+    I: InputMethod<Widget = FileWidget> + Clone,
+{
+    type Widget = FileWidget;
+    type WithInput<NewI> = FileWidgetCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-        self.cursors.clear();
-
-        for change in &moment.changes {
-            self.text.apply_change(change);
-
-            let new_pos = Point::new(change.added_end(), &self.text);
-            self.cursors.push(Cursor::new(new_pos, &self.text, area, &self.cfg));
+    fn builder<U>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+    {
+        let specs = self.specs;
+        move |_| {
+            let (widget, checker) = self.build();
+            (widget, checker, specs)
         }
     }
 
+    fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
+    where
+        NewI: InputMethod<Widget = FileWidget> + Clone,
+    {
+        Self::WithInput {
+            input: RwData::new(input),
+            cfg: self.cfg,
+            specs: self.specs,
+            path: self.path,
+        }
+    }
+}
+
+/// The widget that is used to print and edit files.
+pub struct FileWidget {
+    path: Option<PathBuf>,
+    text: Text,
+    cfg: PrintCfg,
+    printed_lines: Vec<(usize, bool)>,
+}
+
+impl FileWidget {
     pub fn write(&self) -> Result<usize, String> {
         if let Some(path) = &self.path {
             self.text.write_to(std::io::BufWriter::new(
-                File::create(path).map_err(|err| err.to_string())?
+                File::create(path).map_err(|err| err.to_string())?,
             ))
         } else {
             Err(String::from("No path given to write to"))
@@ -159,42 +186,12 @@ where
         &self.printed_lines
     }
 
-    // TODO: Move the history to a general placement, taking in all the
-    // files.
-    /// The [`History`] of [`Change`][crate::history::Change]s done to
-    /// this file.
-    pub fn history(&self) -> &History<U> {
-        &self.history
-    }
-
-    /// Ends the current [`Moment<U>`][crate::history::Moment] and
-    /// starts a new one.
-    pub fn new_moment(&mut self) {
-        self.cursors.iter_mut().for_each(|cursor| cursor.assoc_index = None);
-        self.history.new_moment(self.print_info);
-    }
-
-    /// The list of [`Cursor`]s on the file.
-    pub fn cursors(&self) -> &[Cursor] {
-        self.cursors.as_slice()
-    }
-
-    /// A mutable reference to the [`Text`] of [`self`].
-    pub fn mut_text(&mut self) -> &mut Text {
-        &mut self.text
-    }
-
-    ////////// Status line convenience functions:
-    /// The main [`Cursor`] of the file.
-    pub fn main_cursor(&self) -> Cursor {
-        self.cursors.get(self.main_cursor).unwrap().clone()
-    }
-
     /// The file's name.
     pub fn name(&self) -> Option<String> {
-        self.path
-            .as_ref()
-            .and_then(|path| path.file_name().map(|file| file.to_string_lossy().to_string()))
+        self.path.as_ref().and_then(|path| {
+            path.file_name()
+                .map(|file| file.to_string_lossy().to_string())
+        })
     }
 
     /// The full path of the file.
@@ -215,15 +212,15 @@ where
         self.text.len_lines()
     }
 
-    fn set_printed_lines(&mut self, area: &U::Area) {
-        let start = self.print_info.first_char();
+    fn set_printed_lines(&mut self, area: &impl Area) {
+        let start = area.first_char();
 
         let mut last_line_num = area
             .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
             .find_map(|(caret, item)| caret.wrap.then_some(item.line));
 
         self.printed_lines = area
-            .precise_print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg), self.print_info)
+            .precise_print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg))
             .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
             .map(|line| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
@@ -235,91 +232,47 @@ where
     }
 }
 
-impl<U> PassiveWidget<U> for FileWidget<U>
-where
-    U: Ui + 'static
-{
-    fn update(&mut self, area: &U::Area) {
-        self.print_info.scroll_to_gap(&self.text, self.main_cursor().caret(), area, &self.cfg);
+impl PassiveWidget for FileWidget {
+    fn build<U>(
+        controler: &crate::Controler<U>,
+    ) -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
+    where
+        U: Ui,
+        Self: Sized,
+    {
+        Self::config().builder()(controler)
+    }
+
+    fn update(&mut self, area: &impl Area) {
+        // let caret = self.cursors().unwrap().main().unwrap().caret();
+        // area.scroll_around_point(&self.text, caret, &self.cfg);
         self.set_printed_lines(area);
     }
 
     fn text(&self) -> &Text {
         &self.text
     }
+}
 
-    fn scroll_vertically(&mut self, _d_y: i32) {
-        // self.print_info.scroll_vertically(d_y, &self.text);
+impl ActiveWidget for FileWidget {
+    type Config = FileWidgetCfg<Editor>
+    where
+        Self: Sized;
+
+    fn config() -> FileWidgetCfg<Editor> {
+        FileWidgetCfg::new()
     }
 
-    fn print_info(&self) -> U::PrintInfo {
-        self.print_info
-    }
-
-    fn print_cfg(&self) -> &PrintCfg {
-        &self.cfg
+    fn mut_text(&mut self) -> &mut Text {
+        &mut self.text
     }
 }
 
-impl<U> ActSchemeWidget<U> for FileWidget<U>
-where
-    U: Ui + 'static
-{
-    fn editor<'a>(&'a mut self, index: usize, edit_accum: &'a mut EditAccum) -> Editor<U> {
-        Editor::new(
-            &mut self.cursors[index],
-            &mut self.text,
-            edit_accum,
-            Some(self.print_info),
-            Some(&mut self.history)
-        )
-    }
-
-    fn mover<'a>(&'a mut self, index: usize, area: &'a U::Area) -> Mover<U> {
-        Mover::new(&mut self.cursors[index], &self.text, area, self.cfg.clone())
-    }
-
-    fn members_for_cursor_tags(&mut self) -> (&mut Text, &[Cursor], usize) {
-        (&mut self.text, self.cursors.as_slice(), self.main_cursor)
-    }
-
-    fn cursors(&self) -> &[Cursor] {
-        self.cursors.as_slice()
-    }
-
-    fn mut_cursors(&mut self) -> Option<&mut Vec<Cursor>> {
-        Some(&mut self.cursors)
-    }
-
-    fn main_cursor_index(&self) -> usize {
-        self.main_cursor
-    }
-
-    fn mut_main_cursor_index(&mut self) -> Option<&mut usize> {
-        Some(&mut self.main_cursor)
-    }
-
-    fn new_moment(&mut self) {
-        self.new_moment();
-    }
-
-    fn undo(&mut self, area: &'_ U::Area) {
-        self.undo(area)
-    }
-
-    fn redo(&mut self, area: &'_ U::Area) {
-        self.redo(area)
-    }
-}
-
-impl<U> AsAny for FileWidget<U>
-where
-    U: Ui + 'static
-{
+impl AsAny for FileWidget {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-unsafe impl<U> Send for FileWidget<U> where U: Ui {}
-unsafe impl<U> Sync for FileWidget<U> where U: Ui {}
+unsafe impl Send for FileWidget {}
+unsafe impl Sync for FileWidget {}

@@ -1,86 +1,68 @@
-use crate::{join, ui::Ui, widgets::FileWidget};
+use crate::{input::InputMethod, join, position::Cursor, widgets::FileWidget};
 
 /// The name of the file.
-pub fn file_name<U>() -> impl Fn(&FileWidget<U>) -> String
-where
-    U: Ui
-{
-    |file| file.name().unwrap_or(String::from("*scratch file*"))
+pub fn file_name(file: &FileWidget, input: &dyn InputMethod) -> String {
+    file.name().unwrap_or(String::from("*scratch file*"))
 }
 
-pub fn main_cursor<U>() -> impl Fn(&FileWidget<U>) -> crate::position::Cursor
-where
-    U: Ui
-{
-    |file| file.main_cursor()
+pub fn main_cursor(file: &FileWidget, input: &dyn InputMethod) -> Cursor {
+    input
+        .cursors()
+        .expect("The given implementor of InputMethod is not configured to have Cursors")
+        .main()
+        .expect("The InputMethod has a list of Cursors, but it is empty")
 }
 
-/// The byte of the main cursor in the file.
-pub fn main_byte<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.main_cursor().byte()
+/// The byte of the main cursor in the file. Indexed at 1.
+pub fn main_byte(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    main_cursor(file, input).byte()
 }
 
-/// The char of the main cursor in the file.
-pub fn main_char<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.main_cursor().char()
+/// The char of the main cursor in the file. Indexed at 1.
+pub fn main_char(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    main_cursor(file, input).char()
 }
 
-/// The col of the main cursor in the file.
-pub fn main_col<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.main_cursor().col()
+/// The col of the main cursor in the file. Indexed at 1.
+pub fn main_col(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    main_cursor(file, input).col()
 }
 
-/// The line of the main cursor in the file.
-pub fn main_line<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.main_cursor().line()
+/// The line of the main cursor in the file. Indexed at 1.
+pub fn main_line(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    main_cursor(file, input).line()
+}
+
+pub fn selections(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    input
+        .cursors()
+        .expect("The given implementor of InputMethod is not configured to have Cursors")
+        .len()
 }
 
 /// Returns a [`String`] with the number of selections in the file.
-pub fn selections<U>() -> impl Fn(&FileWidget<U>) -> String
-where
-    U: Ui
-{
-    |file| {
-        if file.cursors().len() == 1 {
-            String::from("1 sel")
-        } else {
-            join![file.cursors().len(), "sels"]
-        }
+pub fn selections_fmt(file: &FileWidget, input: &dyn InputMethod) -> String {
+    let cursors = input
+        .cursors()
+        .expect("The given implementor of InputMethod is not configured to have Cursors");
+    if cursors.len() == 1 {
+        String::from("1 sel")
+    } else {
+        join![cursors.len(), "sels"]
     }
 }
 
 /// Returns a [`String`] with the number of lines in the file.
-pub fn len_lines<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.len_lines()
+pub fn len_lines(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    file.len_lines()
 }
 
 /// Returns a [`String`] with the number of chars in the file.
-pub fn len_chars<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.len_chars()
+pub fn len_chars(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    file.len_chars()
 }
 
 /// Returns a [`String`] with the number of bytes in the file.
-pub fn len_bytes<U>() -> impl Fn(&FileWidget<U>) -> usize
-where
-    U: Ui
-{
-    |file| file.len_bytes()
+pub fn len_bytes(file: &FileWidget, input: &dyn InputMethod) -> usize {
+    file.len_bytes()
 }

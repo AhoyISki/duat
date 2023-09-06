@@ -53,76 +53,66 @@
 #[macro_use]
 pub mod file_parts;
 
-pub use file_parts::{file_name, len_lines, main_col, main_line, selections};
+pub use file_parts::*;
 
 use self::Reader::*;
 use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
-    data::{AsAny, ReadableData, RoNestedData},
+    data::{AsAny, RoNestedData},
+    input::InputMethod,
     status_parts,
     text::{BuilderTag, Text, TextBuilder},
-    ui::{Constraint, PushSpecs, Ui},
-    Controler
+    ui::{Area, PushSpecs, Ui},
+    Controler,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
 /// individual [`RoData<T>`]s
-pub enum Reader<U>
-where
-    U: Ui
-{
+pub enum Reader {
     Var(Box<dyn Fn() -> String + Send + Sync + 'static>),
-    File(Box<dyn Fn(&FileWidget<U>) -> String + Send + Sync + 'static>)
+    File(Box<dyn Fn(&FileWidget, &dyn InputMethod) -> String + Send + Sync + 'static>),
 }
 
-impl<U> Reader<U>
-where
-    U: Ui
-{
+impl Reader {
     /// Reads the current state of [`self`] and applies a function
     /// that returns a [`String`].
-    fn read(&self, file: &FileWidget<U>) -> String {
+    fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> String {
         match self {
             Var(var_fn) => var_fn(),
-            File(file_fn) => file_fn(file)
+            File(file_fn) => file_fn(file, input),
         }
     }
 }
 
-enum ReaderOrText<U>
-where
-    U: Ui
-{
-    Reader(Reader<U>),
-    Text(String)
+enum ReaderOrText {
+    Reader(Reader),
+    Text(String),
 }
 
 /// Part of the [`StatusLine<U>`], can either be a
 /// [`&'static str`][str], or a dynamically updated [`Reader`].
-pub struct StatusPart<U>
-where
-    U: Ui
-{
-    reader_or_text: ReaderOrText<U>,
-    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>
+pub struct StatusPart {
+    reader_or_text: ReaderOrText,
+    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
 }
 
-impl<U> StatusPart<U>
-where
-    U: Ui
-{
+impl StatusPart {
     /// Consumes [`self`] and modifies a [`TextBuilder`], adding
     /// swappable ranges, text, and [`Tag`]s.
     fn process(
-        self, builder: &mut TextBuilder, file: &FileWidget<U>, palette: &crate::forms::FormPalette
-    ) -> (Option<Reader<U>>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
+        self,
+        builder: &mut TextBuilder,
+        file: &FileWidget,
+        input: &dyn InputMethod,
+        palette: &crate::forms::FormPalette,
+    ) -> (Option<Reader>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
         match self.reader_or_text {
             ReaderOrText::Reader(Reader::Var(obj_fn)) => {
                 builder.push_swappable(obj_fn());
                 (Some(Reader::Var(obj_fn)), self.checker)
             }
             ReaderOrText::Reader(Reader::File(file_fn)) => {
-                builder.push_swappable(file_fn(file));
+                builder.push_swappable(file_fn(file, input));
                 (Some(Reader::File(file_fn)), self.checker)
             }
             ReaderOrText::Text(text) => {
@@ -133,60 +123,59 @@ where
     }
 }
 
-impl<U> From<char> for StatusPart<U>
-where
-    U: Ui
-{
+impl From<char> for StatusPart {
     fn from(value: char) -> Self {
-        StatusPart { reader_or_text: ReaderOrText::Text(String::from(value)), checker: None }
+        StatusPart {
+            reader_or_text: ReaderOrText::Text(String::from(value)),
+            checker: None,
+        }
     }
 }
 
-impl<U> From<&'_ str> for StatusPart<U>
-where
-    U: Ui
-{
+impl From<&'_ str> for StatusPart {
     fn from(value: &'_ str) -> Self {
-        StatusPart { reader_or_text: ReaderOrText::Text(String::from(value)), checker: None }
+        StatusPart {
+            reader_or_text: ReaderOrText::Text(String::from(value)),
+            checker: None,
+        }
     }
 }
 
-impl<U> From<String> for StatusPart<U>
-where
-    U: Ui
-{
+impl From<String> for StatusPart {
     fn from(value: String) -> Self {
-        StatusPart { reader_or_text: ReaderOrText::Text(value), checker: None }
+        StatusPart {
+            reader_or_text: ReaderOrText::Text(value),
+            checker: None,
+        }
     }
 }
 
-impl<U, S, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for StatusPart<U>
+impl<S, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for StatusPart
 where
-    U: Ui,
     S: ToString,
     ReadFn: Fn() -> S + Send + Sync + 'static,
-    CheckFn: Fn() -> bool + Send + Sync + 'static
+    CheckFn: Fn() -> bool + Send + Sync + 'static,
 {
     fn from((reader, checker): (ReadFn, CheckFn)) -> Self {
         let reader = move || reader().to_string();
         StatusPart {
             reader_or_text: ReaderOrText::Reader(Reader::Var(Box::new(reader))),
-            checker: Some(Box::new(checker))
+            checker: Some(Box::new(checker)),
         }
     }
 }
 
-impl<U, S, ReadFn> From<ReadFn> for StatusPart<U>
+impl<S, ReadFn> From<ReadFn> for StatusPart
 where
-    U: Ui,
     S: ToString,
-    ReadFn: Fn(&FileWidget<U>) -> S + Send + Sync + 'static
+    ReadFn: Fn(&FileWidget, &dyn InputMethod) -> S + Send + Sync + 'static,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &FileWidget<U>| reader(file).to_string();
+        let reader =
+            move |file: &FileWidget, input: &dyn InputMethod| reader(file, input).to_string();
         StatusPart {
             reader_or_text: ReaderOrText::Reader(Reader::File(Box::new(reader))),
-            checker: None
+            checker: None,
         }
     }
 }
@@ -202,10 +191,13 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
             continue;
         };
 
-        if let Some((text_start, (_, form_id))) =
-            text[(l_index + 1)..next_l_index].find(']').and_then(|r_index| {
+        if let Some((text_start, (_, form_id))) = text[(l_index + 1)..next_l_index]
+            .find(']')
+            .and_then(|r_index| {
                 let form_name = &text[(l_index + 1)..=(l_index + r_index)];
-                palette.get_from_name(form_name).map(|form_id| (l_index + r_index + 2, form_id))
+                palette
+                    .get_from_name(form_name)
+                    .map(|form_id| (l_index + r_index + 2, form_id))
             })
         {
             builder.push_tag(BuilderTag::PushForm(form_id));
@@ -215,6 +207,77 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
         }
 
         prev_l_index = Some(next_l_index);
+    }
+}
+
+pub struct StatusLineCfg {
+    parts: Option<Vec<StatusPart>>,
+    is_global: bool,
+    specs: PushSpecs,
+}
+
+impl StatusLineCfg {
+    pub fn new() -> Self {
+        Self {
+            parts: None,
+            is_global: false,
+            specs: PushSpecs::below().with_lenght(1.0),
+        }
+    }
+
+    pub fn builder<U>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+    {
+        move |controler| {
+            let palette = &controler.palette;
+            let parts = self.parts.unwrap_or_else(default_parts);
+
+            let (file, input) = if self.is_global {
+                (controler.dyn_active_file(), controler.dyn_active_input())
+            } else {
+                (controler.active_file(), controler.active_input())
+            };
+
+            let (builder, readers, checker) = file
+                .inspect(|file| input.inspect(|input| build_parts(file, input, parts, palette)));
+
+            let checker = {
+                let file = file.clone();
+                Box::new(move || file.has_changed() || checker())
+            };
+
+            let widget = Widget::passive(StatusLine {
+                file,
+                input,
+                builder,
+                readers,
+            });
+            (widget, checker, PushSpecs::below().with_lenght(1.0))
+        }
+    }
+
+    pub fn with_parts(self, parts: Vec<StatusPart>) -> Self {
+        Self {
+            parts: Some(parts),
+            ..self
+        }
+    }
+
+    pub fn global(self) -> Self {
+        Self {
+            is_global: true,
+            ..self
+        }
+    }
+
+    pub fn above(self) -> Self {
+        Self {
+            specs: PushSpecs::above().with_lenght(1.0),
+            ..self
+        }
     }
 }
 
@@ -266,101 +329,34 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
 /// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve
 /// to change the active [`Form`][crate::tags::form::Form] to print
 /// the next characters.
-pub struct StatusLine<U>
-where
-    U: Ui
-{
-    file: RoNestedData<FileWidget<U>>,
+pub struct StatusLine {
+    file: RoNestedData<FileWidget>,
+    input: RoNestedData<dyn InputMethod>,
     builder: TextBuilder,
-    readers: Vec<Reader<U>>
+    readers: Vec<Reader>,
 }
 
-impl<U> StatusLine<U>
-where
-    U: Ui
-{
-    fn passive(
-        file: RoNestedData<FileWidget<U>>, builder: TextBuilder, readers: Vec<Reader<U>>
-    ) -> Widget<U> {
-        Widget::passive(Self { file, builder, readers })
-    }
-
-    pub fn parts_fn(
-        parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
-    {
-        move |controler| {
-            let file = controler.active_file();
-            let palette = &controler.palette;
-            let (builder, readers, checker) = build_parts(&file.read(), parts, palette);
-
-            let passive = StatusLine::passive(RoNestedData::new(file.clone()), builder, readers);
-            let checker = Box::new(move || file.has_changed() || checker());
-            (passive, checker, PushSpecs::below(Constraint::Length(1.0)))
-        }
-    }
-
-    pub fn parts_global_fn(
-        parts: Vec<StatusPart<U>>
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
-    {
-        move |controler| {
-            let file = controler.dynamic_active_file();
-            let palette = &controler.palette;
-            let (builder, readers, checker) =
-                file.inspect(|file| build_parts(file, parts, palette));
-
-            let widget_type = StatusLine::passive(file.clone(), builder, readers);
-            let checker = Box::new(move || file.has_changed() || checker());
-            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
-        }
-    }
-
-    /// Returns a function that outputs the default version of
-    /// [`StatusLine<U>`].
-    pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
-    {
-        move |controler| {
-            let palette = &controler.palette;
-            let file = controler.active_file();
-            let parts = default_parts();
-            let (builder, readers, _) = build_parts(&file.read(), parts, palette);
-
-            let widget_type =
-                StatusLine::passive(RoNestedData::new(file.clone()), builder, readers);
-            let checker = Box::new(move || file.has_changed());
-            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
-        }
-    }
-
-    /// Returns a function that outputs the default version of
-    /// [`StatusLine<U>`].
-    pub fn default_global_fn()
-    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) + 'static
-    {
-        move |controler| {
-            let palette = &controler.palette;
-            let parts = default_parts();
-            let file = controler.dynamic_active_file();
-            let (builder, readers, _) = file.inspect(|file| build_parts(file, parts, palette));
-
-            let widget_type = StatusLine::passive(file.clone(), builder, readers);
-            let checker = Box::new(move || file.has_changed());
-            (widget_type, checker, PushSpecs::below(Constraint::Length(1.0)))
-        }
+impl StatusLine {
+    pub fn config() -> StatusLineCfg {
+        StatusLineCfg::new()
     }
 }
 
-impl<U> PassiveWidget<U> for StatusLine<U>
-where
-    U: Ui + 'static
-{
-    fn update(&mut self, _area: &U::Area) {
+impl PassiveWidget for StatusLine {
+    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+    {
+        Self::config().builder()(controler)
+    }
+
+    fn update(&mut self, _area: &impl Area) {
         self.file.inspect(|file| {
-            for (index, reader) in self.readers.iter().enumerate() {
-                self.builder.swap_range(index, reader.read(file));
-            }
+            self.input.inspect(|input| {
+                for (index, reader) in self.readers.iter().enumerate() {
+                    self.builder.swap_range(index, reader.read(file, input));
+                }
+            });
         });
     }
 
@@ -369,28 +365,27 @@ where
     }
 }
 
-impl<U> AsAny for StatusLine<U>
-where
-    U: Ui + 'static
-{
+impl AsAny for StatusLine {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-fn build_parts<U>(
-    file: &FileWidget<U>, parts: Vec<StatusPart<U>>, palette: &crate::forms::FormPalette
-) -> (TextBuilder, Vec<Reader<U>>, impl Fn() -> bool + Send + Sync)
-where
-    U: Ui
-{
+fn build_parts(
+    file: &FileWidget,
+    input: &dyn InputMethod,
+    parts: Vec<StatusPart>,
+    palette: &crate::forms::FormPalette,
+) -> (TextBuilder, Vec<Reader>, impl Fn() -> bool + Send + Sync) {
     let mut builder = TextBuilder::default();
-    builder.push_tag(BuilderTag::AlignRight);
     let mut checkers = Vec::new();
+
+    builder.push_tag(BuilderTag::AlignRight);
+
     let readers = {
         let mut readers = Vec::new();
         for part in parts.into_iter() {
-            let (reader, checker) = part.process(&mut builder, file, palette);
+            let (reader, checker) = part.process(&mut builder, file, input, palette);
             if let Some(reader) = reader {
                 readers.push(reader)
             }
@@ -406,22 +401,19 @@ where
     (builder, readers, checker)
 }
 
-fn default_parts<U>() -> Vec<StatusPart<U>>
-where
-    U: Ui
-{
+fn default_parts() -> Vec<StatusPart> {
     status_parts![
         "[FileName]",
-        file_name::<U>(),
+        file_name,
         " [Selections]",
-        selections(),
-        " [Coords]",
-        main_col(),
+        selections_fmt,
+        "[Coords]",
+        main_col,
         "[Separator]:[Coords]",
-        main_line(),
+        main_line,
         "[Separator]/[Coords]",
-        len_lines()
+        len_lines
     ]
 }
 
-unsafe impl<U> Send for StatusLine<U> where U: Ui {}
+unsafe impl Send for StatusLine {}

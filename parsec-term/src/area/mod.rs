@@ -399,7 +399,7 @@ impl PrintInfo {
 impl ui::PrintInfo for PrintInfo {
     type Area = Area;
 
-    fn scroll_to_gap(&mut self, text: &Text, pos: Point, area: &Area, cfg: &PrintCfg) {
+    fn fit_on_main(&mut self, text: &Text, pos: Point, area: &Area, cfg: &PrintCfg) {
         if self.last_main != pos {
             self.scroll_hor_to_gap(pos, text, area, IterCfg::new(cfg).outsource_lfs());
             self.scroll_ver_to_gap(pos, text, area, IterCfg::new(cfg).outsource_lfs());

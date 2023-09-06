@@ -5,12 +5,14 @@ use std::{
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult
-    }
+        Arc, TryLockResult,
+    },
 };
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use crate::input::InputMethod;
 
 use super::{DataCastErr, DataRetrievalErr, ReadableData};
 
@@ -38,10 +40,10 @@ use super::{DataCastErr, DataRetrievalErr, ReadableData};
 /// # struct OtherStuff;
 /// struct WidgetThatReadsFromFile<U>
 /// where
-///     U: Ui
+///     U: Ui,
 /// {
 ///     file: RoData<FileWidget<U>>,
-///     other_stuff: OtherStuff
+///     other_stuff: OtherStuff,
 /// }
 /// ```
 /// Internally, all [`Widget`]s are stored inside [`RwData`]s, so
@@ -56,12 +58,13 @@ use super::{DataCastErr, DataRetrievalErr, ReadableData};
 /// [`RwData<FileWidget<U>`]: RoData
 pub struct RwData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
+    // The `Box` is to allow for downcasting.
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
-    type_id: TypeId
+    type_id: TypeId,
 }
 
 impl<T> RwData<T> {
@@ -77,14 +80,14 @@ impl<T> RwData<T> {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            type_id: TypeId::of::<T>()
+            type_id: TypeId::of::<T>(),
         }
     }
 }
 
 impl<T> RwData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
     /// Returns a new instance of [`RwData<T>`], assuming that it is
     /// unsized.
@@ -94,7 +97,7 @@ where
     /// in question is sized, use [`RwData::new`] instead.
     pub fn new_unsized<TButNotDyn>(data: Arc<RwLock<T>>) -> Self
     where
-        TButNotDyn: 'static
+        TButNotDyn: 'static,
     {
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
@@ -103,7 +106,7 @@ where
             data,
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            type_id: TypeId::of::<TButNotDyn>()
+            type_id: TypeId::of::<TButNotDyn>(),
         }
     }
 
@@ -152,7 +155,10 @@ where
     /// [`has_changed`]: ReadableData::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
         let data = self.data.write().unwrap();
-        ReadWriteGuard { guard: data, cur_state: &self.cur_state }
+        ReadWriteGuard {
+            guard: data,
+            cur_state: &self.cur_state,
+        }
     }
 
     /// Non Blocking mutable reference to the information.
@@ -176,8 +182,7 @@ where
     ///         let mut data_1 = data_1.try_write();
     ///         thread::sleep(Duration::from_millis(100));
     ///         let mut data_2 = data_2.try_write();
-    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2)
-    ///         {
+    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2) {
     ///             mem::swap(&mut data_1, &mut data_2);
     ///         }
     ///     });
@@ -186,8 +191,7 @@ where
     ///         let mut data_2 = data_2.try_write();
     ///         thread::sleep(Duration::from_millis(100));
     ///         let mut data_1 = data_1.try_write();
-    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2)
-    ///         {
+    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2) {
     ///             mem::swap(&mut data_1, &mut data_2);
     ///         }
     ///     });
@@ -204,7 +208,10 @@ where
     pub fn try_write(&self) -> Result<ReadWriteGuard<T>, DataRetrievalErr<RwData<T>, T>> {
         self.data
             .try_write()
-            .map(|guard| ReadWriteGuard { guard, cur_state: &self.cur_state })
+            .map(|guard| ReadWriteGuard {
+                guard,
+                cur_state: &self.cur_state,
+            })
             .map_err(|_| DataRetrievalErr::WriteBlocked(PhantomData))
     }
 
@@ -266,7 +273,8 @@ where
     ///
     /// [`has_changed`]: ReadableData::has_changed
     pub fn try_mutate<B>(
-        &self, f: impl FnOnce(&mut T) -> B
+        &self,
+        f: impl FnOnce(&mut T) -> B,
     ) -> Result<B, DataRetrievalErr<RwData<T>, T>> {
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
@@ -299,19 +307,13 @@ where
     /// #     }
     /// # }
     /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "I can show you the world"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "Shining, shimmering, splendid"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar(
-    ///         '🧞'
-    ///     ))))
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("I can show you the world"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("Shining, shimmering, splendid"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
     /// ];
     ///
     /// assert!(list[0].data_is::<DownCastableString>());
@@ -322,24 +324,11 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn data_is<U>(&self) -> bool
     where
-        U: 'static
+        U: 'static,
     {
         self.type_id == std::any::TypeId::of::<U>()
     }
 
-    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<T> {
-        self.data.write().unwrap()
-    }
-
-    pub(crate) fn raw_try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
-        self.data.try_write()
-    }
-}
-
-impl<T> RwData<T>
-where
-    T: ?Sized + super::AsAny
-{
     /// Tries to downcast to a concrete type.
     ///
     /// # Examples
@@ -367,28 +356,20 @@ where
     /// #     }
     /// # }
     /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "I can show you the world"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "Shining, shimmering, splendid"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar(
-    ///         '🧞'
-    ///     ))))
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("I can show you the world"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("Shining, shimmering, splendid"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
     /// ];
     ///
-    /// let maybe_char =
-    ///     list[2].clone().try_downcast::<DownCastableChar>();
+    /// let maybe_char = list[2].clone().try_downcast::<DownCastableChar>();
     /// assert!(maybe_char.is_ok());
     /// *maybe_char.unwrap().write() = DownCastableChar('👳');
     ///
-    /// let maybe_string =
-    ///     list[0].clone().try_downcast::<DownCastableChar>();
+    /// let maybe_string = list[0].clone().try_downcast::<DownCastableChar>();
     /// assert!(maybe_string.is_err());
     /// ```
     /// If you don't need to write to the data, consider using
@@ -398,18 +379,45 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn try_downcast<U>(self) -> Result<RwData<U>, DataCastErr<RwData<T>, T, U>>
     where
-        U: 'static
+        U: 'static,
     {
         if self.type_id == TypeId::of::<U>() {
-            let Self { data, cur_state, read_state, type_id } = self;
+            let Self {
+                data,
+                cur_state,
+                read_state,
+                type_id,
+            } = self;
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RwData { data, cur_state, read_state, type_id })
+            Ok(RwData {
+                data,
+                cur_state,
+                read_state,
+                type_id,
+            })
         } else {
             Err(DataCastErr(self, PhantomData, PhantomData))
         }
     }
 
+    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<T> {
+        self.data.write().unwrap()
+    }
+
+    pub(crate) fn raw_try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
+        self.data.try_write()
+    }
+
+    pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {
+        &self.data
+    }
+}
+
+impl<T> RwData<T>
+where
+    T: ?Sized + super::AsAny,
+{
     /// Blocking inspection of the inner data.
     ///
     /// # Examples
@@ -437,19 +445,13 @@ where
     /// #     }
     /// # }
     /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "I can show you the world"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(
-    ///         DownCastableString(String::from(
-    ///             "Shining, shimmering, splendid"
-    ///         ))
-    ///     ))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar(
-    ///         '🧞'
-    ///     ))))
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("I can show you the world"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
+    ///         String::from("Shining, shimmering, splendid"),
+    ///     )))),
+    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
     /// ];
     ///
     /// assert!(matches!(
@@ -465,7 +467,7 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn inspect_as<U, V>(&self, f: impl FnOnce(&U) -> V) -> Option<V>
     where
-        U: 'static
+        U: 'static,
     {
         (self.type_id == TypeId::of::<U>())
             .then(|| self.inspect(|data| f(data.as_any().downcast_ref::<U>().unwrap())))
@@ -474,7 +476,7 @@ where
 
 impl<T> std::fmt::Debug for RwData<T>
 where
-    T: ?Sized + std::fmt::Debug
+    T: ?Sized + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -483,35 +485,35 @@ where
 
 impl<T> Clone for RwData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
-            type_id: self.type_id
+            type_id: self.type_id,
         }
     }
 }
 
 impl<T> Default for RwData<T>
 where
-    T: Default
+    T: Default,
 {
     fn default() -> Self {
         Self {
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            type_id: TypeId::of::<T>()
+            type_id: TypeId::of::<T>(),
         }
     }
 }
 
 impl<T> std::fmt::Display for RwData<T>
 where
-    T: std::fmt::Display + 'static
+    T: std::fmt::Display + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.read(), f)
@@ -520,7 +522,7 @@ where
 
 impl<T> super::private::DataHolder<T> for RwData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn data(&self) -> RwLockReadGuard<'_, T> {
         self.data.read().unwrap()
@@ -547,15 +549,15 @@ unsafe impl<T> Sync for RwData<T> where T: ?Sized + Send + Sync {}
 
 pub struct ReadWriteGuard<'a, T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     guard: RwLockWriteGuard<'a, T>,
-    cur_state: &'a Arc<AtomicUsize>
+    cur_state: &'a Arc<AtomicUsize>,
 }
 
 impl<'a, T> std::ops::Deref for ReadWriteGuard<'a, T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     type Target = T;
 
@@ -566,7 +568,7 @@ where
 
 impl<'a, T> std::ops::DerefMut for ReadWriteGuard<'a, T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.guard
@@ -575,7 +577,7 @@ where
 
 impl<'a, T> Drop for ReadWriteGuard<'a, T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn drop(&mut self) {
         self.cur_state.fetch_add(1, Ordering::Release);

@@ -4,7 +4,6 @@ use crate::{
     history::{Change, History},
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, Ui},
-    widgets::EditAccum
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
@@ -14,7 +13,7 @@ pub struct Point {
     byte: usize,
     pos: usize,
     col: usize,
-    line: usize
+    line: usize,
 }
 
 impl Point {
@@ -26,7 +25,7 @@ impl Point {
                 let line = text.char_to_line(pos);
                 pos - text.line_to_char(line)
             },
-            line: text.char_to_line(pos)
+            line: text.char_to_line(pos),
         }
     }
 
@@ -109,10 +108,10 @@ impl std::fmt::Display for Point {
 #[derive(Default)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
-    caret: Point,
+    pub(crate) caret: Point,
 
     /// An anchor for a selection.
-    anchor: Option<Point>,
+    pub(crate) anchor: Option<Point>,
 
     /// The index to a `Change` in the current `Moment`, used for
     /// greater efficiency.
@@ -124,7 +123,7 @@ pub struct Cursor {
     /// desired_col, it will be placed in the desired_col. If the
     /// line is shorter, it will be placed in the last column of
     /// the line.
-    desired_col: usize
+    desired_col: usize,
 }
 
 impl Cursor {
@@ -139,7 +138,7 @@ impl Cursor {
                 .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
                 .next()
                 .map(|(caret, _)| caret.x)
-                .unwrap()
+                .unwrap(),
         }
     }
 
@@ -160,7 +159,7 @@ impl Cursor {
                     let new_lfs = lfs + (char == '\n') as isize;
                     match (lfs == by && x >= self.desired_col) || new_lfs > by {
                         true => std::ops::ControlFlow::Break(pos),
-                        false => std::ops::ControlFlow::Continue(new_lfs)
+                        false => std::ops::ControlFlow::Continue(new_lfs),
                     }
                 })
                 .break_value()
@@ -171,18 +170,22 @@ impl Cursor {
             let start = area
                 .rev_print_iter(text.rev_iter_at(self.caret.pos).no_ghosts(), cfg)
                 .filter_map(|(_, item)| item.part.as_char().zip(Some(item.pos)))
-                .try_fold(0, |lfs, (char, pos)| match (lfs - ((char == '\n') as isize)) < by {
-                    true => std::ops::ControlFlow::Break(pos + 1),
-                    false => std::ops::ControlFlow::Continue(lfs - ((char == '\n') as isize))
+                .try_fold(0, |lfs, (char, pos)| {
+                    match (lfs - ((char == '\n') as isize)) < by {
+                        true => std::ops::ControlFlow::Break(pos + 1),
+                        false => std::ops::ControlFlow::Continue(lfs - ((char == '\n') as isize)),
+                    }
                 })
                 .break_value()
                 .unwrap_or(0);
 
             area.print_iter(text.iter_at(start).no_ghosts(), cfg)
                 .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.pos))))
-                .try_fold((), |_, (char, (x, pos))| match x >= self.desired_col || char == '\n' {
-                    true => std::ops::ControlFlow::Break(pos),
-                    false => std::ops::ControlFlow::Continue(())
+                .try_fold((), |_, (char, (x, pos))| {
+                    match x >= self.desired_col || char == '\n' {
+                        true => std::ops::ControlFlow::Break(pos),
+                        false => std::ops::ControlFlow::Continue(()),
+                    }
                 })
                 .break_value()
                 .unwrap_or(text.len_chars().saturating_sub(1))
@@ -201,7 +204,11 @@ impl Cursor {
 
     /// Internal vertical movement function.
     pub fn move_ver_wrapped(
-        &mut self, _by: isize, _text: &Text, _area: &impl Area, _cfg: &PrintCfg
+        &mut self,
+        _by: isize,
+        _text: &Text,
+        _area: &impl Area,
+        _cfg: &PrintCfg,
     ) {
         todo!()
     }
@@ -258,7 +265,11 @@ impl Cursor {
     /// If `anchor` isn't set, returns an empty range on `target`.
     pub fn range(&self) -> Range<usize> {
         let anchor = self.anchor.unwrap_or(self.caret);
-        if anchor < self.caret { anchor.pos..self.caret.pos } else { self.caret.pos..anchor.pos }
+        if anchor < self.caret {
+            anchor.pos..self.caret.pos
+        } else {
+            self.caret.pos..anchor.pos
+        }
     }
 
     /// Returns the range between `target` and `anchor`.
@@ -342,27 +353,6 @@ impl Cursor {
     pub fn true_line(&self) -> usize {
         self.caret.line
     }
-
-    pub(crate) fn try_merge(&mut self, start: Point, end: Point) -> Result<(), ()> {
-        if !pos_intersects(self.pos_range(), (start, end)) {
-            return Err(());
-        }
-        let Some(anchor) = self.anchor.as_mut() else {
-            self.anchor = Some(start);
-            self.caret = self.caret.max(end);
-            return Ok(());
-        };
-
-        if *anchor > self.caret {
-            *anchor = (*anchor).max(end);
-            self.caret = self.caret.min(start);
-        } else {
-            *anchor = (*anchor).min(start);
-            self.caret = self.caret.max(end);
-        }
-
-        Ok(())
-    }
 }
 
 impl std::fmt::Display for Cursor {
@@ -373,208 +363,10 @@ impl std::fmt::Display for Cursor {
 
 impl Clone for Cursor {
     fn clone(&self) -> Self {
-        Cursor { desired_col: self.caret.col, assoc_index: None, ..*self }
-    }
-}
-
-/// A cursor that can edit text in its selection, but can't move the
-/// selection in any way.
-pub struct Editor<'a, U>
-where
-    U: Ui
-{
-    cursor: &'a mut Cursor,
-    text: &'a mut Text,
-    edit_accum: &'a mut EditAccum,
-    print_info: Option<U::PrintInfo>,
-    history: Option<&'a mut History<U>>
-}
-
-impl<'a, U> Editor<'a, U>
-where
-    U: Ui
-{
-    /// Returns a new instance of `Editor`.
-    pub fn new(
-        cursor: &'a mut Cursor, text: &'a mut Text, edit_accum: &'a mut EditAccum,
-        print_info: Option<U::PrintInfo>, history: Option<&'a mut History<U>>
-    ) -> Self {
-        cursor.assoc_index.as_mut().map(|i| i.saturating_add_signed(edit_accum.changes));
-        cursor.caret.calibrate(edit_accum.chars, text);
-        if let Some(anchor) = cursor.anchor.as_mut() {
-            anchor.calibrate(edit_accum.chars, text)
-        }
-        Self { cursor, text, edit_accum, print_info, history }
-    }
-
-    /// Replaces the entire selection of the `TextCursor` with new
-    /// text.
-    pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(edit.to_string(), self.cursor.range(), self.text);
-        let (start, end) = (change.start, change.added_end());
-
-        self.edit(change);
-
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if anchor.pos > self.cursor.caret.pos {
-                *anchor = Point::new(end, self.text);
-                return;
-            }
-        }
-
-        self.cursor.caret = Point::new(end, self.text);
-        self.cursor.anchor = Some(Point::new(start, self.text));
-    }
-
-    /// Inserts new text directly behind the caret.
-    pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.caret.pos..self.cursor.caret.pos;
-        let change = Change::new(edit.to_string(), range, self.text);
-        let (added_end, taken_end) = (change.added_end(), change.taken_end());
-
-        self.edit(change);
-
-        let ch_diff = added_end as isize - taken_end as isize;
-
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor > self.cursor.caret {
-                anchor.calibrate(ch_diff, self.text);
-            }
+        Cursor {
+            desired_col: self.caret.col,
+            assoc_index: None,
+            ..*self
         }
     }
-
-    /// Edits the file with a cursor.
-    fn edit(&mut self, change: Change) {
-        self.text.apply_change(&change);
-        self.edit_accum.chars += change.added_end() as isize - change.taken_end() as isize;
-
-        if let Some(history) = &mut self.history {
-            let assoc_index = self.cursor.assoc_index;
-            let (insertion_index, change_diff) =
-                history.add_change(change, assoc_index, self.print_info.unwrap_or_default());
-            self.cursor.assoc_index = Some(insertion_index);
-            self.edit_accum.changes += change_diff;
-        }
-    }
-}
-
-/// A cursor that can move and alter the selection, but can't edit the
-/// file.
-pub struct Mover<'a, U>
-where
-    U: Ui
-{
-    cursor: &'a mut Cursor,
-    text: &'a Text,
-    area: &'a U::Area,
-    print_cfg: PrintCfg
-}
-
-impl<'a, U> Mover<'a, U>
-where
-    U: Ui
-{
-    /// Returns a new instance of `Mover`.
-    pub fn new(
-        cursor: &'a mut Cursor, text: &'a Text, area: &'a U::Area, print_cfg: PrintCfg
-    ) -> Self {
-        Self { cursor, text, area, print_cfg }
-    }
-
-    ////////// Public movement functions
-
-    /// Moves the cursor vertically on the file. May also cause
-    /// vertical movement.
-    pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text, self.area, &self.print_cfg);
-    }
-
-    /// Moves the cursor horizontally on the file. May also cause
-    /// vertical movement.
-    pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text, self.area, &self.print_cfg);
-    }
-
-    /// Moves the cursor to a position in the file.
-    ///
-    /// - If the position isn't valid, it will move to the "maximum"
-    ///   position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, &self.print_cfg);
-    }
-
-    /// Moves the cursor to a line and a column on the file.
-    ///
-    /// - If the coords isn't valid, it will move to the "maximum"
-    ///   position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let point = Point::from_coords(line, col, self.text);
-        self.cursor.move_to(point, self.text, self.area, &self.print_cfg);
-    }
-
-    /// Returns the anchor of the `TextCursor`.
-    pub fn anchor(&self) -> Option<Point> {
-        self.cursor.anchor
-    }
-
-    /// Returns the anchor of the `TextCursor`.
-    pub fn caret(&self) -> Point {
-        self.cursor.caret
-    }
-
-    /// Returns and takes the anchor of the `TextCursor`.
-    pub fn take_anchor(&mut self) -> Option<Point> {
-        self.cursor.anchor.take()
-    }
-
-    /// Sets the position of the anchor to be the same as the current
-    /// cursor position in the file.
-    ///
-    /// The `anchor` and `current` act as a range of text on the file.
-    pub fn set_anchor(&mut self) {
-        self.cursor.set_anchor()
-    }
-
-    /// Unsets the anchor.
-    ///
-    /// This is done so the cursor no longer has a valid selection.
-    pub fn unset_anchor(&mut self) {
-        self.cursor.unset_anchor()
-    }
-
-    /// Wether or not the anchor is set.
-    pub fn anchor_is_set(&mut self) -> bool {
-        self.cursor.anchor.is_some()
-    }
-
-    /// Switches the caret and anchor of the `TextCursor`.
-    pub fn switch_ends(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            std::mem::swap(anchor, &mut self.cursor.caret);
-        }
-    }
-
-    /// Places the caret at the beginning of the selection.
-    pub fn set_caret_on_start(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor < self.cursor.caret {
-                std::mem::swap(anchor, &mut self.cursor.caret);
-            }
-        }
-    }
-
-    /// Places the caret at the beginning of the selection.
-    pub fn set_caret_on_end(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if self.cursor.caret < *anchor {
-                std::mem::swap(anchor, &mut self.cursor.caret);
-            }
-        }
-    }
-}
-
-fn pos_intersects(left: (Point, Point), right: (Point, Point)) -> bool {
-    (left.0 > right.0 && right.1 > left.0) || (right.0 > left.0 && left.1 > right.0)
 }

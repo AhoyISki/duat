@@ -195,7 +195,7 @@ pub struct RoNestedData<T>
 where
     T: ?Sized + 'static
 {
-    data: RoData<RoData<T>>,
+    data: RoData<RwData<T>>,
     read_state: AtomicUsize
 }
 
@@ -208,7 +208,7 @@ where
     /// Note that the inner [`RoData<T>`] in the [`RoData<RoData<T>>`]
     /// will never be swappable by another [`RoData<T>`] which is the
     /// whole point of this struct.
-    pub(crate) fn new(data: RoData<T>) -> Self {
+    pub(crate) fn new(data: RwData<T>) -> Self {
         let read_state = AtomicUsize::new(data.cur_state.load(Ordering::Relaxed));
         Self { data: RoData::new(data), read_state }
     }
@@ -274,11 +274,11 @@ where
     }
 }
 
-impl<T> From<&RwData<RoData<T>>> for RoNestedData<T>
+impl<T> From<&RwData<RwData<T>>> for RoNestedData<T>
 where
     T: ?Sized + 'static
 {
-    fn from(value: &RwData<RoData<T>>) -> Self {
+    fn from(value: &RwData<RwData<T>>) -> Self {
         RoNestedData {
             data: RoData::from(value),
             read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed))
