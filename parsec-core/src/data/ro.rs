@@ -42,19 +42,6 @@ where
     type_id: TypeId
 }
 
-impl<T> RoData<T> {
-    /// Returns a new instance of a [`RoData<T>`], assuming that it is
-    /// sized.
-    fn new(data: T) -> Self {
-        Self {
-            data: Arc::new(RwLock::new(data)),
-            cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1),
-            type_id: TypeId::of::<T>()
-        }
-    }
-}
-
 impl<T> RoData<T>
 where
     T: ?Sized + AsAny
@@ -203,16 +190,6 @@ impl<T> RoNestedData<T>
 where
     T: ?Sized
 {
-    /// Returns a new instance of [`RoNestedData<T>`]
-    ///
-    /// Note that the inner [`RoData<T>`] in the [`RoData<RoData<T>>`]
-    /// will never be swappable by another [`RoData<T>`] which is the
-    /// whole point of this struct.
-    pub(crate) fn new(data: RwData<T>) -> Self {
-        let read_state = AtomicUsize::new(data.cur_state.load(Ordering::Relaxed));
-        Self { data: RoData::new(data), read_state }
-    }
-
     /// Blocking inspection of the inner data.
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]

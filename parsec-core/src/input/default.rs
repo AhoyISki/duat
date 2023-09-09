@@ -4,15 +4,21 @@ use crate::{history::History, ui::Ui, widgets::FileWidget};
 #[derive(Clone)]
 pub struct Editor {
     cursors: Cursors,
-    history: History,
+    _history: History,
 }
 
 impl Editor {
     pub fn new() -> Self {
         Self {
             cursors: Cursors::new(),
-            history: History::new(),
+            _history: History::new(),
         }
+    }
+}
+
+impl Default for Editor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -27,18 +33,17 @@ impl InputMethod for Editor {
 
     fn send_key<U>(
         &mut self,
-        key: crossterm::event::KeyEvent,
-        widget: &crate::data::RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &crate::Controler<U>,
-    ) -> bool
-    where
+        _key: crossterm::event::KeyEvent,
+        _widget: &crate::data::RwData<Self::Widget>,
+        _area: &U::Area,
+        _controler: &crate::Controler<U>,
+    ) where
         U: Ui,
     {
         todo!()
     }
 
     fn cursors(&self) -> Option<&Cursors> {
-        todo!()
+        Some(&self.cursors)
     }
 }

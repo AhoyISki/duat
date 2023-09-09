@@ -5,7 +5,7 @@ use super::{Handle, RawTag, TagOrSkip};
 #[derive(Debug)]
 pub enum Container {
     Vec(Vec<TagOrSkip>),
-    Rope(Rope<TagOrSkip>)
+    Rope(Rope<TagOrSkip>),
 }
 
 impl Container {
@@ -15,7 +15,7 @@ impl Container {
                 let index = end_ch_to_index(vec, pos);
                 vec.insert(index, t_or_s)
             }
-            Container::Rope(rope) => rope.insert(pos, t_or_s)
+            Container::Rope(rope) => rope.insert(pos, t_or_s, usize::cmp),
         }
     }
 
@@ -25,7 +25,7 @@ impl Container {
                 let index = end_ch_to_index(vec, pos);
                 vec.splice(index..index, slice.iter().copied());
             }
-            Container::Rope(rope) => rope.insert_slice(pos, slice)
+            Container::Rope(rope) => rope.insert_slice(pos, slice, usize::cmp),
         }
     }
 
@@ -36,7 +36,7 @@ impl Container {
                 let end = end_ch_to_index(&vec[start..], 0);
                 vec.extract_if(|t_or_s| match t_or_s {
                     TagOrSkip::Tag(tag) => handle == tag.handle(),
-                    TagOrSkip::Skip(_) => false
+                    TagOrSkip::Skip(_) => false,
                 })
                 .take(end)
                 .skip(start)
@@ -44,7 +44,7 @@ impl Container {
                 .collect()
             }
             Container::Rope(rope) => {
-                let slice = rope.width_slice(pos..pos);
+                let slice = rope.measure_slice(pos..pos, usize::cmp);
                 let mut removed = Vec::new();
                 let kept = slice
                     .iter()
@@ -60,8 +60,8 @@ impl Container {
                     })
                     .collect::<Vec<TagOrSkip>>();
 
-                rope.remove_inclusive(pos..pos);
-                rope.insert_slice(pos, kept.as_slice());
+                rope.remove_inclusive(pos..pos, usize::cmp);
+                rope.insert_slice(pos, kept.as_slice(), usize::cmp);
 
                 removed
             }
@@ -77,10 +77,15 @@ impl Container {
 
                 let start = end_ch_to_index(vec, range.start);
                 let end = start_ch_to_index(vec, range.end);
-                assert!(start <= end, "Start ({}) greater than end ({})", range.start, range.end);
+                assert!(
+                    start <= end,
+                    "Start ({}) greater than end ({})",
+                    range.start,
+                    range.end
+                );
                 vec.splice(start..end, []);
             }
-            Container::Rope(rope) => rope.remove_exclusive(range)
+            Container::Rope(rope) => rope.remove_exclusive(range, usize::cmp),
         }
     }
 
@@ -94,32 +99,32 @@ impl Container {
                     }
 
                     let old_accum = *accum;
-                    let width = tag_or_skip.width();
-                    *accum += tag_or_skip.width();
+                    let width = tag_or_skip.measure();
+                    *accum += tag_or_skip.measure();
                     if (*accum == char && width == 0) || *accum > char {
                         *end_found = true;
                     }
                     Some((old_accum, *tag_or_skip))
                 })
                 .last(),
-            Container::Rope(rope) => rope.get_from_width(char)
+            Container::Rope(rope) => rope.get_from_measure(char, usize::cmp),
         }
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<ForwardTags> {
         match self {
             Container::Vec(vec) => Iter::Vec(ForwardTags::new(pos, vec)),
-            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos))
+            Container::Rope(rope) => Iter::Rope(rope.iter_at_measure(pos, usize::cmp)),
         }
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> Iter<ReverseTags> {
         match self {
             Container::Vec(vec) => {
-                let width = vec.iter().map(|t_or_s| t_or_s.width()).sum::<usize>();
+                let width = vec.iter().map(|t_or_s| t_or_s.measure()).sum::<usize>();
                 Iter::Vec(ReverseTags::new(width, pos, vec))
             }
-            Container::Rope(rope) => Iter::Rope(rope.iter_at_width(pos).reversed())
+            Container::Rope(rope) => Iter::Rope(rope.iter_at_measure(pos, usize::cmp).reversed()),
         }
     }
 }
@@ -127,22 +132,22 @@ impl Container {
 #[derive(Clone)]
 pub enum Iter<'a, VecIter>
 where
-    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone
+    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone,
 {
     Vec(VecIter),
-    Rope(any_rope::iter::Iter<'a, TagOrSkip>)
+    Rope(any_rope::iter::Iter<'a, TagOrSkip>),
 }
 
 impl<VecIter> Iterator for Iter<'_, VecIter>
 where
-    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone
+    VecIter: Iterator<Item = (usize, TagOrSkip)> + Clone,
 {
     type Item = (usize, TagOrSkip);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::Vec(iter) => iter.next(),
-            Iter::Rope(iter) => iter.next()
+            Iter::Rope(iter) => iter.next(),
         }
     }
 }
@@ -151,12 +156,16 @@ where
 pub struct ForwardTags<'a> {
     accum: usize,
     min: usize,
-    iter: std::slice::Iter<'a, TagOrSkip>
+    iter: std::slice::Iter<'a, TagOrSkip>,
 }
 
 impl<'a> ForwardTags<'a> {
     fn new(min: usize, slice: &'a [TagOrSkip]) -> Self {
-        Self { accum: 0, min, iter: slice.iter() }
+        Self {
+            accum: 0,
+            min,
+            iter: slice.iter(),
+        }
     }
 }
 
@@ -166,7 +175,7 @@ impl Iterator for ForwardTags<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(t_or_s) = self.iter.next() {
             let old_accum = self.accum;
-            self.accum += t_or_s.width();
+            self.accum += t_or_s.measure();
             if self.accum >= self.min {
                 return Some((old_accum, *t_or_s));
             }
@@ -180,12 +189,16 @@ impl Iterator for ForwardTags<'_> {
 pub struct ReverseTags<'a> {
     accum: usize,
     min: usize,
-    iter: std::iter::Rev<std::slice::Iter<'a, TagOrSkip>>
+    iter: std::iter::Rev<std::slice::Iter<'a, TagOrSkip>>,
 }
 
 impl<'a> ReverseTags<'a> {
     fn new(accum: usize, min: usize, slice: &'a [TagOrSkip]) -> Self {
-        Self { accum, min, iter: slice.iter().rev() }
+        Self {
+            accum,
+            min,
+            iter: slice.iter().rev(),
+        }
     }
 }
 
@@ -195,7 +208,7 @@ impl Iterator for ReverseTags<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(t_or_s) = self.iter.next() {
             let old_accum = self.accum;
-            self.accum -= t_or_s.width();
+            self.accum -= t_or_s.measure();
             if old_accum <= self.min {
                 return Some((self.accum, *t_or_s));
             }
@@ -210,7 +223,7 @@ fn start_ch_to_index(slice: &[TagOrSkip], width: usize) -> usize {
     let mut accum = 0;
 
     for measurable in slice {
-        let measurable_width = measurable.width();
+        let measurable_width = measurable.measure();
         let next_accum = accum + measurable_width;
 
         if (measurable_width == 0 && next_accum == width) || next_accum > width {
@@ -228,7 +241,7 @@ fn end_ch_to_index(slice: &[TagOrSkip], width: usize) -> usize {
     let mut accum = 0;
 
     for measurable in slice {
-        let measurable_width = measurable.width();
+        let measurable_width = measurable.measure();
         // This makes it so that every 0 width node exactly at `width` is also
         // captured.
         if (measurable_width != 0 && accum == width) || accum > width {

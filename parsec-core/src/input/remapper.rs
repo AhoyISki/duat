@@ -111,7 +111,11 @@ where
         self.unmap_on(takes, |_| true)
     }
 
-    pub fn unmap_on(&mut self, takes: impl Into<Vec<KeyEvent>>, check: impl Fn(&I) -> bool + 'static) {
+    pub fn unmap_on(
+        &mut self,
+        takes: impl Into<Vec<KeyEvent>>,
+        check: impl Fn(&I) -> bool + 'static,
+    ) {
         self.remaps.insert(0, Remap::new(takes, [], false, check))
     }
 
@@ -157,8 +161,7 @@ where
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         controler: &Controler<U>,
-    ) -> bool
-    where
+    ) where
         U: Ui,
     {
         let remaps = self
@@ -169,7 +172,6 @@ where
 
         let mut new_to_check = Vec::new();
         let mut keys_to_send = Vec::new();
-        let mut keys_sent = false;
 
         for (index, remap) in remaps.filter(|(_, r)| (r.condition)(&self.input_method)) {
             // If the sequence isn't long enough, no need to process it.
@@ -200,15 +202,13 @@ where
         }
 
         for key in keys_to_send {
-            keys_sent |= self.input_method.send_key(key, widget, area, controler);
+            self.input_method.send_key(key, widget, area, controler);
         }
 
         if new_to_check.is_empty() {
-            keys_sent |= self.input_method.send_key(key, widget, area, controler);
+            self.input_method.send_key(key, widget, area, controler);
         }
 
         self.to_check = new_to_check;
-
-        keys_sent
     }
 }

@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, ops::Range};
 
 use crate::{
-    data::{ReadableData, RwData},
+    data::{RwData},
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
@@ -55,11 +55,22 @@ impl Cursors {
     pub fn len(&self) -> usize {
         self.list.len()
     }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl Default for Cursors {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
-pub struct MultiCursorEditor<'a, U, W, H>
+pub struct MultiCursorEditor<'a, H, U, W>
 where
     U: Ui + 'static,
     W: ActiveWidget + 'static,
@@ -72,33 +83,17 @@ where
     _h: std::marker::PhantomData<H>,
 }
 
-impl<'a, U, W, H> MultiCursorEditor<'a, U, W, H>
+impl<'a, U, W> MultiCursorEditor<'a, WithHistory, U, W>
 where
     U: Ui,
     W: ActiveWidget + 'static,
 {
-    /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub fn no_history(
-        widget: &'a RwData<W>,
-        cursors: &'a mut Cursors,
-        area: &'a U::Area,
-    ) -> MultiCursorEditor<'a, U, W, NoHistory> {
-        MultiCursorEditor {
-            clearing_needed: false,
-            widget,
-            cursors,
-            area,
-            history: None,
-            _h: std::marker::PhantomData,
-        }
-    }
-
     pub fn with_history(
         widget: &'a RwData<W>,
         cursors: &'a mut Cursors,
         area: &'a U::Area,
         history: &'a mut History,
-    ) -> MultiCursorEditor<'a, U, W, WithHistory> {
+    ) -> Self {
         MultiCursorEditor {
             clearing_needed: false,
             widget,
@@ -109,11 +104,66 @@ where
         }
     }
 
+    /// Begins a new [`Moment`][crate::history::Moment].
+    pub fn new_moment(&mut self) {
+        self.history.as_mut().unwrap().new_moment()
+    }
+
+    /// Undoes the last [`Moment`][crate::history::Moment].
+    pub fn undo(&mut self) {
+        let mut widget = self.widget.write();
+        let cfg = widget.print_cfg().clone();
+
+        self.history
+            .as_mut()
+            .unwrap()
+            .undo(widget.mut_text(), self.area, self.cursors, cfg);
+
+        widget.update(self.area);
+    }
+
+    /// Redoes the last [`Moment`][crate::history::Moment].
+    pub fn redo(&mut self) {
+        let mut widget = self.widget.write();
+        let cfg = widget.print_cfg().clone();
+        self.history
+            .as_mut()
+            .unwrap()
+            .redo(widget.mut_text(), self.area, self.cursors, cfg);
+        widget.update(self.area);
+    }
+}
+
+impl<'a, U, W> MultiCursorEditor<'a, NoHistory, U, W>
+where
+    U: Ui,
+    W: ActiveWidget + 'static,
+{
+    /// Returns a new instace of [`WidgetActor<U, AW>`].
+    pub fn no_history(
+        widget: &'a RwData<W>,
+        cursors: &'a mut Cursors,
+        area: &'a U::Area,
+    ) -> MultiCursorEditor<'a, NoHistory, U, W> {
+        MultiCursorEditor {
+            clearing_needed: false,
+            widget,
+            cursors,
+            area,
+            history: None,
+            _h: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, H, U, W> MultiCursorEditor<'a, H, U, W>
+where
+    U: Ui,
+    W: ActiveWidget + 'static,
+{
     /// Removes all intersecting [`Cursor`]s from the list, keeping
     /// only the last from the bunch.
     fn clear_intersections(&mut self) {
-        let widget = self.widget.read();
-
         let (mut start, mut end) = self.cursors.list[0].pos_range();
         let mut last_index = 0;
         let mut to_remove = Vec::new();
@@ -334,39 +384,11 @@ where
     }
 }
 
-impl<'a, U, W> MultiCursorEditor<'a, U, W, WithHistory>
+impl<'a, U, W> MultiCursorEditor<'a, WithHistory, U, W>
 where
     U: Ui,
     W: ActiveWidget,
 {
-    /// Begins a new [`Moment`][crate::history::Moment].
-    pub fn new_moment(&mut self) {
-        self.history.as_mut().unwrap().new_moment()
-    }
-
-    /// Undoes the last [`Moment`][crate::history::Moment].
-    pub fn undo(&mut self) {
-        let mut widget = self.widget.write();
-        let cfg = widget.print_cfg().clone();
-
-        self.history
-            .as_mut()
-            .unwrap()
-            .undo(widget.mut_text(), self.area, self.cursors, cfg);
-
-        widget.update(self.area);
-    }
-
-    /// Redoes the last [`Moment`][crate::history::Moment].
-    pub fn redo(&mut self) {
-        let mut widget = self.widget.write();
-        let cfg = widget.print_cfg().clone();
-        self.history
-            .as_mut()
-            .unwrap()
-            .redo(widget.mut_text(), self.area, self.cursors, cfg);
-        widget.update(self.area);
-    }
 }
 
 /// An accumulator used specifically for editing with [`Editor<U>`]s.
@@ -626,5 +648,5 @@ fn try_merge_selections(cursor: &mut Cursor, start: Point, end: Point) -> bool {
     true
 }
 
-struct NoHistory;
-struct WithHistory;
+pub struct NoHistory;
+pub struct WithHistory;

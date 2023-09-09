@@ -156,7 +156,7 @@ where
 
     fn input(&self) -> &RwData<dyn InputMethod>;
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool;
+    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>);
 
     fn on_focus(&self, area: &U::Area);
 
@@ -241,7 +241,7 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool {
+    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
         self.input
             .write()
             .send_key(key, &self.widget, area, controler)
@@ -426,10 +426,10 @@ where
         }
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) -> bool {
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
         match self {
             Widget::Active(inner) => inner.send_key(key, area, controler),
-            Widget::Passive(_) => false,
+            Widget::Passive(_) => {},
         }
     }
 

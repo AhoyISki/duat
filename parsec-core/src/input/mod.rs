@@ -8,7 +8,7 @@ use crossterm::event::KeyEvent;
 pub use self::{
     commander::Commander,
     default::Editor,
-    multi_cursor::{Cursors, MultiCursorEditor},
+    multi_cursor::{Cursors, MultiCursorEditor, NoHistory, WithHistory},
     remapper::Remapper,
 };
 use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Controler};
@@ -24,8 +24,7 @@ pub trait InputMethod: crate::data::AsAny + Send + Sync + 'static {
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         controler: &Controler<U>,
-    ) -> bool
-    where
+    ) where
         U: Ui,
         Self: Sized;
 

@@ -25,7 +25,7 @@ use crate::{
     input::Cursors,
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    ui::{Area, Ui},
+    ui::{Area},
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or

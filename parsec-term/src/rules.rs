@@ -1,8 +1,9 @@
 use parsec_core::{
     data::{AsAny, ReadableData, RoData},
     forms::{FormId, FormPalette, DEFAULT},
+    input::InputMethod,
     text::{BuilderTag, Text, TextBuilder},
-    ui::{Constraint, PushSpecs, Ui},
+    ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
     Controler,
 };
@@ -16,12 +17,6 @@ pub enum SepChar {
     TwoWay(char, char),
     /// Order: main line, above main line, below main line.
     ThreeWay(char, char, char),
-}
-
-impl Default for SepChar {
-    fn default() -> Self {
-        SepChar::Uniform('│')
-    }
 }
 
 impl SepChar {
@@ -47,51 +42,7 @@ pub enum SepForm {
     ThreeWay(FormId, FormId, FormId),
 }
 
-impl Default for SepForm {
-    fn default() -> Self {
-        SepForm::Uniform(DEFAULT)
-    }
-}
-
 impl SepForm {
-    /// Returns a new instance of [`SepForm`], with one `form_name`
-    /// for all lines.
-    pub fn uniform(palette: &FormPalette, name: impl AsRef<str>) -> Self {
-        let (_, id) = palette.from_name(name);
-
-        SepForm::Uniform(id)
-    }
-
-    /// Returns a new instance of [`SepForm`], with one `form_name`
-    /// for the main line and another `form_name` for other lines,
-    /// respectively.
-    pub fn two_way(
-        palette: &FormPalette,
-        main_name: impl AsRef<str>,
-        other_name: impl AsRef<str>,
-    ) -> Self {
-        let (_, main_id) = palette.from_name(main_name);
-        let (_, other_id) = palette.from_name(other_name);
-
-        SepForm::TwoWay(main_id, other_id)
-    }
-
-    /// Returns a new instance of [`SepForm`], with one `form_name`
-    /// for the main line, one for lines above, and one for lines
-    /// below, respectively.
-    pub fn three_way(
-        palette: &FormPalette,
-        main_name: impl AsRef<str>,
-        upper_name: impl AsRef<str>,
-        lower_name: impl AsRef<str>,
-    ) -> Self {
-        let (_, main_id) = palette.from_name(main_name);
-        let (_, upper_id) = palette.from_name(upper_name);
-        let (_, lower_id) = palette.from_name(lower_name);
-
-        SepForm::ThreeWay(main_id, upper_id, lower_id)
-    }
-
     /// The `form_id`s above, equal to, and below the main line,
     /// respectively.
     fn forms(&self) -> [FormId; 3] {
@@ -104,85 +55,182 @@ impl SepForm {
 }
 
 /// The configurations for the [`VertRule`] widget.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct VertRuleCfg {
-    pub sep_char: SepChar,
-    pub sep_form: SepForm,
+    sep_char: SepChar,
+    sep_form: SepForm,
+    specs: PushSpecs,
 }
 
 impl VertRuleCfg {
     /// Returns a new instance of [`VertRuleCfg`].
-    pub fn new(sep_char: SepChar, sep_form: SepForm) -> Self {
-        Self { sep_char, sep_form }
+    pub fn new() -> Self {
+        Self {
+            sep_char: SepChar::Uniform('│'),
+            sep_form: SepForm::Uniform(DEFAULT),
+            specs: PushSpecs::left().with_lenght(1.0),
+        }
+    }
+
+    pub fn on_the_right(self) -> Self {
+        Self {
+            specs: PushSpecs::right().with_lenght(1.0),
+            ..self
+        }
+    }
+
+    pub fn with_char(self, char: char) -> Self {
+        Self {
+            sep_char: SepChar::Uniform(char),
+            ..self
+        }
+    }
+
+    pub fn with_main_char(self, main: char) -> Self {
+        Self {
+            sep_char: match self.sep_char {
+                SepChar::Uniform(other) => SepChar::TwoWay(main, other),
+                SepChar::TwoWay(_, other) => SepChar::TwoWay(main, other),
+                SepChar::ThreeWay(_, above, below) => SepChar::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_char_above(self, above: char) -> Self {
+        Self {
+            sep_char: match self.sep_char {
+                SepChar::Uniform(other) => SepChar::ThreeWay(other, above, other),
+                SepChar::TwoWay(main, below) => SepChar::ThreeWay(main, above, below),
+                SepChar::ThreeWay(main, _, below) => SepChar::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_char_below(self, below: char) -> Self {
+        Self {
+            sep_char: match self.sep_char {
+                SepChar::Uniform(other) => SepChar::ThreeWay(other, other, below),
+                SepChar::TwoWay(main, above) => SepChar::ThreeWay(main, above, below),
+                SepChar::ThreeWay(main, above, _) => SepChar::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_form(self, palette: &FormPalette, form: impl AsRef<str>) -> Self {
+        let (_, form) = palette.from_name(form);
+        Self {
+            sep_form: SepForm::Uniform(form),
+            ..self
+        }
+    }
+
+    pub fn with_main_form(self, palette: &FormPalette, main: impl AsRef<str>) -> Self {
+        let (_, main) = palette.from_name(main);
+        Self {
+            sep_form: match self.sep_form {
+                SepForm::Uniform(other) => SepForm::TwoWay(main, other),
+                SepForm::TwoWay(_, other) => SepForm::TwoWay(main, other),
+                SepForm::ThreeWay(_, above, below) => SepForm::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_form_above(self, palette: &FormPalette, above: impl AsRef<str>) -> Self {
+        let (_, above) = palette.from_name(above);
+        Self {
+            sep_form: match self.sep_form {
+                SepForm::Uniform(other) => SepForm::ThreeWay(other, above, other),
+                SepForm::TwoWay(main, below) => SepForm::ThreeWay(main, above, below),
+                SepForm::ThreeWay(main, _, below) => SepForm::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_form_below(self, palette: &FormPalette, below: impl AsRef<str>) -> Self {
+        let (_, below) = palette.from_name(below);
+        Self {
+            sep_form: match self.sep_form {
+                SepForm::Uniform(other) => SepForm::ThreeWay(other, other, below),
+                SepForm::TwoWay(main, above) => SepForm::ThreeWay(main, above, below),
+                SepForm::ThreeWay(main, above, _) => SepForm::ThreeWay(main, above, below),
+            },
+            ..self
+        }
+    }
+
+    pub fn builder<U: Ui>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        |controler| {
+            let file = controler.current_file();
+            let input = controler.current_input();
+
+            let builder = {
+                let file = file.read();
+                let input = input.read();
+                setup_builder(&file, &*input, &self)
+            };
+
+            let vert_rule = VertRule {
+                file: file.clone(),
+                input: input.clone(),
+                builder,
+                cfg: self,
+            };
+
+            let checker = Box::new(move || file.has_changed() || input.has_changed());
+            let passive = Widget::passive(vert_rule);
+            (passive, checker, PushSpecs::left().with_lenght(1.0))
+        }
     }
 }
 
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`FileWidget<U>`] and
 /// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
-pub struct VertRule<U>
-where
-    U: Ui,
-{
-    file: RoData<FileWidget<U>>,
+pub struct VertRule {
+    file: RoData<FileWidget>,
+    input: RoData<dyn InputMethod>,
     builder: TextBuilder,
     cfg: VertRuleCfg,
 }
 
-impl<U> VertRule<U>
-where
-    U: Ui + 'static,
-{
-    /// Returns a new instance of `Box<VerticalRuleConfig>`, taking a
-    /// user provided config.
-    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
-    /// default config.
-    pub fn config_fn(
-        cfg: VertRuleCfg,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move |controler| {
-            let file = controler.active_file();
-            let builder = file.inspect(|file| setup_builder(file, &cfg));
-
-            let vert_rule = VertRule {
-                file: file.clone(),
-                builder,
-                cfg,
-            };
-
-            let checker = Box::new(move || file.has_changed());
-            let passive = Widget::passive(vert_rule);
-            (passive, checker, PushSpecs::left(Constraint::Length(1.0)))
-        }
-    }
-
-    /// Returns a new instance of `Box<VerticalRuleConfig>`, using the
-    /// default config.
-    pub fn default_fn()
-    -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        let cfg = VertRuleCfg::default();
-        VertRule::config_fn(cfg)
+impl VertRule {
+    pub fn config() -> VertRuleCfg {
+        VertRuleCfg::new()
     }
 }
 
-impl<U> AsAny for VertRule<U>
-where
-    U: Ui + 'static,
-{
+impl AsAny for VertRule {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-impl<U> PassiveWidget<U> for VertRule<U>
-where
-    U: Ui + 'static,
-{
-    fn update(&mut self, _area: &U::Area) {
+impl PassiveWidget for VertRule {
+    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    where
+        U: Ui,
+        Self: Sized,
+    {
+        VertRuleCfg::new().builder()(controler)
+    }
+
+    fn update(&mut self, _area: &impl Area) {
         let file = self.file.read();
         let lines = file.printed_lines();
         let builder = &mut self.builder;
-        let main_line = file.main_cursor().true_line();
+
+        let main_line = {
+            let input = self.input.read();
+            input.cursors().unwrap().main().unwrap().true_line()
+        };
+
         let above = lines.iter().filter(|&(line, _)| *line < main_line).count();
         let equal = lines.iter().filter(|&(line, _)| *line == main_line).count();
         let below = lines.iter().filter(|&(line, _)| *line > main_line).count();
@@ -222,12 +270,11 @@ where
 }
 
 /// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.
-fn setup_builder<U>(file: &FileWidget<U>, cfg: &VertRuleCfg) -> TextBuilder
-where
-    U: Ui,
-{
+fn setup_builder(file: &FileWidget, input: &dyn InputMethod, cfg: &VertRuleCfg) -> TextBuilder {
     let lines = file.printed_lines();
-    let main_line = file.main_cursor().true_line();
+
+    let main_line = input.cursors().unwrap().main().unwrap().true_line();
+
     let mut builder = TextBuilder::default();
     let upper = lines
         .iter()

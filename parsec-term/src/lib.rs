@@ -58,16 +58,12 @@ impl Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
-    type PrintInfo = PrintInfo;
 
     fn new_root(&mut self) -> Self::Area {
         let layout = Layout::new(self.frame);
         let root = Area::new(layout.main_index(), RwData::new(layout));
 
-        let area = Area {
-            layout: root.layout.clone(),
-            index: root.layout.read().main_index(),
-        };
+        let area = Area::new(root.layout.read().main_index(), root.layout.clone());
 
         self.windows.push(root);
 

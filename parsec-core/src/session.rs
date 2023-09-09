@@ -77,6 +77,13 @@ where
             session.open_file(PathBuf::from(file));
         }
 
+        session.controler.mutate_active_window(
+            |window| {
+                let builder = WindowBuilder::new(
+nd                session.window_builder
+            }
+        )
+
         session
     }
 
@@ -197,25 +204,6 @@ where
     U: Ui + 'static,
     I: InputMethod<Widget = FileWidget> + Clone,
 {
-    /// Returns a new instance of `OneStatusLayout`.
-    pub fn new(mut ui: U) -> Self {
-        todo!();
-
-        // let mut controler = Controler::new(FormPalette::default());
-
-        // let mut session = Session {
-        //     ui,
-        //     controler,
-        //     print_cfg: RwData::new(PrintCfg::default()),
-        //     file_builder: todo!(),
-        //     window_builder: Box::new(|_| {}),
-        // };
-
-        // session.open_arg_files();
-
-        // session
-    }
-
     pub fn open_file(&mut self, path: PathBuf) {
         let (file, checker) = self.file_cfg.clone().open(path).build();
         let (area, _) = self

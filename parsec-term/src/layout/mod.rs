@@ -691,7 +691,7 @@ impl Layout {
                 })
                 .unwrap();
 
-            if let Some(defined) = specs.constraint {
+            if let Some(defined) = specs.constraint() {
                 set_defined_constraint(defined, parent, index, axis, &mut self.solver);
             }
 
@@ -718,7 +718,7 @@ impl Layout {
             // `resizable_len / resizable_children`, a self imposed rule.
             // This will be useful later, when adding new ratio constraints to the
             // new child.
-            let constraint = specs.constraint;
+            let constraint = specs.constraint();
             if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
                 let (children, axis, _) = parent.lineage.as_ref().unwrap();
                 let (res_count, res_len) = children
@@ -745,7 +745,7 @@ impl Layout {
         self.update();
 
         parent.mutate(|parent| {
-            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint {
+            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint() {
                 set_ratio_constraints(parent, index, &mut self.solver);
             }
 

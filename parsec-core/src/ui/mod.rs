@@ -150,11 +150,6 @@ impl PushSpecs {
     }
 }
 
-// TODO: Add a general scrolling function.
-pub trait PrintInfo: Default + Clone + Copy + Sized {
-    type Area: Area;
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct Caret {
     pub x: usize,
@@ -173,7 +168,6 @@ impl Caret {
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
 pub trait Area: Clone + PartialEq + Send + Sync {
-    type PrintInfo: PrintInfo;
     type ConstraintChangeErr: Debug;
 
     /// Gets the width of the area.
@@ -189,9 +183,6 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// Returns the character index of the first character that would
     /// be printed.
     fn first_char(&self) -> usize;
-
-    /// Mutates the area's [`PrintInfo`] from within.
-    fn mutate_print_info(&self, f: impl FnMut(&mut Self::PrintInfo));
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
@@ -374,44 +365,6 @@ where
 
 unsafe impl<U> Send for Node<U> where U: Ui {}
 
-pub(crate) fn build_file<U>(
-    controler: &mut Controler<U>,
-    mod_area: U::Area,
-    f: &mut impl FnMut(&FileBuilder<U>, &RwData<FileWidget>),
-) where
-    U: Ui,
-{
-    let (widget, old_file, old_file_id) = controler.inspect_active_window(|window| {
-        let node = window
-            .nodes
-            .iter()
-            .find(|Node { area, .. }| *area == mod_area)
-            .unwrap();
-
-        let old_file_id = node
-            .file_id
-            .and_then(|file_id| crate::CMD_FILE_ID.lock().unwrap().replace(file_id));
-
-        let old_file = node
-            .widget
-            .downcast_ref::<FileWidget>()
-            .map(|file| std::mem::replace(&mut *controler.active_file.write(), file));
-
-        let widget = node.widget.downcast_ref::<FileWidget>().unwrap();
-
-        (widget, old_file, old_file_id)
-    });
-
-    let file_builder = FileBuilder::new(controler, RwLock::new(mod_area));
-
-    f(&file_builder, &widget);
-
-    *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
-    if let Some(file) = old_file {
-        *controler.active_file.write() = file;
-    };
-}
-
 /// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
@@ -441,9 +394,8 @@ impl From<PushSpecs> for Axis {
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Sized + Default + 'static {
-    type PrintInfo: PrintInfo<Area = Self::Area>;
     type ConstraintChangeErr: Debug;
-    type Area: Area<PrintInfo = Self::PrintInfo, ConstraintChangeErr = Self::ConstraintChangeErr>;
+    type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr>;
 
     /// Initiates and returns a new "master" [`Area`].
     ///
@@ -604,15 +556,13 @@ where
             })
     }
 
-    #[must_use]
-    pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) -> bool {
-        self.nodes().any(|node| {
-            if node.widget.ptr_eq(&controler.active_widget) {
-                node.widget.send_key(key, &node.area, controler)
-            } else {
-                false
-            }
-        })
+    pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) {
+        if let Some(node) = self
+            .nodes()
+            .find(|node| node.widget.ptr_eq(&controler.active_widget))
+        {
+            node.widget.send_key(key, &node.area, controler)
+        }
     }
 }
 
@@ -700,4 +650,42 @@ fn unique_file_id() -> FileId {
     static COUNTER: AtomicU16 = AtomicU16::new(0);
 
     FileId(COUNTER.fetch_add(1, Ordering::SeqCst))
+}
+
+pub(crate) fn build_file<U>(
+    controler: &mut Controler<U>,
+    mod_area: U::Area,
+    f: &mut impl FnMut(&FileBuilder<U>, &RwData<FileWidget>),
+) where
+    U: Ui,
+{
+    let (widget, old_file, old_file_id) = controler.inspect_active_window(|window| {
+        let node = window
+            .nodes
+            .iter()
+            .find(|Node { area, .. }| *area == mod_area)
+            .unwrap();
+
+        let old_file_id = node
+            .file_id
+            .and_then(|file_id| crate::CMD_FILE_ID.lock().unwrap().replace(file_id));
+
+        let old_file = node
+            .widget
+            .downcast_ref::<FileWidget>()
+            .map(|file| std::mem::replace(&mut *controler.active_file.write(), file));
+
+        let widget = node.widget.downcast_ref::<FileWidget>().unwrap();
+
+        (widget, old_file, old_file_id)
+    });
+
+    let file_builder = FileBuilder::new(controler, RwLock::new(mod_area));
+
+    f(&file_builder, &widget);
+
+    *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
+    if let Some(file) = old_file {
+        *controler.active_file.write() = file;
+    };
 }

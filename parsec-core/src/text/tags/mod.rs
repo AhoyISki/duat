@@ -36,7 +36,7 @@ impl Default for Handle {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TagOrSkip {
     Tag(RawTag),
     Skip(usize),
@@ -68,8 +68,10 @@ impl TagOrSkip {
 }
 
 impl Measurable for TagOrSkip {
+    type Measure = usize;
+
     #[inline]
-    fn width(&self) -> usize {
+    fn measure(&self) -> usize {
         match self {
             TagOrSkip::Tag(..) => 0,
             TagOrSkip::Skip(skip) => *skip,
@@ -156,7 +158,7 @@ impl Tags {
         let (text_id, toggle_id, raw_tag) =
             insertion_tag.to_raw(handle, &mut self.texts, &mut self.toggles);
 
-        assert!(pos <= self.width(), "Char index {} too large", pos);
+        assert!(pos <= self.measure(), "Char index {} too large", pos);
 
         if let Some((start, TagOrSkip::Skip(skip))) = self.get_from_char(pos) {
             // If inserting at any of the ends, no splitting is necessary.
@@ -208,7 +210,7 @@ impl Tags {
                 .filter(|(end_start, _)| *end_start > start)
                 .unwrap_or((start, t_or_s));
 
-            old.end.max(start + t_or_s.width())
+            old.end.max(start + t_or_s.measure())
         };
 
         let range_diff = new_end as isize - old.end as isize;
@@ -266,7 +268,7 @@ impl Tags {
                 .take_while(|(pos, _)| *pos <= new.start)
         };
         let after = {
-            let end = (new.end + self.range_min - old_count).min(self.width());
+            let end = (new.end + self.range_min - old_count).min(self.measure());
             self.container
                 .rev_iter_at(end)
                 .take_while(|(pos, _)| *pos >= new.end)
@@ -409,10 +411,10 @@ impl Tags {
         }
     }
 
-    pub fn width(&self) -> usize {
+    pub fn measure(&self) -> usize {
         match &self.container {
-            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.width()).sum(),
-            Container::Rope(rope) => rope.width(),
+            Container::Vec(vec) => vec.iter().map(|tag_or_skip| tag_or_skip.measure()).sum(),
+            Container::Rope(rope) => rope.measure(),
         }
     }
 
@@ -428,7 +430,7 @@ impl Tags {
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter {
-        let pos = pos.min(self.width());
+        let pos = pos.min(self.measure());
         let ranges = Ranges::new(pos, self.ranges.iter());
         let raw_tags = RawTags::new(&self.ranges, self.container.iter_at(pos));
         Iter::new(self, ranges, raw_tags)

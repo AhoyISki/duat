@@ -12,8 +12,6 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::input::InputMethod;
-
 use super::{DataCastErr, DataRetrievalErr, ReadableData};
 
 /// A read-write reference to information, that can tell readers if
@@ -399,10 +397,6 @@ where
         } else {
             Err(DataCastErr(self, PhantomData, PhantomData))
         }
-    }
-
-    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<T> {
-        self.data.write().unwrap()
     }
 
     pub(crate) fn raw_try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {

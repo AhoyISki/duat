@@ -14,6 +14,12 @@ impl Commander {
     }
 }
 
+impl Default for Commander {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl crate::data::AsAny for Commander {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -25,12 +31,11 @@ impl InputMethod for Commander {
 
     fn send_key<U>(
         &mut self,
-        key: crossterm::event::KeyEvent,
-        widget: &crate::data::RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &crate::Controler<U>,
-    ) -> bool
-    where
+        _key: crossterm::event::KeyEvent,
+        _widget: &crate::data::RwData<Self::Widget>,
+        _area: &U::Area,
+        _controler: &crate::Controler<U>,
+    ) where
         U: Ui,
     {
         todo!()
