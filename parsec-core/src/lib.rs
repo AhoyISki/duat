@@ -8,13 +8,15 @@
     iter_advance_by,
     control_flow_enum,
     return_position_impl_trait_in_trait,
-    decl_macro
+    decl_macro,
+    generic_const_exprs
 )]
 #![allow(
     clippy::arc_with_non_send_sync,
     clippy::type_complexity,
     clippy::vec_init_then_push,
     clippy::while_let_on_iterator,
+    incomplete_features,
     refining_impl_trait
 )]
 

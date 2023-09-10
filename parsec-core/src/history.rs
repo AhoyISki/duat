@@ -330,7 +330,7 @@ impl History {
             None => return,
         };
 
-        cursors.clear();
+        cursors.remove_extras();
 
         let mut chars = 0;
         for change in &moment.changes {
@@ -358,7 +358,7 @@ impl History {
             None => return,
         };
 
-        cursors.clear();
+        cursors.remove_extras();
 
         for change in &moment.changes {
             text.apply_change(change);

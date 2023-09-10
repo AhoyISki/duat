@@ -236,7 +236,7 @@ impl PassiveWidget for VertRule {
 
         let main_line = {
             let input = self.input.read();
-            input.cursors().unwrap().main().unwrap().true_line()
+            input.cursors().unwrap().main().true_line()
         };
 
         let above = lines.iter().filter(|&(line, _)| *line < main_line).count();
@@ -281,7 +281,7 @@ impl PassiveWidget for VertRule {
 fn setup_builder(file: &FileWidget, input: &dyn InputMethod, cfg: &VertRuleCfg) -> TextBuilder {
     let lines = file.printed_lines();
 
-    let main_line = input.cursors().unwrap().main().unwrap().true_line();
+    let main_line = input.cursors().unwrap().main().true_line();
 
     let mut builder = TextBuilder::default();
     let upper = lines

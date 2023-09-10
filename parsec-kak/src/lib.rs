@@ -7,7 +7,7 @@ use parsec_core::{
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Ui,
     widgets::{CommandLine, FileWidget},
-    Controler,
+    Controler, log_info,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]

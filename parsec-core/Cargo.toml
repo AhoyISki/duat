@@ -19,7 +19,7 @@ ropey = ">=1.6.0"
 any-rope = { path = "../../any-rope/", version = ">=1.1.0" }
 dyn-clone = "1.0.13"
 
-[dev-dependencies]
+# For testing only
 no_deadlocks = { path = "../../no-deadlocks/" }
 
 [features]

@@ -1,14 +1,11 @@
 mod builder;
 
-#[cfg(not(feature = "deadlock-detection"))]
 use std::{
     fmt::Debug,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 use crossterm::event::KeyEvent;
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
 
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
@@ -556,7 +553,7 @@ where
     pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) {
         if let Some(node) = self
             .nodes()
-            .find(|node| node.widget.ptr_eq(&controler.active_widget))
+            .find(|node| node.widget.ptr_eq(&*controler.active_widget.read()))
         {
             node.widget.send_key(key, &node.area, controler)
         }

@@ -19,12 +19,16 @@
 //!
 //! [`FileWidget<U>`]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
+
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{atomic::Ordering, Arc, TryLockError, TryLockResult};
-use std::{marker::PhantomData, sync::RwLockReadGuard};
+use std::sync::RwLockReadGuard;
+use std::{
+    marker::PhantomData,
+    sync::{atomic::Ordering, Arc, TryLockError, TryLockResult},
+};
 
 #[cfg(feature = "deadlock-detection")]
-use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use no_deadlocks::RwLockReadGuard;
 pub use ro::{RoData, RoNestedData};
 pub use rw::RwData;
 
@@ -35,7 +39,7 @@ mod rw;
 /// `T` without notifying that we did so.
 pub(crate) trait RawReadableData<T>: private::DataHolder<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     /// Blocking reference to the information.
     ///
@@ -97,7 +101,7 @@ where
 /// [`mutate`]: RwData::mutate
 pub trait ReadableData<T>: private::DataHolder<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     /// Blocking reference to the information.
     ///
@@ -304,7 +308,8 @@ where
     /// [`has_changed`]: Self::has_changed
     /// [`inspect`]: Self::inspect
     fn try_inspect<U>(
-        &self, f: impl FnOnce(&T) -> U
+        &self,
+        f: impl FnOnce(&T) -> U,
     ) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
@@ -366,7 +371,7 @@ where
     /// ```
     fn ptr_eq<U>(&self, other: &impl ReadableData<U>) -> bool
     where
-        U: ?Sized
+        U: ?Sized,
     {
         Arc::as_ptr(self.cur_state()) as usize == Arc::as_ptr(other.cur_state()) as usize
     }
@@ -433,7 +438,7 @@ impl<Holder, Data, Cast> std::fmt::Debug for DataCastErr<Holder, Data, Cast>
 where
     Holder: private::DataHolder<Data>,
     Data: ?Sized,
-    Cast: ?Sized
+    Cast: ?Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let orig = std::any::type_name::<Data>();
@@ -445,17 +450,17 @@ where
 pub enum DataRetrievalErr<Holder, T>
 where
     Holder: private::DataHolder<T>,
-    T: ?Sized
+    T: ?Sized,
 {
     WriteBlocked(PhantomData<(Holder, T)>),
     ReadBlocked(PhantomData<(Holder, T)>),
-    NestedReadBlocked(PhantomData<(Holder, T)>)
+    NestedReadBlocked(PhantomData<(Holder, T)>),
 }
 
 impl<Holder, T> std::fmt::Debug for DataRetrievalErr<Holder, T>
 where
     Holder: private::DataHolder<T>,
-    T: ?Sized
+    T: ?Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let holder = std::any::type_name::<Holder>();
@@ -479,7 +484,12 @@ where
 }
 
 mod private {
-    use std::sync::{atomic::AtomicUsize, Arc, RwLockReadGuard, TryLockResult};
+    #[cfg(not(feature = "deadlock-detection"))]
+    use std::sync::RwLockReadGuard;
+    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
+
+    #[cfg(feature = "deadlock-detection")]
+    use no_deadlocks::RwLockReadGuard;
 
     /// Private trait for the [`RwData`] and [`RoData`] structs.
     ///
@@ -487,7 +497,7 @@ mod private {
     /// [`RoData`]: super::RoData
     pub trait DataHolder<T>
     where
-        T: ?Sized
+        T: ?Sized,
     {
         /// The data, usually an [`Arc`]
         fn data(&self) -> RwLockReadGuard<'_, T>;

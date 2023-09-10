@@ -6,7 +6,7 @@ use crate::{
     commands::Commands,
     data::{ReadableData, RwData},
     forms::FormPalette,
-    input::InputMethod,
+    input::{Editor, InputMethod},
     text::PrintCfg,
     ui::{build_file, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{
@@ -28,12 +28,11 @@ where
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
-impl<U, I> SessionCfg<U, I>
+impl<U> SessionCfg<U, Editor>
 where
     U: Ui,
-    I: InputMethod<Widget = FileWidget> + Clone,
 {
-    pub fn new(ui: U) -> SessionCfg<U, crate::input::Editor> {
+    pub fn new(ui: U) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
         SessionCfg {
             ui,
@@ -46,7 +45,13 @@ where
             window_fn: Box::new(|_| {}),
         }
     }
+}
 
+impl<U, I> SessionCfg<U, I>
+where
+    U: Ui,
+    I: InputMethod<Widget = FileWidget> + Clone,
+{
     pub fn session_from_args(mut self) -> Session<U, I> {
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -197,6 +202,15 @@ where
     file_cfg: FileWidgetCfg<I>,
     file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
+}
+
+impl<U> Session<U, Editor>
+where
+    U: Ui,
+{
+    pub fn config(ui: U) -> SessionCfg<U, Editor> {
+        SessionCfg::new(ui)
+    }
 }
 
 impl<U, I> Session<U, I>

@@ -180,7 +180,7 @@ where
     W: PassiveWidget,
 {
     fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_try_write().unwrap();
         widget.update(area);
         widget.print(area, palette);
     }
@@ -219,7 +219,7 @@ where
     I: InputMethod<Widget = W>,
 {
     fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_try_write().unwrap();
         widget.update(area);
         widget.print(area, palette);
     }

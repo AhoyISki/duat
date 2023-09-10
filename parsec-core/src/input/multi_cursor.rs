@@ -12,20 +12,21 @@ use crate::{
 #[derive(Clone)]
 pub struct Cursors {
     list: Vec<Cursor>,
-    main: Option<usize>,
+    main: usize,
 }
 
 impl Cursors {
     pub fn new() -> Self {
         Self {
-            list: Vec::new(),
-            main: None,
+            list: vec![Cursor::default()],
+            main: 0,
         }
     }
 
-    pub fn clear(&mut self) {
-        self.list.clear();
-        self.main = None;
+    pub fn remove_extras(&mut self) {
+        let cursor = self.list[self.main].clone();
+        self.list = vec![cursor];
+        self.main = 0;
     }
 
     pub fn insert(&mut self, cursor: Cursor) {
@@ -34,8 +35,8 @@ impl Cursors {
 
     pub fn insert_and_switch(&mut self, _cursor: Cursor) {}
 
-    pub fn main(&self) -> Option<Cursor> {
-        self.main.and_then(|main| self.list.get(main).cloned())
+    pub fn main(&self) -> &Cursor {
+        &self.list[self.main]
     }
 
     pub fn nth(&self, index: usize) -> Option<Cursor> {
@@ -43,13 +44,10 @@ impl Cursors {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        // There will never be this many cursors man.
-        let main = self.main.unwrap_or(usize::MAX);
-
         self.list
             .iter()
             .enumerate()
-            .map(move |(index, cursor)| (cursor, index == main))
+            .map(move |(index, cursor)| (cursor, index == self.main))
     }
 
     pub fn len(&self) -> usize {
@@ -239,8 +237,8 @@ where
         };
         self.cursors.list.insert(new_index, cursor);
 
-        if self.cursors.main.is_some_and(|main| main == index) {
-            self.cursors.main = Some(new_index)
+        if self.cursors.main == index {
+            self.cursors.main = new_index;
         }
 
         widget.update(self.area);
@@ -252,9 +250,7 @@ where
     where
         F: FnMut(&mut Mover<U>),
     {
-        if let Some(main) = self.cursors.main {
-            self.move_nth(f, main);
-        }
+        self.move_nth(f, self.cursors.main);
     }
 
     /// Alters the last cursor's selection.
@@ -311,9 +307,7 @@ where
     where
         F: FnMut(&mut Editor),
     {
-        if let Some(main) = self.cursors.main {
-            self.edit_on_nth(f, main);
-        }
+        self.edit_on_nth(f, self.cursors.main);
     }
 
     /// Edits on the last cursor's selection.
@@ -328,7 +322,7 @@ where
     }
 
     /// The main cursor index.
-    pub fn main_cursor_index(&self) -> Option<usize> {
+    pub fn main_cursor_index(&self) -> usize {
         self.cursors.main
     }
 
@@ -339,13 +333,12 @@ where
             return;
         }
 
-        if let Some(main) = self.cursors.main.as_mut() {
-            *main = if *main == self.cursors.list.len() - 1 {
-                0
-            } else {
-                *main + 1
-            }
-        }
+        let main = &mut self.cursors.main;
+        *main = if *main == self.cursors.list.len() - 1 {
+            0
+        } else {
+            *main + 1
+        };
 
         widget.update(self.area)
     }
@@ -357,13 +350,12 @@ where
             return;
         }
 
-        if let Some(main_index) = self.cursors.main.as_mut() {
-            *main_index = if *main_index == 0 {
-                self.cursors.list.len() - 1
-            } else {
-                *main_index - 1
-            }
-        }
+        let main = &mut self.cursors.main;
+        *main = if *main == 0 {
+            self.cursors.list.len() - 1
+        } else {
+            *main - 1
+        };
 
         widget.update(self.area)
     }
@@ -373,10 +365,8 @@ where
         self.cursors.list.len()
     }
 
-    pub fn main_cursor(&self) -> Option<Cursor> {
-        self.cursors
-            .main
-            .and_then(|main| self.cursors.list.get(main).cloned())
+    pub fn main_cursor(&self) -> &Cursor {
+        self.cursors.main()
     }
 
     pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {

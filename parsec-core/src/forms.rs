@@ -1,6 +1,6 @@
 use crossterm::{
     cursor::SetCursorStyle,
-    style::{Attribute, Attributes, Color, ContentStyle, Stylize}
+    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -12,7 +12,7 @@ pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should
     /// override any that come after.
-    pub is_final: bool
+    pub is_final: bool,
 }
 
 macro_rules! mimic_method {
@@ -82,7 +82,7 @@ pub struct CursorStyle {
     // NOTE: This is obligatory as a fallback for when the application can't render the
     // cursor with `caret`.
     /// To render the cursor as a form, not as an actual cursor.
-    pub form: Form
+    pub form: Form,
 }
 
 impl CursorStyle {
@@ -115,7 +115,7 @@ pub const SEPARATOR: FormId = FormId(10);
 #[derive(Clone, Copy)]
 enum Named {
     Form(Form),
-    Ref(&'static str)
+    Ref(&'static str),
 }
 
 impl Default for Named {
@@ -129,33 +129,58 @@ impl Default for Named {
 pub struct FormPalette {
     main_cursor: CursorStyle,
     extra_cursor: CursorStyle,
-    forms: Vec<(String, Named)>
+    forms: Vec<(String, Named)>,
 }
 
 impl Default for FormPalette {
     fn default() -> Self {
-        let main_cursor =
-            CursorStyle::new(Some(SetCursorStyle::DefaultUserShape), Form::new().reverse());
-        let forms = vec![
-            (String::from("Default"), Named::default()),
-            (String::from("LineNumbers"), Named::default()),
-            (String::from("MainLineNumber"), Named::Ref("LineNumbers")),
-            (String::from("WrappedLineNumbers"), Named::Ref("LineNumbers")),
-            (String::from("WrappedMainLineNumber"), Named::Ref("WrappedLineNumbers")),
-            (String::from("MainSelection"), Named::Form(Form::new().on_dark_grey())),
-            (String::from("ExtraSelection"), Named::Ref("MainSelection")),
-            // Forms for a basic `StatusLine`.
-            (String::from("FileName"), Named::Form(Form::new().dark_yellow().italic())),
-            (String::from("Selections"), Named::Form(Form::new().dark_blue())),
-            (String::from("Coords"), Named::Form(Form::new().yellow())),
-            (String::from("Separator"), Named::Form(Form::new().cyan())),
-        ];
-
-        Self { main_cursor, extra_cursor: main_cursor, forms }
+        Self::new()
     }
 }
 
 impl FormPalette {
+    pub fn new() -> Self {
+        let main_cursor = CursorStyle::new(
+            Some(SetCursorStyle::DefaultUserShape),
+            Form::new().reverse(),
+        );
+        let forms = vec![
+            (String::from("Default"), Named::default()),
+            (String::from("LineNumbers"), Named::default()),
+            (String::from("MainLineNumber"), Named::Ref("LineNumbers")),
+            (
+                String::from("WrappedLineNumbers"),
+                Named::Ref("LineNumbers"),
+            ),
+            (
+                String::from("WrappedMainLineNumber"),
+                Named::Ref("WrappedLineNumbers"),
+            ),
+            (
+                String::from("MainSelection"),
+                Named::Form(Form::new().on_dark_grey()),
+            ),
+            (String::from("ExtraSelection"), Named::Ref("MainSelection")),
+            // Forms for a basic `StatusLine`.
+            (
+                String::from("FileName"),
+                Named::Form(Form::new().dark_yellow().italic()),
+            ),
+            (
+                String::from("Selections"),
+                Named::Form(Form::new().dark_blue()),
+            ),
+            (String::from("Coords"), Named::Form(Form::new().yellow())),
+            (String::from("Separator"), Named::Form(Form::new().cyan())),
+        ];
+
+        Self {
+            main_cursor,
+            extra_cursor: main_cursor,
+            forms,
+        }
+    }
+
     /// Sets the `Form` with a given name to a new one.
     pub fn set_form(&mut self, name: impl ToString, form: Form) {
         let name = name.to_string();
@@ -182,12 +207,15 @@ impl FormPalette {
     pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, FormId)> {
         let mut name = name.as_ref();
 
-        while let Some((index, (_, named))) =
-            self.forms.iter().enumerate().find(|(_, (cmp, _))| *cmp == name)
+        while let Some((index, (_, named))) = self
+            .forms
+            .iter()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
         {
             match named {
                 Named::Form(form) => return Some((*form, FormId(index))),
-                Named::Ref(ref_name) => name = ref_name
+                Named::Ref(ref_name) => name = ref_name,
             }
         }
         None
@@ -206,7 +234,7 @@ impl FormPalette {
         let named = self.forms.get(form_id.0).map(|(_, named)| *named);
         named.map(|named| match named {
             Named::Form(form) => form,
-            Named::Ref(name) => self.from_name(name).0
+            Named::Ref(name) => self.from_name(name).0,
         })
     }
 
@@ -227,13 +255,16 @@ impl FormPalette {
     }
 
     pub fn form_former(&self) -> FormFormer {
-        FormFormer { palette: self, forms: Vec::new() }
+        FormFormer {
+            palette: self,
+            forms: Vec::new(),
+        }
     }
 }
 
 pub struct FormFormer<'a> {
     palette: &'a FormPalette,
-    forms: Vec<(Form, FormId)>
+    forms: Vec<(Form, FormId)>,
 }
 
 impl<'a> FormFormer<'a> {
@@ -252,22 +283,40 @@ impl<'a> FormFormer<'a> {
             foreground_color: Some(Color::Reset),
             background_color: Some(Color::Reset),
             underline_color: Some(Color::Reset),
-            attributes: Attributes::default()
+            attributes: Attributes::default(),
         };
 
-        let mut form = Form { style, is_final: false };
+        let mut form = Form {
+            style,
+            is_final: false,
+        };
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
         for &(Form { style, is_final }, _) in &self.forms {
             let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, &mut form.style.foreground_color, &new_foreground, is_final);
+            set_var(
+                &mut fg_done,
+                &mut form.style.foreground_color,
+                &new_foreground,
+                is_final,
+            );
 
             let new_background = style.background_color;
-            set_var(&mut bg_done, &mut form.style.background_color, &new_background, is_final);
+            set_var(
+                &mut bg_done,
+                &mut form.style.background_color,
+                &new_background,
+                is_final,
+            );
 
             let new_underline = style.underline_color;
-            set_var(&mut ul_done, &mut form.style.underline_color, &new_underline, is_final);
+            set_var(
+                &mut ul_done,
+                &mut form.style.underline_color,
+                &new_underline,
+                is_final,
+            );
 
             if !attr_done {
                 form.style.attributes.extend(style.attributes);
@@ -313,7 +362,7 @@ impl<'a> FormFormer<'a> {
 /// Internal method used only to shorten code in `make_form()`.
 fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
 where
-    T: Clone
+    T: Clone,
 {
     if let (Some(new_var), false) = (maybe_new, &is_set) {
         *var = Some(new_var.clone());

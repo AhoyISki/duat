@@ -5,12 +5,11 @@ pub fn file_name(file: &FileWidget, _input: &dyn InputMethod) -> String {
     file.name().unwrap_or(String::from("*scratch file*"))
 }
 
-pub fn main_cursor(_file: &FileWidget, input: &dyn InputMethod) -> Cursor {
+pub fn main_cursor<'a>(_file: &FileWidget, input: &'a dyn InputMethod) -> &'a Cursor {
     input
         .cursors()
         .expect("The given implementor of InputMethod is not configured to have Cursors")
         .main()
-        .expect("The InputMethod has a list of Cursors, but it is empty")
 }
 
 /// The byte of the main cursor in the file. Indexed at 1.

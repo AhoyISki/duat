@@ -70,8 +70,7 @@ impl LineNumbers {
             .input
             .read()
             .cursors()
-            .and_then(|cursors| cursors.main())
-            .map(|main| main.true_line());
+            .map(|cursors| cursors.main().true_line());
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);
