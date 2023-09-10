@@ -22,11 +22,7 @@ use self::{
     chars::Chars,
     tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId},
 };
-use crate::{
-    forms,
-    history::Change,
-    position::{Cursor, Point}, input::Cursors,
-};
+use crate::{forms, history::Change, input::Cursors, position::Point};
 
 /// The text in a given area.
 #[derive(Debug)]
@@ -187,8 +183,8 @@ impl Text {
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved.
-    pub(crate) fn remove_cursor_tags(&mut self, cursors: &[Cursor]) {
-        for cursor in cursors.iter() {
+    pub(crate) fn remove_cursor_tags(&mut self, cursors: &Cursors) {
+        for (cursor, _) in cursors.iter() {
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {

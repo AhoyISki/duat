@@ -1,12 +1,9 @@
-use std::sync::RwLock;
-
 use super::{Area, PushSpecs, Ui};
 use crate::{
     commands::{CommandErr, Commands},
     data::RwData,
     forms::FormPalette,
-    input::InputMethod,
-    widgets::{ActiveWidget, FileWidget, PassiveWidget, Widget},
+    widgets::Widget,
     Controler,
 };
 
@@ -44,7 +41,7 @@ where
     U: Ui,
 {
     controler: &'a mut Controler<U>,
-    mod_area: RwLock<U::Area>,
+    mod_area: U::Area,
 }
 
 impl<'a, U> FileBuilder<'a, U>
@@ -52,7 +49,7 @@ where
     U: Ui + 'static,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(controler: &'a mut Controler<U>, mod_area: RwLock<U::Area>) -> Self {
+    pub fn new(controler: &'a mut Controler<U>, mod_area: U::Area) -> Self {
         Self {
             controler,
             mod_area,
@@ -101,7 +98,7 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     pub fn push<F>(
-        &self,
+        &mut self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
@@ -110,8 +107,8 @@ where
         let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
-            let mod_area = self.mod_area.read().unwrap();
-            let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
+            let (child, parent) =
+                window.push(widget, &self.mod_area, checker, specs, file_id, true);
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&window.files_region) {
@@ -123,7 +120,7 @@ where
         });
 
         if let Some(parent) = &parent {
-            *self.mod_area.write().unwrap() = parent.clone();
+            self.mod_area = parent.clone();
         }
 
         (child, parent)
@@ -145,7 +142,7 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<F>(
-        &self,
+        &mut self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
         area: U::Area,
     ) -> (U::Area, Option<U::Area>)
@@ -179,7 +176,7 @@ where
     U: Ui,
 {
     controler: &'a mut Controler<U>,
-    mod_area: RwLock<U::Area>,
+    area: U::Area,
 }
 
 impl<'a, U> WindowBuilder<'a, U>
@@ -187,11 +184,8 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(controler: &'a mut Controler<U>, mod_area: RwLock<U::Area>) -> Self {
-        Self {
-            controler,
-            mod_area,
-        }
+    pub fn new(controler: &'a mut Controler<U>, area: U::Area) -> Self {
+        Self { controler, area }
     }
 
     /// Pushes a [`Widget<U>`] to the file's area, given a [`Widget<U>`] builder
@@ -239,7 +233,7 @@ where
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     pub fn push<F>(
-        &self,
+        &mut self,
         builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
@@ -248,14 +242,13 @@ where
         let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
-            let mod_area = self.mod_area.read().unwrap();
-            let (child, parent) = window.push(widget, &*mod_area, checker, specs, file_id, true);
+            let (child, parent) = window.push(widget, &self.area, checker, specs, file_id, true);
 
             (child, parent)
         });
 
         if let Some(parent) = &parent {
-            *self.mod_area.write().unwrap() = parent.clone();
+            self.area = parent.clone();
         }
 
         (child, parent)

@@ -14,7 +14,8 @@
     clippy::arc_with_non_send_sync,
     clippy::type_complexity,
     clippy::vec_init_then_push,
-    clippy::while_let_on_iterator
+    clippy::while_let_on_iterator,
+    refining_impl_trait
 )]
 
 use std::{
@@ -489,7 +490,7 @@ where
         .iter()
         .flat_map(|window| window.widgets())
         .find(|(widget, ..)| widget.ptr_eq(&prior_widget))
-        .inspect(|(mut widget, area, _)| widget.on_unfocus(area))
+        .inspect(|(widget, area, _)| (*widget).on_unfocus(area))
         .ok_or(WidgetSwitchErr::CouldNotUnfocus)?;
 
     // Order matters here, since `on_unfocus` could rely on the
@@ -499,7 +500,7 @@ where
         .iter()
         .flat_map(|window| window.widgets())
         .find(|(widget, ..)| widget.ptr_eq(&*active_widget.read()))
-        .inspect(|(mut widget, area, _)| widget.on_focus(area))
+        .inspect(|(widget, area, _)| (*widget).on_focus(area))
         .ok_or(WidgetSwitchErr::CouldNotUnfocus)?;
 
     Ok(())

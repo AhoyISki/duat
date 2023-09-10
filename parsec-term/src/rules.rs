@@ -3,7 +3,7 @@ use parsec_core::{
     forms::{FormId, FormPalette, DEFAULT},
     input::InputMethod,
     text::{BuilderTag, Text, TextBuilder},
-    ui::{Area, Constraint, PushSpecs, Ui},
+    ui::{Area, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
     Controler,
 };
@@ -180,13 +180,20 @@ impl VertRuleCfg {
                 file: file.clone(),
                 input: input.clone(),
                 builder,
-                cfg: self,
+                sep_char: self.sep_char,
+                sep_form: self.sep_form,
             };
 
             let checker = Box::new(move || file.has_changed() || input.has_changed());
             let passive = Widget::passive(vert_rule);
-            (passive, checker, PushSpecs::left().with_lenght(1.0))
+            (passive, checker, self.specs)
         }
+    }
+}
+
+impl Default for VertRuleCfg {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -197,7 +204,8 @@ pub struct VertRule {
     file: RoData<FileWidget>,
     input: RoData<dyn InputMethod>,
     builder: TextBuilder,
-    cfg: VertRuleCfg,
+    sep_char: SepChar,
+    sep_form: SepForm,
 }
 
 impl VertRule {
@@ -235,8 +243,8 @@ impl PassiveWidget for VertRule {
         let equal = lines.iter().filter(|&(line, _)| *line == main_line).count();
         let below = lines.iter().filter(|&(line, _)| *line > main_line).count();
 
-        let forms = self.cfg.sep_form.forms();
-        let chars = self.cfg.sep_char.chars();
+        let forms = self.sep_form.forms();
+        let chars = self.sep_char.chars();
 
         builder.swap_tag(0, BuilderTag::PushForm(forms[0]));
         builder.swap_range(

@@ -8,7 +8,6 @@
 
 use std::{fmt::Debug, io};
 
-use area::PrintInfo;
 use crossterm::{
     cursor, execute,
     terminal::{self, ClearType},

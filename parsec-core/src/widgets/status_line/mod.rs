@@ -255,7 +255,7 @@ impl StatusLineCfg {
                 builder,
                 readers,
             });
-            (widget, checker, PushSpecs::below().with_lenght(1.0))
+            (widget, checker, self.specs)
         }
     }
 
@@ -278,6 +278,12 @@ impl StatusLineCfg {
             specs: PushSpecs::above().with_lenght(1.0),
             ..self
         }
+    }
+}
+
+impl Default for StatusLineCfg {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

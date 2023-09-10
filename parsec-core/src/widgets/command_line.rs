@@ -19,7 +19,7 @@ use crate::{
     commands::{Command, Commands},
     data::{AsAny, ReadableData, RwData},
     input::{Commander, InputMethod},
-    text::{PrintCfg, Text},
+    text::Text,
     ui::{Area, PushSpecs, Ui},
     Controler,
 };
@@ -41,6 +41,12 @@ impl CommandLineCfg<Commander> {
             prompt: String::from(":"),
             specs: PushSpecs::below().with_lenght(1.0),
         }
+    }
+}
+
+impl Default for CommandLineCfg<Commander> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -72,7 +78,9 @@ where
     where
         NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U>(self) -> impl Fn(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    fn builder<U>(
+        self,
+    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
     where
         U: Ui,
     {
@@ -124,7 +132,7 @@ impl PassiveWidget for CommandLine {
         Self::config().builder()(controler)
     }
 
-    fn update(&mut self, area: &impl Area) {}
+    fn update(&mut self, _area: &impl Area) {}
 
     fn text(&self) -> &Text {
         &self.text
@@ -145,15 +153,12 @@ impl ActiveWidget for CommandLine {
         &mut self.text
     }
 
-    fn on_focus(&mut self, area: &impl Area) {
+    fn on_focus(&mut self, _area: &impl Area) {
         self.text = Text::new_string(&self.prompt);
-        let chars = self.prompt.read().chars().count() as isize;
-        // self.text.add_cursor_tags(todo!());
     }
 
     fn on_unfocus(&mut self, _area: &impl Area) {
         let text = std::mem::replace(&mut self.text, Text::default_string());
-        // self.text.remove_cursor_tags(todo!());
 
         // A '\n' indicates that the command has been "entered".
         let cmd = text

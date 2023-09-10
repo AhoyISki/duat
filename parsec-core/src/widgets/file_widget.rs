@@ -53,6 +53,12 @@ impl FileWidgetCfg<Editor> {
     }
 }
 
+impl Default for FileWidgetCfg<Editor> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<I> FileWidgetCfg<I>
 where
     I: InputMethod<Widget = FileWidget>,

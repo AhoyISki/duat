@@ -1,9 +1,8 @@
 use std::ops::Range;
 
 use crate::{
-    history::{Change, History},
     text::{IterCfg, PrintCfg, Text},
-    ui::{Area, Ui},
+    ui::Area,
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.

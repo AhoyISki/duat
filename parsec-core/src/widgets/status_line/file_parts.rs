@@ -1,11 +1,11 @@
 use crate::{input::InputMethod, join, position::Cursor, widgets::FileWidget};
 
 /// The name of the file.
-pub fn file_name(file: &FileWidget, input: &dyn InputMethod) -> String {
+pub fn file_name(file: &FileWidget, _input: &dyn InputMethod) -> String {
     file.name().unwrap_or(String::from("*scratch file*"))
 }
 
-pub fn main_cursor(file: &FileWidget, input: &dyn InputMethod) -> Cursor {
+pub fn main_cursor(_file: &FileWidget, input: &dyn InputMethod) -> Cursor {
     input
         .cursors()
         .expect("The given implementor of InputMethod is not configured to have Cursors")
@@ -33,7 +33,7 @@ pub fn main_line(file: &FileWidget, input: &dyn InputMethod) -> usize {
     main_cursor(file, input).line()
 }
 
-pub fn selections(file: &FileWidget, input: &dyn InputMethod) -> usize {
+pub fn selections(_file: &FileWidget, input: &dyn InputMethod) -> usize {
     input
         .cursors()
         .expect("The given implementor of InputMethod is not configured to have Cursors")
@@ -41,7 +41,7 @@ pub fn selections(file: &FileWidget, input: &dyn InputMethod) -> usize {
 }
 
 /// Returns a [`String`] with the number of selections in the file.
-pub fn selections_fmt(file: &FileWidget, input: &dyn InputMethod) -> String {
+pub fn selections_fmt(_file: &FileWidget, input: &dyn InputMethod) -> String {
     let cursors = input
         .cursors()
         .expect("The given implementor of InputMethod is not configured to have Cursors");
@@ -53,16 +53,16 @@ pub fn selections_fmt(file: &FileWidget, input: &dyn InputMethod) -> String {
 }
 
 /// Returns a [`String`] with the number of lines in the file.
-pub fn len_lines(file: &FileWidget, input: &dyn InputMethod) -> usize {
+pub fn len_lines(file: &FileWidget, _input: &dyn InputMethod) -> usize {
     file.len_lines()
 }
 
 /// Returns a [`String`] with the number of chars in the file.
-pub fn len_chars(file: &FileWidget, input: &dyn InputMethod) -> usize {
+pub fn len_chars(file: &FileWidget, _input: &dyn InputMethod) -> usize {
     file.len_chars()
 }
 
 /// Returns a [`String`] with the number of bytes in the file.
-pub fn len_bytes(file: &FileWidget, input: &dyn InputMethod) -> usize {
+pub fn len_bytes(file: &FileWidget, _input: &dyn InputMethod) -> usize {
     file.len_bytes()
 }

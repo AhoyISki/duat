@@ -1,7 +1,6 @@
 mod builder;
 
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
 use std::{
     fmt::Debug,
     sync::atomic::{AtomicBool, Ordering},
@@ -427,10 +426,11 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of [`Window<U>`].
-    pub fn new<Checker>(ui: &mut U, widget: Widget<U>, checker: Checker) -> (Self, U::Area)
-    where
-        Checker: Fn() -> bool + 'static,
-    {
+    pub fn new(
+        ui: &mut U,
+        widget: Widget<U>,
+        checker: impl Fn() -> bool + 'static,
+    ) -> (Self, U::Area) {
         let area = ui.new_root();
         widget.update(&area);
         let main_node = Node {
@@ -453,18 +453,15 @@ where
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.
-    pub fn push<Checker>(
+    pub fn push(
         &mut self,
         widget: Widget<U>,
         area: &U::Area,
-        checker: Checker,
+        checker: impl Fn() -> bool + 'static,
         specs: PushSpecs,
         file_id: Option<FileId>,
         cluster: bool,
-    ) -> (U::Area, Option<U::Area>)
-    where
-        Checker: Fn() -> bool + 'static,
-    {
+    ) -> (U::Area, Option<U::Area>) {
         let (child, parent) = area.bisect(specs, cluster);
 
         let node = Node {
@@ -492,7 +489,7 @@ where
     pub fn push_file(
         &mut self,
         widget: Widget<U>,
-        checker: Box<dyn Fn() -> bool>,
+        checker: impl Fn() -> bool + 'static,
         specs: PushSpecs,
     ) -> (U::Area, Option<U::Area>) {
         let area = self.files_region.clone();
@@ -563,6 +560,10 @@ where
         {
             node.widget.send_key(key, &node.area, controler)
         }
+    }
+
+    pub(crate) fn files_region(&self) -> &U::Area {
+        &self.files_region
     }
 }
 
@@ -655,7 +656,7 @@ fn unique_file_id() -> FileId {
 pub(crate) fn build_file<U>(
     controler: &mut Controler<U>,
     mod_area: U::Area,
-    f: &mut impl FnMut(&FileBuilder<U>, &RwData<FileWidget>),
+    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<FileWidget>),
 ) where
     U: Ui,
 {
@@ -680,9 +681,9 @@ pub(crate) fn build_file<U>(
         (widget, old_file, old_file_id)
     });
 
-    let file_builder = FileBuilder::new(controler, RwLock::new(mod_area));
+    let mut file_builder = FileBuilder::new(controler, mod_area);
 
-    f(&file_builder, &widget);
+    f(&mut file_builder, &widget);
 
     *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
     if let Some(file) = old_file {

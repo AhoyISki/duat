@@ -1,5 +1,3 @@
-use crate::{history::Change, ui::Area, widgets::FileWidget};
-
 // pub trait Observer {
 //     fn initial_read(&mut self, file: &mut FileWidget<U>, area: impl Area);
 // 

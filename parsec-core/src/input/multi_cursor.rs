@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, ops::Range};
 
 use crate::{
-    data::{RwData},
+    data::RwData,
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
@@ -32,7 +32,7 @@ impl Cursors {
         self.list.push(cursor)
     }
 
-    pub fn insert_and_switch(&mut self, cursor: Cursor) {}
+    pub fn insert_and_switch(&mut self, _cursor: Cursor) {}
 
     pub fn main(&self) -> Option<Cursor> {
         self.main.and_then(|main| self.list.get(main).cloned())
@@ -519,14 +519,14 @@ where
     /// horizontal movement.
     pub fn move_ver(&mut self, count: isize) {
         self.cursor
-            .move_ver(count, self.text, self.area, &self.print_cfg);
+            .move_ver(count, self.text, self.area, self.print_cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
         self.cursor
-            .move_hor(count, self.text, self.area, &self.print_cfg);
+            .move_hor(count, self.text, self.area, self.print_cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -536,7 +536,7 @@ where
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
         self.cursor
-            .move_to(point, self.text, self.area, &self.print_cfg);
+            .move_to(point, self.text, self.area, self.print_cfg);
     }
 
     /// Moves the cursor to a line and a column on the file.
@@ -547,7 +547,7 @@ where
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let point = Point::from_coords(line, col, self.text);
         self.cursor
-            .move_to(point, self.text, self.area, &self.print_cfg);
+            .move_to(point, self.text, self.area, self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.

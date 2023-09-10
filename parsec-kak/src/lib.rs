@@ -2,11 +2,11 @@ use std::fmt::Display;
 
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
-    data::{AsAny, ReadableData, RoData, RwData},
+    data::{AsAny, RwData},
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
-    ui::{Area, Ui},
-    widgets::{ActiveWidget, CommandLine, FileWidget},
+    ui::Ui,
+    widgets::{CommandLine, FileWidget},
     Controler,
 };
 

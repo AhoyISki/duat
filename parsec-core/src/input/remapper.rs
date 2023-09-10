@@ -1,12 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::InputMethod;
-use crate::{
-    data::RwData,
-    ui::Ui,
-    widgets::{ActiveWidget, Widget},
-    Controler,
-};
+use crate::{data::RwData, ui::Ui, Controler};
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
@@ -127,7 +122,7 @@ where
         &mut self,
         takes: impl Into<Vec<KeyEvent>>,
         gives: impl Into<Vec<KeyEvent>>,
-        check: impl Fn(&I) -> bool,
+        checker: impl Fn(&I) -> bool + 'static,
     ) {
         let takes: Vec<KeyEvent> = takes.into();
         let mut gives: Vec<KeyEvent> = gives.into();
@@ -136,7 +131,7 @@ where
             std::iter::repeat(KeyEvent::from(KeyCode::Backspace)).take(takes.len()),
         );
 
-        self.remaps.push(Remap::new(takes, gives, true, |_| true))
+        self.remaps.push(Remap::new(takes, gives, true, checker))
     }
 }
 

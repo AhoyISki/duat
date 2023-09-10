@@ -24,8 +24,8 @@ where
     ui: U,
     file_cfg: FileWidgetCfg<I>,
     palette: FormPalette,
-    file_builder: Box<dyn FnMut(&FileBuilder<U>, &RwData<FileWidget>)>,
-    window_builder: Box<dyn FnMut(&WindowBuilder<U>)>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
+    window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
 impl<U, I> SessionCfg<U, I>
@@ -39,11 +39,11 @@ where
             ui,
             file_cfg: FileWidget::config(),
             palette: FormPalette::default(),
-            file_builder: Box::new(|builder, _| {
+            file_fn: Box::new(|builder, _| {
                 builder.push(LineNumbers::build);
                 builder.push(StatusLine::build);
             }),
-            window_builder: Box::new(|_| {}),
+            window_fn: Box::new(|_| {}),
         }
     }
 
@@ -62,14 +62,14 @@ where
         let (window, area) = Window::new(&mut self.ui, widget, checker);
         let mut controler = Controler::new(window, self.palette, active, input);
 
-        build_file(&mut controler, area, &mut self.file_builder);
+        build_file(&mut controler, area, &mut self.file_fn);
 
         let mut session = Session {
             ui: self.ui,
             controler,
             file_cfg: self.file_cfg,
-            file_builder: self.file_builder,
-            window_builder: self.window_builder,
+            file_fn: self.file_fn,
+            window_fn: self.window_fn,
         };
 
         for file in args {
@@ -77,12 +77,12 @@ where
             session.open_file(PathBuf::from(file));
         }
 
-        session.controler.mutate_active_window(
-            |window| {
-                let builder = WindowBuilder::new(
-nd                session.window_builder
-            }
-        )
+        let files_region = session
+            .controler
+            .inspect_active_window(|window| window.files_region().clone());
+
+        let mut builder = WindowBuilder::new(&mut session.controler, files_region);
+        (session.window_fn)(&mut builder);
 
         session
     }
@@ -102,8 +102,8 @@ nd                session.window_builder
             file_cfg: self.file_cfg.with_input(input),
             ui: self.ui,
             palette: self.palette,
-            file_builder: self.file_builder,
-            window_builder: self.window_builder,
+            file_fn: self.file_fn,
+            window_fn: self.window_fn,
         }
     }
 
@@ -114,72 +114,72 @@ nd                session.window_builder
         }
     }
 
-    pub fn with_file_builder(
+    pub fn with_file_fn(
         self,
-        file_builder: impl FnMut(&FileBuilder<U>, &RwData<FileWidget>) + 'static,
+        file_fn: impl FnMut(&mut FileBuilder<U>, &RwData<FileWidget>) + 'static,
     ) -> Self {
         Self {
-            file_builder: Box::new(file_builder),
+            file_fn: Box::new(file_fn),
             ..self
         }
     }
 
-    pub fn with_file_builder_prefix(
+    pub fn with_file_fn_prefix(
         mut self,
         mut preffix: impl FnMut(&FileBuilder<U>, &RwData<FileWidget>) + 'static,
     ) -> Self {
         Self {
-            file_builder: Box::new(move |builder, file| {
+            file_fn: Box::new(move |builder, file| {
                 preffix(builder, file);
-                (self.file_builder)(builder, file)
+                (self.file_fn)(builder, file)
             }),
             ..self
         }
     }
 
-    pub fn with_file_builder_suffix(
+    pub fn with_file_fn_suffix(
         mut self,
         mut suffix: impl FnMut(&FileBuilder<U>, &RwData<FileWidget>) + 'static,
     ) -> Self {
         Self {
-            file_builder: Box::new(move |builder, file| {
-                (self.file_builder)(builder, file);
+            file_fn: Box::new(move |builder, file| {
+                (self.file_fn)(builder, file);
                 suffix(builder, file)
             }),
             ..self
         }
     }
 
-    pub fn with_window_builder(
+    pub fn with_window_fn(
         self,
-        window_builder: impl FnMut(&WindowBuilder<U>) + 'static,
+        window_builder: impl FnMut(&mut WindowBuilder<U>) + 'static,
     ) -> Self {
         Self {
-            window_builder: Box::new(window_builder),
+            window_fn: Box::new(window_builder),
             ..self
         }
     }
 
-    pub fn with_window_builder_prefix(
+    pub fn with_window_fn_prefix(
         mut self,
         mut preffix: impl FnMut(&WindowBuilder<U>) + 'static,
     ) -> Self {
         Self {
-            window_builder: Box::new(move |builder| {
+            window_fn: Box::new(move |builder| {
                 preffix(builder);
-                (self.window_builder)(builder)
+                (self.window_fn)(builder)
             }),
             ..self
         }
     }
 
-    pub fn with_window_builder_suffix(
+    pub fn with_window_fn_suffix(
         mut self,
         mut suffix: impl FnMut(&WindowBuilder<U>) + 'static,
     ) -> Self {
         Self {
-            window_builder: Box::new(move |builder| {
-                (self.window_builder)(builder);
+            window_fn: Box::new(move |builder| {
+                (self.window_fn)(builder);
                 suffix(builder)
             }),
             ..self
@@ -195,8 +195,8 @@ where
     ui: U,
     controler: Controler<U>,
     file_cfg: FileWidgetCfg<I>,
-    file_builder: Box<dyn FnMut(&FileBuilder<U>, &RwData<FileWidget>)>,
-    window_builder: Box<dyn FnMut(&WindowBuilder<U>)>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
+    window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
 impl<U, I> Session<U, I>
@@ -210,7 +210,7 @@ where
             .controler
             .mutate_active_window(|window| window.push_file(file, checker, PushSpecs::right()));
 
-        build_file(&mut self.controler, area, &mut self.file_builder);
+        build_file(&mut self.controler, area, &mut self.file_fn);
     }
 
     pub fn push_widget<F>(
@@ -289,8 +289,8 @@ where
     /// commands have been sent to [`Controls`].
     fn session_loop(&mut self) {
         let palette = &self.controler.palette;
-        let controler = &self.controler;
         let windows = self.controler.windows.read();
+
         thread::scope(|scope| {
             loop {
                 let active_window = &windows[self.controler.active_window];
@@ -303,7 +303,7 @@ where
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
                     if let Event::Key(key) = event::read().unwrap() {
                         self.controler.inspect_active_window(|window| {
-                            let _ = window.send_key(key, &self.controler);
+                            window.send_key(key, &self.controler);
                         });
                     }
                 }

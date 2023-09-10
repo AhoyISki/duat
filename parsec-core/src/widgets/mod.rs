@@ -37,7 +37,7 @@ pub use self::{
     status_line::{file_parts, StatusLine, StatusPart},
 };
 use crate::{
-    data::{AsAny, RawReadableData, ReadableData, RwData},
+    data::{AsAny, ReadableData, RwData},
     input::InputMethod,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -67,7 +67,7 @@ pub trait PassiveWidget: AsAny + Send + Sync + 'static {
 
     fn print_cfg(&self) -> &PrintCfg {
         use std::sync::LazyLock;
-        static CFG: LazyLock<PrintCfg> = LazyLock::new(|| PrintCfg::default());
+        static CFG: LazyLock<PrintCfg> = LazyLock::new(PrintCfg::default);
 
         &CFG
     }
@@ -141,6 +141,7 @@ where
     fn update(&self, area: &U::Area);
 }
 
+#[allow(private_interfaces)]
 trait PassiveWidgetHolder<U>: WidgetHolder<U>
 where
     U: Ui,
@@ -148,6 +149,7 @@ where
     fn passive_widget(&self) -> &RwData<dyn PassiveWidget>;
 }
 
+#[allow(private_interfaces)]
 trait ActiveWidgetHolder<U>: WidgetHolder<U>
 where
     U: Ui,
@@ -242,9 +244,21 @@ where
     }
 
     fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
+        self.input.inspect(|input| {
+            if let Some(cursors) = input.cursors() {
+                self.widget.write().mut_text().remove_cursor_tags(cursors);
+            }
+        });
+
         self.input
             .write()
-            .send_key(key, &self.widget, area, controler)
+            .send_key(key, &self.widget, area, controler);
+
+        self.input.inspect(|input| {
+            if let Some(cursors) = input.cursors() {
+                self.widget.write().mut_text().add_cursor_tags(cursors);
+            }
+        });
     }
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
@@ -429,7 +443,7 @@ where
     pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
         match self {
             Widget::Active(inner) => inner.send_key(key, area, controler),
-            Widget::Passive(_) => {},
+            Widget::Passive(_) => {}
         }
     }
 
