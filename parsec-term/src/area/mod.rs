@@ -16,13 +16,13 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
+    log_info,
     position::Point,
     text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 
 use crate::{
-    area::iter::counted_print_iter,
     layout::{Edge, EdgeBrush, EdgeCoords, Layout},
     AreaIndex, ConstraintChangeErr,
 };
@@ -115,7 +115,7 @@ impl Area {
             .filter_map(|(caret, item)| caret.wrap.then_some(item))
             .peekable();
 
-        let point_line_nl_was_concealed = iter
+        let nl_on_point_was_concealed = iter
             .peek()
             .is_some_and(|item| item.line < point.true_line() && point.true_col() == 0);
 
@@ -127,7 +127,7 @@ impl Area {
             self.height().saturating_sub(cfg.scrolloff().y_gap + 1)
         };
 
-        let (ghost_pos, first_char) = if point_line_nl_was_concealed {
+        let (ghost_pos, first_char) = if nl_on_point_was_concealed {
             let skipped_nl = std::iter::once((None, point.true_char()));
             skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
         } else {
@@ -137,11 +137,13 @@ impl Area {
         if info.last_main > point {
             if first_char <= info.first_char {
                 info.first_char = first_char;
-                info.ghost_pos = ghost_pos;
+                info.ghost_pos = ghost_pos.unwrap_or(usize::MAX);
             }
-        } else if first_char >= info.first_char {
+        } else if first_char == info.first_char {
+            info.ghost_pos = ghost_pos.unwrap_or(usize::MAX).max(info.ghost_pos);
+        } else if first_char > info.first_char {
             info.first_char = first_char;
-            info.ghost_pos = ghost_pos;
+            info.ghost_pos = ghost_pos.unwrap_or(usize::MAX);
         }
     }
 
@@ -195,16 +197,17 @@ impl Area {
         } else if end < start {
             info.x_shift = info.x_shift.saturating_sub(min_dist - end);
         } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), width, cfg).try_fold(
-                (0, 0),
-                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
-                    let some_count = some_count + wrap as usize;
-                    match some_count < 2 {
-                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
-                        false => std::ops::ControlFlow::Break(right_end),
-                    }
-                },
-            );
+            let line_width = print_iter(text.iter_at(line_start), width, cfg, info.ghost_pos)
+                .try_fold(
+                    (0, 0),
+                    |(right_end, some_count), (Caret { x, len, wrap }, _)| {
+                        let some_count = some_count + wrap as usize;
+                        match some_count < 2 {
+                            true => std::ops::ControlFlow::Continue((x + len, some_count)),
+                            false => std::ops::ControlFlow::Break(right_end),
+                        }
+                    },
+                );
 
             if let std::ops::ControlFlow::Break(line_width) = line_width && line_width <= width {
                 return;
@@ -291,13 +294,9 @@ impl ui::Area for Area {
         };
 
         let form_former = palette.form_former();
-        let y = if let Some(pos) = info.ghost_pos && pos > 0 {
-            let iter = counted_print_iter(iter, coords.width(), cfg, pos);
-            print_parts(iter, coords, self.is_active(), *info, form_former, &mut stdout)
-        } else {
-            let iter = print_iter(iter, coords.width(), cfg);
-            print_parts(iter, coords, self.is_active(), *info, form_former, &mut stdout)
-        };
+        let active = self.is_active();
+        let iter = print_iter(iter, coords.width(), cfg, info.ghost_pos);
+        let y = print_parts(iter, coords, active, *info, form_former, &mut stdout);
 
         for y in (0..y).rev() {
             clear_line(
@@ -370,7 +369,8 @@ impl ui::Area for Area {
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        print_iter(iter, self.width(), cfg)
+        let ghost_pos = self.print_info.borrow().ghost_pos;
+        print_iter(iter, self.width(), cfg, ghost_pos)
     }
 
     fn precise_print_iter<'a>(
@@ -378,12 +378,8 @@ impl ui::Area for Area {
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        counted_print_iter(
-            iter,
-            self.width(),
-            cfg,
-            self.print_info.borrow().ghost_pos.unwrap_or(usize::MAX),
-        )
+        let ghost_pos = self.print_info.borrow().ghost_pos;
+        print_iter(iter, self.width(), cfg, ghost_pos)
     }
 
     fn rev_print_iter<'a>(
@@ -408,7 +404,7 @@ pub struct PrintInfo {
     first_char: usize,
     /// The index of the first [`char`] that should be printed,
     /// relative to the beginning of a ghost text.
-    ghost_pos: Option<usize>,
+    ghost_pos: usize,
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.
@@ -423,48 +419,33 @@ fn print_parts(
     mut form_former: FormFormer,
     stdout: &mut StdoutLock,
 ) -> usize {
-    let mut x = coords.tl.x;
+    let mut old_x = coords.tl.x;
     // The y here represents the bottom line of the current row of cells.
     let mut y = coords.tl.y;
     let mut prev_style = None;
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    for (
-        Caret {
-            x: new_x,
-            len,
-            wrap,
-        },
-        Item { part, .. },
-    ) in iter
-    {
+    for (Caret { x, len, wrap }, Item { part, .. }) in iter {
         if wrap {
             if y > coords.tl.y {
-                let shifted_x = x.saturating_sub(info.x_shift);
+                let shifted_x = old_x.saturating_sub(info.x_shift);
                 print_line(shifted_x, y, coords, alignment, &mut line, stdout);
             }
             if y == coords.br.y {
                 break;
             }
-            indent_line(&form_former, new_x, info.x_shift, &mut line);
+            indent_line(&form_former, x, info.x_shift, &mut line);
             y += 1;
         }
 
-        x = coords.tl.x + new_x + len;
+        old_x = coords.tl.x + x + len;
 
         match part {
             // Char
             Part::Char(char) => {
                 if len > 0 {
-                    write_char(
-                        char,
-                        coords.tl.x + new_x,
-                        len,
-                        coords,
-                        info.x_shift,
-                        &mut line,
-                    );
+                    write_char(char, coords.tl.x + x, len, coords, info.x_shift, &mut line);
                     if let Some(style) = prev_style.take() {
                         queue!(&mut line, ResetColor, SetStyle(style))
                     }
@@ -511,7 +492,7 @@ fn print_parts(
     }
 
     if !line.is_empty() {
-        print_line(x, y, coords, alignment, &mut line, stdout);
+        print_line(old_x, y, coords, alignment, &mut line, stdout);
     }
 
     coords.br.y - y
@@ -526,11 +507,12 @@ fn print_line(
     line: &mut Vec<u8>,
     stdout: &mut StdoutLock,
 ) {
+    let remainder = coords.br.x.saturating_sub(x.max(coords.tl.x));
+
     let (left, right) = match alignment {
-        Alignment::Left => (0, (coords.br.x).saturating_sub(x)),
-        Alignment::Right => ((coords.br.x).saturating_sub(x), 0),
+        Alignment::Left => (0, remainder),
+        Alignment::Right => (remainder, 0),
         Alignment::Center => {
-            let remainder = (coords.br.x).saturating_sub(x);
             let left = remainder / 2;
             (left, remainder - left)
         }

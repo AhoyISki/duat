@@ -387,13 +387,6 @@ where
         }
     }
 
-    pub fn has_changed(&self) -> bool {
-        match self {
-            Widget::Active(inner) => false,//inner.active_widget().has_changed(),
-            Widget::Passive(_) => false,
-        }
-    }
-
     pub fn update(&self, area: &U::Area) {
         match self {
             Widget::Active(inner) => inner.update(area),

@@ -110,13 +110,15 @@ fn attach_caret(
     width: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
-    let old_x = *x;
     let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
+
+    let mut old_x = *x;
     *x += len;
 
     let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
     if nl_wrap || width_wrap {
+        old_x = indent;
         *x = indent + len;
         *needs_to_wrap = false;
     };
@@ -186,9 +188,10 @@ where
 }
 
 pub fn print_iter<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
+    text: impl Iterator<Item = Item> + Clone + 'a,
     width: usize,
     cfg: IterCfg<'a>,
+    skipped_ghosts: usize,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() {
         cap
@@ -196,37 +199,12 @@ pub fn print_iter<'a>(
         width
     };
 
-    let indents = indents(iter, width, cfg)
-        .filter(move |(_, item)| item.pos >= cfg.first_char() || item.part.is_tag());
-
-    match cfg.wrap_method() {
-        WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
-            Iter::Parts(parts(indents, width, cfg), PhantomData)
-        }
-        WrapMethod::Word => Iter::Words(words(indents, width, cfg)),
-    }
-}
-
-pub fn counted_print_iter<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
-    width: usize,
-    cfg: IterCfg<'a>,
-    mut count: usize,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() {
-        cap
-    } else {
-        width
-    };
-
-    let indents = indents(iter, width, cfg).filter(move |(_, item)| {
+    let indents = indents(text, width, cfg).filter(move |(_, item)| {
         if item.part.is_char() {
             match item.pos.cmp(&cfg.first_char()) {
                 std::cmp::Ordering::Greater => true,
-                std::cmp::Ordering::Equal if count == 0 || item.ghost_pos.is_none() => true,
                 std::cmp::Ordering::Equal => {
-                    count -= 1;
-                    false
+                    item.ghost_pos.map_or(true, |pos| pos >= skipped_ghosts)
                 }
                 std::cmp::Ordering::Less => false,
             }
@@ -278,7 +256,7 @@ pub fn rev_print_iter<'a>(
                 cfg = cfg.no_word_wrap().no_indent_wrap();
             }
 
-            print_iter(items.into_iter().rev(), width, cfg).collect_into(&mut returns);
+            print_iter(items.into_iter().rev(), width, cfg, 0).collect_into(&mut returns);
             returns.pop()
         }
     })

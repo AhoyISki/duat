@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use super::{
     chars,
     tags::{self, RawTag},
-    Part, Text
+    Part, Text,
 };
 use crate::position::Cursor;
 
@@ -12,12 +12,17 @@ pub struct Item {
     pub pos: usize,
     pub line: usize,
     pub ghost_pos: Option<usize>,
-    pub part: Part
+    pub part: Part,
 }
 
 impl Item {
     fn new(pos: usize, line: usize, ghost_pos: Option<usize>, part: Part) -> Self {
-        Self { pos, line, ghost_pos, part }
+        Self {
+            pos,
+            line,
+            ghost_pos,
+            part,
+        }
     }
 }
 
@@ -37,12 +42,16 @@ pub struct Iter<'a> {
     ghost_pos: usize,
 
     print_ghosts: bool,
-    _conceals: Conceal<'a>
+    _conceals: Conceal<'a>,
 }
 
 impl<'a> Iter<'a> {
     pub(super) fn new(
-        chars: chars::Iter<'a>, tags: tags::Iter<'a>, texts: &'a [Text], pos: usize, line: usize
+        chars: chars::Iter<'a>,
+        tags: tags::Iter<'a>,
+        texts: &'a [Text],
+        pos: usize,
+        line: usize,
     ) -> Self {
         Self {
             chars,
@@ -54,20 +63,29 @@ impl<'a> Iter<'a> {
             backup_iter: None,
             ghost_pos: 0,
             print_ghosts: true,
-            _conceals: Conceal::All
+            _conceals: Conceal::All,
         }
     }
 
     pub fn no_conceals(self) -> Self {
-        Self { _conceals: Conceal::None, ..self }
+        Self {
+            _conceals: Conceal::None,
+            ..self
+        }
     }
 
     pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
-        Self { _conceals: Conceal::Excluding(list), ..self }
+        Self {
+            _conceals: Conceal::Excluding(list),
+            ..self
+        }
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self { print_ghosts: false, ..self }
+        Self {
+            print_ghosts: false,
+            ..self
+        }
     }
 
     #[inline(always)]
@@ -111,7 +129,7 @@ impl<'a> Iter<'a> {
                 self.conceals = 0;
                 ControlFlow::Break(())
             }
-            _ => ControlFlow::Break(())
+            _ => ControlFlow::Break(()),
         }
     }
 }
@@ -119,14 +137,13 @@ impl<'a> Iter<'a> {
 impl Iterator for Iter<'_> {
     /// In order:
     ///
-    /// - The position of the [`Part`] in the [`Text`], it can be
-    ///   [`None`], when iterating over ghost text.
-    /// - The line the [`Part`] would be situated in, given a count of
-    ///   `'\n'`s before it, iterating over the unconcealed text
-    ///   without any ghost texts within.
-    /// - The [`Part`] itself, giving either a [`char`] or a text
-    ///   modifier, which should be used to change the way the
-    ///   [`Text`] is printed.
+    /// - The position of the [`Part`] in the [`Text`], it can be [`None`], when
+    ///   iterating over ghost text.
+    /// - The line the [`Part`] would be situated in, given a count of `'\n'`s
+    ///   before it, iterating over the unconcealed text without any ghost texts
+    ///   within.
+    /// - The [`Part`] itself, giving either a [`char`] or a text modifier,
+    ///   which should be used to change the way the [`Text`] is printed.
     type Item = Item;
 
     #[inline(always)]
@@ -140,7 +157,8 @@ impl Iterator for Iter<'_> {
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::from(tag)));
+                        let ghost = Some(self.ghost_pos);
+                        break Some(Item::new(pos, self.line, ghost, Part::from(tag)));
                     } else {
                         break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
                     }
@@ -151,7 +169,8 @@ impl Iterator for Iter<'_> {
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
                     self.ghost_pos += 1;
-                    break Some(Item::new(pos, prev_line, Some(self.ghost_pos - 1), Part::Char(char)));
+                    let ghost = Some(self.ghost_pos - 1);
+                    break Some(Item::new(pos, prev_line, ghost, Part::Char(char)));
                 } else {
                     self.line += (char == '\n') as usize;
                     break Some(Item::new(self.pos - 1, prev_line, None, Part::Char(char)));
@@ -183,12 +202,16 @@ pub struct RevIter<'a> {
 
     // Iteration options:
     print_ghosts: bool,
-    _conceals: Conceal<'a>
+    _conceals: Conceal<'a>,
 }
 
 impl<'a> RevIter<'a> {
     pub(super) fn new(
-        chars: chars::Iter<'a>, tags: tags::RevIter<'a>, texts: &'a [Text], pos: usize, line: usize
+        chars: chars::Iter<'a>,
+        tags: tags::RevIter<'a>,
+        texts: &'a [Text],
+        pos: usize,
+        line: usize,
     ) -> Self {
         Self {
             chars,
@@ -200,24 +223,36 @@ impl<'a> RevIter<'a> {
             backup_iter: None,
             ghost_pos: 0,
             print_ghosts: true,
-            _conceals: Conceal::All
+            _conceals: Conceal::All,
         }
     }
 
     pub fn no_conceals(self) -> Self {
-        Self { _conceals: Conceal::None, ..self }
+        Self {
+            _conceals: Conceal::None,
+            ..self
+        }
     }
 
     pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
-        Self { _conceals: Conceal::Excluding(list), ..self }
+        Self {
+            _conceals: Conceal::Excluding(list),
+            ..self
+        }
     }
 
     pub fn dont_conceal_on_lines(self, list: &'a [Cursor]) -> Self {
-        Self { _conceals: Conceal::NotOnLineOf(list), ..self }
+        Self {
+            _conceals: Conceal::NotOnLineOf(list),
+            ..self
+        }
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self { print_ghosts: false, ..self }
+        Self {
+            print_ghosts: false,
+            ..self
+        }
     }
 
     #[inline(always)]
@@ -263,7 +298,7 @@ impl<'a> RevIter<'a> {
 
                 ControlFlow::Break(())
             }
-            _ => ControlFlow::Break(())
+            _ => ControlFlow::Break(()),
         }
     }
 }
@@ -282,7 +317,12 @@ impl Iterator for RevIter<'_> {
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::from(tag)));
+                        break Some(Item::new(
+                            pos,
+                            self.line,
+                            Some(self.ghost_pos),
+                            Part::from(tag),
+                        ));
                     } else {
                         break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
                     }
@@ -292,7 +332,12 @@ impl Iterator for RevIter<'_> {
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
                     self.ghost_pos -= 1;
-                    break Some(Item::new(pos, self.line, Some(self.ghost_pos), Part::Char(char)));
+                    break Some(Item::new(
+                        pos,
+                        self.line,
+                        Some(self.ghost_pos),
+                        Part::Char(char),
+                    ));
                 } else {
                     self.line -= (char == '\n') as usize;
                     break Some(Item::new(self.pos, self.line, None, Part::Char(char)));
@@ -313,5 +358,5 @@ enum Conceal<'a> {
     All,
     None,
     Excluding(&'a [Cursor]),
-    NotOnLineOf(&'a [Cursor])
+    NotOnLineOf(&'a [Cursor]),
 }

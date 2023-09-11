@@ -342,9 +342,7 @@ where
 {
     pub fn needs_update(&self) -> bool {
         if !self.busy_updating.load(Ordering::Acquire) {
-            let widget_changed = self.widget.has_changed();
-            let area_changed = self.area.has_changed();
-            (self.checker)() || widget_changed || area_changed
+            (self.checker)() || self.area.has_changed()
         } else {
             false
         }
@@ -552,7 +550,7 @@ where
             })
     }
 
-        pub fn send_key<'scope, 'env>(
+    pub fn send_key<'scope, 'env>(
         &'env self,
         key: KeyEvent,
         controler: &'env Controler<U>,
