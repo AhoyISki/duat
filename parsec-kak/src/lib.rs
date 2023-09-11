@@ -5,9 +5,10 @@ use parsec_core::{
     data::{AsAny, RwData},
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
+    log_info,
     ui::Ui,
     widgets::{CommandLine, FileWidget},
-    Controler, log_info,
+    Controler,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -39,12 +40,64 @@ enum Side {
     Bottom,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Editor {
     cursors: Cursors,
     history: History,
     mode: Mode,
     last_file: String,
+}
+
+/// A readable state of which mode is currently active.
+impl Editor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn mode(&self) -> impl Fn(&FileWidget, &dyn InputMethod) -> String {
+        |_, input| {
+            input
+                .as_any()
+                .downcast_ref::<Self>()
+                .unwrap()
+                .mode
+                .to_string()
+        }
+    }
+}
+
+impl InputMethod for Editor {
+    type Widget = FileWidget;
+
+    fn send_key<U>(
+        &mut self,
+        key: KeyEvent,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        controler: &Controler<U>,
+    ) where
+        U: Ui,
+        Self: Sized,
+    {
+        let cursors = &mut self.cursors;
+        let history = &mut self.history;
+        let editor = MultiCursorEditor::with_history(widget, cursors, area, history);
+
+        match self.mode {
+            Mode::Insert => match_insert(editor, key, &mut self.mode),
+            Mode::Normal => match_normal(editor, key, &mut self.mode, controler),
+            Mode::Command => match_command(editor, key, &mut self.mode, controler),
+            Mode::GoTo => {
+                match_goto(editor, key, &mut self.last_file, controler);
+                self.mode = Mode::Normal;
+            }
+            Mode::View => todo!(),
+        }
+    }
+
+    fn cursors(&self) -> Option<&Cursors> {
+        Some(&self.cursors)
+    }
 }
 
 /// Commands that are available in `Mode::Insert`.
@@ -435,54 +488,6 @@ fn match_goto<U: Ui>(
             }
         }
         _ => {}
-    }
-}
-
-/// A readable state of which mode is currently active.
-impl Editor {
-    pub fn mode(&self) -> impl Fn(&FileWidget, &dyn InputMethod) -> String {
-        |_, input| {
-            input
-                .as_any()
-                .downcast_ref::<Self>()
-                .unwrap()
-                .mode
-                .to_string()
-        }
-    }
-}
-
-impl InputMethod for Editor {
-    type Widget = FileWidget;
-
-    fn send_key<U>(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &Controler<U>,
-    ) where
-        U: Ui,
-        Self: Sized,
-    {
-        let cursors = &mut self.cursors;
-        let history = &mut self.history;
-        let editor = MultiCursorEditor::with_history(widget, cursors, area, history);
-
-        match self.mode {
-            Mode::Insert => match_insert(editor, key, &mut self.mode),
-            Mode::Normal => match_normal(editor, key, &mut self.mode, controler),
-            Mode::Command => match_command(editor, key, &mut self.mode, controler),
-            Mode::GoTo => {
-                match_goto(editor, key, &mut self.last_file, controler);
-                self.mode = Mode::Normal;
-            }
-            Mode::View => todo!(),
-        }
-    }
-
-    fn cursors(&self) -> Option<&Cursors> {
-        Some(&self.cursors)
     }
 }
 

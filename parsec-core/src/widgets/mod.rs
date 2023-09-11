@@ -38,6 +38,7 @@ pub use self::{
 };
 use crate::{
     data::{AsAny, ReadableData, RwData},
+    forms::FormPalette,
     input::InputMethod,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -72,7 +73,7 @@ pub trait PassiveWidget: AsAny + Send + Sync + 'static {
         &CFG
     }
 
-    fn print(&self, area: &impl Area, palette: &crate::forms::FormPalette)
+    fn print(&self, area: &impl Area, palette: &FormPalette)
     where
         Self: Sized,
     {
@@ -136,7 +137,7 @@ where
     /// [`WidgetNode`]
     ///
     /// [`Session<U>`]: crate::session::Session
-    fn update_and_print(&self, area: &U::Area, palette: &crate::forms::FormPalette);
+    fn try_update_and_print(&self, area: &U::Area, palette: &FormPalette) -> bool;
 
     fn update(&self, area: &U::Area);
 }
@@ -179,10 +180,15 @@ where
     U: Ui,
     W: PassiveWidget,
 {
-    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
-        let mut widget = self.widget.raw_try_write().unwrap();
-        widget.update(area);
-        widget.print(area, palette);
+    fn try_update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) -> bool {
+        if let Ok(mut widget) = self.widget.raw_try_write() {
+            widget.update(area);
+            widget.print(area, palette);
+
+            true
+        } else {
+            false
+        }
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -218,10 +224,15 @@ where
     W: ActiveWidget,
     I: InputMethod<Widget = W>,
 {
-    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &crate::forms::FormPalette) {
-        let mut widget = self.widget.raw_try_write().unwrap();
-        widget.update(area);
-        widget.print(area, palette);
+    fn try_update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) -> bool {
+        if let Ok(mut widget) = self.widget.raw_try_write() {
+            widget.update(area);
+            widget.print(area, palette);
+
+            true
+        } else {
+            false
+        }
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -317,13 +328,13 @@ where
         Widget::Active(Box::new(inner_widget))
     }
 
-    pub fn update_and_print(&self, area: &U::Area, palette: &crate::forms::FormPalette) {
+    pub fn update_and_print(&self, area: &U::Area, palette: &FormPalette) {
         match self {
             Widget::Passive(inner) => {
-                inner.update_and_print(area, palette);
+                inner.try_update_and_print(area, palette);
             }
             Widget::Active(inner) => {
-                inner.update_and_print(area, palette);
+                inner.try_update_and_print(area, palette);
             }
         }
     }
@@ -332,14 +343,14 @@ where
         &'env self,
         scope: &'scope std::thread::Scope<'scope, 'env>,
         area: &'env U::Area,
-        palette: &'env crate::forms::FormPalette,
+        palette: &'env FormPalette,
     ) -> bool {
         // This is, technically speaking, not good enough, but it should cover
         // 99.9999999999999% of cases without fail.
         match self {
             Widget::Passive(inner) => {
                 if inner.passive_widget().raw_try_write().is_ok() {
-                    scope.spawn(|| inner.update_and_print(area, palette));
+                    scope.spawn(|| inner.try_update_and_print(area, palette));
                     true
                 } else {
                     false
@@ -347,7 +358,7 @@ where
             }
             Widget::Active(inner) => {
                 if inner.active_widget().raw_try_write().is_ok() {
-                    scope.spawn(|| inner.update_and_print(area, palette));
+                    scope.spawn(|| inner.try_update_and_print(area, palette));
                     true
                 } else {
                     false
