@@ -238,6 +238,8 @@ impl ui::Area for Area {
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
         self.scroll_hor_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
         self.scroll_ver_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
+
+        self.print_info.borrow_mut().last_main = point;
     }
 
     fn first_char(&self) -> usize {
