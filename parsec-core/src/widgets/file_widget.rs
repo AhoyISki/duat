@@ -249,14 +249,22 @@ impl PassiveWidget for FileWidget {
         Self::config().builder()(controler)
     }
 
-    fn update(&mut self, area: &impl Area) {
-        // let caret = self.cursors().unwrap().main().unwrap().caret();
-        // area.scroll_around_point(&self.text, caret, &self.cfg);
-        self.set_printed_lines(area);
-    }
+    fn update(&mut self, _area: &impl Area) {}
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn print_cfg(&self) -> &PrintCfg {
+        &self.cfg
+    }
+
+    fn print(&mut self, area: &impl Area, palette: &crate::forms::FormPalette)
+    where
+        Self: Sized,
+    {
+        self.set_printed_lines(area);
+        area.print(self.text(), self.print_cfg(), palette)
     }
 }
 

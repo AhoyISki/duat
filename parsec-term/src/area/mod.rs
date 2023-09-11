@@ -107,7 +107,7 @@ impl Area {
 
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_to_gap(&mut self, point: Point, text: &Text, cfg: IterCfg) {
+    fn scroll_ver_to_gap(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
         let inclusive_pos = point.true_char() + 1;
@@ -147,7 +147,7 @@ impl Area {
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap(&mut self, point: Point, text: &Text, cfg: IterCfg) {
+    fn scroll_hor_to_gap(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
         let width = self.width();
@@ -235,7 +235,7 @@ impl ui::Area for Area {
         })
     }
 
-    fn scroll_around_point(&mut self, text: &Text, point: Point, cfg: &PrintCfg) {
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
         self.scroll_hor_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
         self.scroll_ver_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
     }

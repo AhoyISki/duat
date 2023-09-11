@@ -316,7 +316,7 @@ where
 
                 if let Ok(true) = event::poll(Duration::from_millis(20)) {
                     if let Event::Key(key) = event::read().unwrap() {
-                        active_window.send_key(key, &self.controler);
+                        active_window.send_key(key, &self.controler, scope);
                     }
                 }
 

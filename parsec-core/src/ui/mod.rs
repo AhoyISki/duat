@@ -174,7 +174,7 @@ pub trait Area: Clone + PartialEq + Send + Sync {
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_around_point(&mut self, text: &Text, point: Point, cfg: &PrintCfg);
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg);
 
     /// Returns the character index of the first character that would
     /// be printed.
@@ -334,7 +334,6 @@ where
     area: U::Area,
     file_id: Option<FileId>,
     busy_updating: AtomicBool,
-    update_scheduled: AtomicBool,
 }
 
 impl<U> Node<U>
@@ -342,23 +341,18 @@ where
     U: Ui,
 {
     pub fn needs_update(&self) -> bool {
-        let widget_changed = self.widget.has_changed();
-        let area_changed = self.area.has_changed();
-        let needs_update = (self.checker)() || widget_changed || area_changed;
-
-        let busy_updating = self.busy_updating.fetch_or(needs_update, Ordering::Release);
-
-        let update_scheduled = if busy_updating {
-            self.update_scheduled
-                .fetch_or(needs_update, Ordering::Release)
+        if !self.busy_updating.load(Ordering::Acquire) {
+            let widget_changed = self.widget.has_changed();
+            let area_changed = self.area.has_changed();
+            (self.checker)() || widget_changed || area_changed
         } else {
             false
-        };
-
-        (needs_update || update_scheduled) && !busy_updating
+        }
     }
 
     pub fn update_and_print(&self, palette: &FormPalette) {
+        self.busy_updating.store(true, Ordering::Release);
+
         self.widget.update_and_print(&self.area, palette);
 
         self.busy_updating.store(false, Ordering::Release);
@@ -437,13 +431,13 @@ where
     ) -> (Self, U::Area) {
         let area = ui.new_root();
         widget.update(&area);
+
         let main_node = Node {
             widget,
             checker: Box::new(checker),
             area: area.clone(),
             file_id: Some(unique_file_id()),
             busy_updating: AtomicBool::new(false),
-            update_scheduled: AtomicBool::new(false),
         };
 
         *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
@@ -475,7 +469,6 @@ where
             area: child.clone(),
             file_id,
             busy_updating: AtomicBool::new(false),
-            update_scheduled: AtomicBool::new(false),
         };
 
         if *area == self.master_area && let Some(new_master_node) = parent.clone() {
@@ -559,12 +552,17 @@ where
             })
     }
 
-    pub fn send_key(&self, key: KeyEvent, controler: &Controler<U>) {
+        pub fn send_key<'scope, 'env>(
+        &'env self,
+        key: KeyEvent,
+        controler: &'env Controler<U>,
+        scope: &'scope std::thread::Scope<'scope, 'env>,
+    ) {
         if let Some(node) = self
             .nodes()
             .find(|node| node.widget.ptr_eq(&*controler.active_widget.read()))
         {
-            node.widget.send_key(key, &node.area, controler)
+            scope.spawn(move || node.widget.send_key(key, &node.area, controler));
         }
     }
 

@@ -73,7 +73,7 @@ pub trait PassiveWidget: AsAny + Send + Sync + 'static {
         &CFG
     }
 
-    fn print(&self, area: &impl Area, palette: &FormPalette)
+    fn print(&mut self, area: &impl Area, palette: &FormPalette)
     where
         Self: Sized,
     {
@@ -219,7 +219,7 @@ where
     W: ActiveWidget,
     I: InputMethod<Widget = W>,
 {
-    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) {
+    fn update_and_print(&self, area: &U::Area, palette: &FormPalette) {
         let mut widget = self.widget.raw_write();
         widget.update(area);
         widget.print(area, palette);
@@ -245,21 +245,23 @@ where
     }
 
     fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
-        self.input.inspect(|input| {
-            if let Some(cursors) = input.cursors() {
-                self.widget.write().mut_text().remove_cursor_tags(cursors);
-            }
-        });
+        let mut input = self.input.write();
 
-        self.input
-            .write()
-            .send_key(key, &self.widget, area, controler);
+        if let Some(cursors) = input.cursors() {
+            self.widget.write().mut_text().remove_cursor_tags(cursors);
+        }
 
-        self.input.inspect(|input| {
-            if let Some(cursors) = input.cursors() {
-                self.widget.write().mut_text().add_cursor_tags(cursors);
-            }
-        });
+        input.send_key(key, &self.widget, area, controler);
+
+        if let Some(cursors) = input.cursors() {
+            let mut widget = self.widget.write();
+            widget.mut_text().add_cursor_tags(cursors);
+
+            area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
+
+            widget.update(area);
+            widget.print(area, &controler.palette);
+        }
     }
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
@@ -387,7 +389,7 @@ where
 
     pub fn has_changed(&self) -> bool {
         match self {
-            Widget::Active(inner) => inner.active_widget().has_changed(),
+            Widget::Active(inner) => false,//inner.active_widget().has_changed(),
             Widget::Passive(_) => false,
         }
     }
