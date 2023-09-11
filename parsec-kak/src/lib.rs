@@ -5,7 +5,6 @@ use parsec_core::{
     data::{AsAny, RwData},
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
-    log_info,
     ui::Ui,
     widgets::{CommandLine, FileWidget},
     Controler,

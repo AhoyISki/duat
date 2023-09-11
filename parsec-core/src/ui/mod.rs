@@ -333,7 +333,8 @@ where
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
     file_id: Option<FileId>,
-    not_updated: AtomicBool,
+    busy_updating: AtomicBool,
+    update_scheduled: AtomicBool,
 }
 
 impl<U> Node<U>
@@ -341,25 +342,31 @@ where
     U: Ui,
 {
     pub fn needs_update(&self) -> bool {
-        let not_updated = self.not_updated.fetch_and(false, Ordering::Acquire);
         let widget_changed = self.widget.has_changed();
         let area_changed = self.area.has_changed();
-        (self.checker)() || widget_changed || area_changed || not_updated
+        let needs_update = (self.checker)() || widget_changed || area_changed;
+
+        let busy_updating = self.busy_updating.fetch_or(needs_update, Ordering::Release);
+
+        let update_scheduled = if busy_updating {
+            self.update_scheduled
+                .fetch_or(needs_update, Ordering::Release)
+        } else {
+            false
+        };
+
+        (needs_update || update_scheduled) && !busy_updating
     }
 
-    pub fn try_update_and_print<'scope, 'env>(
-        &'env self,
-        scope: &'scope std::thread::Scope<'scope, 'env>,
-        palette: &'env FormPalette,
-    ) {
-        let succeeded = self
-            .widget
-            .threaded_try_update_and_print(scope, &self.area, palette);
-        self.not_updated.store(!succeeded, Ordering::Release);
+    pub fn update_and_print(&self, palette: &FormPalette) {
+        self.widget.update_and_print(&self.area, palette);
+
+        self.busy_updating.store(false, Ordering::Release);
     }
 }
 
 unsafe impl<U> Send for Node<U> where U: Ui {}
+unsafe impl<U> Sync for Node<U> where U: Ui {}
 
 /// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -435,7 +442,8 @@ where
             checker: Box::new(checker),
             area: area.clone(),
             file_id: Some(unique_file_id()),
-            not_updated: AtomicBool::new(false),
+            busy_updating: AtomicBool::new(false),
+            update_scheduled: AtomicBool::new(false),
         };
 
         *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
@@ -466,7 +474,8 @@ where
             checker: Box::new(checker),
             area: child.clone(),
             file_id,
-            not_updated: AtomicBool::new(false),
+            busy_updating: AtomicBool::new(false),
+            update_scheduled: AtomicBool::new(false),
         };
 
         if *area == self.master_area && let Some(new_master_node) = parent.clone() {

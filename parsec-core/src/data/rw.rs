@@ -399,8 +399,8 @@ where
         }
     }
 
-    pub(crate) fn raw_try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
-        self.data.try_write()
+    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
+        self.data.write().unwrap()
     }
 
     pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {

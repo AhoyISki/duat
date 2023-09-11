@@ -357,8 +357,8 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        self.file.inspect(|file| {
-            self.input.inspect(|input| {
+        self.input.inspect(|input| {
+            self.file.inspect(|file| {
                 for (index, reader) in self.readers.iter().enumerate() {
                     self.builder.swap_range(index, reader.read(file, input));
                 }

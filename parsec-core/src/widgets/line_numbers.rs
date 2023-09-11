@@ -64,13 +64,14 @@ impl LineNumbers {
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self) {
-        let file = self.file.read();
-        let printed_lines = file.printed_lines();
         let main_line: Option<usize> = self
             .input
             .read()
             .cursors()
             .map(|cursors| cursors.main().true_line());
+
+        let file = self.file.read();
+        let printed_lines = file.printed_lines();
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);

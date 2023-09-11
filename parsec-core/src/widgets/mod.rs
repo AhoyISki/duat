@@ -137,7 +137,7 @@ where
     /// [`WidgetNode`]
     ///
     /// [`Session<U>`]: crate::session::Session
-    fn try_update_and_print(&self, area: &U::Area, palette: &FormPalette) -> bool;
+    fn update_and_print(&self, area: &U::Area, palette: &FormPalette);
 
     fn update(&self, area: &U::Area);
 }
@@ -180,15 +180,10 @@ where
     U: Ui,
     W: PassiveWidget,
 {
-    fn try_update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) -> bool {
-        if let Ok(mut widget) = self.widget.raw_try_write() {
-            widget.update(area);
-            widget.print(area, palette);
-
-            true
-        } else {
-            false
-        }
+    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) {
+        let mut widget = self.widget.raw_write();
+        widget.update(area);
+        widget.print(area, palette);
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -224,15 +219,10 @@ where
     W: ActiveWidget,
     I: InputMethod<Widget = W>,
 {
-    fn try_update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) -> bool {
-        if let Ok(mut widget) = self.widget.raw_try_write() {
-            widget.update(area);
-            widget.print(area, palette);
-
-            true
-        } else {
-            false
-        }
+    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) {
+        let mut widget = self.widget.raw_write();
+        widget.update(area);
+        widget.print(area, palette);
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -331,38 +321,10 @@ where
     pub fn update_and_print(&self, area: &U::Area, palette: &FormPalette) {
         match self {
             Widget::Passive(inner) => {
-                inner.try_update_and_print(area, palette);
+                inner.update_and_print(area, palette);
             }
             Widget::Active(inner) => {
-                inner.try_update_and_print(area, palette);
-            }
-        }
-    }
-
-    pub fn threaded_try_update_and_print<'scope, 'env>(
-        &'env self,
-        scope: &'scope std::thread::Scope<'scope, 'env>,
-        area: &'env U::Area,
-        palette: &'env FormPalette,
-    ) -> bool {
-        // This is, technically speaking, not good enough, but it should cover
-        // 99.9999999999999% of cases without fail.
-        match self {
-            Widget::Passive(inner) => {
-                if inner.passive_widget().raw_try_write().is_ok() {
-                    scope.spawn(|| inner.try_update_and_print(area, palette));
-                    true
-                } else {
-                    false
-                }
-            }
-            Widget::Active(inner) => {
-                if inner.active_widget().raw_try_write().is_ok() {
-                    scope.spawn(|| inner.try_update_and_print(area, palette));
-                    true
-                } else {
-                    false
-                }
+                inner.update_and_print(area, palette);
             }
         }
     }

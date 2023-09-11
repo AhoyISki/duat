@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::atomic::Ordering, thread, time::Duration};
+use std::{path::PathBuf, sync::atomic::Ordering, time::Duration};
 
 use crossterm::event::{self, Event};
 
@@ -305,7 +305,7 @@ where
         let palette = &self.controler.palette;
         let windows = self.controler.windows.read();
 
-        thread::scope(|scope| {
+        std::thread::scope(|scope| {
             loop {
                 let active_window = &windows[self.controler.active_window];
 
@@ -314,17 +314,17 @@ where
                     break;
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
+                if let Ok(true) = event::poll(Duration::from_millis(20)) {
                     if let Event::Key(key) = event::read().unwrap() {
-                        self.controler.inspect_active_window(|window| {
-                            window.send_key(key, &self.controler);
-                        });
+                        active_window.send_key(key, &self.controler);
                     }
                 }
 
                 for node in active_window.nodes() {
                     if node.needs_update() {
-                        node.try_update_and_print(scope, palette);
+                        scope.spawn(|| {
+                            node.update_and_print(palette);
+                        });
                     }
                 }
             }
