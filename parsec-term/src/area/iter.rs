@@ -6,6 +6,8 @@ use parsec_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
+use super::PrintInfo;
+
 /// Returns an [`Iterator`] that also shows the current level of
 /// indentation.
 #[inline(always)]
@@ -191,7 +193,7 @@ pub fn print_iter<'a>(
     text: impl Iterator<Item = Item> + Clone + 'a,
     width: usize,
     cfg: IterCfg<'a>,
-    skipped_ghosts: usize,
+    info: PrintInfo,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() {
         cap
@@ -201,10 +203,10 @@ pub fn print_iter<'a>(
 
     let indents = indents(text, width, cfg).filter(move |(_, item)| {
         if item.part.is_char() {
-            match item.pos.cmp(&cfg.first_char()) {
+            match item.pos.cmp(&info.first_char) {
                 std::cmp::Ordering::Greater => true,
                 std::cmp::Ordering::Equal => {
-                    item.ghost_pos.map_or(true, |pos| pos >= skipped_ghosts)
+                    item.ghost_pos.map_or(true, |pos| pos >= info.first_ghost)
                 }
                 std::cmp::Ordering::Less => false,
             }
@@ -228,6 +230,8 @@ pub fn rev_print_iter<'a>(
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
+    let info = PrintInfo::default();
+
     std::iter::from_fn(move || {
         if let Some(next) = returns.pop() {
             Some(next)
@@ -256,7 +260,7 @@ pub fn rev_print_iter<'a>(
                 cfg = cfg.no_word_wrap().no_indent_wrap();
             }
 
-            print_iter(items.into_iter().rev(), width, cfg, 0).collect_into(&mut returns);
+            returns.extend(print_iter(items.into_iter().rev(), width, cfg, info));
             returns.pop()
         }
     })

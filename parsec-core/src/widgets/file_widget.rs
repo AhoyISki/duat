@@ -226,7 +226,7 @@ impl FileWidget {
             .find_map(|(caret, item)| caret.wrap.then_some(item.line));
 
         self.printed_lines = area
-            .precise_print_iter(self.text.iter_at(start), IterCfg::new(&self.cfg))
+            .print_iter_from_top(self.text(), IterCfg::new(&self.cfg))
             .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
             .map(|line| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);

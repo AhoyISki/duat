@@ -16,7 +16,6 @@ use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::{ReadableData, RwData},
     forms::{FormFormer, FormPalette},
-    log_info,
     position::Point,
     text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -137,13 +136,13 @@ impl Area {
         if info.last_main > point {
             if first_char <= info.first_char {
                 info.first_char = first_char;
-                info.ghost_pos = ghost_pos.unwrap_or(usize::MAX);
+                info.first_ghost = ghost_pos.unwrap_or(usize::MAX);
             }
         } else if first_char == info.first_char {
-            info.ghost_pos = ghost_pos.unwrap_or(usize::MAX).max(info.ghost_pos);
+            info.first_ghost = ghost_pos.unwrap_or(usize::MAX).max(info.first_ghost);
         } else if first_char > info.first_char {
             info.first_char = first_char;
-            info.ghost_pos = ghost_pos.unwrap_or(usize::MAX);
+            info.first_ghost = ghost_pos.unwrap_or(usize::MAX);
         }
     }
 
@@ -197,17 +196,16 @@ impl Area {
         } else if end < start {
             info.x_shift = info.x_shift.saturating_sub(min_dist - end);
         } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), width, cfg, info.ghost_pos)
-                .try_fold(
-                    (0, 0),
-                    |(right_end, some_count), (Caret { x, len, wrap }, _)| {
-                        let some_count = some_count + wrap as usize;
-                        match some_count < 2 {
-                            true => std::ops::ControlFlow::Continue((x + len, some_count)),
-                            false => std::ops::ControlFlow::Break(right_end),
-                        }
-                    },
-                );
+            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info).try_fold(
+                (0, 0),
+                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
+                    let some_count = some_count + wrap as usize;
+                    match some_count < 2 {
+                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
+                        false => std::ops::ControlFlow::Break(right_end),
+                    }
+                },
+            );
 
             if let std::ops::ControlFlow::Break(line_width) = line_width && line_width <= width {
                 return;
@@ -283,7 +281,7 @@ impl ui::Area for Area {
         }
 
         let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first_char) {
-            let cfg = IterCfg::new(cfg).chars_at(info.first_char).outsource_lfs();
+            let cfg = IterCfg::new(cfg).outsource_lfs();
             (text.iter_at(start), cfg)
         } else {
             let cfg = IterCfg::new(cfg)
@@ -295,7 +293,7 @@ impl ui::Area for Area {
 
         let form_former = palette.form_former();
         let active = self.is_active();
-        let iter = print_iter(iter, coords.width(), cfg, info.ghost_pos);
+        let iter = print_iter(iter, coords.width(), cfg, *info);
         let y = print_parts(iter, coords, active, *info, form_former, &mut stdout);
 
         for y in (0..y).rev() {
@@ -369,17 +367,17 @@ impl ui::Area for Area {
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        let ghost_pos = self.print_info.borrow().ghost_pos;
-        print_iter(iter, self.width(), cfg, ghost_pos)
+        print_iter(iter, self.width(), cfg, PrintInfo::default())
     }
 
-    fn precise_print_iter<'a>(
+    fn print_iter_from_top<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        text: &'a Text,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        let ghost_pos = self.print_info.borrow().ghost_pos;
-        print_iter(iter, self.width(), cfg, ghost_pos)
+        let info = self.print_info.borrow();
+        let iter = text.iter_at(info.first_char);
+        print_iter(iter, self.width(), cfg, *info)
     }
 
     fn rev_print_iter<'a>(
@@ -404,7 +402,7 @@ pub struct PrintInfo {
     first_char: usize,
     /// The index of the first [`char`] that should be printed,
     /// relative to the beginning of a ghost text.
-    ghost_pos: usize,
+    first_ghost: usize,
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.

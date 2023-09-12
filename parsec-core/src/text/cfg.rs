@@ -156,7 +156,6 @@ impl Default for PrintCfg {
 pub struct IterCfg<'a> {
     cfg: &'a PrintCfg,
     iter_lfs: bool,
-    first_char: Option<usize>,
     force_wrap: Option<WrapMethod>,
     no_indent_wrap: bool
 }
@@ -166,7 +165,6 @@ impl<'a> IterCfg<'a> {
         Self {
             cfg,
             iter_lfs: true,
-            first_char: None,
             force_wrap: None,
             no_indent_wrap: false
         }
@@ -188,20 +186,12 @@ impl<'a> IterCfg<'a> {
         }
     }
 
-    pub fn chars_at(self, first_char: usize) -> Self {
-        Self { first_char: Some(first_char), ..self }
-    }
-
     pub fn no_indent_wrap(self) -> Self {
         Self { no_indent_wrap: true, ..self }
     }
 
     pub fn show_lf(&self) -> bool {
         self.iter_lfs
-    }
-
-    pub fn first_char(&self) -> usize {
-        self.first_char.unwrap_or(0)
     }
 
     pub fn wrap_method(&self) -> WrapMethod {

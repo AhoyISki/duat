@@ -244,9 +244,9 @@ pub trait Area: Clone + PartialEq + Send + Sync {
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
-    fn precise_print_iter<'a>(
+    fn print_iter_from_top<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        text: &'a Text,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
