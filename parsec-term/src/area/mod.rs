@@ -297,12 +297,8 @@ impl ui::Area for Area {
         let y = print_parts(iter, coords, active, *info, form_former, &mut stdout);
 
         for y in (0..y).rev() {
-            clear_line(
-                Coord::new(coords.tl.x, coords.br.y - y),
-                coords,
-                0,
-                &mut stdout,
-            );
+            let coord = Coord::new(coords.tl.x, coords.br.y - y);
+            clear_line(coord, coords, 0, &mut stdout);
         }
 
         if SHOW_CURSOR.load(Ordering::Acquire) {

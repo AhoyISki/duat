@@ -240,7 +240,7 @@ impl FileWidget {
 
 impl PassiveWidget for FileWidget {
     fn build<U>(
-        controler: &crate::Controler<U>,
+        controler: &Controler<U>,
     ) -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
     where
         U: Ui,

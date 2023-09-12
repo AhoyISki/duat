@@ -63,7 +63,7 @@ use crate::{
     status_parts,
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, forms::Form,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -191,16 +191,13 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
             continue;
         };
 
-        if let Some((text_start, (_, form_id))) = text[(l_index + 1)..next_l_index]
-            .find(']')
-            .and_then(|r_index| {
-                let form_name = &text[(l_index + 1)..=(l_index + r_index)];
-                palette
-                    .get_from_name(form_name)
-                    .map(|form_id| (l_index + r_index + 2, form_id))
-            })
-        {
-            builder.push_tag(BuilderTag::PushForm(form_id));
+        if let Some((text_start, id)) = text[(l_index + 1)..next_l_index].find(']').map(|r_index| {
+            let name = &text[(l_index + 1)..=(l_index + r_index)];
+            let (_, id) = palette.from_name(name);
+
+            (l_index + r_index + 2, id)
+        }) {
+            builder.push_tag(BuilderTag::PushForm(id));
             builder.push_text(&text[text_start..next_l_index]);
         } else {
             builder.push_text(&text[l_index..next_l_index]);
@@ -233,6 +230,12 @@ impl StatusLineCfg {
     {
         move |controler| {
             let palette = &controler.palette;
+
+            palette.try_set_form("FileName", Form::new().yellow().italic());
+            palette.try_set_form("Selections", Form::new().dark_blue());
+            palette.try_set_form("Coords", Form::new().dark_red());
+            palette.try_set_form("Separator", Form::new().cyan());
+
             let parts = self.parts.unwrap_or_else(default_parts);
 
             let (file, input) = if self.is_global {
@@ -413,7 +416,7 @@ fn default_parts() -> Vec<StatusPart> {
         file_name,
         " [Selections]",
         selections_fmt,
-        "[Coords]",
+        " [Coords]",
         main_col,
         "[Separator]:[Coords]",
         main_line,

@@ -102,7 +102,7 @@ impl VertRuleCfg {
             let input = controler.current_input();
 
             let palette = controler.palette();
-            let main = palette.set_new_form("VertRule", Form::new().grey());
+            let main = palette.try_set_form("VertRule", Form::new().grey());
             let upper = palette.set_new_ref("UpperVertRule", "VertRule");
             let lower = palette.set_new_ref("LowerVertRule", "VertRule");
 

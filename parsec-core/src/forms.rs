@@ -1,7 +1,11 @@
+use std::sync::RwLockReadGuard;
+
 use crossterm::{
     cursor::SetCursorStyle,
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
+
+use crate::{data::{ReadableData, RwData}, log_info};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
@@ -97,39 +101,189 @@ impl std::fmt::Debug for CursorStyle {
     }
 }
 
-#[derive(Default, Clone)]
-pub struct ExtraForms(Vec<(String, Form)>);
-
 pub const DEFAULT: FormId = FormId(0);
-pub const LINE_NUMBERS: FormId = FormId(1);
-pub const MAIN_LINE_NUMBER: FormId = FormId(2);
-pub const WRAPPED_LINE_NUMBERS: FormId = FormId(3);
-pub const WRAPPED_MAIN_LINE_NUMBER: FormId = FormId(4);
 pub const MAIN_SEL: FormId = FormId(5);
 pub const EXTRA_SEL: FormId = FormId(6);
-pub const FILE_NAME: FormId = FormId(7);
-pub const SELECTIONS: FormId = FormId(8);
-pub const COORDS: FormId = FormId(9);
-pub const SEPARATOR: FormId = FormId(10);
 
 #[derive(Clone, Copy)]
-enum Named {
+enum Kind {
     Form(Form),
     Ref(&'static str),
 }
 
-impl Default for Named {
-    fn default() -> Self {
-        Named::Form(Form::default())
+struct InnerPalette {
+    main_cursor: CursorStyle,
+    extra_cursor: CursorStyle,
+    forms: Vec<(&'static str, Kind)>,
+}
+
+impl InnerPalette {
+    fn get_from_name(&self, mut name: &'static str) -> Option<(Form, FormId)> {
+        let iter = self.forms.iter().enumerate();
+
+        loop {
+            match iter.clone().find(|(_, (cmp, _))| *cmp == name) {
+                Some((index, (_, Kind::Form(form)))) => break Some((*form, FormId(index))),
+                Some((_, (_, Kind::Ref(referenced)))) => name = referenced,
+                None => break None,
+            }
+        }
     }
 }
 
 /// The list of forms to be used when rendering.
 #[derive(Clone)]
-pub struct FormPalette {
-    main_cursor: CursorStyle,
-    extra_cursor: CursorStyle,
-    forms: Vec<(String, Named)>,
+pub struct FormPalette(RwData<InnerPalette>);
+
+impl FormPalette {
+    pub fn new() -> Self {
+        let main_cursor = CursorStyle::new(
+            Some(SetCursorStyle::DefaultUserShape),
+            Form::new().reverse(),
+        );
+
+        let forms = vec![
+            ("Default", Kind::Form(Form::default())),
+            ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
+            ("ExtraSelection", Kind::Ref("MainSelection")),
+        ];
+
+        let inner = InnerPalette {
+            main_cursor,
+            extra_cursor: main_cursor,
+            forms,
+        };
+
+        Self(RwData::new(inner))
+    }
+
+    /// Sets the `Form` with a given name to a new one.
+    pub fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+        let name = name.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some((index, (_, old_form))) = inner
+            .forms
+            .iter_mut()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+        {
+            *old_form = Kind::Form(form);
+            FormId(index)
+        } else {
+            inner.forms.push((name, Kind::Form(form)));
+            FormId(inner.forms.len() - 1)
+        }
+    }
+
+    pub fn try_set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+        let name = name.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some((_, form_id)) = inner.get_from_name(name) {
+            form_id
+        } else {
+            inner.forms.push((name, Kind::Form(form)));
+            FormId(inner.forms.len() - 1)
+        }
+    }
+
+    /// Sets the `Form` with a given name to a new one.
+    pub fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+        log_info!("set ref");
+        let name = name.as_ref().to_string().leak();
+        let referenced: &'static str = referenced.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some((_, old_form)) = inner.forms.iter_mut().find(|(cmp, _)| *cmp == name) {
+            *old_form = Kind::Ref(referenced);
+            drop(inner);
+            self.from_name(referenced).1
+        } else {
+            inner.forms.push((name, Kind::Ref(referenced)));
+            drop(inner);
+            self.from_name(referenced).1
+        }
+    }
+
+    pub fn set_new_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+        log_info!("set new ref");
+        let name = name.as_ref().to_string().leak();
+        let referenced: &'static str = referenced.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some((_, form_id)) = inner.get_from_name(name) {
+            form_id
+        } else {
+            inner.forms.push((name, Kind::Ref(referenced)));
+            drop(inner);
+            self.from_name(referenced).1
+        }
+    }
+
+    /// Returns the `Form` associated to a given name with the index
+    /// for efficient access.
+    ///
+    /// If a [`Form`] with the given name was not added prior, it will be added
+    /// with the same form as the "Default" form.
+    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
+        log_info!("from name");
+        let name = name.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some((form, id)) = inner.get_from_name(name) {
+            (form, id)
+        } else {
+            let name = name.to_string().leak();
+            inner.forms.push((name, Kind::Ref("Default")));
+            drop(inner);
+            self.from_name("Default")
+        }
+    }
+
+    /// Returns a form, given an index.
+    pub fn from_id(&self, id: FormId) -> Form {
+        log_info!("from id");
+        let inner = self.0.read();
+
+        let nth = inner.forms.get(id.0).and_then(|(_, kind)| match kind {
+            Kind::Form(form) => Some(*form),
+            Kind::Ref(name) => inner.get_from_name(name).map(|(form, _)| form),
+        });
+
+        let Some(ret) = nth else {
+            unreachable!("Form with id {} not found, this should never happen", id.0);
+        };
+        ret
+    }
+
+    pub fn main_cursor(&self) -> CursorStyle {
+        self.0.read().main_cursor
+    }
+
+    pub fn extra_cursor(&self) -> CursorStyle {
+        self.0.read().extra_cursor
+    }
+
+    pub fn set_main_cursor(&mut self, style: CursorStyle) {
+        self.0.write().main_cursor = style;
+    }
+
+    pub fn set_extra_cursor(&mut self, style: CursorStyle) {
+        self.0.write().extra_cursor = style;
+    }
+
+    pub fn form_former(&self) -> FormFormer {
+        FormFormer {
+            palette: self.0.read(),
+            forms: Vec::new(),
+        }
+    }
 }
 
 impl Default for FormPalette {
@@ -138,132 +292,8 @@ impl Default for FormPalette {
     }
 }
 
-impl FormPalette {
-    pub fn new() -> Self {
-        let main_cursor = CursorStyle::new(
-            Some(SetCursorStyle::DefaultUserShape),
-            Form::new().reverse(),
-        );
-        let forms = vec![
-            (String::from("Default"), Named::default()),
-            (String::from("LineNumbers"), Named::default()),
-            (String::from("MainLineNumber"), Named::Ref("LineNumbers")),
-            (
-                String::from("WrappedLineNumbers"),
-                Named::Ref("LineNumbers"),
-            ),
-            (
-                String::from("WrappedMainLineNumber"),
-                Named::Ref("WrappedLineNumbers"),
-            ),
-            (
-                String::from("MainSelection"),
-                Named::Form(Form::new().on_dark_grey()),
-            ),
-            (String::from("ExtraSelection"), Named::Ref("MainSelection")),
-            // Forms for a basic `StatusLine`.
-            (
-                String::from("FileName"),
-                Named::Form(Form::new().dark_yellow().italic()),
-            ),
-            (
-                String::from("Selections"),
-                Named::Form(Form::new().dark_blue()),
-            ),
-            (String::from("Coords"), Named::Form(Form::new().yellow())),
-            (String::from("Separator"), Named::Form(Form::new().cyan())),
-        ];
-
-        Self {
-            main_cursor,
-            extra_cursor: main_cursor,
-            forms,
-        }
-    }
-
-    /// Sets the `Form` with a given name to a new one.
-    pub fn set_form(&mut self, name: impl ToString, form: Form) {
-        let name = name.to_string();
-
-        let name_match = self.forms.iter_mut().find(|(cmp, _)| *cmp == name);
-        if let Some((_, old_form)) = name_match {
-            *old_form = Named::Form(form)
-        } else {
-            self.forms.push((name.to_string(), Named::Form(form)));
-        }
-    }
-
-    /// Returns the `Form` associated to a given name with the index
-    /// for efficient access.
-    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
-        let Some(ret) = self.get_from_name(&name) else {
-            panic!("Form with name {} not found.", name.as_ref());
-        };
-        ret
-    }
-
-    /// Non-panicking version of
-    /// [`from_name()`][FormPalette::from_name]
-    pub fn get_from_name(&self, name: impl AsRef<str>) -> Option<(Form, FormId)> {
-        let mut name = name.as_ref();
-
-        while let Some((index, (_, named))) = self
-            .forms
-            .iter()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-        {
-            match named {
-                Named::Form(form) => return Some((*form, FormId(index))),
-                Named::Ref(ref_name) => name = ref_name,
-            }
-        }
-        None
-    }
-
-    /// Returns a form, given an index.
-    pub fn from_id(&self, form_id: FormId) -> Form {
-        let Some(ret) = self.get_from_id(form_id) else {
-            panic!("Form with id {} not found", form_id.0);
-        };
-        ret
-    }
-
-    /// Non-panicking version of [`from_id()`][Self::from_id]
-    pub fn get_from_id(&self, form_id: FormId) -> Option<Form> {
-        let named = self.forms.get(form_id.0).map(|(_, named)| *named);
-        named.map(|named| match named {
-            Named::Form(form) => form,
-            Named::Ref(name) => self.from_name(name).0,
-        })
-    }
-
-    pub fn main_cursor(&self) -> &CursorStyle {
-        &self.main_cursor
-    }
-
-    pub fn secondary_cursor(&self) -> &CursorStyle {
-        &self.extra_cursor
-    }
-
-    pub fn set_main_cursor(&mut self, style: CursorStyle) {
-        self.main_cursor = style;
-    }
-
-    pub fn set_secondary_cursor(&mut self, style: CursorStyle) {
-        self.extra_cursor = style;
-    }
-
-    pub fn form_former(&self) -> FormFormer {
-        FormFormer {
-            palette: self,
-            forms: Vec::new(),
-        }
-    }
-}
-
 pub struct FormFormer<'a> {
-    palette: &'a FormPalette,
+    palette: RwLockReadGuard<'a, InnerPalette>,
     forms: Vec<(Form, FormId)>,
 }
 
@@ -271,8 +301,14 @@ impl<'a> FormFormer<'a> {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
     pub fn apply(&mut self, id: FormId) -> Form {
-        let form = self.palette.from_id(id);
-        self.forms.push((form, id));
+        let form = match self.palette.forms.get(id.0) {
+            Some((_, Kind::Form(form))) => form,
+            Some((_, Kind::Ref(referenced))) => panic!("{referenced}"),
+            _ => {
+                unreachable!("This should not be possible");
+            }
+        };
+        self.forms.push((*form, id));
         self.make_form()
     }
 

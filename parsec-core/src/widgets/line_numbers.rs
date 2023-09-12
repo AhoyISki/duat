@@ -25,7 +25,7 @@ use std::fmt::Alignment;
 use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RoData},
-    forms::{LINE_NUMBERS, MAIN_LINE_NUMBER, WRAPPED_LINE_NUMBERS, WRAPPED_MAIN_LINE_NUMBER},
+    forms::{Form, FormId},
     input::InputMethod,
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
@@ -39,6 +39,7 @@ pub struct LineNumbers {
     input: RoData<dyn InputMethod>,
     builder: TextBuilder,
     cfg: LineNumbersCfg,
+    forms: (FormId, FormId, FormId, FormId),
 }
 
 impl LineNumbers {
@@ -75,8 +76,8 @@ impl LineNumbers {
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);
-            let tag = get_tag(is_main_line, *is_wrapped);
-            let text = get_text(*line, main_line, *is_wrapped, &self.cfg);
+            let tag = get_tag(is_main_line, *is_wrapped, &self.forms);
+            let text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
 
             let align_tag = {
                 let alignment = if is_main_line {
@@ -185,11 +186,18 @@ impl LineNumbersCfg {
             let file = controler.current_file();
             let specs = self.specs;
 
+            let palette = &controler.palette;
+            let other = palette.try_set_form("LineNum", Form::new().grey());
+            let main = palette.try_set_form("MainLineNum", Form::new().yellow());
+            let wrapped = palette.try_set_form("WrappedLineNum", Form::new().cyan().italic());
+            let wrapped_main = palette.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
+
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
                 input: controler.current_input(),
                 builder: TextBuilder::default(),
                 cfg: self,
+                forms: (other, main, wrapped, wrapped_main),
             };
             line_numbers.update_text();
 
@@ -284,12 +292,16 @@ impl LineNumbersCfg {
 }
 
 /// Gets the [`Tag`], according to line positioning.
-fn get_tag(is_main_line: bool, is_wrapped: bool) -> BuilderTag {
+fn get_tag(
+    is_main_line: bool,
+    is_wrapped: bool,
+    (other, main, wrapped_other, wrapped_main): &(FormId, FormId, FormId, FormId),
+) -> BuilderTag {
     BuilderTag::PushForm(match (is_main_line, is_wrapped) {
-        (false, false) => LINE_NUMBERS,
-        (false, true) => WRAPPED_LINE_NUMBERS,
-        (true, false) => MAIN_LINE_NUMBER,
-        (true, true) => WRAPPED_MAIN_LINE_NUMBER,
+        (false, false) => *other,
+        (false, true) => *wrapped_other,
+        (true, false) => *main,
+        (true, true) => *wrapped_main,
     })
 }
 

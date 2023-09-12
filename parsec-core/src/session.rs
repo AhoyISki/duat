@@ -112,6 +112,10 @@ where
         }
     }
 
+    pub fn with_palette(self, palette: FormPalette) -> Self {
+        Self { palette, ..self }
+    }
+
     pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {
         Self {
             file_cfg: self.file_cfg.with_print_cfg(cfg),

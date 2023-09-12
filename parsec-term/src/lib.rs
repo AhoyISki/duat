@@ -129,4 +129,4 @@ impl std::fmt::Debug for ConstraintChangeErr {
 }
 
 pub use area::{Area, Coords};
-pub use rules::{SepChar, SepForm, VertRule, VertRuleCfg};
+pub use rules::{VertRule, VertRuleCfg};

@@ -66,7 +66,7 @@ where
     active_input: RwData<RwData<dyn InputMethod>>,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
-    pub palette: FormPalette,
+    palette: FormPalette,
 }
 
 /// # Querying Functions
@@ -174,6 +174,10 @@ where
     /// [`dyn_active_input`]: Self::dyn_active_input
     pub fn current_input(&self) -> RoData<dyn InputMethod> {
         RoData::from(&*self.active_input.read())
+    }
+
+    pub fn palette(&self) -> &FormPalette {
+        &self.palette
     }
 }
 
