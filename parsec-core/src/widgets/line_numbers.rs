@@ -27,7 +27,7 @@ use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::{Form, FormId},
     input::InputMethod,
-    text::{BuilderTag, Text, TextBuilder},
+    text::{build_text, Text, TextBuilder, Tag},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler, PALETTE,
 };
@@ -39,7 +39,6 @@ pub struct LineNumbers {
     input: RoData<dyn InputMethod>,
     builder: TextBuilder,
     cfg: LineNumbersCfg,
-    forms: (FormId, FormId, FormId, FormId),
 }
 
 impl LineNumbers {
@@ -74,36 +73,23 @@ impl LineNumbers {
         let file = self.file.read();
         let printed_lines = file.printed_lines();
 
+        self.builder.clear();
+
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);
-            let tag = get_tag(is_main_line, *is_wrapped, &self.forms);
-            let text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
 
-            let align_tag = {
-                let alignment = if is_main_line {
-                    self.cfg.main_alignment
-                } else {
-                    self.cfg.alignment
-                };
-                match alignment {
-                    Alignment::Left => BuilderTag::AlignLeft,
-                    Alignment::Right => BuilderTag::AlignRight,
-                    Alignment::Center => BuilderTag::AlignCenter,
-                }
-            };
+            let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
+            let align_tag = get_align(&self.cfg, is_main_line);
 
-            if index < self.builder.ranges_len() {
-                self.builder.swap_tag(index * 2, align_tag);
-                self.builder.swap_tag(index * 2 + 1, tag);
-                self.builder.swap_range(index, &text);
-            } else {
-                self.builder.push_tag(align_tag);
-                self.builder.push_tag(tag);
-                self.builder.push_swappable(&text);
+            match (is_main_line, is_wrapped) {
+                (false, false) => build_text!(self.builder, [LineNum]),
+                (true, false) => build_text!(self.builder, [MainLineNum]),
+                (false, true) => build_text!(self.builder, [WrappedLineNum]),
+                (true, true) => build_text!(self.builder, [WrappedMainLineNum]),
             }
-        }
 
-        self.builder.truncate(printed_lines.len());
+            build_text!(self.builder, ((align_tag)) num_text);
+        }
     }
 }
 
@@ -186,17 +172,16 @@ impl LineNumbersCfg {
             let file = controler.current_file();
             let specs = self.specs;
 
-            let other = PALETTE.try_set_form("LineNum", Form::new().grey());
-            let main = PALETTE.try_set_form("MainLineNum", Form::new().yellow());
-            let wrapped = PALETTE.try_set_form("WrappedLineNum", Form::new().cyan().italic());
-            let wrapped_main = PALETTE.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
+            PALETTE.try_set_form("LineNum", Form::new().grey());
+            PALETTE.try_set_form("MainLineNum", Form::new().yellow());
+            PALETTE.try_set_form("WrappedLineNum", Form::new().cyan().italic());
+            PALETTE.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
 
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
                 input: controler.current_input(),
                 builder: TextBuilder::default(),
                 cfg: self,
-                forms: (other, main, wrapped, wrapped_main),
             };
             line_numbers.update_text();
 
@@ -293,37 +278,50 @@ impl LineNumbersCfg {
 unsafe impl Send for LineNumbers {}
 unsafe impl Sync for LineNumbers {}
 
-/// Gets the [`Tag`], according to line positioning.
-fn get_tag(
-    is_main_line: bool,
-    is_wrapped: bool,
-    (other, main, wrapped_other, wrapped_main): &(FormId, FormId, FormId, FormId),
-) -> BuilderTag {
-    BuilderTag::PushForm(match (is_main_line, is_wrapped) {
-        (false, false) => *other,
-        (false, true) => *wrapped_other,
-        (true, false) => *main,
-        (true, true) => *wrapped_main,
-    })
-}
-
 /// Writes the text of the line number to a given [`String`].
 fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {
     if is_wrapped && !cfg.show_wraps {
         String::from("\n")
     } else if let Some(main) = main {
         match cfg.numbers {
-            Numbers::Absolute => (line + 1).to_string() + "\n",
-            Numbers::Relative => usize::abs_diff(line, main).to_string() + "\n",
+            Numbers::Absolute => (line + 1).to_string(),
+            Numbers::Relative => usize::abs_diff(line, main).to_string(),
             Numbers::RelAbs => {
                 if line != main {
-                    usize::abs_diff(line, main).to_string() + "\n"
+                    usize::abs_diff(line, main).to_string()
                 } else {
-                    (line + 1).to_string() + "\n"
+                    (line + 1).to_string()
                 }
             }
         }
     } else {
-        (line + 1).to_string() + "\n"
+        (line + 1).to_string()
+    }
+}
+
+/// Gets the [`Tag`], according to line positioning.
+fn get_form(
+    is_main_line: bool,
+    is_wrapped: bool,
+    (other, main, wrapped_other, wrapped_main): &(FormId, FormId, FormId, FormId),
+) -> FormId {
+    match (is_main_line, is_wrapped) {
+        (false, false) => *other,
+        (false, true) => *wrapped_other,
+        (true, false) => *main,
+        (true, true) => *wrapped_main,
+    }
+}
+
+fn get_align(cfg: &LineNumbersCfg, is_main_line: bool) -> Tag {
+    let alignment = if is_main_line {
+        cfg.main_alignment
+    } else {
+        cfg.alignment
+    };
+    match alignment {
+        Alignment::Left => Tag::AlignLeft,
+        Alignment::Right => Tag::AlignRight,
+        Alignment::Center => Tag::AlignCenter,
     }
 }

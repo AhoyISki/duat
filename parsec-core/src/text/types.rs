@@ -1,11 +1,12 @@
-use super::{
-    tags::{RawTag, ToggleId},
-    Handle,
-};
-use crate::{forms::FormId, position::Point};
+use std::rc::Rc;
+
+use crossterm::event::MouseEventKind;
+
+use super::tags::RawTag;
+use crate::{forms::FormId, position::Point, PALETTE};
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub enum Part {
     Char(char),
     PushForm(FormId),
@@ -15,39 +16,45 @@ pub enum Part {
     AlignLeft,
     AlignCenter,
     AlignRight,
-    HoverStart(ToggleId),
-    HoverEnd(ToggleId),
-    LeftButtonStart(ToggleId),
-    LeftButtonEnd(ToggleId),
-    RightButtonStart(ToggleId),
-    RightButtonEnd(ToggleId),
-    MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId),
+    ToggleStart(Rc<Toggle>),
+    ToggleEnd(Rc<Toggle>),
     Termination,
 }
 
 impl From<RawTag> for Part {
     fn from(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(id, _) => Part::PushForm(id),
-            RawTag::PopForm(id, _) => Part::PopForm(id),
-            RawTag::MainCursor(_) => Part::MainCursor,
-            RawTag::ExtraCursor(_) => Part::ExtraCursor,
-            RawTag::AlignLeft(_) => Part::AlignLeft,
-            RawTag::AlignCenter(_) => Part::AlignCenter,
-            RawTag::AlignRight(_) => Part::AlignRight,
-            RawTag::HoverStart(id, _) => Part::HoverStart(id),
-            RawTag::HoverEnd(id, _) => Part::HoverEnd(id),
-            RawTag::LeftButtonStart(id, _) => Part::LeftButtonStart(id),
-            RawTag::LeftButtonEnd(id, _) => Part::LeftButtonEnd(id),
-            RawTag::RightButtonStart(id, _) => Part::RightButtonStart(id),
-            RawTag::RightButtonEnd(id, _) => Part::RightButtonEnd(id),
-            RawTag::MiddleButtonStart(id, _) => Part::MiddleButtonStart(id),
-            RawTag::MiddleButtonEnd(id, _) => Part::MiddleButtonEnd(id),
-            RawTag::Concealed(..) => Part::Termination,
-            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => {
-                unreachable!()
+            RawTag::PushForm(id) => Part::PushForm(id),
+            RawTag::PopForm(id) => Part::PopForm(id),
+            RawTag::MainCursor => Part::MainCursor,
+            RawTag::ExtraCursor => Part::ExtraCursor,
+            RawTag::AlignLeft => Part::AlignLeft,
+            RawTag::AlignCenter => Part::AlignCenter,
+            RawTag::AlignRight => Part::AlignRight,
+            RawTag::ToggleStart(toggle) => Part::ToggleStart(toggle),
+            RawTag::ToggleEnd(toggle) => Part::ToggleEnd(toggle),
+            RawTag::Concealed(_) => Part::Termination,
+            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::GhostText(..) => {
+                unreachable!("These tags are automatically processed elsewhere.")
             }
+        }
+    }
+}
+
+impl std::fmt::Debug for Part {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Part::Char(char) => f.debug_tuple("Char").field(char).finish(),
+            Part::PushForm(form_id) => f.debug_tuple("PushForm").field(form_id).finish(),
+            Part::PopForm(form_id) => f.debug_tuple("PopForm").field(form_id).finish(),
+            Part::MainCursor => f.debug_tuple("MainCursor ").finish(),
+            Part::ExtraCursor => f.debug_tuple("ExtraCursor ").finish(),
+            Part::AlignLeft => f.debug_tuple("AlignLeft ").finish(),
+            Part::AlignCenter => f.debug_tuple("AlignCenter ").finish(),
+            Part::AlignRight => f.debug_tuple("AlignRight ").finish(),
+            Part::ToggleStart(_) => f.debug_tuple("ToggleStart").finish(),
+            Part::ToggleEnd(_) => f.debug_tuple("ToggleEnd").finish(),
+            Part::Termination => f.debug_tuple("Termination ").finish(),
         }
     }
 }
@@ -74,75 +81,4 @@ impl Part {
     }
 }
 
-pub type ButtonFn = Box<dyn Fn(Point) + Send + Sync>;
-
-/// A subset of [`Tag`], that can be used by a [`TextBuilder`].
-///
-/// This subset excludes, for example, all cursor related tags, and all text
-/// hiding/ghost text tags.
-pub enum BuilderTag {
-    PushForm(FormId),
-    PopForm(FormId),
-    AlignLeft,
-    AlignCenter,
-    AlignRight,
-
-    HoverStartNew(ButtonFn, ButtonFn),
-    HoverStart(ToggleId),
-    HoverEnd(ToggleId),
-
-    LeftButtonStartNew(ButtonFn, ButtonFn),
-    LeftButtonStart(ToggleId),
-    LeftButtonEnd(ToggleId),
-
-    RightButtonStartNew(ButtonFn, ButtonFn),
-    RightButtonStart(ToggleId),
-    RightButtonEnd(ToggleId),
-
-    MiddleButtonStartNew(ButtonFn, ButtonFn),
-    MiddleButtonStart(ToggleId),
-    MiddleButtonEnd(ToggleId),
-}
-
-impl BuilderTag {
-    pub(super) fn into_raw(
-        self,
-        handle: Handle,
-        toggles: &mut Vec<(ButtonFn, ButtonFn)>,
-    ) -> RawTag {
-        match self {
-            BuilderTag::PushForm(id) => RawTag::PushForm(id, handle),
-            BuilderTag::PopForm(id) => RawTag::PopForm(id, handle),
-            BuilderTag::AlignLeft => RawTag::AlignLeft(handle),
-            BuilderTag::AlignCenter => RawTag::AlignCenter(handle),
-            BuilderTag::AlignRight => RawTag::AlignRight(handle),
-            BuilderTag::HoverStartNew(on_fn, off_fn) => {
-                toggles.push((on_fn, off_fn));
-                RawTag::HoverStart(ToggleId::new(toggles.len() - 1), handle)
-            }
-            BuilderTag::HoverStart(id) => RawTag::HoverStart(id, handle),
-            BuilderTag::HoverEnd(id) => RawTag::HoverEnd(id, handle),
-
-            BuilderTag::LeftButtonStartNew(on_fn, off_fn) => {
-                toggles.push((on_fn, off_fn));
-                RawTag::LeftButtonStart(ToggleId::new(toggles.len() - 1), handle)
-            }
-            BuilderTag::LeftButtonStart(id) => RawTag::LeftButtonStart(id, handle),
-            BuilderTag::LeftButtonEnd(id) => RawTag::LeftButtonEnd(id, handle),
-
-            BuilderTag::RightButtonStartNew(on_fn, off_fn) => {
-                toggles.push((on_fn, off_fn));
-                RawTag::RightButtonStart(ToggleId::new(toggles.len() - 1), handle)
-            }
-            BuilderTag::RightButtonStart(id) => RawTag::RightButtonStart(id, handle),
-            BuilderTag::RightButtonEnd(id) => RawTag::RightButtonEnd(id, handle),
-
-            BuilderTag::MiddleButtonStartNew(on_fn, off_fn) => {
-                toggles.push((on_fn, off_fn));
-                RawTag::MiddleButtonStart(ToggleId::new(toggles.len() - 1), handle)
-            }
-            BuilderTag::MiddleButtonStart(id) => RawTag::MiddleButtonStart(id, handle),
-            BuilderTag::MiddleButtonEnd(id) => RawTag::MiddleButtonEnd(id, handle),
-        }
-    }
-}
+pub type Toggle = dyn Fn(Point, MouseEventKind) + Send + Sync;

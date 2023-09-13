@@ -62,7 +62,7 @@ use crate::{
     forms::Form,
     input::InputMethod,
     status_parts,
-    text::{BuilderTag, Text, TextBuilder},
+    text::{Text, TextBuilder, Tag},
     ui::{Area, PushSpecs, Ui},
     Controler, PALETTE,
 };
@@ -70,14 +70,14 @@ use crate::{
 /// A struct that holds mutable readers, either from a file, or from
 /// individual [`RoData<T>`]s
 pub enum Reader {
-    Var(Box<dyn Fn() -> String + Send + Sync + 'static>),
-    File(Box<dyn Fn(&FileWidget, &dyn InputMethod) -> String + Send + Sync + 'static>),
+    Var(Box<dyn FnMut() -> Text + Send + Sync + 'static>),
+    File(Box<dyn FnMut(&FileWidget, &dyn InputMethod) -> Text + Send + Sync + 'static>),
 }
 
 impl Reader {
     /// Reads the current state of [`self`] and applies a function
     /// that returns a [`String`].
-    fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> String {
+    fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> Text {
         match self {
             Var(var_fn) => var_fn(),
             File(file_fn) => file_fn(file, input),
@@ -94,7 +94,7 @@ enum ReaderOrText {
 /// [`&'static str`][str], or a dynamically updated [`Reader`].
 pub struct StatusPart {
     reader_or_text: ReaderOrText,
-    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+    checker: Option<Box<dyn FnMut() -> bool + Send + Sync>>,
 }
 
 impl StatusPart {
@@ -105,14 +105,17 @@ impl StatusPart {
         builder: &mut TextBuilder,
         file: &FileWidget,
         input: &dyn InputMethod,
-    ) -> (Option<Reader>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
+    ) -> (
+        Option<Reader>,
+        Option<Box<dyn FnMut() -> bool + Send + Sync>>,
+    ) {
         match self.reader_or_text {
-            ReaderOrText::Reader(Reader::Var(obj_fn)) => {
-                builder.push_swappable(obj_fn());
+            ReaderOrText::Reader(Reader::Var(mut obj_fn)) => {
+                builder.push_text(obj_fn());
                 (Some(Reader::Var(obj_fn)), self.checker)
             }
-            ReaderOrText::Reader(Reader::File(file_fn)) => {
-                builder.push_swappable(file_fn(file, input));
+            ReaderOrText::Reader(Reader::File(mut file_fn)) => {
+                builder.push_text(file_fn(file, input));
                 (Some(Reader::File(file_fn)), self.checker)
             }
             ReaderOrText::Text(text) => {
@@ -150,14 +153,14 @@ impl From<String> for StatusPart {
     }
 }
 
-impl<S, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for StatusPart
+impl<T, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for StatusPart
 where
-    S: ToString,
-    ReadFn: Fn() -> S + Send + Sync + 'static,
+    T: Into<Text>,
+    ReadFn: Fn() -> T + Send + Sync + 'static,
     CheckFn: Fn() -> bool + Send + Sync + 'static,
 {
     fn from((reader, checker): (ReadFn, CheckFn)) -> Self {
-        let reader = move || reader().to_string();
+        let reader = move || reader().into();
         StatusPart {
             reader_or_text: ReaderOrText::Reader(Reader::Var(Box::new(reader))),
             checker: Some(Box::new(checker)),
@@ -165,14 +168,13 @@ where
     }
 }
 
-impl<S, ReadFn> From<ReadFn> for StatusPart
+impl<T, ReadFn> From<ReadFn> for StatusPart
 where
-    S: ToString,
-    ReadFn: Fn(&FileWidget, &dyn InputMethod) -> S + Send + Sync + 'static,
+    T: Into<Text>,
+    ReadFn: Fn(&FileWidget, &dyn InputMethod) -> T + Send + Sync + 'static,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader =
-            move |file: &FileWidget, input: &dyn InputMethod| reader(file, input).to_string();
+        let reader = move |file: &FileWidget, input: &dyn InputMethod| reader(file, input).into();
         StatusPart {
             reader_or_text: ReaderOrText::Reader(Reader::File(Box::new(reader))),
             checker: None,
@@ -186,7 +188,7 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder) {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
         let Some(l_index) = prev_l_index else {
-            builder.push_text(&text[..next_l_index]);
+            builder.push_str(&text[..next_l_index]);
             prev_l_index = Some(next_l_index);
             continue;
         };
@@ -197,10 +199,10 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder) {
 
             (l_index + r_index + 2, id)
         }) {
-            builder.push_tag(BuilderTag::PushForm(id));
-            builder.push_text(&text[text_start..next_l_index]);
+            builder.push_tag(Tag::PushForm(id));
+            builder.push_str(&text[text_start..next_l_index]);
         } else {
-            builder.push_text(&text[l_index..next_l_index]);
+            builder.push_str(&text[l_index..next_l_index]);
         }
 
         prev_l_index = Some(next_l_index);
@@ -423,4 +425,21 @@ fn default_parts() -> Vec<StatusPart> {
         "[Separator]/[Coords]",
         len_lines
     ]
+}
+
+pub macro status_cfg {
+    (@push $builder:expr, $text:expr) => {
+
+    },
+    (@parse_text $builder:expr, $part:tt $($parts:tt)*) => {
+    },
+
+    ($($parts:tt)*) => {
+        use crate::{input::InputMethod, widgets::FileWidget};
+
+        let text_fn = |file: &FileWidget, input: &dyn InputMethod| {
+            let mut builder = crate::text::TextBuilder::new();
+            status_cfg!(@text builder, $($parts)*)
+        };
+    }
 }

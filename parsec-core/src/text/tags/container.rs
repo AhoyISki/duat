@@ -23,45 +23,30 @@ impl Container {
         match self {
             Container::Vec(vec) => {
                 let index = end_ch_to_index(vec, pos);
-                vec.splice(index..index, slice.iter().copied());
+                vec.splice(index..index, slice.iter().cloned());
             }
             Container::Rope(rope) => rope.insert_slice(pos, slice, usize::cmp),
         }
     }
 
+    // TODO: extract_if!!!!.
     pub fn remove_inclusive_on(&mut self, pos: usize, handle: Handle) -> Vec<(usize, RawTag)> {
         match self {
             Container::Vec(vec) => {
                 let start = start_ch_to_index(vec, pos);
                 let end = end_ch_to_index(&vec[start..], 0);
-                vec.extract_if(|t_or_s| match t_or_s {
-                    TagOrSkip::Tag(tag) => handle == tag.handle(),
-                    TagOrSkip::Skip(_) => false,
-                })
-                .take(end)
-                .skip(start)
-                .filter_map(|t_or_s| t_or_s.as_tag().map(|tag| (pos, tag)))
-                .collect()
+                vec.drain(start..end)
+                    .filter_map(|t_or_s| t_or_s.as_tag().map(|tag| (pos, tag)))
+                    .collect()
             }
             Container::Rope(rope) => {
                 let slice = rope.measure_slice(pos..pos, usize::cmp);
-                let mut removed = Vec::new();
-                let kept = slice
+                let removed = slice
                     .iter()
-                    .filter_map(|(_, t_or_s)| {
-                        if let TagOrSkip::Tag(tag) = t_or_s {
-                            if handle != tag.handle() {
-                                return Some(TagOrSkip::Tag(tag));
-                            } else {
-                                removed.push((pos, tag))
-                            }
-                        }
-                        None
-                    })
-                    .collect::<Vec<TagOrSkip>>();
+                    .filter_map(|(_, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
+                    .collect();
 
                 rope.remove_inclusive(pos..pos, usize::cmp);
-                rope.insert_slice(pos, kept.as_slice(), usize::cmp);
 
                 removed
             }

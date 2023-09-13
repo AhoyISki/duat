@@ -5,7 +5,6 @@ use crossterm::event::{self, Event};
 use crate::{
     commands::Commands,
     data::{ReadableData, RwData},
-    forms::FormPalette,
     input::{Editor, InputMethod},
     text::PrintCfg,
     ui::{build_file, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
@@ -23,7 +22,6 @@ where
 {
     ui: U,
     file_cfg: FileWidgetCfg<I>,
-    palette: FormPalette,
     file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
@@ -37,7 +35,6 @@ where
         SessionCfg {
             ui,
             file_cfg: FileWidget::config(),
-            palette: FormPalette::default(),
             file_fn: Box::new(|builder, _| {
                 builder.push(LineNumbers::build);
                 builder.push(StatusLine::build);
@@ -106,14 +103,9 @@ where
         SessionCfg {
             file_cfg: self.file_cfg.with_input(input),
             ui: self.ui,
-            palette: self.palette,
             file_fn: self.file_fn,
             window_fn: self.window_fn,
         }
-    }
-
-    pub fn with_palette(self, palette: FormPalette) -> Self {
-        Self { palette, ..self }
     }
 
     pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {

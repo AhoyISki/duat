@@ -15,13 +15,12 @@ use ropey::Rope;
 pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
-    tags::{Handle, InsertionTag as Tag},
-    types::{BuilderTag, Part},
+    tags::{Handle, Tag},
+    types::Part,
 };
 use self::{
     chars::Chars,
-    tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId},
-    types::ButtonFn,
+    tags::{RawTag, TagOrSkip, Tags},
 };
 use crate::{forms, history::Change, input::Cursors};
 
@@ -235,7 +234,7 @@ impl Text {
         let chars = self.chars.iter_at(0);
         let tags = self.tags.iter_at(0);
 
-        Iter::new(chars, tags, &self.tags.texts, 0, 0)
+        Iter::new(chars, tags, 0, 0)
     }
 
     /// TO BE DEPRECATED.
@@ -247,7 +246,7 @@ impl Text {
         let tags_start = start.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, &self.tags.texts, start, line).take_while(move |item| item.pos < end)
+        Iter::new(chars, tags, start, line).take_while(move |item| item.pos < end)
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<'_> {
@@ -257,7 +256,7 @@ impl Text {
         let tags_start = pos.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, &self.tags.texts, pos, line)
+        Iter::new(chars, tags, pos, line)
     }
 
     pub fn rev_iter(&self) -> RevIter {
@@ -265,7 +264,7 @@ impl Text {
         let chars = self.chars.rev_iter_at(start);
         let tags = self.tags.rev_iter_at(start);
 
-        RevIter::new(chars, tags, &self.tags.texts, start, start)
+        RevIter::new(chars, tags, start, start)
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> RevIter<'_> {
@@ -274,7 +273,7 @@ impl Text {
         let line = self.char_to_line(pos);
         let tags = self.tags.rev_iter_at(pos);
 
-        RevIter::new(chars, tags, &self.tags.texts, pos, line)
+        RevIter::new(chars, tags, pos, line)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
@@ -285,6 +284,13 @@ impl Text {
         self.iter_line(line).filter_map(|item| item.part.as_char())
     }
 }
+
+impl<S: ToString> From<S> for Text {
+    fn from(value: S) -> Self {
+        Text::new_string(value.to_string())
+    }
+}
+
 /// Builds and modifies a [`Text<U>`], based on replacements applied
 /// to it.
 ///
@@ -305,172 +311,58 @@ impl Text {
 /// [`text()`][Self::text()].
 pub struct TextBuilder {
     text: Text,
-    swappables: Vec<usize>,
+    last_tag: Option<RawTag>,
     handle: Handle,
-    toggles: Vec<(ButtonFn, ButtonFn)>,
 }
 
 impl TextBuilder {
-    pub fn push_text(&mut self, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-        let edit_len = edit.chars().count();
-        self.text.chars.as_mut_string().unwrap().push_str(edit);
-
-        self.add_to_last_skip(edit_len);
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn push_swappable(&mut self, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-        let edit_len = edit.chars().count();
+    pub fn finish(self) -> Text {
+        self.text
+    }
 
-        let last_skip = self
-            .text
-            .tags
-            .as_vec()
-            .unwrap()
-            .iter()
-            .filter(|t_or_s| matches!(t_or_s, TagOrSkip::Skip(_)))
-            .count();
-
-        self.swappables.push(last_skip);
-        self.text.chars.as_mut_string().unwrap().push_str(edit);
-
-        self.add_to_last_skip(edit_len);
+    pub fn push_str(&mut self, str: impl AsRef<str>) {
+        let range = self.text.len_chars()..self.text.len_chars();
+        let change = Change::new(str, range, &self.text);
+        self.text.apply_change(&change);
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
-    pub fn push_tag(&mut self, builder_tag: BuilderTag) {
-        let raw_tag = builder_tag.into_raw(self.handle, &mut self.toggles);
+    pub fn push_tag(&mut self, tag: Tag) {
         let tags = self.text.tags.as_mut_vec().unwrap();
-        tags.push(TagOrSkip::Tag(raw_tag));
-        if let Some(inv_tag) = raw_tag.inverse() {
+
+        if let Some(inv_tag) = self.last_tag.as_ref().and_then(RawTag::inverse) {
             tags.push(TagOrSkip::Tag(inv_tag));
         }
+
+        let raw_tag = tag.to_raw(self.handle);
+        tags.push(TagOrSkip::Tag(raw_tag));
+
+        self.last_tag = Some(raw_tag);
     }
 
-    /// Replaces a range with a new piece of text.
-    pub fn swap_range(&mut self, index: usize, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-        let swap_index = self.swappables[index];
-
-        let Some((start, skip)) = self.get_mut_skip(swap_index) else {
-            return;
+    pub fn push_text(&mut self, mut text: Text) {
+        let Some((chars, tags)) = text.chars.as_mut_string().zip(text.tags.as_mut_vec()) else {
+            panic!(
+                "Do not use Rope Texts when building Texts, it will be significantly slower with \
+                 no real benefit"
+            );
         };
-        let old_skip = *skip;
-        *skip = edit.chars().count();
 
-        self.text.chars.replace(start..(start + old_skip), edit);
-    }
-
-    pub fn swap_tag(&mut self, tag_index: usize, builder_tag: BuilderTag) {
-        let raw_tag = builder_tag.into_raw(self.handle, &mut self.toggles);
-        let tags = self.text.tags.as_mut_vec().unwrap();
-        let mut iter = tags
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, t_or_s)| match t_or_s {
-                TagOrSkip::Tag(RawTag::PopForm(..)) => None,
-                TagOrSkip::Tag(tag) => Some((index, tag)),
-                TagOrSkip::Skip(_) => None,
-            });
-
-        if let Some((index, tag)) = iter.nth(tag_index) {
-            let inv_tag = tag.inverse();
-
-            *tag = raw_tag;
-            let forward = match &tags[index + 1] {
-                TagOrSkip::Tag(_) => 1,
-                TagOrSkip::Skip(_) => 2,
-            };
-
-            if let Some(new_inv_tag) = raw_tag.inverse() {
-                if inv_tag.is_some() {
-                    tags[index + forward] = TagOrSkip::Tag(new_inv_tag);
-                } else {
-                    tags.insert(index + forward, TagOrSkip::Tag(new_inv_tag));
-                }
-            } else if inv_tag.is_some() {
-                tags.remove(index + forward);
-            }
-        }
-    }
-
-    pub fn get_mut_skip(&mut self, index: usize) -> Option<(usize, &mut usize)> {
+        self.text.chars.as_mut_string().unwrap().push_str(chars);
         self.text
             .tags
             .as_mut_vec()
             .unwrap()
-            .iter_mut()
-            .filter_map(|tag_or_skip| match tag_or_skip {
-                TagOrSkip::Skip(skip) => Some(skip),
-                TagOrSkip::Tag(..) => None,
-            })
-            .scan(0, |accum, skip| {
-                let prev_accum = *accum;
-                *accum += *skip;
-                Some((prev_accum, skip))
-            })
-            .nth(index)
-    }
-
-    fn add_to_last_skip(&mut self, edit_len: usize) {
-        let tags = self.text.tags.as_mut_vec().unwrap();
-
-        let mut iter = tags.iter().enumerate().rev();
-        while let Some((index, TagOrSkip::Tag(tag))) = iter.next() {
-            if let RawTag::PopForm(..) = tag {
-                if let Some(TagOrSkip::Skip(skip)) = tags.get_mut(index) {
-                    *skip += edit_len;
-                } else {
-                    tags.insert(index, TagOrSkip::Skip(edit_len));
-                }
-                return;
-            }
-        }
-
-        tags.push(TagOrSkip::Skip(edit_len));
+            .extend(tags.iter().cloned());
     }
 
     pub fn clear(&mut self) {
         self.text.clear();
-        self.swappables.clear();
-    }
-
-    pub fn truncate(&mut self, range_index: usize) {
-        let tags = self.text.tags.as_mut_vec().unwrap();
-
-        let Some(&swap_index) = self.swappables.get(range_index) else {
-            return;
-        };
-        let (mut index, cutoff) = tags
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, t_or_s)| t_or_s.as_skip().map(|skip| (index, skip)))
-            .scan(0, |accum, (index, skip)| {
-                let prev_accum = *accum;
-                *accum += *skip;
-                Some((index, prev_accum))
-            })
-            .nth(swap_index)
-            .unwrap();
-
-        self.swappables.truncate(range_index);
-        self.text.chars.as_mut_string().unwrap().truncate(cutoff);
-
-        let mut iter = tags.iter().take(index).rev();
-        while let Some(TagOrSkip::Tag(tag, ..)) = iter.next() {
-            if let RawTag::PopForm(..) = tag {
-                break;
-            }
-
-            index -= 1;
-        }
-        tags.truncate(index);
-    }
-
-    pub fn ranges_len(&self) -> usize {
-        self.swappables.len()
     }
 
     pub fn text(&self) -> &Text {
@@ -482,9 +374,8 @@ impl Default for TextBuilder {
     fn default() -> Self {
         TextBuilder {
             text: Text::default_string(),
-            swappables: Vec::default(),
+            last_tag: None,
             handle: Handle::default(),
-            toggles: Vec::default(),
         }
     }
 }
@@ -520,8 +411,8 @@ impl<'a> Tagger<'a> {
         self.chars.iter_at(ch_index)
     }
 
-    pub fn insert(&mut self, char: usize, tag: Tag) -> (Option<TextId>, Option<ToggleId>) {
-        self.tags.insert(char, tag, self.handle)
+    pub fn insert(&mut self, char: usize, tag: Tag) {
+        self.tags.insert(char, tag, self.handle);
     }
 
     pub fn remove_on(&mut self, ch_index: usize) {
@@ -557,29 +448,57 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     }
 }
 
-// pub macro build_text {
-//    (@push $builder:expr, [$form:ident]) => {
-//        $builder.push_tag(Tag::PushForm
-//    },
-//
-//    (@push $builder:expr, $str:expr) => {
-//        $builder.push_text($str);
-//    },
-//
-//    (@parse $builder:expr, $part:tt $($parts:tt)*) => {
-//        $builder.push_text($str);
-//        build_text!(@push $builder, $part);
-//        build_text!(@parse $builder, $($parts)*);
-//    },
-//
-//    ($builder:expr, $($parts:tt)*) => {
-//        let mut builder = $builder;
-//        build_text!(@parse builder, $($parts)*);
-//        builder
-//    },
-//    ($($parts:tt)*) => {
-//        let mut text: Text = Text::new();
-//        build_text!(builder, $($parts)*);
-//        builder
-//    }
-//}
+pub macro build_text {
+    // Forms
+    (@push $builder:expr, [$form:ident]) => {
+        let form_id = std::cell::LazyCell::new(|| {
+            let name = stringify!($form);
+            crate::PALETTE.from_name(name).1
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*form_id))
+    },
+    (@push $builder:expr, [[$form_id:expr]]) => {
+        $builder.push_tag(crate::text::Tag::PushForm($form_id))
+    },
+
+    // Alignments
+    (@push $builder:expr, (AlignCenter)) => {
+        $builder.push_tag(crate::text::Tag::AlignCenter)
+    },
+    (@push $builder:expr, (AlignLeft)) => {
+        $builder.push_tag(crate::text::Tag::AlignLeft)
+    },
+    (@push $builder:expr, (AlignRight)) => {
+        $builder.push_tag(crate::text::Tag::AlignRight)
+    },
+
+    // Other tags
+    (@push $builder:expr, (($tag:expr))) => {
+        $builder.push_tag($tag)
+    },
+
+    // Failure
+    (@push $builder:expr, ($not_allowed:expr)) => {
+        compile_error!("Expressions are not allowed in place of tag identifiers.");
+    },
+
+    // Plain text
+    (@push $builder:expr, $str:expr) => {
+        $builder.push_str($str)
+    },
+
+    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
+        build_text!(@push $builder, $part);
+        build_text!(@parse $builder, $($parts)*);
+    }},
+    (@parse $builder:expr,) => {},
+
+    ($builder:expr, $($parts:tt)*) => {{
+        let builder: &mut TextBuilder = &mut $builder;
+        build_text!(@parse builder, $($parts)*);
+    }},
+    ($($parts:tt)*) => {
+        let mut text: Text = Text::new();
+        build_text!(builder, $($parts)*)
+    }
+}

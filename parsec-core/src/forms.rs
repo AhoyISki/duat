@@ -272,11 +272,11 @@ impl FormPalette {
         self.0.read().extra_cursor
     }
 
-    pub fn set_main_cursor(&mut self, style: CursorStyle) {
+    pub fn set_main_cursor(&self, style: CursorStyle) {
         self.0.write().main_cursor = style;
     }
 
-    pub fn set_extra_cursor(&mut self, style: CursorStyle) {
+    pub fn set_extra_cursor(&self, style: CursorStyle) {
         self.0.write().extra_cursor = style;
     }
 

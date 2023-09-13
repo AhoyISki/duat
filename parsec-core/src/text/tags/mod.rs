@@ -5,10 +5,9 @@ use std::{
 
 use any_rope::{Measurable, Rope};
 use container::Container;
-pub use types::{InsertionTag, RawTag, TextId, ToggleId};
+pub use types::{RawTag, Tag};
 
-use super::Text;
-use crate::{position::Point, text::chars::Chars};
+use crate::text::chars::Chars;
 
 mod container;
 mod types;
@@ -36,7 +35,7 @@ impl Default for Handle {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum TagOrSkip {
     Tag(RawTag),
     Skip(usize),
@@ -73,30 +72,18 @@ impl Measurable for TagOrSkip {
     #[inline]
     fn measure(&self) -> usize {
         match self {
-            TagOrSkip::Tag(..) => 0,
+            TagOrSkip::Tag(_) => 0,
             TagOrSkip::Skip(skip) => *skip,
         }
     }
 }
 
 // TODO: Generic container.
+#[derive(Debug)]
 pub struct Tags {
     container: Container,
     ranges: Vec<TagRange>,
-    pub texts: Vec<Text>,
-    toggles: Vec<(Box<dyn Fn(Point)>, Box<dyn Fn(Point)>)>,
     range_min: usize,
-}
-
-impl std::fmt::Debug for Tags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tags")
-            .field("container", &self.container)
-            .field("ranges", &self.ranges)
-            .field("texts", &self.texts)
-            .field("range_min", &self.range_min)
-            .finish_non_exhaustive()
-    }
 }
 
 impl Tags {
@@ -104,8 +91,6 @@ impl Tags {
         Self {
             container: Container::Vec(Vec::new()),
             ranges: Vec::new(),
-            texts: Vec::new(),
-            toggles: Vec::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
@@ -114,8 +99,6 @@ impl Tags {
         Self {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
-            texts: Vec::new(),
-            toggles: Vec::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
@@ -129,8 +112,6 @@ impl Tags {
         Self {
             container,
             ranges: Vec::new(),
-            texts: Vec::new(),
-            toggles: Vec::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
@@ -149,14 +130,8 @@ impl Tags {
         }
     }
 
-    pub fn insert(
-        &mut self,
-        pos: usize,
-        insertion_tag: InsertionTag,
-        handle: Handle,
-    ) -> (Option<TextId>, Option<ToggleId>) {
-        let (text_id, toggle_id, raw_tag) =
-            insertion_tag.to_raw(handle, &mut self.texts, &mut self.toggles);
+    pub fn insert(&mut self, pos: usize, insertion_tag: Tag, handle: Handle) {
+        let raw_tag = insertion_tag.to_raw(handle);
 
         assert!(pos <= self.measure(), "Char index {} too large", pos);
 
@@ -182,8 +157,6 @@ impl Tags {
         try_insert((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
-
-        (text_id, toggle_id)
     }
 
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
@@ -488,7 +461,7 @@ impl TagRange {
         }
     }
 
-    fn starts_with(&self, other: (usize, RawTag)) -> bool {
+    fn starts_with(&self, other: &(usize, RawTag)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded) => bounded.start == other.0 && *tag == other.1,
             TagRange::From(tag, from) => from.start == other.0 && *tag == other.1,
@@ -496,7 +469,7 @@ impl TagRange {
         }
     }
 
-    fn ends_with(&self, other: (usize, RawTag)) -> bool {
+    fn ends_with(&self, other: &(usize, RawTag)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded) => bounded.end == other.0 && tag.ends_with(&other.1),
             TagRange::Until(tag, until) => until.end == other.0 && *tag == other.1,
@@ -504,14 +477,14 @@ impl TagRange {
         }
     }
 
-    fn can_start_with(&self, other: (usize, RawTag)) -> bool {
+    fn can_start_with(&self, other: &(usize, RawTag)) -> bool {
         match self {
             TagRange::Until(tag, until) => other.0 <= until.end && other.1.ends_with(tag),
             TagRange::Bounded(..) | TagRange::From(..) => false,
         }
     }
 
-    fn can_end_with(&self, other: (usize, RawTag)) -> bool {
+    fn can_end_with(&self, other: &(usize, RawTag)) -> bool {
         match self {
             TagRange::From(tag, from) => from.start <= other.0 && tag.ends_with(&other.1),
             TagRange::Bounded(..) | TagRange::Until(..) => false,
@@ -647,16 +620,16 @@ impl<'a> Iterator for RawTags<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find_map(|(pos, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::ConcealStart(handle)) => {
+            TagOrSkip::Tag(RawTag::ConcealStart) => {
                 if let Some(range) = self
                     .ranges
                     .iter()
-                    .find(|range| range.starts_with((pos, RawTag::ConcealStart(handle))))
+                    .find(|range| range.starts_with(&(pos, RawTag::ConcealStart)))
                 {
                     let skip = range.get_end().map_or(usize::MAX, |end| end - pos);
                     Some((pos, RawTag::Concealed(skip)))
                 } else {
-                    Some((pos, RawTag::ConcealStart(handle)))
+                    Some((pos, RawTag::ConcealStart))
                 }
             }
             TagOrSkip::Tag(tag) => Some((pos, tag)),
@@ -682,16 +655,16 @@ impl<'a> Iterator for RevRawTags<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find_map(|(pos, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::ConcealEnd(handle)) => {
+            TagOrSkip::Tag(RawTag::ConcealEnd) => {
                 if let Some(range) = self
                     .ranges
                     .iter()
-                    .find(|range| range.ends_with((pos, RawTag::ConcealEnd(handle))))
+                    .find(|range| range.ends_with(&(pos, RawTag::ConcealEnd)))
                 {
                     let skip = range.get_start().map_or(0, |start| pos - start);
                     Some((pos, RawTag::Concealed(skip)))
                 } else {
-                    Some((pos, RawTag::ConcealEnd(handle)))
+                    Some((pos, RawTag::ConcealEnd))
                 }
             }
             TagOrSkip::Tag(tag) => Some((pos, tag)),
@@ -781,14 +754,14 @@ impl Iterator for RevIter<'_> {
 /// Will return the range as it was, before the removal.
 fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
     if entry.1.is_start() {
-        let range = ranges.extract_if(|range| range.starts_with(entry)).next();
+        let range = ranges.extract_if(|range| range.starts_with(&entry)).next();
         if let Some(TagRange::Bounded(tag, bounded)) = range {
             let range = TagRange::Until(tag.inverse().unwrap(), ..bounded.end);
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
         }
     } else if entry.1.is_end() {
-        let range = ranges.extract_if(|range| range.ends_with(entry)).next();
+        let range = ranges.extract_if(|range| range.ends_with(&entry)).next();
         if let Some(TagRange::Bounded(tag, bounded)) = range {
             let range = TagRange::From(tag, bounded.start..);
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
@@ -802,7 +775,7 @@ fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
         let (start, tag) = entry;
         let range = TagRange::From(tag, start..);
         if let Ok(index) = ranges.binary_search(&range) {
-            let start_matches = |range: &&TagRange| range.starts_with(entry);
+            let start_matches = |range: &&TagRange| range.starts_with(&entry);
             let next = ranges.iter().skip(index).take_while(start_matches);
             let prev = ranges.iter().take(index).rev().take_while(start_matches);
             next.chain(prev).count()
@@ -810,7 +783,10 @@ fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
             0
         }
     } else if entry.1.is_end() {
-        ranges.iter().filter(|range| range.ends_with(entry)).count()
+        ranges
+            .iter()
+            .filter(|range| range.ends_with(&entry))
+            .count()
     } else {
         0
     }
@@ -826,7 +802,7 @@ fn try_insert(
     let range = if entry.1.is_start() {
         let (start, tag) = entry;
         if let Some(range) = ranges
-            .extract_if(|range| range.can_start_with(entry))
+            .extract_if(|range| range.can_start_with(&entry))
             .next()
         {
             let end = range.get_end().unwrap();
@@ -839,7 +815,7 @@ fn try_insert(
         if let Some(index) = ranges
             .iter()
             .rev()
-            .position(|range| range.can_end_with(entry))
+            .position(|range| range.can_end_with(&entry))
         {
             let range = ranges.remove(ranges.len() - 1 - index);
             let start = range.get_start().unwrap();
@@ -901,7 +877,7 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
             .rev()
             .filter(|(index, _)| mergers.iter().all(|(_, other)| other != index))
             .take_while(|(_, range)| matches!(range, TagRange::Until(..)))
-            .filter(|(_, until)| until.can_start_with((start, tag)))
+            .filter(|(_, until)| until.can_start_with(&(start, tag)))
             .last();
 
         if let Some((other, _)) = other {

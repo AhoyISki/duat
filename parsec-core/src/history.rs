@@ -25,7 +25,7 @@ use crate::{
     input::Cursors,
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    ui::{Area},
+    ui::Area,
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or
@@ -42,8 +42,8 @@ pub struct Change {
 
 impl Change {
     /// Returns a new [Change].
-    pub(crate) fn new(edit: impl ToString, range: impl RangeBounds<usize>, text: &Text) -> Self {
-        let edit = edit.to_string();
+    pub(crate) fn new(edit: impl AsRef<str>, range: impl RangeBounds<usize>, text: &Text) -> Self {
+        let added_text = edit.as_ref().to_string();
         let start = match range.start_bound() {
             std::ops::Bound::Included(&pos) => pos,
             std::ops::Bound::Excluded(&pos) => pos + 1,
@@ -60,7 +60,7 @@ impl Change {
 
         Change {
             start,
-            added_text: edit,
+            added_text,
             taken_text,
         }
     }
