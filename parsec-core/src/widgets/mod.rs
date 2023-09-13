@@ -38,11 +38,10 @@ pub use self::{
 };
 use crate::{
     data::{AsAny, ReadableData, RwData},
-    forms::FormPalette,
     input::InputMethod,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, PALETTE,
 };
 
 /// An area where text will be printed to the screen.
@@ -73,11 +72,11 @@ pub trait PassiveWidget: AsAny + Send + Sync + 'static {
         &CFG
     }
 
-    fn print(&mut self, area: &impl Area, palette: &FormPalette)
+    fn print(&mut self, area: &impl Area)
     where
         Self: Sized,
     {
-        area.print(self.text(), self.print_cfg(), palette)
+        area.print(self.text(), self.print_cfg(), &PALETTE)
     }
 }
 
@@ -137,7 +136,7 @@ where
     /// [`WidgetNode`]
     ///
     /// [`Session<U>`]: crate::session::Session
-    fn update_and_print(&self, area: &U::Area, palette: &FormPalette);
+    fn update_and_print(&self, area: &U::Area);
 
     fn update(&self, area: &U::Area);
 }
@@ -180,10 +179,10 @@ where
     U: Ui,
     W: PassiveWidget,
 {
-    fn update_and_print(&self, area: &<U as Ui>::Area, palette: &FormPalette) {
+    fn update_and_print(&self, area: &<U as Ui>::Area) {
         let mut widget = self.widget.raw_write();
         widget.update(area);
-        widget.print(area, palette);
+        widget.print(area);
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -219,10 +218,10 @@ where
     W: ActiveWidget,
     I: InputMethod<Widget = W>,
 {
-    fn update_and_print(&self, area: &U::Area, palette: &FormPalette) {
+    fn update_and_print(&self, area: &U::Area) {
         let mut widget = self.widget.raw_write();
         widget.update(area);
-        widget.print(area, palette);
+        widget.print(area);
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -260,7 +259,7 @@ where
             area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
 
             widget.update(area);
-            widget.print(area, &controler.palette);
+            widget.print(area);
         }
     }
 
@@ -320,13 +319,13 @@ where
         Widget::Active(Box::new(inner_widget))
     }
 
-    pub fn update_and_print(&self, area: &U::Area, palette: &FormPalette) {
+    pub fn update_and_print(&self, area: &U::Area) {
         match self {
             Widget::Passive(inner) => {
-                inner.update_and_print(area, palette);
+                inner.update_and_print(area);
             }
             Widget::Active(inner) => {
-                inner.update_and_print(area, palette);
+                inner.update_and_print(area);
             }
         }
     }

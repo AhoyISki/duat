@@ -21,8 +21,9 @@ pub use self::{
 use self::{
     chars::Chars,
     tags::{RawTag, TagOrSkip, Tags, TextId, ToggleId},
+    types::ButtonFn,
 };
-use crate::{forms, history::Change, input::Cursors, position::Point};
+use crate::{forms, history::Change, input::Cursors};
 
 /// The text in a given area.
 #[derive(Debug)]
@@ -306,10 +307,7 @@ pub struct TextBuilder {
     text: Text,
     swappables: Vec<usize>,
     handle: Handle,
-    toggles: Vec<(
-        Box<dyn Fn(Point) + Send + Sync>,
-        Box<dyn Fn(Point) + Send + Sync>,
-    )>,
+    toggles: Vec<(ButtonFn, ButtonFn)>,
 }
 
 impl TextBuilder {
@@ -558,3 +556,30 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
         )
     }
 }
+
+// pub macro build_text {
+//    (@push $builder:expr, [$form:ident]) => {
+//        $builder.push_tag(Tag::PushForm
+//    },
+//
+//    (@push $builder:expr, $str:expr) => {
+//        $builder.push_text($str);
+//    },
+//
+//    (@parse $builder:expr, $part:tt $($parts:tt)*) => {
+//        $builder.push_text($str);
+//        build_text!(@push $builder, $part);
+//        build_text!(@parse $builder, $($parts)*);
+//    },
+//
+//    ($builder:expr, $($parts:tt)*) => {
+//        let mut builder = $builder;
+//        build_text!(@parse builder, $($parts)*);
+//        builder
+//    },
+//    ($($parts:tt)*) => {
+//        let mut text: Text = Text::new();
+//        build_text!(builder, $($parts)*);
+//        builder
+//    }
+//}

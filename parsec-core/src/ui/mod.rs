@@ -348,10 +348,10 @@ where
         }
     }
 
-    pub fn update_and_print(&self, palette: &FormPalette) {
+    pub fn update_and_print(&self) {
         self.busy_updating.store(true, Ordering::Release);
 
-        self.widget.update_and_print(&self.area, palette);
+        self.widget.update_and_print(&self.area);
 
         self.busy_updating.store(false, Ordering::Release);
     }

@@ -5,7 +5,7 @@ use parsec_core::{
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
-    Controler,
+    Controler, PALETTE,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -101,10 +101,9 @@ impl VertRuleCfg {
             let file = controler.current_file();
             let input = controler.current_input();
 
-            let palette = controler.palette();
-            let main = palette.try_set_form("VertRule", Form::new().grey());
-            let upper = palette.set_new_ref("UpperVertRule", "VertRule");
-            let lower = palette.set_new_ref("LowerVertRule", "VertRule");
+            let main = PALETTE.try_set_form("VertRule", Form::new().grey());
+            let upper = PALETTE.set_new_ref("UpperVertRule", "VertRule");
+            let lower = PALETTE.set_new_ref("LowerVertRule", "VertRule");
 
             let builder = {
                 let input = input.read();

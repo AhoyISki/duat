@@ -29,7 +29,7 @@ use crate::{
     input::InputMethod,
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
-    Controler,
+    Controler, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -186,11 +186,10 @@ impl LineNumbersCfg {
             let file = controler.current_file();
             let specs = self.specs;
 
-            let palette = &controler.palette;
-            let other = palette.try_set_form("LineNum", Form::new().grey());
-            let main = palette.try_set_form("MainLineNum", Form::new().yellow());
-            let wrapped = palette.try_set_form("WrappedLineNum", Form::new().cyan().italic());
-            let wrapped_main = palette.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
+            let other = PALETTE.try_set_form("LineNum", Form::new().grey());
+            let main = PALETTE.try_set_form("MainLineNum", Form::new().yellow());
+            let wrapped = PALETTE.try_set_form("WrappedLineNum", Form::new().cyan().italic());
+            let wrapped_main = PALETTE.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
 
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
@@ -290,6 +289,9 @@ impl LineNumbersCfg {
         Self { specs, ..self }
     }
 }
+
+unsafe impl Send for LineNumbers {}
+unsafe impl Sync for LineNumbers {}
 
 /// Gets the [`Tag`], according to line positioning.
 fn get_tag(

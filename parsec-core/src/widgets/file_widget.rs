@@ -259,12 +259,12 @@ impl PassiveWidget for FileWidget {
         &self.cfg
     }
 
-    fn print(&mut self, area: &impl Area, palette: &crate::forms::FormPalette)
+    fn print(&mut self, area: &impl Area)
     where
         Self: Sized,
     {
         self.set_printed_lines(area);
-        area.print(self.text(), self.print_cfg(), palette)
+        area.print(self.text(), self.print_cfg(), &crate::PALETTE)
     }
 }
 

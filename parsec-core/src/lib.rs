@@ -51,6 +51,8 @@ static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 static CMD_FILE_ID: Mutex<Option<FileId>> = Mutex::new(None);
 
+pub static PALETTE: FormPalette = FormPalette::new();
+
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 /// A general manager for Parsec, that can be called upon by certain
@@ -66,7 +68,6 @@ where
     active_input: RwData<RwData<dyn InputMethod>>,
     commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
-    palette: FormPalette,
 }
 
 /// # Querying Functions
@@ -174,10 +175,6 @@ where
     /// [`dyn_active_input`]: Self::dyn_active_input
     pub fn current_input(&self) -> RoData<dyn InputMethod> {
         RoData::from(&*self.active_input.read())
-    }
-
-    pub fn palette(&self) -> &FormPalette {
-        &self.palette
     }
 }
 
@@ -341,7 +338,6 @@ where
     /// Returns a new instance of [`Controler`].
     fn new(
         window: Window<U>,
-        palette: FormPalette,
         active_widget: RwData<dyn ActiveWidget>,
         active_input: RwData<dyn InputMethod>,
     ) -> Self {
@@ -354,7 +350,6 @@ where
             active_input: RwData::new(active_input),
             commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
-            palette,
         };
 
         let quit = Command::new(["quit", "q"], move |_, _| {
@@ -606,9 +601,8 @@ macro_rules! status_parts {
 }
 
 /// Internal macro used to log information.
-#[macro_export]
-macro_rules! log_info {
-    ($($text:tt)*) => {{
+macro log_info {
+    ($($text:tt)*) => {
         use std::{fs, io::Write, time::Instant};
         let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
         let mut text = format!($($text)*);
@@ -625,5 +619,5 @@ macro_rules! log_info {
             let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
             write!(log, "\nat {:.4?}: {text}", duration).unwrap();
         }
-    }};
+    }
 }

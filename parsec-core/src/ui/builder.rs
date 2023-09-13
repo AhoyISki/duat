@@ -2,7 +2,6 @@ use super::{Area, PushSpecs, Ui};
 use crate::{
     commands::{CommandErr, Commands},
     data::RwData,
-    forms::FormPalette,
     widgets::Widget,
     Controler,
 };
@@ -158,10 +157,6 @@ where
         (child, parent)
     }
 
-    pub fn palette(&self) -> &FormPalette {
-        &self.controler.palette
-    }
-
     pub fn commands(&self) -> &RwData<Commands> {
         &self.controler.commands
     }
@@ -284,10 +279,6 @@ where
         });
 
         (child, parent)
-    }
-
-    pub fn palette(&self) -> &FormPalette {
-        &self.controler.palette
     }
 
     pub fn commands(&self) -> &RwData<Commands> {

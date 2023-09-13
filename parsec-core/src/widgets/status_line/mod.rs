@@ -59,11 +59,12 @@ use self::Reader::*;
 use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, RoNestedData},
+    forms::Form,
     input::InputMethod,
     status_parts,
     text::{BuilderTag, Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
-    Controler, forms::Form,
+    Controler, PALETTE,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -104,7 +105,6 @@ impl StatusPart {
         builder: &mut TextBuilder,
         file: &FileWidget,
         input: &dyn InputMethod,
-        palette: &crate::forms::FormPalette,
     ) -> (Option<Reader>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
         match self.reader_or_text {
             ReaderOrText::Reader(Reader::Var(obj_fn)) => {
@@ -116,7 +116,7 @@ impl StatusPart {
                 (Some(Reader::File(file_fn)), self.checker)
             }
             ReaderOrText::Text(text) => {
-                push_forms_and_text(text.as_str(), builder, palette);
+                push_forms_and_text(text.as_str(), builder);
                 (None, self.checker)
             }
         }
@@ -182,7 +182,7 @@ where
 
 /// Pushes the [`Form`][crate::tags::form::Form]s found in the `text`,
 /// while keeping the rest of the text intact.
-fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::forms::FormPalette) {
+fn push_forms_and_text(text: &str, builder: &mut TextBuilder) {
     let mut prev_l_index = None;
     for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
         let Some(l_index) = prev_l_index else {
@@ -193,7 +193,7 @@ fn push_forms_and_text(text: &str, builder: &mut TextBuilder, palette: &crate::f
 
         if let Some((text_start, id)) = text[(l_index + 1)..next_l_index].find(']').map(|r_index| {
             let name = &text[(l_index + 1)..=(l_index + r_index)];
-            let (_, id) = palette.from_name(name);
+            let (_, id) = PALETTE.from_name(name);
 
             (l_index + r_index + 2, id)
         }) {
@@ -229,12 +229,10 @@ impl StatusLineCfg {
         U: Ui,
     {
         move |controler| {
-            let palette = &controler.palette;
-
-            palette.try_set_form("FileName", Form::new().yellow().italic());
-            palette.try_set_form("Selections", Form::new().dark_blue());
-            palette.try_set_form("Coords", Form::new().dark_red());
-            palette.try_set_form("Separator", Form::new().cyan());
+            PALETTE.try_set_form("FileName", Form::new().yellow().italic());
+            PALETTE.try_set_form("Selections", Form::new().dark_blue());
+            PALETTE.try_set_form("Coords", Form::new().dark_red());
+            PALETTE.try_set_form("Separator", Form::new().cyan());
 
             let parts = self.parts.unwrap_or_else(default_parts);
 
@@ -244,8 +242,8 @@ impl StatusLineCfg {
                 (controler.active_file(), controler.active_input())
             };
 
-            let (builder, readers, checker) = file
-                .inspect(|file| input.inspect(|input| build_parts(file, input, parts, palette)));
+            let (builder, readers, checker) =
+                file.inspect(|file| input.inspect(|input| build_parts(file, input, parts)));
 
             let checker = {
                 let file = file.clone();
@@ -380,11 +378,13 @@ impl AsAny for StatusLine {
     }
 }
 
+unsafe impl Send for StatusLine {}
+unsafe impl Sync for StatusLine {}
+
 fn build_parts(
     file: &FileWidget,
     input: &dyn InputMethod,
     parts: Vec<StatusPart>,
-    palette: &crate::forms::FormPalette,
 ) -> (TextBuilder, Vec<Reader>, impl Fn() -> bool + Send + Sync) {
     let mut builder = TextBuilder::default();
     let mut checkers = Vec::new();
@@ -394,7 +394,7 @@ fn build_parts(
     let readers = {
         let mut readers = Vec::new();
         for part in parts.into_iter() {
-            let (reader, checker) = part.process(&mut builder, file, input, palette);
+            let (reader, checker) = part.process(&mut builder, file, input);
             if let Some(reader) = reader {
                 readers.push(reader)
             }
@@ -424,5 +424,3 @@ fn default_parts() -> Vec<StatusPart> {
         len_lines
     ]
 }
-
-unsafe impl Send for StatusLine {}

@@ -1,11 +1,14 @@
-use std::sync::RwLockReadGuard;
+use std::sync::{LazyLock, RwLockReadGuard};
 
 use crossterm::{
     cursor::SetCursorStyle,
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
-use crate::{data::{ReadableData, RwData}, log_info};
+use crate::{
+    data::{ReadableData, RwData},
+    log_info,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
@@ -71,7 +74,7 @@ impl Form {
     mimic_method!(grey on_grey underline_grey);
 
     pub fn new() -> Self {
-        Self { style: ContentStyle::default(), is_final: false }
+        Self { style: ContentStyle::new(), is_final: false }
     }
 
     pub fn new_final() -> Self {
@@ -90,7 +93,7 @@ pub struct CursorStyle {
 }
 
 impl CursorStyle {
-    pub fn new(caret: Option<SetCursorStyle>, form: Form) -> Self {
+    pub const fn new(caret: Option<SetCursorStyle>, form: Form) -> Self {
         Self { caret, form }
     }
 }
@@ -132,29 +135,28 @@ impl InnerPalette {
 }
 
 /// The list of forms to be used when rendering.
-#[derive(Clone)]
-pub struct FormPalette(RwData<InnerPalette>);
+pub struct FormPalette(LazyLock<RwData<InnerPalette>>);
 
 impl FormPalette {
-    pub fn new() -> Self {
-        let main_cursor = CursorStyle::new(
-            Some(SetCursorStyle::DefaultUserShape),
-            Form::new().reverse(),
-        );
+    pub(crate) const fn new() -> Self {
+        Self(LazyLock::new(|| {
+            let main_cursor = CursorStyle::new(
+                Some(SetCursorStyle::DefaultUserShape),
+                Form::new().reverse(),
+            );
 
-        let forms = vec![
-            ("Default", Kind::Form(Form::default())),
-            ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
-            ("ExtraSelection", Kind::Ref("MainSelection")),
-        ];
+            let forms = vec![
+                ("Default", Kind::Form(Form::default())),
+                ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
+                ("ExtraSelection", Kind::Ref("MainSelection")),
+            ];
 
-        let inner = InnerPalette {
-            main_cursor,
-            extra_cursor: main_cursor,
-            forms,
-        };
-
-        Self(RwData::new(inner))
+            RwData::new(InnerPalette {
+                main_cursor,
+                extra_cursor: main_cursor,
+                forms,
+            })
+        }))
     }
 
     /// Sets the `Form` with a given name to a new one.

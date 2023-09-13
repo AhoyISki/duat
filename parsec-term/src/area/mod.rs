@@ -372,7 +372,11 @@ impl ui::Area for Area {
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = self.print_info.borrow();
-        let iter = text.iter_at(info.first_char);
+        let line_start = text
+            .close_visual_line_start(info.first_char)
+            .unwrap_or(info.first_char);
+        let iter = text.iter_at(line_start);
+
         print_iter(iter, self.width(), cfg, *info)
     }
 

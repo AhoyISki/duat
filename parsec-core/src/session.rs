@@ -65,7 +65,7 @@ where
         let active = widget.as_active().unwrap().clone();
         let input = widget.input().unwrap().clone();
         let (window, area) = Window::new(&mut self.ui, widget, checker);
-        let mut controler = Controler::new(window, self.palette, active, input);
+        let mut controler = Controler::new(window, active, input);
 
         build_file(&mut controler, area, &mut self.file_fn);
 
@@ -272,11 +272,10 @@ where
 
         // The main loop.
         loop {
-            let palette = &self.controler.palette;
             for (widget, area, _) in
                 self.controler.windows.read()[self.controler.active_window].widgets()
             {
-                widget.update_and_print(area, palette);
+                widget.update_and_print(area);
             }
 
             self.session_loop();
@@ -306,7 +305,6 @@ where
     /// The primary application loop, executed while no breaking
     /// commands have been sent to [`Controls`].
     fn session_loop(&mut self) {
-        let palette = &self.controler.palette;
         let windows = self.controler.windows.read();
 
         std::thread::scope(|scope| {
@@ -327,7 +325,7 @@ where
                 for node in active_window.nodes() {
                     if node.needs_update() {
                         scope.spawn(|| {
-                            node.update_and_print(palette);
+                            node.update_and_print();
                         });
                     }
                 }
