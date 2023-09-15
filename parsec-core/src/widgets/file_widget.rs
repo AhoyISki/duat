@@ -27,7 +27,7 @@ use crate::{
     input::{Editor, InputMethod},
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, log_info,
 };
 
 #[derive(Clone)]
@@ -263,6 +263,7 @@ impl PassiveWidget for FileWidget {
     where
         Self: Sized,
     {
+        log_info!("{:#?}", self.text.tags);
         self.set_printed_lines(area);
         area.print(self.text(), self.print_cfg(), &crate::PALETTE)
     }

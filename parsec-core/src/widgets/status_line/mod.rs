@@ -62,7 +62,7 @@ use crate::{
     forms::Form,
     input::InputMethod,
     status_parts,
-    text::{Text, TextBuilder, Tag},
+    text::{Tag, Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
     Controler, PALETTE,
 };
@@ -70,8 +70,8 @@ use crate::{
 /// A struct that holds mutable readers, either from a file, or from
 /// individual [`RoData<T>`]s
 pub enum Reader {
-    Var(Box<dyn FnMut() -> Text + Send + Sync + 'static>),
-    File(Box<dyn FnMut(&FileWidget, &dyn InputMethod) -> Text + Send + Sync + 'static>),
+    Var(Box<dyn Fn() -> Text + Send + Sync + 'static>),
+    File(Box<dyn Fn(&FileWidget, &dyn InputMethod) -> Text + Send + Sync + 'static>),
 }
 
 impl Reader {
@@ -94,7 +94,7 @@ enum ReaderOrText {
 /// [`&'static str`][str], or a dynamically updated [`Reader`].
 pub struct StatusPart {
     reader_or_text: ReaderOrText,
-    checker: Option<Box<dyn FnMut() -> bool + Send + Sync>>,
+    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl StatusPart {
@@ -105,16 +105,13 @@ impl StatusPart {
         builder: &mut TextBuilder,
         file: &FileWidget,
         input: &dyn InputMethod,
-    ) -> (
-        Option<Reader>,
-        Option<Box<dyn FnMut() -> bool + Send + Sync>>,
-    ) {
+    ) -> (Option<Reader>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
         match self.reader_or_text {
-            ReaderOrText::Reader(Reader::Var(mut obj_fn)) => {
+            ReaderOrText::Reader(Reader::Var(obj_fn)) => {
                 builder.push_text(obj_fn());
                 (Some(Reader::Var(obj_fn)), self.checker)
             }
-            ReaderOrText::Reader(Reader::File(mut file_fn)) => {
+            ReaderOrText::Reader(Reader::File(file_fn)) => {
                 builder.push_text(file_fn(file, input));
                 (Some(Reader::File(file_fn)), self.checker)
             }
@@ -360,13 +357,13 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        self.input.inspect(|input| {
-            self.file.inspect(|file| {
-                for (index, reader) in self.readers.iter().enumerate() {
-                    self.builder.swap_range(index, reader.read(file, input));
-                }
-            });
-        });
+        // self.input.inspect(|input| {
+        //    self.file.inspect(|file| {
+        //        for (index, reader) in self.readers.iter().enumerate() {
+        //            self.builder.swap_range(index, reader.read(file, input));
+        //        }
+        //    });
+        //});
     }
 
     fn text(&self) -> &Text {
@@ -391,7 +388,7 @@ fn build_parts(
     let mut builder = TextBuilder::default();
     let mut checkers = Vec::new();
 
-    builder.push_tag(BuilderTag::AlignRight);
+    builder.push_tag(Tag::AlignRight);
 
     let readers = {
         let mut readers = Vec::new();

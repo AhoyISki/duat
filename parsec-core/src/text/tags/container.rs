@@ -1,6 +1,6 @@
 use any_rope::{Measurable, Rope};
 
-use super::{Handle, RawTag, TagOrSkip};
+use super::{RawTag, TagOrSkip};
 
 #[derive(Debug)]
 pub enum Container {
@@ -30,7 +30,7 @@ impl Container {
     }
 
     // TODO: extract_if!!!!.
-    pub fn remove_inclusive_on(&mut self, pos: usize, handle: Handle) -> Vec<(usize, RawTag)> {
+    pub fn remove_inclusive_on(&mut self, pos: usize) -> Vec<(usize, RawTag)> {
         match self {
             Container::Vec(vec) => {
                 let start = start_ch_to_index(vec, pos);

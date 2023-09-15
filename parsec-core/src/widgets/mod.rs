@@ -33,7 +33,7 @@ use no_deadlocks::RwLock;
 pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file_widget::{FileWidget, FileWidgetCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg},
+    line_numbers::{LineNumbers, LineNumbersCfg, ITER_COUNT},
     status_line::{file_parts, StatusLine, StatusPart},
 };
 use crate::{

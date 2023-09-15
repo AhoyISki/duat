@@ -601,7 +601,7 @@ macro_rules! status_parts {
 }
 
 /// Internal macro used to log information.
-macro log_info {
+pub macro log_info {
     ($($text:tt)*) => {
         use std::{fs, io::Write, time::Instant};
         let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();

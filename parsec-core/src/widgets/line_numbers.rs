@@ -25,15 +25,16 @@ use std::fmt::Alignment;
 use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RoData},
-    forms::{Form, FormId},
+    forms::Form,
     input::InputMethod,
-    text::{build_text, Text, TextBuilder, Tag},
+    log_info,
+    text::{build_text, Tag, Text, TextBuilder},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
-/// [`FileWidget<U>`] are shown on screen.
+/// [`FileWidget`] are shown on screen.
 pub struct LineNumbers {
     file: RoData<FileWidget>,
     input: RoData<dyn InputMethod>,
@@ -88,10 +89,16 @@ impl LineNumbers {
                 (true, true) => build_text!(self.builder, [WrappedMainLineNum]),
             }
 
-            build_text!(self.builder, ((align_tag)) num_text);
+            build_text!(self.builder, /*((align_tag))*/ num_text);
+            ITER_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        if !printed_lines.is_empty() {
         }
     }
 }
+
+pub static ITER_COUNT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 impl PassiveWidget for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
@@ -284,32 +291,18 @@ fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumber
         String::from("\n")
     } else if let Some(main) = main {
         match cfg.numbers {
-            Numbers::Absolute => (line + 1).to_string(),
-            Numbers::Relative => usize::abs_diff(line, main).to_string(),
+            Numbers::Absolute => (line + 1).to_string() + "\n",
+            Numbers::Relative => usize::abs_diff(line, main).to_string() + "\n",
             Numbers::RelAbs => {
                 if line != main {
-                    usize::abs_diff(line, main).to_string()
+                    usize::abs_diff(line, main).to_string() + "\n"
                 } else {
-                    (line + 1).to_string()
+                    (line + 1).to_string() + "\n"
                 }
             }
         }
     } else {
-        (line + 1).to_string()
-    }
-}
-
-/// Gets the [`Tag`], according to line positioning.
-fn get_form(
-    is_main_line: bool,
-    is_wrapped: bool,
-    (other, main, wrapped_other, wrapped_main): &(FormId, FormId, FormId, FormId),
-) -> FormId {
-    match (is_main_line, is_wrapped) {
-        (false, false) => *other,
-        (false, true) => *wrapped_other,
-        (true, false) => *main,
-        (true, true) => *wrapped_main,
+        (line + 1).to_string() + "\n"
     }
 }
 

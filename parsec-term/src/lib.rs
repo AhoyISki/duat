@@ -1,4 +1,5 @@
 #![feature(
+	lazy_cell,
     result_option_inspect,
     iter_collect_into,
     let_chains,

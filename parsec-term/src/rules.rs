@@ -2,7 +2,7 @@ use parsec_core::{
     data::{AsAny, ReadableData, RoData},
     forms::{Form, FormId},
     input::InputMethod,
-    text::{BuilderTag, Text, TextBuilder},
+    text::{build_text, Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
     Controler, PALETTE,
@@ -97,31 +97,24 @@ impl VertRuleCfg {
     pub fn builder<U: Ui>(
         self,
     ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        |controler| {
+        move |controler| {
             let file = controler.current_file();
             let input = controler.current_input();
 
-            let main = PALETTE.try_set_form("VertRule", Form::new().grey());
-            let upper = PALETTE.set_new_ref("UpperVertRule", "VertRule");
-            let lower = PALETTE.set_new_ref("LowerVertRule", "VertRule");
+            PALETTE.try_set_form("VertRule", Form::new().grey());
+            PALETTE.set_new_ref("UpperVertRule", "VertRule");
+            PALETTE.set_new_ref("LowerVertRule", "VertRule");
 
-            let builder = {
-                let input = input.read();
-                let file = file.read();
-                setup_builder(&file, &*input, &self, (upper, main, lower))
-            };
-
-            let vert_rule = VertRule {
+            let mut vert_rule = VertRule {
                 file: file.clone(),
                 input: input.clone(),
-                builder,
+                text: Text::default_string(),
                 sep_char: self.sep_char,
-                forms: (upper, main, lower),
             };
 
             let checker = Box::new(move || file.has_changed() || input.has_changed());
-            let passive = Widget::passive(vert_rule);
-            (passive, checker, self.specs)
+            let widget = Widget::passive(vert_rule);
+            (widget, checker, self.specs)
         }
     }
 }
@@ -138,9 +131,8 @@ impl Default for VertRuleCfg {
 pub struct VertRule {
     file: RoData<FileWidget>,
     input: RoData<dyn InputMethod>,
-    builder: TextBuilder,
+    text: Text,
     sep_char: SepChar,
-    forms: (FormId, FormId, FormId),
 }
 
 impl VertRule {
@@ -172,84 +164,29 @@ impl PassiveWidget for VertRule {
 
         let file = self.file.read();
         let lines = file.printed_lines();
-        let builder = &mut self.builder;
 
-        let above = lines.iter().filter(|&(line, _)| *line < main_line).count();
-        let equal = lines.iter().filter(|&(line, _)| *line == main_line).count();
-        let below = lines.iter().filter(|&(line, _)| *line > main_line).count();
+        let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
+        let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
+        let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
 
         let chars = self.sep_char.chars();
 
-        builder.swap_tag(0, BuilderTag::PushForm(self.forms.0));
-        builder.swap_range(
-            0,
-            [chars[0], '\n']
-                .into_iter()
-                .collect::<String>()
-                .repeat(above),
+        let builder = build_text!(
+            [UpperVertRule] { form_string(chars[0], upper) }
+            [VertRule] { form_string(chars[1], middle) }
+            [LowerVertRule] { form_string(chars[2], lower) }
         );
-        builder.swap_tag(1, BuilderTag::PushForm(self.forms.1));
-        builder.swap_range(
-            1,
-            [chars[1], '\n']
-                .into_iter()
-                .collect::<String>()
-                .repeat(equal),
-        );
-        builder.swap_tag(2, BuilderTag::PushForm(self.forms.2));
-        builder.swap_range(
-            2,
-            [chars[2], '\n']
-                .into_iter()
-                .collect::<String>()
-                .repeat(below),
-        );
+
+        //parsec_core::log_info!("{:#?}", builder.text());
+
+        self.text = builder.finish();
     }
 
     fn text(&self) -> &Text {
-        self.builder.text()
+        &self.text
     }
 }
 
-/// Sets up a new [`TextBuilder<U>`] for the [`VertRule`] widget.
-fn setup_builder(
-    file: &FileWidget,
-    input: &dyn InputMethod,
-    cfg: &VertRuleCfg,
-    forms: (FormId, FormId, FormId),
-) -> TextBuilder {
-    let lines = file.printed_lines();
-
-    let main_line = input.cursors().unwrap().main().true_line();
-
-    let mut builder = TextBuilder::default();
-    let upper = lines
-        .iter()
-        .take_while(|&(line, _)| *line != main_line)
-        .count();
-    let lower = lines
-        .iter()
-        .skip_while(|&(line, _)| *line <= main_line)
-        .count();
-
-    let chars = cfg.sep_char.chars();
-
-    builder.push_tag(BuilderTag::PushForm(forms.0));
-    builder.push_swappable(
-        [chars[0], '\n']
-            .into_iter()
-            .collect::<String>()
-            .repeat(upper),
-    );
-    builder.push_tag(BuilderTag::PushForm(forms.1));
-    builder.push_swappable([chars[1], '\n'].into_iter().collect::<String>());
-    builder.push_tag(BuilderTag::PushForm(forms.2));
-    builder.push_swappable(
-        [chars[2], '\n']
-            .into_iter()
-            .collect::<String>()
-            .repeat(lower),
-    );
-
-    builder
+fn form_string(char: char, count: usize) -> String {
+    [char, '\n'].repeat(count).iter().collect()
 }

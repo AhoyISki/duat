@@ -5,10 +5,7 @@ use crossterm::{
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
-use crate::{
-    data::{ReadableData, RwData},
-    log_info,
-};
+use crate::data::{ReadableData, RwData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
@@ -194,7 +191,6 @@ impl FormPalette {
 
     /// Sets the `Form` with a given name to a new one.
     pub fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
-        log_info!("set ref");
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
@@ -212,7 +208,6 @@ impl FormPalette {
     }
 
     pub fn set_new_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
-        log_info!("set new ref");
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
@@ -233,7 +228,6 @@ impl FormPalette {
     /// If a [`Form`] with the given name was not added prior, it will be added
     /// with the same form as the "Default" form.
     pub fn from_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
-        log_info!("from name");
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
@@ -250,13 +244,22 @@ impl FormPalette {
 
     /// Returns a form, given an index.
     pub fn from_id(&self, id: FormId) -> Form {
-        log_info!("from id");
         let inner = self.0.read();
 
         let nth = inner.forms.get(id.0).and_then(|(_, kind)| match kind {
             Kind::Form(form) => Some(*form),
             Kind::Ref(name) => inner.get_from_name(name).map(|(form, _)| form),
         });
+
+        let Some(ret) = nth else {
+            unreachable!("Form with id {} not found, this should never happen", id.0);
+        };
+        ret
+    }
+
+    pub fn name_from_id(&self, id: FormId) -> &'static str {
+        let inner = self.0.read();
+        let nth = inner.forms.get(id.0).map(|(name, _)| name);
 
         let Some(ret) = nth else {
             unreachable!("Form with id {} not found, this should never happen", id.0);

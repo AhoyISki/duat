@@ -5,82 +5,59 @@ pub mod reader;
 mod tags;
 mod types;
 
-use std::{
-    io::Write,
-    ops::{Range, RangeInclusive},
-};
+use std::{io::Write, ops::Range};
 
 use ropey::Rope;
 
 pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
-    tags::{Handle, Tag},
+    tags::Tag,
     types::Part,
 };
 use self::{
     chars::Chars,
-    tags::{RawTag, TagOrSkip, Tags},
+    tags::{RawTag, TagOrSkip, Tags, ToggleId},
 };
-use crate::{forms, history::Change, input::Cursors};
+use crate::{
+    forms::{self, FormId},
+    history::Change,
+    input::Cursors,
+};
 
 /// The text in a given area.
 #[derive(Debug)]
 pub struct Text {
     chars: Chars,
-    tags: Tags,
-    handle: Handle,
-    _replacements: Vec<(Vec<Text>, RangeInclusive<usize>, bool)>,
+    pub tags: Tags,
 }
 
 // TODO: Properly implement _replacements.
 impl Text {
     pub fn default_string() -> Self {
         Text {
-            chars: Chars::String(String::default()),
-            tags: Tags::default_vec(),
-            handle: Handle::default(),
-            _replacements: Vec::new(),
+            chars: Chars::String(String::with_capacity(500)),
+            tags: Tags::new_vec(),
         }
     }
 
     pub fn default_rope() -> Self {
         Text {
             chars: Chars::Rope(Rope::default()),
-            tags: Tags::default_rope(),
-            handle: Handle::default(),
-            _replacements: Vec::new(),
+            tags: Tags::new_rope(),
         }
     }
 
     pub fn new_string(string: impl ToString) -> Self {
         let chars = Chars::String(string.to_string());
-        let tags = Tags::new(&chars);
-        Text {
-            chars,
-            tags,
-            handle: Handle::default(),
-            _replacements: Vec::new(),
-        }
+        let tags = Tags::from_chars(&chars);
+        Text { chars, tags }
     }
 
     pub fn new_rope(string: impl ToString) -> Self {
         let chars = Chars::Rope(Rope::from(string.to_string()));
-        let tags = Tags::new(&chars);
-        Text {
-            chars,
-            tags,
-            handle: Handle::default(),
-            _replacements: Vec::new(),
-        }
-    }
-
-    pub fn tag_with(&mut self, handle: Handle) -> Tagger {
-        Tagger {
-            chars: &self.chars,
-            tags: &mut self.tags,
-            handle,
-        }
+        let tags = Tags::from_chars(&chars);
+        Text { chars, tags }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -176,7 +153,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(pos, tag, self.handle);
+                self.tags.insert(pos, tag);
             }
         }
     }
@@ -188,7 +165,7 @@ impl Text {
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {
-                self.tags.remove_on(ch_index, self.handle);
+                self.tags.remove_on(ch_index);
             }
         }
     }
@@ -226,6 +203,34 @@ impl Text {
             self.tags.transform_range(old, new.end);
         }
     }
+
+    pub fn tags(&self) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        self.tags.iter_at(0)
+    }
+
+    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
+        self.tags.get_from_char(char)
+    }
+
+    pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
+        self.tags.iter_at(ch_index)
+    }
+
+    pub fn chars(&self) -> impl Iterator<Item = char> + Clone + '_ {
+        self.chars.iter_at(0)
+    }
+
+    pub fn chars_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
+        self.chars.iter_at(ch_index)
+    }
+
+    pub fn insert(&mut self, char: usize, tag: Tag) {
+        self.tags.insert(char, tag);
+    }
+
+    pub fn remove_on(&mut self, ch_index: usize) {
+        self.tags.remove_on(ch_index)
+    }
 }
 
 // Iterator methods.
@@ -234,7 +239,7 @@ impl Text {
         let chars = self.chars.iter_at(0);
         let tags = self.tags.iter_at(0);
 
-        Iter::new(chars, tags, 0, 0)
+        Iter::new(chars, tags, &self.tags.texts, 0, 0)
     }
 
     /// TO BE DEPRECATED.
@@ -246,7 +251,7 @@ impl Text {
         let tags_start = start.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, start, line).take_while(move |item| item.pos < end)
+        Iter::new(chars, tags, &self.tags.texts, start, line).take_while(move |item| item.pos < end)
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<'_> {
@@ -256,7 +261,7 @@ impl Text {
         let tags_start = pos.saturating_sub(self.tags.back_check_amount());
         let tags = self.tags.iter_at(tags_start);
 
-        Iter::new(chars, tags, pos, line)
+        Iter::new(chars, tags, &self.tags.texts, pos, line)
     }
 
     pub fn rev_iter(&self) -> RevIter {
@@ -264,7 +269,7 @@ impl Text {
         let chars = self.chars.rev_iter_at(start);
         let tags = self.tags.rev_iter_at(start);
 
-        RevIter::new(chars, tags, start, start)
+        RevIter::new(chars, tags, &self.tags.texts, start, start)
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> RevIter<'_> {
@@ -273,7 +278,7 @@ impl Text {
         let line = self.char_to_line(pos);
         let tags = self.tags.rev_iter_at(pos);
 
-        RevIter::new(chars, tags, pos, line)
+        RevIter::new(chars, tags, &self.tags.texts, pos, line)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
@@ -311,8 +316,7 @@ impl<S: ToString> From<S> for Text {
 /// [`text()`][Self::text()].
 pub struct TextBuilder {
     text: Text,
-    last_tag: Option<RawTag>,
-    handle: Handle,
+    last_form: Option<FormId>,
 }
 
 impl TextBuilder {
@@ -326,43 +330,41 @@ impl TextBuilder {
 
     pub fn push_str(&mut self, str: impl AsRef<str>) {
         let range = self.text.len_chars()..self.text.len_chars();
-        let change = Change::new(str, range, &self.text);
+        let change = Change::new(str.as_ref(), range, &self.text);
         self.text.apply_change(&change);
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text<U>`].
-    pub fn push_tag(&mut self, tag: Tag) {
-        let tags = self.text.tags.as_mut_vec().unwrap();
-
-        if let Some(inv_tag) = self.last_tag.as_ref().and_then(RawTag::inverse) {
-            tags.push(TagOrSkip::Tag(inv_tag));
+    pub fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
+        if let Some(id) = self.last_form {
+            self.text
+                .tags
+                .insert(self.text.len_chars(), Tag::PopForm(id));
         }
 
-        let raw_tag = tag.to_raw(self.handle);
-        tags.push(TagOrSkip::Tag(raw_tag));
+        if let Tag::PushForm(id) = tag {
+            self.last_form = Some(id);
+        }
 
-        self.last_tag = Some(raw_tag);
+        self.text.tags.insert(self.text.len_chars(), tag)
     }
 
     pub fn push_text(&mut self, mut text: Text) {
         let Some((chars, tags)) = text.chars.as_mut_string().zip(text.tags.as_mut_vec()) else {
             panic!(
-                "Do not use Rope Texts when building Texts, it will be significantly slower with \
-                 no real benefit"
+                "Don't push Rope Texts into a Text whilst building it, it'll be significantly \
+                 slower with no real benefit"
             );
         };
 
         self.text.chars.as_mut_string().unwrap().push_str(chars);
-        self.text
-            .tags
-            .as_mut_vec()
-            .unwrap()
-            .extend(tags.iter().cloned());
+        self.text.tags.as_mut_vec().unwrap().append(tags);
     }
 
     pub fn clear(&mut self) {
         self.text.clear();
+        self.last_form = None;
     }
 
     pub fn text(&self) -> &Text {
@@ -374,61 +376,8 @@ impl Default for TextBuilder {
     fn default() -> Self {
         TextBuilder {
             text: Text::default_string(),
-            last_tag: None,
-            handle: Handle::default(),
+            last_form: None,
         }
-    }
-}
-
-pub struct Tagger<'a> {
-    chars: &'a Chars,
-    tags: &'a mut Tags,
-    handle: Handle,
-}
-
-impl<'a> Tagger<'a> {
-    pub fn tags(&self) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        self.tags.iter_at(0)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tags.is_empty()
-    }
-
-    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
-        self.tags.get_from_char(char)
-    }
-
-    pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
-        self.tags.iter_at(ch_index)
-    }
-
-    pub fn chars(&self) -> impl Iterator<Item = char> + Clone + '_ {
-        self.chars.iter_at(0)
-    }
-
-    pub fn chars_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
-        self.chars.iter_at(ch_index)
-    }
-
-    pub fn insert(&mut self, char: usize, tag: Tag) {
-        self.tags.insert(char, tag, self.handle);
-    }
-
-    pub fn remove_on(&mut self, ch_index: usize) {
-        self.tags.remove_on(ch_index, self.handle)
-    }
-
-    pub fn len_bytes(&self) -> usize {
-        self.chars.len_bytes()
-    }
-
-    pub fn len_chars(&self) -> usize {
-        self.chars.len_chars()
-    }
-
-    pub fn len_lines(&self) -> usize {
-        self.chars.len_lines()
     }
 }
 
@@ -451,11 +400,13 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
 pub macro build_text {
     // Forms
     (@push $builder:expr, [$form:ident]) => {
-        let form_id = std::cell::LazyCell::new(|| {
+        use std::sync::LazyLock;
+        static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
+            crate::log_info!("{}", stringify!($form));
             let name = stringify!($form);
             crate::PALETTE.from_name(name).1
         });
-        $builder.push_tag(crate::text::Tag::PushForm(*form_id))
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
     (@push $builder:expr, [[$form_id:expr]]) => {
         $builder.push_tag(crate::text::Tag::PushForm($form_id))
@@ -497,8 +448,9 @@ pub macro build_text {
         let builder: &mut TextBuilder = &mut $builder;
         build_text!(@parse builder, $($parts)*);
     }},
-    ($($parts:tt)*) => {
-        let mut text: Text = Text::new();
-        build_text!(builder, $($parts)*)
-    }
+    ($($parts:tt)*) => {{
+        let mut builder = TextBuilder::new();
+        build_text!(builder, $($parts)*);
+        builder
+    }}
 }

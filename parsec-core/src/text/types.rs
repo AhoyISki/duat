@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use crossterm::event::MouseEventKind;
 
-use super::tags::RawTag;
+use super::tags::{RawTag, ToggleId};
 use crate::{forms::FormId, position::Point, PALETTE};
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Part {
     Char(char),
     PushForm(FormId),
@@ -16,13 +16,13 @@ pub enum Part {
     AlignLeft,
     AlignCenter,
     AlignRight,
-    ToggleStart(Rc<Toggle>),
-    ToggleEnd(Rc<Toggle>),
+    ToggleStart(ToggleId),
+    ToggleEnd(ToggleId),
     Termination,
 }
 
-impl From<RawTag> for Part {
-    fn from(value: RawTag) -> Self {
+impl Part {
+    pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
             RawTag::PushForm(id) => Part::PushForm(id),
             RawTag::PopForm(id) => Part::PopForm(id),
@@ -31,8 +31,8 @@ impl From<RawTag> for Part {
             RawTag::AlignLeft => Part::AlignLeft,
             RawTag::AlignCenter => Part::AlignCenter,
             RawTag::AlignRight => Part::AlignRight,
-            RawTag::ToggleStart(toggle) => Part::ToggleStart(toggle),
-            RawTag::ToggleEnd(toggle) => Part::ToggleEnd(toggle),
+            RawTag::ToggleStart(id) => Part::ToggleStart(id),
+            RawTag::ToggleEnd(id) => Part::ToggleEnd(id),
             RawTag::Concealed(_) => Part::Termination,
             RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::GhostText(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
@@ -45,11 +45,17 @@ impl std::fmt::Debug for Part {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Part::Char(char) => f.debug_tuple("Char").field(char).finish(),
-            Part::PushForm(form_id) => f.debug_tuple("PushForm").field(form_id).finish(),
-            Part::PopForm(form_id) => f.debug_tuple("PopForm").field(form_id).finish(),
-            Part::MainCursor => f.debug_tuple("MainCursor ").finish(),
-            Part::ExtraCursor => f.debug_tuple("ExtraCursor ").finish(),
-            Part::AlignLeft => f.debug_tuple("AlignLeft ").finish(),
+            Part::PushForm(id) => f
+                .debug_tuple("PushForm")
+                .field(&PALETTE.name_from_id(*id))
+                .finish(),
+            Part::PopForm(id) => f
+                .debug_tuple("PopForm")
+                .field(&PALETTE.name_from_id(*id))
+                .finish(),
+            Part::MainCursor => f.debug_tuple("MainCursor").finish(),
+            Part::ExtraCursor => f.debug_tuple("ExtraCursor").finish(),
+            Part::AlignLeft => f.debug_tuple("AlignLeft").finish(),
             Part::AlignCenter => f.debug_tuple("AlignCenter ").finish(),
             Part::AlignRight => f.debug_tuple("AlignRight ").finish(),
             Part::ToggleStart(_) => f.debug_tuple("ToggleStart").finish(),
@@ -81,4 +87,4 @@ impl Part {
     }
 }
 
-pub type Toggle = dyn Fn(Point, MouseEventKind) + Send + Sync;
+pub type Toggle = Rc<dyn Fn(Point, MouseEventKind) + Send + Sync>;

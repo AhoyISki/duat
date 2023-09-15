@@ -478,14 +478,8 @@ fn print_parts(
                 alignment = Alignment::Left;
                 queue!(line, SetStyle(form_former.reset().style));
             }
-            Part::HoverStart(_) => todo!(),
-            Part::HoverEnd(_) => todo!(),
-            Part::LeftButtonStart(_) => todo!(),
-            Part::LeftButtonEnd(_) => todo!(),
-            Part::RightButtonStart(_) => todo!(),
-            Part::RightButtonEnd(_) => todo!(),
-            Part::MiddleButtonStart(_) => todo!(),
-            Part::MiddleButtonEnd(_) => todo!(),
+            Part::ToggleStart(_) => todo!(),
+            Part::ToggleEnd(_) => todo!(),
         }
     }
 

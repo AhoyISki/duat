@@ -1,9 +1,9 @@
-use std::ops::ControlFlow;
+use std::{collections::HashMap, ops::ControlFlow};
 
 use super::{
     chars,
-    tags::{self, RawTag},
-    Part,
+    tags::{self, RawTag, TextId},
+    Part, Text,
 };
 use crate::position::Cursor;
 
@@ -34,6 +34,7 @@ impl Item {
 pub struct Iter<'a> {
     chars: chars::Iter<'a>,
     tags: tags::Iter<'a>,
+    texts: &'a HashMap<TextId, Text>,
     pos: usize,
     line: usize,
     conceals: usize,
@@ -48,17 +49,19 @@ impl<'a> Iter<'a> {
     pub(super) fn new(
         chars: chars::Iter<'a>,
         tags: tags::Iter<'a>,
+        texts: &'a HashMap<TextId, Text>,
         pos: usize,
         line: usize,
     ) -> Self {
         Self {
             chars,
             tags,
+            texts,
             pos,
             line,
+            ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
-            ghost_pos: 0,
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -101,7 +104,8 @@ impl<'a> Iter<'a> {
 
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(text) if self.print_ghosts => {
+            RawTag::GhostText(id) if self.print_ghosts => {
+                let text = self.texts.get(&id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
                     text.iter()
                 } else {
@@ -152,9 +156,9 @@ impl Iterator for Iter<'_> {
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
                         let ghost = Some(self.ghost_pos);
-                        break Some(Item::new(pos, self.line, ghost, Part::from(tag)));
+                        break Some(Item::new(pos, self.line, ghost, Part::from_raw(tag)));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
+                        break Some(Item::new(self.pos, self.line, None, Part::from_raw(tag)));
                     }
                 }
             } else if let Some(char) = self.chars.next() {
@@ -187,11 +191,12 @@ impl Iterator for Iter<'_> {
 pub struct RevIter<'a> {
     chars: chars::Iter<'a>,
     tags: tags::RevIter<'a>,
+    texts: &'a HashMap<TextId, Text>,
     pos: usize,
     line: usize,
+    ghost_pos: usize,
     conceals: usize,
     backup_iter: Option<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
-    ghost_pos: usize,
 
     // Iteration options:
     print_ghosts: bool,
@@ -202,17 +207,19 @@ impl<'a> RevIter<'a> {
     pub(super) fn new(
         chars: chars::Iter<'a>,
         tags: tags::RevIter<'a>,
+        texts: &'a HashMap<TextId, Text>,
         pos: usize,
         line: usize,
     ) -> Self {
         Self {
             chars,
             tags,
+            texts,
             pos,
             line,
+            ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
-            ghost_pos: 0,
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -263,7 +270,8 @@ impl<'a> RevIter<'a> {
 
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(text) if self.print_ghosts => {
+            RawTag::GhostText(id) if self.print_ghosts => {
+                let text = self.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
                     self.ghost_pos = text.len_chars();
                     text.rev_iter()
@@ -310,10 +318,10 @@ impl Iterator for RevIter<'_> {
                             pos,
                             self.line,
                             Some(self.ghost_pos),
-                            Part::from(tag),
+                            Part::from_raw(tag),
                         ));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, Part::from(tag)));
+                        break Some(Item::new(self.pos, self.line, None, Part::from_raw(tag)));
                     }
                 }
             } else if let Some(char) = self.chars.next() {

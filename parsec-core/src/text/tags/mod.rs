@@ -1,41 +1,27 @@
 use std::{
     cmp::Ordering::*,
+    collections::HashMap,
     ops::{Range, RangeFrom, RangeTo},
 };
 
 use any_rope::{Measurable, Rope};
 use container::Container;
-pub use types::{RawTag, Tag};
 
-use crate::text::chars::Chars;
+pub use self::{
+    ids::{TextId, ToggleId},
+    types::{RawTag, Tag},
+};
+use super::{chars::Chars, types::Toggle, Text};
+use crate::{log_info, widgets::ITER_COUNT};
 
 mod container;
 mod types;
 
 const MIN_CHARS_TO_KEEP: usize = 50;
-
 const BUMP_AMOUNT: usize = 50;
 const LIMIT_TO_BUMP: usize = 500;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Handle(u16);
-
-impl Handle {
-    pub fn new() -> Handle {
-        use std::sync::atomic::{AtomicU16, Ordering};
-        static LOCK_COUNT: AtomicU16 = AtomicU16::new(0);
-
-        Handle(LOCK_COUNT.fetch_add(1, Ordering::Acquire))
-    }
-}
-
-impl Default for Handle {
-    fn default() -> Self {
-        Handle::new()
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TagOrSkip {
     Tag(RawTag),
     Skip(usize),
@@ -51,9 +37,9 @@ impl std::fmt::Debug for TagOrSkip {
 }
 
 impl TagOrSkip {
-    pub fn as_skip(&self) -> Option<&usize> {
+    pub fn as_skip(&self) -> Option<usize> {
         match self {
-            Self::Skip(v) => Some(v),
+            Self::Skip(v) => Some(*v),
             TagOrSkip::Tag(..) => None,
         }
     }
@@ -79,31 +65,36 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
-#[derive(Debug)]
 pub struct Tags {
     container: Container,
-    ranges: Vec<TagRange>,
+    pub ranges: Vec<TagRange>,
+    pub texts: HashMap<TextId, Text>,
+    pub toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
 }
 
 impl Tags {
-    pub fn default_vec() -> Self {
+    pub fn new_vec() -> Self {
         Self {
-            container: Container::Vec(Vec::new()),
+            container: Container::Vec(Vec::with_capacity(500)),
             ranges: Vec::new(),
+            texts: HashMap::new(),
+            toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
 
-    pub fn default_rope() -> Self {
+    pub fn new_rope() -> Self {
         Self {
             container: Container::Rope(Rope::new()),
             ranges: Vec::new(),
+            texts: HashMap::new(),
+            toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
 
-    pub fn new(chars: &Chars) -> Self {
+    pub fn from_chars(chars: &Chars) -> Self {
         let skip = TagOrSkip::Skip(chars.len_chars());
         let container = match chars {
             Chars::String(_) => Container::Vec(vec![skip]),
@@ -112,6 +103,8 @@ impl Tags {
         Self {
             container,
             ranges: Vec::new(),
+            texts: HashMap::new(),
+            toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
         }
     }
@@ -130,8 +123,8 @@ impl Tags {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, insertion_tag: Tag, handle: Handle) {
-        let raw_tag = insertion_tag.to_raw(handle);
+    pub fn insert(&mut self, pos: usize, tag: Tag) -> Option<ToggleId> {
+        let (raw_tag, toggle_id) = tag.to_raw(&mut self.texts, &mut self.toggles);
 
         assert!(pos <= self.measure(), "Char index {} too large", pos);
 
@@ -154,15 +147,17 @@ impl Tags {
             self.container.insert(pos, TagOrSkip::Tag(raw_tag));
         }
 
-        try_insert((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
+        add_to_ranges((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
+
+        toggle_id
     }
 
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
-    pub fn remove_on(&mut self, pos: usize, handle: Handle) {
-        let removed = self.container.remove_inclusive_on(pos, handle);
+    pub fn remove_on(&mut self, pos: usize) {
+        let removed = self.container.remove_inclusive_on(pos);
 
         self.merge_surrounding_skips(pos);
         for entry in removed {
@@ -231,7 +226,7 @@ impl Tags {
                 .last();
         }
 
-        // Adding new unbounded ranges.
+        // Adding new ranges.
         let mut entry_counts = Vec::new();
 
         let before = {
@@ -247,6 +242,17 @@ impl Tags {
                 .take_while(|(pos, _)| *pos >= new.end)
         };
 
+        if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
+            log_info!("{:#?}", self.container);
+            log_info!(
+                "{:#?}",
+                self.ranges
+                    .iter()
+                    .map(|range| format!("{:?}", range))
+                    .collect::<Vec<String>>()
+            );
+        }
+
         for entry in before
             .chain(after)
             .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
@@ -261,15 +267,30 @@ impl Tags {
                 &mut entry_counts.last_mut().unwrap().0
             };
 
+            let ranges = &mut self.ranges;
             if *count == 0 {
+                if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
+                    log_info!("processed entry {:?}", entry);
+                }
+
                 if entry.0 <= new.start {
-                    try_insert(entry, &mut self.ranges, self.range_min, true, false);
+                    add_to_ranges(entry, ranges, self.range_min, true, false);
                 } else {
-                    try_insert(entry, &mut self.ranges, self.range_min, false, true);
+                    add_to_ranges(entry, ranges, self.range_min, false, true);
                 }
             } else {
                 *count -= 1;
             }
+        }
+
+        if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
+            log_info!(
+                "{:#?}",
+                self.ranges
+                    .iter()
+                    .map(|range| format!("{:?}", range))
+                    .collect::<Vec<String>>()
+            );
         }
     }
 
@@ -426,6 +447,17 @@ impl Tags {
     }
 }
 
+impl std::fmt::Debug for Tags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tags")
+            .field("container", &self.container)
+            .field("ranges", &self.ranges)
+            .field("texts", &self.texts)
+            .field("range_min", &self.range_min)
+            .finish_non_exhaustive()
+    }
+}
+
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
 
@@ -535,6 +567,10 @@ impl Ord for TagRange {
                 if ordering == Equal { Greater } else { ordering }
             }
             (TagRange::From(lhs_tag, lhs_range), TagRange::From(rhs_tag, rhs_range)) => {
+                if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
+                    log_info!("{:?}", (self, other));
+                }
+
                 (lhs_range.start, lhs_tag).cmp(&(rhs_range.start, rhs_tag))
             }
         }
@@ -775,10 +811,14 @@ fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
         let (start, tag) = entry;
         let range = TagRange::From(tag, start..);
         if let Ok(index) = ranges.binary_search(&range) {
+            if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
+                log_info!("{:?}", range);
+            }
             let start_matches = |range: &&TagRange| range.starts_with(&entry);
             let next = ranges.iter().skip(index).take_while(start_matches);
             let prev = ranges.iter().take(index).rev().take_while(start_matches);
-            next.chain(prev).count()
+            let count = next.chain(prev).count();
+            count
         } else {
             0
         }
@@ -792,7 +832,7 @@ fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
     }
 }
 
-fn try_insert(
+fn add_to_ranges(
     entry: (usize, RawTag),
     ranges: &mut Vec<TagRange>,
     range_min: usize,
@@ -830,9 +870,6 @@ fn try_insert(
     if let Some(range) = range.filter(|range| range.count_ge(range_min)) {
         let (Ok(index) | Err(index)) = ranges.binary_search(&range);
         ranges.insert(index, range);
-        if ranges.len() > 4 {
-            panic!();
-        }
     }
 }
 
@@ -909,6 +946,34 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
             let range = TagRange::Bounded(tag, start..until.end);
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
+        }
+    }
+}
+
+mod ids {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct TextId(u32);
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ToggleId(u32);
+
+    impl TextId {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            use std::sync::atomic::AtomicU32;
+            static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
+
+            Self(TEXT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        }
+    }
+
+    impl ToggleId {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            use std::sync::atomic::AtomicU32;
+            static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
+
+            Self(TEXT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
         }
     }
 }
