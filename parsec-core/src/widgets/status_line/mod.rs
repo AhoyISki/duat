@@ -97,14 +97,14 @@ pub struct StatusPart {
 }
 
 impl StatusPart {
-    fn check(&self) -> bool {
+    pub fn check(&self) -> bool {
         match &self.checker {
             Some(checker) => checker(),
             None => false,
         }
     }
 
-    fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> Text {
+    pub fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> Text {
         match &self.reader_or_text {
             ReaderOrText::Reader(reader) => reader.read(file, input),
             ReaderOrText::Text(text) => text.clone(),
@@ -407,8 +407,9 @@ pub macro status_cfg {
         };
 
         let text_fn = |file: &FileWidget, input: &dyn InputMethod| {
-            let mut builder = build!((AlignRight));
+            let mut builder = build![(AlignRight)];
             status_cfg!(@parse_text builder, file, input, $($parts)*);
+            build!(builder, "\n");
             builder.finish()
         };
 

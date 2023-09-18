@@ -305,7 +305,7 @@ impl ui::Area for Area {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        crossterm::execute!(stdout, ResetColor).unwrap();
+        queue!(stdout, ResetColor);
     }
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {

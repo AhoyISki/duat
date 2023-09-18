@@ -34,7 +34,7 @@ pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file_widget::{FileWidget, FileWidgetCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{file_parts, StatusLine, StatusPart, StatusLineCfg},
+    status_line::{file_parts, status_cfg, StatusLine, StatusLineCfg, StatusPart},
 };
 use crate::{
     data::{AsAny, ReadableData, RwData},

@@ -405,6 +405,8 @@ pub trait Ui: Sized + Default + 'static {
 
     /// Functions to trigger when the program ends.
     fn shutdown(&mut self);
+
+    fn finish_printing(&self);
 }
 
 /// A container for a master [`Area`] in Parsec.

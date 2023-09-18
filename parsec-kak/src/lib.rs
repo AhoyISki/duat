@@ -47,21 +47,17 @@ pub struct Editor {
     last_file: String,
 }
 
-/// A readable state of which mode is currently active.
 impl Editor {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn mode(&self) -> impl Fn(&FileWidget, &dyn InputMethod) -> String {
-        |_, input| {
-            input
-                .as_any()
-                .downcast_ref::<Self>()
-                .unwrap()
-                .mode
-                .to_string()
-        }
+    pub fn mode(_file: &FileWidget, input: &dyn InputMethod) -> String {
+        input
+            .as_any()
+            .downcast_ref::<Self>()
+            .map(|kak| kak.mode.to_string())
+            .unwrap_or(String::from(""))
     }
 }
 

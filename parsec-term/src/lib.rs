@@ -7,7 +7,7 @@
 )]
 #![allow(clippy::type_complexity, clippy::while_let_on_iterator)]
 
-use std::{fmt::Debug, io};
+use std::{fmt::Debug, io::{self, Write}};
 
 use crossterm::{
     cursor, execute,
@@ -104,6 +104,10 @@ impl ui::Ui for Ui {
         )
         .unwrap();
         terminal::disable_raw_mode().unwrap();
+    }
+
+    fn finish_printing(&self) {
+        std::io::stdout().flush().unwrap();
     }
 }
 
