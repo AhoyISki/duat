@@ -1,20 +1,30 @@
 use ropey::Rope;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Chars {
     String(String),
-    Rope(Rope)
+    Rope(Rope),
 }
 
 impl Chars {
     pub fn replace(
-        &mut self, range: impl std::ops::RangeBounds<usize> + Clone, edit: impl AsRef<str>
+        &mut self,
+        range: impl std::ops::RangeBounds<usize> + Clone,
+        edit: impl AsRef<str>,
     ) {
         match self {
             Chars::String(string) => {
                 let (start, end) = get_ends(range, string.chars().count());
-                let start = string.chars().take(start).map(|ch| ch.len_utf8()).sum::<usize>();
-                let end = string.chars().take(end).map(|ch| ch.len_utf8()).sum::<usize>();
+                let start = string
+                    .chars()
+                    .take(start)
+                    .map(|ch| ch.len_utf8())
+                    .sum::<usize>();
+                let end = string
+                    .chars()
+                    .take(end)
+                    .map(|ch| ch.len_utf8())
+                    .sum::<usize>();
                 string.replace_range(start..end, edit.as_ref())
             }
             Chars::Rope(rope) => {
@@ -28,7 +38,7 @@ impl Chars {
     pub fn iter_at(&self, pos: usize) -> Iter {
         match self {
             Chars::String(string) => Iter::String(string.chars().skip(pos)),
-            Chars::Rope(rope) => Iter::Rope(rope, rope.chars_at(pos))
+            Chars::Rope(rope) => Iter::Rope(rope, rope.chars_at(pos)),
         }
     }
 
@@ -37,7 +47,7 @@ impl Chars {
             Chars::String(string) => {
                 Iter::StringRev(string.chars().rev().skip(self.len_chars() - pos))
             }
-            Chars::Rope(rope) => Iter::RopeRev(rope, rope.chars_at(pos).reversed())
+            Chars::Rope(rope) => Iter::RopeRev(rope, rope.chars_at(pos).reversed()),
         }
     }
 
@@ -48,7 +58,7 @@ impl Chars {
                 .map(|(index, _)| index)
                 .chain(std::iter::once(string.len()))
                 .nth(char),
-            Chars::Rope(rope) => rope.try_char_to_byte(char).ok()
+            Chars::Rope(rope) => rope.try_char_to_byte(char).ok(),
         }
     }
 
@@ -66,7 +76,7 @@ impl Chars {
                     }
                 })
                 .last(),
-            Chars::Rope(rope) => rope.try_char_to_line(ch_index).ok()
+            Chars::Rope(rope) => rope.try_char_to_line(ch_index).ok(),
         }
     }
 
@@ -81,35 +91,35 @@ impl Chars {
                     Some(old_chars)
                 })
                 .nth(line_index),
-            Chars::Rope(rope) => rope.try_line_to_char(line_index).ok()
+            Chars::Rope(rope) => rope.try_line_to_char(line_index).ok(),
         }
     }
 
     pub fn len_bytes(&self) -> usize {
         match self {
             Chars::String(string) => string.len(),
-            Chars::Rope(rope) => rope.len_bytes()
+            Chars::Rope(rope) => rope.len_bytes(),
         }
     }
 
     pub fn len_chars(&self) -> usize {
         match self {
             Chars::String(string) => string.chars().count(),
-            Chars::Rope(rope) => rope.len_chars()
+            Chars::Rope(rope) => rope.len_chars(),
         }
     }
 
     pub fn len_lines(&self) -> usize {
         match self {
             Chars::String(string) => string.split_inclusive('\n').count(),
-            Chars::Rope(rope) => rope.len_lines() - 1
+            Chars::Rope(rope) => rope.len_lines() - 1,
         }
     }
 
     pub fn clear(&mut self) {
         match self {
             Chars::String(string) => string.clear(),
-            Chars::Rope(rope) => *rope = Rope::default()
+            Chars::Rope(rope) => *rope = Rope::default(),
         }
     }
 
@@ -128,7 +138,7 @@ impl Chars {
     pub(crate) fn get_char(&self, char_index: usize) -> Option<char> {
         match self {
             Chars::String(string) => string.chars().nth(char_index),
-            Chars::Rope(rope) => rope.get_char(char_index)
+            Chars::Rope(rope) => rope.get_char(char_index),
         }
     }
 }
@@ -138,7 +148,7 @@ pub enum Iter<'a> {
     String(std::iter::Skip<std::str::Chars<'a>>),
     StringRev(std::iter::Skip<std::iter::Rev<std::str::Chars<'a>>>),
     Rope(&'a Rope, ropey::iter::Chars<'a>),
-    RopeRev(&'a Rope, ropey::iter::Chars<'a>)
+    RopeRev(&'a Rope, ropey::iter::Chars<'a>),
 }
 
 impl<'a> Iter<'a> {
@@ -191,7 +201,7 @@ impl Iterator for Iter<'_> {
             Iter::String(chars) => chars.next(),
             Iter::StringRev(chars) => chars.next(),
             Iter::Rope(_, chars) => chars.next(),
-            Iter::RopeRev(_, chars) => chars.next()
+            Iter::RopeRev(_, chars) => chars.next(),
         }
     }
 }
@@ -200,12 +210,12 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
         std::ops::Bound::Excluded(start) => *start + 1,
-        std::ops::Bound::Unbounded => 0
+        std::ops::Bound::Unbounded => 0,
     };
     let end = match range.end_bound() {
         std::ops::Bound::Included(end) => *end + 1,
         std::ops::Bound::Excluded(end) => *end,
-        std::ops::Bound::Unbounded => max
+        std::ops::Bound::Unbounded => max,
     };
 
     (start, end)

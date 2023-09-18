@@ -22,19 +22,23 @@ pub enum Part {
 }
 
 impl Part {
+    // TODO: Add a default alignment.
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(id) => Part::PushForm(id),
-            RawTag::PopForm(id) => Part::PopForm(id),
-            RawTag::MainCursor => Part::MainCursor,
-            RawTag::ExtraCursor => Part::ExtraCursor,
-            RawTag::AlignLeft => Part::AlignLeft,
-            RawTag::AlignCenter => Part::AlignCenter,
-            RawTag::AlignRight => Part::AlignRight,
-            RawTag::ToggleStart(id) => Part::ToggleStart(id),
-            RawTag::ToggleEnd(id) => Part::ToggleEnd(id),
+            RawTag::PushForm((_, id)) => Part::PushForm(id),
+            RawTag::PopForm((_, id)) => Part::PopForm(id),
+            RawTag::MainCursor(_) => Part::MainCursor,
+            RawTag::ExtraCursor(_) => Part::ExtraCursor,
+            RawTag::StartAlignLeft(_) => Part::AlignLeft,
+            RawTag::EndAlignLeft(_) => Part::AlignLeft,
+            RawTag::StartAlignCenter(_) => Part::AlignCenter,
+            RawTag::EndAlignCenter(_) => Part::AlignLeft,
+            RawTag::StartAlignRight(_) => Part::AlignRight,
+            RawTag::EndAlignRight(_) => Part::AlignLeft,
+            RawTag::ToggleStart((_, id)) => Part::ToggleStart(id),
+            RawTag::ToggleEnd((_, id)) => Part::ToggleEnd(id),
             RawTag::Concealed(_) => Part::Termination,
-            RawTag::ConcealStart | RawTag::ConcealEnd | RawTag::GhostText(..) => {
+            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
         }

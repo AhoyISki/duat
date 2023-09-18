@@ -27,8 +27,7 @@ use crate::{
     data::{AsAny, ReadableData, RoData},
     forms::Form,
     input::InputMethod,
-    log_info,
-    text::{build_text, Tag, Text, TextBuilder},
+    text::{build, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
     Controler, PALETTE,
 };
@@ -38,7 +37,7 @@ use crate::{
 pub struct LineNumbers {
     file: RoData<FileWidget>,
     input: RoData<dyn InputMethod>,
-    builder: TextBuilder,
+    text: Text,
     cfg: LineNumbersCfg,
 }
 
@@ -74,31 +73,34 @@ impl LineNumbers {
         let file = self.file.read();
         let printed_lines = file.printed_lines();
 
-        self.builder.clear();
+        let mut builder = build!(((tag_from_align(self.cfg.alignment))));
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);
 
             let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
-            let align_tag = get_align(&self.cfg, is_main_line);
 
-            match (is_main_line, is_wrapped) {
-                (false, false) => build_text!(self.builder, [LineNum]),
-                (true, false) => build_text!(self.builder, [MainLineNum]),
-                (false, true) => build_text!(self.builder, [WrappedLineNum]),
-                (true, true) => build_text!(self.builder, [WrappedMainLineNum]),
+            if is_main_line {
+                build!(builder, ((tag_from_align(self.cfg.main_alignment))));
             }
 
-            build_text!(self.builder, /*((align_tag))*/ num_text);
-            ITER_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            match (is_main_line, is_wrapped) {
+                (false, false) => build!(builder, [LineNum]),
+                (true, false) => build!(builder, [MainLineNum]),
+                (false, true) => build!(builder, [WrappedLineNum]),
+                (true, true) => build!(builder, [WrappedMainLineNum]),
+            }
+
+            build!(builder, num_text);
+
+            if is_main_line {
+                build!(builder, ((tag_from_align(self.cfg.alignment))));
+            }
         }
 
-        if !printed_lines.is_empty() {
-        }
+        self.text = builder.finish();
     }
 }
-
-pub static ITER_COUNT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 impl PassiveWidget for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
@@ -119,7 +121,7 @@ impl PassiveWidget for LineNumbers {
     }
 
     fn text(&self) -> &Text {
-        self.builder.text()
+        &self.text
     }
 }
 
@@ -187,7 +189,7 @@ impl LineNumbersCfg {
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
                 input: controler.current_input(),
-                builder: TextBuilder::default(),
+                text: Text::default_string(),
                 cfg: self,
             };
             line_numbers.update_text();
@@ -306,15 +308,10 @@ fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumber
     }
 }
 
-fn get_align(cfg: &LineNumbersCfg, is_main_line: bool) -> Tag {
-    let alignment = if is_main_line {
-        cfg.main_alignment
-    } else {
-        cfg.alignment
-    };
+fn tag_from_align(alignment: Alignment) -> Tag {
     match alignment {
-        Alignment::Left => Tag::AlignLeft,
-        Alignment::Right => Tag::AlignRight,
-        Alignment::Center => Tag::AlignCenter,
+        Alignment::Left => Tag::StartAlignLeft,
+        Alignment::Right => Tag::StartAlignRight,
+        Alignment::Center => Tag::StartAlignCenter,
     }
 }

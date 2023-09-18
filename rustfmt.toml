@@ -21,7 +21,6 @@ normalize_doc_attributes = true
 format_strings = true
 format_macro_matchers = true
 format_macro_bodies = true
-skip_macro_invocations = []
 hex_literal_case = "Lower"
 empty_item_single_line = true
 struct_lit_single_line = true
@@ -75,3 +74,6 @@ error_on_unformatted = false
 ignore = []
 emit_mode = "Files"
 make_backup = false
+
+[[skip_macro_invocations]]
+Name = "build_text"

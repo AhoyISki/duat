@@ -39,7 +39,7 @@
 //!     callers,
 //!     move |flags: &Flags, args: &mut dyn Iterator<Item = &str>| {
 //!         todo!();
-//!     }
+//!     },
 //! );
 //! ```
 //!
@@ -176,7 +176,7 @@ use no_deadlocks::RwLock;
 
 use crate::{
     data::{ReadableData, RwData},
-    ui::FileId
+    ui::FileId,
 };
 
 /// A struct representing flags passed down to [`Command`]s when
@@ -199,8 +199,7 @@ use crate::{
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -214,8 +213,8 @@ use crate::{
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
-///                -also-not-flags";
+/// let command =
+///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -224,7 +223,7 @@ use crate::{
 /// ```
 pub struct Flags<'a> {
     pub blob: String,
-    pub units: Vec<&'a str>
+    pub units: Vec<&'a str>,
 }
 
 impl<'a> Flags<'a> {
@@ -303,7 +302,7 @@ impl<'a> Flags<'a> {
 /// struct MyWidget {
 ///     text: Text,
 ///     other_field: String,
-///     relevant_field: Arc<AtomicBool>
+///     relevant_field: Arc<AtomicBool>,
 /// }
 /// ```
 ///
@@ -337,7 +336,8 @@ impl<'a> Flags<'a> {
 /// # }
 /// #
 /// fn add_commands(
-///     widget: RwData<MyWidget>, commands: &mut Commands
+///     widget: RwData<MyWidget>,
+///     commands: &mut Commands,
 /// ) -> Result<(), CommandErr> {
 ///     // Cloning the `relevant_field`, the only important part of
 ///     // `MyWidget` for the command.
@@ -347,7 +347,7 @@ impl<'a> Flags<'a> {
 ///         command_function(
 ///             relevant_field.load(Ordering::Relaxed),
 ///             flags,
-///             args
+///             args,
 ///         )
 ///     });
 ///     commands.try_add(command)
@@ -382,7 +382,8 @@ impl<'a> Flags<'a> {
 /// # }
 /// #
 /// fn add_commands(
-///     widget: RwData<MyWidget>, commands: &mut Commands
+///     widget: RwData<MyWidget>,
+///     commands: &mut Commands,
 /// ) -> Result<(), CommandErr> {
 ///     let callers = vec!["my-function-caller"];
 ///     let command = Command::new(callers, move |flags, args| {
@@ -425,10 +426,10 @@ pub struct Command {
     ///
     /// # Arguments
     ///
-    /// - 1: A [`&Flags`][Flags] containing the flags that have been
-    ///   passed to the function.
-    /// - 2: An [`&mut dyn Iterator<Item = &str>`][Iterator]
-    ///   representing the arguments to be read by the function.
+    /// - 1: A [`&Flags`][Flags] containing the flags that have been passed to
+    ///   the function.
+    /// - 2: An [`&mut dyn Iterator<Item = &str>`][Iterator] representing the
+    ///   arguments to be read by the function.
     ///
     /// # Returns
     ///
@@ -440,7 +441,7 @@ pub struct Command {
     f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>,
-    file_id: Option<FileId>
+    file_id: Option<FileId>,
 }
 
 impl Command {
@@ -448,13 +449,12 @@ impl Command {
     ///
     /// # Arguments
     ///
-    /// - `callers`: A list of names to call this function by. In
-    ///   other editors, you would see things like `["edit", "e"]`, or
-    ///   `["write-quit", "wq"]`, and this is no different.
-    /// - `f`: The closure to call when running the command. In order
-    ///   for the closure to actually do anything, you would want it
-    ///   to capture shared, multi-threaded objects (e.g. [`Arc`]s,
-    ///   [`RwData`]s, e.t.c.).
+    /// - `callers`: A list of names to call this function by. In other editors,
+    ///   you would see things like `["edit", "e"]`, or `["write-quit", "wq"]`,
+    ///   and this is no different.
+    /// - `f`: The closure to call when running the command. In order for the
+    ///   closure to actually do anything, you would want it to capture shared,
+    ///   multi-threaded objects (e.g. [`Arc`]s, [`RwData`]s, e.t.c.).
     /// ```rust
     /// # use parsec_core::{
     /// #     commands::{Command},
@@ -481,16 +481,22 @@ impl Command {
     pub fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
         F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + 'static
+            + 'static,
     {
-        let callers = callers.into_iter().map(|caller| caller.to_string()).collect::<Vec<String>>();
-        if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
+        let callers = callers
+            .into_iter()
+            .map(|caller| caller.to_string())
+            .collect::<Vec<String>>();
+        if let Some(caller) = callers
+            .iter()
+            .find(|caller| caller.split_whitespace().count() != 1)
+        {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
         Self {
             f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
             callers,
-            file_id: None
+            file_id: None,
         }
     }
 
@@ -498,13 +504,12 @@ impl Command {
     ///
     /// # Arguments
     ///
-    /// - `callers`: A list of names to call this function by. In
-    ///   other editors, you would see things like `["edit", "e"]`, or
-    ///   `["write-quit", "wq"]`, and this is no different.
-    /// - `f`: The closure to call when running the command. In order
-    ///   for the closure to actually do anything, you would want it
-    ///   to capture shared, multi-threaded objects (e.g. [`Arc`]s,
-    ///   [`RwData`]s, e.t.c.).
+    /// - `callers`: A list of names to call this function by. In other editors,
+    ///   you would see things like `["edit", "e"]`, or `["write-quit", "wq"]`,
+    ///   and this is no different.
+    /// - `f`: The closure to call when running the command. In order for the
+    ///   closure to actually do anything, you would want it to capture shared,
+    ///   multi-threaded objects (e.g. [`Arc`]s, [`RwData`]s, e.t.c.).
     /// ```rust
     /// # use parsec_core::{
     /// #     commands::{Command},
@@ -531,23 +536,32 @@ impl Command {
     pub fn new_local<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
         F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + 'static
+            + 'static,
     {
-        let callers = callers.into_iter().map(|caller| caller.to_string()).collect::<Vec<String>>();
-        if let Some(caller) = callers.iter().find(|caller| caller.split_whitespace().count() != 1) {
+        let callers = callers
+            .into_iter()
+            .map(|caller| caller.to_string())
+            .collect::<Vec<String>>();
+        if let Some(caller) = callers
+            .iter()
+            .find(|caller| caller.split_whitespace().count() != 1)
+        {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
         Self {
             f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
             callers,
-            file_id: *crate::CMD_FILE_ID.lock().unwrap()
+            file_id: *crate::CMD_FILE_ID.lock().unwrap(),
         }
     }
 
     /// Executes the inner function if the `caller` matches any of the
     /// callers in [`self`].
     fn try_exec<'a>(
-        &self, caller: &str, flags: &Flags, args: &mut impl Iterator<Item = &'a str>
+        &self,
+        caller: &str,
+        flags: &Flags,
+        args: &mut impl Iterator<Item = &'a str>,
     ) -> Result<Option<String>, CommandErr> {
         if self.callers.iter().any(|name| name == caller) {
             (self.f.write())(flags, args).map_err(CommandErr::Failed)
@@ -615,7 +629,7 @@ unsafe impl Sync for Command {}
 /// # fn test_fn<'a>() -> Flags<'a> {
 /// Flags {
 ///     blob: String::from("blosac"),
-///     units: vec!["flag1", "flag2"]
+///     units: vec!["flag1", "flag2"],
 /// }
 /// # }
 /// ```
@@ -627,7 +641,7 @@ unsafe impl Sync for Command {}
 /// [`Commands::try_add`]: Commands::try_add
 pub struct Commands {
     list: Vec<Command>,
-    aliases: RwData<HashMap<String, String>>
+    aliases: RwData<HashMap<String, String>>,
 }
 
 impl Commands {
@@ -645,16 +659,15 @@ impl Commands {
     /// let my_var = RwData::new(String::new());
     /// let my_var_clone = my_var.clone();
     ///
-    /// let command =
-    ///     Command::new(["foo", "bar", "baz"], move |_flags, args| {
-    ///         if let Some(arg) = args.next() {
-    ///             *my_var_clone.write() = String::from(arg);
-    ///         } else {
-    ///             *my_var_clone.write() = String::from("😿");
-    ///         }
+    /// let command = Command::new(["foo", "bar", "baz"], move |_flags, args| {
+    ///     if let Some(arg) = args.next() {
+    ///         *my_var_clone.write() = String::from(arg);
+    ///     } else {
+    ///         *my_var_clone.write() = String::from("😿");
+    ///     }
     ///
-    ///         Ok(None)
-    ///     });
+    ///     Ok(None)
+    /// });
     ///
     /// commands.try_add(command).unwrap();
     ///
@@ -672,10 +685,15 @@ impl Commands {
     /// ```
     pub fn try_exec(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
         let command = command.to_string();
-        let caller = command.split_whitespace().next().ok_or(CommandErr::Empty)?.to_string();
+        let caller = command
+            .split_whitespace()
+            .next()
+            .ok_or(CommandErr::Empty)?
+            .to_string();
 
-        let command =
-            self.aliases.inspect(|aliases| aliases.get(&caller).cloned().unwrap_or(command));
+        let command = self
+            .aliases
+            .inspect(|aliases| aliases.get(&caller).cloned().unwrap_or(command));
         let mut command = command.split_whitespace();
         let caller = command.next().unwrap();
 
@@ -683,7 +701,11 @@ impl Commands {
 
         let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
         for cmd in &self.list {
-            if cmd.file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true) {
+            if cmd
+                .file_id
+                .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
+                .unwrap_or(true)
+            {
                 let result = cmd.try_exec(caller, &flags, &mut args);
                 let Err(CommandErr::NotFound(_)) = result else {
                     return result;
@@ -707,24 +729,22 @@ impl Commands {
     /// #     data::{ReadableData, RwData}
     /// # };
     /// # fn test_fn(commands: &mut Commands) {
-    /// let capitalize =
-    ///     Command::new(["capitalize", "cap"], |_flags, args| {
-    ///         Ok(Some(
-    ///             args.map(|arg| arg.to_string().to_uppercase())
-    ///                 .collect::<String>()
-    ///         ))
-    ///     });
+    /// let capitalize = Command::new(["capitalize", "cap"], |_flags, args| {
+    ///     Ok(Some(
+    ///         args.map(|arg| arg.to_string().to_uppercase())
+    ///             .collect::<String>(),
+    ///     ))
+    /// });
     ///
     /// assert!(commands.try_add(capitalize).is_ok());
     ///
-    /// let capitals =
-    ///     Command::new(["capitals", "cap"], |_flags, args| {
-    ///         if let Some("USA!!1!1!") = args.next() {
-    ///             Ok(Some(String::from("Washington")))
-    ///         } else {
-    ///             Ok(Some(String::from("idk")))
-    ///         }
-    ///     });
+    /// let capitals = Command::new(["capitals", "cap"], |_flags, args| {
+    ///     if let Some("USA!!1!1!") = args.next() {
+    ///         Ok(Some(String::from("Washington")))
+    ///     } else {
+    ///         Ok(Some(String::from("idk")))
+    ///     }
+    /// });
     ///
     /// let result = format!("{:?}", commands.try_add(capitals));
     /// assert!(result == "The caller \"cap\" already exists.");
@@ -739,7 +759,9 @@ impl Commands {
             commands.flat_map(|cmd| cmd.callers().iter().map(|caller| (caller, cmd.file_id)))
         {
             if new_callers.any(|new_caller| new_caller == caller)
-                && file_id.zip_with(cur_file_id, |rhs, lhs| rhs == lhs).unwrap_or(true)
+                && file_id
+                    .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
+                    .unwrap_or(true)
             {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
             }
@@ -763,8 +785,10 @@ impl Commands {
     /// [`Controler`]: crate::Controler
     /// [`RwData<Commands>`]: crate::data::RwData
     pub(crate) fn new_rw_data() -> RwData<Self> {
-        let commands =
-            RwData::new(Commands { list: Vec::new(), aliases: RwData::new(HashMap::new()) });
+        let commands = RwData::new(Commands {
+            list: Vec::new(),
+            aliases: RwData::new(HashMap::new()),
+        });
 
         let alias = {
             let commands = commands.clone();
@@ -773,11 +797,14 @@ impl Commands {
                     Err(String::from(
                         "An alias cannot take any flags, try moving them after the command, like \
                          \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
-                         my-alias my-caller\""
+                         my-alias my-caller\"",
                     ))
                 } else {
                     let alias = args.next().ok_or(String::from("No alias supplied"))?;
-                    commands.read().try_alias(alias, args).map_err(|err| err.to_string())
+                    commands
+                        .read()
+                        .try_alias(alias, args)
+                        .map_err(|err| err.to_string())
                 }
             })
         };
@@ -793,7 +820,9 @@ impl Commands {
     /// another command, or if `command` is not a real caller to an
     /// exisiting [`Command`].
     fn try_alias<'a>(
-        &self, alias: impl ToString, command: impl IntoIterator<Item = &'a str>
+        &self,
+        alias: impl ToString,
+        command: impl IntoIterator<Item = &'a str>,
     ) -> Result<Option<String>, CommandErr> {
         let alias = alias.to_string();
         let mut command = command.into_iter();
@@ -821,7 +850,7 @@ pub enum CommandErr {
     AlreadyExists(String),
     NotFound(String),
     Failed(String),
-    Empty
+    Empty,
 }
 
 impl std::fmt::Display for CommandErr {
@@ -837,7 +866,7 @@ impl std::fmt::Display for CommandErr {
                 write!(f, "The caller \"{caller}\" was not found.")
             }
             CommandErr::Failed(failure) => f.write_str(failure),
-            CommandErr::Empty => f.write_str("No caller supplied.")
+            CommandErr::Empty => f.write_str("No caller supplied."),
         }
     }
 }
@@ -850,8 +879,7 @@ impl std::error::Error for CommandErr {}
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -865,8 +893,8 @@ impl std::error::Error for CommandErr {}
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
-///                -also-not-flags";
+/// let command =
+///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -874,7 +902,7 @@ impl std::error::Error for CommandErr {}
 /// assert!(flags.units == vec!["foo", "bar"]);
 /// ```
 pub fn split_flags<'a>(
-    args: impl Iterator<Item = &'a str>
+    args: impl Iterator<Item = &'a str>,
 ) -> (Flags<'a>, impl Iterator<Item = &'a str>) {
     let mut blob = String::new();
     let mut units = Vec::new();

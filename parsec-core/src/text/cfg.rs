@@ -5,7 +5,7 @@ pub enum WrapMethod {
     Capped(usize),
     Word,
     #[default]
-    NoWrap
+    NoWrap,
 }
 
 impl WrapMethod {
@@ -20,7 +20,7 @@ impl WrapMethod {
     pub fn wrapping_cap(&self, width: usize) -> usize {
         match self {
             WrapMethod::Capped(cap) => *cap,
-            _ => width
+            _ => width,
         }
     }
 }
@@ -51,7 +51,7 @@ pub enum NewLine {
     AfterSpaceAs(char),
     /// Don't print anything for a new line character.
     #[default]
-    Hidden
+    Hidden,
 }
 
 impl NewLine {
@@ -65,7 +65,7 @@ impl NewLine {
                     Some(' ')
                 }
             }
-            NewLine::Hidden => None
+            NewLine::Hidden => None,
         }
     }
 }
@@ -75,7 +75,7 @@ impl NewLine {
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
     pub y_gap: usize,
-    pub x_gap: usize
+    pub x_gap: usize,
 }
 
 impl Default for ScrollOff {
@@ -92,7 +92,9 @@ impl WordChars {
         let word_chars = WordChars(ranges);
 
         assert!(
-            ![' ', '\t', '\n'].into_iter().any(|char| word_chars.contains(char)),
+            ![' ', '\t', '\n']
+                .into_iter()
+                .any(|char| word_chars.contains(char)),
             "WordChars cannot contain ' ', '\\n' or '\\t'."
         );
 
@@ -120,7 +122,7 @@ pub struct PrintCfg {
     pub scrolloff: ScrollOff,
     // NOTE: This is relevant for printing with `WrapMethod::Word`.
     /// Characters that are considered to be part of a word.
-    pub word_chars: WordChars
+    pub word_chars: WordChars,
 }
 
 impl PrintCfg {
@@ -134,7 +136,7 @@ impl PrintCfg {
             tab_stops: TabStops(4),
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff::default(),
-            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_'])
+            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
         }
     }
 }
@@ -147,7 +149,7 @@ impl Default for PrintCfg {
             tab_stops: TabStops(4),
             new_line: NewLine::default(),
             scrolloff: ScrollOff::default(),
-            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_'])
+            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
         }
     }
 }
@@ -157,7 +159,7 @@ pub struct IterCfg<'a> {
     cfg: &'a PrintCfg,
     iter_lfs: bool,
     force_wrap: Option<WrapMethod>,
-    no_indent_wrap: bool
+    no_indent_wrap: bool,
 }
 
 impl<'a> IterCfg<'a> {
@@ -166,28 +168,40 @@ impl<'a> IterCfg<'a> {
             cfg,
             iter_lfs: true,
             force_wrap: None,
-            no_indent_wrap: false
+            no_indent_wrap: false,
         }
     }
 
     pub fn outsource_lfs(self) -> Self {
-        Self { iter_lfs: false, ..self }
+        Self {
+            iter_lfs: false,
+            ..self
+        }
     }
 
     pub fn dont_wrap(self) -> Self {
-        Self { force_wrap: Some(WrapMethod::NoWrap), ..self }
+        Self {
+            force_wrap: Some(WrapMethod::NoWrap),
+            ..self
+        }
     }
 
     pub fn no_word_wrap(self) -> Self {
         match self.cfg.wrap_method {
             WrapMethod::Word if matches!(self.force_wrap, Some(WrapMethod::NoWrap)) => self,
-            WrapMethod::Word => Self { force_wrap: Some(WrapMethod::Width), ..self },
-            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self
+            WrapMethod::Word => Self {
+                force_wrap: Some(WrapMethod::Width),
+                ..self
+            },
+            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self,
         }
     }
 
     pub fn no_indent_wrap(self) -> Self {
-        Self { no_indent_wrap: true, ..self }
+        Self {
+            no_indent_wrap: true,
+            ..self
+        }
     }
 
     pub fn show_lf(&self) -> bool {
@@ -207,7 +221,11 @@ impl<'a> IterCfg<'a> {
     }
 
     pub fn new_line(&self) -> NewLine {
-        if self.iter_lfs { NewLine::Hidden } else { self.cfg.new_line }
+        if self.iter_lfs {
+            NewLine::Hidden
+        } else {
+            self.cfg.new_line
+        }
     }
 
     pub fn scrolloff(&self) -> ScrollOff {

@@ -9,7 +9,8 @@
     control_flow_enum,
     return_position_impl_trait_in_trait,
     decl_macro,
-    generic_const_exprs
+    generic_const_exprs,
+    step_trait
 )]
 #![allow(
     clippy::arc_with_non_send_sync,
@@ -572,32 +573,6 @@ macro_rules! join {
     ($($var:expr),+ $(,)?) => {
         [$($var.to_string()),+].join("")
     }
-}
-
-#[macro_export]
-macro_rules! status_parts {
-    () => { Vec::new() };
-
-    (@process $parts:expr; $part:expr $(,)?) => {
-        $parts.push(StatusPart::from($part));
-    };
-
-    (@process $parts:expr; $part:expr, $($remainder:tt)*) => {
-        $parts.push(StatusPart::from($part));
-
-        status_parts!(@process $parts; $($remainder)*);
-    };
-
-    ($($text:tt)*) => {
-        {
-            use $crate::widgets::StatusPart;
-            let mut parts = Vec::new();
-
-            status_parts!(@process parts; $($text)*);
-
-            parts
-        }
-    };
 }
 
 /// Internal macro used to log information.

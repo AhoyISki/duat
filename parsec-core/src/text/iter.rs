@@ -91,11 +91,11 @@ impl<'a> Iter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
-            RawTag::ConcealStart => {
+            RawTag::ConcealStart(_) => {
                 self.conceals += 1;
                 ControlFlow::Continue(())
             }
-            RawTag::ConcealEnd => {
+            RawTag::ConcealEnd(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.max(pos);
@@ -104,7 +104,7 @@ impl<'a> Iter<'a> {
 
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(id) if self.print_ghosts => {
+            RawTag::GhostText((_, id)) if self.print_ghosts => {
                 let text = self.texts.get(&id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
                     text.iter()
@@ -154,11 +154,12 @@ impl Iterator for Iter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                    let part = Part::from_raw(tag);
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
                         let ghost = Some(self.ghost_pos);
-                        break Some(Item::new(pos, self.line, ghost, Part::from_raw(tag)));
+                        break Some(Item::new(pos, self.line, ghost, part));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, Part::from_raw(tag)));
+                        break Some(Item::new(self.pos, self.line, None, part));
                     }
                 }
             } else if let Some(char) = self.chars.next() {
@@ -256,7 +257,7 @@ impl<'a> RevIter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
-            RawTag::ConcealStart => {
+            RawTag::ConcealStart(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.min(pos);
@@ -265,12 +266,12 @@ impl<'a> RevIter<'a> {
 
                 ControlFlow::Continue(())
             }
-            RawTag::ConcealEnd => {
+            RawTag::ConcealEnd(_) => {
                 self.conceals += 1;
 
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(id) if self.print_ghosts => {
+            RawTag::GhostText((_, id)) if self.print_ghosts => {
                 let text = self.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
                     self.ghost_pos = text.len_chars();
@@ -313,15 +314,11 @@ impl Iterator for RevIter<'_> {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
+                    let part = Part::from_raw(tag);
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(
-                            pos,
-                            self.line,
-                            Some(self.ghost_pos),
-                            Part::from_raw(tag),
-                        ));
+                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), part));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, Part::from_raw(tag)));
+                        break Some(Item::new(self.pos, self.line, None, part));
                     }
                 }
             } else if let Some(char) = self.chars.next() {

@@ -8,11 +8,10 @@ use any_rope::{Measurable, Rope};
 use container::Container;
 
 pub use self::{
-    ids::{TextId, ToggleId},
+    ids::{Marker, Markers, TextId, ToggleId},
     types::{RawTag, Tag},
 };
 use super::{chars::Chars, types::Toggle, Text};
-use crate::{log_info, widgets::ITER_COUNT};
 
 mod container;
 mod types;
@@ -25,15 +24,6 @@ const LIMIT_TO_BUMP: usize = 500;
 pub enum TagOrSkip {
     Tag(RawTag),
     Skip(usize),
-}
-
-impl std::fmt::Debug for TagOrSkip {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TagOrSkip::Tag(tag) => write!(f, "Tag({:?})", tag),
-            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
-        }
-    }
 }
 
 impl TagOrSkip {
@@ -52,6 +42,15 @@ impl TagOrSkip {
     }
 }
 
+impl std::fmt::Debug for TagOrSkip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagOrSkip::Tag(tag) => write!(f, "Tag({:?})", tag),
+            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
+        }
+    }
+}
+
 impl Measurable for TagOrSkip {
     type Measure = usize;
 
@@ -65,6 +64,7 @@ impl Measurable for TagOrSkip {
 }
 
 // TODO: Generic container.
+#[derive(Clone)]
 pub struct Tags {
     container: Container,
     pub ranges: Vec<TagRange>,
@@ -123,8 +123,8 @@ impl Tags {
         }
     }
 
-    pub fn insert(&mut self, pos: usize, tag: Tag) -> Option<ToggleId> {
-        let (raw_tag, toggle_id) = tag.to_raw(&mut self.texts, &mut self.toggles);
+    pub fn insert(&mut self, pos: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
+        let (raw_tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
 
         assert!(pos <= self.measure(), "Char index {} too large", pos);
 
@@ -156,8 +156,17 @@ impl Tags {
 
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
-    pub fn remove_on(&mut self, pos: usize) {
-        let removed = self.container.remove_inclusive_on(pos);
+    pub fn remove_on(&mut self, pos: usize, markers: impl Markers) {
+        if self
+            .container
+            .iter_at(pos)
+            .next()
+            .map_or(true, |(_, t_or_s)| matches!(t_or_s, TagOrSkip::Skip(_)))
+        {
+            return;
+        }
+
+        let removed = self.container.remove_inclusive_on(pos, markers);
 
         self.merge_surrounding_skips(pos);
         for entry in removed {
@@ -211,86 +220,36 @@ impl Tags {
             return;
         }
 
-        // Removing old ranges containing.
-        if new.clone().count() < old_count {
-            self.ranges
-                .extract_if(|range| {
-                    if let TagRange::Bounded(_, range, ..) = range {
-                        if range.start <= new.start && range.end >= new.end {
-                            return range.clone().count() <= self.range_min;
-                        }
-                    }
-                    false
-                })
-                .take_while(|range| range.get_start().is_some_and(|start| start <= new.start))
-                .last();
-        }
+        let search_start = new.start.saturating_sub(self.range_min);
+        let search_end = (new.end + self.range_min).min(self.measure());
+        let add_for_no_double_iter = (new.end == new.start) as usize;
 
-        // Adding new ranges.
-        let mut entry_counts = Vec::new();
+        let before = self
+            .container
+            .iter_at(search_start)
+            .take_while(|(pos, _)| *pos <= new.start)
+            .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)));
+        let after = self
+            .container
+            .iter_at(new.end + add_for_no_double_iter)
+            .take_while(|(pos, _)| *pos <= search_end)
+            .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)));
 
-        let before = {
-            let start = new.start.saturating_sub(self.range_min - old_count);
-            self.container
-                .iter_at(start)
-                .take_while(|(pos, _)| *pos <= new.start)
-        };
-        let after = {
-            let end = (new.end + self.range_min - old_count).min(self.measure());
-            self.container
-                .rev_iter_at(end)
-                .take_while(|(pos, _)| *pos >= new.end)
-        };
+        for entry in before.clone().chain(after.clone()) {
+            let entry_on_both_sides = entry.0 == new.start && new.start == new.end;
+            let start_entry_on_left = entry.0 <= new.start && entry.1.is_start();
+            let end_entry_on_right = entry.0 >= new.end && entry.1.is_end();
 
-        if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
-            log_info!("{:#?}", self.container);
-            log_info!(
-                "{:#?}",
-                self.ranges
-                    .iter()
-                    .map(|range| format!("{:?}", range))
-                    .collect::<Vec<String>>()
-            );
-        }
-
-        for entry in before
-            .chain(after)
-            .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
-        {
-            let count = if let Some((count, _)) =
-                entry_counts.iter_mut().find(|(_, other)| *other == entry)
-            {
-                count
-            } else {
-                let count = count_entry(entry, &self.ranges);
-                entry_counts.push((count, entry));
-                &mut entry_counts.last_mut().unwrap().0
-            };
-
-            let ranges = &mut self.ranges;
-            if *count == 0 {
-                if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
-                    log_info!("processed entry {:?}", entry);
-                }
-
-                if entry.0 <= new.start {
-                    add_to_ranges(entry, ranges, self.range_min, true, false);
-                } else {
-                    add_to_ranges(entry, ranges, self.range_min, false, true);
-                }
-            } else {
-                *count -= 1;
+            if entry_on_both_sides || start_entry_on_left || end_entry_on_right {
+                remove_from_ranges(entry, &mut self.ranges);
             }
         }
 
-        if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
-            log_info!(
-                "{:#?}",
-                self.ranges
-                    .iter()
-                    .map(|range| format!("{:?}", range))
-                    .collect::<Vec<String>>()
-            );
+        for entry in before {
+            add_to_ranges(entry, &mut self.ranges, self.range_min, true, false);
+        }
+        for entry in after {
+            add_to_ranges(entry, &mut self.ranges, self.range_min, false, true);
         }
     }
 
@@ -306,9 +265,9 @@ impl Tags {
             .next()
             .is_some_and(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
 
-        let (next_skip, last_width) = {
+        let (next_skip, last_measure) = {
             let mut total_skip = 0;
-            let mut last_width = from;
+            let mut last_measure = from;
             let mut next_tags = self
                 .container
                 .iter_at(from)
@@ -316,52 +275,52 @@ impl Tags {
 
             while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
                 total_skip += skip;
-                last_width = width;
+                last_measure = width;
             }
 
-            (total_skip, last_width)
+            (total_skip, last_measure)
         };
 
-        let (prev_skip, first_width) = {
+        let (prev_skip, first_measure) = {
             let mut total_skip = 0;
-            let mut first_width = from;
+            let mut first_measure = from;
 
             let mut prev_tags = self
                 .container
                 .rev_iter_at(from)
                 .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
 
-            while let Some((width, TagOrSkip::Skip(skip))) = prev_tags.next() {
+            while let Some((measure, TagOrSkip::Skip(skip))) = prev_tags.next() {
                 total_skip += skip;
-                first_width = width;
+                first_measure = measure;
             }
 
-            (total_skip, first_width)
+            (total_skip, first_measure)
         };
 
         // Merge groups of ranges around `from` into 2 groups.
         if tags_in_middle {
-            if last_width > from {
+            if last_measure > from {
                 // The removal happens after the insertion in order to prevent `Tag`s
                 // which are meant to be separate from coming together.
                 self.container.insert(from, TagOrSkip::Skip(next_skip));
                 let skip_range = (from + next_skip)..(from + 2 * next_skip);
                 self.container.remove_exclusive(skip_range);
             }
-            if first_width < from {
+            if first_measure < from {
                 self.container
-                    .insert(first_width, TagOrSkip::Skip(prev_skip));
+                    .insert(first_measure, TagOrSkip::Skip(prev_skip));
 
-                let range = (first_width + prev_skip)..(from + prev_skip);
+                let range = (first_measure + prev_skip)..(from + prev_skip);
                 self.container.remove_exclusive(range);
             }
         // Merge groups of ranges around `from` into 1 group.
-        } else if first_width < last_width {
+        } else if first_measure < last_measure {
             let total_skip = prev_skip + next_skip;
 
             self.container
-                .insert(first_width, TagOrSkip::Skip(total_skip));
-            let range = (first_width + total_skip)..(first_width + 2 * total_skip);
+                .insert(first_measure, TagOrSkip::Skip(total_skip));
+            let range = (first_measure + total_skip)..(first_measure + 2 * total_skip);
             self.container.remove_exclusive(range);
         }
     }
@@ -567,10 +526,6 @@ impl Ord for TagRange {
                 if ordering == Equal { Greater } else { ordering }
             }
             (TagRange::From(lhs_tag, lhs_range), TagRange::From(rhs_tag, rhs_range)) => {
-                if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
-                    log_info!("{:?}", (self, other));
-                }
-
                 (lhs_range.start, lhs_tag).cmp(&(rhs_range.start, rhs_tag))
             }
         }
@@ -656,16 +611,16 @@ impl<'a> Iterator for RawTags<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find_map(|(pos, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::ConcealStart) => {
+            TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
                 if let Some(range) = self
                     .ranges
                     .iter()
-                    .find(|range| range.starts_with(&(pos, RawTag::ConcealStart)))
+                    .find(|range| range.starts_with(&(pos, RawTag::ConcealStart(marker))))
                 {
                     let skip = range.get_end().map_or(usize::MAX, |end| end - pos);
                     Some((pos, RawTag::Concealed(skip)))
                 } else {
-                    Some((pos, RawTag::ConcealStart))
+                    Some((pos, RawTag::ConcealStart(marker)))
                 }
             }
             TagOrSkip::Tag(tag) => Some((pos, tag)),
@@ -691,16 +646,16 @@ impl<'a> Iterator for RevRawTags<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find_map(|(pos, t_or_s)| match t_or_s {
-            TagOrSkip::Tag(RawTag::ConcealEnd) => {
+            TagOrSkip::Tag(RawTag::ConcealEnd(marker)) => {
                 if let Some(range) = self
                     .ranges
                     .iter()
-                    .find(|range| range.ends_with(&(pos, RawTag::ConcealEnd)))
+                    .find(|range| range.ends_with(&(pos, RawTag::ConcealEnd(marker))))
                 {
                     let skip = range.get_start().map_or(0, |start| pos - start);
                     Some((pos, RawTag::Concealed(skip)))
                 } else {
-                    Some((pos, RawTag::ConcealEnd))
+                    Some((pos, RawTag::ConcealEnd(marker)))
                 }
             }
             TagOrSkip::Tag(tag) => Some((pos, tag)),
@@ -803,32 +758,6 @@ fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
             let (Ok(index) | Err(index)) = ranges.binary_search(&range);
             ranges.insert(index, range);
         }
-    }
-}
-
-fn count_entry(entry: (usize, RawTag), ranges: &[TagRange]) -> usize {
-    if entry.1.is_start() {
-        let (start, tag) = entry;
-        let range = TagRange::From(tag, start..);
-        if let Ok(index) = ranges.binary_search(&range) {
-            if (2..4).contains(&ITER_COUNT.load(std::sync::atomic::Ordering::Relaxed)) {
-                log_info!("{:?}", range);
-            }
-            let start_matches = |range: &&TagRange| range.starts_with(&entry);
-            let next = ranges.iter().skip(index).take_while(start_matches);
-            let prev = ranges.iter().take(index).rev().take_while(start_matches);
-            let count = next.chain(prev).count();
-            count
-        } else {
-            0
-        }
-    } else if entry.1.is_end() {
-        ranges
-            .iter()
-            .filter(|range| range.ends_with(&entry))
-            .count()
-    } else {
-        0
     }
 }
 
@@ -951,6 +880,15 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
 }
 
 mod ids {
+    use std::{
+        ops::Range,
+        sync::atomic::{AtomicU32, AtomicUsize, Ordering},
+    };
+
+    static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
+    static TOGGLE_COUNT: AtomicU32 = AtomicU32::new(0);
+    static MARKER_COUNT: AtomicUsize = AtomicUsize::new(0);
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct TextId(u32);
 
@@ -960,20 +898,61 @@ mod ids {
     impl TextId {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
-            use std::sync::atomic::AtomicU32;
-            static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
-
-            Self(TEXT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+            Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
         }
     }
 
     impl ToggleId {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
-            use std::sync::atomic::AtomicU32;
-            static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
+            Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
 
-            Self(TEXT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Marker(usize);
+
+    impl Marker {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self(MARKER_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+
+        pub fn new_many(amount: usize) -> Range<Self> {
+            let start = Self(MARKER_COUNT.fetch_add(1, Ordering::Relaxed));
+            let end = Self(MARKER_COUNT.fetch_add(amount, Ordering::Relaxed));
+
+            start..end
+        }
+    }
+
+    impl std::iter::Step for Marker {
+        fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+            end.0.checked_sub(start.0)
+        }
+
+        fn forward_checked(start: Self, count: usize) -> Option<Self> {
+            Some(Self(start.0 + count))
+        }
+
+        fn backward_checked(start: Self, count: usize) -> Option<Self> {
+            start.0.checked_sub(count).map(Self)
+        }
+    }
+
+    pub trait Markers {
+        fn range(self) -> Range<Marker>;
+    }
+
+    impl Markers for Marker {
+        fn range(self) -> Range<Marker> {
+            Marker(self.0)..Marker(self.0 + 1)
+        }
+    }
+
+    impl Markers for Range<Marker> {
+        fn range(self) -> Range<Marker> {
+            self
         }
     }
 }

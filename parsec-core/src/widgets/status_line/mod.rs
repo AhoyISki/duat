@@ -1,12 +1,12 @@
 //! A [`NormalWidget`] that serves the purpose of showing general
 //! information.
 //!
-//! This widget has an associated [`FileWidget<U>`] that's used as a
-//! reference. This conotates that a [`StatusLine<U>`] must be tied to
+//! This widget has an associated [`FileWidget`] that's used as a
+//! reference. This conotates that a [`StatusLine`] must be tied to
 //! a single file, but this is not really the case. The end user may
 //! be able to open multiple files and have just a single
-//! [`StatusLine<U>`] that displays the information of only the
-//! currently active [`FileWidget<U>`]:
+//! [`StatusLine`] that displays the information of only the
+//! currently active [`FileWidget`]:
 //!
 //! ```rust
 //! # use parsec_core::{
@@ -32,21 +32,21 @@
 //! # }
 //! ```
 //!
-//! In the example above, every time a [`FileWidget<U>`] is opened
-//! with a new file, a [`StatusLine<U>`] will be pushed below it, as
-//! seen in the `constructor_hook`. This [`StatusLine<U>`] will show
-//! information about that specific [`FileWidget<U>`].
+//! In the example above, every time a [`FileWidget`] is opened
+//! with a new file, a [`StatusLine`] will be pushed below it, as
+//! seen in the `constructor_hook`. This [`StatusLine`] will show
+//! information about that specific [`FileWidget`].
 //!
 //! Also in the example above, you can see that a second
-//! [`StatusLine<U>`] is pushed by [`PushSpecs::below()`]. As such,
+//! [`StatusLine`] is pushed by [`PushSpecs::below()`]. As such,
 //! this widget will be placed below all others, and the
 //! [`default_global_fn()`][StatusLine::default_global_fn()] means
 //! that it is global, and instead of pointing to a specific
-//! [`FileWidget<U>`], it will change to always point at the currently
+//! [`FileWidget`], it will change to always point at the currently
 //! active one.
 //!
 //! In a real life situation, you would choose only one of these
-//! aproaches, as having two [`StatusLine<U>`]s showing the same
+//! aproaches, as having two [`StatusLine`]s showing the same
 //! information at the same time is quite redundant. But this is a
 //! good showing for the flexibility of this widget.
 
@@ -61,10 +61,9 @@ use crate::{
     data::{AsAny, RoNestedData},
     forms::Form,
     input::InputMethod,
-    status_parts,
-    text::{Tag, Text, TextBuilder},
+    text::Text,
     ui::{Area, PushSpecs, Ui},
-    Controler, PALETTE,
+    Controler,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -87,10 +86,10 @@ impl Reader {
 
 enum ReaderOrText {
     Reader(Reader),
-    Text(String),
+    Text(Text),
 }
 
-/// Part of the [`StatusLine<U>`], can either be a
+/// Part of the [`StatusLine`], can either be a
 /// [`&'static str`][str], or a dynamically updated [`Reader`].
 pub struct StatusPart {
     reader_or_text: ReaderOrText,
@@ -98,27 +97,17 @@ pub struct StatusPart {
 }
 
 impl StatusPart {
-    /// Consumes [`self`] and modifies a [`TextBuilder`], adding
-    /// swappable ranges, text, and [`Tag`]s.
-    fn process(
-        self,
-        builder: &mut TextBuilder,
-        file: &FileWidget,
-        input: &dyn InputMethod,
-    ) -> (Option<Reader>, Option<Box<dyn Fn() -> bool + Send + Sync>>) {
-        match self.reader_or_text {
-            ReaderOrText::Reader(Reader::Var(obj_fn)) => {
-                builder.push_text(obj_fn());
-                (Some(Reader::Var(obj_fn)), self.checker)
-            }
-            ReaderOrText::Reader(Reader::File(file_fn)) => {
-                builder.push_text(file_fn(file, input));
-                (Some(Reader::File(file_fn)), self.checker)
-            }
-            ReaderOrText::Text(text) => {
-                push_forms_and_text(text.as_str(), builder);
-                (None, self.checker)
-            }
+    fn check(&self) -> bool {
+        match &self.checker {
+            Some(checker) => checker(),
+            None => false,
+        }
+    }
+
+    fn read(&self, file: &FileWidget, input: &dyn InputMethod) -> Text {
+        match &self.reader_or_text {
+            ReaderOrText::Reader(reader) => reader.read(file, input),
+            ReaderOrText::Text(text) => text.clone(),
         }
     }
 }
@@ -126,7 +115,7 @@ impl StatusPart {
 impl From<char> for StatusPart {
     fn from(value: char) -> Self {
         StatusPart {
-            reader_or_text: ReaderOrText::Text(String::from(value)),
+            reader_or_text: ReaderOrText::Text(Text::from(value)),
             checker: None,
         }
     }
@@ -135,7 +124,7 @@ impl From<char> for StatusPart {
 impl From<&'_ str> for StatusPart {
     fn from(value: &'_ str) -> Self {
         StatusPart {
-            reader_or_text: ReaderOrText::Text(String::from(value)),
+            reader_or_text: ReaderOrText::Text(Text::from(value)),
             checker: None,
         }
     }
@@ -144,7 +133,7 @@ impl From<&'_ str> for StatusPart {
 impl From<String> for StatusPart {
     fn from(value: String) -> Self {
         StatusPart {
-            reader_or_text: ReaderOrText::Text(value),
+            reader_or_text: ReaderOrText::Text(Text::from(value)),
             checker: None,
         }
     }
@@ -179,46 +168,20 @@ where
     }
 }
 
-/// Pushes the [`Form`][crate::tags::form::Form]s found in the `text`,
-/// while keeping the rest of the text intact.
-fn push_forms_and_text(text: &str, builder: &mut TextBuilder) {
-    let mut prev_l_index = None;
-    for (next_l_index, _) in text.match_indices('[').chain([(text.len(), "[")]) {
-        let Some(l_index) = prev_l_index else {
-            builder.push_str(&text[..next_l_index]);
-            prev_l_index = Some(next_l_index);
-            continue;
-        };
-
-        if let Some((text_start, id)) = text[(l_index + 1)..next_l_index].find(']').map(|r_index| {
-            let name = &text[(l_index + 1)..=(l_index + r_index)];
-            let (_, id) = PALETTE.from_name(name);
-
-            (l_index + r_index + 2, id)
-        }) {
-            builder.push_tag(Tag::PushForm(id));
-            builder.push_str(&text[text_start..next_l_index]);
-        } else {
-            builder.push_str(&text[l_index..next_l_index]);
-        }
-
-        prev_l_index = Some(next_l_index);
-    }
-}
-
 pub struct StatusLineCfg {
-    parts: Option<Vec<StatusPart>>,
+    text_fn: Box<dyn Fn(&FileWidget, &dyn InputMethod) -> Text>,
+    checker: Box<dyn Fn() -> bool>,
     is_global: bool,
     specs: PushSpecs,
 }
 
 impl StatusLineCfg {
     pub fn new() -> Self {
-        Self {
-            parts: None,
-            is_global: false,
-            specs: PushSpecs::below().with_lenght(1.0),
-        }
+        status_cfg!(
+            [FileName] file_name " " [Selections] selections_fmt " "
+            [Coords] main_col [Separator] ":" [Coords] main_line [Separator]
+            "/" [Coords] len_lines
+        )
     }
 
     pub fn builder<U>(
@@ -228,41 +191,25 @@ impl StatusLineCfg {
         U: Ui,
     {
         move |controler| {
-            PALETTE.try_set_form("FileName", Form::new().yellow().italic());
-            PALETTE.try_set_form("Selections", Form::new().dark_blue());
-            PALETTE.try_set_form("Coords", Form::new().dark_red());
-            PALETTE.try_set_form("Separator", Form::new().cyan());
-
-            let parts = self.parts.unwrap_or_else(default_parts);
-
             let (file, input) = if self.is_global {
                 (controler.dyn_active_file(), controler.dyn_active_input())
             } else {
                 (controler.active_file(), controler.active_input())
             };
 
-            let (builder, readers, checker) =
-                file.inspect(|file| input.inspect(|input| build_parts(file, input, parts)));
-
             let checker = {
                 let file = file.clone();
-                Box::new(move || file.has_changed() || checker())
+                Box::new(move || file.has_changed() || (self.checker)())
             };
 
             let widget = Widget::passive(StatusLine {
                 file,
                 input,
-                builder,
-                readers,
+                text_fn: self.text_fn,
+                text: Text::default_string(),
             });
-            (widget, checker, self.specs)
-        }
-    }
 
-    pub fn with_parts(self, parts: Vec<StatusPart>) -> Self {
-        Self {
-            parts: Some(parts),
-            ..self
+            (widget, checker, self.specs)
         }
     }
 
@@ -290,9 +237,9 @@ impl Default for StatusLineCfg {
 /// A [`NormalWidget`] that can display information about Parsec and
 /// its extensions.
 ///
-/// The [`StatusLine<U>`] is built around a [`Vec<Reader<U>>`], which
+/// The [`StatusLine`] is built around a [`Vec<Reader>`], which
 /// determines exacly how it will be updated. There is a default form
-/// for the [`Vec<Reader<U>>`] in [`StatusLine::default_fn()`], which
+/// for the [`Vec<Reader>`] in [`StatusLine::default_fn()`], which
 /// you can read if you want to.
 ///
 /// # Examples
@@ -338,8 +285,8 @@ impl Default for StatusLineCfg {
 pub struct StatusLine {
     file: RoNestedData<FileWidget>,
     input: RoNestedData<dyn InputMethod>,
-    builder: TextBuilder,
-    readers: Vec<Reader>,
+    text_fn: Box<dyn Fn(&FileWidget, &dyn InputMethod) -> Text>,
+    text: Text,
 }
 
 impl StatusLine {
@@ -357,17 +304,15 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        // self.input.inspect(|input| {
-        //    self.file.inspect(|file| {
-        //        for (index, reader) in self.readers.iter().enumerate() {
-        //            self.builder.swap_range(index, reader.read(file, input));
-        //        }
-        //    });
-        //});
+        self.input.inspect(|input| {
+            self.file.inspect(|file| {
+                self.text = (self.text_fn)(file, input);
+            });
+        });
     }
 
     fn text(&self) -> &Text {
-        self.builder.text()
+        &self.text
     }
 }
 
@@ -380,63 +325,109 @@ impl AsAny for StatusLine {
 unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}
 
-fn build_parts(
-    file: &FileWidget,
-    input: &dyn InputMethod,
-    parts: Vec<StatusPart>,
-) -> (TextBuilder, Vec<Reader>, impl Fn() -> bool + Send + Sync) {
-    let mut builder = TextBuilder::default();
-    let mut checkers = Vec::new();
-
-    builder.push_tag(Tag::AlignRight);
-
-    let readers = {
-        let mut readers = Vec::new();
-        for part in parts.into_iter() {
-            let (reader, checker) = part.process(&mut builder, file, input);
-            if let Some(reader) = reader {
-                readers.push(reader)
-            }
-            if let Some(checker) = checker {
-                checkers.push(checker)
-            }
-        }
-        readers
-    };
-
-    let checker = move || checkers.iter().any(|checker| checker());
-
-    (builder, readers, checker)
-}
-
-fn default_parts() -> Vec<StatusPart> {
-    status_parts![
-        "[FileName]",
-        file_name,
-        " [Selections]",
-        selections_fmt,
-        " [Coords]",
-        main_col,
-        "[Separator]:[Coords]",
-        main_line,
-        "[Separator]/[Coords]",
-        len_lines
-    ]
-}
-
 pub macro status_cfg {
-    (@push $builder:expr, $text:expr) => {
-
+    (@push_text $builder:expr, $_file:expr, $_input:expr, [$form:ident]) => {
+        use std::sync::LazyLock;
+        static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
+            let name = stringify!($form);
+            crate::PALETTE.from_name(name).1
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
-    (@parse_text $builder:expr, $part:tt $($parts:tt)*) => {
+    (@push_text $builder:expr, $_file:expr, $_input:expr, [[$form_id:expr]]) => {
+        $builder.push_tag(crate::text::Tag::PushForm($form_id))
     },
 
-    ($($parts:tt)*) => {
-        use crate::{input::InputMethod, widgets::FileWidget};
+    // Other tags
+    (@push_text $builder:expr, $_file:expr, $_input:expr, (($tag:expr))) => {
+        $builder.push_tag($tag)
+    },
+
+    // Failure
+    (@push_text $_builder:expr, $_file:expr, $_input:expr, ($_not_allowed:expr)) => {
+        compile_error!(
+            "Expressions are not allowed in place of tag identifiers. If you wanted to add text \
+             using an expression, remove the parentheses and replace them with braces. If you \
+             wanted to add a tag with an expression, surround it with another pair of parentheses \
+             (e.g. `((my_expr))`)"
+        );
+    },
+
+    // Direct Text insertions.
+    (@push_text $builder:expr, $file:expr, $input:expr, $text:expr) => {
+        use std::sync::LazyLock;
+        static PART: LazyLock<crate::widgets::StatusPart> = LazyLock::new(|| {
+            StatusPart::from($text)
+        });
+
+        $builder.push_text(PART.read($file, $input))
+    },
+
+    (@parse_text $_builder:expr, $_file:expr, $_input:expr,) => {},
+
+    (@parse_text $builder:expr, $file:expr, $input:expr, $part:tt $($parts:tt)*) => {
+        status_cfg!(@push_text $builder, $file, $input, $part);
+        status_cfg!(@parse_text $builder, $file, $input, $($parts)*);
+    },
+
+	////////// Checker parsing
+    (@push_check $_needs_update:expr, [$_form:ident]) => {},
+    (@push_check $_needs_update:expr, [[$_form_id:expr]]) => {},
+
+    // Other tags
+    (@push_check $_needs_update:expr, (($_tag:expr))) => {},
+
+    // Failure
+    (@push_check $_needs_update:expr, ($_not_allowed:expr)) => {},
+
+    // Direct Text insertions.
+    (@push_check $needs_update:expr, $text:expr) => {
+        use std::sync::LazyLock;
+        static PART: LazyLock<crate::widgets::StatusPart> = LazyLock::new(|| {
+            StatusPart::from($text)
+        });
+
+        *$needs_update |= PART.check()
+    },
+
+    (@parse_check $_needs_update:expr,) => {},
+
+    (@parse_check $needs_update:expr, $part:tt $($parts:tt)*) => {
+        status_cfg!(@push_check $needs_update, $part);
+        status_cfg!(@parse_check $needs_update, $($parts)*);
+    },
+
+    ($($parts:tt)*) => {{
+        use crate::{
+            PALETTE,
+            input::InputMethod,
+            text::build,
+            ui::PushSpecs,
+            widgets::{FileWidget, StatusLineCfg},
+        };
 
         let text_fn = |file: &FileWidget, input: &dyn InputMethod| {
-            let mut builder = crate::text::TextBuilder::new();
-            status_cfg!(@text builder, $($parts)*)
+            let mut builder = build!((AlignRight));
+            status_cfg!(@parse_text builder, file, input, $($parts)*);
+            builder.finish()
         };
-    }
+
+        let checker = || {
+            let mut needs_update = false;
+            status_cfg!(@parse_check &mut needs_update, $($parts)*);
+            needs_update
+        };
+
+        PALETTE.try_set_form("FileName", Form::new().yellow().italic());
+        PALETTE.try_set_form("Selections", Form::new().dark_blue());
+        PALETTE.try_set_form("Coords", Form::new().dark_red());
+        PALETTE.try_set_form("Separator", Form::new().cyan());
+
+        StatusLineCfg {
+            text_fn: Box::new(text_fn),
+            checker: Box::new(checker),
+            is_global: false,
+            specs: PushSpecs::below().with_lenght(1.0)
+        }
+    }}
 }

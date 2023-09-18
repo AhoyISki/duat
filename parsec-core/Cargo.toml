@@ -26,6 +26,7 @@ scoped_threadpool = "0.1.9"
 
 [features]
 # NOTE: Features meant for testing only by myself.
+default = ["wacky-colors"]
 disable-testing = []
 deadlock-detection = []
 wacky-colors = []

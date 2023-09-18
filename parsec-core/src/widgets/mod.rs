@@ -33,8 +33,8 @@ use no_deadlocks::RwLock;
 pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file_widget::{FileWidget, FileWidgetCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg, ITER_COUNT},
-    status_line::{file_parts, StatusLine, StatusPart},
+    line_numbers::{LineNumbers, LineNumbersCfg},
+    status_line::{file_parts, StatusLine, StatusPart, StatusLineCfg},
 };
 use crate::{
     data::{AsAny, ReadableData, RwData},
@@ -272,6 +272,7 @@ where
     }
 }
 
+#[allow(private_interfaces)]
 pub enum Widget<U>
 where
     U: Ui,

@@ -12,24 +12,25 @@ use ropey::Rope;
 pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
-    tags::Tag,
+    tags::{Marker, Tag, ToggleId},
     types::Part,
 };
 use self::{
     chars::Chars,
-    tags::{RawTag, TagOrSkip, Tags, ToggleId},
+    tags::{Markers, RawTag, TagOrSkip, Tags},
 };
 use crate::{
-    forms::{self, FormId},
+    forms::{self},
     history::Change,
     input::Cursors,
 };
 
 /// The text in a given area.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Text {
     chars: Chars,
     pub tags: Tags,
+    cursor_marker: Marker,
 }
 
 // TODO: Properly implement _replacements.
@@ -38,6 +39,7 @@ impl Text {
         Text {
             chars: Chars::String(String::with_capacity(500)),
             tags: Tags::new_vec(),
+            cursor_marker: Marker::new(),
         }
     }
 
@@ -45,19 +47,28 @@ impl Text {
         Text {
             chars: Chars::Rope(Rope::default()),
             tags: Tags::new_rope(),
+            cursor_marker: Marker::new(),
         }
     }
 
     pub fn new_string(string: impl ToString) -> Self {
         let chars = Chars::String(string.to_string());
         let tags = Tags::from_chars(&chars);
-        Text { chars, tags }
+        Text {
+            chars,
+            tags,
+            cursor_marker: Marker::new(),
+        }
     }
 
     pub fn new_rope(string: impl ToString) -> Self {
         let chars = Chars::Rope(Rope::from(string.to_string()));
         let tags = Tags::from_chars(&chars);
-        Text { chars, tags }
+        Text {
+            chars,
+            tags,
+            cursor_marker: Marker::new(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -153,7 +164,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(pos, tag);
+                self.tags.insert(pos, tag, self.cursor_marker);
             }
         }
     }
@@ -165,7 +176,7 @@ impl Text {
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {
-                self.tags.remove_on(ch_index);
+                self.tags.remove_on(ch_index, self.cursor_marker);
             }
         }
     }
@@ -224,12 +235,12 @@ impl Text {
         self.chars.iter_at(ch_index)
     }
 
-    pub fn insert(&mut self, char: usize, tag: Tag) {
-        self.tags.insert(char, tag);
+    pub fn insert(&mut self, char: usize, tag: Tag, marker: Marker) {
+        self.tags.insert(char, tag, marker);
     }
 
-    pub fn remove_on(&mut self, ch_index: usize) {
-        self.tags.remove_on(ch_index)
+    pub fn remove_on(&mut self, ch_index: usize, markers: impl Markers) {
+        self.tags.remove_on(ch_index, markers)
     }
 }
 
@@ -296,10 +307,10 @@ impl<S: ToString> From<S> for Text {
     }
 }
 
-/// Builds and modifies a [`Text<U>`], based on replacements applied
+/// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// The generation of text by the `TextBuilder<U>` has a few
+/// The generation of text by the `TextBuilder` has a few
 /// peculiarities that are convenient in the situations where it is
 /// useful:
 ///
@@ -312,11 +323,13 @@ impl<S: ToString> From<S> for Text {
 ///   [`push_swappable()`][Self::push_swappable].
 ///
 /// These properties allow for quick and easy modification of the
-/// [`Text<U>`] within, which can then be accessed with
+/// [`Text`] within, which can then be accessed with
 /// [`text()`][Self::text()].
 pub struct TextBuilder {
     text: Text,
-    last_form: Option<FormId>,
+    last_form: Option<Tag>,
+    last_align: Option<Tag>,
+    marker: Marker,
 }
 
 impl TextBuilder {
@@ -324,7 +337,17 @@ impl TextBuilder {
         Self::default()
     }
 
-    pub fn finish(self) -> Text {
+    pub fn finish(mut self) -> Text {
+        let len_chars = self.text.len_chars();
+
+        if let Some(tag) = self.last_form {
+            self.text.tags.insert(len_chars, tag, self.marker);
+        }
+
+        if let Some(tag) = self.last_align {
+            self.text.tags.insert(len_chars, tag, self.marker);
+        }
+
         self.text
     }
 
@@ -335,19 +358,23 @@ impl TextBuilder {
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
-    /// as its inverse at the end of the [`Text<U>`].
+    /// as its inverse at the end of the [`Text`].
     pub fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
-        if let Some(id) = self.last_form {
-            self.text
-                .tags
-                .insert(self.text.len_chars(), Tag::PopForm(id));
+        let len_chars = self.text.len_chars();
+
+        let last_inverted = match tag {
+            Tag::PushForm(id) => self.last_form.replace(Tag::PopForm(id)),
+            Tag::StartAlignLeft => self.last_align.replace(Tag::EndAlignLeft),
+            Tag::StartAlignCenter => self.last_align.replace(Tag::EndAlignCenter),
+            Tag::StartAlignRight => self.last_align.replace(Tag::EndAlignRight),
+            _ => None,
+        };
+
+        if let Some(tag) = last_inverted {
+            self.text.tags.insert(len_chars, tag, self.marker);
         }
 
-        if let Tag::PushForm(id) = tag {
-            self.last_form = Some(id);
-        }
-
-        self.text.tags.insert(self.text.len_chars(), tag)
+        self.text.tags.insert(len_chars, tag, self.marker)
     }
 
     pub fn push_text(&mut self, mut text: Text) {
@@ -366,10 +393,6 @@ impl TextBuilder {
         self.text.clear();
         self.last_form = None;
     }
-
-    pub fn text(&self) -> &Text {
-        &self.text
-    }
 }
 
 impl Default for TextBuilder {
@@ -377,6 +400,8 @@ impl Default for TextBuilder {
         TextBuilder {
             text: Text::default_string(),
             last_form: None,
+            last_align: None,
+            marker: Marker::new(),
         }
     }
 }
@@ -397,12 +422,11 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     }
 }
 
-pub macro build_text {
+pub macro build {
     // Forms
     (@push $builder:expr, [$form:ident]) => {
         use std::sync::LazyLock;
         static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
-            crate::log_info!("{}", stringify!($form));
             let name = stringify!($form);
             crate::PALETTE.from_name(name).1
         });
@@ -414,13 +438,13 @@ pub macro build_text {
 
     // Alignments
     (@push $builder:expr, (AlignCenter)) => {
-        $builder.push_tag(crate::text::Tag::AlignCenter)
+        $builder.push_tag(crate::text::Tag::StartAlignCenter)
     },
     (@push $builder:expr, (AlignLeft)) => {
-        $builder.push_tag(crate::text::Tag::AlignLeft)
+        $builder.push_tag(crate::text::Tag::StartAlignLeft)
     },
     (@push $builder:expr, (AlignRight)) => {
-        $builder.push_tag(crate::text::Tag::AlignRight)
+        $builder.push_tag(crate::text::Tag::StartAlignRight)
     },
 
     // Other tags
@@ -430,7 +454,12 @@ pub macro build_text {
 
     // Failure
     (@push $builder:expr, ($not_allowed:expr)) => {
-        compile_error!("Expressions are not allowed in place of tag identifiers.");
+        compile_error!(
+            "Expressions are not allowed in place of tag identifiers. If you wanted to add text \
+             using an expression, remove the parentheses and replace them with braces. If you \
+             wanted to add a tag with an expression, surround it with another pair of parentheses \
+             (e.g. `((my_expr))`)"
+        );
     },
 
     // Plain text
@@ -439,18 +468,18 @@ pub macro build_text {
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        build_text!(@push $builder, $part);
-        build_text!(@parse $builder, $($parts)*);
+        build!(@push $builder, $part);
+        build!(@parse $builder, $($parts)*);
     }},
     (@parse $builder:expr,) => {},
 
     ($builder:expr, $($parts:tt)*) => {{
         let builder: &mut TextBuilder = &mut $builder;
-        build_text!(@parse builder, $($parts)*);
+        build!(@parse builder, $($parts)*);
     }},
     ($($parts:tt)*) => {{
         let mut builder = TextBuilder::new();
-        build_text!(builder, $($parts)*);
+        build!(builder, $($parts)*);
         builder
     }}
 }

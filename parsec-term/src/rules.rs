@@ -1,8 +1,8 @@
 use parsec_core::{
     data::{AsAny, ReadableData, RoData},
-    forms::{Form, FormId},
+    forms::Form,
     input::InputMethod,
-    text::{build_text, Text, TextBuilder},
+    text::{build, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
     Controler, PALETTE,
@@ -105,7 +105,7 @@ impl VertRuleCfg {
             PALETTE.set_new_ref("UpperVertRule", "VertRule");
             PALETTE.set_new_ref("LowerVertRule", "VertRule");
 
-            let mut vert_rule = VertRule {
+            let vert_rule = VertRule {
                 file: file.clone(),
                 input: input.clone(),
                 text: Text::default_string(),
@@ -171,13 +171,11 @@ impl PassiveWidget for VertRule {
 
         let chars = self.sep_char.chars();
 
-        let builder = build_text!(
+        let builder = build!(
             [UpperVertRule] { form_string(chars[0], upper) }
             [VertRule] { form_string(chars[1], middle) }
             [LowerVertRule] { form_string(chars[2], lower) }
         );
-
-        //parsec_core::log_info!("{:#?}", builder.text());
 
         self.text = builder.finish();
     }

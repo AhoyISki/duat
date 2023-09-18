@@ -5,8 +5,8 @@ use std::{
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult
-    }
+        Arc, TryLockResult,
+    },
 };
 
 #[cfg(feature = "deadlock-detection")]
@@ -34,28 +34,38 @@ use super::{private, AsAny, DataCastErr, DataRetrievalErr, RawReadableData, Read
 /// [`RoData<FileWidget<U>>`]: RoData
 pub struct RoData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
-    type_id: TypeId
+    type_id: TypeId,
 }
 
 impl<T> RoData<T>
 where
-    T: ?Sized + AsAny
+    T: ?Sized + AsAny,
 {
     /// Tries to downcast to a concrete type.
     pub fn try_downcast<U>(self) -> Result<RoData<U>, DataCastErr<RoData<T>, T, U>>
     where
-        U: 'static
+        U: 'static,
     {
         if self.type_id == TypeId::of::<U>() {
-            let Self { data, cur_state, read_state, type_id } = self;
+            let Self {
+                data,
+                cur_state,
+                read_state,
+                type_id,
+            } = self;
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RoData { data, cur_state, read_state, type_id })
+            Ok(RoData {
+                data,
+                cur_state,
+                read_state,
+                type_id,
+            })
         } else {
             Err(DataCastErr(self, PhantomData, PhantomData))
         }
@@ -64,11 +74,11 @@ where
 
 impl<T> RoData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     pub fn data_is<U>(&self) -> bool
     where
-        U: 'static
+        U: 'static,
     {
         self.type_id == std::any::TypeId::of::<Arc<RwLock<U>>>()
     }
@@ -76,21 +86,21 @@ where
 
 impl<T> Default for RoData<T>
 where
-    T: Default
+    T: Default,
 {
     fn default() -> Self {
         Self {
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(0)),
             read_state: AtomicUsize::new(0),
-            type_id: TypeId::of::<T>()
+            type_id: TypeId::of::<T>(),
         }
     }
 }
 
 impl<T> std::fmt::Debug for RoData<T>
 where
-    T: ?Sized + std::fmt::Debug
+    T: ?Sized + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
@@ -99,21 +109,21 @@ where
 
 impl<T> From<&RwData<T>> for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn from(value: &RwData<T>) -> Self {
         RoData {
             data: value.data.clone(),
             cur_state: value.cur_state.clone(),
             read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed)),
-            type_id: TypeId::of::<T>()
+            type_id: TypeId::of::<T>(),
         }
     }
 }
 
 impl<T> private::DataHolder<T> for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn data(&self) -> RwLockReadGuard<'_, T> {
         self.data.read().unwrap()
@@ -142,21 +152,21 @@ unsafe impl<T> Sync for RoData<T> where T: ?Sized + Send + Sync {}
 // update counter.
 impl<T> Clone for RoData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     fn clone(&self) -> Self {
         RoData {
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
-            type_id: TypeId::of::<T>()
+            type_id: TypeId::of::<T>(),
         }
     }
 }
 
 impl<T> std::fmt::Display for RoData<T>
 where
-    T: std::fmt::Display + 'static
+    T: std::fmt::Display + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.read(), f)
@@ -180,15 +190,15 @@ where
 /// changes to the pointer itself.
 pub struct RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
     data: RoData<RwData<T>>,
-    read_state: AtomicUsize
+    read_state: AtomicUsize,
 }
 
 impl<T> RoNestedData<T>
 where
-    T: ?Sized
+    T: ?Sized,
 {
     /// Blocking inspection of the inner data.
     ///
@@ -207,19 +217,21 @@ where
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// `false`.
     pub fn try_inspect<B>(
-        &self, f: impl FnOnce(&T) -> B
+        &self,
+        f: impl FnOnce(&T) -> B,
     ) -> Result<B, DataRetrievalErr<RoData<T>, T>> {
-        self.data.try_read().map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData)).and_then(
-            |data| {
-                data.raw_try_read().map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData)).map(
-                    |inner_data| {
+        self.data
+            .try_read()
+            .map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData))
+            .and_then(|data| {
+                data.raw_try_read()
+                    .map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData))
+                    .map(|inner_data| {
                         let cur_state = data.cur_state.load(Ordering::Acquire);
                         self.read_state.store(cur_state, Ordering::Release);
                         f(&inner_data)
-                    }
-                )
-            }
-        )
+                    })
+            })
     }
 
     /// Wether or not it has changed since it was last read.
@@ -241,24 +253,24 @@ where
 
 impl<T> Clone for RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
     fn clone(&self) -> Self {
         RoNestedData {
             data: self.data.clone(),
-            read_state: AtomicUsize::new(self.data.raw_read().cur_state.load(Ordering::Relaxed))
+            read_state: AtomicUsize::new(self.data.raw_read().cur_state.load(Ordering::Relaxed)),
         }
     }
 }
 
 impl<T> From<&RwData<RwData<T>>> for RoNestedData<T>
 where
-    T: ?Sized + 'static
+    T: ?Sized + 'static,
 {
     fn from(value: &RwData<RwData<T>>) -> Self {
         RoNestedData {
             data: RoData::from(value),
-            read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed))
+            read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed)),
         }
     }
 }

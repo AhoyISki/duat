@@ -24,10 +24,11 @@ use std::{fs::File, path::PathBuf};
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     data::{AsAny, ReadableData, RwData},
+    forms::Form,
     input::{Editor, InputMethod},
-    text::{IterCfg, PrintCfg, Text},
+    text::{IterCfg, Marker, PrintCfg, Tag, Text},
     ui::{Area, PushSpecs, Ui},
-    Controler, log_info,
+    Controler, PALETTE,
 };
 
 #[derive(Clone)]
@@ -84,22 +85,15 @@ where
 
         #[cfg(feature = "wacky-colors")]
         {
-            use crate::text::{Handle, Tag};
-            let mut tagger = text.tag_with(Handle::new());
-            let mut pushes_pops_you_cant_explain_that = true;
-            for index in (20..tagger.len_chars()).step_by(30) {
-                if pushes_pops_you_cant_explain_that {
-                    tagger.insert(index, Tag::ghost_from("\n\n   Ayy lmao   \n\n"));
-                    tagger.insert(index, Tag::PushForm(crate::forms::SEPARATOR));
-                    tagger.insert(index + 11, Tag::PopForm(crate::forms::SEPARATOR));
-                } else {
-                    tagger.insert(
-                        index,
-                        Tag::ghost_from("   Hello World\n lmao deal with this"),
-                    );
-                }
-                pushes_pops_you_cant_explain_that = !pushes_pops_you_cant_explain_that
-            }
+            let marker = Marker::new();
+            let form1 = PALETTE.set_form("form 1 lmao", Form::new().red());
+            let form2 = PALETTE.set_form("form 2 lmao", Form::new().on_blue());
+            text.insert(50, Tag::PushForm(form1), marker);
+            text.insert(110, Tag::PopForm(form1), marker);
+            text.insert(30, Tag::PushForm(form2), marker);
+            text.insert(80, Tag::PopForm(form2), marker);
+            text.insert(80, Tag::PushForm(form2), marker);
+            text.insert(90, Tag::PopForm(form2), marker);
         }
 
         text.add_cursor_tags(self.input.read().cursors().unwrap());
@@ -263,7 +257,6 @@ impl PassiveWidget for FileWidget {
     where
         Self: Sized,
     {
-        log_info!("{:#?}", self.text.tags);
         self.set_printed_lines(area);
         area.print(self.text(), self.print_cfg(), &crate::PALETTE)
     }
