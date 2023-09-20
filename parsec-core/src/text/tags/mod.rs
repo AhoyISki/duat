@@ -1,18 +1,15 @@
-use std::{
-    cmp::Ordering::*,
-    collections::HashMap,
-    ops::{Range, RangeFrom, RangeTo},
-};
+use std::{collections::HashMap, ops::Range};
 
 use any_rope::{Measurable, Rope};
 
+use self::ranges::TagRange;
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{RawTag, Tag},
 };
 use super::{types::Toggle, Text};
-use crate::log_info;
 
+mod ranges;
 mod types;
 
 const MIN_CHARS_TO_KEEP: usize = 50;
@@ -62,8 +59,7 @@ impl Measurable for TagOrSkip {
     }
 }
 
-// TODO: Generic container.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Tags {
     rope: Rope<TagOrSkip>,
     pub ranges: Vec<TagRange>,
@@ -71,6 +67,7 @@ pub struct Tags {
     pub toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
 }
+
 impl Tags {
     pub fn new() -> Self {
         Self {
@@ -366,18 +363,18 @@ impl Tags {
     }
 
     pub fn iter_at(&self, pos: usize) -> ForwardIter {
-        let pos = pos.min(self.measure());
+        let measure = pos.min(self.measure());
 
         let ranges = self
             .ranges
             .iter()
-            .take_while(move |range| range.get_start().is_some_and(|start| start < pos))
-            .filter(move |range| range.get_end().map_or(true, |end| end >= pos))
+            .take_while(move |range| range.get_start().is_some_and(|start| start < measure))
+            .filter(move |range| range.get_end().map_or(true, |end| end > measure))
             .flat_map(|range| range.get_start().map(|start| (start, range.tag())));
 
         let raw_tags = self
             .rope
-            .iter()
+            .iter_at_measure(measure, usize::cmp)
             .filter_map(move |(pos, t_or_s)| match t_or_s {
                 TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
                     if let Some(range) = self
@@ -399,11 +396,13 @@ impl Tags {
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> ReverseTags {
+        let measure = pos.min(self.measure());
+
         let possible_ranges = {
             let mut ranges: Vec<_> = self
                 .ranges
                 .iter()
-                .filter(|&range| range.get_start().map_or(true, |start| start < pos))
+                .filter(|&range| range.get_start().map_or(true, |start| start < measure))
                 .map(|range| {
                     let end = range.get_end().unwrap_or(usize::MAX);
                     (end, range.tag().inverse().unwrap())
@@ -417,7 +416,8 @@ impl Tags {
 
         let raw_tags = self
             .rope
-            .iter()
+            .iter_at_measure(measure, usize::cmp)
+            .reversed()
             .filter_map(move |(pos, t_or_s)| match t_or_s {
                 TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
                     if let Some(range) = self
@@ -439,8 +439,11 @@ impl Tags {
     }
 }
 
-pub type ForwardIter<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
-pub type ReverseTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+impl Default for Tags {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -456,123 +459,8 @@ impl std::fmt::Debug for Tags {
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TagRange {
-    Bounded(RawTag, Range<usize>),
-    From(RawTag, RangeFrom<usize>),
-    Until(RawTag, RangeTo<usize>),
-}
-
-impl TagRange {
-    fn tag(&self) -> RawTag {
-        match self {
-            TagRange::Bounded(tag, _) => *tag,
-            TagRange::From(tag, _) => *tag,
-            TagRange::Until(tag, _) => *tag,
-        }
-    }
-
-    fn get_start(&self) -> Option<usize> {
-        match self {
-            TagRange::Bounded(_, bounded) => Some(bounded.start),
-            TagRange::From(_, from) => Some(from.start),
-            TagRange::Until(..) => None,
-        }
-    }
-
-    fn get_end(&self) -> Option<usize> {
-        match self {
-            TagRange::Bounded(_, bounded) => Some(bounded.end),
-            TagRange::Until(_, until) => Some(until.end),
-            TagRange::From(..) => None,
-        }
-    }
-
-    fn starts_with(&self, other: &(usize, RawTag)) -> bool {
-        match self {
-            TagRange::Bounded(tag, bounded) => bounded.start == other.0 && *tag == other.1,
-            TagRange::From(tag, from) => from.start == other.0 && *tag == other.1,
-            TagRange::Until(..) => false,
-        }
-    }
-
-    fn ends_with(&self, other: &(usize, RawTag)) -> bool {
-        match self {
-            TagRange::Bounded(tag, bounded) => bounded.end == other.0 && tag.ends_with(&other.1),
-            TagRange::Until(tag, until) => until.end == other.0 && *tag == other.1,
-            TagRange::From(..) => false,
-        }
-    }
-
-    fn can_start_with(&self, other: &(usize, RawTag)) -> bool {
-        match self {
-            TagRange::Until(tag, until) => other.0 <= until.end && other.1.ends_with(tag),
-            TagRange::Bounded(..) | TagRange::From(..) => false,
-        }
-    }
-
-    fn can_end_with(&self, other: &(usize, RawTag)) -> bool {
-        match self {
-            TagRange::From(tag, from) => from.start <= other.0 && tag.ends_with(&other.1),
-            TagRange::Bounded(..) | TagRange::Until(..) => false,
-        }
-    }
-
-    fn count_ge(&self, other: usize) -> bool {
-        match self {
-            TagRange::Bounded(_, bounded) => bounded.clone().count() >= other,
-            TagRange::From(..) | TagRange::Until(..) => true,
-        }
-    }
-}
-
-impl Ord for TagRange {
-    /// Entries will be ordered in the following order:
-    ///
-    /// - First, a mix of `TagRange::Bounded` and `TagRange::From`, sorted by:
-    ///   - Their starts;
-    ///   - Their ends (if `TagRange::From`, always `Greater`);
-    ///   - Their `Tag`s;
-    ///   - Their `Handle`s.
-    ///
-    /// - After this, all of the `TagRange::Until` are placed, sorted by:
-    ///   - Their ends;
-    ///   - Their `Tag`s;
-    ///   - Their `Handle`s.
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (TagRange::Bounded(..), TagRange::Until(..))
-            | (TagRange::From(..), TagRange::Until(..)) => Less,
-            (TagRange::Until(..), TagRange::Bounded(..))
-            | (TagRange::Until(..), TagRange::From(..)) => Greater,
-
-            (TagRange::Bounded(lhs_tag, lhs_range), TagRange::Bounded(rhs_tag, rhs_range)) => {
-                let lhs = (lhs_range.start, lhs_range.end, lhs_tag);
-                lhs.cmp(&(rhs_range.start, rhs_range.end, rhs_tag))
-            }
-            (TagRange::Bounded(_, lhs), TagRange::From(_, rhs)) => {
-                let ordering = lhs.start.cmp(&rhs.start);
-                if ordering == Equal { Less } else { ordering }
-            }
-            (TagRange::Until(lhs_tag, lhs_range), TagRange::Until(rhs_tag, rhs_range)) => {
-                (lhs_range.end, lhs_tag).cmp(&(rhs_range.end, rhs_tag))
-            }
-            (TagRange::From(_, lhs), TagRange::Bounded(_, rhs)) => {
-                let ordering = lhs.start.cmp(&rhs.start);
-                if ordering == Equal { Greater } else { ordering }
-            }
-            (TagRange::From(lhs_tag, lhs_range), TagRange::From(rhs_tag, rhs_range)) => {
-                (lhs_range.start, lhs_tag).cmp(&(rhs_range.start, rhs_tag))
-            }
-        }
-    }
-}
-
-impl PartialOrd for TagRange {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
+pub type ForwardIter<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+pub type ReverseTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 
 fn remove_inclusive_on(
     rope: &mut Rope<TagOrSkip>,

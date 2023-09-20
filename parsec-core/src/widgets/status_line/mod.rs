@@ -63,7 +63,7 @@ use crate::{
     input::InputMethod,
     text::Text,
     ui::{Area, PushSpecs, Ui},
-    Controler, log_info,
+    Controler,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
