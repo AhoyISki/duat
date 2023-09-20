@@ -1,23 +1,19 @@
 mod cfg;
-mod chars;
 mod iter;
 pub mod reader;
 mod tags;
 mod types;
 
-use std::{io::Write, ops::Range};
+use std::ops::Range;
 
 use ropey::Rope;
 
+use self::tags::{Markers, RawTag, TagOrSkip, Tags};
 pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     tags::{Marker, Tag, ToggleId},
     types::Part,
-};
-use self::{
-    chars::Chars,
-    tags::{Markers, RawTag, TagOrSkip, Tags},
 };
 use crate::{
     forms::{self},
@@ -25,100 +21,72 @@ use crate::{
     input::Cursors,
 };
 
+trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
+    fn with_len(len: usize) -> Self;
+}
+
 /// The text in a given area.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Text {
-    chars: Chars,
+    rope: Rope,
     pub tags: Tags,
     cursor_marker: Marker,
 }
 
 // TODO: Properly implement _replacements.
 impl Text {
-    pub fn default_string() -> Self {
+    pub fn new(string: impl ToString) -> Self {
+        let rope = Rope::from(string.to_string());
+        let tags = Tags::with_len(rope.len_chars());
         Text {
-            chars: Chars::String(String::with_capacity(500)),
-            tags: Tags::new_vec(),
-            cursor_marker: Marker::new(),
-        }
-    }
-
-    pub fn default_rope() -> Self {
-        Text {
-            chars: Chars::Rope(Rope::default()),
-            tags: Tags::new_rope(),
-            cursor_marker: Marker::new(),
-        }
-    }
-
-    pub fn new_string(string: impl ToString) -> Self {
-        let chars = Chars::String(string.to_string());
-        let tags = Tags::from_chars(&chars);
-        Text {
-            chars,
-            tags,
-            cursor_marker: Marker::new(),
-        }
-    }
-
-    pub fn new_rope(string: impl ToString) -> Self {
-        let chars = Chars::Rope(Rope::from(string.to_string()));
-        let tags = Tags::from_chars(&chars);
-        Text {
-            chars,
+            rope,
             tags,
             cursor_marker: Marker::new(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.chars.len_chars() == 0
+        self.rope.len_chars() == 0
     }
 
     pub fn get_char(&self, char_index: usize) -> Option<char> {
-        self.chars.get_char(char_index)
+        self.rope.get_char(char_index)
     }
 
     pub fn len_chars(&self) -> usize {
-        self.chars.len_chars()
+        self.rope.len_chars()
     }
 
     pub fn len_lines(&self) -> usize {
-        self.chars.len_lines()
+        self.rope.len_lines()
     }
 
     pub fn len_bytes(&self) -> usize {
-        self.chars.len_bytes()
+        self.rope.len_bytes()
     }
 
     pub fn char_to_line(&self, char: usize) -> usize {
-        self.chars
-            .char_to_line(char)
-            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+        self.rope.char_to_line(char)
     }
 
     pub fn line_to_char(&self, line: usize) -> usize {
-        self.chars
-            .line_to_char(line)
-            .unwrap_or_else(|| panic!("Line index {line} out of bounds."))
+        self.rope.line_to_char(line)
     }
 
     pub fn char_to_byte(&self, char: usize) -> usize {
-        self.chars
-            .char_to_byte(char)
-            .unwrap_or_else(|| panic!("Char index {char} out of bounds."))
+        self.rope.char_to_byte(char)
     }
 
     pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
-        self.chars.char_to_line(char)
+        self.rope.try_char_to_line(char).ok()
     }
 
     pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
-        self.chars.line_to_char(line)
+        self.rope.try_line_to_char(line).ok()
     }
 
     pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
-        self.chars.char_to_byte(char)
+        self.rope.try_char_to_byte(char).ok()
     }
 
     pub fn close_visual_line_start(&self, pos: usize) -> Option<usize> {
@@ -183,21 +151,16 @@ impl Text {
 
     pub(crate) fn write_to(
         &self,
-        mut writer: std::io::BufWriter<std::fs::File>,
+        writer: std::io::BufWriter<std::fs::File>,
     ) -> Result<usize, String> {
-        match &self.chars {
-            Chars::String(string) => writer
-                .write(string.as_bytes())
-                .map_err(|err| err.to_string()),
-            Chars::Rope(rope) => rope
-                .write_to(writer)
-                .map(|_| rope.len_bytes())
-                .map_err(|err| err.to_string()),
-        }
+        self.rope
+            .write_to(writer)
+            .map(|_| self.rope.len_bytes())
+            .map_err(|err| err.to_string())
     }
 
     fn clear(&mut self) {
-        self.chars.clear();
+        self.rope = Rope::new();
         self.tags.clear();
     }
 
@@ -206,11 +169,13 @@ impl Text {
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count();
-        let new = old.start..(old.start + edit_len);
 
-        self.chars.replace(old.clone(), edit);
+        self.rope.remove(old.clone());
+        let (start, _) = get_ends(old.clone(), self.len_chars());
+        self.rope.insert(start, edit.as_ref());
 
-        if old != new {
+        if edit_len != old.clone().count() {
+            let new = old.start..(old.start + edit_len);
             self.tags.transform_range(old, new.end);
         }
     }
@@ -220,7 +185,7 @@ impl Text {
     }
 
     pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
-        self.tags.get_from_char(char)
+        self.tags.get_from_pos(char)
     }
 
     pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
@@ -228,11 +193,11 @@ impl Text {
     }
 
     pub fn chars(&self) -> impl Iterator<Item = char> + Clone + '_ {
-        self.chars.iter_at(0)
+        self.rope.chars_at(0)
     }
 
     pub fn chars_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
-        self.chars.iter_at(ch_index)
+        self.rope.chars_at(ch_index)
     }
 
     pub fn insert(&mut self, char: usize, tag: Tag, marker: Marker) {
@@ -247,53 +212,31 @@ impl Text {
 // Iterator methods.
 impl Text {
     pub fn iter(&self) -> Iter<'_> {
-        let chars = self.chars.iter_at(0);
-        let tags = self.tags.iter_at(0);
-
-        Iter::new(chars, tags, &self.tags.texts, 0, 0)
+        Iter::new_at(self, 0)
     }
 
     /// TO BE DEPRECATED.
     pub fn iter_line(&self, line: usize) -> impl Iterator<Item = Item> + Clone + '_ {
         let start = self.line_to_char(line);
         let end = self.get_line_to_char(line + 1).unwrap_or(start);
-        let chars = self.chars.iter_at(start);
 
-        let tags_start = start.saturating_sub(self.tags.back_check_amount());
-        let tags = self.tags.iter_at(tags_start);
-
-        Iter::new(chars, tags, &self.tags.texts, start, line).take_while(move |item| item.pos < end)
+        Iter::new_at(self, start).take_while(move |item| item.pos < end)
     }
 
     pub fn iter_at(&self, pos: usize) -> Iter<'_> {
-        let chars = self.chars.iter_at(pos);
-
-        let line = self.char_to_line(pos);
-        let tags_start = pos.saturating_sub(self.tags.back_check_amount());
-        let tags = self.tags.iter_at(tags_start);
-
-        Iter::new(chars, tags, &self.tags.texts, pos, line)
+        Iter::new_at(self, pos)
     }
 
     pub fn rev_iter(&self) -> RevIter {
-        let start = self.len_chars();
-        let chars = self.chars.rev_iter_at(start);
-        let tags = self.tags.rev_iter_at(start);
-
-        RevIter::new(chars, tags, &self.tags.texts, start, start)
+        RevIter::new_at(self, self.len_chars())
     }
 
     pub fn rev_iter_at(&self, pos: usize) -> RevIter<'_> {
-        let chars = self.chars.rev_iter_at(pos);
-
-        let line = self.char_to_line(pos);
-        let tags = self.tags.rev_iter_at(pos);
-
-        RevIter::new(chars, tags, &self.tags.texts, pos, line)
+        RevIter::new_at(self, pos)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
-        self.chars.iter_at(pos)
+        self.rope.chars_at(pos)
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
@@ -303,7 +246,7 @@ impl Text {
 
 impl<S: ToString> From<S> for Text {
     fn from(value: S) -> Self {
-        Text::new_string(value.to_string())
+        Text::new(value.to_string())
     }
 }
 
@@ -377,16 +320,9 @@ impl TextBuilder {
         self.text.tags.insert(len_chars, tag, self.marker)
     }
 
-    pub fn push_text(&mut self, mut text: Text) {
-        let Some((chars, tags)) = text.chars.as_mut_string().zip(text.tags.as_mut_vec()) else {
-            panic!(
-                "Don't push Rope Texts into a Text whilst building it, it'll be significantly \
-                 slower with no real benefit"
-            );
-        };
-
-        self.text.chars.as_mut_string().unwrap().push_str(chars);
-        self.text.tags.as_mut_vec().unwrap().append(tags);
+    pub fn push_text(&mut self, text: Text) {
+        self.text.rope.append(text.rope);
+        self.text.tags.append(text.tags);
     }
 
     pub fn clear(&mut self) {
@@ -398,7 +334,7 @@ impl TextBuilder {
 impl Default for TextBuilder {
     fn default() -> Self {
         TextBuilder {
-            text: Text::default_string(),
+            text: Text::default(),
             last_form: None,
             last_align: None,
             marker: Marker::new(),
@@ -420,6 +356,21 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
             Tag::PopForm(forms::EXTRA_SEL),
         )
     }
+}
+
+pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(start) => *start,
+        std::ops::Bound::Excluded(start) => *start + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(end) => *end + 1,
+        std::ops::Bound::Excluded(end) => *end,
+        std::ops::Bound::Unbounded => max,
+    };
+
+    (start, end)
 }
 
 pub macro build {

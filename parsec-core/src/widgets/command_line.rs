@@ -86,7 +86,7 @@ where
     {
         move |controler| {
             let command_line = CommandLine {
-                text: Text::new_string(" "),
+                text: Text::new(" "),
                 commands: controler.commands(),
                 prompt: RwData::new(self.prompt.clone()),
             };
@@ -154,11 +154,11 @@ impl ActiveWidget for CommandLine {
     }
 
     fn on_focus(&mut self, _area: &impl Area) {
-        self.text = Text::new_string(&self.prompt);
+        self.text = Text::new(&self.prompt);
     }
 
     fn on_unfocus(&mut self, _area: &impl Area) {
-        let text = std::mem::replace(&mut self.text, Text::default_string());
+        let text = std::mem::take(&mut self.text);
 
         // A '\n' indicates that the command has been "entered".
         let cmd = text

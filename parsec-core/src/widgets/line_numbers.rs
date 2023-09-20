@@ -189,7 +189,7 @@ impl LineNumbersCfg {
             let mut line_numbers = LineNumbers {
                 file: file.clone(),
                 input: controler.current_input(),
-                text: Text::default_string(),
+                text: Text::default(),
                 cfg: self,
             };
             line_numbers.update_text();

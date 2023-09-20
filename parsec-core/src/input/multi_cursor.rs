@@ -58,6 +58,10 @@ impl Cursors {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub(crate) fn clear(&mut self) {
+        self.list.clear()
+    }
 }
 
 impl Default for Cursors {
@@ -196,10 +200,7 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut Mover<U>),
-    {
+    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<U>)) {
         let mut widget = self.widget.write();
         for cursor in self.cursors.list.iter_mut() {
             let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -216,10 +217,7 @@ where
     }
 
     /// Alters the nth cursor's selection.
-    pub fn move_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Mover<U>),
-    {
+    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<U>), index: usize) {
         let mut widget = self.widget.write();
         let cursor = &mut self.cursors.list[index];
         let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -246,18 +244,12 @@ where
     }
 
     /// Alters the main cursor's selection.
-    pub fn move_main<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover<U>),
-    {
+    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<U>)) {
         self.move_nth(f, self.cursors.main);
     }
 
     /// Alters the last cursor's selection.
-    pub fn move_last<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut Mover<U>),
-    {
+    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<U>)) {
         let len = self.len_cursors();
         if len > 0 {
             self.move_nth(f, len - 1);
@@ -372,13 +364,6 @@ where
     pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
         self.cursors.list.get(index).cloned()
     }
-}
-
-impl<'a, U, W> MultiCursorEditor<'a, WithHistory, U, W>
-where
-    U: Ui,
-    W: ActiveWidget,
-{
 }
 
 /// An accumulator used specifically for editing with [`Editor<U>`]s.

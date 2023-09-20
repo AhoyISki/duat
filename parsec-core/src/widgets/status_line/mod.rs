@@ -63,7 +63,7 @@ use crate::{
     input::InputMethod,
     text::Text,
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, log_info,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -206,7 +206,7 @@ impl StatusLineCfg {
                 file,
                 input,
                 text_fn: self.text_fn,
-                text: Text::default_string(),
+                text: Text::default(),
             });
 
             (widget, checker, self.specs)

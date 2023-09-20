@@ -308,7 +308,7 @@ where
                     break;
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(18)) {
+                if let Ok(true) = event::poll(Duration::from_millis(5)) {
                     if let Event::Key(key) = event::read().unwrap() {
                         active_window.send_key(key, &self.controler, scope);
                     }
@@ -321,8 +321,6 @@ where
                         });
                     }
                 }
-
-				std::thread::sleep(std::time::Duration::from_millis(2));
 
 				self.ui.finish_printing()
             }

@@ -81,7 +81,7 @@ where
             std::env::current_dir().unwrap().join(file_name)
         });
 
-        let mut text = Text::new_rope(contents.unwrap_or(String::from("\n")));
+        let mut text = Text::new(contents.unwrap_or(String::from("\n")));
 
         #[cfg(feature = "wacky-colors")]
         {

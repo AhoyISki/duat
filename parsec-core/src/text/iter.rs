@@ -1,8 +1,7 @@
-use std::{collections::HashMap, ops::ControlFlow};
+use std::ops::ControlFlow;
 
 use super::{
-    chars,
-    tags::{self, RawTag, TextId},
+    tags::{self, RawTag},
     Part, Text,
 };
 use crate::position::Cursor;
@@ -32,13 +31,13 @@ impl Item {
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
 pub struct Iter<'a> {
-    chars: chars::Iter<'a>,
-    tags: tags::Iter<'a>,
-    texts: &'a HashMap<TextId, Text>,
+    text: &'a Text,
+    chars: ropey::iter::Chars<'a>,
+    tags: tags::ForwardIter<'a>,
     pos: usize,
     line: usize,
     conceals: usize,
-    backup_iter: Option<(usize, chars::Iter<'a>, tags::Iter<'a>)>,
+    backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ForwardIter<'a>)>,
     ghost_pos: usize,
 
     print_ghosts: bool,
@@ -46,19 +45,14 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iter<'a> {
-    pub(super) fn new(
-        chars: chars::Iter<'a>,
-        tags: tags::Iter<'a>,
-        texts: &'a HashMap<TextId, Text>,
-        pos: usize,
-        line: usize,
-    ) -> Self {
+    pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
+        let tags_start = pos.saturating_sub(text.tags.back_check_amount());
         Self {
-            chars,
-            tags,
-            texts,
+            text,
+            chars: text.rope.chars_at(pos),
+            tags: text.tags.iter_at(tags_start),
             pos,
-            line,
+            line: text.rope.char_to_line(pos),
             ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
@@ -99,13 +93,14 @@ impl<'a> Iter<'a> {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.max(pos);
-                    self.line = self.chars.move_to(self.pos);
+                    self.line = self.text.rope.char_to_line(pos);
+                    self.chars = self.text.rope.chars_at(self.pos);
                 }
 
                 ControlFlow::Continue(())
             }
             RawTag::GhostText((_, id)) if self.print_ghosts => {
-                let text = self.texts.get(&id).unwrap();
+                let text = self.text.tags.texts.get(&id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
                     text.iter()
                 } else {
@@ -121,10 +116,8 @@ impl<'a> Iter<'a> {
             }
 
             RawTag::Concealed(skip) => {
-                self.pos = pos.saturating_add(skip);
-                self.tags.move_to(self.pos);
-                self.line = self.chars.move_to(self.pos);
-                self.conceals = 0;
+                let pos = pos.saturating_add(skip);
+                *self = Iter::new_at(self.text, pos);
                 ControlFlow::Break(())
             }
             _ => ControlFlow::Break(()),
@@ -190,14 +183,14 @@ impl Iterator for Iter<'_> {
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
 pub struct RevIter<'a> {
-    chars: chars::Iter<'a>,
-    tags: tags::RevIter<'a>,
-    texts: &'a HashMap<TextId, Text>,
+    text: &'a Text,
+    chars: ropey::iter::Chars<'a>,
+    tags: tags::ReverseTags<'a>,
     pos: usize,
     line: usize,
     ghost_pos: usize,
     conceals: usize,
-    backup_iter: Option<(usize, chars::Iter<'a>, tags::RevIter<'a>)>,
+    backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ReverseTags<'a>)>,
 
     // Iteration options:
     print_ghosts: bool,
@@ -205,19 +198,13 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> RevIter<'a> {
-    pub(super) fn new(
-        chars: chars::Iter<'a>,
-        tags: tags::RevIter<'a>,
-        texts: &'a HashMap<TextId, Text>,
-        pos: usize,
-        line: usize,
-    ) -> Self {
+    pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
         Self {
-            chars,
-            tags,
-            texts,
+            text,
+            chars: text.rope.chars_at(pos).reversed(),
+            tags: text.tags.rev_iter_at(pos),
             pos,
-            line,
+            line: text.char_to_line(pos),
             ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
@@ -261,7 +248,8 @@ impl<'a> RevIter<'a> {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.min(pos);
-                    self.line = self.chars.move_to(self.pos);
+                    self.line = self.text.rope.char_to_line(self.pos);
+                    self.chars = self.text.rope.chars_at(self.pos).reversed();
                 }
 
                 ControlFlow::Continue(())
@@ -272,7 +260,7 @@ impl<'a> RevIter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::GhostText((_, id)) if self.print_ghosts => {
-                let text = self.texts.get(id).unwrap();
+                let text = self.text.tags.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
                     self.ghost_pos = text.len_chars();
                     text.rev_iter()
@@ -290,8 +278,9 @@ impl<'a> RevIter<'a> {
             }
             RawTag::Concealed(skip) => {
                 self.pos = pos.saturating_sub(*skip);
-                self.tags.move_to(self.pos);
-                self.line = self.chars.move_to(self.pos);
+                self.line = self.text.rope.char_to_line(self.pos);
+                self.chars = self.text.rope.chars_at(self.pos).reversed();
+                self.tags = self.text.tags.rev_iter_at(self.pos);
                 self.conceals = 0;
 
                 ControlFlow::Break(())

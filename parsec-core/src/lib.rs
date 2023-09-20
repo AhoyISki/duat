@@ -10,7 +10,9 @@
     return_position_impl_trait_in_trait,
     decl_macro,
     generic_const_exprs,
-    step_trait
+    step_trait,
+    type_alias_impl_trait,
+    impl_trait_in_assoc_type
 )]
 #![allow(
     clippy::arc_with_non_send_sync,

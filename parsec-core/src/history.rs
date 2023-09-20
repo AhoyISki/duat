@@ -32,7 +32,7 @@ use crate::{
 /// deletion.
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
-    /// The starting `ch_index` of the [`Change`]
+    /// The starting `byte` of the [`Change`]
     pub start: usize,
     /// The text that was added in this change.
     pub added_text: String,
@@ -44,19 +44,22 @@ impl Change {
     /// Returns a new [Change].
     pub(crate) fn new(edit: impl AsRef<str>, range: impl RangeBounds<usize>, text: &Text) -> Self {
         let added_text = edit.as_ref().to_string();
+
         let start = match range.start_bound() {
             std::ops::Bound::Included(&pos) => pos,
             std::ops::Bound::Excluded(&pos) => pos + 1,
             std::ops::Bound::Unbounded => 0,
         };
 
-        let end = match range.end_bound() {
-            std::ops::Bound::Included(&pos) => pos + 1,
-            std::ops::Bound::Excluded(&pos) => pos,
-            std::ops::Bound::Unbounded => text.len_chars(),
-        };
+        let taken_text = {
+            let end = match range.end_bound() {
+                std::ops::Bound::Included(&pos) => pos + 1,
+                std::ops::Bound::Excluded(&pos) => pos,
+                std::ops::Bound::Unbounded => text.len_chars(),
+            };
 
-        let taken_text: String = text.iter_chars_at(start).take(end - start).collect();
+            text.iter_chars_at(start).take(end - start).collect()
+        };
 
         Change {
             start,
@@ -70,28 +73,29 @@ impl Change {
     fn try_merge(&mut self, mut older: Change) -> Result<(), Change> {
         if precedes(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
-            let range = (self.start - older.start)..(fixed_end - older.start);
+
+            let start = self.start - older.start;
+            let end = fixed_end - older.start;
+            let range = byte_range(start, end, &older.added_text);
+
             older.added_text.replace_range(range, &self.added_text);
 
-            let cut_taken = self
-                .taken_text
-                .get((fixed_end - self.start)..)
-                .unwrap_or("");
-            older.taken_text.push_str(cut_taken);
+            let taken_remainder = self.taken_text.chars().skip(fixed_end - self.start);
+            older.taken_text.extend(taken_remainder);
 
             *self = older;
 
             Ok(())
         } else if precedes(self.taken_range(), older.added_range()) {
             let fixed_end = self.taken_end().min(older.added_end());
-            let range = (older.start - self.start)..(fixed_end - self.start);
+
+            let start = older.start - self.start;
+            let end = fixed_end - self.start;
+            let range = byte_range(start, end, &older.added_text);
             self.taken_text.replace_range(range, &older.taken_text);
 
-            let cut_added = older
-                .added_text
-                .get((fixed_end - older.start)..)
-                .unwrap_or("");
-            self.added_text.push_str(cut_added);
+            let added_remainder = older.added_text.chars().skip(fixed_end - older.start);
+            self.added_text.extend(added_remainder);
 
             Ok(())
         } else {
@@ -330,7 +334,7 @@ impl History {
             None => return,
         };
 
-        cursors.remove_extras();
+        cursors.clear();
 
         let mut chars = 0;
         for change in &moment.changes {
@@ -358,7 +362,7 @@ impl History {
             None => return,
         };
 
-        cursors.remove_extras();
+        cursors.clear();
 
         for change in &moment.changes {
             text.apply_change(change);
@@ -405,4 +409,15 @@ impl History {
 fn intersects(old: &Change, new: &Change) -> bool {
     (old.start > new.start && new.taken_end() >= old.start)
         || (new.start > old.start && old.added_end() >= new.start)
+}
+
+fn byte_range(start: usize, end: usize, text: &str) -> Range<usize> {
+    let mut bytes = text.char_indices().map(|(pos, _)| pos);
+    let start_byte = bytes.nth(start).unwrap_or(text.len());
+
+    if end > start {
+        start_byte..bytes.nth(end - start - 1).unwrap()
+    } else {
+        start_byte..start_byte
+    }
 }

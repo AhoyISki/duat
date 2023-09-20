@@ -108,7 +108,7 @@ impl VertRuleCfg {
             let vert_rule = VertRule {
                 file: file.clone(),
                 input: input.clone(),
-                text: Text::default_string(),
+                text: Text::default(),
                 sep_char: self.sep_char,
             };
 
