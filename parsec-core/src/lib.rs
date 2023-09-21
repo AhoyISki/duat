@@ -32,7 +32,7 @@ use std::{
     },
 };
 
-use commands::{Command, CommandErr, Commands};
+use commands::{Command, Commands};
 use data::{ReadableData, RoData, RoNestedData, RwData};
 use forms::FormPalette;
 use input::InputMethod;
@@ -50,13 +50,16 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
+// Debugging objects.
+pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+// Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 static CMD_FILE_ID: Mutex<Option<FileId>> = Mutex::new(None);
 
 pub static PALETTE: FormPalette = FormPalette::new();
-
-pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub static COMMANDS: Commands = Commands::new();
 
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
@@ -69,7 +72,6 @@ where
     active_file: RwData<RwData<FileWidget>>,
     active_widget: RwData<RwData<dyn ActiveWidget>>,
     active_input: RwData<RwData<dyn InputMethod>>,
-    commands: RwData<Commands>,
     files_to_open: RwData<Vec<PathBuf>>,
 }
 
@@ -89,12 +91,6 @@ where
     pub fn active_file_name(&self) -> String {
         self.active_file
             .inspect(|file| file.read().name().unwrap_or(String::from("*scratch file*")))
-    }
-
-    /// A thread safe, read-write [`Commands`], meant to be used
-    /// globaly.
-    pub fn commands(&self) -> RwData<Commands> {
-        self.commands.clone()
     }
 
     /// A read only list of [`ParsecWindow<U>`]s.
@@ -204,10 +200,6 @@ where
                 (widget, area, file_id),
             )
         })
-    }
-
-    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
-        self.commands.read().try_exec(cmd.to_string())
     }
 
     /// Quits Parsec.
@@ -351,7 +343,6 @@ where
             active_file: RwData::new(active_file),
             active_widget: RwData::new(active_widget),
             active_input: RwData::new(active_input),
-            commands: Commands::new_rw_data(),
             files_to_open: RwData::new(Vec::new()),
         };
 
@@ -404,11 +395,9 @@ where
             })
         };
 
-        controler.commands.mutate(|commands| {
-            commands.try_add(quit).unwrap();
-            commands.try_add(edit).unwrap();
-            commands.try_add(write).unwrap();
-        });
+        COMMANDS.try_add(quit).unwrap();
+        COMMANDS.try_add(edit).unwrap();
+        COMMANDS.try_add(write).unwrap();
 
         controler
     }
@@ -556,25 +545,6 @@ where
             .map(|_| Some(format!("Switched to {name}")))
             .map_err(|err: WidgetSwitchErr<FileWidget>| err.to_string())
     })
-}
-
-/// A convenience macro to join any number of variables that can
-/// be turned into `String`s.
-///
-/// # Examples
-///
-/// ```
-/// # use parsec_core::join;
-/// let my_text = join!["number: ", 21, ", floating: ", 3.14];
-/// assert!(my_text == String::from("number: 21, floating: 3.14"));
-/// ```
-#[macro_export]
-macro_rules! join {
-    () => { String::from("") };
-
-    ($($var:expr),+ $(,)?) => {
-        [$($var.to_string()),+].join("")
-    }
 }
 
 /// Internal macro used to log information.

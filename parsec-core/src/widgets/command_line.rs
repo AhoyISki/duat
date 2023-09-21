@@ -16,12 +16,12 @@
 //! by running the `set-prompt` [`Command`].
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    commands::{Command, Commands},
+    commands::Command,
     data::{AsAny, ReadableData, RwData},
     input::{Commander, InputMethod},
     text::Text,
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, COMMANDS,
 };
 
 #[derive(Clone)]
@@ -84,14 +84,22 @@ where
     where
         U: Ui,
     {
-        move |controler| {
+        move |_| {
             let command_line = CommandLine {
                 text: Text::new(" "),
-                commands: controler.commands(),
                 prompt: RwData::new(self.prompt.clone()),
             };
 
-            add_commands(controler, &command_line);
+            let set_prompt = {
+                let prompt = command_line.prompt.clone();
+
+                Command::new(vec!["set-prompt"], move |_, new_prompt| {
+                    *prompt.write() = String::from(new_prompt.next().unwrap_or(""));
+                    Ok(None)
+                })
+            };
+
+            COMMANDS.try_add(set_prompt).unwrap();
 
             let widget = Widget::active(command_line, self.input.clone());
             (widget, Box::new(|| false), self.specs)
@@ -119,7 +127,6 @@ where
 /// [`FileWidget<U>`][crate::widgets::FileWidget] in real time.
 pub struct CommandLine {
     text: Text,
-    commands: RwData<Commands>,
     prompt: RwData<String>,
 }
 
@@ -164,7 +171,7 @@ impl ActiveWidget for CommandLine {
         let cmd = text
             .iter_chars_at(self.prompt.read().chars().count() - 1)
             .collect::<String>();
-        let _ = self.commands.read().try_exec(cmd);
+        let _ = COMMANDS.run(cmd);
     }
 }
 
@@ -175,18 +182,3 @@ impl AsAny for CommandLine {
 }
 
 unsafe impl Send for CommandLine {}
-
-/// Adds the commands of the [`CommandLine<U>`] to the [`Manager`]'s
-/// [`Commands`].
-fn add_commands<U>(manager: &Controler<U>, command_line: &CommandLine)
-where
-    U: Ui,
-{
-    let prompt = command_line.prompt.clone();
-    let set_prompt = Command::new(vec!["set-prompt"], move |_, new_prompt| {
-        *prompt.write() = String::from(new_prompt.next().unwrap_or(""));
-        Ok(None)
-    });
-
-    manager.commands.write().try_add(set_prompt).unwrap();
-}

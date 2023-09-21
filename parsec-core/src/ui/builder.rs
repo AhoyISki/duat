@@ -1,10 +1,5 @@
 use super::{Area, PushSpecs, Ui};
-use crate::{
-    commands::{CommandErr, Commands},
-    data::RwData,
-    widgets::Widget,
-    Controler,
-};
+use crate::{widgets::Widget, Controler};
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -156,14 +151,6 @@ where
 
         (child, parent)
     }
-
-    pub fn commands(&self) -> &RwData<Commands> {
-        &self.controler.commands
-    }
-
-    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
-        self.controler.run_cmd(cmd)
-    }
 }
 
 pub struct WindowBuilder<'a, U>
@@ -279,13 +266,5 @@ where
         });
 
         (child, parent)
-    }
-
-    pub fn commands(&self) -> &RwData<Commands> {
-        &self.controler.commands
-    }
-
-    pub fn run_cmd(&self, cmd: impl ToString) -> Result<Option<String>, CommandErr> {
-        self.controler.run_cmd(cmd)
     }
 }

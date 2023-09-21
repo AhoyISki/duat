@@ -1,4 +1,4 @@
-use crate::{input::InputMethod, join, position::Cursor, widgets::FileWidget};
+use crate::{input::InputMethod, position::Cursor, widgets::FileWidget};
 
 /// The name of the file.
 pub fn file_name(file: &FileWidget, _input: &dyn InputMethod) -> String {
@@ -47,7 +47,7 @@ pub fn selections_fmt(_file: &FileWidget, input: &dyn InputMethod) -> String {
     if cursors.len() == 1 {
         String::from("1 sel")
     } else {
-        join![cursors.len(), "sels"]
+        format!("{} sels", cursors.len())
     }
 }
 

@@ -372,25 +372,25 @@ impl Tags {
             .filter(move |range| range.get_end().map_or(true, |end| end > measure))
             .flat_map(|range| range.get_start().map(|start| (start, range.tag())));
 
-        let raw_tags = self
-            .rope
-            .iter_at_measure(measure, usize::cmp)
-            .filter_map(move |(pos, t_or_s)| match t_or_s {
-                TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
-                    if let Some(range) = self
-                        .ranges
-                        .iter()
-                        .find(|range| range.starts_with(&(pos, RawTag::ConcealStart(marker))))
-                    {
-                        let skip = range.get_end().unwrap_or(usize::MAX) - pos;
-                        Some((pos, RawTag::Concealed(skip)))
-                    } else {
-                        Some((pos, RawTag::ConcealStart(marker)))
+        let raw_tags =
+            self.rope
+                .iter_at_measure(measure, usize::cmp)
+                .filter_map(move |(pos, t_or_s)| match t_or_s {
+                    TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
+                        if let Some(range) = self
+                            .ranges
+                            .iter()
+                            .find(|range| range.starts_with(&(pos, RawTag::ConcealStart(marker))))
+                        {
+                            let skip = range.get_end().unwrap_or(usize::MAX) - pos;
+                            Some((pos, RawTag::Concealed(skip)))
+                        } else {
+                            Some((pos, RawTag::ConcealStart(marker)))
+                        }
                     }
-                }
-                TagOrSkip::Tag(tag) => Some((pos, tag)),
-                TagOrSkip::Skip(_) => None,
-            });
+                    TagOrSkip::Tag(tag) => Some((pos, tag)),
+                    TagOrSkip::Skip(_) => None,
+                });
 
         ranges.chain(raw_tags).peekable()
     }

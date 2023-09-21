@@ -3,7 +3,6 @@ use std::{path::PathBuf, sync::atomic::Ordering, time::Duration};
 use crossterm::event::{self, Event};
 
 use crate::{
-    commands::Commands,
     data::{ReadableData, RwData},
     input::{Editor, InputMethod},
     text::PrintCfg,
@@ -288,10 +287,6 @@ where
     /// Returns the [`RwData<Manager>`].
     pub fn controler(&self) -> &Controler<U> {
         &self.controler
-    }
-
-    pub fn commands(&self) -> &RwData<Commands> {
-        &self.controler.commands
     }
 
     /// The primary application loop, executed while no breaking

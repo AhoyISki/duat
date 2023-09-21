@@ -1,6 +1,6 @@
 //! Creation and execution of [`Command`]s.
 //!
-//! The [`Command`] struct, in Parsec, is function that's supposed to
+//! The [`Command`] struct, in Parsec, is a function that's supposed to
 //! be ran from any part of the program asynchronously, being able to
 //! mutate data through reference counting and internal mutability.
 //!
@@ -19,12 +19,7 @@
 //! interface is heavily inspired by commands in UNIX like operating
 //! systems.
 //!
-//! The [`Command`]'s function will have the type
-//! `
-//! Box<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) ->
-//! Result<Option<String>, String>> `
-//! which seems complex, but in most cases, a [`Command`] will just be
-//! created from a closure like so:
+//! Here's a simple example of how one would create a [`Command`]:
 //!
 //! ```rust
 //! # use parsec_core::commands::{Command, Flags};
@@ -37,7 +32,7 @@
 //! let callers = vec!["my-command", "mc"];
 //! let my_command = Command::new(
 //!     callers,
-//!     move |flags: &Flags, args: &mut dyn Iterator<Item = &str>| {
+//!     move |_flags: &Flags, _args: &mut dyn Iterator<Item = &str>| {
 //!         todo!();
 //!     },
 //! );
@@ -68,7 +63,7 @@
 //!     Ok(None)
 //! });
 //! ```
-//!
+//! // TODO: Globalize Commands
 //! The calling of commands is done through the [`Commands`] struct,
 //! shared around with an [`RwData<Commands>`].
 //!
@@ -81,7 +76,7 @@
 //! # use parsec_core::{
 //! #     data::RwData,
 //! #     session::Session,
-//! #     tags::form::FormPalette,
+//! #     forms::FormPalette,
 //! #     text::PrintCfg,
 //! #     ui::{Constraint, ModNode, PushSpecs, Ui},
 //! #     widgets::CommandLine,
@@ -169,7 +164,10 @@
 //! [`Iterator<Item = &str>`]: std::iter::Iterator
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
@@ -639,10 +637,7 @@ unsafe impl Sync for Command {}
 ///
 /// [`CommandLine<U>`]: crate::widgets::CommandLine
 /// [`Commands::try_add`]: Commands::try_add
-pub struct Commands {
-    list: Vec<Command>,
-    aliases: RwData<HashMap<String, String>>,
-}
+pub struct Commands(LazyLock<RwData<InnerCommands>>);
 
 impl Commands {
     /// Parses the `command`, dividing it into a caller, flags, and
@@ -683,37 +678,8 @@ impl Commands {
     /// assert!(&*my_var.read() == "😿");
     /// # }
     /// ```
-    pub fn try_exec(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
-        let command = command.to_string();
-        let caller = command
-            .split_whitespace()
-            .next()
-            .ok_or(CommandErr::Empty)?
-            .to_string();
-
-        let command = self
-            .aliases
-            .inspect(|aliases| aliases.get(&caller).cloned().unwrap_or(command));
-        let mut command = command.split_whitespace();
-        let caller = command.next().unwrap();
-
-        let (flags, mut args) = split_flags(command);
-
-        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
-        for cmd in &self.list {
-            if cmd
-                .file_id
-                .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
-                .unwrap_or(true)
-            {
-                let result = cmd.try_exec(caller, &flags, &mut args);
-                let Err(CommandErr::NotFound(_)) = result else {
-                    return result;
-                };
-            }
-        }
-
-        Err(CommandErr::NotFound(String::from(caller)))
+    pub fn run(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
+        self.0.read().run(command)
     }
 
     /// Tries to add a new [`Command`].
@@ -750,7 +716,75 @@ impl Commands {
     /// assert!(result == "The caller \"cap\" already exists.");
     /// # }
     /// ```
-    pub fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
+    pub fn try_add(&self, command: Command) -> Result<(), CommandErr> {
+        self.0.write().try_add(command)
+    }
+
+    /// Returns a new instance of [`Commands`].
+    ///
+    /// This function is primarily used in the creation of a
+    /// [`Controler`], for bookkeeping of the available
+    /// [`Command`]s in an accessible place.
+    ///
+    /// It also has the purpose of preloading [`self`] with the
+    /// `"alias"` command, allowing the end user to alias callers
+    /// into full commands.
+    ///
+    /// [`Controler`]: crate::Controler
+    pub(crate) const fn new() -> Self {
+        Self(LazyLock::new(|| {
+            let inner = RwData::new(InnerCommands {
+                list: Vec::new(),
+                aliases: HashMap::new(),
+            });
+
+            let alias = {
+                let inner = inner.clone();
+                Command::new(vec!["alias"], move |flags, args| {
+                    if !flags.is_empty() {
+                        Err(String::from(
+                            "An alias cannot take any flags, try moving them after the command, \
+                             like \"alias my-alias my-caller --foo --bar\", instead of \"alias \
+                             --foo --bar my-alias my-caller\"",
+                        ))
+                    } else {
+                        let alias = args.next().ok_or(String::from("No alias supplied"))?;
+                        inner
+                            .write()
+                            .try_alias(alias, args)
+                            .map_err(|err| err.to_string())
+                    }
+                })
+            };
+
+            inner.write().try_add(alias).unwrap();
+
+            inner
+        }))
+    }
+
+    /// Tries to alias a `caller` to an existing `command`.
+    ///
+    /// Returns an [`Err`] if the `caller` is already a caller for
+    /// another command, or if `command` is not a real caller to an
+    /// exisiting [`Command`].
+    pub fn try_alias<'a>(
+        &self,
+        alias: impl ToString,
+        command: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Option<String>, CommandErr> {
+        self.0.write().try_alias(alias, command)
+    }
+}
+
+struct InnerCommands {
+    list: Vec<Command>,
+    aliases: HashMap<String, String>,
+}
+
+impl InnerCommands {
+    /// Tries to add the given [`Command`] to the list.
+    fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
         let mut new_callers = command.callers().iter();
         let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
 
@@ -772,55 +806,42 @@ impl Commands {
         Ok(())
     }
 
-    /// Returns a new instance of [`RwData<Commands>`].
-    ///
-    /// This function is primarily used in the creation of a
-    /// [`Controler`], for bookkeeping of the available
-    /// [`Command`]s in an accessible place.
-    ///
-    /// It also has the purpose of preloading [`self`] with the
-    /// `"alias"` command, allowing the end user to alias callers
-    /// into full commands.
-    ///
-    /// [`Controler`]: crate::Controler
-    /// [`RwData<Commands>`]: crate::data::RwData
-    pub(crate) fn new_rw_data() -> RwData<Self> {
-        let commands = RwData::new(Commands {
-            list: Vec::new(),
-            aliases: RwData::new(HashMap::new()),
-        });
+    /// Tries to execute a command or alias with the given argument.
+    pub fn run(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
+        let command = command.to_string();
+        let caller = command
+            .split_whitespace()
+            .next()
+            .ok_or(CommandErr::Empty)?
+            .to_string();
 
-        let alias = {
-            let commands = commands.clone();
-            Command::new(vec!["alias"], move |flags, args| {
-                if !flags.is_empty() {
-                    Err(String::from(
-                        "An alias cannot take any flags, try moving them after the command, like \
-                         \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
-                         my-alias my-caller\"",
-                    ))
-                } else {
-                    let alias = args.next().ok_or(String::from("No alias supplied"))?;
-                    commands
-                        .read()
-                        .try_alias(alias, args)
-                        .map_err(|err| err.to_string())
-                }
-            })
-        };
+        let command = self.aliases.get(&caller).cloned().unwrap_or(command);
+        let mut command = command.split_whitespace();
+        let caller = command.next().unwrap();
 
-        commands.write().try_add(alias).unwrap();
+        let (flags, mut args) = split_flags(command);
 
-        commands
+        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
+        for cmd in &self.list {
+            if cmd
+                .file_id
+                .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
+                .unwrap_or(true)
+            {
+                let result = cmd.try_exec(caller, &flags, &mut args);
+                let Err(CommandErr::NotFound(_)) = result else {
+                    return result;
+                };
+            }
+        }
+
+        Err(CommandErr::NotFound(String::from(caller)))
     }
 
-    /// Tries to alias a `caller` to an existing `command`.
-    ///
-    /// Returns an [`Err`] if the `caller` is already a caller for
-    /// another command, or if `command` is not a real caller to an
-    /// exisiting [`Command`].
+    /// Tries to alias a full command (caller, flags, and arguments) to an
+    /// alias.
     fn try_alias<'a>(
-        &self,
+        &mut self,
         alias: impl ToString,
         command: impl IntoIterator<Item = &'a str>,
     ) -> Result<Option<String>, CommandErr> {
@@ -835,43 +856,14 @@ impl Commands {
         let mut callers = self.list.iter().flat_map(|cmd| cmd.callers.iter());
 
         if callers.any(|name| *name == caller) {
-            let mut aliases = self.aliases.write();
-            Ok(aliases.insert(alias, caller + command.collect::<String>().as_str()))
+            Ok(self
+                .aliases
+                .insert(alias, caller + command.collect::<String>().as_str()))
         } else {
             Err(CommandErr::NotFound(caller))
         }
     }
 }
-
-/// An failure in executing or adding a [`Command`].
-#[derive(Debug)]
-pub enum CommandErr {
-    NotSingleWord(String),
-    AlreadyExists(String),
-    NotFound(String),
-    Failed(String),
-    Empty,
-}
-
-impl std::fmt::Display for CommandErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommandErr::NotSingleWord(caller) => {
-                write!(f, "The caller \"{caller}\" is not a single word")
-            }
-            CommandErr::AlreadyExists(caller) => {
-                write!(f, "The caller \"{caller}\" already exists.")
-            }
-            CommandErr::NotFound(caller) => {
-                write!(f, "The caller \"{caller}\" was not found.")
-            }
-            CommandErr::Failed(failure) => f.write_str(failure),
-            CommandErr::Empty => f.write_str("No caller supplied."),
-        }
-    }
-}
-
-impl std::error::Error for CommandErr {}
 
 /// Takes the [`Flags`] from an [`Iterator`] of `args`.
 ///
@@ -932,3 +924,33 @@ pub fn split_flags<'a>(
 
     (Flags { blob, units }, args)
 }
+
+/// An failure in executing or adding a [`Command`].
+#[derive(Debug)]
+pub enum CommandErr {
+    NotSingleWord(String),
+    AlreadyExists(String),
+    NotFound(String),
+    Failed(String),
+    Empty,
+}
+
+impl std::fmt::Display for CommandErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommandErr::NotSingleWord(caller) => {
+                write!(f, "The caller \"{caller}\" is not a single word")
+            }
+            CommandErr::AlreadyExists(caller) => {
+                write!(f, "The caller \"{caller}\" already exists.")
+            }
+            CommandErr::NotFound(caller) => {
+                write!(f, "The caller \"{caller}\" was not found.")
+            }
+            CommandErr::Failed(failure) => f.write_str(failure),
+            CommandErr::Empty => f.write_str("No caller supplied."),
+        }
+    }
+}
+
+impl std::error::Error for CommandErr {}
