@@ -20,11 +20,11 @@ impl Default for Commander {
     }
 }
 
-impl crate::data::AsAny for Commander {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl crate::data::AsAny for Commander {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 impl InputMethod for Commander {
     type Widget = CommandLine;

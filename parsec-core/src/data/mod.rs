@@ -29,8 +29,11 @@ use std::{
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLockReadGuard;
-pub use ro::{RoData, RoNestedData};
-pub use rw::RwData;
+
+pub use self::{
+    ro::{ActiveFile, FileReader, RoData, RoNestedData},
+    rw::RwData,
+};
 
 mod ro;
 mod rw;
@@ -407,8 +410,8 @@ where
 /// impl Emotion for Happy {}
 /// impl Emotion for Sad {}
 ///
-/// fn is_happy(potentially_boolean: &RwData<dyn Emotion>) -> bool {
-///     potentially_boolean.data_is::<Happy>()
+/// fn is_happy(potentially_happy: &RwData<dyn Emotion>) -> bool {
+///     potentially_happy.data_is::<Happy>()
 /// }
 ///
 /// let happy = Arc::new(RwLock::new(Happy));
@@ -419,9 +422,11 @@ where
 ///
 /// [`Widget<U>`]: crate::widgets::Widget
 /// [`Vec<dyn Trait>`]: Vec
-pub trait AsAny {
-    fn as_any(&self) -> &dyn std::any::Any;
-}
+//pub trait AsAny {
+//    fn as_any(&self) -> &dyn std::any::Any;
+//
+//    fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
+//}
 
 /// An error signifying a failure in the casting of data.
 ///
@@ -453,8 +458,8 @@ where
     T: ?Sized,
 {
     WriteBlocked(PhantomData<(Holder, T)>),
-    ReadBlocked(PhantomData<(Holder, T)>),
-    NestedReadBlocked(PhantomData<(Holder, T)>),
+    ReadBlocked,
+    NestedReadBlocked,
 }
 
 impl<Holder, T> std::fmt::Debug for DataRetrievalErr<Holder, T>
@@ -468,10 +473,10 @@ where
             DataRetrievalErr::WriteBlocked(_) => {
                 write!(f, "The {holder} could not be written to at this moment.")
             }
-            DataRetrievalErr::ReadBlocked(_) => {
+            DataRetrievalErr::ReadBlocked => {
                 write!(f, "The {holder} could not be read this moment.")
             }
-            DataRetrievalErr::NestedReadBlocked(_) => {
+            DataRetrievalErr::NestedReadBlocked => {
                 let t = std::any::type_name::<T>();
                 write!(
                     f,

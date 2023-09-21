@@ -22,9 +22,12 @@ mod file_widget;
 mod line_numbers;
 mod status_line;
 
-use std::sync::Arc;
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
@@ -37,7 +40,7 @@ pub use self::{
     status_line::{file_parts, status_cfg, StatusLine, StatusLineCfg, StatusPart},
 };
 use crate::{
-    data::{AsAny, ReadableData, RwData},
+    data::{ReadableData, RwData},
     input::InputMethod,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -45,7 +48,7 @@ use crate::{
 };
 
 /// An area where text will be printed to the screen.
-pub trait PassiveWidget: AsAny + Send + Sync + 'static {
+pub trait PassiveWidget: Send + Sync + 'static {
     fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
     where
         U: Ui,
@@ -332,7 +335,7 @@ where
     }
 
     /// Returns the downcast ref of this [`Widget<U>`].
-    pub fn downcast_ref<W>(&self) -> Option<RwData<W>>
+    pub fn downcast<W>(&self) -> Option<RwData<W>>
     where
         W: PassiveWidget,
     {
@@ -362,9 +365,9 @@ where
         }
     }
 
-    pub fn as_active(&self) -> Option<&RwData<dyn ActiveWidget>> {
+    pub fn as_active(&self) -> Option<(&RwData<dyn ActiveWidget>, &RwData<dyn InputMethod>)> {
         match self {
-            Widget::Active(inner) => Some(inner.active_widget()),
+            Widget::Active(inner) => Some((inner.active_widget(), inner.input())),
             _ => None,
         }
     }

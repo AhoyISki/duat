@@ -22,21 +22,19 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use super::{file_widget::FileWidget, PassiveWidget, Widget};
+use super::{PassiveWidget, Widget};
 use crate::{
-    data::{AsAny, ReadableData, RoData},
+    data::FileReader,
     forms::Form,
-    input::InputMethod,
     text::{build, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
-    Controler, PALETTE,
+    Controler, ACTIVE_FILE, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget`] are shown on screen.
 pub struct LineNumbers {
-    file: RoData<FileWidget>,
-    input: RoData<dyn InputMethod>,
+    reader: FileReader,
     text: Text,
     cfg: LineNumbersCfg,
 }
@@ -51,7 +49,7 @@ impl LineNumbers {
         let mut width = 1.0;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.file.read().text().len_lines() + 1;
+        let len = self.reader.inspect(|file, _| file.len_lines());
 
         while len > num_exp {
             num_exp *= 10;
@@ -64,16 +62,12 @@ impl LineNumbers {
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self) {
-        let main_line: Option<usize> = self
-            .input
-            .read()
-            .cursors()
-            .map(|cursors| cursors.main().true_line());
+        let (file, input) = self.reader.read();
 
-        let file = self.file.read();
         let printed_lines = file.printed_lines();
+        let main_line = input.cursors().map(|cursors| cursors.main().true_line());
 
-        let mut builder = build!(((tag_from_align(self.cfg.alignment))));
+        let mut builder = build!((tag_from_align(self.cfg.alignment)));
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             let is_main_line = main_line.is_some_and(|main| main == *line);
@@ -81,7 +75,7 @@ impl LineNumbers {
             let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
 
             if is_main_line {
-                build!(builder, ((tag_from_align(self.cfg.main_alignment))));
+                build!(builder, (tag_from_align(self.cfg.main_alignment)));
             }
 
             match (is_main_line, is_wrapped) {
@@ -94,7 +88,7 @@ impl LineNumbers {
             build!(builder, num_text);
 
             if is_main_line {
-                build!(builder, ((tag_from_align(self.cfg.alignment))));
+                build!(builder, (tag_from_align(self.cfg.alignment)));
             }
         }
 
@@ -125,11 +119,11 @@ impl PassiveWidget for LineNumbers {
     }
 }
 
-impl AsAny for LineNumbers {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl AsAny for LineNumbers {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
@@ -178,7 +172,7 @@ impl LineNumbersCfg {
         U: Ui,
     {
         move |controler| {
-            let file = controler.current_file();
+            let reader = ACTIVE_FILE.current();
             let specs = self.specs;
 
             PALETTE.try_set_form("LineNum", Form::new().grey());
@@ -187,15 +181,14 @@ impl LineNumbersCfg {
             PALETTE.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
 
             let mut line_numbers = LineNumbers {
-                file: file.clone(),
-                input: controler.current_input(),
+                reader: reader.clone(),
                 text: Text::default(),
                 cfg: self,
             };
             line_numbers.update_text();
 
             let widget = Widget::passive(line_numbers);
-            (widget, Box::new(move || file.has_changed()), specs)
+            (widget, Box::new(move || reader.has_changed()), specs)
         }
     }
 

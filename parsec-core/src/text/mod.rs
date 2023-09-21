@@ -399,18 +399,8 @@ pub macro build {
     },
 
     // Other tags
-    (@push $builder:expr, (($tag:expr))) => {
+    (@push $builder:expr, ($tag:expr)) => {
         $builder.push_tag($tag)
-    },
-
-    // Failure
-    (@push $builder:expr, ($not_allowed:expr)) => {
-        compile_error!(
-            "Expressions are not allowed in place of tag identifiers. If you wanted to add text \
-             using an expression, remove the parentheses and replace them with braces. If you \
-             wanted to add a tag with an expression, surround it with another pair of parentheses \
-             (e.g. `((my_expr))`)"
-        );
     },
 
     // Plain text

@@ -172,10 +172,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::{
-    data::{ReadableData, RwData},
-    ui::FileId,
-};
+use crate::data::{ReadableData, RwData};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -439,7 +436,6 @@ pub struct Command {
     f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>,
-    file_id: Option<FileId>,
 }
 
 impl Command {
@@ -494,7 +490,6 @@ impl Command {
         Self {
             f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
             callers,
-            file_id: None,
         }
     }
 
@@ -549,7 +544,6 @@ impl Command {
         Self {
             f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
             callers,
-            file_id: *crate::CMD_FILE_ID.lock().unwrap(),
         }
     }
 
@@ -786,17 +780,10 @@ impl InnerCommands {
     /// Tries to add the given [`Command`] to the list.
     fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
         let mut new_callers = command.callers().iter();
-        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
 
         let commands = self.list.iter();
-        for (caller, file_id) in
-            commands.flat_map(|cmd| cmd.callers().iter().map(|caller| (caller, cmd.file_id)))
-        {
-            if new_callers.any(|new_caller| new_caller == caller)
-                && file_id
-                    .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
-                    .unwrap_or(true)
-            {
+        for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
+            if new_callers.any(|new_caller| new_caller == caller) {
                 return Err(CommandErr::AlreadyExists(caller.clone()));
             }
         }
@@ -821,18 +808,11 @@ impl InnerCommands {
 
         let (flags, mut args) = split_flags(command);
 
-        let cur_file_id = *crate::CMD_FILE_ID.lock().unwrap();
         for cmd in &self.list {
-            if cmd
-                .file_id
-                .zip_with(cur_file_id, |rhs, lhs| rhs == lhs)
-                .unwrap_or(true)
-            {
-                let result = cmd.try_exec(caller, &flags, &mut args);
-                let Err(CommandErr::NotFound(_)) = result else {
-                    return result;
-                };
-            }
+            let result = cmd.try_exec(caller, &flags, &mut args);
+            let Err(CommandErr::NotFound(_)) = result else {
+                return result;
+            };
         }
 
         Err(CommandErr::NotFound(String::from(caller)))

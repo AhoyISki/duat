@@ -22,11 +22,11 @@ impl Default for Editor {
     }
 }
 
-impl crate::data::AsAny for Editor {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl crate::data::AsAny for Editor {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 impl InputMethod for Editor {
     type Widget = FileWidget;

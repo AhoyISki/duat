@@ -98,11 +98,9 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
-            let (child, parent) =
-                window.push(widget, &self.mod_area, checker, specs, file_id, true);
+            let (child, parent) = window.push(widget, &self.mod_area, checker, specs, true);
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&window.files_region) {
@@ -143,11 +141,10 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
-        let (child, parent) = self.controler.mutate_active_window(|window| {
-            window.push(widget, &area, checker, specs, file_id, true)
-        });
+        let (child, parent) = self
+            .controler
+            .mutate_active_window(|window| window.push(widget, &area, checker, specs, true));
 
         (child, parent)
     }
@@ -221,10 +218,9 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
-            let (child, parent) = window.push(widget, &self.area, checker, specs, file_id, true);
+            let (child, parent) = window.push(widget, &self.area, checker, specs, true);
 
             (child, parent)
         });
@@ -259,10 +255,9 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let file_id = *crate::CMD_FILE_ID.lock().unwrap();
         let (widget, checker, specs) = builder(self.controler);
         let (child, parent) = self.controler.mutate_active_window(|window| {
-            window.push(widget, &area, checker, specs, file_id, true)
+            window.push(widget, &area, checker, specs, true)
         });
 
         (child, parent)

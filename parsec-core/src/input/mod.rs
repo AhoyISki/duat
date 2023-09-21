@@ -13,7 +13,7 @@ pub use self::{
 };
 use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Controler};
 
-pub trait InputMethod: crate::data::AsAny + Send + Sync + 'static {
+pub trait InputMethod: Send + Sync + 'static {
     type Widget: ActiveWidget
     where
         Self: Sized;

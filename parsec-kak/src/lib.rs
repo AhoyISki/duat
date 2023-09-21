@@ -2,12 +2,12 @@ use std::fmt::Display;
 
 use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
 use parsec_core::{
-    data::{AsAny, RwData},
+    data::RwData,
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Ui,
     widgets::{CommandLine, FileWidget},
-    Controler,
+    Controler, ACTIVE_FILE,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -53,11 +53,12 @@ impl Editor {
     }
 
     pub fn mode(_file: &FileWidget, input: &dyn InputMethod) -> String {
-        input
-            .as_any()
-            .downcast_ref::<Self>()
-            .map(|kak| kak.mode.to_string())
-            .unwrap_or(String::from(""))
+        String::from("mode")
+        //input
+        //    .as_any()
+        //    .downcast_ref::<Self>()
+        //    .map(|kak| kak.mode.to_string())
+        //    .unwrap_or(String::from(""))
     }
 }
 
@@ -455,7 +456,7 @@ fn match_goto<U: Ui>(
             code: Char('a'), ..
         } => {
             if controler.switch_to_file(last_file.clone()).is_ok() {
-                *last_file = controler.active_file_name().to_string();
+                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
             }
         }
         KeyEvent {
@@ -472,14 +473,14 @@ fn match_goto<U: Ui>(
             code: Char('n'), ..
         } => {
             if controler.next_file().is_ok() {
-                *last_file = controler.active_file_name().to_string();
+                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
             }
         }
         KeyEvent {
             code: Char('N'), ..
         } => {
             if controler.prev_file().is_ok() {
-                *last_file = controler.active_file_name().to_string();
+                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
             }
         }
         _ => {}
@@ -518,10 +519,4 @@ fn move_each_and_select<U: Ui>(
             Side::Right => mover.move_hor(amount as isize),
         }
     });
-}
-
-impl AsAny for Editor {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }

@@ -1,11 +1,11 @@
 use parsec_core::{
-    data::{AsAny, ReadableData, RoData},
+    data::{FileReader, ReadableData, RoData},
     forms::Form,
     input::InputMethod,
     text::{build, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{FileWidget, PassiveWidget, Widget},
-    Controler, PALETTE,
+    Controler, ACTIVE_FILE, PALETTE,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -98,21 +98,19 @@ impl VertRuleCfg {
         self,
     ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move |controler| {
-            let file = controler.current_file();
-            let input = controler.current_input();
+            let reader = ACTIVE_FILE.current();
 
             PALETTE.try_set_form("VertRule", Form::new().grey());
             PALETTE.set_new_ref("UpperVertRule", "VertRule");
             PALETTE.set_new_ref("LowerVertRule", "VertRule");
 
             let vert_rule = VertRule {
-                file: file.clone(),
-                input: input.clone(),
+                reader: reader.clone(),
                 text: Text::default(),
                 sep_char: self.sep_char,
             };
 
-            let checker = Box::new(move || file.has_changed() || input.has_changed());
+            let checker = Box::new(move || reader.has_changed());
             let widget = Widget::passive(vert_rule);
             (widget, checker, self.specs)
         }
@@ -129,8 +127,7 @@ impl Default for VertRuleCfg {
 /// of a [`FileWidget<U>`] and
 /// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
 pub struct VertRule {
-    file: RoData<FileWidget>,
-    input: RoData<dyn InputMethod>,
+    reader: FileReader,
     text: Text,
     sep_char: SepChar,
 }
@@ -138,12 +135,6 @@ pub struct VertRule {
 impl VertRule {
     pub fn config() -> VertRuleCfg {
         VertRuleCfg::new()
-    }
-}
-
-impl AsAny for VertRule {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
@@ -157,12 +148,9 @@ impl PassiveWidget for VertRule {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        let main_line = {
-            let input = self.input.read();
-            input.cursors().unwrap().main().true_line()
-        };
+        let (file, input) = self.reader.read();
 
-        let file = self.file.read();
+        let main_line = input.cursors().unwrap().main().true_line();
         let lines = file.printed_lines();
 
         let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();

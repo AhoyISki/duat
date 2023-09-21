@@ -58,12 +58,12 @@ pub use file_parts::*;
 use self::Reader::*;
 use super::{file_widget::FileWidget, PassiveWidget, Widget};
 use crate::{
-    data::{AsAny, RoNestedData},
+    data::FileReader,
     forms::Form,
     input::InputMethod,
     text::Text,
     ui::{Area, PushSpecs, Ui},
-    Controler,
+    Controler, ACTIVE_FILE,
 };
 
 /// A struct that holds mutable readers, either from a file, or from
@@ -191,20 +191,21 @@ impl StatusLineCfg {
         U: Ui,
     {
         move |controler| {
-            let (file, input) = if self.is_global {
-                (controler.dyn_active_file(), controler.dyn_active_input())
+            let (reader, checker): (Option<FileReader>, Box<dyn Fn() -> bool>) = if self.is_global {
+                (
+                    None,
+                    Box::new(move || ACTIVE_FILE.has_changed() || (self.checker)()),
+                )
             } else {
-                (controler.active_file(), controler.active_input())
-            };
-
-            let checker = {
-                let file = file.clone();
-                Box::new(move || file.has_changed() || (self.checker)())
+                let reader = ACTIVE_FILE.current();
+                (
+                    Some(ACTIVE_FILE.current()),
+                    Box::new(move || reader.has_changed() || (self.checker)()),
+                )
             };
 
             let widget = Widget::passive(StatusLine {
-                file,
-                input,
+                reader,
                 text_fn: self.text_fn,
                 text: Text::default(),
             });
@@ -283,8 +284,7 @@ impl Default for StatusLineCfg {
 /// to change the active [`Form`][crate::tags::form::Form] to print
 /// the next characters.
 pub struct StatusLine {
-    file: RoNestedData<FileWidget>,
-    input: RoNestedData<dyn InputMethod>,
+    reader: Option<FileReader>,
     text_fn: Box<dyn Fn(&FileWidget, &dyn InputMethod) -> Text>,
     text: Text,
 }
@@ -304,11 +304,11 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        self.input.inspect(|input| {
-            self.file.inspect(|file| {
-                self.text = (self.text_fn)(file, input);
-            });
-        });
+        self.text = if let Some(reader) = &self.reader {
+            reader.inspect(&self.text_fn)
+        } else {
+            ACTIVE_FILE.inspect(&self.text_fn)
+        };
     }
 
     fn text(&self) -> &Text {
@@ -316,11 +316,11 @@ impl PassiveWidget for StatusLine {
     }
 }
 
-impl AsAny for StatusLine {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl AsAny for StatusLine {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}

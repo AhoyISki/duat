@@ -17,7 +17,7 @@
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     commands::Command,
-    data::{AsAny, ReadableData, RwData},
+    data::{ReadableData, RwData},
     input::{Commander, InputMethod},
     text::Text,
     ui::{Area, PushSpecs, Ui},
@@ -175,10 +175,10 @@ impl ActiveWidget for CommandLine {
     }
 }
 
-impl AsAny for CommandLine {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl AsAny for CommandLine {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 unsafe impl Send for CommandLine {}

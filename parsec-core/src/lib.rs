@@ -26,17 +26,14 @@
 use std::{
     marker::PhantomData,
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use commands::{Command, Commands};
-use data::{ReadableData, RoData, RoNestedData, RwData};
+use data::{ActiveFile, ReadableData, RoData, RwData};
 use forms::FormPalette;
 use input::InputMethod;
-use ui::{Area, FileId, RoWindows, Ui, Window};
+use ui::{Area, RoWindows, Ui, Window};
 use widgets::{ActiveWidget, FileWidget};
 
 pub mod commands;
@@ -56,10 +53,10 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 // Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
-static CMD_FILE_ID: Mutex<Option<FileId>> = Mutex::new(None);
 
 pub static PALETTE: FormPalette = FormPalette::new();
 pub static COMMANDS: Commands = Commands::new();
+pub static ACTIVE_FILE: ActiveFile = ActiveFile::new();
 
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
@@ -69,9 +66,7 @@ where
 {
     windows: RwData<Vec<Window<U>>>,
     active_window: usize,
-    active_file: RwData<RwData<FileWidget>>,
     active_widget: RwData<RwData<dyn ActiveWidget>>,
-    active_input: RwData<RwData<dyn InputMethod>>,
     files_to_open: RwData<Vec<PathBuf>>,
 }
 
@@ -83,97 +78,9 @@ impl<U> Controler<U>
 where
     U: Ui,
 {
-    /// The name of the active [`FileWidget<U>`].
-    ///
-    /// Note that, even while a non [`FileWidget<U>`] is active, this
-    /// will return the name of the last [`FileWidget<U>`] to be
-    /// active.
-    pub fn active_file_name(&self) -> String {
-        self.active_file
-            .inspect(|file| file.read().name().unwrap_or(String::from("*scratch file*")))
-    }
-
     /// A read only list of [`ParsecWindow<U>`]s.
     pub fn windows(&self) -> RoWindows<U> {
         RoWindows::new(RoData::from(&self.windows))
-    }
-
-    /// Returns a special reference that always points to the active
-    /// [`FileWidget`] of the [`Controler`].
-    ///
-    /// One place where this function shines is in the
-    /// [`StatusLine`], which can show information pertaining to the
-    /// currently active file.
-    ///
-    /// If you wish for a version of this method that always points to the same
-    /// file, but has the same return type, see [`active_file`]. If
-    /// this restriction is not a requirement, use [`current_file`] instead.
-    ///
-    /// [`StatusLine`]: crate::widgets::StatusLine
-    /// [`active_file`]: Self::active_file()
-    pub fn dyn_active_file(&self) -> RoNestedData<FileWidget> {
-        RoNestedData::from(&self.active_file)
-    }
-
-    /// Same as [`dynamic_active_file`], but always points to the file the was
-    /// active at the moment of the function call.
-    ///
-    /// Use this if you want an alternative for [`dynamic_active_file`] that has
-    /// the same data type. If that is not your need, use [`current_file`]
-    /// instead, since it is more efficient in its reading.
-    ///
-    /// [`dyn_active_file`]: Self::dynamic_active_file
-    /// [`current_file`]: Self::current_file()
-    pub fn active_file(&self) -> RoNestedData<FileWidget> {
-        RoNestedData::from(&RwData::new(self.active_file.read().clone()))
-    }
-
-    /// A [`RoData`] that points to the currently active file.
-    ///
-    /// This reference will always point to the same file, if you want a
-    /// reference that changes where it is pointing, such that it always points
-    /// to the active file at that moment, see [`dyn_active_file`].
-    ///
-    /// [`dyn_active_file`]: Self::dyn_active_file
-    pub fn current_file(&self) -> RoData<FileWidget> {
-        RoData::from(&*self.active_file.read())
-    }
-
-    /// Returns a special reference that always points to the active
-    /// [`InputMethod`] of the [`Controler`].
-    ///
-    /// If you wish for a version of this method that always points to the same
-    /// input, but has the same return type, see [`active_input`]. If
-    /// this restriction is not a requirement, use [`current_input`] instead.
-    ///
-    /// [`active_input`]: Self::active_input()
-    /// [`current_input`]: Self::current_input
-    pub fn dyn_active_input(&self) -> RoNestedData<dyn InputMethod> {
-        RoNestedData::from(&RwData::new(self.active_input.read().clone()))
-    }
-
-    /// Same as [`dynamic_active_input`], but always points to the input the was
-    /// active at the moment of the function call.
-    ///
-    /// Use this if you want an alternative for [`dyn_active_input`] that
-    /// has the same data type. If that is not your need, use
-    /// [`current_input`] instead, since it is more efficient in its reading.
-    ///
-    /// [`dyn_active_input`]: Self::dynamic_active_input
-    /// [`current_input`]: Self::current_input()
-    pub fn active_input(&self) -> RoNestedData<dyn InputMethod> {
-        RoNestedData::from(&self.active_input)
-    }
-
-    /// A [`RoData`] that points to the currently active input.
-    ///
-    /// This reference will always point to the same file, if you want a
-    /// reference that changes where it is pointing, such that it always points
-    /// to the active file at that moment, see [`dyn_active_input`].
-    ///
-    /// [`dyn_active_input`]: Self::dyn_active_input
-    pub fn current_input(&self) -> RoData<dyn InputMethod> {
-        RoData::from(&*self.active_input.read())
     }
 }
 
@@ -187,18 +94,13 @@ where
 {
     pub fn return_to_file(&self) -> Result<(), WidgetSwitchErr<FileWidget>> {
         self.inspect_active_window(|window| {
-            let (widget, area, file_id) = window
+            let (widget, area) = window
                 .widgets()
-                .find(|(widget_type, ..)| widget_type.ptr_eq(&*self.active_file.read()))
-                .map(|(widget, area, file_id)| (widget.as_active().unwrap().clone(), area, file_id))
+                .find(|(widget, ..)| ACTIVE_FILE.file_ptr_eq(widget))
+                .map(|(widget, area)| (widget.as_active().unwrap(), area))
                 .ok_or(WidgetSwitchErr::NotFound)?;
 
-            switch_widget(
-                &self.windows.read(),
-                &self.active_widget,
-                &self.active_file,
-                (widget, area, file_id),
-            )
+            switch_widget(&self.windows.read(), &self.active_widget, (widget, area))
         })
     }
 
@@ -215,30 +117,23 @@ where
     ) -> Result<(), WidgetSwitchErr<FileWidget>> {
         let name = target.as_ref();
         let windows = self.windows.read();
-        let (widget, area, file_id) = windows
+        let (widget, area) = windows
             .iter()
             .flat_map(|window| window.widgets())
-            .find(|(widget_type, ..)| {
-                widget_type
+            .find(|(widget, ..)| {
+                widget
                     .inspect_as::<FileWidget, bool>(|file| {
                         file.name().is_some_and(|cmp| cmp == name)
                     })
                     .unwrap_or(false)
             })
-            .map(|(widget_type, area, file_id)| {
-                (widget_type.as_active().unwrap().clone(), area, file_id)
-            })
+            .map(|(widget, area)| (widget.as_active().unwrap(), area))
             .ok_or(WidgetSwitchErr::FileNotFound(
                 String::from(name),
                 PhantomData,
             ))?;
 
-        switch_widget(
-            &windows,
-            &self.active_widget,
-            &self.active_file,
-            (widget, area, file_id),
-        )
+        switch_widget(&windows, &self.active_widget, (widget, area))
     }
 
     /// Switches to the next [`FileWidget<U>`].
@@ -247,29 +142,22 @@ where
             return Err(WidgetSwitchErr::NoOthersExist);
         }
 
-        let cur_name = self.active_file.inspect(|file| file.read().name());
+        let cur_name = ACTIVE_FILE.name();
         self.inspect_active_window(|window| {
-            let (widget, area, file_id) = window
+            let (widget, area) = window
                 .widgets()
                 .cycle()
                 .filter(|(widget, ..)| widget.data_is::<FileWidget>())
-                .skip_while(|(widget_type, ..)| {
-                    widget_type
+                .skip_while(|(widget, ..)| {
+                    widget
                         .inspect_as::<FileWidget, bool>(|file| file.name() != cur_name)
                         .unwrap_or(false)
                 })
                 .nth(1)
-                .map(|(widget_type, area, file_id)| {
-                    (widget_type.as_active().unwrap().clone(), area, file_id)
-                })
+                .map(|(widget, area)| (widget.as_active().unwrap(), area))
                 .ok_or(WidgetSwitchErr::NotFound)?;
 
-            switch_widget(
-                &self.windows.read(),
-                &self.active_widget,
-                &self.active_file,
-                (widget, area, file_id),
-            )
+            switch_widget(&self.windows.read(), &self.active_widget, (widget, area))
         })
     }
 
@@ -279,28 +167,21 @@ where
             return Err(WidgetSwitchErr::NoOthersExist);
         }
 
-        let cur_name = self.active_file.inspect(|file| file.read().name());
+        let cur_name = ACTIVE_FILE.name();
         self.inspect_active_window(|window| {
-            let (widget, area, file_id) = window
+            let (widget, area) = window
                 .widgets()
-                .filter(|(widget_type, ..)| widget_type.data_is::<FileWidget>())
-                .take_while(|(widget_type, ..)| {
-                    widget_type
+                .filter(|(widget, ..)| widget.data_is::<FileWidget>())
+                .take_while(|(widget, ..)| {
+                    widget
                         .inspect_as::<FileWidget, bool>(|file| file.name() != cur_name)
                         .unwrap_or(false)
                 })
                 .last()
-                .map(|(widget_type, area, file_id)| {
-                    (widget_type.as_active().unwrap().clone(), area, file_id)
-                })
+                .map(|(widget, area)| (widget.as_active().unwrap(), area))
                 .ok_or(WidgetSwitchErr::NotFound)?;
 
-            switch_widget(
-                &self.windows.read(),
-                &self.active_widget,
-                &self.active_file,
-                (widget, area, file_id),
-            )
+            switch_widget(&self.windows.read(), &self.active_widget, (widget, area))
         })
     }
 
@@ -309,24 +190,17 @@ where
     where
         W: ActiveWidget,
     {
-        let cur_file_id = *CMD_FILE_ID.lock().unwrap();
         self.inspect_active_window(|window| {
-            let (widget, area, file_id) = window
+            let (widget, area) = window
                 .widgets()
-                .find(|(widget, _, file_id)| {
-                    widget.data_is::<W>() && (file_id.is_none() || cur_file_id == *file_id)
+                .find(|(widget, _)| {
+                    // TODO: Add data checking.
+                    widget.data_is::<W>() // && (file_id.is_none() || cur_file_id == *file_id)
                 })
-                .map(|(widget_type, area, file_id)| {
-                    (widget_type.as_active().unwrap().clone(), area, file_id)
-                })
+                .map(|(widget, area)| (widget.as_active().unwrap(), area))
                 .ok_or(WidgetSwitchErr::<W>::NotFound)?;
 
-            switch_widget(
-                &self.windows.read(),
-                &self.active_widget,
-                &self.active_file,
-                (widget, area, file_id),
-            )
+            switch_widget(&self.windows.read(), &self.active_widget, (widget, area))
         })
     }
 
@@ -334,15 +208,11 @@ where
     fn new(
         window: Window<U>,
         active_widget: RwData<dyn ActiveWidget>,
-        active_input: RwData<dyn InputMethod>,
     ) -> Self {
-        let active_file = active_widget.clone().try_downcast::<FileWidget>().unwrap();
         let controler = Self {
             windows: RwData::new(vec![window]),
             active_window: 0,
-            active_file: RwData::new(active_file),
             active_widget: RwData::new(active_widget),
-            active_input: RwData::new(active_input),
             files_to_open: RwData::new(Vec::new()),
         };
 
@@ -356,44 +226,31 @@ where
             let windows = RoData::from(&controler.windows);
             let files_to_open = controler.files_to_open.clone();
             let active_widget = controler.active_widget.clone();
-            let active_file = controler.active_file.clone();
-            edit_cmd(windows, files_to_open, active_widget, active_file)
+            edit_cmd(windows, files_to_open, active_widget)
         };
 
-        let write = {
-            let active_file = controler.active_file.clone();
-            let windows = RoData::from(&controler.windows);
-            Command::new(["write", "w"], move |_, args| {
-                if let Some(name) = args.next() {
-                    windows
-                        .read()
-                        .iter()
-                        .flat_map(|window| window.widgets())
-                        .find_map(|(widget, ..)| {
-                            type Ret = Option<Result<Option<String>, String>>;
-                            widget.inspect_as::<FileWidget, Ret>(|file| {
-                                file.name().is_some_and(|cmp| cmp == name).then(|| {
-                                    file.write()
-                                        .map(|bytes| Some(format!("Wrote {bytes} to {name}")))
-                                })
-                            })
-                        })
-                        .flatten()
-                        .unwrap_or(Err(String::from("File not found")))
-                } else {
-                    let active_file = active_file.read();
-                    let file = active_file.read();
+        let write = Command::new(["write", "w"], move |_, args| {
+            let paths: Vec<&str> = args.collect();
+            if paths.is_empty() {
+                ACTIVE_FILE.inspect(|file, _| {
                     if let Some(name) = file.name() {
                         file.write()
                             .map(|bytes| Some(format!("Wrote {bytes} bytes to {name}")))
                     } else {
-                        Err(String::from(
-                            "File does not have a name, and no name was given.",
-                        ))
+                        Err(String::from("Give the file a name, to write it with"))
                     }
-                }
-            })
-        };
+                })
+            } else {
+                ACTIVE_FILE.inspect(|file, _| {
+                    let mut bytes = 0;
+                    for path in &paths {
+                        bytes = file.write_to(path)?;
+                    }
+
+                    Ok(Some(format!("Wrote {bytes} to {}", paths.join(", "))))
+                })
+            }
+        });
 
         COMMANDS.try_add(quit).unwrap();
         COMMANDS.try_add(edit).unwrap();
@@ -465,35 +322,38 @@ where
 fn switch_widget<U, W>(
     windows: &[Window<U>],
     active_widget: &RwData<RwData<dyn ActiveWidget>>,
-    active_file: &RwData<RwData<FileWidget>>,
-    target: (RwData<dyn ActiveWidget>, &U::Area, Option<FileId>),
+    target: (
+        (&RwData<dyn ActiveWidget>, &RwData<dyn InputMethod>),
+        &U::Area,
+    ),
 ) -> Result<(), WidgetSwitchErr<W>>
 where
     W: ActiveWidget,
     U: Ui,
 {
-    target.1.set_as_active();
+    let ((widget, input), area) = target;
 
-    if let Ok(file) = target.0.clone().try_downcast::<FileWidget>() {
-        *active_file.write() = file;
+    area.set_as_active();
+
+    if let Ok(file) = widget.clone().try_downcast::<FileWidget>() {
+        ACTIVE_FILE.swap(file, input.clone());
     }
 
-    let prior_widget = std::mem::replace(&mut *active_widget.write(), target.0.clone());
+    let prior_widget = std::mem::replace(&mut *active_widget.write(), widget.clone());
     windows
         .iter()
         .flat_map(|window| window.widgets())
         .find(|(widget, ..)| widget.ptr_eq(&prior_widget))
-        .inspect(|(widget, area, _)| (*widget).on_unfocus(area))
+        .inspect(|(widget, area)| (*widget).on_unfocus(area))
         .ok_or(WidgetSwitchErr::CouldNotUnfocus)?;
 
     // Order matters here, since `on_unfocus` could rely on the
     // `Commands`'s prior `file_id`.
-    *CMD_FILE_ID.lock().unwrap() = target.2;
     windows
         .iter()
         .flat_map(|window| window.widgets())
         .find(|(widget, ..)| widget.ptr_eq(&*active_widget.read()))
-        .inspect(|(widget, area, _)| (*widget).on_focus(area))
+        .inspect(|(widget, area)| (*widget).on_focus(area))
         .ok_or(WidgetSwitchErr::CouldNotUnfocus)?;
 
     Ok(())
@@ -503,7 +363,6 @@ fn edit_cmd<U>(
     windows: RoData<Vec<Window<U>>>,
     files_to_open: RwData<Vec<PathBuf>>,
     active_widget: RwData<RwData<dyn ActiveWidget>>,
-    active_file: RwData<RwData<FileWidget>>,
 ) -> Command
 where
     U: Ui,
@@ -524,26 +383,23 @@ where
         let Some(target) = windows
             .iter()
             .flat_map(|window| window.widgets())
-            .find(|(widget_type, ..)| {
-                widget_type
+            .find(|(widget, ..)| {
+                widget
                     .inspect_as::<FileWidget, bool>(|file| {
                         file.name().is_some_and(|cmp| cmp == name)
                     })
                     .unwrap_or(false)
             })
-            .map(|(widget_type, area, file_id)| {
-                let ret = (widget_type.as_active().unwrap().clone(), area, file_id);
-                ret
-            })
+            .map(|(widget, area)| (widget.as_active().unwrap(), area))
         else {
             BREAK_LOOP.store(true, Ordering::Release);
             files_to_open.write().push(path);
             return Ok(Some(format!("Created {file}")));
         };
 
-        switch_widget::<U, FileWidget>(&windows, &active_widget, &active_file, target)
+        switch_widget::<U, FileWidget>(&windows, &active_widget, target)
             .map(|_| Some(format!("Switched to {name}")))
-            .map_err(|err: WidgetSwitchErr<FileWidget>| err.to_string())
+            .map_err(|err| WidgetSwitchErr::to_string(&err))
     })
 }
 

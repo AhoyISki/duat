@@ -386,8 +386,8 @@ where
                 read_state,
                 type_id,
             } = self;
-            let raw_data_pointer = Arc::into_raw(data);
-            let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
+            let pointer = Arc::into_raw(data);
+            let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
             Ok(RwData {
                 data,
                 cur_state,
@@ -399,19 +399,6 @@ where
         }
     }
 
-    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
-        self.data.write().unwrap()
-    }
-
-    pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {
-        &self.data
-    }
-}
-
-impl<T> RwData<T>
-where
-    T: ?Sized + super::AsAny,
-{
     /// Blocking inspection of the inner data.
     ///
     /// # Examples
@@ -459,12 +446,37 @@ where
     /// ```
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn inspect_as<U, V>(&self, f: impl FnOnce(&U) -> V) -> Option<V>
-    where
-        U: 'static,
-    {
+    pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
+        (self.type_id == TypeId::of::<U>()).then(|| {
+            let pointer = Arc::as_ptr(&self.data);
+
+            let rw_lock = unsafe {
+                pointer.cast::<RwLock<U>>().as_ref().unwrap()
+            };
+
+            f(&rw_lock.read().unwrap())
+        })
+    }
+
+    pub fn mutate_as<U: 'static, R>(&self, f: impl FnOnce(&mut U) -> R) -> Option<R> {
         (self.type_id == TypeId::of::<U>())
-            .then(|| self.inspect(|data| f(data.as_any().downcast_ref::<U>().unwrap())))
+            .then(|| {
+            let pointer = Arc::as_ptr(&self.data);
+
+            let rw_lock = unsafe {
+                pointer.cast::<RwLock<U>>().as_ref().unwrap()
+            };
+
+            f(&mut rw_lock.write().unwrap())
+        })
+    }
+
+    pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
+        self.data.write().unwrap()
+    }
+
+    pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {
+        &self.data
     }
 }
 

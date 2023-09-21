@@ -11,7 +11,7 @@ use crate::{
         ActiveWidget, ActiveWidgetCfg, FileWidget, FileWidgetCfg, LineNumbers, PassiveWidget,
         StatusLine, Widget,
     },
-    Controler, BREAK_LOOP, SHOULD_QUIT,
+    Controler, ACTIVE_FILE, BREAK_LOOP, SHOULD_QUIT,
 };
 
 pub struct SessionCfg<U, I>
@@ -58,10 +58,16 @@ where
             self.file_cfg.clone().build()
         };
 
-        let active = widget.as_active().unwrap().clone();
-        let input = widget.input().unwrap().clone();
+		let active = {
+    		let (active, input) = widget.as_active().unwrap();
+    		let file = active.clone().try_downcast::<FileWidget>().unwrap();
+            ACTIVE_FILE.set(file, input.clone());
+
+            active.clone()
+		};
+
         let (window, area) = Window::new(&mut self.ui, widget, checker);
-        let mut controler = Controler::new(window, active, input);
+        let mut controler = Controler::new(window, active);
 
         build_file(&mut controler, area, &mut self.file_fn);
 
@@ -74,7 +80,6 @@ where
         };
 
         for file in args {
-            *crate::CMD_FILE_ID.lock().unwrap() = None;
             session.open_file(PathBuf::from(file));
         }
 
@@ -242,7 +247,7 @@ where
         F: Fn() -> bool + 'static,
     {
         self.controler
-            .mutate_active_window(|window| window.push(widget, area, checker, specs, None, false))
+            .mutate_active_window(|window| window.push(widget, area, checker, specs, false))
     }
 
     pub fn cluster_widget_with<F>(
@@ -254,7 +259,7 @@ where
         F: Fn() -> bool + 'static,
     {
         self.controler
-            .mutate_active_window(|window| window.push(widget, area, checker, specs, None, true))
+            .mutate_active_window(|window| window.push(widget, area, checker, specs, true))
     }
 
     /// Start the application, initiating a read/response loop.
@@ -263,7 +268,7 @@ where
 
         // The main loop.
         loop {
-            for (widget, area, _) in
+            for (widget, area) in
                 self.controler.windows.read()[self.controler.active_window].widgets()
             {
                 widget.update_and_print(area);
@@ -317,7 +322,7 @@ where
                     }
                 }
 
-				self.ui.finish_printing()
+                self.ui.finish_printing()
             }
         });
     }

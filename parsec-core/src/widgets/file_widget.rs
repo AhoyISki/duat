@@ -23,7 +23,7 @@ use std::{fs::File, path::PathBuf};
 
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    data::{AsAny, ReadableData, RwData},
+    data::{ReadableData, RwData},
     forms::Form,
     input::{Editor, InputMethod},
     text::{IterCfg, Marker, PrintCfg, Tag, Text},
@@ -176,6 +176,12 @@ impl FileWidget {
         }
     }
 
+    pub fn write_to(&self, path: impl AsRef<str>) -> Result<usize, String> {
+        self.text.write_to(std::io::BufWriter::new(
+            File::create(path.as_ref()).map_err(|err| err.to_string())?,
+        ))
+    }
+
     /// The number of bytes in the file.
     pub fn len_bytes(&self) -> usize {
         self.text.len_bytes()
@@ -276,11 +282,11 @@ impl ActiveWidget for FileWidget {
     }
 }
 
-impl AsAny for FileWidget {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl AsAny for FileWidget {
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 unsafe impl Send for FileWidget {}
 unsafe impl Sync for FileWidget {}

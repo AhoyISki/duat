@@ -74,6 +74,3 @@ error_on_unformatted = false
 ignore = []
 emit_mode = "Files"
 make_backup = false
-
-[[skip_macro_invocations]]
-Name = "build_text"

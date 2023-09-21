@@ -3,16 +3,22 @@ use std::sync::{RwLock, RwLockReadGuard};
 use std::{
     any::TypeId,
     marker::PhantomData,
+    mem::MaybeUninit,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult,
+        Arc, LazyLock, TryLockResult,
     },
 };
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard};
 
-use super::{private, AsAny, DataCastErr, DataRetrievalErr, RawReadableData, ReadableData, RwData};
+use super::{private, DataCastErr, DataRetrievalErr, RawReadableData, ReadableData, RwData};
+use crate::{
+    input::InputMethod,
+    ui::Ui,
+    widgets::{FileWidget, Widget},
+};
 
 /// A read-only reference to information.
 ///
@@ -44,7 +50,7 @@ where
 
 impl<T> RoData<T>
 where
-    T: ?Sized + AsAny,
+    T: ?Sized,
 {
     /// Tries to downcast to a concrete type.
     pub fn try_downcast<U>(self) -> Result<RoData<U>, DataCastErr<RoData<T>, T, U>>
@@ -70,12 +76,7 @@ where
             Err(DataCastErr(self, PhantomData, PhantomData))
         }
     }
-}
 
-impl<T> RoData<T>
-where
-    T: ?Sized,
-{
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static,
@@ -222,10 +223,10 @@ where
     ) -> Result<B, DataRetrievalErr<RoData<T>, T>> {
         self.data
             .try_read()
-            .map_err(|_| DataRetrievalErr::NestedReadBlocked(PhantomData))
+            .map_err(|_| DataRetrievalErr::NestedReadBlocked)
             .and_then(|data| {
                 data.raw_try_read()
-                    .map_err(|_| DataRetrievalErr::ReadBlocked(PhantomData))
+                    .map_err(|_| DataRetrievalErr::ReadBlocked)
                     .map(|inner_data| {
                         let cur_state = data.cur_state.load(Ordering::Acquire);
                         self.read_state.store(cur_state, Ordering::Release);
@@ -272,5 +273,149 @@ where
             data: RoData::from(value),
             read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed)),
         }
+    }
+}
+
+pub struct ActiveFile {
+    data: LazyLock<RwData<MaybeUninit<(RwData<FileWidget>, RwData<dyn InputMethod>)>>>,
+    file_state: AtomicUsize,
+    input_state: AtomicUsize,
+}
+
+impl ActiveFile {
+    pub fn current(&self) -> FileReader {
+        let data = self.data.raw_read();
+        let (file, input) = unsafe { data.assume_init_ref().clone() };
+
+        FileReader { file, input }
+    }
+
+    pub fn inspect<R>(&self, f: impl FnOnce(&FileWidget, &dyn InputMethod) -> R) -> R {
+        let data = self.data.raw_read();
+        let (file, input) = unsafe { data.assume_init_ref() };
+
+        input.inspect(|input| f(&file.read(), input))
+    }
+
+    pub fn inspect_as<I: InputMethod, R>(&self, f: impl FnOnce(&FileWidget, &I) -> R) -> Option<R> {
+        let data = self.data.raw_read();
+        let (file, input) = unsafe { data.assume_init_ref() };
+
+        input.inspect_as::<I, R>(|input| f(&file.read(), input))
+    }
+
+    pub fn mutate_as<I: InputMethod, R>(
+        &self,
+        f: impl FnOnce(&mut FileWidget, &mut I) -> R,
+    ) -> Option<R> {
+        let data = self.data.raw_read();
+        let (file, input) = unsafe { data.assume_init_ref() };
+
+        input.mutate_as::<I, R>(|input| f(&mut file.write(), input))
+    }
+
+    /// The name of the active [`FileWidget`]'s file.
+    pub fn name(&self) -> Option<String> {
+        unsafe { self.data.raw_read().assume_init_ref().0.raw_read().name() }
+    }
+
+    pub fn has_changed(&self) -> bool {
+        let data = self.data.raw_read();
+        let (mut has_changed, (file, input)) = unsafe {
+            let has_changed = self.data.has_changed();
+            (has_changed, data.assume_init_ref())
+        };
+
+        has_changed |= {
+            let file_state = file.cur_state.load(Ordering::Acquire);
+
+            file_state > self.file_state.swap(file_state, Ordering::Acquire)
+        };
+
+        has_changed |= {
+            let input_state = input.cur_state.load(Ordering::Acquire);
+
+            input_state > self.input_state.swap(input_state, Ordering::Acquire)
+        };
+
+        has_changed
+    }
+
+    pub fn has_swapped(&self) -> bool {
+        self.data.has_changed()
+    }
+
+    pub fn file_ptr_eq<U: Ui>(&self, other: &Widget<U>) -> bool {
+        unsafe { other.ptr_eq(&self.data.read().assume_init_ref().0) }
+    }
+
+    pub(crate) const fn new() -> Self {
+        ActiveFile {
+            data: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+            file_state: AtomicUsize::new(0),
+            input_state: AtomicUsize::new(0),
+        }
+    }
+
+    pub(crate) fn swap(
+        &self,
+        file: RwData<FileWidget>,
+        input: RwData<dyn InputMethod>,
+    ) -> (RwData<FileWidget>, RwData<dyn InputMethod>) {
+        self.file_state
+            .store(file.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.input_state
+            .store(input.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
+
+        unsafe {
+            std::mem::replace(&mut *self.data.write(), MaybeUninit::new((file, input)))
+                .assume_init()
+        }
+    }
+
+    pub(crate) fn set(&self, file: RwData<FileWidget>, input: RwData<dyn InputMethod>) {
+        *self.data.write() = MaybeUninit::new((file, input));
+    }
+}
+
+#[derive(Clone)]
+pub struct FileReader {
+    file: RwData<FileWidget>,
+    input: RwData<dyn InputMethod>,
+}
+
+impl FileReader {
+    pub fn read(
+        &self,
+    ) -> (
+        RwLockReadGuard<'_, FileWidget>,
+        RwLockReadGuard<'_, dyn InputMethod>,
+    ) {
+        let input = self.input.read();
+
+        (self.file.read(), input)
+    }
+
+    pub fn inspect<R>(&self, f: impl FnOnce(&FileWidget, &dyn InputMethod) -> R) -> R {
+        self.input.inspect(|input| f(&self.file.read(), input))
+    }
+
+    pub fn inspect_as<I: InputMethod, R>(&self, f: impl FnOnce(&FileWidget, &I) -> R) -> Option<R> {
+        self.input
+            .inspect_as::<I, R>(|input| f(&self.file.read(), input))
+    }
+
+    pub fn mutate_as<I: InputMethod, R>(&self, f: impl FnOnce(&FileWidget, &I) -> R) -> Option<R> {
+        self.input
+            .mutate_as::<I, R>(|input| f(&self.file.read(), input))
+    }
+
+    /// The name of the active [`FileWidget`]'s file.
+    pub fn name(&self) -> Option<String> {
+        self.file.read().name()
+    }
+
+    pub fn has_changed(&self) -> bool {
+        self.file.has_changed() || self.input.has_changed()
     }
 }

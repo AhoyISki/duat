@@ -14,7 +14,7 @@ use crate::{
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
     widgets::{FileWidget, PassiveWidget, Widget},
-    Controler,
+    Controler, ACTIVE_FILE,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -332,7 +332,6 @@ where
     widget: Widget<U>,
     checker: Box<dyn Fn() -> bool>,
     area: U::Area,
-    file_id: Option<FileId>,
     busy_updating: AtomicBool,
 }
 
@@ -436,11 +435,8 @@ where
             widget,
             checker: Box::new(checker),
             area: area.clone(),
-            file_id: Some(unique_file_id()),
             busy_updating: AtomicBool::new(false),
         };
-
-        *crate::CMD_FILE_ID.lock().unwrap() = main_node.file_id;
 
         let parsec_window = Self {
             nodes: vec![main_node],
@@ -458,7 +454,6 @@ where
         area: &U::Area,
         checker: impl Fn() -> bool + 'static,
         specs: PushSpecs,
-        file_id: Option<FileId>,
         cluster: bool,
     ) -> (U::Area, Option<U::Area>) {
         let (child, parent) = area.bisect(specs, cluster);
@@ -467,7 +462,6 @@ where
             widget,
             checker: Box::new(checker),
             area: child.clone(),
-            file_id,
             busy_updating: AtomicBool::new(false),
         };
 
@@ -493,8 +487,7 @@ where
     ) -> (U::Area, Option<U::Area>) {
         let area = self.files_region.clone();
 
-        let file_id = Some(unique_file_id());
-        let (child, parent) = self.push(widget, &area, checker, specs, file_id, false);
+        let (child, parent) = self.push(widget, &area, checker, specs, false);
         if let Some(parent) = &parent {
             self.files_region = parent.clone();
         }
@@ -514,21 +507,14 @@ where
         Checker: Fn() -> bool + 'static,
     {
         let master_area = self.master_area.clone();
-        self.push(widget, &master_area, checker, specs, None, false)
+        self.push(widget, &master_area, checker, specs, false)
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
-    pub fn widgets(
-        &self,
-    ) -> impl Iterator<Item = (&Widget<U>, &U::Area, Option<FileId>)> + Clone + '_ {
-        self.nodes.iter().map(
-            |Node {
-                 widget,
-                 area,
-                 file_id,
-                 ..
-             }| (widget, area, *file_id),
-        )
+    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
+        self.nodes
+            .iter()
+            .map(|Node { widget, area, .. }| (widget, area))
     }
 
     pub fn nodes(&self) -> impl Iterator<Item = &Node<U>> {
@@ -542,7 +528,7 @@ where
             .iter()
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
-                widget.downcast_ref::<FileWidget>().map(|file| {
+                widget.downcast::<FileWidget>().map(|file| {
                     let name = file
                         .read()
                         .name()
@@ -593,7 +579,7 @@ where
             .nodes
             .iter()
             .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast_ref::<FileWidget>() {
+                if let Some(file) = widget.downcast::<FileWidget>() {
                     f(accum, &file.read())
                 } else {
                     accum
@@ -647,16 +633,6 @@ where
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct FileId(u16);
-
-fn unique_file_id() -> FileId {
-    use std::sync::atomic::AtomicU16;
-    static COUNTER: AtomicU16 = AtomicU16::new(0);
-
-    FileId(COUNTER.fetch_add(1, Ordering::SeqCst))
-}
-
 pub(crate) fn build_file<U>(
     controler: &mut Controler<U>,
     mod_area: U::Area,
@@ -664,33 +640,28 @@ pub(crate) fn build_file<U>(
 ) where
     U: Ui,
 {
-    let (widget, old_file, old_file_id) = controler.inspect_active_window(|window| {
+    let (widget, old_file) = controler.inspect_active_window(|window| {
         let node = window
             .nodes
             .iter()
             .find(|Node { area, .. }| *area == mod_area)
             .unwrap();
 
-        let old_file_id = node
-            .file_id
-            .and_then(|file_id| crate::CMD_FILE_ID.lock().unwrap().replace(file_id));
-
         let old_file = node
             .widget
-            .downcast_ref::<FileWidget>()
-            .map(|file| std::mem::replace(&mut *controler.active_file.write(), file));
+            .downcast::<FileWidget>()
+            .map(|file| ACTIVE_FILE.swap(file, node.widget.input().unwrap().clone()));
 
-        let widget = node.widget.downcast_ref::<FileWidget>().unwrap();
+        let widget = node.widget.downcast::<FileWidget>().unwrap();
 
-        (widget, old_file, old_file_id)
+        (widget, old_file)
     });
 
     let mut file_builder = FileBuilder::new(controler, mod_area);
 
     f(&mut file_builder, &widget);
 
-    *crate::CMD_FILE_ID.lock().unwrap() = old_file_id;
-    if let Some(file) = old_file {
-        *controler.active_file.write() = file;
+    if let Some((file, input)) = old_file {
+        ACTIVE_FILE.swap(file, input);
     };
 }

@@ -135,14 +135,14 @@ where
     }
 }
 
-impl<I> crate::data::AsAny for Remapper<I>
-where
-    I: InputMethod + Clone,
-{
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+//impl<I> crate::data::AsAny for Remapper<I>
+//where
+//    I: InputMethod + Clone,
+//{
+//    fn as_any(&self) -> &dyn std::any::Any {
+//        self
+//    }
+//}
 
 impl<I> InputMethod for Remapper<I>
 where
