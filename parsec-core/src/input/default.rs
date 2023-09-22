@@ -1,5 +1,5 @@
 use super::{Cursors, InputMethod};
-use crate::{history::History, ui::Ui, widgets::FileWidget};
+use crate::{history::History, ui::Ui, widgets::File};
 
 #[derive(Clone)]
 pub struct Editor {
@@ -22,14 +22,8 @@ impl Default for Editor {
     }
 }
 
-//impl crate::data::AsAny for Editor {
-//    fn as_any(&self) -> &dyn std::any::Any {
-//        self
-//    }
-//}
-
 impl InputMethod for Editor {
-    type Widget = FileWidget;
+    type Widget = File;
 
     fn send_key<U>(
         &mut self,

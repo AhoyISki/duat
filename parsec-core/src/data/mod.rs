@@ -13,11 +13,11 @@
 //! one, and cannot mutate the inner data.
 //!
 //! The most common usecase for these data types is in the
-//! [`FileWidget<U>`], where many readers
+//! [`FileWidget], where many readers
 //! can peer into the [`Text`] or other useful
 //! information, such as the printed lines, cursors, etc.
 //!
-//! [`FileWidget<U>`]: crate::FileWidget<U>
+//! [`FileWidget]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
 
 #[cfg(not(feature = "deadlock-detection"))]
@@ -27,6 +27,7 @@ use std::{
     sync::{atomic::Ordering, Arc, TryLockError, TryLockResult},
 };
 
+pub use as_any::AsAny;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLockReadGuard;
 
@@ -90,7 +91,7 @@ where
 /// [`Clone`], which means they are safe to clone and share across
 /// threads (with the caveat of deadlocks, which Rust still doesn't
 /// prevent!). One very prominent use for these data types is the
-/// [`LineNumbers<U>`] widget, which contains an
+/// [`LineNumbers] widget, which contains an
 /// [`RoData<FileWidget<U>>`] inside it, in order to retrieve
 /// information about which lines of the file are currently being
 /// shown.
@@ -98,7 +99,7 @@ where
 /// While this trait is implemented for both types, only [`RwData`]
 /// has access to write methods, such as [`write`] or [`mutate`].
 ///
-/// [`LineNumbers<U>`]: crate::widgets::LineNumbers
+/// [`LineNumbers]: crate::widgets::LineNumbers
 /// [`RoData<FileWidget<U>>`]: crate::widgets::FileWidget
 /// [`write`]: RwData::write
 /// [`mutate`]: RwData::mutate
@@ -379,54 +380,6 @@ where
         Arc::as_ptr(self.cur_state()) as usize == Arc::as_ptr(other.cur_state()) as usize
     }
 }
-
-/// A trait that's primarily used for casting [`Widget<U>`]s to a
-/// concrete types.
-///
-/// # Examples
-///
-/// This can be useful if you have a [`Vec<RwData<dyn Trait>>`], and
-/// want to get the concrete type of a specific item:
-///
-/// ```rust
-/// # use std::sync::{Arc, RwLock};
-/// # use parsec_core::data::{AsAny, RwData};
-/// trait Emotion: AsAny {}
-///
-/// struct Happy;
-/// impl AsAny for Happy {
-///     fn as_any(&self) -> &dyn std::any::Any {
-///         self
-///     }
-/// }
-///
-/// struct Sad;
-/// impl AsAny for Sad {
-///     fn as_any(&self) -> &dyn std::any::Any {
-///         self
-///     }
-/// }
-///
-/// impl Emotion for Happy {}
-/// impl Emotion for Sad {}
-///
-/// fn is_happy(potentially_happy: &RwData<dyn Emotion>) -> bool {
-///     potentially_happy.data_is::<Happy>()
-/// }
-///
-/// let happy = Arc::new(RwLock::new(Happy));
-/// let sad = Arc::new(RwLock::new(Sad));
-/// assert!(is_happy(&RwData::new_unsized(happy)));
-/// assert!(!is_happy(&RwData::new_unsized(sad)));
-/// ```
-///
-/// [`Widget<U>`]: crate::widgets::Widget
-/// [`Vec<dyn Trait>`]: Vec
-//pub trait AsAny {
-//    fn as_any(&self) -> &dyn std::any::Any;
-//
-//    fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
-//}
 
 /// An error signifying a failure in the casting of data.
 ///

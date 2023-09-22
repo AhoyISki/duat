@@ -53,8 +53,8 @@ where
     }
 }
 
-unsafe impl<I> Send for Remap<I> where I: InputMethod + Clone {}
-unsafe impl<I> Sync for Remap<I> where I: InputMethod + Clone {}
+unsafe impl<I: InputMethod + Clone> Send for Remap<I> {}
+unsafe impl<I: InputMethod + Clone> Sync for Remap<I> {}
 
 /// The structure responsible for remapping sequences of characters.
 #[derive(Clone)]
@@ -134,15 +134,6 @@ where
         self.remaps.push(Remap::new(takes, gives, true, checker))
     }
 }
-
-//impl<I> crate::data::AsAny for Remapper<I>
-//where
-//    I: InputMethod + Clone,
-//{
-//    fn as_any(&self) -> &dyn std::any::Any {
-//        self
-//    }
-//}
 
 impl<I> InputMethod for Remapper<I>
 where

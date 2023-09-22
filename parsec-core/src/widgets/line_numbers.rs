@@ -119,12 +119,6 @@ impl PassiveWidget for LineNumbers {
     }
 }
 
-//impl AsAny for LineNumbers {
-//    fn as_any(&self) -> &dyn std::any::Any {
-//        self
-//    }
-//}
-
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
 enum Numbers {
@@ -171,7 +165,7 @@ impl LineNumbersCfg {
     where
         U: Ui,
     {
-        move |controler| {
+        move |_| {
             let reader = ACTIVE_FILE.current();
             let specs = self.specs;
 

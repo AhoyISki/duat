@@ -1,29 +1,29 @@
 //! The primary widget of Parsec, used to display files.
 //!
-//! The [`FileWidget<U>`] is Parsec's way of display text files. It is
+//! The [`FileWidget`] is Parsec's way of display text files. It is
 //! an [`ActionableWidget`] with [`Text`] containing a
 //! [`ropey::Rope`] and a [`any_rope::Rope`] as its backing, unlike
 //! most other widgets, that just use [`String`]s and [`Vec`]s.
 //!
 //! Most extensible features of Parsec have the primary purpose of
-//! serving the [`FileWidget<U>`], such as multiple [`Cursor`]s, a
+//! serving the [`FileWidget`], such as multiple [`Cursor`]s, a
 //! [`History`] system, [`PrintInfo`], etc.
 //!
-//! [`FileWidget<U>`]s can have attached extensions called
+//! [`FileWidget`]s can have attached extensions called
 //! [`Observer`]s, that can read the [`Text`] within, and are also
 //! notified of any [`Change`][crate::history::Change]s made to the
 //! file.
 //!
-//! The [`FileWidget<U>`] also provides a list of printed lines
+//! The [`FileWidget`] also provides a list of printed lines
 //! through the [`printed_lines()`][FileWidget::printed_lines()`]
 //! method. This method is notably used by the
-//! [`LineNumbers<U>`][crate::widgets::LineNumbers] widget, that shows
+//! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{fs::File, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    data::{ReadableData, RwData},
+    data::{RwData},
     forms::Form,
     input::{Editor, InputMethod},
     text::{IterCfg, Marker, PrintCfg, Tag, Text},
@@ -32,9 +32,9 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct FileWidgetCfg<I>
+pub struct FileCfg<I>
 where
-    I: InputMethod<Widget = FileWidget>,
+    I: InputMethod<Widget = File>,
 {
     path: Option<PathBuf>,
     input: RwData<I>,
@@ -42,9 +42,9 @@ where
     specs: PushSpecs,
 }
 
-impl FileWidgetCfg<Editor> {
+impl FileCfg<Editor> {
     pub fn new() -> Self {
-        FileWidgetCfg {
+        FileCfg {
             path: None,
             input: RwData::new(Editor::new()),
             cfg: PrintCfg::default_for_files(),
@@ -54,15 +54,15 @@ impl FileWidgetCfg<Editor> {
     }
 }
 
-impl Default for FileWidgetCfg<Editor> {
+impl Default for FileCfg<Editor> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I> FileWidgetCfg<I>
+impl<I> FileCfg<I>
 where
-    I: InputMethod<Widget = FileWidget>,
+    I: InputMethod<Widget = File>,
 {
     pub(crate) fn build<U>(self) -> (Widget<U>, Box<dyn Fn() -> bool>)
     where
@@ -100,7 +100,7 @@ where
 
         (
             Widget::active(
-                FileWidget {
+                File {
                     path: full_path,
                     text,
                     cfg: self.cfg,
@@ -124,12 +124,12 @@ where
     }
 }
 
-impl<I> ActiveWidgetCfg for FileWidgetCfg<I>
+impl<I> ActiveWidgetCfg for FileCfg<I>
 where
-    I: InputMethod<Widget = FileWidget> + Clone,
+    I: InputMethod<Widget = File> + Clone,
 {
-    type Widget = FileWidget;
-    type WithInput<NewI> = FileWidgetCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
+    type Widget = File;
+    type WithInput<NewI> = FileCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
 
     fn builder<U>(
         self,
@@ -146,7 +146,7 @@ where
 
     fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
     where
-        NewI: InputMethod<Widget = FileWidget> + Clone,
+        NewI: InputMethod<Widget = File> + Clone,
     {
         Self::WithInput {
             input: RwData::new(input),
@@ -158,18 +158,18 @@ where
 }
 
 /// The widget that is used to print and edit files.
-pub struct FileWidget {
+pub struct File {
     path: Option<PathBuf>,
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
 }
 
-impl FileWidget {
+impl File {
     pub fn write(&self) -> Result<usize, String> {
         if let Some(path) = &self.path {
             self.text.write_to(std::io::BufWriter::new(
-                File::create(path).map_err(|err| err.to_string())?,
+                fs::File::create(path).map_err(|err| err.to_string())?,
             ))
         } else {
             Err(String::from("No path given to write to"))
@@ -178,7 +178,7 @@ impl FileWidget {
 
     pub fn write_to(&self, path: impl AsRef<str>) -> Result<usize, String> {
         self.text.write_to(std::io::BufWriter::new(
-            File::create(path.as_ref()).map_err(|err| err.to_string())?,
+            fs::File::create(path.as_ref()).map_err(|err| err.to_string())?,
         ))
     }
 
@@ -238,7 +238,7 @@ impl FileWidget {
     }
 }
 
-impl PassiveWidget for FileWidget {
+impl PassiveWidget for File {
     fn build<U>(
         controler: &Controler<U>,
     ) -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
@@ -268,13 +268,13 @@ impl PassiveWidget for FileWidget {
     }
 }
 
-impl ActiveWidget for FileWidget {
-    type Config = FileWidgetCfg<Editor>
+impl ActiveWidget for File {
+    type Config = FileCfg<Editor>
     where
         Self: Sized;
 
-    fn config() -> FileWidgetCfg<Editor> {
-        FileWidgetCfg::new()
+    fn config() -> FileCfg<Editor> {
+        FileCfg::new()
     }
 
     fn mut_text(&mut self) -> &mut Text {
@@ -282,11 +282,5 @@ impl ActiveWidget for FileWidget {
     }
 }
 
-//impl AsAny for FileWidget {
-//    fn as_any(&self) -> &dyn std::any::Any {
-//        self
-//    }
-//}
-
-unsafe impl Send for FileWidget {}
-unsafe impl Sync for FileWidget {}
+unsafe impl Send for File {}
+unsafe impl Sync for File {}

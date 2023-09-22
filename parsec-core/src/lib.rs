@@ -12,7 +12,8 @@
     generic_const_exprs,
     step_trait,
     type_alias_impl_trait,
-    impl_trait_in_assoc_type
+    impl_trait_in_assoc_type,
+    min_specialization
 )]
 #![allow(
     clippy::arc_with_non_send_sync,
@@ -30,11 +31,11 @@ use std::{
 };
 
 use commands::{Command, Commands};
-use data::{ActiveFile, ReadableData, RoData, RwData};
+use data::{ActiveFile, RoData, RwData};
 use forms::FormPalette;
 use input::InputMethod;
 use ui::{Area, RoWindows, Ui, Window};
-use widgets::{ActiveWidget, FileWidget};
+use widgets::{ActiveWidget, File};
 
 pub mod commands;
 pub mod data;
@@ -92,7 +93,7 @@ impl<U> Controler<U>
 where
     U: Ui,
 {
-    pub fn return_to_file(&self) -> Result<(), WidgetSwitchErr<FileWidget>> {
+    pub fn return_to_file(&self) -> Result<(), WidgetSwitchErr<File>> {
         self.inspect_active_window(|window| {
             let (widget, area) = window
                 .widgets()
@@ -114,7 +115,7 @@ where
     pub fn switch_to_file(
         &self,
         target: impl AsRef<str>,
-    ) -> Result<(), WidgetSwitchErr<FileWidget>> {
+    ) -> Result<(), WidgetSwitchErr<File>> {
         let name = target.as_ref();
         let windows = self.windows.read();
         let (widget, area) = windows
@@ -122,7 +123,7 @@ where
             .flat_map(|window| window.widgets())
             .find(|(widget, ..)| {
                 widget
-                    .inspect_as::<FileWidget, bool>(|file| {
+                    .inspect_as::<File, bool>(|file| {
                         file.name().is_some_and(|cmp| cmp == name)
                     })
                     .unwrap_or(false)
@@ -137,7 +138,7 @@ where
     }
 
     /// Switches to the next [`FileWidget<U>`].
-    pub fn next_file(&self) -> Result<(), WidgetSwitchErr<FileWidget>> {
+    pub fn next_file(&self) -> Result<(), WidgetSwitchErr<File>> {
         if self.inspect_active_window(|window| window.file_names().count() < 2) {
             return Err(WidgetSwitchErr::NoOthersExist);
         }
@@ -147,10 +148,10 @@ where
             let (widget, area) = window
                 .widgets()
                 .cycle()
-                .filter(|(widget, ..)| widget.data_is::<FileWidget>())
+                .filter(|(widget, ..)| widget.data_is::<File>())
                 .skip_while(|(widget, ..)| {
                     widget
-                        .inspect_as::<FileWidget, bool>(|file| file.name() != cur_name)
+                        .inspect_as::<File, bool>(|file| file.name() != cur_name)
                         .unwrap_or(false)
                 })
                 .nth(1)
@@ -162,7 +163,7 @@ where
     }
 
     /// Switches to the previous [`FileWidget<U>`].
-    pub fn prev_file(&self) -> Result<(), WidgetSwitchErr<FileWidget>> {
+    pub fn prev_file(&self) -> Result<(), WidgetSwitchErr<File>> {
         if self.inspect_active_window(|window| window.file_names().count() < 2) {
             return Err(WidgetSwitchErr::NoOthersExist);
         }
@@ -171,10 +172,10 @@ where
         self.inspect_active_window(|window| {
             let (widget, area) = window
                 .widgets()
-                .filter(|(widget, ..)| widget.data_is::<FileWidget>())
+                .filter(|(widget, ..)| widget.data_is::<File>())
                 .take_while(|(widget, ..)| {
                     widget
-                        .inspect_as::<FileWidget, bool>(|file| file.name() != cur_name)
+                        .inspect_as::<File, bool>(|file| file.name() != cur_name)
                         .unwrap_or(false)
                 })
                 .last()
@@ -335,7 +336,7 @@ where
 
     area.set_as_active();
 
-    if let Ok(file) = widget.clone().try_downcast::<FileWidget>() {
+    if let Ok(file) = widget.clone().try_downcast::<File>() {
         ACTIVE_FILE.swap(file, input.clone());
     }
 
@@ -385,7 +386,7 @@ where
             .flat_map(|window| window.widgets())
             .find(|(widget, ..)| {
                 widget
-                    .inspect_as::<FileWidget, bool>(|file| {
+                    .inspect_as::<File, bool>(|file| {
                         file.name().is_some_and(|cmp| cmp == name)
                     })
                     .unwrap_or(false)
@@ -397,7 +398,7 @@ where
             return Ok(Some(format!("Created {file}")));
         };
 
-        switch_widget::<U, FileWidget>(&windows, &active_widget, target)
+        switch_widget::<U, File>(&windows, &active_widget, target)
             .map(|_| Some(format!("Switched to {name}")))
             .map_err(|err| WidgetSwitchErr::to_string(&err))
     })

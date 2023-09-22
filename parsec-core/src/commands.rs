@@ -172,7 +172,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::data::{ReadableData, RwData};
+use crate::data::{RwData};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -488,7 +488,7 @@ impl Command {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
         Self {
-            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
+            f: RwData::new_unsized(Arc::new(RwLock::new(f))),
             callers,
         }
     }
@@ -542,7 +542,7 @@ impl Command {
             panic!("Command caller \"{caller}\" contains more than one word.");
         }
         Self {
-            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
+            f: RwData::new_unsized(Arc::new(RwLock::new(f))),
             callers,
         }
     }

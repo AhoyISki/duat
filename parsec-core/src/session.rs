@@ -3,12 +3,12 @@ use std::{path::PathBuf, sync::atomic::Ordering, time::Duration};
 use crossterm::event::{self, Event};
 
 use crate::{
-    data::{ReadableData, RwData},
+    data::{RwData},
     input::{Editor, InputMethod},
     text::PrintCfg,
     ui::{build_file, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{
-        ActiveWidget, ActiveWidgetCfg, FileWidget, FileWidgetCfg, LineNumbers, PassiveWidget,
+        ActiveWidget, ActiveWidgetCfg, File, FileCfg, LineNumbers, PassiveWidget,
         StatusLine, Widget,
     },
     Controler, ACTIVE_FILE, BREAK_LOOP, SHOULD_QUIT,
@@ -17,11 +17,11 @@ use crate::{
 pub struct SessionCfg<U, I>
 where
     U: Ui,
-    I: InputMethod<Widget = FileWidget> + Clone,
+    I: InputMethod<Widget = File> + Clone,
 {
     ui: U,
-    file_cfg: FileWidgetCfg<I>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
+    file_cfg: FileCfg<I>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
@@ -33,7 +33,7 @@ where
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
         SessionCfg {
             ui,
-            file_cfg: FileWidget::config(),
+            file_cfg: File::config(),
             file_fn: Box::new(|builder, _| {
                 builder.push(LineNumbers::build);
                 builder.push(StatusLine::build);
@@ -46,7 +46,7 @@ where
 impl<U, I> SessionCfg<U, I>
 where
     U: Ui,
-    I: InputMethod<Widget = FileWidget> + Clone,
+    I: InputMethod<Widget = File> + Clone,
 {
     pub fn session_from_args(mut self) -> Session<U, I> {
         let mut args = std::env::args();
@@ -60,7 +60,7 @@ where
 
 		let active = {
     		let (active, input) = widget.as_active().unwrap();
-    		let file = active.clone().try_downcast::<FileWidget>().unwrap();
+    		let file = active.clone().try_downcast::<File>().unwrap();
             ACTIVE_FILE.set(file, input.clone());
 
             active.clone()
@@ -95,14 +95,14 @@ where
 
     pub fn session_from_prev<OldI>(self, _prev: Session<U, OldI>) -> Session<U, I>
     where
-        OldI: InputMethod<Widget = FileWidget>,
+        OldI: InputMethod<Widget = File>,
     {
         todo!()
     }
 
     pub fn with_input<NewI>(self, input: NewI) -> SessionCfg<U, NewI>
     where
-        NewI: InputMethod<Widget = FileWidget> + Clone,
+        NewI: InputMethod<Widget = File> + Clone,
     {
         SessionCfg {
             file_cfg: self.file_cfg.with_input(input),
@@ -121,7 +121,7 @@ where
 
     pub fn with_file_fn(
         self,
-        file_fn: impl FnMut(&mut FileBuilder<U>, &RwData<FileWidget>) + 'static,
+        file_fn: impl FnMut(&mut FileBuilder<U>, &RwData<File>) + 'static,
     ) -> Self {
         Self {
             file_fn: Box::new(file_fn),
@@ -131,7 +131,7 @@ where
 
     pub fn with_file_fn_prefix(
         mut self,
-        mut preffix: impl FnMut(&FileBuilder<U>, &RwData<FileWidget>) + 'static,
+        mut preffix: impl FnMut(&FileBuilder<U>, &RwData<File>) + 'static,
     ) -> Self {
         Self {
             file_fn: Box::new(move |builder, file| {
@@ -144,7 +144,7 @@ where
 
     pub fn with_file_fn_suffix(
         mut self,
-        mut suffix: impl FnMut(&FileBuilder<U>, &RwData<FileWidget>) + 'static,
+        mut suffix: impl FnMut(&FileBuilder<U>, &RwData<File>) + 'static,
     ) -> Self {
         Self {
             file_fn: Box::new(move |builder, file| {
@@ -195,12 +195,12 @@ where
 pub struct Session<U, I>
 where
     U: Ui,
-    I: InputMethod<Widget = FileWidget>,
+    I: InputMethod<Widget = File>,
 {
     ui: U,
     controler: Controler<U>,
-    file_cfg: FileWidgetCfg<I>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<FileWidget>)>,
+    file_cfg: FileCfg<I>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
@@ -216,7 +216,7 @@ where
 impl<U, I> Session<U, I>
 where
     U: Ui + 'static,
-    I: InputMethod<Widget = FileWidget> + Clone,
+    I: InputMethod<Widget = File> + Clone,
 {
     pub fn open_file(&mut self, path: PathBuf) {
         let (file, checker) = self.file_cfg.clone().open(path).build();

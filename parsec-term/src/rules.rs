@@ -1,10 +1,9 @@
 use parsec_core::{
-    data::{FileReader, ReadableData, RoData},
+    data::FileReader,
     forms::Form,
-    input::InputMethod,
     text::{build, Text},
     ui::{Area, PushSpecs, Ui},
-    widgets::{FileWidget, PassiveWidget, Widget},
+    widgets::{PassiveWidget, Widget},
     Controler, ACTIVE_FILE, PALETTE,
 };
 
@@ -97,7 +96,7 @@ impl VertRuleCfg {
     pub fn builder<U: Ui>(
         self,
     ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move |controler| {
+        move |_| {
             let reader = ACTIVE_FILE.current();
 
             PALETTE.try_set_form("VertRule", Form::new().grey());

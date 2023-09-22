@@ -5,7 +5,7 @@ use crossterm::{
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
-use crate::data::{ReadableData, RwData};
+use crate::data::{RwData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);

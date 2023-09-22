@@ -6,7 +6,7 @@ use parsec_core::{
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Ui,
-    widgets::{CommandLine, FileWidget},
+    widgets::{CommandLine, File},
     Controler, ACTIVE_FILE,
 };
 
@@ -52,18 +52,13 @@ impl Editor {
         Self::default()
     }
 
-    pub fn mode(_file: &FileWidget, input: &dyn InputMethod) -> String {
-        String::from("mode")
-        //input
-        //    .as_any()
-        //    .downcast_ref::<Self>()
-        //    .map(|kak| kak.mode.to_string())
-        //    .unwrap_or(String::from(""))
+    pub fn mode(input: &Self) -> String {
+        input.mode.to_string()
     }
 }
 
 impl InputMethod for Editor {
-    type Widget = FileWidget;
+    type Widget = File;
 
     fn send_key<U>(
         &mut self,
@@ -98,7 +93,7 @@ impl InputMethod for Editor {
 
 /// Commands that are available in `Mode::Insert`.
 fn match_insert<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     key: KeyEvent,
     mode: &mut Mode,
 ) {
@@ -207,7 +202,7 @@ fn match_insert<U: Ui>(
 
 /// Commands that are available in `Mode::Normal`.
 fn match_normal<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     key: KeyEvent,
     mode: &mut Mode,
     controler: &Controler<U>,
@@ -324,7 +319,7 @@ fn match_normal<U: Ui>(
 
 /// Commands that are available in `Mode::Command`.
 fn match_command<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     key: KeyEvent,
     mode: &mut Mode,
     controler: &Controler<U>,
@@ -446,7 +441,7 @@ fn match_command<U: Ui>(
 
 /// Commands that are available in `Mode::GoTo`.
 fn match_goto<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     key: KeyEvent,
     last_file: &mut String,
     controler: &Controler<U>,
@@ -488,7 +483,7 @@ fn match_goto<U: Ui>(
 }
 
 fn move_each<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     direction: Side,
     amount: usize,
 ) {
@@ -504,7 +499,7 @@ fn move_each<U: Ui>(
 }
 
 fn move_each_and_select<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, FileWidget>,
+    mut editor: MultiCursorEditor<WithHistory, U, File>,
     direction: Side,
     amount: usize,
 ) {

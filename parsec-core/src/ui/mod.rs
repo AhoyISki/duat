@@ -9,11 +9,11 @@ use crossterm::event::KeyEvent;
 
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
-    data::{ReadableData, RoData, RwData},
+    data::{RoData, RwData},
     forms::FormPalette,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
-    widgets::{FileWidget, PassiveWidget, Widget},
+    widgets::{File, PassiveWidget, Widget},
     Controler, ACTIVE_FILE,
 };
 
@@ -473,11 +473,11 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`FileWidget<U>`] to the file's parent.
+    /// Pushes a [`File<U>`] to the file's parent.
     ///
     /// This function will push to the edge of `self.files_parent`.
     /// This is an area, usually in the center, that contains all
-    /// [`FileWidget<U>`]s, and their associated [`Widget<U>`]s,
+    /// [`File<U>`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self,
@@ -521,14 +521,14 @@ where
         self.nodes.iter()
     }
 
-    /// Returns an [`Iterator`] over the names of [`FileWidget<U>`]s
+    /// Returns an [`Iterator`] over the names of [`File<U>`]s
     /// and their respective [`ActionableWidget`] indices.
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
             .iter()
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
-                widget.downcast::<FileWidget>().map(|file| {
+                widget.downcast::<File>().map(|file| {
                     let name = file
                         .read()
                         .name()
@@ -566,7 +566,7 @@ where
     U: Ui,
 {
     /// Similar to the [`Iterator::fold`] operation, folding each
-    /// [`&FileWidget<U>`][FileWidget`] by applying an operation,
+    /// [`&File<U>`][File`] by applying an operation,
     /// returning a final result.
     ///
     /// The reason why this is a `fold` operation, and doesn't just
@@ -574,12 +574,12 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &FileWidget) -> B) -> B {
+    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
         self.0
             .nodes
             .iter()
             .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast::<FileWidget>() {
+                if let Some(file) = widget.downcast::<File>() {
                     f(accum, &file.read())
                 } else {
                     accum
@@ -636,7 +636,7 @@ where
 pub(crate) fn build_file<U>(
     controler: &mut Controler<U>,
     mod_area: U::Area,
-    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<FileWidget>),
+    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<File>),
 ) where
     U: Ui,
 {
@@ -649,10 +649,10 @@ pub(crate) fn build_file<U>(
 
         let old_file = node
             .widget
-            .downcast::<FileWidget>()
+            .downcast::<File>()
             .map(|file| ACTIVE_FILE.swap(file, node.widget.input().unwrap().clone()));
 
-        let widget = node.widget.downcast::<FileWidget>().unwrap();
+        let widget = node.widget.downcast::<File>().unwrap();
 
         (widget, old_file)
     });

@@ -6,9 +6,9 @@
 //! superset of [`NormalWidget`], capable of receiving input,
 //! focusing, unfocusing, and showing cursors.
 //!
-//! The module also provides 4 native widgets, [`StatusLine<U>`] and
-//! [`LineNumbers<U>`], which are [`NormalWidget`]s, and
-//! [`FileWidget<U>`] and [`CommandLine<U>`] which are
+//! The module also provides 4 native widgets, [`StatusLine`] and
+//! [`LineNumbers`], which are [`NormalWidget`]s, and
+//! [`FileWidget`] and [`CommandLine`] which are
 //! [`ActionableWidget`]s.
 //!
 //! These widgets are supposed to be universal, not needing a specific
@@ -22,12 +22,9 @@ mod file_widget;
 mod line_numbers;
 mod status_line;
 
+use std::sync::Arc;
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
 
 use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
@@ -35,7 +32,7 @@ use no_deadlocks::RwLock;
 
 pub use self::{
     command_line::{CommandLine, CommandLineCfg},
-    file_widget::{FileWidget, FileWidgetCfg},
+    file_widget::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{file_parts, status_cfg, StatusLine, StatusLineCfg, StatusPart},
 };
@@ -60,7 +57,7 @@ pub trait PassiveWidget: Send + Sync + 'static {
     /// This function will be called when Parsec determines that the
     /// [`WidgetNode`]
     ///
-    /// [`Session<U>`]: crate::session::Session
+    /// [`Session`]: crate::session::Session
     fn update(&mut self, area: &impl Area)
     where
         Self: Sized;
@@ -138,7 +135,7 @@ where
     /// This function will be called when Parsec determines that the
     /// [`WidgetNode`]
     ///
-    /// [`Session<U>`]: crate::session::Session
+    /// [`Session`]: crate::session::Session
     fn update_and_print(&self, area: &U::Area);
 
     fn update(&self, area: &U::Area);
@@ -293,7 +290,7 @@ where
         W: PassiveWidget,
     {
         let dyn_widget: RwData<dyn PassiveWidget> =
-            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+            RwData::new_unsized(Arc::new(RwLock::new(widget)));
 
         let inner_widget = InnerPassiveWidget {
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
@@ -309,7 +306,7 @@ where
         I: InputMethod<Widget = W>,
     {
         let dyn_widget: RwData<dyn ActiveWidget> =
-            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+            RwData::new_unsized(Arc::new(RwLock::new(widget)));
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod>>;
 
@@ -317,7 +314,7 @@ where
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
             dyn_widget,
             input,
-            dyn_input: RwData::new_unsized::<I>(input_data),
+            dyn_input: RwData::new_unsized(input_data),
         };
 
         Widget::Active(Box::new(inner_widget))
@@ -334,7 +331,7 @@ where
         }
     }
 
-    /// Returns the downcast ref of this [`Widget<U>`].
+    /// Returns the downcast ref of this [`Widget`].
     pub fn downcast<W>(&self) -> Option<RwData<W>>
     where
         W: PassiveWidget,
