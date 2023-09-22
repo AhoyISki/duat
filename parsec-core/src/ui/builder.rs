@@ -93,12 +93,12 @@ where
     /// ```
     pub fn push<F>(
         &mut self,
-        builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
+        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder(self.controler);
+        let (widget, checker, specs) = builder();
         let (child, parent) = self.controler.mutate_active_window(|window| {
             let (child, parent) = window.push(widget, &self.mod_area, checker, specs, true);
 
@@ -256,9 +256,9 @@ where
         F: Fn() -> bool + 'static,
     {
         let (widget, checker, specs) = builder(self.controler);
-        let (child, parent) = self.controler.mutate_active_window(|window| {
-            window.push(widget, &area, checker, specs, true)
-        });
+        let (child, parent) = self
+            .controler
+            .mutate_active_window(|window| window.push(widget, &area, checker, specs, true));
 
         (child, parent)
     }

@@ -1,13 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
+
+use crossterm::event::MouseEventKind;
 
 use super::{
     ids::{TextId, ToggleId},
     Marker,
 };
-use crate::{
-    forms::FormId,
-    text::{types::Toggle, Text},
-};
+use crate::{forms::FormId, position::Point, text::Text};
 
 pub enum Tag {
     // Implemented:
@@ -89,6 +88,9 @@ impl Tag {
         }
     }
 }
+
+unsafe impl Send for Tag {}
+unsafe impl Sync for Tag {}
 
 // NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
 // character indexed. The reason is that modules like `regex` and
@@ -231,3 +233,5 @@ impl RawTag {
         }
     }
 }
+
+pub type Toggle = Rc<dyn Fn(Point, MouseEventKind)>;

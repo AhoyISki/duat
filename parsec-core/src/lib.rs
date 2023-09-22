@@ -1,3 +1,4 @@
+#![allow(incomplete_features, clippy::type_complexity)]
 #![feature(
     lazy_cell,
     extract_if,
@@ -14,14 +15,6 @@
     type_alias_impl_trait,
     impl_trait_in_assoc_type,
     min_specialization
-)]
-#![allow(
-    clippy::arc_with_non_send_sync,
-    clippy::type_complexity,
-    clippy::vec_init_then_push,
-    clippy::while_let_on_iterator,
-    incomplete_features,
-    refining_impl_trait
 )]
 
 use std::{
@@ -112,10 +105,7 @@ where
     }
 
     /// Switches to the [`FileWidget<U>`] with the given name.
-    pub fn switch_to_file(
-        &self,
-        target: impl AsRef<str>,
-    ) -> Result<(), WidgetSwitchErr<File>> {
+    pub fn switch_to_file(&self, target: impl AsRef<str>) -> Result<(), WidgetSwitchErr<File>> {
         let name = target.as_ref();
         let windows = self.windows.read();
         let (widget, area) = windows
@@ -123,9 +113,7 @@ where
             .flat_map(|window| window.widgets())
             .find(|(widget, ..)| {
                 widget
-                    .inspect_as::<File, bool>(|file| {
-                        file.name().is_some_and(|cmp| cmp == name)
-                    })
+                    .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
                     .unwrap_or(false)
             })
             .map(|(widget, area)| (widget.as_active().unwrap(), area))
@@ -206,10 +194,7 @@ where
     }
 
     /// Returns a new instance of [`Controler`].
-    fn new(
-        window: Window<U>,
-        active_widget: RwData<dyn ActiveWidget>,
-    ) -> Self {
+    fn new(window: Window<U>, active_widget: RwData<dyn ActiveWidget>) -> Self {
         let controler = Self {
             windows: RwData::new(vec![window]),
             active_window: 0,
@@ -386,9 +371,7 @@ where
             .flat_map(|window| window.widgets())
             .find(|(widget, ..)| {
                 widget
-                    .inspect_as::<File, bool>(|file| {
-                        file.name().is_some_and(|cmp| cmp == name)
-                    })
+                    .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
                     .unwrap_or(false)
             })
             .map(|(widget, area)| (widget.as_active().unwrap(), area))

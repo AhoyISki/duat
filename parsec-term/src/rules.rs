@@ -3,8 +3,7 @@ use parsec_core::{
     forms::Form,
     text::{build, Text},
     ui::{Area, PushSpecs, Ui},
-    widgets::{PassiveWidget, Widget},
-    Controler, ACTIVE_FILE, PALETTE,
+    widgets::{PassiveWidget, Widget}, ACTIVE_FILE, PALETTE,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -93,10 +92,8 @@ impl VertRuleCfg {
         }
     }
 
-    pub fn builder<U: Ui>(
-        self,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move |_| {
+    pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        move || {
             let reader = ACTIVE_FILE.current();
 
             PALETTE.try_set_form("VertRule", Form::new().grey());
@@ -138,12 +135,8 @@ impl VertRule {
 }
 
 impl PassiveWidget for VertRule {
-    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui,
-        Self: Sized,
-    {
-        VertRuleCfg::new().builder()(controler)
+    fn build<U: Ui>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        VertRuleCfg::new().builder()()
     }
 
     fn update(&mut self, _area: &impl Area) {

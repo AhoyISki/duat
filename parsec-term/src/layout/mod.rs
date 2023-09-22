@@ -14,7 +14,7 @@ use cassowary::{
 };
 pub use frame::{Edge, EdgeBrush, EdgeCoords, Frame};
 use parsec_core::{
-    data::{ReadableData, RwData},
+    data::RwData,
     ui::{Axis, Constraint, PushSpecs},
 };
 
@@ -151,6 +151,7 @@ impl Constraints {
 ///
 /// [`Constraint`]: CassowaryConstraint
 #[derive(Debug)]
+#[allow(clippy::type_complexity)]
 pub struct Rect {
     index: AreaIndex,
     /// The index that this [`Rect`] is tied to.

@@ -1,14 +1,14 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
+    any::TypeId,
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockResult, TryLockError,
+        Arc, TryLockError, TryLockResult,
     },
 };
 
-use as_any::{AsAny, Downcast};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -62,6 +62,7 @@ where
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
+    pub(super) concrete_type: TypeId,
 }
 
 impl<T> RwData<T> {
@@ -77,6 +78,7 @@ impl<T> RwData<T> {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
+            concrete_type: TypeId::of::<T>(),
         }
     }
 }
@@ -351,7 +353,7 @@ where
     /// This method is only required if you're dealing with types that
     /// may not be [`Sized`] (`dyn Trait`, `[Type]`, etc). If the type
     /// in question is sized, use [`RwData::new`] instead.
-    pub fn new_unsized(data: Arc<RwLock<T>>) -> Self {
+    pub fn new_unsized<SizedT: 'static>(data: Arc<RwLock<T>>) -> Self {
         // It's 1 here so that any `RoState`s created from this will have
         // `has_changed()` return `true` at least once, by copying the
         // second value - 1.
@@ -359,6 +361,7 @@ where
             data,
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
+            concrete_type: TypeId::of::<SizedT>(),
         }
     }
 
@@ -531,7 +534,12 @@ where
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
     }
+}
 
+impl<T> RwData<T>
+where
+    T: ?Sized + 'static,
+{
     /// Returns `true` if the data is of the concrete type `T`.
     ///
     /// # Examples
@@ -578,7 +586,7 @@ where
     where
         U: 'static,
     {
-        self.data.as_any().is::<U>()
+        self.concrete_type == TypeId::of::<U>()
     }
 
     /// Tries to downcast to a concrete type.
@@ -633,11 +641,12 @@ where
     where
         U: 'static,
     {
-        if self.data.as_any().is::<U>() {
+        if self.concrete_type == TypeId::of::<U>() {
             let Self {
                 data,
                 cur_state,
                 read_state,
+                ..
             } = self;
             let pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
@@ -645,6 +654,7 @@ where
                 data,
                 cur_state,
                 read_state,
+                concrete_type: TypeId::of::<U>(),
             })
         } else {
             Err(DataCastErr(self, PhantomData, PhantomData))
@@ -699,15 +709,27 @@ where
     ///
     /// [`RwData<dyn Trait>`]: RwData
     pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
-        self.data
-            .downcast_ref::<RwLock<U>>()
-            .map(|lock| f(&lock.read().unwrap()))
+        (self.concrete_type == TypeId::of::<U>()).then(|| {
+            let ptr = Arc::as_ptr(&self.data);
+            let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
+
+            self.read_state
+                .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
+
+            f(&cast.read().unwrap())
+        })
     }
 
     pub fn mutate_as<U: 'static, R>(&self, f: impl FnOnce(&mut U) -> R) -> Option<R> {
-        self.data
-            .downcast_ref::<RwLock<U>>()
-            .map(|lock| f(&mut lock.write().unwrap()))
+        (self.concrete_type == TypeId::of::<U>()).then(|| {
+            let ptr = Arc::as_ptr(&self.data);
+            let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
+
+            self.read_state
+                .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
+
+            f(&mut cast.write().unwrap())
+        })
     }
 
     pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
@@ -737,6 +759,7 @@ where
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
+            concrete_type: self.concrete_type,
         }
     }
 }
@@ -750,6 +773,7 @@ where
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
+            concrete_type: TypeId::of::<T>(),
         }
     }
 }

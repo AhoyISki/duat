@@ -1,15 +1,15 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::{RwLock, RwLockReadGuard};
 use std::{
+    any::TypeId,
     marker::PhantomData,
     mem::MaybeUninit,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, LazyLock, TryLockResult, TryLockError,
+        Arc, LazyLock, TryLockError, TryLockResult,
     },
 };
 
-use as_any::{AsAny, Downcast};
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard};
 
@@ -45,6 +45,7 @@ where
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
+    concrete_type: TypeId,
 }
 
 impl<T> RoData<T>
@@ -354,16 +355,22 @@ where
     ///
     /// [`RwData<dyn Trait>`]: RwData
     pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
-        self.data
-            .downcast_ref::<RwLock<U>>()
-            .map(|lock| f(&lock.read().unwrap()))
+        (self.concrete_type == TypeId::of::<U>()).then(|| {
+            let ptr = Arc::as_ptr(&self.data);
+            let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
+
+            self.read_state
+                .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
+
+            f(&cast.read().unwrap())
+        })
     }
 
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static,
     {
-        self.data.as_any().is::<U>()
+        self.concrete_type == TypeId::of::<U>()
     }
 
     /// Tries to downcast to a concrete type.
@@ -371,11 +378,12 @@ where
     where
         U: 'static,
     {
-        if self.data.as_any().is::<U>() {
+        if self.concrete_type == TypeId::of::<U>() {
             let Self {
                 data,
                 cur_state,
                 read_state,
+                ..
             } = self;
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
@@ -383,6 +391,7 @@ where
                 data,
                 cur_state,
                 read_state,
+                concrete_type: TypeId::of::<U>(),
             })
         } else {
             Err(DataCastErr(self, PhantomData, PhantomData))
@@ -399,6 +408,7 @@ where
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(0)),
             read_state: AtomicUsize::new(0),
+            concrete_type: TypeId::of::<T>(),
         }
     }
 }
@@ -421,6 +431,7 @@ where
             data: value.data.clone(),
             cur_state: value.cur_state.clone(),
             read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed)),
+            concrete_type: value.concrete_type,
         }
     }
 }
@@ -463,6 +474,7 @@ where
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
+            concrete_type: self.concrete_type,
         }
     }
 }

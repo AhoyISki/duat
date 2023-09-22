@@ -2,12 +2,12 @@ use std::{collections::HashMap, ops::Range};
 
 use any_rope::{Measurable, Rope};
 
-use self::ranges::TagRange;
+use self::{ranges::TagRange, types::Toggle};
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{RawTag, Tag},
 };
-use super::{types::Toggle, Text};
+use super::Text;
 
 mod ranges;
 mod types;

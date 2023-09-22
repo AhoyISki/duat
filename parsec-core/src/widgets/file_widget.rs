@@ -23,12 +23,11 @@ use std::{fs, path::PathBuf};
 
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    data::{RwData},
+    data::RwData,
     forms::Form,
     input::{Editor, InputMethod},
     text::{IterCfg, Marker, PrintCfg, Tag, Text},
-    ui::{Area, PushSpecs, Ui},
-    Controler, PALETTE,
+    ui::{Area, PushSpecs, Ui}, PALETTE,
 };
 
 #[derive(Clone)]
@@ -131,14 +130,9 @@ where
     type Widget = File;
     type WithInput<NewI> = FileCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U>(
-        self,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui,
-    {
+    fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         let specs = self.specs;
-        move |_| {
+        move || {
             let (widget, checker) = self.build();
             (widget, checker, specs)
         }
@@ -239,14 +233,12 @@ impl File {
 }
 
 impl PassiveWidget for File {
-    fn build<U>(
-        controler: &Controler<U>,
-    ) -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
+    fn build<U>() -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
     where
         U: Ui,
         Self: Sized,
     {
-        Self::config().builder()(controler)
+        Self::config().builder()()
     }
 
     fn update(&mut self, _area: &impl Area) {}

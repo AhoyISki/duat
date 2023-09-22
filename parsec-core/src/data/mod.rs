@@ -27,7 +27,6 @@ use std::{
     sync::{atomic::Ordering, Arc, TryLockError, TryLockResult},
 };
 
-pub use as_any::AsAny;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLockReadGuard;
 

@@ -3,17 +3,18 @@ use std::{path::PathBuf, sync::atomic::Ordering, time::Duration};
 use crossterm::event::{self, Event};
 
 use crate::{
-    data::{RwData},
+    data::RwData,
     input::{Editor, InputMethod},
     text::PrintCfg,
     ui::{build_file, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{
-        ActiveWidget, ActiveWidgetCfg, File, FileCfg, LineNumbers, PassiveWidget,
-        StatusLine, Widget,
+        ActiveWidget, ActiveWidgetCfg, File, FileCfg, LineNumbers, PassiveWidget, StatusLine,
+        Widget,
     },
     Controler, ACTIVE_FILE, BREAK_LOOP, SHOULD_QUIT,
 };
 
+#[allow(clippy::type_complexity)]
 pub struct SessionCfg<U, I>
 where
     U: Ui,
@@ -58,13 +59,13 @@ where
             self.file_cfg.clone().build()
         };
 
-		let active = {
-    		let (active, input) = widget.as_active().unwrap();
-    		let file = active.clone().try_downcast::<File>().unwrap();
+        let active = {
+            let (active, input) = widget.as_active().unwrap();
+            let file = active.clone().try_downcast::<File>().unwrap();
             ACTIVE_FILE.set(file, input.clone());
 
             active.clone()
-		};
+        };
 
         let (window, area) = Window::new(&mut self.ui, widget, checker);
         let mut controler = Controler::new(window, active);
@@ -192,6 +193,7 @@ where
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct Session<U, I>
 where
     U: Ui,

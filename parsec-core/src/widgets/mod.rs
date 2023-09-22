@@ -34,7 +34,7 @@ pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file_widget::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{file_parts, status_cfg, StatusLine, StatusLineCfg, StatusPart},
+    status_line::{file_parts, status_cfg, DynInput, StatusLine, StatusLineCfg},
 };
 use crate::{
     data::{ReadableData, RwData},
@@ -46,7 +46,7 @@ use crate::{
 
 /// An area where text will be printed to the screen.
 pub trait PassiveWidget: Send + Sync + 'static {
-    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    fn build<U>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
     where
         U: Ui,
         Self: Sized;
@@ -80,17 +80,14 @@ pub trait PassiveWidget: Send + Sync + 'static {
     }
 }
 
+#[allow(refining_impl_trait)]
 pub trait ActiveWidgetCfg: Sized + Clone {
     type Widget: ActiveWidget;
     type WithInput<NewI>: ActiveWidgetCfg
     where
         NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U>(
-        self,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui;
+    fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs);
 
     fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
     where
@@ -290,7 +287,7 @@ where
         W: PassiveWidget,
     {
         let dyn_widget: RwData<dyn PassiveWidget> =
-            RwData::new_unsized(Arc::new(RwLock::new(widget)));
+            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
 
         let inner_widget = InnerPassiveWidget {
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
@@ -306,7 +303,7 @@ where
         I: InputMethod<Widget = W>,
     {
         let dyn_widget: RwData<dyn ActiveWidget> =
-            RwData::new_unsized(Arc::new(RwLock::new(widget)));
+            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod>>;
 
@@ -314,7 +311,7 @@ where
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
             dyn_widget,
             input,
-            dyn_input: RwData::new_unsized(input_data),
+            dyn_input: RwData::new_unsized::<I>(input_data),
         };
 
         Widget::Active(Box::new(inner_widget))

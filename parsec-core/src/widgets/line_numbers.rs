@@ -27,8 +27,7 @@ use crate::{
     data::FileReader,
     forms::Form,
     text::{build, Tag, Text},
-    ui::{Area, Constraint, PushSpecs, Ui},
-    Controler, ACTIVE_FILE, PALETTE,
+    ui::{Area, Constraint, PushSpecs, Ui}, ACTIVE_FILE, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -99,11 +98,8 @@ impl LineNumbers {
 impl PassiveWidget for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui,
-    {
-        LineNumbersCfg::default().builder()(controler)
+    fn build<U: Ui>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        LineNumbersCfg::default().builder()()
     }
 
     fn update(&mut self, area: &impl Area) {
@@ -159,13 +155,8 @@ impl LineNumbersCfg {
         }
     }
 
-    pub fn builder<U>(
-        self,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui,
-    {
-        move |_| {
+    pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+        move || {
             let reader = ACTIVE_FILE.current();
             let specs = self.specs;
 

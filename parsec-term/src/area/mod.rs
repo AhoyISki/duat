@@ -14,7 +14,7 @@ use crossterm::{
 };
 use iter::{print_iter, rev_print_iter};
 use parsec_core::{
-    data::{ReadableData, RwData},
+    data::RwData,
     forms::{FormFormer, FormPalette},
     position::Point,
     text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},

@@ -1,9 +1,5 @@
-use std::rc::Rc;
-
-use crossterm::event::MouseEventKind;
-
 use super::tags::{RawTag, ToggleId};
-use crate::{forms::FormId, position::Point, PALETTE};
+use crate::{forms::FormId, PALETTE};
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 #[derive(Clone, Copy)]
@@ -91,4 +87,3 @@ impl Part {
     }
 }
 
-pub type Toggle = Rc<dyn Fn(Point, MouseEventKind) + Send + Sync>;

@@ -238,6 +238,7 @@ pub fn rev_print_iter<'a>(
         } else {
             let mut give_up = false;
             let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
+            #[allow(clippy::while_let_on_iterator)]
             while let Some(item) = iter.next() {
                 if let Part::Char('\n') = item.part {
                     if items.is_empty() {

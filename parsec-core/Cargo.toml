@@ -20,7 +20,6 @@ any-rope = ">=1.2.2"
 
 # For testing only
 no_deadlocks = { path = "../../no-deadlocks/" }
-as-any = "0.3.0"
 
 [features]
 # NOTE: Features meant for testing only by myself.

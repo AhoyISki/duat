@@ -17,11 +17,10 @@
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     commands::Command,
-    data::{RwData},
+    data::RwData,
     input::{Commander, InputMethod},
     text::Text,
-    ui::{Area, PushSpecs, Ui},
-    Controler, COMMANDS,
+    ui::{Area, PushSpecs, Ui}, COMMANDS,
 };
 
 #[derive(Clone)]
@@ -78,13 +77,8 @@ where
     where
         NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U>(
-        self,
-    ) -> impl FnOnce(&Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
-    where
-        U: Ui,
-    {
-        move |_| {
+    fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<(dyn Fn() -> bool)>, PushSpecs) {
+        move || {
             let command_line = CommandLine {
                 text: Text::new(" "),
                 prompt: RwData::new(self.prompt.clone()),
@@ -131,12 +125,12 @@ pub struct CommandLine {
 }
 
 impl PassiveWidget for CommandLine {
-    fn build<U>(controler: &Controler<U>) -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    fn build<U>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
     where
         U: Ui,
         Self: Sized,
     {
-        Self::config().builder()(controler)
+        Self::config().builder()()
     }
 
     fn update(&mut self, _area: &impl Area) {}

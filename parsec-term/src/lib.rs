@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(
     lazy_cell,
     result_option_inspect,
@@ -5,11 +6,6 @@
     let_chains,
     return_position_impl_trait_in_trait,
     generic_const_exprs
-)]
-#![allow(
-    clippy::type_complexity,
-    clippy::while_let_on_iterator,
-    incomplete_features
 )]
 
 use std::{
@@ -22,10 +18,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use layout::{Frame, Layout};
-use parsec_core::{
-    data::{ReadableData, RwData},
-    ui,
-};
+use parsec_core::{data::RwData, ui};
 
 mod area;
 mod layout;

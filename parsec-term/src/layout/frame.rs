@@ -89,6 +89,7 @@ impl EdgeCoords {
         Self { tl, br, axis, line }
     }
 
+	#[allow(clippy::type_complexity)]
     pub fn crossing(
         &self,
         other: EdgeCoords,
