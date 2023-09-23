@@ -77,7 +77,6 @@ impl Change {
             let start = self.start - older.start;
             let end = fixed_end - older.start;
             let range = byte_range(start, end, &older.added_text);
-
             older.added_text.replace_range(range, &self.added_text);
 
             let taken_remainder = self.taken_text.chars().skip(fixed_end - self.start);
@@ -91,7 +90,7 @@ impl Change {
 
             let start = older.start - self.start;
             let end = fixed_end - self.start;
-            let range = byte_range(start, end, &older.added_text);
+            let range = byte_range(start, end, &older.taken_text);
             self.taken_text.replace_range(range, &older.taken_text);
 
             let added_remainder = older.added_text.chars().skip(fixed_end - older.start);
@@ -416,7 +415,7 @@ fn byte_range(start: usize, end: usize, text: &str) -> Range<usize> {
     let start_byte = bytes.nth(start).unwrap_or(text.len());
 
     if end > start {
-        start_byte..bytes.nth(end - start - 1).unwrap()
+        start_byte..bytes.nth(end - start - 1).unwrap_or(text.len())
     } else {
         start_byte..start_byte
     }
