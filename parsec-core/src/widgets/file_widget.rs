@@ -238,7 +238,7 @@ impl PassiveWidget for File {
         U: Ui,
         Self: Sized,
     {
-        Self::config().builder()()
+        Self::cfg().builder()()
     }
 
     fn update(&mut self, _area: &impl Area) {}
@@ -265,7 +265,7 @@ impl ActiveWidget for File {
     where
         Self: Sized;
 
-    fn config() -> FileCfg<Editor> {
+    fn cfg() -> FileCfg<Editor> {
         FileCfg::new()
     }
 

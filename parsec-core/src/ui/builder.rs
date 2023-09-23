@@ -135,13 +135,13 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<F>(
         &mut self,
-        builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
+        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
         area: U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder(self.controler);
+        let (widget, checker, specs) = builder();
         let (child, parent) = self
             .controler
             .mutate_active_window(|window| window.push(widget, &area, checker, specs, true));

@@ -11,21 +11,15 @@ pub use self::{
     multi_cursor::{Cursors, MultiCursorEditor, NoHistory, WithHistory},
     remapper::Remapper,
 };
-use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Controler};
+use crate::{data::RwData, ui::{Ui, Area}, widgets::ActiveWidget};
 
 pub trait InputMethod: Send + Sync + 'static {
     type Widget: ActiveWidget
     where
         Self: Sized;
 
-    fn send_key<U>(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &Controler<U>,
-    ) where
-        U: Ui,
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area)
+    where
         Self: Sized;
 
     fn remapper(self) -> Remapper<Self>

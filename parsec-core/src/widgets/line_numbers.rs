@@ -27,7 +27,8 @@ use crate::{
     data::FileReader,
     forms::Form,
     text::{build, Tag, Text},
-    ui::{Area, Constraint, PushSpecs, Ui}, ACTIVE_FILE, PALETTE,
+    ui::{Area, Constraint, PushSpecs, Ui},
+    ACTIVE_FILE, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -61,37 +62,37 @@ impl LineNumbers {
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self) {
-        let (file, input) = self.reader.read();
+        self.text = self.reader.inspect(|file, input| {
+            let printed_lines = file.printed_lines();
+            let main_line = input.cursors().map(|cursors| cursors.main().true_line());
 
-        let printed_lines = file.printed_lines();
-        let main_line = input.cursors().map(|cursors| cursors.main().true_line());
+            let mut builder = build!((tag_from_align(self.cfg.alignment)));
 
-        let mut builder = build!((tag_from_align(self.cfg.alignment)));
+            for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
+                let is_main_line = main_line.is_some_and(|main| main == *line);
 
-        for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-            let is_main_line = main_line.is_some_and(|main| main == *line);
+                let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
 
-            let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
+                if is_main_line {
+                    build!(builder, (tag_from_align(self.cfg.main_alignment)));
+                }
 
-            if is_main_line {
-                build!(builder, (tag_from_align(self.cfg.main_alignment)));
+                match (is_main_line, is_wrapped) {
+                    (false, false) => build!(builder, [LineNum]),
+                    (true, false) => build!(builder, [MainLineNum]),
+                    (false, true) => build!(builder, [WrappedLineNum]),
+                    (true, true) => build!(builder, [WrappedMainLineNum]),
+                }
+
+                build!(builder, num_text);
+
+                if is_main_line {
+                    build!(builder, (tag_from_align(self.cfg.alignment)));
+                }
             }
 
-            match (is_main_line, is_wrapped) {
-                (false, false) => build!(builder, [LineNum]),
-                (true, false) => build!(builder, [MainLineNum]),
-                (false, true) => build!(builder, [WrappedLineNum]),
-                (true, true) => build!(builder, [WrappedMainLineNum]),
-            }
-
-            build!(builder, num_text);
-
-            if is_main_line {
-                build!(builder, (tag_from_align(self.cfg.alignment)));
-            }
-        }
-
-        self.text = builder.finish();
+            builder.finish()
+        });
     }
 }
 

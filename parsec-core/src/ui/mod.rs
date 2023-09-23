@@ -548,7 +548,7 @@ where
             .nodes()
             .find(|node| node.widget.ptr_eq(&*controler.active_widget.read()))
         {
-            scope.spawn(move || node.widget.send_key(key, &node.area, controler));
+            scope.spawn(move || node.widget.send_key(key, &node.area));
         }
     }
 

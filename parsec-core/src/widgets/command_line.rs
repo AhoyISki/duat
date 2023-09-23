@@ -66,6 +66,13 @@ where
             ..self
         }
     }
+
+    pub fn left_with_percent(self, percent: u16) -> Self {
+        Self {
+            specs: PushSpecs::left().with_percent(percent),
+            ..self
+        }
+    }
 }
 
 impl<I> ActiveWidgetCfg for CommandLineCfg<I>
@@ -130,7 +137,7 @@ impl PassiveWidget for CommandLine {
         U: Ui,
         Self: Sized,
     {
-        Self::config().builder()()
+        Self::cfg().builder()()
     }
 
     fn update(&mut self, _area: &impl Area) {}
@@ -143,7 +150,7 @@ impl PassiveWidget for CommandLine {
 impl ActiveWidget for CommandLine {
     type Config = CommandLineCfg<Commander>;
 
-    fn config() -> Self::Config
+    fn cfg() -> Self::Config
     where
         Self: Sized,
     {

@@ -34,7 +34,7 @@ where
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
         SessionCfg {
             ui,
-            file_cfg: File::config(),
+            file_cfg: File::cfg(),
             file_fn: Box::new(|builder, _| {
                 builder.push(LineNumbers::build);
                 builder.push(StatusLine::build);

@@ -191,17 +191,14 @@ impl StatusLineCfg {
 
     pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move || {
-            let (reader, checker): (Option<FileReader>, Box<dyn Fn() -> bool>) = if self.is_global {
-                (
-                    None,
-                    Box::new(move || ACTIVE_FILE.has_changed() || (self.checker)()),
-                )
+            let (reader, checker) = if self.is_global {
+                let reader = ACTIVE_FILE.adaptive();
+                let checker = move || reader.has_changed() || (self.checker)();
+                (ACTIVE_FILE.adaptive(), Box::new(checker) as Box<dyn Fn() -> bool>)
             } else {
                 let reader = ACTIVE_FILE.current();
-                (
-                    Some(ACTIVE_FILE.current()),
-                    Box::new(move || reader.has_changed() || (self.checker)()),
-                )
+                let checker = move || reader.has_changed() || (self.checker)();
+                (ACTIVE_FILE.current(), Box::new(checker) as Box<dyn Fn() -> bool>)
             };
 
             let widget = Widget::passive(StatusLine {
@@ -284,7 +281,7 @@ impl Default for StatusLineCfg {
 /// to change the active [`Form`][crate::tags::form::Form] to print
 /// the next characters.
 pub struct StatusLine {
-    reader: Option<FileReader>,
+    reader: FileReader,
     text_fn: Box<dyn Fn(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
     text: Text,
 }
@@ -301,11 +298,7 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        self.text = if let Some(reader) = &self.reader {
-            reader.inspect_data(&self.text_fn)
-        } else {
-            ACTIVE_FILE.inspect_data(&self.text_fn)
-        };
+        self.text = self.reader.inspect_data(&self.text_fn);
     }
 
     fn text(&self) -> &Text {

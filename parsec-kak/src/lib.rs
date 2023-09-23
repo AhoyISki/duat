@@ -5,7 +5,7 @@ use parsec_core::{
     data::RwData,
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
-    ui::Ui,
+    ui::{Area, Ui},
     widgets::{CommandLine, File},
     Controler, ACTIVE_FILE,
 };
@@ -60,26 +60,17 @@ impl Editor {
 impl InputMethod for Editor {
     type Widget = File;
 
-    fn send_key<U>(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &Controler<U>,
-    ) where
-        U: Ui,
-        Self: Sized,
-    {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
         let cursors = &mut self.cursors;
         let history = &mut self.history;
         let editor = MultiCursorEditor::with_history(widget, cursors, area, history);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
-            Mode::Normal => match_normal(editor, key, &mut self.mode, controler),
-            Mode::Command => match_command(editor, key, &mut self.mode, controler),
+            Mode::Normal => match_normal(editor, key, &mut self.mode),
+            Mode::Command => match_command(editor, key, &mut self.mode),
             Mode::GoTo => {
-                match_goto(editor, key, &mut self.last_file, controler);
+                match_goto(editor, key, &mut self.last_file);
                 self.mode = Mode::Normal;
             }
             Mode::View => todo!(),
@@ -205,7 +196,6 @@ fn match_normal<U: Ui>(
     mut editor: MultiCursorEditor<WithHistory, U, File>,
     key: KeyEvent,
     mode: &mut Mode,
-    controler: &Controler<U>,
 ) {
     match key {
         ////////// SessionControl commands.
@@ -214,7 +204,7 @@ fn match_normal<U: Ui>(
             modifiers: KeyModifiers::CONTROL,
             ..
         } => {
-            controler.quit();
+            parsec_core::quit();
         }
 
         ////////// Movement keys that retain or create selections.

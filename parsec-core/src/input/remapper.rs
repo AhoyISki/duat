@@ -1,7 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::InputMethod;
-use crate::{data::RwData, ui::Ui, Controler};
+use crate::{
+    data::RwData,
+    ui::{Area, Ui},
+    Controler,
+};
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
@@ -141,15 +145,7 @@ where
 {
     type Widget = I::Widget;
 
-    fn send_key<U>(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        controler: &Controler<U>,
-    ) where
-        U: Ui,
-    {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
         let remaps = self
             .remaps
             .iter()
@@ -188,11 +184,11 @@ where
         }
 
         for key in keys_to_send {
-            self.input_method.send_key(key, widget, area, controler);
+            self.input_method.send_key(key, widget, area);
         }
 
         if new_to_check.is_empty() {
-            self.input_method.send_key(key, widget, area, controler);
+            self.input_method.send_key(key, widget, area);
         }
 
         self.to_check = new_to_check;

@@ -87,6 +87,24 @@ impl<T> RwData<T>
 where
     T: ?Sized + 'static,
 {
+    /// Returns a new instance of [`RwData<T>`], assuming that it is
+    /// unsized.
+    ///
+    /// This method is only required if you're dealing with types that
+    /// may not be [`Sized`] (`dyn Trait`, `[Type]`, etc). If the type
+    /// in question is sized, use [`RwData::new`] instead.
+    pub fn new_unsized<SizedT: 'static>(data: Arc<RwLock<T>>) -> Self {
+        // It's 1 here so that any `RoState`s created from this will have
+        // `has_changed()` return `true` at least once, by copying the
+        // second value - 1.
+        Self {
+            data,
+            cur_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(1),
+            concrete_type: TypeId::of::<SizedT>(),
+        }
+    }
+
     /// Blocking reference to the information.
     ///
     /// Also makes it so that [`has_changed`] returns `false`.
@@ -345,24 +363,6 @@ where
         U: ?Sized,
     {
         <Self as ReadableData<T>>::ptr_eq(self, other)
-    }
-
-    /// Returns a new instance of [`RwData<T>`], assuming that it is
-    /// unsized.
-    ///
-    /// This method is only required if you're dealing with types that
-    /// may not be [`Sized`] (`dyn Trait`, `[Type]`, etc). If the type
-    /// in question is sized, use [`RwData::new`] instead.
-    pub fn new_unsized<SizedT: 'static>(data: Arc<RwLock<T>>) -> Self {
-        // It's 1 here so that any `RoState`s created from this will have
-        // `has_changed()` return `true` at least once, by copying the
-        // second value - 1.
-        Self {
-            data,
-            cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<SizedT>(),
-        }
     }
 
     /// Blocking mutable reference to the information.

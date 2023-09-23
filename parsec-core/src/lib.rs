@@ -52,6 +52,12 @@ pub static PALETTE: FormPalette = FormPalette::new();
 pub static COMMANDS: Commands = Commands::new();
 pub static ACTIVE_FILE: ActiveFile = ActiveFile::new();
 
+/// Quits Parsec.
+pub fn quit() {
+    BREAK_LOOP.store(true, Ordering::Release);
+    SHOULD_QUIT.store(true, Ordering::Release);
+}
+
 /// A general manager for Parsec, that can be called upon by certain
 /// structs
 pub struct Controler<U>
@@ -96,12 +102,6 @@ where
 
             switch_widget(&self.windows.read(), &self.active_widget, (widget, area))
         })
-    }
-
-    /// Quits Parsec.
-    pub fn quit(&self) {
-        BREAK_LOOP.store(true, Ordering::Release);
-        SHOULD_QUIT.store(true, Ordering::Release);
     }
 
     /// Switches to the [`FileWidget<U>`] with the given name.

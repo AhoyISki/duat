@@ -103,7 +103,7 @@ pub trait ActiveWidget: PassiveWidget {
     /// A mutable reference to the [`Text`] printed by this cursor.
     fn mut_text(&mut self) -> &mut Text;
 
-    fn config() -> Self::Config
+    fn cfg() -> Self::Config
     where
         Self: Sized;
 
@@ -155,7 +155,7 @@ where
 
     fn input(&self) -> &RwData<dyn InputMethod>;
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>);
+    fn send_key(&self, key: KeyEvent, area: &U::Area);
 
     fn on_focus(&self, area: &U::Area);
 
@@ -240,14 +240,14 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
+    fn send_key(&self, key: KeyEvent, area: &U::Area) {
         let mut input = self.input.write();
 
         if let Some(cursors) = input.cursors() {
             self.widget.write().mut_text().remove_cursor_tags(cursors);
         }
 
-        input.send_key(key, &self.widget, area, controler);
+        input.send_key(key, &self.widget, area);
 
         if let Some(cursors) = input.cursors() {
             let mut widget = self.widget.write();
@@ -405,9 +405,9 @@ where
         }
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, controler: &Controler<U>) {
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area) {
         match self {
-            Widget::Active(inner) => inner.send_key(key, area, controler),
+            Widget::Active(inner) => inner.send_key(key, area),
             Widget::Passive(_) => {}
         }
     }
