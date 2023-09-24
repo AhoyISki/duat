@@ -7,7 +7,7 @@ use parsec_core::{
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Area,
     widgets::{CommandLine, File},
-    CURRENT_FILE,
+    CURRENT_FILE, controls,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -204,7 +204,7 @@ fn match_normal(
             modifiers: KeyModifiers::CONTROL,
             ..
         } => {
-            parsec_core::quit();
+            controls::quit();
         }
 
         ////////// Movement keys that retain or create selections.
@@ -288,9 +288,7 @@ fn match_normal(
         KeyEvent {
             code: Char(':'), ..
         } => {
-            if controler.switch_to::<CommandLine>().is_ok() {
-                *mode = Mode::Command;
-            }
+            controls::switch_to::<CommandLine>().unwrap();
         }
         KeyEvent {
             code: Char('g'), ..
@@ -314,11 +312,6 @@ fn match_command(
     mode: &mut Mode,
 ) {
     match key {
-        KeyEvent { code: Enter, .. } => {
-            if controler.return_to_file().is_ok() {
-                *mode = Mode::Normal;
-            }
-        }
         KeyEvent {
             code: Backspace, ..
         } => {
@@ -420,9 +413,7 @@ fn match_command(
 
             editor.edit_on_main(|editor| editor.replace(""));
 
-            if controler.return_to_file().is_ok() {
-                *mode = Mode::Normal
-            }
+			controls::return_to_file().unwrap();
         }
         _ => {}
     }
@@ -438,7 +429,7 @@ fn match_goto(
         KeyEvent {
             code: Char('a'), ..
         } => {
-            if controler.switch_to_file(last_file.clone()).is_ok() {
+            if controls::buffer(last_file.clone()).is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
@@ -457,7 +448,7 @@ fn match_goto(
         KeyEvent {
             code: Char('n'), ..
         } => {
-            if controler.next_file().is_ok() {
+            if controls::next_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
@@ -466,7 +457,7 @@ fn match_goto(
         KeyEvent {
             code: Char('N'), ..
         } => {
-            if controler.prev_file().is_ok() {
+            if controls::prev_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));

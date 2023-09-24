@@ -3,7 +3,8 @@ use parsec_core::{
     forms::Form,
     text::{build, Text},
     ui::{Area, PushSpecs, Ui},
-    widgets::{PassiveWidget, Widget}, ACTIVE_FILE, PALETTE,
+    widgets::{PassiveWidget, Widget},
+    CURRENT_FILE, PALETTE,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -94,7 +95,7 @@ impl VertRuleCfg {
 
     pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move || {
-            let reader = ACTIVE_FILE.constant;
+            let reader = CURRENT_FILE.constant();
 
             PALETTE.try_set_form("VertRule", Form::new().grey());
             PALETTE.set_new_ref("UpperVertRule", "VertRule");
@@ -140,24 +141,24 @@ impl PassiveWidget for VertRule {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        let (file, input) = self.reader.read();
+        self.text = self.reader.inspect(|file, input| {
+            let main_line = input.cursors().unwrap().main().true_line();
+            let lines = file.printed_lines();
 
-        let main_line = input.cursors().unwrap().main().true_line();
-        let lines = file.printed_lines();
+            let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
+            let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
+            let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
 
-        let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
-        let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
-        let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
+            let chars = self.sep_char.chars();
 
-        let chars = self.sep_char.chars();
+            let builder = build!(
+                [UpperVertRule] { form_string(chars[0], upper) }
+                [VertRule] { form_string(chars[1], middle) }
+                [LowerVertRule] { form_string(chars[2], lower) }
+            );
 
-        let builder = build!(
-            [UpperVertRule] { form_string(chars[0], upper) }
-            [VertRule] { form_string(chars[1], middle) }
-            [LowerVertRule] { form_string(chars[2], lower) }
-        );
-
-        self.text = builder.finish();
+            builder.finish()
+        });
     }
 
     fn text(&self) -> &Text {

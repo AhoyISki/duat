@@ -11,7 +11,6 @@ use crate::{
     input::InputMethod,
     ui::Ui,
     widgets::{ActiveWidget, File, Widget},
-    CURRENT_FILE,
 };
 
 pub struct CurrentFile {

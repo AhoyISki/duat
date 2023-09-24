@@ -1,5 +1,5 @@
 use super::{Area, PushSpecs, Ui, Window};
-use crate::{widgets::Widget};
+use crate::widgets::Widget;
 
 /// A constructor helper for [`Widget<U>`]s.
 ///

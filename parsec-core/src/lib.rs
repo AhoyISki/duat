@@ -14,7 +14,7 @@
     type_alias_impl_trait
 )]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 use commands::Commands;
 use data::{CurrentFile, CurrentWidget};
@@ -35,19 +35,45 @@ pub mod widgets;
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 // Internal control objects.
-static COMMANDS: Commands = Commands::new();
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 
 // Public control objects.
+pub static COMMANDS: Commands = Commands::new();
 pub static PALETTE: FormPalette = FormPalette::new();
 pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
 
 /// Quits Parsec.
-pub fn quit() {
-    BREAK_LOOP.store(true, Ordering::Release);
-    SHOULD_QUIT.store(true, Ordering::Release);
+pub mod controls {
+    use std::sync::atomic::Ordering;
+
+    use crate::{commands::CommandErr, widgets::ActiveWidget, BREAK_LOOP, COMMANDS, SHOULD_QUIT};
+
+    pub fn quit() {
+        BREAK_LOOP.store(true, Ordering::Release);
+        SHOULD_QUIT.store(true, Ordering::Release);
+    }
+
+    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, CommandErr> {
+        COMMANDS.run(format!("switch-to {}", stringify!(W)))
+    }
+
+    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, CommandErr> {
+        COMMANDS.run(format!("buffer {}", file.as_ref()))
+    }
+
+    pub fn next_file() -> Result<Option<String>, CommandErr> {
+        COMMANDS.run("next-file")
+    }
+
+    pub fn prev_file() -> Result<Option<String>, CommandErr> {
+        COMMANDS.run("prev-file")
+    }
+
+    pub fn return_to_file() -> Result<Option<String>, CommandErr> {
+        COMMANDS.run("return-to-file")
+    }
 }
 
 /// Internal macro used to log information.

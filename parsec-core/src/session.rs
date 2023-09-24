@@ -14,6 +14,7 @@ use crate::{
     commands::Command,
     data::RwData,
     input::{Editor, InputMethod},
+    log_info,
     text::PrintCfg,
     ui::{build_file, Area, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{
@@ -83,6 +84,8 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
         };
+
+        add_session_commands(&session);
 
         // Open and process files..
         build_file(&mut session.windows.write()[0], area, &mut session.file_fn);
@@ -361,7 +364,6 @@ where
 
     let edit = {
         let windows = session.windows.clone();
-        let current_window = session.current_window.clone();
 
         Command::new(["edit", "e"], move |_, args| {
             let Some(file) = args.next() else {
@@ -397,6 +399,40 @@ where
             Ok(Some(format!("Switched to {}.", file_name(&entry))))
         })
     };
+
+    let buffer = {
+        let windows = session.windows.clone();
+
+        Command::new(["edit", "e"], move |_, args| {
+            let Some(file) = args.next() else {
+                return Err(String::from("No file to edit supplied"));
+            };
+
+            let path = PathBuf::from(file);
+            let name = path
+                .file_name()
+                .ok_or(String::from("No file in path"))?
+                .to_string_lossy()
+                .to_string();
+
+            let windows = windows.read();
+            let (window_index, entry) = windows
+                .iter()
+                .enumerate()
+                .flat_map(window_index_widget)
+                .find(|(_, (widget, ..))| {
+                    widget
+                        .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
+                        .unwrap_or(false)
+                })
+                .ok_or(format!("No open files with the name \"{name}\""))?;
+
+            switch_widget(&entry, &windows, window_index);
+
+            Ok(Some(format!("Switched to {}.", file_name(&entry))))
+        })
+    };
+
     let switch_to = {
         let windows = session.windows.clone();
         let current_window = session.current_window.clone();
@@ -430,19 +466,18 @@ where
             let windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
-            let next_start = windows[window_index]
+            let widget_index = windows[window_index]
                 .widgets()
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
-                .unwrap()
-                + 1;
+                .unwrap();
 
             let (new_window, entry) = if flags.unit("global") {
-                iter_around(&windows, window_index, next_start)
+                iter_around(&windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()
             } else {
                 let slice = &windows[window_index..=window_index];
-                let (_, entry) = iter_around(slice, 0, next_start)
+                let (_, entry) = iter_around(slice, 0, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap();
 
@@ -464,19 +499,18 @@ where
             let windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
-            let next_start = windows[window_index]
+            let widget_index = windows[window_index]
                 .widgets()
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
-                .unwrap()
-                + 1;
+                .unwrap();
 
             let (new_window, entry) = if flags.unit("global") {
-                iter_around_rev(&windows, window_index, next_start)
+                iter_around_rev(&windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()
             } else {
                 let slice = &windows[window_index..=window_index];
-                let (_, entry) = iter_around_rev(slice, 0, next_start)
+                let (_, entry) = iter_around_rev(slice, 0, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap();
 
@@ -494,7 +528,7 @@ where
         let windows = session.windows.clone();
         let current_window = session.current_window.clone();
 
-        Command::new(["return-to-file"], move |flags, _| {
+        Command::new(["return-to-file"], move |_, _| {
             let windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
@@ -512,12 +546,13 @@ where
         })
     };
 
-    COMMANDS.try_add(write);
-    COMMANDS.try_add(edit);
-    COMMANDS.try_add(switch_to);
-    COMMANDS.try_add(next_file);
-    COMMANDS.try_add(prev_file);
-    COMMANDS.try_add(return_to_file);
+    COMMANDS.try_add(write).unwrap();
+    COMMANDS.try_add(edit).unwrap();
+    COMMANDS.try_add(buffer).unwrap();
+    COMMANDS.try_add(switch_to).unwrap();
+    COMMANDS.try_add(next_file).unwrap();
+    COMMANDS.try_add(prev_file).unwrap();
+    COMMANDS.try_add(return_to_file).unwrap();
 }
 
 fn window_index_widget<U: Ui>(
@@ -542,14 +577,14 @@ fn iter_around<U: Ui>(
         .enumerate()
         .skip(window)
         .flat_map(window_index_widget)
-        .skip(widget)
+        .skip(widget + 1)
         .chain(
             windows
                 .iter()
                 .enumerate()
                 .take(window + 1)
                 .flat_map(window_index_widget)
-                .take(prev_len + widget),
+                .take(prev_len + widget + 1),
         )
 }
 
@@ -560,7 +595,7 @@ fn iter_around_rev<U: Ui>(
 ) -> impl Iterator<Item = (usize, (&Widget<U>, &U::Area))> {
     let next_len: usize = windows
         .iter()
-        .skip(window + 1)
+        .skip(window)
         .map(Window::<U>::len_widgets)
         .sum();
 
@@ -568,7 +603,7 @@ fn iter_around_rev<U: Ui>(
         .iter()
         .enumerate()
         .rev()
-        .skip(windows.len() - window)
+        .skip(windows.len() - 1 - window)
         .flat_map(move |(index, window)| {
             window_index_widget((index, window))
                 .rev()
@@ -579,12 +614,9 @@ fn iter_around_rev<U: Ui>(
                 .iter()
                 .enumerate()
                 .rev()
-                .take(windows.len() + 1 - window)
-                .flat_map(move |(index, window)| {
-                    window_index_widget((index, window))
-                        .rev()
-                        .take(next_len + 1 - widget)
-                }),
+                .take(windows.len() - window)
+                .flat_map(move |(index, window)| window_index_widget((index, window)).rev())
+                .take(next_len - widget),
         )
 }
 

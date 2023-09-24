@@ -1,12 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::{Cursors, InputMethod};
-use crate::{
-    data::RwData,
-    position::Cursor,
-    ui::{Area, Ui},
-    widgets::CommandLine,
-};
+use crate::{data::RwData, position::Cursor, ui::Area, widgets::CommandLine};
 
 #[derive(Clone)]
 pub struct Commander {

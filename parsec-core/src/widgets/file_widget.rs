@@ -27,7 +27,8 @@ use crate::{
     forms::Form,
     input::{Editor, InputMethod},
     text::{IterCfg, Marker, PrintCfg, Tag, Text},
-    ui::{Area, PushSpecs, Ui}, PALETTE,
+    ui::{Area, PushSpecs, Ui},
+    PALETTE,
 };
 
 #[derive(Clone)]
@@ -36,7 +37,7 @@ where
     I: InputMethod<Widget = File>,
 {
     path: Option<PathBuf>,
-    input: RwData<I>,
+    input: I,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
@@ -45,7 +46,7 @@ impl FileCfg<Editor> {
     pub fn new() -> Self {
         FileCfg {
             path: None,
-            input: RwData::new(Editor::new()),
+            input: Editor::new(),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
@@ -95,7 +96,7 @@ where
             text.insert(90, Tag::PopForm(form2), marker);
         }
 
-        text.add_cursor_tags(self.input.read().cursors().unwrap());
+        text.add_cursor_tags(self.input.cursors().unwrap());
 
         (
             Widget::active(
@@ -105,7 +106,7 @@ where
                     cfg: self.cfg,
                     printed_lines: Vec::new(),
                 },
-                self.input,
+                RwData::new(self.input),
             ),
             Box::new(|| false),
         )
@@ -143,7 +144,7 @@ where
         NewI: InputMethod<Widget = File> + Clone,
     {
         Self::WithInput {
-            input: RwData::new(input),
+            input,
             cfg: self.cfg,
             specs: self.specs,
             path: self.path,

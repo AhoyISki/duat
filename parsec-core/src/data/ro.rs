@@ -453,19 +453,6 @@ where
     pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
         self.data()
     }
-
-    /// Non Blocking reference to the information.
-    ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// returns `false`.
-    ///
-    /// This method is only used in the [`RoNestedData<T>`] struct, as
-    /// it is important to keep the `read_state` of the inner
-    /// [`RoData<T>`] intact while other clones of the
-    /// [`RoNestedData<T>`] read it.
-    pub(crate) fn raw_try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
-        self.try_data()
-    }
 }
 
 impl<T> Default for RoData<T>
