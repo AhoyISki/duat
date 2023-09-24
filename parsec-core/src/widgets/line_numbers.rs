@@ -28,7 +28,7 @@ use crate::{
     forms::Form,
     text::{build, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
-    ACTIVE_FILE, PALETTE,
+    CURRENT_FILE, PALETTE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -158,7 +158,7 @@ impl LineNumbersCfg {
 
     pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move || {
-            let reader = ACTIVE_FILE.current();
+            let reader = CURRENT_FILE.constant();
             let specs = self.specs;
 
             PALETTE.try_set_form("LineNum", Form::new().grey());

@@ -14,7 +14,7 @@ use crate::{
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
     widgets::{File, PassiveWidget, Widget},
-    Controler, ACTIVE_FILE,
+    CURRENT_FILE, CURRENT_WIDGET,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -335,6 +335,9 @@ where
     busy_updating: AtomicBool,
 }
 
+unsafe impl<U: Ui> Send for Node<U> {}
+unsafe impl<U: Ui> Sync for Node<U> {}
+
 impl<U> Node<U>
 where
     U: Ui,
@@ -355,9 +358,6 @@ where
         self.busy_updating.store(false, Ordering::Release);
     }
 }
-
-unsafe impl<U> Send for Node<U> where U: Ui {}
-unsafe impl<U> Sync for Node<U> where U: Ui {}
 
 /// A dimension on screen, can either be horizontal or vertical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -511,7 +511,7 @@ where
     }
 
     /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
-    pub fn widgets(&self) -> impl Iterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
+    pub fn widgets(&self) -> impl DoubleEndedIterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
         self.nodes
             .iter()
             .map(|Node { widget, area, .. }| (widget, area))
@@ -541,15 +541,18 @@ where
     pub fn send_key<'scope, 'env>(
         &'env self,
         key: KeyEvent,
-        controler: &'env Controler<U>,
         scope: &'scope std::thread::Scope<'scope, 'env>,
     ) {
         if let Some(node) = self
             .nodes()
-            .find(|node| node.widget.ptr_eq(&*controler.active_widget.read()))
+            .find(|node| CURRENT_WIDGET.widget_ptr_eq(&node.widget))
         {
             scope.spawn(move || node.widget.send_key(key, &node.area));
         }
+    }
+
+    pub fn len_widgets(&self) -> usize {
+        self.nodes.len()
     }
 
     pub(crate) fn files_region(&self) -> &U::Area {
@@ -634,13 +637,13 @@ where
 }
 
 pub(crate) fn build_file<U>(
-    controler: &mut Controler<U>,
+    window: &mut Window<U>,
     mod_area: U::Area,
     f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<File>),
 ) where
     U: Ui,
 {
-    let (widget, old_file) = controler.inspect_active_window(|window| {
+    let (widget, old_file) = {
         let node = window
             .nodes
             .iter()
@@ -650,18 +653,18 @@ pub(crate) fn build_file<U>(
         let old_file = node
             .widget
             .downcast::<File>()
-            .map(|file| ACTIVE_FILE.swap(file, node.widget.input().unwrap().clone()));
+            .map(|file| CURRENT_FILE.swap(file, node.widget.input().unwrap().clone()));
 
         let widget = node.widget.downcast::<File>().unwrap();
 
         (widget, old_file)
-    });
+    };
 
-    let mut file_builder = FileBuilder::new(controler, mod_area);
+    let mut file_builder = FileBuilder::new(window, mod_area);
 
     f(&mut file_builder, &widget);
 
     if let Some((file, input)) = old_file {
-        ACTIVE_FILE.swap(file, input);
+        CURRENT_FILE.swap(file, input);
     };
 }

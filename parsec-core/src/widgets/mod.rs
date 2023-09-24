@@ -37,11 +37,11 @@ pub use self::{
     status_line::{file_parts, status_cfg, DynInput, StatusLine, StatusLineCfg},
 };
 use crate::{
-    data::{ReadableData, RwData},
+    data::{Data, RwData},
     input::InputMethod,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    Controler, PALETTE,
+    PALETTE,
 };
 
 /// An area where text will be printed to the screen.
@@ -136,6 +136,8 @@ where
     fn update_and_print(&self, area: &U::Area);
 
     fn update(&self, area: &U::Area);
+
+    fn widget_type(&self) -> &'static str;
 }
 
 #[allow(private_interfaces)]
@@ -185,6 +187,10 @@ where
     fn update(&self, area: &<U as Ui>::Area) {
         self.widget.write().update(area);
     }
+
+    fn widget_type(&self) -> &'static str {
+        stringify!(W)
+    }
 }
 
 impl<U, W> PassiveWidgetHolder<U> for InnerPassiveWidget<W>
@@ -223,6 +229,10 @@ where
 
     fn update(&self, area: &<U as Ui>::Area) {
         self.widget.write().update(area)
+    }
+
+    fn widget_type(&self) -> &'static str {
+        stringify!(W)
     }
 }
 
@@ -289,12 +299,12 @@ where
         let dyn_widget: RwData<dyn PassiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
 
-        let inner_widget = InnerPassiveWidget {
+        let holder_widget = InnerPassiveWidget {
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
             dyn_widget,
         };
 
-        Widget::Passive(Box::new(inner_widget))
+        Widget::Passive(Box::new(holder_widget))
     }
 
     pub fn active<W, I>(widget: W, input: RwData<I>) -> Self
@@ -307,23 +317,23 @@ where
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod>>;
 
-        let inner_widget = InnerActiveWidget {
+        let holder_widget = InnerActiveWidget {
             widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
             dyn_widget,
             input,
             dyn_input: RwData::new_unsized::<I>(input_data),
         };
 
-        Widget::Active(Box::new(inner_widget))
+        Widget::Active(Box::new(holder_widget))
     }
 
     pub fn update_and_print(&self, area: &U::Area) {
         match self {
-            Widget::Passive(inner) => {
-                inner.update_and_print(area);
+            Widget::Passive(holder) => {
+                holder.update_and_print(area);
             }
-            Widget::Active(inner) => {
-                inner.update_and_print(area);
+            Widget::Active(holder) => {
+                holder.update_and_print(area);
             }
         }
     }
@@ -334,8 +344,8 @@ where
         W: PassiveWidget,
     {
         match self {
-            Widget::Passive(inner) => inner.passive_widget().clone().try_downcast::<W>().ok(),
-            Widget::Active(inner) => inner.active_widget().clone().try_downcast::<W>().ok(),
+            Widget::Passive(holder) => holder.passive_widget().clone().try_downcast::<W>().ok(),
+            Widget::Active(holder) => holder.active_widget().clone().try_downcast::<W>().ok(),
         }
     }
 
@@ -344,8 +354,8 @@ where
         W: 'static,
     {
         match self {
-            Widget::Passive(inner) => inner.passive_widget().data_is::<W>(),
-            Widget::Active(inner) => inner.active_widget().data_is::<W>(),
+            Widget::Passive(holder) => holder.passive_widget().data_is::<W>(),
+            Widget::Active(holder) => holder.active_widget().data_is::<W>(),
         }
     }
 
@@ -354,68 +364,75 @@ where
         W: PassiveWidget,
     {
         match self {
-            Widget::Passive(inner) => inner.passive_widget().inspect_as::<W, B>(f),
-            Widget::Active(inner) => inner.active_widget().inspect_as::<W, B>(f),
+            Widget::Passive(holder) => holder.passive_widget().inspect_as::<W, B>(f),
+            Widget::Active(holder) => holder.active_widget().inspect_as::<W, B>(f),
         }
     }
 
     pub fn as_active(&self) -> Option<(&RwData<dyn ActiveWidget>, &RwData<dyn InputMethod>)> {
         match self {
-            Widget::Active(inner) => Some((inner.active_widget(), inner.input())),
+            Widget::Active(holder) => Some((holder.active_widget(), holder.input())),
             _ => None,
         }
     }
 
     pub fn input(&self) -> Option<&RwData<dyn InputMethod>> {
         match self {
-            Widget::Active(inner) => Some(inner.input()),
+            Widget::Active(holder) => Some(holder.input()),
             Widget::Passive(_) => None,
         }
     }
 
-    pub fn ptr_eq<R, W>(&self, other: &R) -> bool
+    pub fn ptr_eq<W, D>(&self, other: &D) -> bool
     where
-        R: ReadableData<W>,
         W: ?Sized,
+        D: Data<W>,
     {
         match self {
-            Widget::Passive(inner) => inner.passive_widget().ptr_eq(other),
-            Widget::Active(inner) => inner.active_widget().ptr_eq(other),
+            Widget::Passive(holder) => holder.passive_widget().ptr_eq(other),
+            Widget::Active(holder) => holder.active_widget().ptr_eq(other),
         }
     }
 
     pub fn update(&self, area: &U::Area) {
         match self {
-            Widget::Active(inner) => inner.update(area),
-            Widget::Passive(inner) => inner.update(area),
+            Widget::Active(holder) => holder.update(area),
+            Widget::Passive(holder) => holder.update(area),
+        }
+    }
+
+    pub fn widget_type(&self) -> &'static str {
+        match self {
+            Widget::Passive(holder) => holder.widget_type(),
+            Widget::Active(holder) => holder.widget_type(),
         }
     }
 
     pub(crate) fn on_focus(&self, area: &U::Area) {
         match self {
-            Widget::Active(inner) => inner.on_focus(area),
+            Widget::Active(holder) => holder.on_focus(area),
             Widget::Passive(_) => {}
         }
     }
 
     pub(crate) fn on_unfocus(&self, area: &U::Area) {
         match self {
-            Widget::Active(inner) => inner.on_unfocus(area),
+            Widget::Active(holder) => holder.on_unfocus(area),
             Widget::Passive(_) => {}
         }
     }
 
     pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area) {
         match self {
-            Widget::Active(inner) => inner.send_key(key, area),
+            Widget::Active(holder) => holder.send_key(key, area),
             Widget::Passive(_) => {}
         }
     }
 
     pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn PassiveWidget) -> B) -> B {
         match self {
-            Widget::Passive(inner) => f(&*inner.passive_widget().read()),
-            Widget::Active(inner) => f(&*inner.active_widget().read()),
+            Widget::Passive(holder) => f(&*holder.passive_widget().read()),
+            Widget::Active(holder) => f(&*holder.active_widget().read()),
         }
     }
 }

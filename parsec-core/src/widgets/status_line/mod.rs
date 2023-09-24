@@ -60,7 +60,7 @@ use crate::{
     input::InputMethod,
     text::{Text, TextBuilder},
     ui::{Area, PushSpecs, Ui},
-    ACTIVE_FILE,
+    CURRENT_FILE,
 };
 
 pub struct DynInput<T: Into<Text>, F: Fn(&dyn InputMethod) -> T>(pub F);
@@ -192,13 +192,13 @@ impl StatusLineCfg {
     pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move || {
             let (reader, checker) = if self.is_global {
-                let reader = ACTIVE_FILE.adaptive();
+                let reader = CURRENT_FILE.adaptive();
                 let checker = move || reader.has_changed() || (self.checker)();
-                (ACTIVE_FILE.adaptive(), Box::new(checker) as Box<dyn Fn() -> bool>)
+                (CURRENT_FILE.adaptive(), Box::new(checker) as Box<dyn Fn() -> bool>)
             } else {
-                let reader = ACTIVE_FILE.current();
+                let reader = CURRENT_FILE.constant();
                 let checker = move || reader.has_changed() || (self.checker)();
-                (ACTIVE_FILE.current(), Box::new(checker) as Box<dyn Fn() -> bool>)
+                (CURRENT_FILE.constant(), Box::new(checker) as Box<dyn Fn() -> bool>)
             };
 
             let widget = Widget::passive(StatusLine {

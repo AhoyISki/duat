@@ -2,23 +2,16 @@
 use std::sync::{RwLock, RwLockReadGuard};
 use std::{
     any::TypeId,
-    marker::PhantomData,
-    mem::MaybeUninit,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, LazyLock, TryLockError, TryLockResult,
+        Arc, TryLockError, TryLockResult,
     },
 };
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard};
 
-use super::{private, DataCastErr, DataRetrievalErr, RawReadableData, ReadableData, RwData};
-use crate::{
-    input::InputMethod,
-    ui::Ui,
-    widgets::{File, Widget},
-};
+use super::{Error, RwData, Data, private::InnerData};
 
 /// A read-only reference to information.
 ///
@@ -150,7 +143,9 @@ where
     /// ```
     /// [`has_changed`]: Self::has_changed
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
-        <Self as ReadableData<T>>::read(self)
+        let cur_state = self.cur_state().load(Ordering::Acquire);
+        self.read_state().store(cur_state, Ordering::Release);
+        self.data()
     }
 
     /// Blocking inspection of the inner data.
@@ -230,7 +225,9 @@ where
     /// ```
     /// [`has_changed`]: Self::has_changed
     pub fn inspect<U>(&self, f: impl FnOnce(&T) -> U) -> U {
-        <Self as ReadableData<T>>::inspect(self, f)
+        let cur_state = self.cur_state().load(Ordering::Acquire);
+        self.read_state().store(cur_state, Ordering::Release);
+        f(&self.data())
     }
 
     /// Non blocking reference to the information.
@@ -257,7 +254,10 @@ where
     /// [`has_changed`]: Self::has_changed
     /// [`read`]: Self::read
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
-        <Self as ReadableData<T>>::try_read(self)
+        self.try_data().inspect(|_| {
+            let cur_state = self.cur_state().load(Ordering::Acquire);
+            self.read_state().store(cur_state, Ordering::Release);
+        })
     }
 
     /// Non blocking inspection of the inner data.
@@ -289,7 +289,11 @@ where
         &self,
         f: impl FnOnce(&T) -> U,
     ) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
-        <Self as ReadableData<T>>::try_inspect(self, f)
+        self.try_data().map(|data| {
+            let cur_state = self.cur_state().load(Ordering::Acquire);
+            self.read_state().store(cur_state, Ordering::Release);
+            f(&data)
+        })
     }
 
     /// Wether or not it has changed since it was last read.
@@ -324,7 +328,9 @@ where
     /// [`try_write`]: RwData::try_write
     /// [`try_mutate`]: RwData::try_mutate
     pub fn has_changed(&self) -> bool {
-        <Self as ReadableData<T>>::has_changed(self)
+        let cur_state = self.cur_state().load(Ordering::Relaxed);
+        let read_state = self.read_state().swap(cur_state, Ordering::Relaxed);
+        cur_state > read_state
     }
 
     /// Returns `true` if both [`ReadableData<T>`]s point to the same
@@ -341,11 +347,11 @@ where
     /// assert!(data_1.ptr_eq(&data_1_clone));
     /// assert!(!data_1.ptr_eq(&data_2));
     /// ```
-    pub fn ptr_eq<U>(&self, other: &impl ReadableData<U>) -> bool
+    pub fn ptr_eq<U>(&self, other: &impl Data<U>) -> bool
     where
         U: ?Sized,
     {
-        <Self as ReadableData<T>>::ptr_eq(self, other)
+        Arc::as_ptr(self.cur_state()) as usize == Arc::as_ptr(other.cur_state()) as usize
     }
 
     /// Blocking inspection of the inner data.
@@ -410,7 +416,7 @@ where
     }
 
     /// Tries to downcast to a concrete type.
-    pub fn try_downcast<U>(self) -> Result<RoData<U>, DataCastErr<RoData<T>, T, U>>
+    pub fn try_downcast<U>(self) -> Result<RoData<U>, Error<RoData<T>, T, U>>
     where
         U: 'static,
     {
@@ -430,8 +436,35 @@ where
                 concrete_type: TypeId::of::<U>(),
             })
         } else {
-            Err(DataCastErr(self, PhantomData, PhantomData))
+            Err(Error::<RoData<T>, T, U>::CastingFailed)
         }
+    }
+
+    /// Blocking reference to the information.
+    ///
+    /// Unlike [`read()`][Self::read()], *DOES NOT* make it so
+    /// [`has_changed()`][Self::has_changed()] returns `false`.
+    ///
+    /// This method should only be used in very specific
+    /// circumstances, such as when multiple owners have nested
+    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
+    /// a way that reading from one point would interfere in the
+    /// update detection of the other point.
+    pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
+        self.data()
+    }
+
+    /// Non Blocking reference to the information.
+    ///
+    /// Also makes it so that [`has_changed()`][Self::has_changed()]
+    /// returns `false`.
+    ///
+    /// This method is only used in the [`RoNestedData<T>`] struct, as
+    /// it is important to keep the `read_state` of the inner
+    /// [`RoData<T>`] intact while other clones of the
+    /// [`RoNestedData<T>`] read it.
+    pub(crate) fn raw_try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+        self.try_data()
     }
 }
 
@@ -472,7 +505,7 @@ where
     }
 }
 
-impl<T> private::DataHolder<T> for RoData<T>
+impl<T> InnerData<T> for RoData<T>
 where
     T: ?Sized,
 {
@@ -492,12 +525,6 @@ where
         &self.read_state
     }
 }
-
-impl<T: ?Sized> ReadableData<T> for RoData<T> {}
-impl<T: ?Sized> RawReadableData<T> for RoData<T> {}
-
-unsafe impl<T: ?Sized + Send> Send for RoData<T> {}
-unsafe impl<T: ?Sized + Sync> Sync for RoData<T> {}
 
 // NOTE: Each `RoState` of a given state will have its own internal
 // update counter.
@@ -523,6 +550,10 @@ where
         std::fmt::Display::fmt(&*self.read(), f)
     }
 }
+
+impl<T: ?Sized> Data<T> for RoData<T> {}
+unsafe impl<T: ?Sized + Send> Send for RoData<T> {}
+unsafe impl<T: ?Sized + Sync> Sync for RoData<T> {}
 
 /// A nested [`RoData<RoData<T>>`], synced across all readers.
 ///
@@ -567,16 +598,13 @@ where
     ///
     /// Also makes it so that [`has_changed()`][Self::has_changed()]
     /// `false`.
-    pub fn try_inspect<R>(
-        &self,
-        f: impl FnOnce(&T) -> R,
-    ) -> Result<R, DataRetrievalErr<RoData<T>, T>> {
+    pub fn try_inspect<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, Error<RoData<T>, T, ()>> {
         self.data
             .try_read()
-            .map_err(|_| DataRetrievalErr::NestedReadBlocked)
+            .map_err(|_| Error::NestedReadBlocked)
             .and_then(|data| {
                 data.raw_try_read()
-                    .map_err(|_| DataRetrievalErr::ReadBlocked)
+                    .map_err(|_| Error::ReadBlocked)
                     .map(|inner_data| {
                         let cur_state = data.cur_state.load(Ordering::Acquire);
                         self.read_state.store(cur_state, Ordering::Release);
@@ -622,181 +650,6 @@ where
         RoNestedData {
             data: RoData::from(value),
             read_state: AtomicUsize::new(value.raw_read().cur_state.load(Ordering::Relaxed)),
-        }
-    }
-}
-
-pub struct ActiveFile {
-    rw: LazyLock<RwData<MaybeUninit<(RwData<File>, RwData<dyn InputMethod>)>>>,
-    ro: LazyLock<RwData<MaybeUninit<(RoData<File>, RoData<dyn InputMethod>)>>>,
-}
-
-impl ActiveFile {
-    pub fn current(&self) -> FileReader {
-        let data = self.rw.raw_read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        FileReader {
-            data: RoData::from(&*self.ro),
-            file_state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
-            input_state: AtomicUsize::new(input.cur_state.load(Ordering::Relaxed)),
-        }
-    }
-
-    pub fn adaptive(&self) -> FileReader {
-        let data = self.rw.raw_read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        FileReader {
-            data: RoData {
-                data: todo!(),
-                cur_state: todo!(),
-                read_state: todo!(),
-                concrete_type: todo!(),
-            },
-            file_state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
-            input_state: AtomicUsize::new(input.cur_state.load(Ordering::Relaxed)),
-        }
-    }
-
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &dyn InputMethod) -> R) -> R {
-        let data = self.rw.raw_read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        input.inspect(|input| f(&file.read(), input))
-    }
-
-    pub fn inspect_as<I: InputMethod, R>(&self, f: impl FnOnce(&File, &I) -> R) -> Option<R> {
-        let data = self.rw.raw_read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        input.inspect_as::<I, R>(|input| f(&file.read(), input))
-    }
-
-    pub fn inspect_data<R>(
-        &self,
-        f: impl FnOnce(&RoData<File>, &RoData<dyn InputMethod>) -> R,
-    ) -> R {
-        let data = self.ro.raw_read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        f(&file, &input)
-    }
-
-    /// The name of the active [`FileWidget`]'s file.
-    pub fn name(&self) -> Option<String> {
-        unsafe { self.rw.raw_read().assume_init_ref().0.raw_read().name() }
-    }
-
-    pub fn has_swapped(&self) -> bool {
-        self.rw.has_changed()
-    }
-
-    pub fn file_ptr_eq<U: Ui>(&self, other: &Widget<U>) -> bool {
-        unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
-    }
-
-    pub(crate) const fn new() -> Self {
-        ActiveFile {
-            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-        }
-    }
-
-    pub(crate) fn swap(
-        &self,
-        file: RwData<File>,
-        input: RwData<dyn InputMethod>,
-    ) -> (RwData<File>, RwData<dyn InputMethod>) {
-        *self.ro.write() = MaybeUninit::new((RoData::from(&file), RoData::from(&input)));
-
-        unsafe {
-            std::mem::replace(&mut *self.rw.write(), MaybeUninit::new((file, input))).assume_init()
-        }
-    }
-
-    pub(crate) fn set(&self, file: RwData<File>, input: RwData<dyn InputMethod>) {
-        *self.ro.write() = MaybeUninit::new((RoData::from(&file), RoData::from(&input)));
-        *self.rw.write() = MaybeUninit::new((file, input));
-    }
-}
-
-pub struct FileReader {
-    data: RoData<MaybeUninit<(RoData<File>, RoData<dyn InputMethod>)>>,
-    file_state: AtomicUsize,
-    input_state: AtomicUsize,
-}
-
-impl FileReader {
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &dyn InputMethod) -> R) -> R {
-        let data = self.data.read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        self.file_state
-            .store(file.cur_state.load(Ordering::Acquire), Ordering::Release);
-        self.input_state
-            .store(input.cur_state.load(Ordering::Acquire), Ordering::Release);
-
-        input.inspect(|input| f(&file.read(), input))
-    }
-
-    pub fn inspect_as<I: InputMethod, R>(&self, f: impl FnOnce(&File, &I) -> R) -> Option<R> {
-        let data = self.data.read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        self.file_state
-            .store(file.cur_state.load(Ordering::Acquire), Ordering::Release);
-        self.input_state
-            .store(input.cur_state.load(Ordering::Acquire), Ordering::Release);
-
-        file.inspect_as::<I, R>(|input| f(&file.raw_read(), input))
-    }
-
-    pub fn inspect_data<R>(
-        &self,
-        f: impl FnOnce(&RoData<File>, &RoData<dyn InputMethod>) -> R,
-    ) -> R {
-        let data = self.data.read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        f(&file, &input)
-    }
-
-    /// The name of the active [`FileWidget`]'s file.
-    pub fn name(&self) -> Option<String> {
-        unsafe { self.data.read().assume_init_ref().0.read().name() }
-    }
-
-    pub fn has_changed(&self) -> bool {
-        let mut has_changed = self.data.has_changed();
-        let data = self.data.read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        has_changed |= {
-            let file_state = file.cur_state.load(Ordering::Acquire);
-
-            file_state > self.file_state.swap(file_state, Ordering::Acquire)
-        };
-
-        has_changed |= {
-            let input_state = input.cur_state.load(Ordering::Acquire);
-
-            input_state > self.input_state.swap(input_state, Ordering::Acquire)
-        };
-
-        has_changed
-    }
-}
-
-impl Clone for FileReader {
-    fn clone(&self) -> Self {
-        let data = self.data.read();
-        let (file, input) = unsafe { data.assume_init_ref() };
-
-        Self {
-            data: self.data.clone(),
-            file_state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
-            input_state: AtomicUsize::new(input.cur_state.load(Ordering::Relaxed)),
         }
     }
 }

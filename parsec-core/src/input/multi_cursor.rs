@@ -5,7 +5,7 @@ use crate::{
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    ui::Ui,
+    ui::{Area, Ui},
     widgets::ActiveWidget,
 };
 
@@ -72,28 +72,28 @@ impl Default for Cursors {
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
-pub struct MultiCursorEditor<'a, H, U, W>
+pub struct MultiCursorEditor<'a, H, W, A>
 where
-    U: Ui + 'static,
     W: ActiveWidget + 'static,
+    A: Area,
 {
     clearing_needed: bool,
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
-    area: &'a U::Area,
+    area: &'a A,
     history: Option<&'a mut History>,
     _h: std::marker::PhantomData<H>,
 }
 
-impl<'a, U, W> MultiCursorEditor<'a, WithHistory, U, W>
+impl<'a, W, A> MultiCursorEditor<'a, WithHistory, W, A>
 where
-    U: Ui,
     W: ActiveWidget + 'static,
+    A: Area,
 {
     pub fn with_history(
         widget: &'a RwData<W>,
         cursors: &'a mut Cursors,
-        area: &'a U::Area,
+        area: &'a A,
         history: &'a mut History,
     ) -> Self {
         MultiCursorEditor {
@@ -136,17 +136,17 @@ where
     }
 }
 
-impl<'a, U, W> MultiCursorEditor<'a, NoHistory, U, W>
+impl<'a, W, A> MultiCursorEditor<'a, NoHistory, W, A>
 where
-    U: Ui,
     W: ActiveWidget + 'static,
+    A: Area,
 {
     /// Returns a new instace of [`WidgetActor<U, AW>`].
     pub fn no_history(
         widget: &'a RwData<W>,
         cursors: &'a mut Cursors,
-        area: &'a U::Area,
-    ) -> MultiCursorEditor<'a, NoHistory, U, W> {
+        area: &'a A,
+    ) -> MultiCursorEditor<'a, NoHistory, W, A> {
         MultiCursorEditor {
             clearing_needed: false,
             widget,
@@ -158,10 +158,10 @@ where
     }
 }
 
-impl<'a, H, U, W> MultiCursorEditor<'a, H, U, W>
+impl<'a, H, W, A> MultiCursorEditor<'a, H, W, A>
 where
-    U: Ui,
     W: ActiveWidget + 'static,
+    A: Area,
 {
     /// Removes all intersecting [`Cursor`]s from the list, keeping
     /// only the last from the bunch.
@@ -200,7 +200,7 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<U>)) {
+    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<A>)) {
         let mut widget = self.widget.write();
         for cursor in self.cursors.list.iter_mut() {
             let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -217,7 +217,7 @@ where
     }
 
     /// Alters the nth cursor's selection.
-    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<U>), index: usize) {
+    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<A>), index: usize) {
         let mut widget = self.widget.write();
         let cursor = &mut self.cursors.list[index];
         let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -244,12 +244,12 @@ where
     }
 
     /// Alters the main cursor's selection.
-    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<U>)) {
+    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<A>)) {
         self.move_nth(f, self.cursors.main);
     }
 
     /// Alters the last cursor's selection.
-    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<U>)) {
+    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<A>)) {
         let len = self.len_cursors();
         if len > 0 {
             self.move_nth(f, len - 1);
@@ -366,7 +366,7 @@ where
     }
 }
 
-/// An accumulator used specifically for editing with [`Editor<U>`]s.
+/// An accumulator used specifically for editing with [`Editor<A>`]s.
 #[derive(Default)]
 pub struct EditAccum {
     pub chars: isize,
@@ -459,25 +459,25 @@ impl<'a, 'b, 'c, 'd> Editor<'a, 'b, 'c, 'd> {
 
 /// A cursor that can move and alter the selection, but can't edit the
 /// file.
-pub struct Mover<'a, U>
+pub struct Mover<'a, A>
 where
-    U: Ui,
+    A: Area,
 {
     cursor: &'a mut Cursor,
     text: &'a Text,
-    area: &'a U::Area,
+    area: &'a A,
     print_cfg: &'a PrintCfg,
 }
 
-impl<'a, U> Mover<'a, U>
+impl<'a, A> Mover<'a, A>
 where
-    U: Ui,
+    A: Area,
 {
     /// Returns a new instance of `Mover`.
     pub fn new(
         cursor: &'a mut Cursor,
         text: &'a Text,
-        area: &'a U::Area,
+        area: &'a A,
         print_cfg: &'a PrintCfg,
     ) -> Self {
         Self {

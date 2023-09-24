@@ -5,9 +5,9 @@ use parsec_core::{
     data::RwData,
     history::History,
     input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
-    ui::{Area, Ui},
+    ui::Area,
     widgets::{CommandLine, File},
-    Controler, ACTIVE_FILE,
+    CURRENT_FILE,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -83,8 +83,8 @@ impl InputMethod for Editor {
 }
 
 /// Commands that are available in `Mode::Insert`.
-fn match_insert<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn match_insert(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     key: KeyEvent,
     mode: &mut Mode,
 ) {
@@ -192,8 +192,8 @@ fn match_insert<U: Ui>(
 }
 
 /// Commands that are available in `Mode::Normal`.
-fn match_normal<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn match_normal(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     key: KeyEvent,
     mode: &mut Mode,
 ) {
@@ -308,11 +308,10 @@ fn match_normal<U: Ui>(
 }
 
 /// Commands that are available in `Mode::Command`.
-fn match_command<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn match_command(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     key: KeyEvent,
     mode: &mut Mode,
-    controler: &Controler<U>,
 ) {
     match key {
         KeyEvent { code: Enter, .. } => {
@@ -430,18 +429,19 @@ fn match_command<U: Ui>(
 }
 
 /// Commands that are available in `Mode::GoTo`.
-fn match_goto<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn match_goto(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     key: KeyEvent,
     last_file: &mut String,
-    controler: &Controler<U>,
 ) {
     match key {
         KeyEvent {
             code: Char('a'), ..
         } => {
             if controler.switch_to_file(last_file.clone()).is_ok() {
-                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE
+                    .name()
+                    .unwrap_or(String::from("*scratch file*"));
             }
         }
         KeyEvent {
@@ -458,22 +458,26 @@ fn match_goto<U: Ui>(
             code: Char('n'), ..
         } => {
             if controler.next_file().is_ok() {
-                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE
+                    .name()
+                    .unwrap_or(String::from("*scratch file*"));
             }
         }
         KeyEvent {
             code: Char('N'), ..
         } => {
             if controler.prev_file().is_ok() {
-                *last_file = ACTIVE_FILE.name().unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE
+                    .name()
+                    .unwrap_or(String::from("*scratch file*"));
             }
         }
         _ => {}
     }
 }
 
-fn move_each<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn move_each(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     direction: Side,
     amount: usize,
 ) {
@@ -488,8 +492,8 @@ fn move_each<U: Ui>(
     });
 }
 
-fn move_each_and_select<U: Ui>(
-    mut editor: MultiCursorEditor<WithHistory, U, File>,
+fn move_each_and_select(
+    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
     direction: Side,
     amount: usize,
 ) {

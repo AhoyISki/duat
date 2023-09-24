@@ -94,7 +94,7 @@ impl VertRuleCfg {
 
     pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
         move || {
-            let reader = ACTIVE_FILE.current();
+            let reader = ACTIVE_FILE.constant;
 
             PALETTE.try_set_form("VertRule", Form::new().grey());
             PALETTE.set_new_ref("UpperVertRule", "VertRule");

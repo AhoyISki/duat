@@ -11,7 +11,7 @@ pub use self::{
     multi_cursor::{Cursors, MultiCursorEditor, NoHistory, WithHistory},
     remapper::Remapper,
 };
-use crate::{data::RwData, ui::{Ui, Area}, widgets::ActiveWidget};
+use crate::{data::RwData, ui::Area, widgets::ActiveWidget};
 
 pub trait InputMethod: Send + Sync + 'static {
     type Widget: ActiveWidget

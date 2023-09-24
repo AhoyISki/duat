@@ -3,8 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use super::InputMethod;
 use crate::{
     data::RwData,
-    ui::{Area, Ui},
-    Controler,
+    ui::{Area},
 };
 
 /// A sequence of characters that should be turned into another

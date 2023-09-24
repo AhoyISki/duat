@@ -1,5 +1,5 @@
-use super::{Area, PushSpecs, Ui};
-use crate::{widgets::Widget, Controler};
+use super::{Area, PushSpecs, Ui, Window};
+use crate::{widgets::Widget};
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -34,20 +34,17 @@ pub struct FileBuilder<'a, U>
 where
     U: Ui,
 {
-    controler: &'a mut Controler<U>,
+    window: &'a mut Window<U>,
     mod_area: U::Area,
 }
 
 impl<'a, U> FileBuilder<'a, U>
 where
-    U: Ui + 'static,
+    U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(controler: &'a mut Controler<U>, mod_area: U::Area) -> Self {
-        Self {
-            controler,
-            mod_area,
-        }
+    pub fn new(window: &'a mut Window<U>, mod_area: U::Area) -> Self {
+        Self { window, mod_area }
     }
 
     /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
@@ -99,17 +96,19 @@ where
         F: Fn() -> bool + 'static,
     {
         let (widget, checker, specs) = builder();
-        let (child, parent) = self.controler.mutate_active_window(|window| {
-            let (child, parent) = window.push(widget, &self.mod_area, checker, specs, true);
+        let (child, parent) = {
+            let (child, parent) = self
+                .window
+                .push(widget, &self.mod_area, checker, specs, true);
 
             if let Some(parent) = &parent {
-                if parent.is_senior_of(&window.files_region) {
-                    window.files_region = parent.clone();
+                if parent.is_senior_of(&self.window.files_region) {
+                    self.window.files_region = parent.clone();
                 }
             }
 
             (child, parent)
-        });
+        };
 
         if let Some(parent) = &parent {
             self.mod_area = parent.clone();
@@ -142,11 +141,7 @@ where
         F: Fn() -> bool + 'static,
     {
         let (widget, checker, specs) = builder();
-        let (child, parent) = self
-            .controler
-            .mutate_active_window(|window| window.push(widget, &area, checker, specs, true));
-
-        (child, parent)
+        self.window.push(widget, &area, checker, specs, true)
     }
 }
 
@@ -154,7 +149,7 @@ pub struct WindowBuilder<'a, U>
 where
     U: Ui,
 {
-    controler: &'a mut Controler<U>,
+    window: &'a mut Window<U>,
     area: U::Area,
 }
 
@@ -163,8 +158,9 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(controler: &'a mut Controler<U>, area: U::Area) -> Self {
-        Self { controler, area }
+    pub fn new(window: &'a mut Window<U>) -> Self {
+        let area = window.files_region().clone();
+        Self { window, area }
     }
 
     /// Pushes a [`Widget<U>`] to the file's area, given a [`Widget<U>`] builder
@@ -213,17 +209,13 @@ where
     /// [`Session`]: crate::session::Session
     pub fn push<F>(
         &mut self,
-        builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
+        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder(self.controler);
-        let (child, parent) = self.controler.mutate_active_window(|window| {
-            let (child, parent) = window.push(widget, &self.area, checker, specs, true);
-
-            (child, parent)
-        });
+        let (widget, checker, specs) = builder();
+        let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
         if let Some(parent) = &parent {
             self.area = parent.clone();
@@ -248,18 +240,14 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<F>(
-        &self,
-        builder: impl FnOnce(&Controler<U>) -> (Widget<U>, F, PushSpecs),
+        &mut self,
+        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
         area: U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder(self.controler);
-        let (child, parent) = self
-            .controler
-            .mutate_active_window(|window| window.push(widget, &area, checker, specs, true));
-
-        (child, parent)
+        let (widget, checker, specs) = builder();
+        self.window.push(widget, &area, checker, specs, true)
     }
 }
