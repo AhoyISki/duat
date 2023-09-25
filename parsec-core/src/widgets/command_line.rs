@@ -17,11 +17,13 @@
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     commands::Command,
+    controls,
     data::RwData,
     input::{Commander, InputMethod},
+    log_info,
     text::{text, Marker, Tag, Text},
     ui::{Area, PushSpecs, Ui},
-    COMMANDS, controls,
+    COMMANDS,
 };
 
 #[derive(Clone)]
@@ -141,7 +143,8 @@ impl PassiveWidget for CommandLine {
         Self::cfg().builder()()
     }
 
-    fn update(&mut self, _area: &impl Area) {}
+    fn update(&mut self, _area: &impl Area) {
+    }
 
     fn text(&self) -> &Text {
         &self.text

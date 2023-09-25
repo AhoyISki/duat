@@ -18,7 +18,7 @@ use parsec_core::{
     forms::{FormFormer, FormPalette},
     position::Point,
     text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}, log_info,
 };
 
 use crate::{
@@ -130,7 +130,7 @@ impl Area {
             let skipped_nl = std::iter::once((None, point.true_char()));
             skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
         } else {
-            iter.nth(target).unwrap_or((None, 0))
+            iter.nth(target).unwrap_or((Some(0), 0))
         };
 
         if info.last_main > point {
