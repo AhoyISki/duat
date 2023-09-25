@@ -1,13 +1,14 @@
 use std::fmt::Display;
 
-use crossterm::event::{KeyCode::*, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode::{*, self}, KeyEvent, KeyModifiers};
 use parsec_core::{
+    controls,
     data::RwData,
     history::History,
-    input::{Cursors, InputMethod, MultiCursorEditor, WithHistory},
+    input::{key, Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Area,
     widgets::{CommandLine, File},
-    CURRENT_FILE, controls,
+    CURRENT_FILE,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -68,12 +69,14 @@ impl InputMethod for Editor {
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
             Mode::Normal => match_normal(editor, key, &mut self.mode),
-            Mode::Command => match_command(editor, key, &mut self.mode),
             Mode::GoTo => {
                 match_goto(editor, key, &mut self.last_file);
                 self.mode = Mode::Normal;
             }
             Mode::View => todo!(),
+            Mode::Command => {
+                unreachable!("The editor is not supposed to be focused if this is the current mode")
+            }
         }
     }
 
@@ -89,7 +92,7 @@ fn match_insert(
     mode: &mut Mode,
 ) {
     match key {
-        KeyEvent { code: Char(ch), .. } => {
+        key!(KeyCode::Char(ch)) => {
             editor.edit_on_each_cursor(|editor| {
                 editor.insert(ch);
             });
@@ -97,7 +100,7 @@ fn match_insert(
                 mover.move_hor(1);
             });
         }
-        KeyEvent { code: Enter, .. } => {
+        key!(KeyCode::Enter) => {
             editor.edit_on_each_cursor(|editor| {
                 editor.insert('\n');
             });
@@ -105,9 +108,7 @@ fn match_insert(
                 mover.move_hor(1);
             });
         }
-        KeyEvent {
-            code: Backspace, ..
-        } => {
+        key!(KeyCode::Backspace) => {
             let mut anchors = Vec::with_capacity(editor.len_cursors());
             editor.move_each_cursor(|mover| {
                 let caret = mover.caret();
@@ -129,7 +130,7 @@ fn match_insert(
                 }
             });
         }
-        KeyEvent { code: Delete, .. } => {
+        key!(KeyCode::Delete) => {
             let mut anchors = Vec::with_capacity(editor.len_cursors());
             editor.move_each_cursor(|mover| {
                 let caret = mover.caret();
@@ -151,39 +152,23 @@ fn match_insert(
                 }
             });
         }
-        KeyEvent {
-            code: Left,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Left, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Left, 1);
         }
-        KeyEvent {
-            code: Right,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Right, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Right, 1);
         }
-        KeyEvent {
-            code: Up,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Up, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Top, 1);
         }
-        KeyEvent {
-            code: Down,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Down, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Bottom, 1);
         }
-        KeyEvent { code: Left, .. } => move_each(editor, Side::Left, 1),
-        KeyEvent { code: Right, .. } => move_each(editor, Side::Right, 1),
-        KeyEvent { code: Up, .. } => move_each(editor, Side::Top, 1),
-        KeyEvent { code: Down, .. } => move_each(editor, Side::Bottom, 1),
-        KeyEvent { code: Esc, .. } => {
+        key!(KeyCode::Left) => move_each(editor, Side::Left, 1),
+        key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
+        key!(KeyCode::Up) => move_each(editor, Side::Top, 1),
+        key!(KeyCode::Down) => move_each(editor, Side::Bottom, 1),
+        key!(KeyCode::Esc) => {
             editor.new_moment();
             *mode = Mode::Normal;
         }
@@ -199,222 +184,64 @@ fn match_normal(
 ) {
     match key {
         ////////// SessionControl commands.
-        KeyEvent {
-            code: Char('c'),
-            modifiers: KeyModifiers::CONTROL,
-            ..
-        } => {
+        key!(KeyCode::Char('c'), KeyModifiers::CONTROL) => {
             controls::quit();
         }
 
         ////////// Movement keys that retain or create selections.
-        KeyEvent {
-            code: Char('H') | Left,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Char('H') | Left, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Left, 1);
         }
-        KeyEvent {
-            code: Char('J') | Down,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Char('J') | Down, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Bottom, 1);
         }
-        KeyEvent {
-            code: Char('K') | Up,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Char('K') | Up, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Top, 1);
         }
-        KeyEvent {
-            code: Char('L') | Right,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
+        key!(KeyCode::Char('L') | Right, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Right, 1);
         }
 
         ////////// Movement keys that get rid of selections.
-        KeyEvent {
-            code: Char('h') | Left,
-            ..
-        } => {
+        key!(KeyCode::Char('h') | Left) => {
             move_each(editor, Side::Left, 1);
         }
-        KeyEvent {
-            code: Char('j') | Down,
-            ..
-        } => {
+        key!(KeyCode::Char('j') | Down) => {
             move_each(editor, Side::Bottom, 1);
         }
-        KeyEvent {
-            code: Char('k') | Up,
-            ..
-        } => {
+        key!(KeyCode::Char('k') | Up) => {
             move_each(editor, Side::Top, 1);
         }
-        KeyEvent {
-            code: Char('l') | Right,
-            ..
-        } => {
+        key!(KeyCode::Char('l') | Right) => {
             move_each(editor, Side::Right, 1);
         }
 
         ////////// Insertion keys.
-        KeyEvent {
-            code: Char('i'), ..
-        } => {
+        key!(KeyCode::Char('i')) => {
             editor.move_each_cursor(|mover| mover.switch_ends());
             *mode = Mode::Insert;
         }
-        KeyEvent {
-            code: Char('a'), ..
-        } => {
+        key!(KeyCode::Char('a')) => {
             editor.move_each_cursor(|mover| mover.set_caret_on_end());
             *mode = Mode::Insert;
         }
-        KeyEvent {
-            code: Char('c'), ..
-        } => {
+        key!(KeyCode::Char('c')) => {
             editor.edit_on_each_cursor(|editor| editor.replace(""));
             editor.move_each_cursor(|mover| mover.unset_anchor());
             *mode = Mode::Insert;
         }
 
         ////////// Other mode changing keys.
-        KeyEvent {
-            code: Char(':'), ..
-        } => {
-            controls::switch_to::<CommandLine>().unwrap();
+        key!(KeyCode::Char(':')) => {
+            if controls::switch_to::<CommandLine>().is_ok() {
+                *mode = Mode::Command;
+            }
         }
-        KeyEvent {
-            code: Char('g'), ..
-        } => *mode = Mode::GoTo,
+        key!(KeyCode::Char('g')) => *mode = Mode::GoTo,
 
         ////////// History manipulation.
-        KeyEvent {
-            code: Char('u'), ..
-        } => editor.undo(),
-        KeyEvent {
-            code: Char('U'), ..
-        } => editor.redo(),
-        _ => {}
-    }
-}
-
-/// Commands that are available in `Mode::Command`.
-fn match_command(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
-    key: KeyEvent,
-    mode: &mut Mode,
-) {
-    match key {
-        KeyEvent {
-            code: Backspace, ..
-        } => {
-            let mut anchors = Vec::with_capacity(editor.len_cursors());
-            editor.move_each_cursor(|mover| {
-                let caret = mover.caret();
-                anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
-                mover.set_anchor();
-                mover.move_hor(-1);
-            });
-            let mut anchors = anchors.into_iter().cycle();
-            editor.edit_on_each_cursor(|editor| {
-                editor.replace("");
-            });
-            editor.move_each_cursor(|mover| {
-                if let Some(Some((anchor, _))) = anchors.next() {
-                    mover.set_anchor();
-                    mover.move_to(anchor);
-                    mover.switch_ends()
-                } else {
-                    mover.unset_anchor();
-                }
-            });
-        }
-        KeyEvent { code: Delete, .. } => {
-            let mut anchors = Vec::with_capacity(editor.len_cursors());
-            editor.move_each_cursor(|mover| {
-                let caret = mover.caret();
-                anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
-                mover.set_anchor();
-                mover.move_hor(1);
-            });
-            let mut anchors = anchors.into_iter().cycle();
-            editor.edit_on_each_cursor(|editor| {
-                editor.replace("");
-            });
-            editor.move_each_cursor(|mover| {
-                if let Some(Some((anchor, _))) = anchors.next() {
-                    mover.set_anchor();
-                    mover.move_to(anchor);
-                    mover.switch_ends()
-                } else {
-                    mover.unset_anchor();
-                }
-            });
-        }
-        KeyEvent { code: Char(ch), .. } => {
-            editor.edit_on_main(|editor| editor.insert(ch));
-            editor.move_main(|mover| mover.move_hor(1));
-        }
-
-        KeyEvent {
-            code: Left,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
-            move_each_and_select(editor, Side::Left, 1);
-        }
-        KeyEvent {
-            code: Right,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
-            move_each_and_select(editor, Side::Right, 1);
-        }
-        KeyEvent {
-            code: Up,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
-            move_each_and_select(editor, Side::Top, 1);
-        }
-        KeyEvent {
-            code: Down,
-            modifiers: KeyModifiers::SHIFT,
-            ..
-        } => {
-            move_each_and_select(editor, Side::Bottom, 1);
-        }
-        KeyEvent { code: Left, .. } => {
-            move_each(editor, Side::Left, 1);
-        }
-        KeyEvent { code: Right, .. } => {
-            move_each(editor, Side::Right, 1);
-        }
-        KeyEvent { code: Up, .. } => {
-            move_each(editor, Side::Top, 1);
-        }
-        KeyEvent { code: Down, .. } => {
-            move_each(editor, Side::Bottom, 1);
-        }
-
-        KeyEvent { code: Esc, .. } => {
-            editor.move_main(|mover| {
-                mover.move_hor(isize::MIN);
-                mover.set_anchor();
-                mover.move_hor(isize::MAX);
-            });
-
-            editor.edit_on_main(|editor| editor.replace(""));
-
-			controls::return_to_file().unwrap();
-        }
+        key!(KeyCode::Char('u')) => editor.undo(),
+        key!(KeyCode::Char('U')) => editor.redo(),
         _ => {}
     }
 }
@@ -426,37 +253,27 @@ fn match_goto(
     last_file: &mut String,
 ) {
     match key {
-        KeyEvent {
-            code: Char('a'), ..
-        } => {
+        key!(KeyCode::Char('a')) => {
             if controls::buffer(last_file.clone()).is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
             }
         }
-        KeyEvent {
-            code: Char('j'), ..
-        } => {
+        key!(KeyCode::Char('j')) => {
             editor.move_main(|mover| mover.move_ver(isize::MAX));
         }
-        KeyEvent {
-            code: Char('k'), ..
-        } => {
+        key!(KeyCode::Char('k')) => {
             editor.move_main(|mover| mover.move_to_coords(0, 0));
         }
-        KeyEvent {
-            code: Char('n'), ..
-        } => {
+        key!(KeyCode::Char('n')) => {
             if controls::next_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
             }
         }
-        KeyEvent {
-            code: Char('N'), ..
-        } => {
+        key!(KeyCode::Char('N')) => {
             if controls::prev_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()

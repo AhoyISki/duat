@@ -19,8 +19,9 @@ use crate::{
     commands::Command,
     data::RwData,
     input::{Commander, InputMethod},
-    text::Text,
-    ui::{Area, PushSpecs, Ui}, COMMANDS,
+    text::{text, Marker, Tag, Text},
+    ui::{Area, PushSpecs, Ui},
+    COMMANDS, controls,
 };
 
 #[derive(Clone)]
@@ -162,17 +163,14 @@ impl ActiveWidget for CommandLine {
     }
 
     fn on_focus(&mut self, _area: &impl Area) {
-        self.text = Text::new(&self.prompt);
+        self.text = text!({ Tag::GhostText(text!({ &*self.prompt.read() })) });
     }
 
     fn on_unfocus(&mut self, _area: &impl Area) {
         let text = std::mem::take(&mut self.text);
 
-        // A '\n' indicates that the command has been "entered".
-        let cmd = text
-            .iter_chars_at(self.prompt.read().chars().count() - 1)
-            .collect::<String>();
-        let _ = COMMANDS.run(cmd);
+        let cmd = text.iter_chars_at(0).collect::<String>();
+        let _ = controls::run(cmd);
     }
 }
 

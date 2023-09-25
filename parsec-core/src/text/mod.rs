@@ -325,6 +325,16 @@ impl TextBuilder {
         self.text.tags.append(text.tags);
     }
 
+    pub fn push_part(&mut self, part: BuilderPart) {
+        match part {
+            BuilderPart::Text(text) => self.push_text(text),
+            BuilderPart::Tag(tag) => {
+                self.push_tag(tag);
+            }
+            BuilderPart::String(string) => self.push_str(string),
+        }
+    }
+
     pub fn clear(&mut self) {
         self.text.clear();
         self.last_form = None;
@@ -373,7 +383,63 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
     (start, end)
 }
 
-pub macro build {
+pub struct AlignCenter;
+pub struct AlignLeft;
+pub struct AlignRight;
+pub struct Ghost(pub Text);
+
+pub enum BuilderPart {
+    Text(Text),
+    Tag(Tag),
+    String(String),
+}
+
+impl From<AlignCenter> for BuilderPart {
+    fn from(_: AlignCenter) -> Self {
+        BuilderPart::Tag(Tag::StartAlignCenter)
+    }
+}
+
+impl From<AlignLeft> for BuilderPart {
+    fn from(_: AlignLeft) -> Self {
+        BuilderPart::Tag(Tag::StartAlignLeft)
+    }
+}
+
+impl From<AlignRight> for BuilderPart {
+    fn from(_: AlignRight) -> Self {
+        BuilderPart::Tag(Tag::StartAlignRight)
+    }
+}
+
+impl From<Ghost> for BuilderPart {
+    fn from(value: Ghost) -> Self {
+        BuilderPart::Tag(Tag::GhostText(value.0))
+    }
+}
+
+impl From<Tag> for BuilderPart {
+    fn from(value: Tag) -> Self {
+        BuilderPart::Tag(value)
+    }
+}
+
+impl From<Text> for BuilderPart {
+    fn from(value: Text) -> Self {
+        BuilderPart::Text(value)
+    }
+}
+
+impl<S> From<S> for BuilderPart
+where
+    S: ToString,
+{
+    fn from(value: S) -> Self {
+        BuilderPart::String(value.to_string())
+    }
+}
+
+pub macro text {
     // Forms
     (@push $builder:expr, [$form:ident]) => {
         use std::sync::LazyLock;
@@ -387,40 +453,28 @@ pub macro build {
         $builder.push_tag(crate::text::Tag::PushForm($form_id))
     },
 
-    // Alignments
-    (@push $builder:expr, (AlignCenter)) => {
-        $builder.push_tag(crate::text::Tag::StartAlignCenter)
-    },
-    (@push $builder:expr, (AlignLeft)) => {
-        $builder.push_tag(crate::text::Tag::StartAlignLeft)
-    },
-    (@push $builder:expr, (AlignRight)) => {
-        $builder.push_tag(crate::text::Tag::StartAlignRight)
-    },
-
-    // Other tags
-    (@push $builder:expr, ($tag:expr)) => {
-        $builder.push_tag($tag)
-    },
-
     // Plain text
-    (@push $builder:expr, $str:expr) => {
-        $builder.push_str($str)
+    (@push $builder:expr, $part:expr) => {
+        let part = BuilderPart::from($part);
+        $builder.push_part(part)
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        build!(@push $builder, $part);
-        build!(@parse $builder, $($parts)*);
+        text!(@push $builder, $part);
+        text!(@parse $builder, $($parts)*);
     }},
     (@parse $builder:expr,) => {},
 
-    ($builder:expr, $($parts:tt)*) => {{
+    ($builder:expr, $($parts:tt)+) => {{
         let builder: &mut TextBuilder = &mut $builder;
-        build!(@parse builder, $($parts)*);
+        text!(@parse builder, $($parts)+);
     }},
-    ($($parts:tt)*) => {{
+    ($($parts:tt)+) => {{
         let mut builder = TextBuilder::new();
-        build!(builder, $($parts)*);
-        builder
-    }}
+        text!(builder, $($parts)+);
+        builder.finish()
+    }},
+    () => {
+        TextBuilder::new()
+    },
 }

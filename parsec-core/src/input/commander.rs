@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use super::{Cursors, InputMethod};
-use crate::{data::RwData, position::Cursor, ui::Area, widgets::CommandLine};
+use super::{key, Cursors, InputMethod, MultiCursorEditor};
+use crate::{controls, data::RwData, log_info, ui::Area, widgets::CommandLine};
 
 #[derive(Clone)]
 pub struct Commander {
@@ -10,9 +10,9 @@ pub struct Commander {
 
 impl Commander {
     pub fn new() -> Self {
-        let mut cursors = Cursors::new();
-        cursors.insert(Cursor::default());
-        Self { cursors }
+        Self {
+            cursors: Cursors::new(),
+        }
     }
 }
 
@@ -26,34 +26,66 @@ impl InputMethod for Commander {
     type Widget = CommandLine;
 
     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
-        match key.code {
-            KeyCode::Backspace => todo!(),
-            KeyCode::Enter => todo!(),
-            KeyCode::Left => todo!(),
-            KeyCode::Right => todo!(),
-            KeyCode::Up => todo!(),
-            KeyCode::Down => todo!(),
-            KeyCode::Home => todo!(),
-            KeyCode::End => todo!(),
-            KeyCode::PageUp => todo!(),
-            KeyCode::PageDown => todo!(),
-            KeyCode::Tab => todo!(),
-            KeyCode::BackTab => todo!(),
-            KeyCode::Delete => todo!(),
-            KeyCode::Insert => todo!(),
-            KeyCode::F(_) => todo!(),
-            KeyCode::Char(_) => todo!(),
-            KeyCode::Null => todo!(),
-            KeyCode::Esc => todo!(),
-            KeyCode::CapsLock => todo!(),
-            KeyCode::ScrollLock => todo!(),
-            KeyCode::NumLock => todo!(),
-            KeyCode::PrintScreen => todo!(),
-            KeyCode::Pause => todo!(),
-            KeyCode::Menu => todo!(),
-            KeyCode::KeypadBegin => todo!(),
-            KeyCode::Media(_) => todo!(),
-            KeyCode::Modifier(_) => todo!(),
+        let mut editor = MultiCursorEditor::no_history(widget, &mut self.cursors, area);
+
+        match key {
+            key!(KeyCode::Backspace) => {
+                editor.move_main(|mover| {
+                    mover.set_anchor();
+                    mover.move_hor(-1);
+                });
+                editor.edit_on_main(|editor| {
+                    editor.replace("");
+                });
+                editor.move_main(|mover| {
+                    mover.unset_anchor();
+                });
+            }
+            key!(KeyCode::Delete) => {
+                editor.move_main(|mover| {
+                    mover.set_anchor();
+                    mover.move_hor(1);
+                });
+                editor.edit_on_main(|editor| {
+                    editor.replace("");
+                });
+                editor.move_main(|mover| {
+                    mover.unset_anchor();
+                });
+            }
+            key!(KeyCode::Char(ch)) => {
+                editor.edit_on_main(|editor| editor.insert(ch));
+                editor.move_main(|mover| mover.move_hor(1));
+            }
+
+            key!(KeyCode::Left) => {
+                editor.move_main(|mover| {
+                    mover.unset_anchor();
+                    mover.move_hor(-1)
+                });
+            }
+            key!(KeyCode::Right) => {
+                editor.move_main(|mover| {
+                    mover.unset_anchor();
+                    mover.move_hor(1)
+                });
+            }
+
+            key!(KeyCode::Esc) => {
+                editor.move_main(|mover| {
+                    mover.move_hor(isize::MIN);
+                    mover.set_anchor();
+                    mover.move_hor(isize::MAX);
+                });
+
+                editor.edit_on_main(|editor| editor.replace(""));
+
+                controls::return_to_file().unwrap();
+            }
+            key!(KeyCode::Enter) => {
+                controls::return_to_file().unwrap();
+            }
+            _ => {}
         }
     }
 

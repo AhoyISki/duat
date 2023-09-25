@@ -1,5 +1,4 @@
 use std::{
-    any::TypeId,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -14,7 +13,6 @@ use crate::{
     commands::Command,
     data::RwData,
     input::{Editor, InputMethod},
-    log_info,
     text::PrintCfg,
     ui::{build_file, Area, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{

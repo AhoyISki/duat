@@ -2,12 +2,13 @@ use std::{collections::HashMap, ops::Range};
 
 use any_rope::{Measurable, Rope};
 
-use self::{ranges::TagRange, types::Toggle};
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{RawTag, Tag},
 };
+use self::{ranges::TagRange, types::Toggle};
 use super::Text;
+use crate::log_info;
 
 mod ranges;
 mod types;
@@ -168,7 +169,13 @@ impl Tags {
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
-        let (start, t_or_s) = self.get_from_pos(old.start).unwrap();
+        // In case the rope is empty, just insert a regular skip. 
+        let Some((start, t_or_s)) = self.get_from_pos(old.start) else {
+            let skip = TagOrSkip::Skip(new_end - old.end);
+            self.rope.insert(self.rope.measure(), skip, usize::cmp);
+            return
+        };
+
         let new = old.start..new_end;
 
         let removal_start = start.min(old.start);

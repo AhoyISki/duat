@@ -1,7 +1,7 @@
 use parsec_core::{
     data::FileReader,
     forms::Form,
-    text::{build, Text},
+    text::{text, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget},
     CURRENT_FILE, PALETTE,
@@ -151,13 +151,11 @@ impl PassiveWidget for VertRule {
 
             let chars = self.sep_char.chars();
 
-            let builder = build!(
+            text!(
                 [UpperVertRule] { form_string(chars[0], upper) }
                 [VertRule] { form_string(chars[1], middle) }
                 [LowerVertRule] { form_string(chars[2], lower) }
-            );
-
-            builder.finish()
+            )
         });
     }
 

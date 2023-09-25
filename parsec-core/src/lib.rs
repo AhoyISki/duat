@@ -37,9 +37,9 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 // Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+static COMMANDS: Commands = Commands::new();
 
 // Public control objects.
-pub static COMMANDS: Commands = Commands::new();
 pub static PALETTE: FormPalette = FormPalette::new();
 pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
@@ -49,6 +49,10 @@ pub mod controls {
     use std::sync::atomic::Ordering;
 
     use crate::{commands::CommandErr, widgets::ActiveWidget, BREAK_LOOP, COMMANDS, SHOULD_QUIT};
+
+    pub fn run(command: impl ToString) -> Result<Option<String>, CommandErr> {
+        COMMANDS.run(command)
+    }
 
     pub fn quit() {
         BREAK_LOOP.store(true, Ordering::Release);

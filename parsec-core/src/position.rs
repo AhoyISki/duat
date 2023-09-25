@@ -104,7 +104,7 @@ impl std::fmt::Display for Point {
 
 /// A cursor in the text file. This is an editing cursor, not a
 /// printing cursor.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Cursor {
     /// Current position of the cursor in the file.
     pub(crate) caret: Point,

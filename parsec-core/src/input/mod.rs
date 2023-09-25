@@ -3,7 +3,7 @@ mod default;
 mod multi_cursor;
 mod remapper;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, KeyModifiers};
 
 pub use self::{
     commander::Commander,
@@ -31,5 +31,15 @@ pub trait InputMethod: Send + Sync + 'static {
 
     fn cursors(&self) -> Option<&Cursors> {
         None
+    }
+}
+
+pub macro key {
+    ($code:pat) => {
+        KeyEvent { code: $code, modifiers: KeyModifiers::NONE, .. }
+    },
+
+    ($code:pat, $modifiers:pat) => {
+        crossterm::event::KeyEvent { code: $code, modifiers: $modifiers, .. }
     }
 }

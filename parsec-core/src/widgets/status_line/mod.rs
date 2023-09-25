@@ -376,15 +376,16 @@ pub macro status_cfg {
         use crate::{
             PALETTE,
             input::InputMethod,
-            text::build,
+            text::{text, Tag},
             ui::PushSpecs,
             widgets::{File, StatusLineCfg},
         };
 
         let text_fn = |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
-            let mut builder = build![(AlignRight)];
+            let mut builder = text!();
+            text!(builder, { Tag::StartAlignRight });
             status_cfg!(@text builder, file, input, $($parts)*);
-            build!(builder, "\n");
+            text!(builder, "\n");
             builder.finish()
         };
 

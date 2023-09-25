@@ -85,20 +85,6 @@ impl<'a> Iter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
-            RawTag::ConcealStart(_) => {
-                self.conceals += 1;
-                ControlFlow::Continue(())
-            }
-            RawTag::ConcealEnd(_) => {
-                self.conceals = self.conceals.saturating_sub(1);
-                if self.conceals == 0 {
-                    self.pos = self.pos.max(pos);
-                    self.line = self.text.rope.char_to_line(pos);
-                    self.chars = self.text.rope.chars_at(self.pos);
-                }
-
-                ControlFlow::Continue(())
-            }
             RawTag::GhostText((_, id)) if self.print_ghosts => {
                 let text = self.text.tags.texts.get(&id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
@@ -114,7 +100,22 @@ impl<'a> Iter<'a> {
                 self.backup_iter = Some((pos, chars, tags));
                 ControlFlow::Continue(())
             }
+            RawTag::GhostText(_) => ControlFlow::Continue(()),
 
+            RawTag::ConcealStart(_) => {
+                self.conceals += 1;
+                ControlFlow::Continue(())
+            }
+            RawTag::ConcealEnd(_) => {
+                self.conceals = self.conceals.saturating_sub(1);
+                if self.conceals == 0 {
+                    self.pos = self.pos.max(pos);
+                    self.line = self.text.rope.char_to_line(pos);
+                    self.chars = self.text.rope.chars_at(self.pos);
+                }
+
+                ControlFlow::Continue(())
+            }
             RawTag::Concealed(skip) => {
                 let pos = pos.saturating_add(skip);
                 *self = Iter::new_at(self.text, pos);
@@ -244,21 +245,6 @@ impl<'a> RevIter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
-            RawTag::ConcealStart(_) => {
-                self.conceals = self.conceals.saturating_sub(1);
-                if self.conceals == 0 {
-                    self.pos = self.pos.min(pos);
-                    self.line = self.text.rope.char_to_line(self.pos);
-                    self.chars = self.text.rope.chars_at(self.pos).reversed();
-                }
-
-                ControlFlow::Continue(())
-            }
-            RawTag::ConcealEnd(_) => {
-                self.conceals += 1;
-
-                ControlFlow::Continue(())
-            }
             RawTag::GhostText((_, id)) if self.print_ghosts => {
                 let text = self.text.tags.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
@@ -273,6 +259,23 @@ impl<'a> RevIter<'a> {
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.backup_iter = Some((pos, chars, tags));
+
+                ControlFlow::Continue(())
+            }
+            RawTag::GhostText(_) => ControlFlow::Continue(()),
+
+            RawTag::ConcealStart(_) => {
+                self.conceals = self.conceals.saturating_sub(1);
+                if self.conceals == 0 {
+                    self.pos = self.pos.min(pos);
+                    self.line = self.text.rope.char_to_line(self.pos);
+                    self.chars = self.text.rope.chars_at(self.pos).reversed();
+                }
+
+                ControlFlow::Continue(())
+            }
+            RawTag::ConcealEnd(_) => {
+                self.conceals += 1;
 
                 ControlFlow::Continue(())
             }

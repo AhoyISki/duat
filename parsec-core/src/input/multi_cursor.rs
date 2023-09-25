@@ -5,11 +5,10 @@ use crate::{
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    ui::{Area, Ui},
-    widgets::ActiveWidget,
+    widgets::ActiveWidget, ui::Area,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Cursors {
     list: Vec<Cursor>,
     main: usize,
