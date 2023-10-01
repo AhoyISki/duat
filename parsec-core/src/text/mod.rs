@@ -127,7 +127,7 @@ impl Text {
             let pos_list = [
                 (start, start_tag),
                 (end, end_tag),
-                (cursor.caret().true_char(), caret_tag),
+                (cursor.caret().char(), caret_tag),
             ];
 
             let no_selection = if start == end { 2 } else { 0 };

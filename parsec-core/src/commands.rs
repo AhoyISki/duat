@@ -172,7 +172,7 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::data::RwData;
+use crate::{data::RwData, BREAK_LOOP, SHOULD_QUIT};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -554,11 +554,11 @@ impl Command {
         caller: &str,
         flags: &Flags,
         args: &mut impl Iterator<Item = &'a str>,
-    ) -> Result<Option<String>, CommandErr> {
+    ) -> Result<Option<String>, Error> {
         if self.callers.iter().any(|name| name == caller) {
-            (self.f.write())(flags, args).map_err(CommandErr::Failed)
+            (self.f.write())(flags, args).map_err(Error::Failed)
         } else {
-            Err(CommandErr::NotFound(String::from(caller)))
+            Err(Error::NotFound(String::from(caller)))
         }
     }
 
@@ -672,7 +672,7 @@ impl Commands {
     /// assert!(&*my_var.read() == "😿");
     /// # }
     /// ```
-    pub fn run(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
+    pub fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
         self.0.read().run(command)
     }
 
@@ -710,7 +710,7 @@ impl Commands {
     /// assert!(result == "The caller \"cap\" already exists.");
     /// # }
     /// ```
-    pub fn try_add(&self, command: Command) -> Result<(), CommandErr> {
+    pub fn try_add(&self, command: Command) -> Result<(), Error> {
         self.0.write().try_add(command)
     }
 
@@ -734,7 +734,7 @@ impl Commands {
 
             let alias = {
                 let inner = inner.clone();
-                Command::new(vec!["alias"], move |flags, args| {
+                Command::new(["alias"], move |flags, args| {
                     if !flags.is_empty() {
                         Err(String::from(
                             "An alias cannot take any flags, try moving them after the command, \
@@ -751,6 +751,16 @@ impl Commands {
                 })
             };
 
+            let quit = {
+                Command::new(["quit", "q"], move |_, _| {
+                    BREAK_LOOP.store(true, std::sync::atomic::Ordering::Relaxed);
+                    SHOULD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
+
+                    Ok(None)
+                })
+            };
+
+            inner.write().try_add(quit).unwrap();
             inner.write().try_add(alias).unwrap();
 
             inner
@@ -766,7 +776,7 @@ impl Commands {
         &self,
         alias: impl ToString,
         command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, CommandErr> {
+    ) -> Result<Option<String>, Error> {
         self.0.write().try_alias(alias, command)
     }
 }
@@ -778,13 +788,13 @@ struct InnerCommands {
 
 impl InnerCommands {
     /// Tries to add the given [`Command`] to the list.
-    fn try_add(&mut self, command: Command) -> Result<(), CommandErr> {
+    fn try_add(&mut self, command: Command) -> Result<(), Error> {
         let mut new_callers = command.callers().iter();
 
         let commands = self.list.iter();
         for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
             if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(CommandErr::AlreadyExists(caller.clone()));
+                return Err(Error::AlreadyExists(caller.clone()));
             }
         }
 
@@ -794,12 +804,12 @@ impl InnerCommands {
     }
 
     /// Tries to execute a command or alias with the given argument.
-    pub fn run(&self, command: impl ToString) -> Result<Option<String>, CommandErr> {
+    pub fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
         let command = command.to_string();
         let caller = command
             .split_whitespace()
             .next()
-            .ok_or(CommandErr::Empty)?
+            .ok_or(Error::Empty)?
             .to_string();
 
         let command = self.aliases.get(&caller).cloned().unwrap_or(command);
@@ -810,12 +820,12 @@ impl InnerCommands {
 
         for cmd in &self.list {
             let result = cmd.try_exec(caller, &flags, &mut args);
-            let Err(CommandErr::NotFound(_)) = result else {
+            let Err(Error::NotFound(_)) = result else {
                 return result;
             };
         }
 
-        Err(CommandErr::NotFound(String::from(caller)))
+        Err(Error::NotFound(String::from(caller)))
     }
 
     /// Tries to alias a full command (caller, flags, and arguments) to an
@@ -824,14 +834,14 @@ impl InnerCommands {
         &mut self,
         alias: impl ToString,
         command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, CommandErr> {
+    ) -> Result<Option<String>, Error> {
         let alias = alias.to_string();
         let mut command = command.into_iter();
 
         if alias.split_whitespace().count() != 1 {
-            return Err(CommandErr::NotSingleWord(alias));
+            return Err(Error::NotSingleWord(alias));
         }
-        let caller = String::from(command.next().ok_or(CommandErr::Empty)?);
+        let caller = String::from(command.next().ok_or(Error::Empty)?);
 
         let mut callers = self.list.iter().flat_map(|cmd| cmd.callers.iter());
 
@@ -840,7 +850,7 @@ impl InnerCommands {
                 .aliases
                 .insert(alias, caller + command.collect::<String>().as_str()))
         } else {
-            Err(CommandErr::NotFound(caller))
+            Err(Error::NotFound(caller))
         }
     }
 }
@@ -907,7 +917,7 @@ pub fn split_flags<'a>(
 
 /// An failure in executing or adding a [`Command`].
 #[derive(Debug)]
-pub enum CommandErr {
+pub enum Error {
     NotSingleWord(String),
     AlreadyExists(String),
     NotFound(String),
@@ -915,22 +925,22 @@ pub enum CommandErr {
     Empty,
 }
 
-impl std::fmt::Display for CommandErr {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandErr::NotSingleWord(caller) => {
+            Error::NotSingleWord(caller) => {
                 write!(f, "The caller \"{caller}\" is not a single word")
             }
-            CommandErr::AlreadyExists(caller) => {
+            Error::AlreadyExists(caller) => {
                 write!(f, "The caller \"{caller}\" already exists.")
             }
-            CommandErr::NotFound(caller) => {
+            Error::NotFound(caller) => {
                 write!(f, "The caller \"{caller}\" was not found.")
             }
-            CommandErr::Failed(failure) => f.write_str(failure),
-            CommandErr::Empty => f.write_str("No caller supplied."),
+            Error::Failed(failure) => f.write_str(failure),
+            Error::Empty => f.write_str("No caller supplied."),
         }
     }
 }
 
-impl std::error::Error for CommandErr {}
+impl std::error::Error for Error {}

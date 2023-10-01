@@ -5,7 +5,8 @@ use crate::{
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    widgets::ActiveWidget, ui::Area,
+    ui::Area,
+    widgets::ActiveWidget,
 };
 
 #[derive(Clone, Debug)]
@@ -59,7 +60,7 @@ impl Cursors {
     }
 
     pub(crate) fn clear(&mut self) {
-        self.list.clear()
+        self.list = vec![Cursor::default()]
     }
 }
 
@@ -280,11 +281,12 @@ where
         self.history = editor.history;
 
         for cursor in self.cursors.list.iter_mut().skip(index + 1) {
-            cursor
-                .assoc_index
-                .as_mut()
-                .map(|i| i.saturating_add_signed(edit_accum.changes));
+            if let Some(assoc_index) = &mut cursor.assoc_index {
+                *assoc_index = assoc_index.saturating_add_signed(edit_accum.changes);
+            }
+
             cursor.caret.calibrate(edit_accum.chars, widget.text());
+
             if let Some(anchor) = cursor.anchor.as_mut() {
                 anchor.calibrate(edit_accum.chars, widget.text())
             }
@@ -415,19 +417,22 @@ impl<'a, 'b, 'c, 'd> Editor<'a, 'b, 'c, 'd> {
         self.edit(change);
 
         if let Some(anchor) = &mut self.cursor.anchor {
-            if anchor.true_char() > self.cursor.caret.true_char() {
+            if *anchor >= self.cursor.caret {
                 *anchor = Point::new(end, self.text);
-                return;
+            } else {
+                self.cursor.caret = Point::new(end, self.text);
+            }
+        } else {
+            self.cursor.caret = Point::new(end, self.text);
+            if end != start {
+                self.cursor.anchor = Some(Point::new(start, self.text));
             }
         }
-
-        self.cursor.caret = Point::new(end, self.text);
-        self.cursor.anchor = Some(Point::new(start, self.text));
     }
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.caret.true_char()..self.cursor.caret.true_char();
+        let range = self.cursor.caret.char()..self.cursor.caret.char();
         let change = Change::new(edit.to_string(), range, self.text);
         let (added_end, taken_end) = (change.added_end(), change.taken_end());
 
@@ -436,8 +441,10 @@ impl<'a, 'b, 'c, 'd> Editor<'a, 'b, 'c, 'd> {
         let ch_diff = added_end as isize - taken_end as isize;
 
         if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor > self.cursor.caret {
-                anchor.calibrate(ch_diff, self.text);
+            match (*anchor).cmp(&self.cursor.caret) {
+                Ordering::Less => self.cursor.caret.calibrate(ch_diff, self.text),
+                Ordering::Greater => anchor.calibrate(ch_diff, self.text),
+                Ordering::Equal => {}
             }
         }
     }

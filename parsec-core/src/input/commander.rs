@@ -80,9 +80,11 @@ impl InputMethod for Commander {
 
                 editor.edit_on_main(|editor| editor.replace(""));
 
+				self.cursors = Cursors::default();
                 controls::return_to_file().unwrap();
             }
             key!(KeyCode::Enter) => {
+				self.cursors = Cursors::default();
                 controls::return_to_file().unwrap();
             }
             _ => {}

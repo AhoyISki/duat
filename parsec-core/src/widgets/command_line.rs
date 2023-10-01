@@ -148,6 +148,15 @@ impl PassiveWidget for CommandLine {
     fn text(&self) -> &Text {
         &self.text
     }
+
+    fn print(&mut self, area: &impl Area)
+    where
+        Self: Sized,
+    {
+        area.print(self.text(), self.print_cfg(), &crate::PALETTE)
+    }
+
+    
 }
 
 impl ActiveWidget for CommandLine {

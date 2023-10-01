@@ -375,8 +375,8 @@ where
                 .to_string_lossy()
                 .to_string();
 
-            let windows = windows.read();
-            let Some((window_index, entry)) = windows
+            let read_windows = windows.read();
+            let Some((window_index, entry)) = read_windows
                 .iter()
                 .enumerate()
                 .flat_map(window_index_widget)
@@ -392,7 +392,11 @@ where
                 return Ok(Some(format!("Created {file}")));
             };
 
-            switch_widget(&entry, &windows, window_index);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+            });
 
             Ok(Some(format!("Switched to {}.", file_name(&entry))))
         })
@@ -401,7 +405,7 @@ where
     let buffer = {
         let windows = session.windows.clone();
 
-        Command::new(["edit", "e"], move |_, args| {
+        Command::new(["buffer", "b"], move |_, args| {
             let Some(file) = args.next() else {
                 return Err(String::from("No file to edit supplied"));
             };
@@ -413,8 +417,8 @@ where
                 .to_string_lossy()
                 .to_string();
 
-            let windows = windows.read();
-            let (window_index, entry) = windows
+            let read_windows = windows.read();
+            let (window_index, entry) = read_windows
                 .iter()
                 .enumerate()
                 .flat_map(window_index_widget)
@@ -425,7 +429,11 @@ where
                 })
                 .ok_or(format!("No open files with the name \"{name}\""))?;
 
-            switch_widget(&entry, &windows, window_index);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+            });
 
             Ok(Some(format!("Switched to {}.", file_name(&entry))))
         })
@@ -440,17 +448,22 @@ where
                 return Err(String::from("No widget to switch to was supplied."));
             };
 
-            let windows = windows.read();
+            let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
             // TODO: Make it prioritize file bound widgets.
-            let (new_window, entry) = iter_around(&windows, window_index, 0)
+            let (new_window, entry) = iter_around(&read_windows, window_index, 0)
                 .filter(|(_, (widget, _))| widget.as_active().is_some())
                 .find(|(_, (widget, _))| widget.widget_type() == widget_type)
                 .ok_or(format!("No widget of type {widget_type} found."))?;
 
-            switch_widget(&entry, &windows, window_index);
-            current_window.store(new_window, Ordering::Release);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            let current_window = current_window.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+                current_window.store(new_window, Ordering::Release);
+            });
 
             Ok(Some(format!("Switched to {widget_type}.")))
         })
@@ -461,20 +474,20 @@ where
         let current_window = session.current_window.clone();
 
         Command::new(["next-file"], move |flags, _| {
-            let windows = windows.read();
+            let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
-            let widget_index = windows[window_index]
+            let widget_index = read_windows[window_index]
                 .widgets()
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
                 .unwrap();
 
             let (new_window, entry) = if flags.unit("global") {
-                iter_around(&windows, window_index, widget_index)
+                iter_around(&read_windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()
             } else {
-                let slice = &windows[window_index..=window_index];
+                let slice = &read_windows[window_index..=window_index];
                 let (_, entry) = iter_around(slice, 0, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap();
@@ -482,8 +495,13 @@ where
                 (window_index, entry)
             };
 
-            switch_widget(&entry, &windows, window_index);
-            current_window.store(new_window, Ordering::Release);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            let current_window = current_window.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+                current_window.store(new_window, Ordering::Release);
+            });
 
             Ok(Some(format!("Switched to {}.", file_name(&entry))))
         })
@@ -494,20 +512,20 @@ where
         let current_window = session.current_window.clone();
 
         Command::new(["prev-file"], move |flags, _| {
-            let windows = windows.read();
+            let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
-            let widget_index = windows[window_index]
+            let widget_index = read_windows[window_index]
                 .widgets()
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
                 .unwrap();
 
             let (new_window, entry) = if flags.unit("global") {
-                iter_around_rev(&windows, window_index, widget_index)
+                iter_around_rev(&read_windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()
             } else {
-                let slice = &windows[window_index..=window_index];
+                let slice = &read_windows[window_index..=window_index];
                 let (_, entry) = iter_around_rev(slice, 0, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap();
@@ -515,8 +533,13 @@ where
                 (window_index, entry)
             };
 
-            switch_widget(&entry, &windows, window_index);
-            current_window.store(new_window, Ordering::Release);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            let current_window = current_window.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+                current_window.store(new_window, Ordering::Release);
+            });
 
             Ok(Some(format!("Switched to {}.", file_name(&entry))))
         })
@@ -527,18 +550,23 @@ where
         let current_window = session.current_window.clone();
 
         Command::new(["return-to-file"], move |_, _| {
-            let windows = windows.read();
+            let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
 
-            let (new_window, entry) = windows
+            let (new_window, entry) = read_windows
                 .iter()
                 .enumerate()
                 .flat_map(window_index_widget)
                 .find(|(_, (widget, _))| CURRENT_FILE.file_ptr_eq(widget))
                 .unwrap();
 
-            switch_widget(&entry, &windows, window_index);
-            current_window.store(new_window, Ordering::Release);
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            let current_window = current_window.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+                current_window.store(new_window, Ordering::Release);
+            });
 
             Ok(Some(format!("Returned to {}.", file_name(&entry))))
         })
@@ -618,13 +646,16 @@ fn iter_around_rev<U: Ui>(
         )
 }
 
-fn switch_widget<U: Ui>(entry: &(&Widget<U>, &U::Area), windows: &[Window<U>], window: usize) {
+fn switch_widget<U: Ui>(entry: &(Widget<U>, U::Area), windows: &[Window<U>], window: usize) {
     let (widget, area) = entry;
 
-    windows[window]
+    if let Some((widget, area)) = windows[window]
         .widgets()
         .find(|(widget, _)| CURRENT_WIDGET.widget_ptr_eq(widget))
-        .inspect(|(widget, area)| widget.on_unfocus(area));
+    {
+        widget.on_unfocus(area);
+        widget.update_and_print(area);
+    }
 
     let (active, input) = widget.as_active().unwrap();
     CURRENT_WIDGET.set(active.clone(), input.clone());
@@ -636,6 +667,7 @@ fn switch_widget<U: Ui>(entry: &(&Widget<U>, &U::Area), windows: &[Window<U>], w
 
     area.set_as_active();
     widget.on_focus(area);
+    widget.update_and_print(area);
 }
 
 fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {

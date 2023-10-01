@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crossterm::event::{KeyCode::{*, self}, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    KeyCode::{self, *},
+    KeyEvent, KeyModifiers,
+};
 use parsec_core::{
     controls,
     data::RwData,
@@ -82,6 +85,13 @@ impl InputMethod for Editor {
 
     fn cursors(&self) -> Option<&Cursors> {
         Some(&self.cursors)
+    }
+
+    fn on_focus(&mut self, _area: &impl Area)
+    where
+        Self: Sized,
+    {
+        self.mode = Mode::Normal
     }
 }
 

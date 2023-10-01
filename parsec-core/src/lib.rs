@@ -48,9 +48,9 @@ pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
 pub mod controls {
     use std::sync::atomic::Ordering;
 
-    use crate::{commands::CommandErr, widgets::ActiveWidget, BREAK_LOOP, COMMANDS, SHOULD_QUIT};
+    use crate::{commands::Error, widgets::ActiveWidget, BREAK_LOOP, COMMANDS, SHOULD_QUIT};
 
-    pub fn run(command: impl ToString) -> Result<Option<String>, CommandErr> {
+    pub fn run(command: impl ToString) -> Result<Option<String>, Error> {
         COMMANDS.run(command)
     }
 
@@ -59,45 +59,43 @@ pub mod controls {
         SHOULD_QUIT.store(true, Ordering::Release);
     }
 
-    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, CommandErr> {
+    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, Error> {
         COMMANDS.run(format!("switch-to {}", stringify!(W)))
     }
 
-    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, CommandErr> {
+    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, Error> {
         COMMANDS.run(format!("buffer {}", file.as_ref()))
     }
 
-    pub fn next_file() -> Result<Option<String>, CommandErr> {
+    pub fn next_file() -> Result<Option<String>, Error> {
         COMMANDS.run("next-file")
     }
 
-    pub fn prev_file() -> Result<Option<String>, CommandErr> {
+    pub fn prev_file() -> Result<Option<String>, Error> {
         COMMANDS.run("prev-file")
     }
 
-    pub fn return_to_file() -> Result<Option<String>, CommandErr> {
+    pub fn return_to_file() -> Result<Option<String>, Error> {
         COMMANDS.run("return-to-file")
     }
 }
 
 /// Internal macro used to log information.
-pub macro log_info {
-    ($($text:tt)*) => {
-        use std::{fs, io::Write, time::Instant};
-        let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-        let mut text = format!($($text)*);
-        if text.lines().count() > 1 {
-            let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
-            let nl_indices: Vec<usize> = chars.collect();
-            for index in nl_indices.iter().rev() {
-                text.insert_str(index + 1, "  ");
-            }
-
-            let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
-            write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
-        } else {
-            let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
-            write!(log, "\nat {:.4?}: {text}", duration).unwrap();
+pub macro log_info($($text:tt)*) {{
+    use std::{fs, io::Write, time::Instant};
+    let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+    let mut text = format!($($text)*);
+    if text.lines().count() > 1 {
+        let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
+        let nl_indices: Vec<usize> = chars.collect();
+        for index in nl_indices.iter().rev() {
+            text.insert_str(index + 1, "  ");
         }
+
+        let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
+        write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
+    } else {
+        let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
+        write!(log, "\nat {:.4?}: {text}", duration).unwrap();
     }
-}
+}}

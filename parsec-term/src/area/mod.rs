@@ -109,14 +109,14 @@ impl Area {
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
-        let inclusive_pos = point.true_char() + 1;
+        let inclusive_pos = point.char() + 1;
         let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), self.width(), cfg)
             .filter_map(|(caret, item)| caret.wrap.then_some(item))
             .peekable();
 
         let nl_on_point_was_concealed = iter
             .peek()
-            .is_some_and(|item| item.line < point.true_line() && point.true_col() == 0);
+            .is_some_and(|item| item.line < point.line() && point.col() == 0);
 
         let mut iter = iter.map(|item| item.pos);
 
@@ -127,7 +127,7 @@ impl Area {
         };
 
         let first = if nl_on_point_was_concealed {
-            let exact = ExactPos::from_real(point.true_char());
+            let exact = ExactPos::from_real(point.char());
             let skipped_nl = std::iter::once(exact);
             skipped_nl
                 .chain(iter)
@@ -163,7 +163,7 @@ impl Area {
         };
 
         let (line_start, start, end) = {
-            let inclusive_pos = point.true_char() + 1;
+            let inclusive_pos = point.char() + 1;
             let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg).scan(
                 false,
                 |wrapped, (caret, item)| {

@@ -164,7 +164,6 @@ where
     fn on_unfocus(&self, area: &U::Area);
 }
 
-#[derive(Clone)]
 struct InnerPassiveWidget<W>
 where
     W: PassiveWidget,
@@ -203,7 +202,18 @@ where
     }
 }
 
-#[derive(Clone)]
+impl<W> Clone for InnerPassiveWidget<W>
+where
+    W: PassiveWidget,
+{
+    fn clone(&self) -> Self {
+        Self {
+            widget: self.widget.clone(),
+            dyn_widget: self.dyn_widget.clone(),
+        }
+    }
+}
+
 struct InnerActiveWidget<W, I>
 where
     W: ActiveWidget,
@@ -271,11 +281,28 @@ where
     }
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
-        self.widget.write().on_focus(area)
+        self.input.mutate(|input| input.on_focus(area));
+        self.widget.mutate(|widget| widget.on_focus(area));
     }
 
     fn on_unfocus(&self, area: &<U as Ui>::Area) {
-        self.widget.write().on_unfocus(area)
+        self.input.mutate(|input| input.on_unfocus(area));
+        self.widget.mutate(|widget| widget.on_unfocus(area));
+    }
+}
+
+impl<W: Clone, I: Clone> Clone for InnerActiveWidget<W, I>
+where
+    W: ActiveWidget,
+    I: InputMethod<Widget = W>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            widget: self.widget.clone(),
+            dyn_widget: self.dyn_widget.clone(),
+            input: self.input.clone(),
+            dyn_input: self.dyn_input.clone(),
+        }
     }
 }
 
@@ -284,8 +311,20 @@ pub enum Widget<U>
 where
     U: Ui,
 {
-    Passive(Box<dyn PassiveWidgetHolder<U>>),
-    Active(Box<dyn ActiveWidgetHolder<U>>),
+    Passive(Arc<dyn PassiveWidgetHolder<U>>),
+    Active(Arc<dyn ActiveWidgetHolder<U>>),
+}
+
+impl<U> Clone for Widget<U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Passive(widget) => Self::Passive(widget.clone()),
+            Self::Active(widget) => Self::Active(widget.clone()),
+        }
+    }
 }
 
 impl<U> Widget<U>
@@ -304,7 +343,7 @@ where
             dyn_widget,
         };
 
-        Widget::Passive(Box::new(holder_widget))
+        Widget::Passive(Arc::new(holder_widget))
     }
 
     pub fn active<W, I>(widget: W, input: RwData<I>) -> Self
@@ -324,7 +363,7 @@ where
             dyn_input: RwData::new_unsized::<I>(input_data),
         };
 
-        Widget::Active(Box::new(holder_widget))
+        Widget::Active(Arc::new(holder_widget))
     }
 
     pub fn update_and_print(&self, area: &U::Area) {

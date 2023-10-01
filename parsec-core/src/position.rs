@@ -9,8 +9,8 @@ use crate::{
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
-    byte: usize,
     pos: usize,
+    byte: usize,
     col: usize,
     line: usize,
 }
@@ -18,8 +18,8 @@ pub struct Point {
 impl Point {
     pub fn new(pos: usize, text: &Text) -> Self {
         Point {
-            byte: text.char_to_byte(pos),
             pos,
+            byte: text.char_to_byte(pos),
             col: {
                 let line = text.char_to_line(pos);
                 pos - text.line_to_char(line)
@@ -44,54 +44,25 @@ impl Point {
         *self = Point::new(char, text);
     }
 
-    /// Returns the byte (relative to the beginning of the file),
-    /// indexed at 1. Intended only for displaying by the end
-    /// user. For a 0 indexed byte, see [true_byte()][Pos::true_byte].
-    pub fn byte(&self) -> usize {
-        self.byte + 1
-    }
-
-    /// Returns the char index (relative to the beginning of the
-    /// file). Indexed at 1. Intended only for displaying by the
-    /// end user. For a 0 indexed char index, see
-    /// [true_char()](Self::true_char()).
-    pub fn char(&self) -> usize {
-        self.pos + 1
-    }
-
-    /// Returns the column, indexed at 1. Intended only for displaying
-    /// by the end user. For a 0 indexed column, see
-    /// [true_col()](Self::true_col()).
-    pub fn col(&self) -> usize {
-        self.col + 1
-    }
-
-    /// Returns the line of self. Indexed at 1. Intended only for
-    /// displaying by the end user. For a 0 indexed line, see
-    /// [true_row()](Self::true_row()).
-    pub fn line(&self) -> usize {
-        self.line + 1
-    }
-
     /// Returns the byte (relative to the beginning of the file) of
     /// self. Indexed at 0.
-    pub fn true_byte(&self) -> usize {
+    pub fn byte(&self) -> usize {
         self.byte
     }
 
     /// Returns the char index (relative to the beginning of the
     /// file). Indexed at 0.
-    pub fn true_char(&self) -> usize {
+    pub fn char(&self) -> usize {
         self.pos
     }
 
     /// Returns the column. Indexed at 0.
-    pub fn true_col(&self) -> usize {
+    pub fn col(&self) -> usize {
         self.col
     }
 
     /// Returns the line. Indexed at 0.
-    pub fn true_line(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.line
     }
 }

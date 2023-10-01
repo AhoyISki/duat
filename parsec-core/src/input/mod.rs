@@ -32,6 +32,18 @@ pub trait InputMethod: Send + Sync + 'static {
     fn cursors(&self) -> Option<&Cursors> {
         None
     }
+
+    fn on_focus(&mut self, _area: &impl Area)
+    where
+        Self: Sized,
+    {
+    }
+
+    fn on_unfocus(&mut self, _area: &impl Area)
+    where
+        Self: Sized,
+    {
+    }
 }
 
 pub macro key {
