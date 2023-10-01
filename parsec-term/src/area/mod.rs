@@ -267,18 +267,6 @@ impl ui::Area for Area {
             cursor::Hide
         );
 
-        if text.len_chars() == 0 {
-            for y in coords.tl.y..coords.br.y {
-                clear_line(
-                    Coord::new(coords.tl.x, coords.br.y - y),
-                    coords,
-                    0,
-                    &mut stdout,
-                );
-            }
-            return;
-        }
-
         let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first) {
             let cfg = IterCfg::new(cfg).outsource_lfs();
             (text.iter_exactly_at(start), cfg)
