@@ -62,8 +62,8 @@ impl Tag {
         toggles: &mut HashMap<ToggleId, Toggle>,
     ) -> (RawTag, Option<ToggleId>) {
         match self {
-            Self::PushForm(id) => (RawTag::PushForm((marker, id)), None),
-            Self::PopForm(id) => (RawTag::PopForm((marker, id)), None),
+            Self::PushForm(id) => (RawTag::PushForm(marker, id), None),
+            Self::PopForm(id) => (RawTag::PopForm(marker, id), None),
             Self::MainCursor => (RawTag::MainCursor(marker), None),
             Self::ExtraCursor => (RawTag::ExtraCursor(marker), None),
             Self::StartAlignLeft => (RawTag::StartAlignLeft(marker), None),
@@ -75,16 +75,16 @@ impl Tag {
             Self::GhostText(text) => {
                 let id = TextId::new();
                 texts.insert(id, text);
-                (RawTag::GhostText((marker, id)), None)
+                (RawTag::GhostText(marker, id), None)
             }
             Self::ConcealStart => (RawTag::ConcealStart(marker), None),
             Self::ConcealEnd => (RawTag::ConcealEnd(marker), None),
             Self::ToggleStart(toggle) => {
                 let id = ToggleId::new();
                 toggles.insert(id, toggle);
-                (RawTag::ToggleStart((marker, id)), Some(id))
+                (RawTag::ToggleStart(marker, id), Some(id))
             }
-            Self::ToggleEnd(id) => (RawTag::ToggleEnd((marker, id)), None),
+            Self::ToggleEnd(id) => (RawTag::ToggleEnd(marker, id), None),
         }
     }
 }
@@ -99,10 +99,10 @@ unsafe impl Sync for Tag {}
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm((Marker, FormId)),
+    PushForm(Marker, FormId),
     /// Removes a form from the stack. It won't always be the last
     /// one.
-    PopForm((Marker, FormId)),
+    PopForm(Marker, FormId),
 
     /// Places the main cursor.
     MainCursor(Marker),
@@ -146,22 +146,22 @@ pub enum RawTag {
     /// the iteration, which could be slow.
     Concealed(usize),
 
-    GhostText((Marker, TextId)),
+    GhostText(Marker, TextId),
 
     // Not Implemented:
     /// Begins a hoverable section in the file.
-    ToggleStart((Marker, ToggleId)),
+    ToggleStart(Marker, ToggleId),
     /// Ends a hoverable section in the file.
-    ToggleEnd((Marker, ToggleId)),
+    ToggleEnd(Marker, ToggleId),
 }
 
 impl RawTag {
     pub fn inverse(&self) -> Option<RawTag> {
         match self {
-            RawTag::PushForm(x) => Some(RawTag::PopForm(*x)),
-            RawTag::PopForm(x) => Some(RawTag::PushForm(*x)),
-            RawTag::ToggleStart(x) => Some(RawTag::ToggleEnd(*x)),
-            RawTag::ToggleEnd(x) => Some(RawTag::ToggleStart(*x)),
+            RawTag::PushForm(marker, id) => Some(RawTag::PopForm(*marker, *id)),
+            RawTag::PopForm(marker, id) => Some(RawTag::PushForm(*marker, *id)),
+            RawTag::ToggleStart(marker, id) => Some(RawTag::ToggleEnd(*marker, *id)),
+            RawTag::ToggleEnd(marker, id) => Some(RawTag::ToggleStart(*marker, *id)),
             RawTag::ConcealStart(marker) => Some(RawTag::ConcealEnd(*marker)),
             RawTag::ConcealEnd(marker) => Some(RawTag::ConcealStart(*marker)),
             RawTag::StartAlignLeft(marker) => Some(RawTag::EndAlignLeft(*marker)),
@@ -176,8 +176,12 @@ impl RawTag {
 
     pub fn ends_with(&self, other: &RawTag) -> bool {
         match (self, other) {
-            (RawTag::PushForm(lhs), RawTag::PopForm(rhs)) => lhs == rhs,
-            (RawTag::ToggleStart(lhs), RawTag::ToggleEnd(rhs)) => lhs == rhs,
+            (RawTag::PushForm(lhs_m, lhs_id), RawTag::PopForm(rhs_m, rhs_id)) => {
+                lhs_m == rhs_m && lhs_id == rhs_id
+            }
+            (RawTag::ToggleStart(lhs_m, lhs_id), RawTag::ToggleEnd(rhs_m, rhs_id)) => {
+                lhs_m == rhs_m && lhs_id == rhs_id
+            }
             (RawTag::StartAlignLeft(lhs), RawTag::EndAlignLeft(rhs))
             | (RawTag::StartAlignCenter(lhs), RawTag::EndAlignCenter(rhs))
             | (RawTag::StartAlignRight(lhs), RawTag::EndAlignRight(rhs))
@@ -189,11 +193,11 @@ impl RawTag {
     pub fn is_start(&self) -> bool {
         matches!(
             self,
-            RawTag::PushForm(_)
+            RawTag::PushForm(..)
                 | RawTag::StartAlignLeft(_)
                 | RawTag::StartAlignCenter(_)
                 | RawTag::StartAlignRight(_)
-                | RawTag::ToggleStart(_)
+                | RawTag::ToggleStart(..)
                 | RawTag::ConcealStart(_)
         )
     }
@@ -201,19 +205,19 @@ impl RawTag {
     pub fn is_end(&self) -> bool {
         matches!(
             self,
-            RawTag::PopForm(_)
+            RawTag::PopForm(..)
                 | RawTag::EndAlignLeft(_)
                 | RawTag::EndAlignCenter(_)
                 | RawTag::EndAlignRight(_)
-                | RawTag::ToggleEnd(_)
+                | RawTag::ToggleEnd(..)
                 | RawTag::ConcealEnd(_)
         )
     }
 
     pub(super) fn marker(&self) -> Marker {
         match self {
-            RawTag::PushForm((marker, _))
-            | RawTag::PopForm((marker, _))
+            RawTag::PushForm(marker, _)
+            | RawTag::PopForm(marker, _)
             | RawTag::MainCursor(marker)
             | RawTag::ExtraCursor(marker)
             | RawTag::StartAlignLeft(marker)
@@ -224,9 +228,9 @@ impl RawTag {
             | RawTag::EndAlignRight(marker)
             | RawTag::ConcealStart(marker)
             | RawTag::ConcealEnd(marker)
-            | RawTag::GhostText((marker, _))
-            | RawTag::ToggleStart((marker, _))
-            | RawTag::ToggleEnd((marker, _)) => *marker,
+            | RawTag::GhostText(marker, _)
+            | RawTag::ToggleStart(marker, _)
+            | RawTag::ToggleEnd(marker, _) => *marker,
             RawTag::Concealed(_) => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),

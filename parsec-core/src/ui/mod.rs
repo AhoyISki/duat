@@ -154,6 +154,7 @@ pub struct Caret {
 }
 
 impl Caret {
+    #[inline(always)]
     pub fn new(x: usize, len: usize, wrap: bool) -> Self {
         Self { x, len, wrap }
     }

@@ -30,6 +30,7 @@ impl WrapMethod {
 pub struct TabStops(pub usize);
 
 impl TabStops {
+    #[inline]
     pub fn spaces_at(&self, x: usize) -> usize {
         self.0 - (x % self.0)
     }
@@ -55,6 +56,7 @@ pub enum NewLine {
 }
 
 impl NewLine {
+    #[inline]
     pub fn char(&self, last_char: Option<char>) -> Option<char> {
         match self {
             NewLine::AlwaysAs(char) => Some(*char),
@@ -101,6 +103,7 @@ impl WordChars {
         word_chars
     }
 
+	#[inline]
     pub fn contains(&self, char: char) -> bool {
         self.0.iter().any(|chars| chars.contains(&char))
     }
@@ -204,22 +207,27 @@ impl<'a> IterCfg<'a> {
         }
     }
 
+	#[inline]
     pub fn show_lf(&self) -> bool {
         self.iter_lfs
     }
 
+	#[inline]
     pub fn wrap_method(&self) -> WrapMethod {
         self.force_wrap.unwrap_or(self.cfg.wrap_method)
     }
 
+	#[inline]
     pub fn indent_wrap(&self) -> bool {
         !self.no_indent_wrap && self.cfg.indent_wrap
     }
 
+	#[inline]
     pub fn tab_stops(&self) -> TabStops {
         self.cfg.tab_stops
     }
 
+	#[inline]
     pub fn new_line(&self) -> NewLine {
         if self.iter_lfs {
             NewLine::Hidden
@@ -228,10 +236,12 @@ impl<'a> IterCfg<'a> {
         }
     }
 
+	#[inline]
     pub fn scrolloff(&self) -> ScrollOff {
         self.cfg.scrolloff
     }
 
+	#[inline]
     pub fn word_chars(&self) -> &WordChars {
         &self.cfg.word_chars
     }

@@ -20,8 +20,7 @@ use crate::{
     controls,
     data::RwData,
     input::{Commander, InputMethod},
-    log_info,
-    text::{text, Marker, Tag, Text},
+    text::{text, Tag, Text},
     ui::{Area, PushSpecs, Ui},
     COMMANDS,
 };

@@ -8,7 +8,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::Text;
-use crate::log_info;
 
 mod ranges;
 mod types;

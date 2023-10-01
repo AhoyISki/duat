@@ -181,6 +181,7 @@ where
 {
     type Item = (Caret, Item);
 
+	#[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::Parts(parts, _) => parts.next(),
@@ -201,19 +202,8 @@ pub fn print_iter<'a>(
         width
     };
 
-    let indents = indents(text, width, cfg).filter(move |(_, item)| {
-        if item.part.is_char() {
-            match item.pos.cmp(&info.first_char) {
-                std::cmp::Ordering::Greater => true,
-                std::cmp::Ordering::Equal => {
-                    item.ghost_pos.map_or(true, |pos| pos >= info.first_ghost)
-                }
-                std::cmp::Ordering::Less => false,
-            }
-        } else {
-            true
-        }
-    });
+    let indents = indents(text, width, cfg)
+        .filter(move |(_, item)| item.pos >= info.first || item.part.is_tag());
 
     match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {

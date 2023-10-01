@@ -19,10 +19,11 @@ pub enum Part {
 
 impl Part {
     // TODO: Add a default alignment.
+    #[inline(always)]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm((_, id)) => Part::PushForm(id),
-            RawTag::PopForm((_, id)) => Part::PopForm(id),
+            RawTag::PushForm(_, id) => Part::PushForm(id),
+            RawTag::PopForm(_, id) => Part::PopForm(id),
             RawTag::MainCursor(_) => Part::MainCursor,
             RawTag::ExtraCursor(_) => Part::ExtraCursor,
             RawTag::StartAlignLeft(_) => Part::AlignLeft,
@@ -31,8 +32,8 @@ impl Part {
             RawTag::EndAlignCenter(_) => Part::AlignLeft,
             RawTag::StartAlignRight(_) => Part::AlignRight,
             RawTag::EndAlignRight(_) => Part::AlignLeft,
-            RawTag::ToggleStart((_, id)) => Part::ToggleStart(id),
-            RawTag::ToggleEnd((_, id)) => Part::ToggleEnd(id),
+            RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
+            RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
             RawTag::Concealed(_) => Part::Termination,
             RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
@@ -70,10 +71,12 @@ impl Part {
     ///
     /// [`Char`]: TextBit::Char
     #[must_use]
+	#[inline(always)]
     pub fn is_char(&self) -> bool {
         matches!(self, Part::Char(_))
     }
 
+	#[inline(always)]
     pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {
             Some(*v)
@@ -82,6 +85,7 @@ impl Part {
         }
     }
 
+	#[inline(always)]
     pub fn is_tag(&self) -> bool {
         !self.is_char()
     }

@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::{key, Cursors, InputMethod, MultiCursorEditor};
-use crate::{controls, data::RwData, log_info, ui::Area, widgets::CommandLine};
+use crate::{controls, data::RwData, ui::Area, widgets::CommandLine};
 
 #[derive(Clone)]
 pub struct Commander {

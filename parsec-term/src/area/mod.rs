@@ -17,8 +17,8 @@ use parsec_core::{
     data::RwData,
     forms::{FormFormer, FormPalette},
     position::Point,
-    text::{Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}, log_info,
+    text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 
 use crate::{
@@ -106,7 +106,7 @@ impl Area {
 
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_to_gap(&self, point: Point, text: &Text, cfg: IterCfg) {
+    fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
         let inclusive_pos = point.true_char() + 1;
@@ -118,7 +118,7 @@ impl Area {
             .peek()
             .is_some_and(|item| item.line < point.true_line() && point.true_col() == 0);
 
-        let mut iter = iter.map(|item| (item.ghost_pos, item.pos));
+        let mut iter = iter.map(|item| item.pos);
 
         let target = if info.last_main > point {
             cfg.scrolloff().y_gap
@@ -126,29 +126,27 @@ impl Area {
             self.height().saturating_sub(cfg.scrolloff().y_gap + 1)
         };
 
-        let (ghost_pos, first_char) = if nl_on_point_was_concealed {
-            let skipped_nl = std::iter::once((None, point.true_char()));
-            skipped_nl.chain(iter).nth(target).unwrap_or((None, 0))
+        let first = if nl_on_point_was_concealed {
+            let exact = ExactPos::from_real(point.true_char());
+            let skipped_nl = std::iter::once(exact);
+            skipped_nl
+                .chain(iter)
+                .nth(target)
+                .unwrap_or(ExactPos::default())
         } else {
-            iter.nth(target).unwrap_or((Some(0), 0))
+            iter.nth(target).unwrap_or(ExactPos::default())
         };
 
-        if info.last_main > point {
-            if first_char <= info.first_char {
-                info.first_char = first_char;
-                info.first_ghost = ghost_pos.unwrap_or(usize::MAX);
-            }
-        } else if first_char == info.first_char {
-            info.first_ghost = ghost_pos.unwrap_or(usize::MAX).max(info.first_ghost);
-        } else if first_char > info.first_char {
-            info.first_char = first_char;
-            info.first_ghost = ghost_pos.unwrap_or(usize::MAX);
+        if (info.last_main > point && first < info.first)
+            || (info.last_main < point && first > info.first)
+        {
+            info.first = first;
         }
     }
 
     /// Scrolls the file horizontally, usually when no wrapping is
     /// being used.
-    fn scroll_hor_to_gap(&self, point: Point, text: &Text, cfg: IterCfg) {
+    fn scroll_hor_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
         let width = self.width();
@@ -179,7 +177,7 @@ impl Area {
                 .find_map(|(Caret { x, len, .. }, Item { pos, part, .. })| {
                     part.as_char().and(Some((pos, x, x + len)))
                 })
-                .unwrap_or((0, 0, 0));
+                .unwrap_or((ExactPos::default(), 0, 0));
 
             let line_start = iter
                 .find_map(|(Caret { wrap, .. }, Item { pos, .. })| wrap.then_some(pos))
@@ -196,16 +194,17 @@ impl Area {
         } else if end < start {
             info.x_shift = info.x_shift.saturating_sub(min_dist - end);
         } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info).try_fold(
-                (0, 0),
-                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
-                    let some_count = some_count + wrap as usize;
-                    match some_count < 2 {
-                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
-                        false => std::ops::ControlFlow::Break(right_end),
-                    }
-                },
-            );
+            let line_width = print_iter(text.iter_exactly_at(line_start), width, cfg, *info)
+                .try_fold(
+                    (0, 0),
+                    |(right_end, some_count), (Caret { x, len, wrap }, _)| {
+                        let some_count = some_count + wrap as usize;
+                        match some_count < 2 {
+                            true => std::ops::ControlFlow::Continue((x + len, some_count)),
+                            false => std::ops::ControlFlow::Break(right_end),
+                        }
+                    },
+                );
 
             if let std::ops::ControlFlow::Break(line_width) = line_width && line_width <= width {
                 return;
@@ -237,14 +236,14 @@ impl ui::Area for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
-        self.scroll_hor_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
-        self.scroll_ver_to_gap(point, text, IterCfg::new(cfg).outsource_lfs());
+        self.scroll_hor_around(point, text, IterCfg::new(cfg).outsource_lfs());
+        self.scroll_ver_around(point, text, IterCfg::new(cfg).outsource_lfs());
 
         self.print_info.borrow_mut().last_main = point;
     }
 
     fn first_char(&self) -> usize {
-        self.print_info.borrow().first_char
+        self.print_info.borrow().first.real()
     }
 
     fn set_as_active(&self) {
@@ -280,15 +279,15 @@ impl ui::Area for Area {
             return;
         }
 
-        let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first_char) {
+        let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first) {
             let cfg = IterCfg::new(cfg).outsource_lfs();
-            (text.iter_at(start), cfg)
+            (text.iter_exactly_at(start), cfg)
         } else {
             let cfg = IterCfg::new(cfg)
                 .outsource_lfs()
                 .no_word_wrap()
                 .no_indent_wrap();
-            (text.iter_at(info.first_char), cfg)
+            (text.iter_exactly_at(info.first), cfg)
         };
 
         let form_former = palette.form_former();
@@ -373,9 +372,9 @@ impl ui::Area for Area {
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = self.print_info.borrow();
         let line_start = text
-            .close_visual_line_start(info.first_char)
-            .unwrap_or(info.first_char);
-        let iter = text.iter_at(line_start);
+            .close_visual_line_start(info.first)
+            .unwrap_or(info.first);
+        let iter = text.iter_exactly_at(line_start);
 
         print_iter(iter, self.width(), cfg, *info)
     }
@@ -399,10 +398,7 @@ unsafe impl Sync for Area {}
 pub struct PrintInfo {
     /// The index of the first [`char`] that should be printed on the
     /// screen.
-    first_char: usize,
-    /// The index of the first [`char`] that should be printed,
-    /// relative to the beginning of a ghost text.
-    first_ghost: usize,
+    first: ExactPos,
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.

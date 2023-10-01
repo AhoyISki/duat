@@ -153,7 +153,7 @@ impl Cursor {
             text.len_chars() - 1
         } else if by > 0 {
             area.print_iter(text.iter_at(self.caret.pos).no_ghosts(), cfg)
-                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.pos))))
+                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.real()))))
                 .try_fold(0, |lfs, (char, (x, pos))| {
                     let new_lfs = lfs + (char == '\n') as isize;
                     match (lfs == by && x >= self.desired_col) || new_lfs > by {
@@ -168,7 +168,7 @@ impl Cursor {
         } else {
             let start = area
                 .rev_print_iter(text.rev_iter_at(self.caret.pos).no_ghosts(), cfg)
-                .filter_map(|(_, item)| item.part.as_char().zip(Some(item.pos)))
+                .filter_map(|(_, item)| item.part.as_char().zip(Some(item.real())))
                 .try_fold(0, |lfs, (char, pos)| {
                     match (lfs - ((char == '\n') as isize)) < by {
                         true => std::ops::ControlFlow::Break(pos + 1),
@@ -179,7 +179,7 @@ impl Cursor {
                 .unwrap_or(0);
 
             area.print_iter(text.iter_at(start).no_ghosts(), cfg)
-                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.pos))))
+                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.real()))))
                 .try_fold((), |_, (char, (x, pos))| {
                     match x >= self.desired_col || char == '\n' {
                         true => std::ops::ControlFlow::Break(pos),
@@ -225,7 +225,7 @@ impl Cursor {
         } else if by > 0 {
             text.iter_at(self.caret.pos)
                 .no_ghosts()
-                .filter_map(|item| item.part.as_char().and(Some(item.pos)))
+                .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by as usize)
                 .unwrap_or(text.len_chars().saturating_sub(1))
         } else if self.caret.pos.checked_add_signed(by).is_none() {
@@ -233,7 +233,7 @@ impl Cursor {
         } else {
             text.rev_iter_at(self.caret.pos + 1)
                 .no_ghosts()
-                .filter_map(|item| item.part.as_char().and(Some(item.pos)))
+                .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by.unsigned_abs())
                 .unwrap_or(text.len_chars().saturating_sub(1))
         };

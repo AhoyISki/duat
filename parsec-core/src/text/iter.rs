@@ -1,27 +1,57 @@
 use std::ops::ControlFlow;
 
 use super::{
-    tags::{self, RawTag},
+    tags::{self, RawTag, TextId},
     Part, Text,
 };
 use crate::position::Cursor;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExactPos {
+    real: usize,
+    ghost: usize,
+}
+
+impl ExactPos {
+    pub fn from_real(real: usize) -> Self {
+        Self { real, ghost: 0 }
+    }
+
+    pub fn real(&self) -> usize {
+        self.real
+    }
+
+    pub fn ghost(&self) -> usize {
+        self.ghost
+    }
+
+	#[inline(always)]
+    pub(crate) fn new(real: usize, ghost: usize) -> Self {
+        Self { real, ghost }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Item {
-    pub pos: usize,
+    pub pos: ExactPos,
     pub line: usize,
-    pub ghost_pos: Option<usize>,
     pub part: Part,
 }
 
 impl Item {
-    fn new(pos: usize, line: usize, ghost_pos: Option<usize>, part: Part) -> Self {
-        Self {
-            pos,
-            line,
-            ghost_pos,
-            part,
-        }
+	#[inline(always)]
+    fn new(pos: ExactPos, line: usize, part: Part) -> Self {
+        Self { pos, line, part }
+    }
+
+	#[inline(always)]
+    pub fn real(&self) -> usize {
+        self.pos.real()
+    }
+
+	#[inline(always)]
+    pub fn ghost(&self) -> usize {
+        self.pos.ghost()
     }
 }
 
@@ -38,7 +68,6 @@ pub struct Iter<'a> {
     line: usize,
     conceals: usize,
     backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ForwardIter<'a>)>,
-    ghost_pos: usize,
 
     print_ghosts: bool,
     _conceals: Conceal<'a>,
@@ -53,9 +82,64 @@ impl<'a> Iter<'a> {
             tags: text.tags.iter_at(tags_start),
             pos,
             line: text.rope.char_to_line(pos),
-            ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
+            print_ghosts: true,
+            _conceals: Conceal::All,
+        }
+    }
+
+    pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
+        let (chars, tags) = {
+            let text_id: Option<TextId> = text
+                .tags
+                .iter_at(exact_pos.real())
+                .take_while(|(pos, _)| *pos <= exact_pos.real())
+                .find_map(|(pos, tag)| match tag {
+                    RawTag::GhostText(_, id) => (pos == exact_pos.real()).then_some(id),
+                    _ => None,
+                });
+
+            text_id
+                .and_then(|id| text.tags.texts.get(&id))
+                .map(|text| {
+                    let tags_start = exact_pos
+                        .ghost()
+                        .saturating_sub(text.tags.back_check_amount());
+
+                    let chars = text.rope.chars_at(exact_pos.ghost());
+                    let tags = text.tags.iter_at(tags_start);
+
+                    (chars, tags)
+                })
+                .unzip()
+        };
+
+        let tags_start = exact_pos
+            .real()
+            .saturating_sub(text.tags.back_check_amount());
+
+        let pos = if chars.is_some() {
+            exact_pos.ghost()
+        } else {
+            exact_pos.real()
+        };
+
+        let backup_iter = chars.is_some().then(|| {
+            let chars = text.rope.chars_at(exact_pos.real());
+            let tags = text.tags.iter_at(tags_start);
+
+            (exact_pos.real(), chars, tags)
+        });
+
+        Self {
+            text,
+            chars: chars.unwrap_or_else(|| text.rope.chars_at(exact_pos.real())),
+            tags: tags.unwrap_or_else(|| text.tags.iter_at(tags_start)),
+            pos,
+            line: text.rope.char_to_line(exact_pos.real()),
+            conceals: 0,
+            backup_iter,
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -85,7 +169,7 @@ impl<'a> Iter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
-            RawTag::GhostText((_, id)) if self.print_ghosts => {
+            RawTag::GhostText(_, id) if self.print_ghosts => {
                 let text = self.text.tags.texts.get(&id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
                     text.iter()
@@ -100,7 +184,7 @@ impl<'a> Iter<'a> {
                 self.backup_iter = Some((pos, chars, tags));
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(_) => ControlFlow::Continue(()),
+            RawTag::GhostText(..) => ControlFlow::Continue(()),
 
             RawTag::ConcealStart(_) => {
                 self.conceals += 1;
@@ -140,6 +224,8 @@ impl Iterator for Iter<'_> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
+        let mut final_ghost = None;
+
         loop {
             let tag = self.tags.peek();
 
@@ -150,26 +236,29 @@ impl Iterator for Iter<'_> {
                 if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
                     let part = Part::from_raw(tag);
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        let ghost = Some(self.ghost_pos);
-                        break Some(Item::new(pos, self.line, ghost, part));
+                        let pos = ExactPos::new(pos, self.pos);
+                        break Some(Item::new(pos, self.line, part));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, part));
+                        let pos = ExactPos::new(self.pos, final_ghost.take().unwrap_or(0));
+                        break Some(Item::new(pos, self.line, part));
                     }
                 }
             } else if let Some(char) = self.chars.next() {
                 let prev_line = self.line;
-                self.pos += 1;
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                    self.ghost_pos += 1;
-                    let ghost = Some(self.ghost_pos - 1);
-                    break Some(Item::new(pos, prev_line, ghost, Part::Char(char)));
+                    let pos = ExactPos::new(pos, self.pos);
+                    self.pos += 1;
+                    break Some(Item::new(pos, prev_line, Part::Char(char)));
                 } else {
+                    let pos = ExactPos::new(self.pos, final_ghost.take().unwrap_or(0));
+                    self.pos += 1;
                     self.line += (char == '\n') as usize;
-                    break Some(Item::new(self.pos - 1, prev_line, None, Part::Char(char)));
+                    break Some(Item::new(pos, prev_line, Part::Char(char)));
                 }
             } else if let Some((pos, chars, tags)) = self.backup_iter.take() {
-                self.ghost_pos = 0;
+                final_ghost = Some(self.pos);
+                self.pos = pos;
                 (self.pos, self.chars, self.tags) = (pos, chars, tags);
             } else {
                 break None;
@@ -189,7 +278,6 @@ pub struct RevIter<'a> {
     tags: tags::ReverseTags<'a>,
     pos: usize,
     line: usize,
-    ghost_pos: usize,
     conceals: usize,
     backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ReverseTags<'a>)>,
 
@@ -200,15 +288,67 @@ pub struct RevIter<'a> {
 
 impl<'a> RevIter<'a> {
     pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
+        let tags_start = pos + text.tags.back_check_amount();
         Self {
             text,
             chars: text.rope.chars_at(pos).reversed(),
-            tags: text.tags.rev_iter_at(pos),
+            tags: text.tags.rev_iter_at(tags_start),
             pos,
             line: text.char_to_line(pos),
-            ghost_pos: 0,
             conceals: 0,
             backup_iter: None,
+            print_ghosts: true,
+            _conceals: Conceal::All,
+        }
+    }
+
+    pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
+        let (chars, tags) = {
+            let text_id: Option<TextId> = text
+                .tags
+                .rev_iter_at(exact_pos.real())
+                .take_while(|(pos, _)| *pos >= exact_pos.real())
+                .find_map(|(pos, tag)| match tag {
+                    RawTag::GhostText(_, id) => (pos == exact_pos.real()).then_some(id),
+                    _ => None,
+                });
+
+            text_id
+                .and_then(|id| text.tags.texts.get(&id))
+                .map(|text| {
+                    let tags_start = exact_pos.ghost() + text.tags.back_check_amount();
+
+                    let chars = text.rope.chars_at(exact_pos.ghost()).reversed();
+                    let tags = text.tags.rev_iter_at(tags_start);
+
+                    (chars, tags)
+                })
+                .unzip()
+        };
+
+        let tags_start = exact_pos.real() + text.tags.back_check_amount();
+
+        let pos = if chars.is_some() {
+            exact_pos.ghost()
+        } else {
+            exact_pos.real()
+        };
+
+        let backup_iter = chars.is_some().then(|| {
+            let chars = text.rope.chars_at(exact_pos.real()).reversed();
+            let tags = text.tags.rev_iter_at(tags_start);
+
+            (exact_pos.real(), chars, tags)
+        });
+
+        Self {
+            text,
+            chars: chars.unwrap_or_else(|| text.rope.chars_at(exact_pos.real()).reversed()),
+            tags: tags.unwrap_or_else(|| text.tags.rev_iter_at(tags_start)),
+            pos,
+            line: text.rope.char_to_line(exact_pos.real()),
+            conceals: 0,
+            backup_iter,
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -245,10 +385,9 @@ impl<'a> RevIter<'a> {
     #[inline(always)]
     fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
-            RawTag::GhostText((_, id)) if self.print_ghosts => {
+            RawTag::GhostText(_, id) if self.print_ghosts => {
                 let text = self.text.tags.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
-                    self.ghost_pos = text.len_chars();
                     text.rev_iter()
                 } else {
                     text.rev_iter_at(0)
@@ -262,7 +401,7 @@ impl<'a> RevIter<'a> {
 
                 ControlFlow::Continue(())
             }
-            RawTag::GhostText(_) => ControlFlow::Continue(()),
+            RawTag::GhostText(..) => ControlFlow::Continue(()),
 
             RawTag::ConcealStart(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
@@ -298,6 +437,8 @@ impl Iterator for RevIter<'_> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
+        let mut final_ghost = None;
+
         loop {
             let tag = self.tags.peek();
 
@@ -308,28 +449,26 @@ impl Iterator for RevIter<'_> {
                 if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
                     let part = Part::from_raw(tag);
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                        break Some(Item::new(pos, self.line, Some(self.ghost_pos), part));
+                        let pos = ExactPos::new(pos, self.pos);
+                        break Some(Item::new(pos, self.line, part));
                     } else {
-                        break Some(Item::new(self.pos, self.line, None, part));
+                        let pos = ExactPos::new(self.pos, final_ghost.take().unwrap_or(0));
+                        break Some(Item::new(pos, self.line, part));
                     }
                 }
             } else if let Some(char) = self.chars.next() {
                 self.pos -= 1;
 
                 if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
-                    self.ghost_pos -= 1;
-                    break Some(Item::new(
-                        pos,
-                        self.line,
-                        Some(self.ghost_pos),
-                        Part::Char(char),
-                    ));
+                    let pos = ExactPos::new(pos, self.pos);
+                    break Some(Item::new(pos, self.line, Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
-                    break Some(Item::new(self.pos, self.line, None, Part::Char(char)));
+                    let pos = ExactPos::new(self.pos, final_ghost.take().unwrap_or(0));
+                    break Some(Item::new(pos, self.line, Part::Char(char)));
                 }
             } else if let Some(last_iter) = self.backup_iter.take() {
-                self.ghost_pos = 0;
+                final_ghost = Some(self.pos);
                 (self.pos, self.chars, self.tags) = last_iter;
             } else {
                 break None;
