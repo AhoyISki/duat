@@ -26,9 +26,9 @@ use crate::{
     data::RwData,
     forms::Form,
     input::{Editor, InputMethod},
+    palette::palette,
     text::{IterCfg, Marker, PrintCfg, Tag, Text},
     ui::{Area, PushSpecs, Ui},
-    PALETTE,
 };
 
 #[derive(Clone)]
@@ -86,8 +86,9 @@ where
         #[cfg(feature = "wacky-colors")]
         {
             let marker = Marker::new();
-            let form1 = PALETTE.set_form("form 1 lmao", Form::new().red());
-            let form2 = PALETTE.set_form("form 2 lmao", Form::new().on_blue());
+            let form1 = palette().set_form("form 1 lmao", Form::new().red());
+            let form2 = palette().set_form("form 2 lmao", Form::new().on_blue());
+            text.insert(0, Tag::StartAlignCenter, marker);
             text.insert(50, Tag::PushForm(form1), marker);
             text.insert(110, Tag::PopForm(form1), marker);
             text.insert(30, Tag::PushForm(form2), marker);

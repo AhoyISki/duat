@@ -96,7 +96,7 @@ where
             let set_prompt = {
                 let prompt = command_line.prompt.clone();
 
-                Command::new(vec!["set-prompt"], move |_, new_prompt| {
+                Command::new(["set-prompt"], move |_, new_prompt| {
                     *prompt.write() = String::from(new_prompt.next().unwrap_or(""));
                     Ok(None)
                 })
@@ -142,8 +142,7 @@ impl PassiveWidget for CommandLine {
         Self::cfg().builder()()
     }
 
-    fn update(&mut self, _area: &impl Area) {
-    }
+    fn update(&mut self, _area: &impl Area) {}
 
     fn text(&self) -> &Text {
         &self.text
@@ -155,8 +154,6 @@ impl PassiveWidget for CommandLine {
     {
         area.print(self.text(), self.print_cfg(), &crate::PALETTE)
     }
-
-    
 }
 
 impl ActiveWidget for CommandLine {

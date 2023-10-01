@@ -480,6 +480,7 @@ fn print_parts(
     }
 
     if !line.is_empty() {
+        queue!(line, Print(" "));
         print_line(old_x, y, coords, alignment, &mut line, stdout);
     }
 

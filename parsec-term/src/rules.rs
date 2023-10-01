@@ -4,7 +4,7 @@ use parsec_core::{
     text::{text, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget},
-    CURRENT_FILE, PALETTE,
+    CURRENT_FILE, palette::palette,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -97,9 +97,9 @@ impl VertRuleCfg {
         move || {
             let reader = CURRENT_FILE.constant();
 
-            PALETTE.try_set_form("VertRule", Form::new().grey());
-            PALETTE.set_new_ref("UpperVertRule", "VertRule");
-            PALETTE.set_new_ref("LowerVertRule", "VertRule");
+            palette().try_set_form("VertRule", Form::new().grey());
+            palette().set_new_ref("UpperVertRule", "VertRule");
+            palette().set_new_ref("LowerVertRule", "VertRule");
 
             let vert_rule = VertRule {
                 reader: reader.clone(),

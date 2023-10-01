@@ -454,7 +454,7 @@ pub macro text {
         use std::sync::LazyLock;
         static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
             let name = stringify!($form);
-            crate::PALETTE.from_name(name).1
+            crate::palette::palette().from_name(name).1
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },

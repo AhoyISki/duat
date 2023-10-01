@@ -194,11 +194,17 @@ impl StatusLineCfg {
             let (reader, checker) = if self.is_global {
                 let reader = CURRENT_FILE.adaptive();
                 let checker = move || reader.has_changed() || (self.checker)();
-                (CURRENT_FILE.adaptive(), Box::new(checker) as Box<dyn Fn() -> bool>)
+                (
+                    CURRENT_FILE.adaptive(),
+                    Box::new(checker) as Box<dyn Fn() -> bool>,
+                )
             } else {
                 let reader = CURRENT_FILE.constant();
                 let checker = move || reader.has_changed() || (self.checker)();
-                (CURRENT_FILE.constant(), Box::new(checker) as Box<dyn Fn() -> bool>)
+                (
+                    CURRENT_FILE.constant(),
+                    Box::new(checker) as Box<dyn Fn() -> bool>,
+                )
             };
 
             let widget = Widget::passive(StatusLine {
@@ -314,7 +320,7 @@ pub macro status_cfg {
         use std::sync::LazyLock;
         static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
             let name = stringify!($form);
-            crate::PALETTE.from_name(name).1
+            crate::palette::palette().from_name(name).1
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
@@ -374,8 +380,8 @@ pub macro status_cfg {
 
     ($($parts:tt)*) => {{
         use crate::{
-            PALETTE,
             input::InputMethod,
+            palette::palette,
             text::{text, Tag},
             ui::PushSpecs,
             widgets::{File, StatusLineCfg},
@@ -395,10 +401,10 @@ pub macro status_cfg {
             needs_update
         };
 
-        PALETTE.try_set_form("FileName", Form::new().yellow().italic());
-        PALETTE.try_set_form("Selections", Form::new().dark_blue());
-        PALETTE.try_set_form("Coords", Form::new().dark_red());
-        PALETTE.try_set_form("Separator", Form::new().cyan());
+        palette().try_set_form("FileName", Form::new().yellow().italic());
+        palette().try_set_form("Selections", Form::new().dark_blue());
+        palette().try_set_form("Coords", Form::new().dark_red());
+        palette().try_set_form("Separator", Form::new().cyan());
 
         StatusLineCfg {
             text_fn: Box::new(text_fn),

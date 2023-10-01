@@ -37,12 +37,20 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 // Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+static PALETTE: FormPalette = FormPalette::new();
 static COMMANDS: Commands = Commands::new();
 
 // Public control objects.
-pub static PALETTE: FormPalette = FormPalette::new();
 pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
+
+pub mod palette {
+    use crate::{forms::FormPalette, PALETTE};
+
+    pub fn palette() -> &'static FormPalette {
+        &PALETTE
+    }
+}
 
 /// Quits Parsec.
 pub mod controls {

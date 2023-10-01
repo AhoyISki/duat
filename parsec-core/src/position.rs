@@ -9,38 +9,38 @@ use crate::{
 /// A position in a `Vec<String>` (line and character address).
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
-    pos: usize,
+    char: usize,
     byte: usize,
     col: usize,
     line: usize,
 }
 
 impl Point {
-    pub fn new(pos: usize, text: &Text) -> Self {
+    pub fn new(char: usize, text: &Text) -> Self {
         Point {
-            pos,
-            byte: text.char_to_byte(pos),
+            char,
+            byte: text.char_to_byte(char),
             col: {
-                let line = text.char_to_line(pos);
-                pos - text.line_to_char(line)
+                let line = text.char_to_line(char);
+                char - text.line_to_char(line)
             },
-            line: text.char_to_line(pos),
+            line: text.char_to_line(char),
         }
     }
 
     pub fn from_coords(line: usize, col: usize, text: &Text) -> Self {
         let char = text.get_line_to_char(line);
-        let ch_index = if let Some(char) = char {
+        let char = if let Some(char) = char {
             char + col.min(text.iter_line_chars(line).count() - 1)
         } else {
-            text.len_chars() - 1
+            text.len_chars()
         };
 
-        Point::new(ch_index, text)
+        Point::new(char, text)
     }
 
     pub fn calibrate(&mut self, ch_diff: isize, text: &Text) {
-        let char = self.pos.saturating_add_signed(ch_diff);
+        let char = self.char.saturating_add_signed(ch_diff);
         *self = Point::new(char, text);
     }
 
@@ -53,7 +53,7 @@ impl Point {
     /// Returns the char index (relative to the beginning of the
     /// file). Indexed at 0.
     pub fn char(&self) -> usize {
-        self.pos
+        self.char
     }
 
     /// Returns the column. Indexed at 0.
@@ -105,7 +105,7 @@ impl Cursor {
             anchor: None,
             assoc_index: None,
             desired_col: area
-                .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
+                .rev_print_iter(text.rev_iter_at(point.char + 1), IterCfg::new(cfg))
                 .next()
                 .map(|(caret, _)| caret.x)
                 .unwrap(),
@@ -120,10 +120,10 @@ impl Cursor {
             return;
         }
 
-        self.caret.pos = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
-            text.len_chars() - 1
+        self.caret.char = if self.caret.line.saturating_add_signed(by) > text.len_lines() {
+            text.len_chars()
         } else if by > 0 {
-            area.print_iter(text.iter_at(self.caret.pos).no_ghosts(), cfg)
+            area.print_iter(text.iter_at(self.caret.char).no_ghosts(), cfg)
                 .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.real()))))
                 .try_fold(0, |lfs, (char, (x, pos))| {
                     let new_lfs = lfs + (char == '\n') as isize;
@@ -133,12 +133,12 @@ impl Cursor {
                     }
                 })
                 .break_value()
-                .unwrap_or(text.len_chars().saturating_sub(1))
+                .unwrap_or(text.len_chars())
         } else if self.caret.line.checked_add_signed(by).is_none() {
             0
         } else {
             let start = area
-                .rev_print_iter(text.rev_iter_at(self.caret.pos).no_ghosts(), cfg)
+                .rev_print_iter(text.rev_iter_at(self.caret.char).no_ghosts(), cfg)
                 .filter_map(|(_, item)| item.part.as_char().zip(Some(item.real())))
                 .try_fold(0, |lfs, (char, pos)| {
                     match (lfs - ((char == '\n') as isize)) < by {
@@ -158,16 +158,16 @@ impl Cursor {
                     }
                 })
                 .break_value()
-                .unwrap_or(text.len_chars().saturating_sub(1))
+                .unwrap_or(text.len_chars())
         };
 
-        self.caret.line = text.char_to_line(self.caret.pos);
-        self.caret.byte = text.char_to_byte(self.caret.pos);
+        self.caret.line = text.char_to_line(self.caret.char);
+        self.caret.byte = text.char_to_byte(self.caret.char);
 
         // In vertical movement, the `desired_x` dictates in what column the
         // cursor will be placed.
         self.caret.col = area
-            .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), cfg)
+            .rev_print_iter(text.rev_iter_at(self.caret.char + 1), cfg)
             .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
             .unwrap();
     }
@@ -191,29 +191,29 @@ impl Cursor {
             return;
         }
 
-        self.caret.pos = if self.caret.pos.saturating_add_signed(by) >= text.len_chars() {
-            text.len_chars().saturating_sub(1)
+        self.caret.char = if self.caret.char.saturating_add_signed(by) >= text.len_chars() {
+            text.len_chars()
         } else if by > 0 {
-            text.iter_at(self.caret.pos)
+            text.iter_at(self.caret.char)
                 .no_ghosts()
                 .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by as usize)
-                .unwrap_or(text.len_chars().saturating_sub(1))
-        } else if self.caret.pos.checked_add_signed(by).is_none() {
+                .unwrap_or(text.len_chars())
+        } else if self.caret.char.checked_add_signed(by).is_none() {
             0
         } else {
-            text.rev_iter_at(self.caret.pos + 1)
+            text.rev_iter_at(self.caret.char)
                 .no_ghosts()
                 .filter_map(|item| item.part.as_char().and(Some(item.real())))
-                .nth(by.unsigned_abs())
-                .unwrap_or(text.len_chars().saturating_sub(1))
+                .nth(by.unsigned_abs() - 1)
+                .unwrap_or(text.len_chars())
         };
 
-        self.caret.line = text.char_to_line(self.caret.pos);
-        self.caret.byte = text.char_to_byte(self.caret.pos);
+        self.caret.line = text.char_to_line(self.caret.char);
+        self.caret.byte = text.char_to_byte(self.caret.char);
 
         self.caret.col = area
-            .rev_print_iter(text.rev_iter_at(self.caret.pos + 1), cfg)
+            .rev_print_iter(text.rev_iter_at(self.caret.char + 1), cfg)
             .find_map(|(caret, item)| item.part.as_char().and(Some(caret.x)))
             .unwrap();
         self.desired_col = self.caret.col;
@@ -224,7 +224,7 @@ impl Cursor {
         self.caret = point;
 
         self.desired_col = area
-            .rev_print_iter(text.rev_iter_at(point.pos + 1), IterCfg::new(cfg))
+            .rev_print_iter(text.rev_iter_at(point.char + 1), IterCfg::new(cfg))
             .next()
             .map(|(caret, _)| caret.x)
             .unwrap();
@@ -236,9 +236,9 @@ impl Cursor {
     pub fn range(&self) -> Range<usize> {
         let anchor = self.anchor.unwrap_or(self.caret);
         if anchor < self.caret {
-            anchor.pos..self.caret.pos
+            anchor.char..self.caret.char
         } else {
-            self.caret.pos..anchor.pos
+            self.caret.char..anchor.char
         }
     }
 
@@ -285,7 +285,7 @@ impl Cursor {
     /// Indexed at 1. Intended only for displaying by the end
     /// user. For internal use, see `true_char()`.
     pub fn char(&self) -> usize {
-        self.caret.pos + 1
+        self.caret.char + 1
     }
 
     /// The column of the caret. Indexed at 1. Intended only for
@@ -311,7 +311,7 @@ impl Cursor {
     /// The char (relative to the beginning of the file) of the caret.
     /// Indexed at 0.
     pub fn true_char(&self) -> usize {
-        self.caret.pos
+        self.caret.char
     }
 
     /// The column of the caret. Indexed at 0.
