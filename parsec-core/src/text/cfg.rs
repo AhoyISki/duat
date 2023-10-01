@@ -139,7 +139,7 @@ impl PrintCfg {
             tab_stops: TabStops(4),
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff::default(),
-            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
+            word_chars: WordChars::new(vec!['a'..='z', 'A'..='Z', '0'..='9', '_'..='_']),
         }
     }
 }

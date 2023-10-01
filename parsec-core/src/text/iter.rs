@@ -25,7 +25,7 @@ impl ExactPos {
         self.ghost
     }
 
-	#[inline(always)]
+	#[inline]
     pub(crate) fn new(real: usize, ghost: usize) -> Self {
         Self { real, ghost }
     }
@@ -39,17 +39,17 @@ pub struct Item {
 }
 
 impl Item {
-	#[inline(always)]
+	#[inline]
     fn new(pos: ExactPos, line: usize, part: Part) -> Self {
         Self { pos, line, part }
     }
 
-	#[inline(always)]
+	#[inline]
     pub fn real(&self) -> usize {
         self.pos.real()
     }
 
-	#[inline(always)]
+	#[inline]
     pub fn ghost(&self) -> usize {
         self.pos.ghost()
     }
@@ -68,6 +68,7 @@ pub struct Iter<'a> {
     line: usize,
     conceals: usize,
     backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ForwardIter<'a>)>,
+    ghost_to_ignore: Option<TextId>,
 
     print_ghosts: bool,
     _conceals: Conceal<'a>,
@@ -84,13 +85,15 @@ impl<'a> Iter<'a> {
             line: text.rope.char_to_line(pos),
             conceals: 0,
             backup_iter: None,
+            ghost_to_ignore: None,
+
             print_ghosts: true,
             _conceals: Conceal::All,
         }
     }
 
     pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let (chars, tags) = {
+        let (chars, (tags, text_id)) = {
             let text_id: Option<TextId> = text
                 .tags
                 .iter_at(exact_pos.real())
@@ -100,9 +103,9 @@ impl<'a> Iter<'a> {
                     _ => None,
                 });
 
-            text_id
-                .and_then(|id| text.tags.texts.get(&id))
-                .map(|text| {
+            let (chars, tags_and_id) = text_id
+                .and_then(|id| text.tags.texts.get(&id).zip(Some(id)))
+                .map(|(text, id)| {
                     let tags_start = exact_pos
                         .ghost()
                         .saturating_sub(text.tags.back_check_amount());
@@ -110,9 +113,11 @@ impl<'a> Iter<'a> {
                     let chars = text.rope.chars_at(exact_pos.ghost());
                     let tags = text.tags.iter_at(tags_start);
 
-                    (chars, tags)
+                    (chars, (tags, id))
                 })
-                .unzip()
+                .unzip();
+
+            (chars, tags_and_id.unzip())
         };
 
         let tags_start = exact_pos
@@ -140,6 +145,8 @@ impl<'a> Iter<'a> {
             line: text.rope.char_to_line(exact_pos.real()),
             conceals: 0,
             backup_iter,
+            ghost_to_ignore: text_id,
+
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -166,11 +173,15 @@ impl<'a> Iter<'a> {
         }
     }
 
-    #[inline(always)]
-    fn process_meta_tags(&mut self, tag: RawTag, pos: usize) -> ControlFlow<(), ()> {
+    #[inline]
+    fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<(), ()> {
         match tag {
             RawTag::GhostText(_, id) if self.print_ghosts => {
-                let text = self.text.tags.texts.get(&id).unwrap();
+                if self.ghost_to_ignore.is_some_and(|to_ignore| to_ignore == *id) {
+                    return ControlFlow::Continue(())
+                }
+
+                let text = self.text.tags.texts.get(id).unwrap();
                 let iter = if pos >= self.pos && self.conceals == 0 {
                     text.iter()
                 } else {
@@ -201,7 +212,7 @@ impl<'a> Iter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::Concealed(skip) => {
-                let pos = pos.saturating_add(skip);
+                let pos = pos.saturating_add(*skip);
                 *self = Iter::new_at(self.text, pos);
                 ControlFlow::Break(())
             }
@@ -222,7 +233,7 @@ impl Iterator for Iter<'_> {
     ///   which should be used to change the way the [`Text`] is printed.
     type Item = Item;
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let mut final_ghost = None;
 
@@ -233,7 +244,7 @@ impl Iterator for Iter<'_> {
             {
                 self.tags.next();
 
-                if let ControlFlow::Break(_) = self.process_meta_tags(tag, pos) {
+                if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
                     let part = Part::from_raw(tag);
                     if let Some(pos) = self.backup_iter.as_ref().map(|(pos, ..)| *pos) {
                         let pos = ExactPos::new(pos, self.pos);
@@ -280,6 +291,7 @@ pub struct RevIter<'a> {
     line: usize,
     conceals: usize,
     backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ReverseTags<'a>)>,
+    ghost_to_ignore: Option<TextId>,
 
     // Iteration options:
     print_ghosts: bool,
@@ -297,13 +309,15 @@ impl<'a> RevIter<'a> {
             line: text.char_to_line(pos),
             conceals: 0,
             backup_iter: None,
+            ghost_to_ignore: None,
+
             print_ghosts: true,
             _conceals: Conceal::All,
         }
     }
 
     pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let (chars, tags) = {
+        let (chars, (tags, text_id)) = {
             let text_id: Option<TextId> = text
                 .tags
                 .rev_iter_at(exact_pos.real())
@@ -313,17 +327,19 @@ impl<'a> RevIter<'a> {
                     _ => None,
                 });
 
-            text_id
-                .and_then(|id| text.tags.texts.get(&id))
-                .map(|text| {
+            let (chars, tags_and_id) = text_id
+                .and_then(|id| text.tags.texts.get(&id).zip(Some(id)))
+                .map(|(text, id)| {
                     let tags_start = exact_pos.ghost() + text.tags.back_check_amount();
 
                     let chars = text.rope.chars_at(exact_pos.ghost()).reversed();
                     let tags = text.tags.rev_iter_at(tags_start);
 
-                    (chars, tags)
+                    (chars, (tags, id))
                 })
-                .unzip()
+                .unzip();
+
+            (chars, tags_and_id.unzip())
         };
 
         let tags_start = exact_pos.real() + text.tags.back_check_amount();
@@ -349,6 +365,8 @@ impl<'a> RevIter<'a> {
             line: text.rope.char_to_line(exact_pos.real()),
             conceals: 0,
             backup_iter,
+            ghost_to_ignore: text_id,
+
             print_ghosts: true,
             _conceals: Conceal::All,
         }
@@ -382,10 +400,14 @@ impl<'a> RevIter<'a> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<()> {
         match tag {
             RawTag::GhostText(_, id) if self.print_ghosts => {
+                if self.ghost_to_ignore.is_some_and(|to_ignore| to_ignore == *id) {
+                    return ControlFlow::Continue(())
+                }
+
                 let text = self.text.tags.texts.get(id).unwrap();
                 let iter = if pos <= self.pos && self.conceals == 0 {
                     text.rev_iter()
@@ -435,7 +457,7 @@ impl<'a> RevIter<'a> {
 impl Iterator for RevIter<'_> {
     type Item = Item;
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let mut final_ghost = None;
 

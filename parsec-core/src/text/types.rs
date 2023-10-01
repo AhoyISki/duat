@@ -19,7 +19,7 @@ pub enum Part {
 
 impl Part {
     // TODO: Add a default alignment.
-    #[inline(always)]
+    #[inline]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
             RawTag::PushForm(_, id) => Part::PushForm(id),
@@ -71,12 +71,12 @@ impl Part {
     ///
     /// [`Char`]: TextBit::Char
     #[must_use]
-	#[inline(always)]
+    #[inline]
     pub fn is_char(&self) -> bool {
         matches!(self, Part::Char(_))
     }
 
-	#[inline(always)]
+    #[inline]
     pub fn as_char(&self) -> Option<char> {
         if let Self::Char(v) = self {
             Some(*v)
@@ -85,9 +85,8 @@ impl Part {
         }
     }
 
-	#[inline(always)]
+    #[inline]
     pub fn is_tag(&self) -> bool {
         !self.is_char()
     }
 }
-
