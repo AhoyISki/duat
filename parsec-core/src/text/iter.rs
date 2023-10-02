@@ -485,8 +485,13 @@ impl Iterator for RevIter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(pos, tag)) = tag.filter(|(pos, _)| *pos >= self.pos || self.conceals > 0)
-            {
+            if let Some(&(pos, tag)) = tag.filter(|(pos, tag)| {
+                if let RawTag::GhostText(_, id) = tag && *pos + 1 == self.pos {
+                    let text = self.text.tags.texts.get(id).unwrap();
+                    self.final_ghost = Some(text.len_chars());
+                }
+                *pos >= self.pos || self.conceals > 0
+            }) {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
@@ -495,7 +500,7 @@ impl Iterator for RevIter<'_> {
                         let pos = ExactPos::new(pos, self.pos);
                         break Some(Item::new(pos, self.line, part));
                     } else {
-                        let pos = ExactPos::new(self.pos, self.final_ghost.unwrap_or(0));
+                        let pos = ExactPos::new(self.pos, self.final_ghost.unwrap_or(usize::MAX));
                         break Some(Item::new(pos, self.line, part));
                     }
                 }
@@ -507,7 +512,8 @@ impl Iterator for RevIter<'_> {
                     break Some(Item::new(pos, self.line, Part::Char(char)));
                 } else {
                     self.line -= (char == '\n') as usize;
-                    let pos = ExactPos::new(self.pos, self.final_ghost.take().unwrap_or(0));
+                    let final_ghost = self.final_ghost.take();
+                    let pos = ExactPos::new(self.pos, final_ghost.unwrap_or(usize::MAX));
                     break Some(Item::new(pos, self.line, Part::Char(char)));
                 }
             } else if let Some(last_iter) = self.backup_iter.take() {

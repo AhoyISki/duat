@@ -267,15 +267,10 @@ impl ui::Area for Area {
             cursor::Hide
         );
 
-        let (iter, cfg) = if let Some(start) = text.close_visual_line_start(info.first) {
+        let (iter, cfg) = {
+            let line_start = text.visual_line_start(info.first);
             let cfg = IterCfg::new(cfg).outsource_lfs();
-            (text.iter_exactly_at(start), cfg)
-        } else {
-            let cfg = IterCfg::new(cfg)
-                .outsource_lfs()
-                .no_word_wrap()
-                .no_indent_wrap();
-            (text.iter_exactly_at(info.first), cfg)
+            (text.iter_exactly_at(line_start), cfg)
         };
 
         let form_former = palette.form_former();
@@ -359,9 +354,7 @@ impl ui::Area for Area {
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = self.print_info.borrow();
-        let line_start = text
-            .close_visual_line_start(info.first)
-            .unwrap_or(info.first);
+        let line_start = text.visual_line_start(info.first);
         let iter = text.iter_exactly_at(line_start);
 
         print_iter(iter, self.width(), cfg, *info)

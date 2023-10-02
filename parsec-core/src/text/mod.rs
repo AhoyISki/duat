@@ -89,22 +89,24 @@ impl Text {
         self.rope.try_char_to_byte(char).ok()
     }
 
-    pub fn close_visual_line_start(&self, exact_pos: ExactPos) -> Option<ExactPos> {
+    pub fn visual_line_start(&self, exact_pos: ExactPos) -> ExactPos {
         if exact_pos == ExactPos::default() {
-            return Some(ExactPos::default());
+            return ExactPos::default();
         }
 
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
-        self.rev_iter_exactly_at(exact_pos)
-            .take(20000)
-            .find_map(|item| {
-                if item.part.as_char().is_some_and(|char| char == '\n') {
-                    Some(ExactPos::new(item.real() + 1, item.ghost()))
-                } else {
-                    (item.pos == ExactPos::default()).then(ExactPos::default)
-                }
-            })
+        let mut iter = self.rev_iter_exactly_at(exact_pos).peekable();
+        let mut cur_item = None;
+        while let Some(item) = iter.peek() {
+            if let Part::Char('\n') = item.part {
+                return cur_item.unwrap_or(exact_pos)
+            } else {
+                cur_item = iter.next().map(|item| item.pos);
+            }
+        }
+
+        ExactPos::default()
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {

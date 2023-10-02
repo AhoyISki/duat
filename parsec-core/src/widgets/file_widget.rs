@@ -27,7 +27,7 @@ use crate::{
     forms::Form,
     input::{Editor, InputMethod},
     palette::palette,
-    text::{IterCfg, Marker, PrintCfg, Tag, Text},
+    text::{text, IterCfg, Marker, PrintCfg, Tag, Text},
     ui::{Area, PushSpecs, Ui},
 };
 
@@ -86,10 +86,18 @@ where
         #[cfg(feature = "wacky-colors")]
         {
             let marker = Marker::new();
-            let form1 = palette().set_form("form 1 lmao", Form::new().red());
-            let form2 = palette().set_form("form 2 lmao", Form::new().on_blue());
-            text.insert(0, Tag::StartAlignCenter, marker);
-            text.insert(50, Tag::PushForm(form1), marker);
+            let form1 = palette().set_form("form1lmao", Form::new().red());
+            let form2 = palette().set_form("form2lmao", Form::new().on_blue());
+            for i in (0..10000).step_by(50) {
+                text.insert(
+                    i,
+                    Tag::GhostText(text!(
+                    "\nhello everynyan\n" [form1lmao]
+                    "How are you?\n" [form2lmao]
+                    "Fine. Thank you.\n\n")),
+                    marker,
+                );
+            }
             text.insert(110, Tag::PopForm(form1), marker);
             text.insert(30, Tag::PushForm(form2), marker);
             text.insert(80, Tag::PopForm(form2), marker);
