@@ -275,52 +275,24 @@ impl Cursor {
     }
 
     /// The byte (relative to the beginning of the file) of the caret.
-    /// Indexed at 1. Intended only for displaying by the end
-    /// user. For internal use, see `true_byte()`.
-    pub fn byte(&self) -> usize {
-        self.caret.byte + 1
-    }
-
-    /// The char (relative to the beginning of the file) of the caret.
-    /// Indexed at 1. Intended only for displaying by the end
-    /// user. For internal use, see `true_char()`.
-    pub fn char(&self) -> usize {
-        self.caret.char + 1
-    }
-
-    /// The column of the caret. Indexed at 1. Intended only for
-    /// displaying by the end user. For internal use, see
-    /// `true_col()`.
-    pub fn col(&self) -> usize {
-        self.caret.col + 1
-    }
-
-    /// The line of the caret. Indexed at 1. Intended only for
-    /// displaying by the end user. For internal use, see
-    /// `true_row()`.
-    pub fn line(&self) -> usize {
-        self.caret.line + 1
-    }
-
-    /// The byte (relative to the beginning of the file) of the caret.
     /// Indexed at 0.
-    pub fn true_byte(&self) -> usize {
+    pub fn byte(&self) -> usize {
         self.caret.byte
     }
 
     /// The char (relative to the beginning of the file) of the caret.
     /// Indexed at 0.
-    pub fn true_char(&self) -> usize {
+    pub fn char(&self) -> usize {
         self.caret.char
     }
 
     /// The column of the caret. Indexed at 0.
-    pub fn true_col(&self) -> usize {
+    pub fn col(&self) -> usize {
         self.caret.col
     }
 
     /// The line of the caret. Indexed at 0.
-    pub fn true_line(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.caret.line
     }
 }

@@ -23,7 +23,7 @@ no_deadlocks = { path = "../../no-deadlocks/" }
 
 [features]
 # NOTE: Features meant for testing only by myself.
-default = ["wacky-colors"]
+default = []
 disable-testing = []
 deadlock-detection = []
 wacky-colors = []

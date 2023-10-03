@@ -97,12 +97,12 @@ impl Text {
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
         let mut iter = self.rev_iter_exactly_at(exact_pos).peekable();
-        let mut cur_item = None;
-        while let Some(item) = iter.peek() {
-            if let Part::Char('\n') = item.part {
-                return cur_item.unwrap_or(exact_pos)
-            } else {
-                cur_item = iter.next().map(|item| item.pos);
+        let mut cur_pos = exact_pos;
+        while let Some(peek) = iter.peek() {
+            match peek.part {
+                Part::Char('\n') => return cur_pos,
+                Part::Char(_) => cur_pos = iter.next().unwrap().pos,
+                _ => drop(iter.next())
             }
         }
 
@@ -244,6 +244,10 @@ impl Text {
 
     pub fn rev_iter_exactly_at(&self, exact_pos: ExactPos) -> RevIter<'_> {
         RevIter::new_exactly_at(self, exact_pos)
+    }
+
+    pub fn rev_iter_following(&self, exact_pos: ExactPos) -> RevIter<'_> {
+        RevIter::new_following(self, exact_pos)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {

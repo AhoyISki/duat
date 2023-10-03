@@ -109,8 +109,12 @@ impl Area {
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
 
-        let inclusive_pos = point.char() + 1;
-        let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), self.width(), cfg)
+        let mut str = String::new();
+        let pos = ExactPos::at_cursor_char(point.char());
+        let mut iter = rev_print_iter(text.rev_iter_following(pos), self.width(), cfg)
+            .inspect(|(_, item)| {
+                item.part.as_char().inspect(|char| str.insert(0, *char));
+            })
             .filter_map(|(caret, item)| caret.wrap.then_some(item))
             .peekable();
 
@@ -127,7 +131,7 @@ impl Area {
         };
 
         let first = if nl_on_point_was_concealed {
-            let exact = ExactPos::from_real(point.char());
+            let exact = ExactPos::at_cursor_char(point.char());
             let skipped_nl = std::iter::once(exact);
             skipped_nl
                 .chain(iter)
@@ -137,8 +141,8 @@ impl Area {
             iter.nth(target).unwrap_or(ExactPos::default())
         };
 
-        if (info.last_main > point && first < info.first)
-            || (info.last_main < point && first > info.first)
+        if (info.last_main > point && first <= info.first)
+            || (info.last_main < point && first >= info.first)
         {
             info.first = first;
         }
@@ -236,8 +240,8 @@ impl ui::Area for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
-        self.scroll_hor_around(point, text, IterCfg::new(cfg).outsource_lfs());
         self.scroll_ver_around(point, text, IterCfg::new(cfg).outsource_lfs());
+        self.scroll_hor_around(point, text, IterCfg::new(cfg).outsource_lfs());
 
         self.print_info.borrow_mut().last_main = point;
     }

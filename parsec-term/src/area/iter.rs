@@ -181,7 +181,7 @@ where
 {
     type Item = (Caret, Item);
 
-	#[inline(always)]
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Iter::Parts(parts, _) => parts.next(),
@@ -216,7 +216,7 @@ pub fn print_iter<'a>(
 pub fn rev_print_iter<'a>(
     mut iter: impl Iterator<Item = Item> + Clone + 'a,
     width: usize,
-    mut cfg: IterCfg<'a>,
+    cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
@@ -226,7 +226,6 @@ pub fn rev_print_iter<'a>(
         if let Some(next) = returns.pop() {
             Some(next)
         } else {
-            let mut give_up = false;
             let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
             #[allow(clippy::while_let_on_iterator)]
             while let Some(item) = iter.next() {
@@ -237,21 +236,13 @@ pub fn rev_print_iter<'a>(
                         prev_line_nl = Some(item);
                         break;
                     }
-                // NOTE: 20000 is a magic number, it's merely a guess
-                // at what would be reasonable.
-                } else if items.len() == 20000 {
-                    give_up = true;
-                    break;
                 } else {
                     items.push(item);
                 }
             }
 
-            if give_up {
-                cfg = cfg.no_word_wrap().no_indent_wrap();
-            }
-
             returns.extend(print_iter(items.into_iter().rev(), width, cfg, info));
+
             returns.pop()
         }
     })

@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{cmp::Ordering, ops::ControlFlow};
 
 use super::{
     tags::{self, RawTag, TextId},
@@ -6,15 +6,42 @@ use super::{
 };
 use crate::{position::Cursor};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ExactPos {
     real: usize,
     ghost: usize,
 }
 
+impl Ord for ExactPos {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.real.cmp(&other.real) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => {
+                if (self.ghost == 0 && other.ghost == usize::MAX)
+                    || (self.ghost == usize::MAX && other.ghost == 0)
+                {
+                    Ordering::Equal
+                } else {
+                    self.ghost.cmp(&other.ghost)
+                }
+            }
+        }
+    }
+}
+
+impl PartialOrd for ExactPos {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl ExactPos {
-    pub fn from_real(real: usize) -> Self {
-        Self { real, ghost: 0 }
+    pub fn at_cursor_char(real: usize) -> Self {
+        Self {
+            real,
+            ghost: usize::MAX,
+        }
     }
 
     pub fn real(&self) -> usize {
@@ -33,7 +60,7 @@ impl ExactPos {
     fn clamp(self, text: &Text) -> Self {
         ExactPos {
             real: self.real.min(text.len_chars()),
-            ghost: self.ghost.min(text.len_chars()),
+            ghost: self.ghost,
         }
     }
 }
@@ -104,26 +131,25 @@ impl<'a> Iter<'a> {
     }
 
     pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let exact_pos = exact_pos.clamp(text);
+        let ExactPos { real, mut ghost } = exact_pos.clamp(text);
 
         let (chars, (tags, text_id)) = {
             let text_id: Option<TextId> = text
                 .tags
-                .iter_at(exact_pos.real())
-                .take_while(|(pos, _)| *pos <= exact_pos.real())
+                .iter_at(real)
+                .take_while(|(pos, _)| *pos <= real)
                 .find_map(|(pos, tag)| match tag {
-                    RawTag::GhostText(_, id) => (pos == exact_pos.real()).then_some(id),
+                    RawTag::GhostText(_, id) => (pos == real).then_some(id),
                     _ => None,
                 });
 
             let (chars, tags_and_id) = text_id
                 .and_then(|id| text.tags.texts.get(&id).zip(Some(id)))
                 .map(|(text, id)| {
-                    let tags_start = exact_pos
-                        .ghost()
-                        .saturating_sub(text.tags.back_check_amount());
+                    ghost = ghost.min(text.len_chars());
+                    let tags_start = ghost.saturating_sub(text.tags.back_check_amount());
 
-                    let chars = text.rope.chars_at(exact_pos.ghost());
+                    let chars = text.rope.chars_at(ghost);
                     let tags = text.tags.iter_at(tags_start);
 
                     (chars, (tags, id))
@@ -133,29 +159,21 @@ impl<'a> Iter<'a> {
             (chars, tags_and_id.unzip())
         };
 
-        let tags_start = exact_pos
-            .real()
-            .saturating_sub(text.tags.back_check_amount());
-
-        let pos = if chars.is_some() {
-            exact_pos.ghost()
-        } else {
-            exact_pos.real()
-        };
-
+        let tags_start = real.saturating_sub(text.tags.back_check_amount());
+        let pos = if chars.is_some() { ghost } else { real };
         let backup_iter = chars.is_some().then(|| {
-            let chars = text.rope.chars_at(exact_pos.real());
+            let chars = text.rope.chars_at(real);
             let tags = text.tags.iter_at(tags_start);
 
-            (exact_pos.real(), chars, tags)
+            (real, chars, tags)
         });
 
         Self {
             text,
-            chars: chars.unwrap_or_else(|| text.rope.chars_at(exact_pos.real())),
+            chars: chars.unwrap_or_else(|| text.rope.chars_at(real)),
             tags: tags.unwrap_or_else(|| text.tags.iter_at(tags_start)),
             pos,
-            line: text.rope.char_to_line(exact_pos.real()),
+            line: text.rope.char_to_line(real),
             conceals: 0,
             backup_iter,
             ghost_to_ignore: text_id,
@@ -199,7 +217,7 @@ impl<'a> Iter<'a> {
                 }
 
                 let text = self.text.tags.texts.get(id).unwrap();
-                let iter = if pos >= self.pos && self.conceals == 0 {
+                let iter = if pos == self.pos && self.conceals == 0 {
                     text.iter()
                 } else {
                     text.iter_at(text.len_chars())
@@ -334,24 +352,20 @@ impl<'a> RevIter<'a> {
     }
 
     pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let exact_pos = exact_pos.clamp(text);
+        let ExactPos { real, mut ghost } = exact_pos.clamp(text);
 
-        let (chars, (tags, text_id)) = {
-            let text_id: Option<TextId> = text
-                .tags
-                .rev_iter_at(exact_pos.real())
-                .take_while(|(pos, _)| *pos >= exact_pos.real())
-                .find_map(|(pos, tag)| match tag {
-                    RawTag::GhostText(_, id) => (pos == exact_pos.real()).then_some(id),
-                    _ => None,
-                });
+        let (chars, (tags, ghost_to_ignore)) = {
+            let text = text.tags.on(real).find_map(|tag| match tag {
+                RawTag::GhostText(_, id) => text.tags.texts.get(&id).zip(Some(id)),
+                _ => None,
+            });
 
-            let (chars, tags_and_id) = text_id
-                .and_then(|id| text.tags.texts.get(&id).zip(Some(id)))
+            let (chars, tags_and_id) = text
                 .map(|(text, id)| {
-                    let tags_start = exact_pos.ghost() + text.tags.back_check_amount();
+                    ghost = ghost.min(text.len_chars());
+                    let tags_start = ghost + text.tags.back_check_amount();
 
-                    let chars = text.rope.chars_at(exact_pos.ghost()).reversed();
+                    let chars = text.rope.chars_at(ghost).reversed();
                     let tags = text.tags.rev_iter_at(tags_start);
 
                     (chars, (tags, id))
@@ -361,35 +375,51 @@ impl<'a> RevIter<'a> {
             (chars, tags_and_id.unzip())
         };
 
-        let tags_start = exact_pos.real() + text.tags.back_check_amount();
+        let tags_start = real + text.tags.back_check_amount();
 
-        let pos = if chars.is_some() {
-            exact_pos.ghost()
-        } else {
-            exact_pos.real()
-        };
+        let pos = if chars.is_some() { ghost } else { real };
 
         let backup_iter = chars.is_some().then(|| {
-            let chars = text.rope.chars_at(exact_pos.real()).reversed();
+            let chars = text.rope.chars_at(real).reversed();
             let tags = text.tags.rev_iter_at(tags_start);
 
-            (exact_pos.real(), chars, tags)
+            (real, chars, tags)
         });
 
         Self {
             text,
-            chars: chars.unwrap_or_else(|| text.rope.chars_at(exact_pos.real()).reversed()),
+            chars: chars.unwrap_or_else(|| text.rope.chars_at(real).reversed()),
             tags: tags.unwrap_or_else(|| text.tags.rev_iter_at(tags_start)),
             pos,
-            line: text.rope.char_to_line(exact_pos.real()),
+            line: text.rope.char_to_line(real),
             conceals: 0,
             backup_iter,
-            ghost_to_ignore: text_id,
+            ghost_to_ignore,
             final_ghost: None,
 
             print_ghosts: true,
             _conceals: Conceal::All,
         }
+    }
+
+    pub(super) fn new_following(text: &'a Text, exact_pos: ExactPos) -> Self {
+        let exact_pos = if let Some(text) = text.tags.on(exact_pos.real()).find_map(|tag| {
+            if let RawTag::GhostText(_, text_id) = tag {
+                text.tags.texts.get(&text_id)
+            } else {
+                None
+            }
+        }) {
+            if exact_pos.ghost() >= text.len_chars() {
+                ExactPos::new(exact_pos.real() + 1, 0)
+            } else {
+                ExactPos::new(exact_pos.real(), exact_pos.ghost() + 1)
+            }
+        } else {
+            ExactPos::new(exact_pos.real() + 1, 0)
+        };
+
+        Self::new_exactly_at(text, exact_pos)
     }
 
     pub fn no_conceals(self) -> Self {
@@ -432,12 +462,11 @@ impl<'a> RevIter<'a> {
                 }
 
                 let text = self.text.tags.texts.get(id).unwrap();
-                let iter = if pos <= self.pos && self.conceals == 0 {
-                    text.rev_iter()
-                } else {
-                    text.rev_iter_at(0)
-                };
+                if pos > self.pos || self.conceals != 0 {
+                    return ControlFlow::Continue(());
+                }
 
+                let iter = text.rev_iter();
                 let pos = std::mem::replace(&mut self.pos, iter.pos);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
@@ -485,13 +514,8 @@ impl Iterator for RevIter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(pos, tag)) = tag.filter(|(pos, tag)| {
-                if let RawTag::GhostText(_, id) = tag && *pos + 1 == self.pos {
-                    let text = self.text.tags.texts.get(id).unwrap();
-                    self.final_ghost = Some(text.len_chars());
-                }
-                *pos >= self.pos || self.conceals > 0
-            }) {
+            if let Some(&(pos, tag)) = tag.filter(|(pos, _)| *pos >= self.pos || self.conceals > 0)
+            {
                 self.tags.next();
 
                 if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
@@ -526,7 +550,7 @@ impl Iterator for RevIter<'_> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Default, Clone)]
 enum Conceal<'a> {
     #[default]
     All,

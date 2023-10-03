@@ -157,7 +157,7 @@ impl Default for PrintCfg {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct IterCfg<'a> {
     cfg: &'a PrintCfg,
     iter_lfs: bool,

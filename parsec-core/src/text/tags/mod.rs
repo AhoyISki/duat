@@ -168,11 +168,11 @@ impl Tags {
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
-        // In case the rope is empty, just insert a regular skip. 
+        // In case the rope is empty, just insert a regular skip.
         let Some((start, t_or_s)) = self.get_from_pos(old.start) else {
             let skip = TagOrSkip::Skip(new_end - old.end);
             self.rope.insert(self.rope.measure(), skip, usize::cmp);
-            return
+            return;
         };
 
         let new = old.start..new_end;
@@ -413,6 +413,7 @@ impl Tags {
                     let end = range.get_end().unwrap_or(usize::MAX);
                     (end, range.tag().inverse().unwrap())
                 })
+                .filter(|(end, _)| *end > measure)
                 .collect();
 
             ranges.sort();
@@ -442,6 +443,13 @@ impl Tags {
             });
 
         possible_ranges.into_iter().rev().chain(raw_tags).peekable()
+    }
+
+    pub fn on(&self, measure: usize) -> impl Iterator<Item = RawTag> + '_ {
+        self.rope
+            .iter_at_measure(measure, usize::cmp)
+            .take_while(move |(pos, _)| *pos == measure)
+            .filter_map(|(_, t_or_s)| t_or_s.as_tag())
     }
 }
 

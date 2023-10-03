@@ -142,7 +142,7 @@ impl PassiveWidget for VertRule {
 
     fn update(&mut self, _area: &impl Area) {
         self.text = self.reader.inspect(|file, input| {
-            let main_line = input.cursors().unwrap().main().true_line();
+            let main_line = input.cursors().unwrap().main().line();
             let lines = file.printed_lines();
 
             let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();

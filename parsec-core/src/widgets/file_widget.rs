@@ -24,10 +24,8 @@ use std::{fs, path::PathBuf};
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     data::RwData,
-    forms::Form,
     input::{Editor, InputMethod},
-    palette::palette,
-    text::{text, IterCfg, Marker, PrintCfg, Tag, Text},
+    text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
 
@@ -85,10 +83,15 @@ where
 
         #[cfg(feature = "wacky-colors")]
         {
+            use crate::{
+                forms::Form,
+                palette::palette,
+                text::{text, Marker, Tag},
+            };
             let marker = Marker::new();
             let form1 = palette().set_form("form1lmao", Form::new().red());
             let form2 = palette().set_form("form2lmao", Form::new().on_blue());
-            for i in (0..10000).step_by(50) {
+            for i in (0..20000).step_by(50) {
                 text.insert(
                     i,
                     Tag::GhostText(text!(
@@ -99,6 +102,8 @@ where
                 );
             }
             text.insert(110, Tag::PopForm(form1), marker);
+            text.insert(10, Tag::PushForm(form1), marker);
+            text.insert(15, Tag::PopForm(form1), marker);
             text.insert(30, Tag::PushForm(form2), marker);
             text.insert(80, Tag::PopForm(form2), marker);
             text.insert(80, Tag::PushForm(form2), marker);

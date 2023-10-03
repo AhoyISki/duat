@@ -64,7 +64,7 @@ impl LineNumbers {
     fn update_text(&mut self) {
         self.text = self.reader.inspect(|file, input| {
             let printed_lines = file.printed_lines();
-            let main_line = input.cursors().map(|cursors| cursors.main().true_line());
+            let main_line = input.cursors().map(|cursors| cursors.main().line());
 
             let mut builder = text!();
             text!(builder, { tag_from_align(self.cfg.alignment) });
