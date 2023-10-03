@@ -92,6 +92,11 @@ where
             let form1 = palette().set_form("form1lmao", Form::new().red());
             let form2 = palette().set_form("form2lmao", Form::new().on_blue());
             for i in (0..20000).step_by(50) {
+                text.insert(i, Tag::GhostText(text!("\n")), marker);
+                text.insert(i, Tag::GhostText(text!("\n")), marker);
+                text.insert(i, Tag::GhostText(text!("\n")), marker);
+                text.insert(i, Tag::GhostText(text!("\n")), marker);
+                text.insert(i, Tag::GhostText(text!("\n")), marker);
                 text.insert(
                     i,
                     Tag::GhostText(text!(
