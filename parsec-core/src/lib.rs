@@ -68,7 +68,7 @@ pub mod controls {
     }
 
     pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, Error> {
-        COMMANDS.run(format!("switch-to {}", stringify!(W)))
+        COMMANDS.run(format!("switch-to {}", W::type_name()))
     }
 
     pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, Error> {

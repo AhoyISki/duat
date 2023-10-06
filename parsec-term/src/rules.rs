@@ -162,6 +162,10 @@ impl PassiveWidget for VertRule {
     fn text(&self) -> &Text {
         &self.text
     }
+
+    fn type_name() -> &'static str {
+        "VertRule"
+    }
 }
 
 fn form_string(char: char, count: usize) -> String {

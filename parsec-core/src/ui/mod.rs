@@ -164,8 +164,10 @@ impl Caret {
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Clone + PartialEq + Send + Sync {
-    type ConstraintChangeErr: Debug;
+pub trait Area: Send + Sync {
+    type ConstraintChangeErr: Debug
+    where
+        Self: Sized;
 
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -191,11 +193,15 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
     fn print(&self, text: &Text, cfg: &PrintCfg, palette: &FormPalette);
 
-    fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+    fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>
+    where
+        Self: Sized;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
+    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>
+    where
+        Self: Sized;
 
     //////////////////// Queries
     /// Wether or not [`self`] has changed.
@@ -209,7 +215,9 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_senior_of(&self, other: &Self) -> bool;
+    fn is_senior_of(&self, other: &Self) -> bool
+    where
+        Self: Sized;
 
     /// Returns a printing iterator.
     ///
@@ -243,13 +251,17 @@ pub trait Area: Clone + PartialEq + Send + Sync {
         &self,
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
+    where
+        Self: Sized;
 
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
         cfg: IterCfg<'a>,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
+    where
+        Self: Sized;
 
     /// Returns a reverse printing iterator.
     ///
@@ -283,7 +295,9 @@ pub trait Area: Clone + PartialEq + Send + Sync {
         &self,
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
+    where
+        Self: Sized;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
@@ -322,7 +336,9 @@ pub trait Area: Clone + PartialEq + Send + Sync {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>);
+    fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>)
+    where
+        Self: Sized;
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -390,7 +406,7 @@ impl From<PushSpecs> for Axis {
 /// order to use Parsec.
 pub trait Ui: Sized + Default + 'static {
     type ConstraintChangeErr: Debug;
-    type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr>;
+    type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr> + Clone + PartialEq;
 
     /// Initiates and returns a new "master" [`Area`].
     ///

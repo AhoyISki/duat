@@ -16,7 +16,6 @@
 //! by running the `set-prompt` [`Command`].
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    commands::Command,
     controls,
     data::RwData,
     input::{Commander, InputMethod},
@@ -93,16 +92,15 @@ where
                 prompt: RwData::new(self.prompt.clone()),
             };
 
-            let set_prompt = {
-                let prompt = command_line.prompt.clone();
-
-                Command::new(["set-prompt"], move |_, new_prompt| {
-                    *prompt.write() = String::from(new_prompt.next().unwrap_or(""));
+            let _ = COMMANDS.add_for_widget::<CommandLine>(
+                ["set-prompt"],
+                move |command_line, _, _, args| {
+                    let new_prompt: Vec<&str> = args.collect();
+                    let new_prompt = new_prompt.join(" ");
+                    *command_line.prompt.write() = new_prompt;
                     Ok(None)
-                })
-            };
-
-            COMMANDS.try_add(set_prompt).unwrap();
+                },
+            );
 
             let widget = Widget::active(command_line, self.input.clone());
             (widget, Box::new(|| false), self.specs)
@@ -154,6 +152,10 @@ impl PassiveWidget for CommandLine {
     {
         area.print(self.text(), self.print_cfg(), &crate::PALETTE)
     }
+
+    fn type_name() -> &'static str {
+        "CommandLine"
+    }
 }
 
 impl ActiveWidget for CommandLine {
@@ -178,7 +180,7 @@ impl ActiveWidget for CommandLine {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.iter_chars_at(0).collect::<String>();
-        let _ = controls::run(cmd);
+        std::thread::spawn(|| controls::run(cmd));
     }
 }
 

@@ -1,5 +1,5 @@
 use super::{Area, PushSpecs, Ui, Window};
-use crate::widgets::Widget;
+use crate::{widgets::Widget, CURRENT_FILE};
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -96,10 +96,18 @@ where
         F: Fn() -> bool + 'static,
     {
         let (widget, checker, specs) = builder();
+
+        let related = widget.as_passive().clone();
+        let type_name = widget.type_name();
+
         let (child, parent) = {
             let (child, parent) = self
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
+
+            CURRENT_FILE.mutate(|file, _| {
+                file.add_related_widget((related, type_name, Box::new(child.clone())))
+            });
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -141,7 +149,15 @@ where
         F: Fn() -> bool + 'static,
     {
         let (widget, checker, specs) = builder();
-        self.window.push(widget, &area, checker, specs, true)
+
+        let related = widget.as_passive().clone();
+        let type_name = widget.type_name();
+
+        let (child, parent) = self.window.push(widget, &area, checker, specs, true);
+        CURRENT_FILE.mutate(|file, _| {
+            file.add_related_widget((related, type_name, Box::new(child.clone())))
+        });
+        (child, parent)
     }
 }
 

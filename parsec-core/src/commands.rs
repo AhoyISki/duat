@@ -67,9 +67,9 @@
 //! The calling of commands is done through the [`Commands`] struct,
 //! shared around with an [`RwData<Commands>`].
 //!
-//! This struct is found in the [`Session<U>`], either
+//! This struct is found in the [`Session`], either
 //! through the `constructor_hook` via [`ModNode::commands`], or
-//! via [`Session::commands`], from an existing [`Session<U>`]
+//! via [`Session::commands`], from an existing [`Session`]
 //! instance.
 //!
 //! ```rust
@@ -124,9 +124,9 @@
 //!
 //! It is then accessed by the `constructor_hook`, where the `"lol"`
 //! caller is called upon, executing the `lol_cmd`. Also in the
-//! `constructor_hook`, a [`CommandLine<U>`] is pushed below the
-//! [`FileWidget<U>`]. The [`Controler<U>`] parameter is
-//! then copied internally to the [`CommandLine<U>`], giving it access
+//! `constructor_hook`, a [`CommandLine`] is pushed below the
+//! [`FileWidget`]. The [`Controler`] parameter is
+//! then copied internally to the [`CommandLine`], giving it access
 //! to the [`Commands`] struct, allowing it to take user input to run
 //! commands.
 //!
@@ -154,25 +154,31 @@
 //! # }
 //! ```
 //!
-//! [`Controler<U>`]: crate::Controler
-//! [`Session<U>`]: crate::session::Session
+//! [`Controler`]: crate::Controler
+//! [`Session`]: crate::session::Session
 //! [`Session::commands`]: crate::session::Session::commands
-//! [`ModNode<U>`]: crate::ui::ModNode
+//! [`ModNode`]: crate::ui::ModNode
 //! [`ModNode::commands`]: crate::ui::ModNode::commands
-//! [`CommandLine<U>`]: crate::widgets::CommandLine
-//! [`FileWidget<U>`]: crate::widgets::FileWidget
+//! [`CommandLine`]: crate::widgets::CommandLine
+//! [`FileWidget`]: crate::widgets::FileWidget
 //! [`Iterator<Item = &str>`]: std::iter::Iterator
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{
     collections::HashMap,
+    mem::MaybeUninit,
     sync::{Arc, LazyLock},
 };
 
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-use crate::{data::RwData, BREAK_LOOP, SHOULD_QUIT};
+use crate::{
+    data::{Data, RwData},
+    ui::{Area, Ui, Window},
+    widgets::PassiveWidget,
+    BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
+};
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -277,7 +283,7 @@ impl<'a> Flags<'a> {
     }
 }
 
-/// A function to be used on hooks or in the [`CommandLine<U>`].
+/// A function to be used on hooks or in the [`CommandLine`].
 ///
 /// The [`Command`] takes in two vectors of [`String`]s, the first
 /// represents the `flags` passed on to the [`Command`], while the
@@ -288,7 +294,7 @@ impl<'a> Flags<'a> {
 /// When creating a [`Command`], one should prioritize the reduction
 /// of "data" that the [`Command`] uses when triggering.
 ///
-/// As an example, let's say you're creating a [`Widget<U>`],
+/// As an example, let's say you're creating a [`Widget`],
 /// as seen on the `struct` below.
 ///
 /// ```rust
@@ -399,7 +405,7 @@ impl<'a> Flags<'a> {
 /// annoying to diagnose.
 ///
 /// As an example, there is the
-/// [`CommandLine<U>`] widget. If its
+/// [`CommandLine`] widget. If its
 /// [`Command`]s moved an entire
 /// [`RwData<CommandLine<U>>`] to the
 /// closures, every single one of them, when triggered through the
@@ -407,15 +413,15 @@ impl<'a> Flags<'a> {
 /// [`RwData`] that was already being written
 /// to.
 ///
-/// [`Controler<U>`]: crate::Controler
+/// [`Controler`]: crate::Controler
 /// [`RwData<MyWidget<U>>`]: crate::data::RwData
-/// [`Session<U>`]: crate::session::Session
+/// [`Session`]: crate::session::Session
 /// [`Session::commands`]: crate::session::Session::commands
-/// [`ModNode<U>`]: crate::ui::ModNode
+/// [`ModNode`]: crate::ui::ModNode
 /// [`ModNode::commands`]: crate::ui::ModNode::commands
-/// [`CommandLine<U>`]: crate::widgets::CommandLine
-/// [`FileWidget<U>`]: crate::widgets::FileWidget
-/// [`Widget<U>`]: crate::widgets::Widget
+/// [`CommandLine`]: crate::widgets::CommandLine
+/// [`FileWidget`]: crate::widgets::FileWidget
+/// [`Widget`]: crate::widgets::Widget
 pub struct Command {
     /// A closure to trigger when any of the `callers` are called.
     ///
@@ -433,7 +439,7 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>>,
+    f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CmdResult>,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>,
 }
@@ -572,7 +578,7 @@ unsafe impl Send for Command {}
 unsafe impl Sync for Command {}
 
 /// A list of [`Command`]s, meant to be used in a
-/// [`CommandLine<U>`].
+/// [`CommandLine`].
 ///
 /// [`Command`]s can be added through the [`Commands::try_add`]
 /// function, they can have multiple callers, and return
@@ -629,9 +635,12 @@ unsafe impl Sync for Command {}
 /// And will also pass `"args"` as an argument for the
 /// `"command-caller"` command.
 ///
-/// [`CommandLine<U>`]: crate::widgets::CommandLine
+/// [`CommandLine`]: crate::widgets::CommandLine
 /// [`Commands::try_add`]: Commands::try_add
-pub struct Commands(LazyLock<RwData<InnerCommands>>);
+pub struct Commands {
+    inner: LazyLock<RwData<InnerCommands>>,
+    widget_getter: RwLock<MaybeUninit<RwData<dyn WidgetGetter>>>,
+}
 
 impl Commands {
     /// Parses the `command`, dividing it into a caller, flags, and
@@ -673,7 +682,7 @@ impl Commands {
     /// # }
     /// ```
     pub fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
-        self.0.read().run(command)
+        self.inner.read().run(command)
     }
 
     /// Tries to add a new [`Command`].
@@ -710,8 +719,58 @@ impl Commands {
     /// assert!(result == "The caller \"cap\" already exists.");
     /// # }
     /// ```
-    pub fn try_add(&self, command: Command) -> Result<(), Error> {
-        self.0.write().try_add(command)
+    pub fn add(
+        &self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CmdResult + 'static,
+    ) -> Result<(), Error> {
+        let command = Command::new(callers, f);
+        self.inner.write().try_add(command)
+    }
+
+    pub fn add_for_widget<W: PassiveWidget>(
+        &self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        mut f: impl FnMut(&mut W, &dyn Area, &Flags, &mut dyn Iterator<Item = &str>) -> CmdResult
+        + 'static,
+    ) -> Result<(), Error> {
+        let widget_getter = unsafe { self.widget_getter.read().unwrap().assume_init_ref().clone() };
+
+        let command = Command::new(callers, move |flags, args| {
+            let widget_getter = widget_getter.read();
+
+            CURRENT_FILE
+                .mutate_related_widget::<W, CmdResult>(|widget, area| f(widget, area, flags, args))
+                .unwrap_or_else(|| {
+                    CURRENT_WIDGET.inspect_data(|widget, _| {
+                        let widget = widget.clone().to_passive();
+                        if let Some((w, a)) = widget_getter.get_from_name(W::type_name(), &widget) {
+                            w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
+                                .unwrap()
+                        } else {
+                            Err(format!(
+                                "Widget of type {} not found",
+                                std::any::type_name::<W>()
+                            ))
+                        }
+                    })
+                })
+        });
+
+        self.inner.write().try_add(command)
+    }
+
+    /// Tries to alias a `caller` to an existing `command`.
+    ///
+    /// Returns an [`Err`] if the `caller` is already a caller for
+    /// another command, or if `command` is not a real caller to an
+    /// exisiting [`Command`].
+    pub fn try_alias<'a>(
+        &self,
+        alias: impl ToString,
+        command: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Option<String>, Error> {
+        self.inner.write().try_alias(alias, command)
     }
 
     /// Returns a new instance of [`Commands`].
@@ -726,58 +785,55 @@ impl Commands {
     ///
     /// [`Controler`]: crate::Controler
     pub(crate) const fn new() -> Self {
-        Self(LazyLock::new(|| {
-            let inner = RwData::new(InnerCommands {
-                list: Vec::new(),
-                aliases: HashMap::new(),
-            });
+        Self {
+            inner: LazyLock::new(|| {
+                let inner = RwData::new(InnerCommands {
+                    list: Vec::new(),
+                    aliases: HashMap::new(),
+                });
 
-            let alias = {
-                let inner = inner.clone();
-                Command::new(["alias"], move |flags, args| {
-                    if !flags.is_empty() {
-                        Err(String::from(
-                            "An alias cannot take any flags, try moving them after the command, \
-                             like \"alias my-alias my-caller --foo --bar\", instead of \"alias \
-                             --foo --bar my-alias my-caller\"",
-                        ))
-                    } else {
-                        let alias = args.next().ok_or(String::from("No alias supplied"))?;
-                        inner
-                            .write()
-                            .try_alias(alias, args)
-                            .map_err(|err| err.to_string())
-                    }
-                })
-            };
+                let alias = {
+                    let inner = inner.clone();
+                    Command::new(["alias"], move |flags, args| {
+                        if !flags.is_empty() {
+                            Err(String::from(
+                                "An alias cannot take any flags, try moving them after the \
+                                 command, like \"alias my-alias my-caller --foo --bar\", instead \
+                                 of \"alias --foo --bar my-alias my-caller\"",
+                            ))
+                        } else {
+                            let alias = args.next().ok_or(String::from("No alias supplied"))?;
+                            inner
+                                .write()
+                                .try_alias(alias, args)
+                                .map_err(|err| err.to_string())
+                        }
+                    })
+                };
 
-            let quit = {
-                Command::new(["quit", "q"], move |_, _| {
-                    BREAK_LOOP.store(true, std::sync::atomic::Ordering::Relaxed);
-                    SHOULD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
+                let quit = {
+                    Command::new(["quit", "q"], move |_, _| {
+                        BREAK_LOOP.store(true, std::sync::atomic::Ordering::Relaxed);
+                        SHOULD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
 
-                    Ok(None)
-                })
-            };
+                        Ok(None)
+                    })
+                };
 
-            inner.write().try_add(quit).unwrap();
-            inner.write().try_add(alias).unwrap();
+                inner.write().try_add(quit).unwrap();
+                inner.write().try_add(alias).unwrap();
 
-            inner
-        }))
+                inner
+            }),
+            widget_getter: RwLock::new(MaybeUninit::uninit()),
+        }
     }
 
-    /// Tries to alias a `caller` to an existing `command`.
-    ///
-    /// Returns an [`Err`] if the `caller` is already a caller for
-    /// another command, or if `command` is not a real caller to an
-    /// exisiting [`Command`].
-    pub fn try_alias<'a>(
-        &self,
-        alias: impl ToString,
-        command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, Error> {
-        self.0.write().try_alias(alias, command)
+    pub(crate) fn add_widget_getter<U: Ui>(&self, getter: RwData<Vec<Window<U>>>) {
+        let inner_arc = getter.inner_arc().clone() as Arc<RwLock<dyn WidgetGetter>>;
+        let getter = RwData::new_unsized::<Window<U>>(inner_arc);
+        let mut lock = self.widget_getter.write().unwrap();
+        *lock = MaybeUninit::new(getter)
     }
 }
 
@@ -852,6 +908,42 @@ impl InnerCommands {
         } else {
             Err(Error::NotFound(caller))
         }
+    }
+}
+
+trait WidgetGetter: Send + Sync {
+    fn get_from_name(
+        &self,
+        type_id: &'static str,
+        arc: &dyn Data<dyn PassiveWidget>,
+    ) -> Option<(&RwData<dyn PassiveWidget>, &dyn Area)>;
+}
+
+impl<U> WidgetGetter for Vec<Window<U>>
+where
+    U: Ui,
+{
+    fn get_from_name(
+        &self,
+        type_name: &'static str,
+        widget: &dyn Data<dyn PassiveWidget>,
+    ) -> Option<(&RwData<dyn PassiveWidget>, &dyn Area)> {
+        let window = self
+            .iter()
+            .position(|w| w.widgets().any(|(cmp, _)| cmp.ptr_eq(widget)))
+            .unwrap();
+
+        let on_window = self[window].widgets();
+
+        let previous = self.iter().take(window).flat_map(|w| w.widgets());
+
+        let following = self.iter().skip(window + 1).flat_map(|w| w.widgets());
+
+        on_window
+            .chain(following)
+            .chain(previous)
+            .find(|(w, _)| w.type_name() == type_name)
+            .map(|(w, a)| (w.as_passive(), a as &dyn Area))
     }
 }
 
@@ -944,3 +1036,5 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+type CmdResult = Result<Option<String>, String>;

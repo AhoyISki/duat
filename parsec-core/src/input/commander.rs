@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{key, Cursors, InputMethod, MultiCursorEditor};
 use crate::{controls, data::RwData, ui::Area, widgets::CommandLine};
@@ -54,6 +54,10 @@ impl InputMethod for Commander {
                 });
             }
             key!(KeyCode::Char(ch)) => {
+                editor.edit_on_main(|editor| editor.insert(ch));
+                editor.move_main(|mover| mover.move_hor(1));
+            }
+            key!(KeyCode::Char(ch), KeyModifiers::SHIFT) => {
                 editor.edit_on_main(|editor| editor.insert(ch));
                 editor.move_main(|mover| mover.move_hor(1));
             }

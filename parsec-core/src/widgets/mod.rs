@@ -18,7 +18,7 @@
 //! separators that only really make sense in the context of a
 //! terminal.
 mod command_line;
-mod file_widget;
+mod file;
 mod line_numbers;
 mod status_line;
 
@@ -32,7 +32,7 @@ use no_deadlocks::RwLock;
 
 pub use self::{
     command_line::{CommandLine, CommandLineCfg},
-    file_widget::{File, FileCfg},
+    file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{file_parts, status_cfg, DynInput, StatusLine, StatusLineCfg},
 };
@@ -59,6 +59,10 @@ pub trait PassiveWidget: Send + Sync + 'static {
     ///
     /// [`Session`]: crate::session::Session
     fn update(&mut self, area: &impl Area)
+    where
+        Self: Sized;
+
+    fn type_name() -> &'static str
     where
         Self: Sized;
 
@@ -122,10 +126,13 @@ pub trait ActiveWidget: PassiveWidget {
     }
 }
 
-trait WidgetHolder<U>: Send + Sync
+#[allow(private_interfaces)]
+trait PassiveWidgetHolder<U>: Send + Sync
 where
     U: Ui,
 {
+    fn passive_widget(&self) -> &RwData<dyn PassiveWidget>;
+
     /// Updates the widget, allowing the modification of its
     /// [`Area`][Ui::Area].
     ///
@@ -137,19 +144,11 @@ where
 
     fn update(&self, area: &U::Area);
 
-    fn widget_type(&self) -> &'static str;
+    fn type_name(&self) -> &'static str;
 }
 
 #[allow(private_interfaces)]
-trait PassiveWidgetHolder<U>: WidgetHolder<U>
-where
-    U: Ui,
-{
-    fn passive_widget(&self) -> &RwData<dyn PassiveWidget>;
-}
-
-#[allow(private_interfaces)]
-trait ActiveWidgetHolder<U>: WidgetHolder<U>
+trait ActiveWidgetHolder<U>: PassiveWidgetHolder<U>
 where
     U: Ui,
 {
@@ -172,11 +171,15 @@ where
     dyn_widget: RwData<dyn PassiveWidget>,
 }
 
-impl<U, W> WidgetHolder<U> for InnerPassiveWidget<W>
+impl<U, W> PassiveWidgetHolder<U> for InnerPassiveWidget<W>
 where
     U: Ui,
     W: PassiveWidget,
 {
+    fn passive_widget(&self) -> &RwData<dyn PassiveWidget> {
+        &self.dyn_widget
+    }
+
     fn update_and_print(&self, area: &<U as Ui>::Area) {
         let mut widget = self.widget.raw_write();
         widget.update(area);
@@ -187,18 +190,8 @@ where
         self.widget.write().update(area);
     }
 
-    fn widget_type(&self) -> &'static str {
-        stringify!(W)
-    }
-}
-
-impl<U, W> PassiveWidgetHolder<U> for InnerPassiveWidget<W>
-where
-    U: Ui,
-    W: PassiveWidget,
-{
-    fn passive_widget(&self) -> &RwData<dyn PassiveWidget> {
-        &self.dyn_widget
+    fn type_name(&self) -> &'static str {
+        W::type_name()
     }
 }
 
@@ -220,17 +213,22 @@ where
     I: InputMethod<Widget = W>,
 {
     widget: RwData<W>,
-    dyn_widget: RwData<dyn ActiveWidget>,
+    dyn_active: RwData<dyn ActiveWidget>,
+    dyn_passive: RwData<dyn PassiveWidget>,
     input: RwData<I>,
     dyn_input: RwData<dyn InputMethod>,
 }
 
-impl<U, W, I> WidgetHolder<U> for InnerActiveWidget<W, I>
+impl<U, W, I> PassiveWidgetHolder<U> for InnerActiveWidget<W, I>
 where
     U: Ui,
     W: ActiveWidget,
     I: InputMethod<Widget = W>,
 {
+    fn passive_widget(&self) -> &RwData<dyn PassiveWidget> {
+        &self.dyn_passive
+    }
+
     fn update_and_print(&self, area: &U::Area) {
         let mut widget = self.widget.raw_write();
         widget.update(area);
@@ -241,8 +239,8 @@ where
         self.widget.write().update(area)
     }
 
-    fn widget_type(&self) -> &'static str {
-        stringify!(W)
+    fn type_name(&self) -> &'static str {
+        W::type_name()
     }
 }
 
@@ -253,7 +251,7 @@ where
     I: InputMethod<Widget = W>,
 {
     fn active_widget(&self) -> &RwData<dyn ActiveWidget> {
-        &self.dyn_widget
+        &self.dyn_active
     }
 
     fn input(&self) -> &RwData<dyn InputMethod> {
@@ -299,7 +297,8 @@ where
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),
-            dyn_widget: self.dyn_widget.clone(),
+            dyn_active: self.dyn_active.clone(),
+            dyn_passive: self.dyn_passive.clone(),
             input: self.input.clone(),
             dyn_input: self.dyn_input.clone(),
         }
@@ -351,19 +350,21 @@ where
         W: ActiveWidget,
         I: InputMethod<Widget = W>,
     {
-        let dyn_widget: RwData<dyn ActiveWidget> =
+        let dyn_active: RwData<dyn ActiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+        let dyn_passive = dyn_active.clone().to_passive();
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod>>;
 
-        let holder_widget = InnerActiveWidget {
-            widget: dyn_widget.clone().try_downcast::<W>().unwrap(),
-            dyn_widget,
+        let inner = InnerActiveWidget {
+            widget: dyn_active.clone().try_downcast::<W>().unwrap(),
+            dyn_active,
+            dyn_passive,
             input,
             dyn_input: RwData::new_unsized::<I>(input_data),
         };
 
-        Widget::Active(Arc::new(holder_widget))
+        Widget::Active(Arc::new(inner))
     }
 
     pub fn update_and_print(&self, area: &U::Area) {
@@ -408,6 +409,13 @@ where
         }
     }
 
+    pub fn as_passive(&self) -> &RwData<dyn PassiveWidget> {
+        match self {
+            Widget::Passive(holder) => holder.passive_widget(),
+            Widget::Active(holder) => holder.passive_widget(),
+        }
+    }
+
     pub fn as_active(&self) -> Option<(&RwData<dyn ActiveWidget>, &RwData<dyn InputMethod>)> {
         match self {
             Widget::Active(holder) => Some((holder.active_widget(), holder.input())),
@@ -425,7 +433,7 @@ where
     pub fn ptr_eq<W, D>(&self, other: &D) -> bool
     where
         W: ?Sized,
-        D: Data<W>,
+        D: Data<W> + ?Sized,
     {
         match self {
             Widget::Passive(holder) => holder.passive_widget().ptr_eq(other),
@@ -440,10 +448,10 @@ where
         }
     }
 
-    pub fn widget_type(&self) -> &'static str {
+    pub fn type_name(&self) -> &'static str {
         match self {
-            Widget::Passive(holder) => holder.widget_type(),
-            Widget::Active(holder) => holder.widget_type(),
+            Widget::Passive(holder) => holder.type_name(),
+            Widget::Active(holder) => holder.type_name(),
         }
     }
 

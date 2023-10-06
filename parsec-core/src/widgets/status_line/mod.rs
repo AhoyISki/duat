@@ -53,7 +53,7 @@
 pub mod file_parts;
 
 pub use self::file_parts::*;
-use super::{file_widget::File, PassiveWidget, Widget};
+use super::{file::File, PassiveWidget, Widget};
 use crate::{
     data::{FileReader, RoData},
     forms::Form,
@@ -309,6 +309,10 @@ impl PassiveWidget for StatusLine {
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn type_name() -> &'static str {
+        "StatusLine"
     }
 }
 

@@ -4,7 +4,7 @@ use super::{
     tags::{self, RawTag, TextId},
     Part, Text,
 };
-use crate::{position::Cursor};
+use crate::position::Cursor;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ExactPos {

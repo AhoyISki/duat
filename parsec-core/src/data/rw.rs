@@ -13,6 +13,7 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{private::InnerData, Data, Error};
+use crate::{widgets::{ActiveWidget, PassiveWidget}};
 
 /// A read-write reference to information, that can tell readers if
 /// said information has changed.
@@ -371,11 +372,11 @@ where
     /// assert!(data_1.ptr_eq(&data_1_clone));
     /// assert!(!data_1.ptr_eq(&data_2));
     /// ```
-    pub fn ptr_eq<U>(&self, other: &impl Data<U>) -> bool
+    pub fn ptr_eq<U>(&self, other: &(impl Data<U> + ?Sized)) -> bool
     where
         U: ?Sized,
     {
-        Arc::as_ptr(self.cur_state()) as usize == Arc::as_ptr(other.cur_state()) as usize
+        Arc::as_ptr(self.cur_state()) == Arc::as_ptr(other.cur_state())
     }
 
     /// Blocking mutable reference to the information.
@@ -674,7 +675,7 @@ where
     /// matches, consider using [`RwData::data_is`].
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn try_downcast<U>(self) -> Result<RwData<U>, Error<RwData<T>, T, U>>
+    pub fn try_downcast<U>(&self) -> Result<RwData<U>, Error<RwData<T>, T, U>>
     where
         U: 'static,
     {
@@ -684,7 +685,7 @@ where
                 cur_state,
                 read_state,
                 ..
-            } = self;
+            } = self.clone();
             let pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
             Ok(RwData {
@@ -842,6 +843,17 @@ where
 
     fn read_state(&self) -> &AtomicUsize {
         &self.read_state
+    }
+}
+
+impl RwData<dyn ActiveWidget> {
+    pub fn to_passive(self) -> RwData<dyn PassiveWidget> {
+        RwData {
+            data: self.data as Arc<RwLock<dyn PassiveWidget>>,
+            cur_state: self.cur_state.clone(),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
+            concrete_type: self.concrete_type,
+        }
     }
 }
 

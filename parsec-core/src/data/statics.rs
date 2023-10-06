@@ -9,8 +9,8 @@ use std::{
 use super::{private::InnerData, RoData, RwData};
 use crate::{
     input::InputMethod,
-    ui::Ui,
-    widgets::{ActiveWidget, File, Widget},
+    ui::{Area, Ui},
+    widgets::{ActiveWidget, File, PassiveWidget, Widget},
 };
 
 pub struct CurrentFile {
@@ -72,6 +72,31 @@ impl CurrentFile {
 
     pub fn file_ptr_eq<U: Ui>(&self, other: &Widget<U>) -> bool {
         unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
+    }
+
+    pub(crate) fn mutate_related_widget<W: PassiveWidget, R>(
+        &self,
+        mut f: impl FnMut(&mut W, &mut dyn Area) -> R,
+    ) -> Option<R> {
+        let data = self.rw.raw_read();
+        let (file, _) = unsafe { data.assume_init_ref() };
+        let mut file = file.write();
+        file.mutate_related_widget::<W, R>(&mut f)
+    }
+
+    pub(crate) fn get_related_widget(&self, type_name: &str) -> Option<RwData<dyn PassiveWidget>> {
+        let data = self.rw.raw_read();
+        let (file, _) = unsafe { data.assume_init_ref() };
+
+		let file = file.read();
+        file.get_related_widget(type_name)
+    }
+
+    pub(crate) fn mutate<R>(&self, f: impl FnOnce(&mut File, &mut dyn InputMethod) -> R) -> R {
+        let data = self.rw.write();
+        let (file, input) = unsafe { data.assume_init_ref() };
+
+        input.mutate(|input| f(&mut file.write(), input))
     }
 
     pub(crate) const fn new() -> Self {
@@ -258,4 +283,3 @@ impl CurrentWidget {
         *self.rw.write() = MaybeUninit::new((widget, input));
     }
 }
-

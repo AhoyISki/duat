@@ -115,6 +115,10 @@ impl PassiveWidget for LineNumbers {
     fn text(&self) -> &Text {
         &self.text
     }
+
+    fn type_name() -> &'static str {
+		"LineNumbers"
+    }
 }
 
 /// How to show the line numbers on screen.

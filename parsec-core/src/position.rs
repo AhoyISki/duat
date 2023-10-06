@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::{
-    text::{IterCfg, PrintCfg, Text},
+    text::{ExactPos, IterCfg, PrintCfg, Text},
     ui::Area,
 };
 
@@ -31,7 +31,7 @@ impl Point {
     pub fn from_coords(line: usize, col: usize, text: &Text) -> Self {
         let char = text.get_line_to_char(line);
         let char = if let Some(char) = char {
-            char + col.min(text.iter_line_chars(line).count() - 1)
+            char + col.min(text.iter_line_chars(line).count().saturating_sub(1))
         } else {
             text.len_chars()
         };
@@ -116,7 +116,9 @@ impl Cursor {
     pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
         let cfg = IterCfg::new(cfg).dont_wrap();
 
-        if by == 0 {
+        let rev_from_first_line = by < 0 && self.caret.line == 0;
+        let fwd_from_last_line = by > 0 && self.caret.line + 1 == text.len_lines();
+        if by == 0 || rev_from_first_line || fwd_from_last_line {
             return;
         }
 
@@ -206,16 +208,17 @@ impl Cursor {
                 .no_ghosts()
                 .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by.unsigned_abs() - 1)
-                .unwrap_or(text.len_chars())
+                .unwrap_or(0)
         };
 
         self.caret.line = text.char_to_line(self.caret.char);
         self.caret.byte = text.char_to_byte(self.caret.char);
 
+        let exact_pos = ExactPos::at_cursor_char(self.caret.char);
         self.caret.col = area
-            .rev_print_iter(text.rev_iter_at(self.caret.char + 1), cfg)
-            .find_map(|(caret, item)| item.part.as_char().and(Some(caret.x)))
-            .unwrap();
+            .rev_print_iter(text.rev_iter_following(exact_pos), cfg)
+            .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
+            .unwrap_or(0);
         self.desired_col = self.caret.col;
     }
 

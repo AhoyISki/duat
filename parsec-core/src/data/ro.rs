@@ -11,6 +11,8 @@ use std::{
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::{RwLock, RwLockReadGuard};
 
+use crate::widgets::{ActiveWidget, PassiveWidget};
+
 use super::{Error, RwData, Data, private::InnerData};
 
 /// A read-only reference to information.
@@ -538,6 +540,17 @@ where
     }
 }
 
+
+impl RoData<dyn ActiveWidget> {
+    pub fn to_passive(self) -> RoData<dyn PassiveWidget> {
+        RoData {
+            data: self.data as Arc<RwLock<dyn PassiveWidget>>,
+            cur_state: self.cur_state.clone(),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
+            concrete_type: self.concrete_type,
+        }
+    }
+}
 impl<T: ?Sized> Data<T> for RoData<T> {}
 unsafe impl<T: ?Sized + Send> Send for RoData<T> {}
 unsafe impl<T: ?Sized + Sync> Sync for RoData<T> {}
