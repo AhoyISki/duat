@@ -110,6 +110,14 @@ fn match_insert(
                 mover.move_hor(1);
             });
         }
+        key!(KeyCode::Char(ch), KeyModifiers::SHIFT) => {
+            editor.edit_on_each_cursor(|editor| {
+                editor.insert(ch);
+            });
+            editor.move_each_cursor(|mover| {
+                mover.move_hor(1);
+            });
+        }
         key!(KeyCode::Enter) => {
             editor.edit_on_each_cursor(|editor| {
                 editor.insert('\n');

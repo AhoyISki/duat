@@ -5,7 +5,7 @@ use crossterm::{
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
 
-use crate::data::{RwData};
+use crate::data::RwData;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
@@ -108,7 +108,7 @@ pub const EXTRA_SEL: FormId = FormId(6);
 #[derive(Clone, Copy)]
 enum Kind {
     Form(Form),
-    Ref(&'static str),
+    Ref(FormId),
 }
 
 struct InnerPalette {
@@ -118,13 +118,19 @@ struct InnerPalette {
 }
 
 impl InnerPalette {
-    fn get_from_name(&self, mut name: &'static str) -> Option<(Form, FormId)> {
+    fn get_from_name(&self, name: &'static str) -> Option<(Form, FormId)> {
         let iter = self.forms.iter().enumerate();
 
+        let mut id = match iter.clone().find(|(_, (cmp, _))| *cmp == name) {
+            Some((_, (_, Kind::Ref(referenced)))) => referenced,
+            Some((i, (_, Kind::Form(form)))) => return Some((*form, FormId(i))),
+            None => return None,
+        };
+
         loop {
-            match iter.clone().find(|(_, (cmp, _))| *cmp == name) {
-                Some((index, (_, Kind::Form(form)))) => break Some((*form, FormId(index))),
-                Some((_, (_, Kind::Ref(referenced)))) => name = referenced,
+            id = match self.forms.get(id.0) {
+                Some((_, Kind::Ref(referenced))) => referenced,
+                Some((_, Kind::Form(form))) => break Some((*form, *id)),
                 None => break None,
             }
         }
@@ -145,7 +151,7 @@ impl FormPalette {
             let forms = vec![
                 ("Default", Kind::Form(Form::default())),
                 ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
-                ("ExtraSelection", Kind::Ref("MainSelection")),
+                ("ExtraSelection", Kind::Ref(FormId(1))),
             ];
 
             RwData::new(InnerPalette {
@@ -194,14 +200,16 @@ impl FormPalette {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
+        let (_, id) = self.from_name(referenced);
+
         let mut inner = self.0.write();
 
         if let Some((_, old_form)) = inner.forms.iter_mut().find(|(cmp, _)| *cmp == name) {
-            *old_form = Kind::Ref(referenced);
+            *old_form = Kind::Ref(id);
             drop(inner);
             self.from_name(referenced).1
         } else {
-            inner.forms.push((name, Kind::Ref(referenced)));
+            inner.forms.push((name, Kind::Ref(id)));
             drop(inner);
             self.from_name(referenced).1
         }
@@ -211,12 +219,14 @@ impl FormPalette {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
+        let (_, id) = self.from_name(referenced);
+
         let mut inner = self.0.write();
 
-        if let Some((_, form_id)) = inner.get_from_name(name) {
-            form_id
+        if let Some((_, id)) = inner.get_from_name(name) {
+            id
         } else {
-            inner.forms.push((name, Kind::Ref(referenced)));
+            inner.forms.push((name, Kind::Ref(id)));
             drop(inner);
             self.from_name(referenced).1
         }
@@ -236,7 +246,7 @@ impl FormPalette {
             (form, id)
         } else {
             let name = name.to_string().leak();
-            inner.forms.push((name, Kind::Ref("Default")));
+            inner.forms.push((name, Kind::Ref(FormId(0))));
             drop(inner);
             self.from_name("Default")
         }
@@ -246,9 +256,9 @@ impl FormPalette {
     pub fn from_id(&self, id: FormId) -> Form {
         let inner = self.0.read();
 
-        let nth = inner.forms.get(id.0).and_then(|(_, kind)| match kind {
-            Kind::Form(form) => Some(*form),
-            Kind::Ref(name) => inner.get_from_name(name).map(|(form, _)| form),
+        let nth = inner.forms.get(id.0).map(|(_, kind)| match kind {
+            Kind::Form(form) => *form,
+            Kind::Ref(id) => self.from_id(*id),
         });
 
         let Some(ret) = nth else {
@@ -305,14 +315,17 @@ pub struct FormFormer<'a> {
 impl<'a> FormFormer<'a> {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
-    pub fn apply(&mut self, id: FormId) -> Form {
-        let form = match self.palette.forms.get(id.0) {
-            Some((_, Kind::Form(form))) => form,
-            Some((_, Kind::Ref(referenced))) => panic!("{referenced}"),
-            _ => {
-                unreachable!("This should not be possible");
+    pub fn apply(&mut self, mut id: FormId) -> Form {
+        let form = loop {
+            match self.palette.forms.get(id.0) {
+                Some((_, Kind::Form(form))) => break form,
+                Some((_, Kind::Ref(referenced))) => id = *referenced,
+                _ => {
+                    unreachable!("This should not be possible");
+                }
             }
         };
+
         self.forms.push((*form, id));
         self.make_form()
     }
