@@ -1,6 +1,7 @@
 //! Creation and execution of commands.
 //!
-//! Commands in Parsec work by
+//! Commands in Parsec work through the use of functions that don't require
+//! references (unless they're `'static`) and return results which may contain a
 //!
 //! [`Command`]s must act on 2 specific parameters, [`Flags`], and
 //! arguments coming from an [`Iterator<Item = &str>`].
@@ -174,6 +175,7 @@ use no_deadlocks::RwLock;
 
 use crate::{
     data::{Data, RwData},
+    text::{text, Text},
     ui::{Area, Ui, Window},
     widgets::PassiveWidget,
     BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
@@ -185,6 +187,7 @@ mod global {
     use super::{CmdResult, Commands, Error, InnerFlags};
     use crate::{
         data::RwData,
+        text::Text,
         ui::{Area, Ui, Window},
         widgets::{ActiveWidget, PassiveWidget},
         BREAK_LOOP, SHOULD_QUIT,
@@ -202,14 +205,14 @@ mod global {
         COMMANDS.add(callers, f)
     }
 
-    pub fn add_for_widget<W: PassiveWidget>(
+    pub fn add_for_widget<Widget: PassiveWidget>(
         callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&mut W, &dyn Area, Flags, Args) -> CmdResult + 'static,
+        f: impl FnMut(&mut Widget, &dyn Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<(), Error> {
         COMMANDS.add_for_widget(callers, f)
     }
 
-    pub fn run(command: impl ToString) -> Result<Option<String>, Error> {
+    pub fn run(command: impl ToString) -> Result<Option<Text>, Error> {
         COMMANDS.run(command)
     }
 
@@ -218,23 +221,23 @@ mod global {
         SHOULD_QUIT.store(true, Ordering::Release);
     }
 
-    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, Error> {
+    pub fn switch_to<W: ActiveWidget>() -> Result<Option<Text>, Error> {
         COMMANDS.run(format!("switch-to {}", W::type_name()))
     }
 
-    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, Error> {
+    pub fn buffer(file: impl AsRef<str>) -> Result<Option<Text>, Error> {
         COMMANDS.run(format!("buffer {}", file.as_ref()))
     }
 
-    pub fn next_file() -> Result<Option<String>, Error> {
+    pub fn next_file() -> Result<Option<Text>, Error> {
         COMMANDS.run("next-file")
     }
 
-    pub fn prev_file() -> Result<Option<String>, Error> {
+    pub fn prev_file() -> Result<Option<Text>, Error> {
         COMMANDS.run("prev-file")
     }
 
-    pub fn return_to_file() -> Result<Option<String>, Error> {
+    pub fn return_to_file() -> Result<Option<Text>, Error> {
         COMMANDS.run("return-to-file")
     }
 
@@ -250,7 +253,7 @@ mod global {
     pub fn alias<'a>(
         alias: impl ToString,
         command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<Text>, Error> {
         COMMANDS.inner.write().try_alias(alias, command)
     }
 }
@@ -555,7 +558,7 @@ impl Command {
     /// long.
     fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
-        F: FnMut(Flags, Args) -> Result<Option<String>, String> + 'static,
+        F: FnMut(Flags, Args) -> CmdResult + 'static,
     {
         let callers = callers
             .into_iter()
@@ -580,11 +583,11 @@ impl Command {
         caller: &str,
         flags: Flags,
         args: Args<'_, '_>,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<Text>, Error> {
         if self.callers.iter().any(|name| name == caller) {
             (self.f.write())(flags, args).map_err(Error::Failed)
         } else {
-            Err(Error::NotFound(String::from(caller)))
+            Err(Error::CallerNotFound(String::from(caller)))
         }
     }
 
@@ -701,7 +704,7 @@ impl Commands {
     /// assert!(&*my_var.read() == "😿");
     /// # }
     /// ```
-    fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
+    fn run(&self, command: impl ToString) -> Result<Option<Text>, Error> {
         self.inner.read().run(command)
     }
 
@@ -767,10 +770,7 @@ impl Commands {
                             w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
                                 .unwrap()
                         } else {
-                            Err(format!(
-                                "Widget of type {} not found",
-                                std::any::type_name::<W>()
-                            ))
+                            Err(text!("No widget of type \"" {W::type_name()} "\" found"))
                         }
                     })
                 })
@@ -802,17 +802,15 @@ impl Commands {
                     let inner = inner.clone();
                     Command::new(["alias"], move |flags, args| {
                         if !flags.is_empty() {
-                            Err(String::from(
+                            Err(text!(
                                 "An alias cannot take any flags, try moving them after the \
                                  command, like \"alias my-alias my-caller --foo --bar\", instead \
-                                 of \"alias --foo --bar my-alias my-caller\"",
+                                 of \"alias --foo --bar my-alias my-caller\""
                             ))
                         } else {
-                            let alias = args.next().ok_or(String::from("No alias supplied"))?;
-                            inner
-                                .write()
-                                .try_alias(alias, args)
-                                .map_err(|err| err.to_string())
+                            let alias = args.next().ok_or(text!("No alias was supplied."))?;
+
+                            inner.write().try_alias(alias, args).map_err(Error::into_text)
                         }
                     })
                 };
@@ -866,7 +864,7 @@ impl InnerCommands {
     }
 
     /// Tries to execute a command or alias with the given argument.
-    fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
+    fn run(&self, command: impl ToString) -> Result<Option<Text>, Error> {
         let command = command.to_string();
         let caller = command
             .split_whitespace()
@@ -881,12 +879,12 @@ impl InnerCommands {
         let (flags, mut args) = split_flags(command);
         for cmd in &self.list {
             let result = cmd.try_exec(caller, &flags, &mut args);
-            let Err(Error::NotFound(_)) = result else {
+            let Err(Error::CallerNotFound(_)) = result else {
                 return result;
             };
         }
 
-        Err(Error::NotFound(String::from(caller)))
+        Err(Error::CallerNotFound(String::from(caller)))
     }
 
     /// Tries to alias a full command (caller, flags, and arguments) to an
@@ -895,7 +893,7 @@ impl InnerCommands {
         &mut self,
         alias: impl ToString,
         command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<Text>, Error> {
         let alias = alias.to_string();
         let mut command = command.into_iter();
 
@@ -907,11 +905,20 @@ impl InnerCommands {
         let mut callers = self.list.iter().flat_map(|cmd| cmd.callers.iter());
 
         if callers.any(|name| *name == caller) {
-            Ok(self
-                .aliases
-                .insert(alias, caller + command.collect::<String>().as_str()))
+            let command = caller + command.collect::<String>().as_str();
+            match self.aliases.insert(alias.clone(), command.clone()) {
+                Some(prev) => Ok(Some(text!(
+                    "Aliased \"" [CmdOkHighlight] alias
+                    "\" from \"" [CmdOkHighlight] prev
+                    "\" to \"" [CmdOkHighlight] command "\"."
+                ))),
+                None => Ok(Some(text!(
+                     "Aliased \"" [CmdOkHighlight] alias
+                     "\" to \"" [CmdOkHighlight] command "\"."
+                ))),
+            }
         } else {
-            Err(Error::NotFound(caller))
+            Err(Error::CallerNotFound(caller))
         }
     }
 }
@@ -1018,9 +1025,33 @@ fn split_flags(
 pub enum Error {
     NotSingleWord(String),
     AlreadyExists(String),
-    NotFound(String),
-    Failed(String),
+    CallerNotFound(String),
+    Failed(Text),
     Empty,
+}
+
+impl Error {
+    fn into_text(self) -> Text {
+        match self {
+            Error::NotSingleWord(caller) => text!(
+                "The caller \""
+                [CmdErrHighlight] caller
+                "is not a single word."
+            ),
+            Error::AlreadyExists(caller) => text!(
+                "The caller \""
+                [CmdErrHighlight] caller
+                "already exists."
+            ),
+            Error::CallerNotFound(caller) => text!(
+                "The caller \""
+                [CmdErrHighlight] caller
+                "was not found."
+            ),
+            Error::Failed(failure) => failure,
+            Error::Empty => text!("No text or arguments were provided."),
+        }
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -1032,10 +1063,10 @@ impl std::fmt::Display for Error {
             Error::AlreadyExists(caller) => {
                 write!(f, "The caller \"{caller}\" already exists.")
             }
-            Error::NotFound(caller) => {
+            Error::CallerNotFound(caller) => {
                 write!(f, "The caller \"{caller}\" was not found.")
             }
-            Error::Failed(failure) => f.write_str(failure),
+            Error::Failed(failure) => f.write_str(&failure.chars().collect::<String>()),
             Error::Empty => f.write_str("No caller supplied."),
         }
     }
@@ -1043,4 +1074,4 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub type CmdResult = Result<Option<String>, String>;
+pub type CmdResult = Result<Option<Text>, Text>;

@@ -15,11 +15,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{
-    forms::{self},
-    history::Change,
-    input::Cursors,
-};
+use crate::{forms, history::Change, input::Cursors};
 
 trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
     fn with_len(len: usize) -> Self;
@@ -43,6 +39,10 @@ impl Text {
             tags,
             cursor_marker: Marker::new(),
         }
+    }
+
+    pub fn builder() -> Builder {
+        Builder::new()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -102,7 +102,7 @@ impl Text {
             match peek.part {
                 Part::Char('\n') => return cur_pos,
                 Part::Char(_) => cur_pos = iter.next().unwrap().pos,
-                _ => drop(iter.next())
+                _ => drop(iter.next()),
             }
         }
 
@@ -268,7 +268,7 @@ impl<S: ToString> From<S> for Text {
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// The generation of text by the `TextBuilder` has a few
+/// The generation of text by the [`TextBuilder`] has a few
 /// peculiarities that are convenient in the situations where it is
 /// useful:
 ///
@@ -283,14 +283,14 @@ impl<S: ToString> From<S> for Text {
 /// These properties allow for quick and easy modification of the
 /// [`Text`] within, which can then be accessed with
 /// [`text()`][Self::text()].
-pub struct TextBuilder {
+pub struct Builder {
     text: Text,
     last_form: Option<Tag>,
     last_align: Option<Tag>,
     marker: Marker,
 }
 
-impl TextBuilder {
+impl Builder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -356,9 +356,9 @@ impl TextBuilder {
     }
 }
 
-impl Default for TextBuilder {
+impl Default for Builder {
     fn default() -> Self {
-        TextBuilder {
+        Builder {
             text: Text::default(),
             last_form: None,
             last_align: None,
@@ -481,15 +481,12 @@ pub macro text {
     (@parse $builder:expr,) => {},
 
     ($builder:expr, $($parts:tt)+) => {{
-        let builder: &mut TextBuilder = &mut $builder;
+        let builder: &mut Builder = &mut $builder;
         text!(@parse builder, $($parts)+);
     }},
     ($($parts:tt)+) => {{
-        let mut builder = TextBuilder::new();
+        let mut builder = Builder::new();
         text!(builder, $($parts)+);
         builder.finish()
     }},
-    () => {
-        TextBuilder::new()
-    },
 }

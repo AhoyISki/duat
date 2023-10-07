@@ -66,7 +66,7 @@ impl LineNumbers {
             let printed_lines = file.printed_lines();
             let main_line = input.cursors().map(|cursors| cursors.main().line());
 
-            let mut builder = text!();
+            let mut builder = Text::builder();
             text!(builder, { tag_from_align(self.cfg.alignment) });
 
             for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {

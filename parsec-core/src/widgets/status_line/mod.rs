@@ -58,7 +58,7 @@ use crate::{
     data::{FileReader, RoData},
     forms::Form,
     input::InputMethod,
-    text::{Text, TextBuilder},
+    text::{Text, Builder},
     ui::{Area, PushSpecs, Ui},
     CURRENT_FILE,
 };
@@ -83,7 +83,7 @@ pub struct State<T: 'static> {
 impl<T: 'static> State<T> {
     pub fn appender_fn(
         self,
-    ) -> Box<dyn Fn(&mut TextBuilder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync> {
+    ) -> Box<dyn Fn(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync> {
         match self.appender {
             Appender::NoArgs(f) => Box::new(move |builder, _, _| builder.push_text(f())),
             Appender::FromFile(f) => Box::new(move |builder, file, input| {
@@ -345,7 +345,7 @@ pub macro status_cfg {
     (@append $builder:expr, $file:expr, $input:expr, $text:expr) => {
         use std::sync::LazyLock;
         static APPENDER: LazyLock<
-            Box<dyn Fn(&mut TextBuilder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync>,
+            Box<dyn Fn(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync>,
         > = LazyLock::new(|| State::from($text).appender_fn());
 
         APPENDER(&mut $builder, $file, $input)
@@ -392,7 +392,7 @@ pub macro status_cfg {
         };
 
         let text_fn = |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
-            let mut builder = text!();
+            let mut builder = Text::builder();
             text!(builder, { Tag::StartAlignRight });
             status_cfg!(@text builder, file, input, $($parts)*);
             text!(builder, "\n");

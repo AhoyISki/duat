@@ -19,23 +19,6 @@ pub struct Form {
     pub is_final: bool,
 }
 
-macro_rules! mimic_method {
-    ($method:ident $type:ty) => {
-        pub fn $method(self, val: $type) -> Self {
-            let Form { style, is_final } = self;
-            Form { style: Stylize::$method(style, val), is_final }
-        }
-    };
-    ($($method:ident)+) => {
-        $(
-        pub fn $method(self) -> Self {
-            let Form { style, is_final } = self;
-            Form { style: Stylize::$method(style), is_final }
-        }
-        )*
-    }
-}
-
 #[rustfmt::skip]
 impl Form {
     mimic_method!(with Color);
@@ -149,9 +132,13 @@ impl FormPalette {
             );
 
             let forms = vec![
-                ("Default", Kind::Form(Form::default())),
+                ("Default", Kind::Form(Form::new())),
                 ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
                 ("ExtraSelection", Kind::Ref(FormId(1))),
+                ("CommandOk", Kind::Form(Form::new())),
+                ("AccentOk", Kind::Form(Form::new().green())),
+                ("CommandErr", Kind::Form(Form::new())),
+                ("AccentErr", Kind::Form(Form::new().red())),
             ];
 
             RwData::new(InnerPalette {
@@ -423,5 +410,23 @@ where
         if is_final {
             *is_set = true
         };
+    }
+}
+
+macro mimic_method {
+    ($method:ident $type:ty) => {
+        pub fn $method(self, val: $type) -> Self {
+            let Form { style, is_final } = self;
+            Form { style: Stylize::$method(style, val), is_final }
+        }
+    },
+
+    ($($method:ident)+) => {
+        $(
+        pub fn $method(self) -> Self {
+            let Form { style, is_final } = self;
+            Form { style: Stylize::$method(style), is_final }
+        }
+        )*
     }
 }
