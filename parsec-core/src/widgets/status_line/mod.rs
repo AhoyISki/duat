@@ -58,7 +58,7 @@ use crate::{
     data::{FileReader, RoData},
     forms::Form,
     input::InputMethod,
-    text::{Text, Builder},
+    text::{Builder, Text},
     ui::{Area, PushSpecs, Ui},
     CURRENT_FILE,
 };
@@ -321,8 +321,8 @@ unsafe impl Sync for StatusLine {}
 
 pub macro status_cfg {
     (@append $builder:expr, $_file:expr, $_input:expr, [$form:ident]) => {
-        use std::sync::LazyLock;
-        static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
+        use crate::widgets::__LazyLock;
+        static FORM_ID: __LazyLock<crate::forms::FormId> = __LazyLock::new(|| {
             let name = stringify!($form);
             crate::palette::palette().from_name(name).1
         });
@@ -334,8 +334,8 @@ pub macro status_cfg {
 
     // Other tags
     (@append $builder:expr, $_file:expr, $_input:expr, ($tag:expr)) => {
-        use std::sync::LazyLock;
-        static TAG: LazyLock<crate::text::Tag> = LazyLock::new(|| {
+        use crate::widgets::__LazyLock;
+        static TAG: __LazyLock<crate::text::Tag> = __LazyLock::new(|| {
             $tag
         });
         $builder.push_tag(TAG)
@@ -343,10 +343,10 @@ pub macro status_cfg {
 
     // Direct Text insertions.
     (@append $builder:expr, $file:expr, $input:expr, $text:expr) => {
-        use std::sync::LazyLock;
-        static APPENDER: LazyLock<
+        use crate::widgets::__LazyLock;
+        static APPENDER: __LazyLock<
             Box<dyn Fn(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync>,
-        > = LazyLock::new(|| State::from($text).appender_fn());
+        > = __LazyLock::new(|| State::from($text).appender_fn());
 
         APPENDER(&mut $builder, $file, $input)
     },
@@ -367,11 +367,9 @@ pub macro status_cfg {
 
     // Direct Text insertions.
     (@check $needs_update:expr, $text:expr) => {
-        use std::sync::LazyLock;
-        static CHECKER: LazyLock<Option<Box<dyn Fn() -> bool + Send + Sync>>> = LazyLock::new(|| {
-            State::from($text).checker
-        });
-
+        use crate::widgets::__LazyLock;
+        static CHECKER: __LazyLock<Option<Box<dyn Fn() -> bool + Send + Sync>>> =
+            __LazyLock::new(|| State::from($text).checker);
         $needs_update |= CHECKER.as_ref().is_some_and(|checker| checker());
     },
 
@@ -417,4 +415,20 @@ pub macro status_cfg {
             specs: PushSpecs::below().with_lenght(1.0)
         }
     }}
+}
+
+pub struct __LazyLock<T, F = fn() -> T>(std::sync::LazyLock<T, F>);
+
+impl<T, F: FnOnce() -> T> __LazyLock<T, F> {
+    pub const fn new(f: F) -> Self {
+        __LazyLock(std::sync::LazyLock::new(f))
+    }
+}
+
+impl<T, F: FnOnce() -> T> std::ops::Deref for __LazyLock<T, F> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        std::sync::LazyLock::<T, F>::deref(&self.0)
+    }
 }

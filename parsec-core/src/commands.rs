@@ -2,48 +2,47 @@
 //!
 //! Commands in Parsec work through the use of functions that don't require
 //! references (unless they're `'static`) and return results which may contain a
+//! [`Text`] to be displayed, if successful, and *must* contain an error
+//! [`Text`] to be displayed if they fail.
 //!
-//! [`Command`]s must act on 2 specific parameters, [`Flags`], and
-//! arguments coming from an [`Iterator<Item = &str>`].
+//! Commands act on two parameters. which will be provided when ran: [`Flags`]
+//! and [`Args`].
 //!
-//! The [`Flags`] struct contains both `unit` (e.g `"--force"`,
-//! `"--read"`, etc), and `blob` (e.g. `"-abcde"`, `"-amongus"`, etc)
-//! flags inside of it, and they stop being considered after the first
-//! empty `"--"` sequence, for example, in the command:
+//! [`Flags`] will contain a list of all flags that were passed to the command.
+//! These flags follow the UNIX conventions, that is `"-"` starts a blob
+//! cluster, `"--"` starts a single, larger flag, and `"--"` followed by nothing
+//! means that the remaining arguments are not flags. Here's an example:
 //!
 //! `"my-command --flag1 --flag2 -blob -- --not-flag more-args"`
 //!
 //! `"--not-flag"` would not be treated as a flag, being instead
-//! treated as an argument in conjunction with `"more-args"`. This
-//! interface is heavily inspired by commands in UNIX like operating
-//! systems.
+//! treated as an argument in conjunction with `"more-args"`.
+//!
+//! [`Args`] is merely an iterator over the remaining arguments, which are given
+//! as `&str`s to be consumed.
 //!
 //! Here's a simple example of how one would create a [`Command`]:
 //!
 //! ```rust
-//! # use parsec_core::commands::{Command, Flags};
+//! # use parsec_core::commands::{self, Flags, Args};
 //! # use std::sync::{
 //! #     atomic::{AtomicBool, Ordering},
 //! #     Arc
 //! # };
 //! #
-//! let internally_mutable = Arc::new(AtomicBool::default());
 //! let callers = vec!["my-command", "mc"];
-//! let my_command = Command::new(
-//!     callers,
-//!     move |_flags: &Flags, _args: &mut dyn Iterator<Item = &str>| {
-//!         todo!();
-//!     },
-//! );
+//! commands::add(callers, move |_flags: Flags, _args: Args| {
+//!     unimplemented!();
+//! });
 //! ```
 //!
-//! In this case, a [`Command`] is created that can be called with
+//! In this case, a command has been added that can be called with
 //! both `"my-command"` and `"mc"`.
 //!
-//! Here's a simple command that uses the [`Flags`] struct:
+//! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use parsec_core::commands::{Command, Flags};
+//! # use parsec_core::commands;
 //! # use std::sync::{
 //! #     atomic::{AtomicU32, Ordering},
 //! #     Arc
@@ -51,7 +50,7 @@
 //! #
 //! let expression = Arc::new(AtomicU32::default());
 //! let callers = vec!["my-command", "mc"];
-//! let my_command = Command::new(callers, move |flags, _args| {
+//! let my_command = commands::add(callers, move |flags, _args| {
 //!     if flags.unit("happy") {
 //!         expression.store('😁' as u32, Ordering::Relaxed)
 //!     } else if flags.unit("sad") {
@@ -62,45 +61,32 @@
 //!     Ok(None)
 //! });
 //! ```
-//! // TODO: Globalize Commands
-//! The calling of commands is done through the [`Commands`] struct,
-//! shared around with an [`RwData<Commands>`].
 //!
-//! This struct is found in the [`Session`], either
-//! through the `constructor_hook` via [`ModNode::commands`], or
-//! via [`Session::commands`], from an existing [`Session`]
-//! instance.
+//! To run commands, simply call [`commands::run`]:
 //!
 //! ```rust
 //! # use parsec_core::{
-//! #     data::RwData,
-//! #     session::Session,
+//! #     commands,
 //! #     forms::FormPalette,
-//! #     text::PrintCfg,
-//! #     ui::{Constraint, ModNode, PushSpecs, Ui},
-//! #     widgets::CommandLine,
-//! #     commands::{Command, Commands}
+//! #     input::InputMethod,
+//! #     session::SessionCfg,
+//! #     text::{PrintCfg, text},
+//! #     ui::{FileBuilder, Ui},
+//! #     widgets::{CommandLine, status_cfg},
 //! # };
-//! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
-//! # where
-//! #     U: Ui
-//! # {
-//! let constructor_hook = move |mod_node: ModNode<U>, file| {
-//!     let commands = mod_node.commands();
-//!     commands.write().try_exec("lol");
+//! # fn test_fn<U: Ui>(ui: U) {
+//! let file_fn = |builder: &mut FileBuilder<U>, _file| {
+//!     let output = commands::run("lol").unwrap().unwrap();
+//!     let status_cfg = status_cfg!["Output of \"lol\": " output];
 //!
-//!     let specs = PushSpecs::above(Constraint::Length(1.0));
-//!     mod_node.push(CommandLine::default_fn(), specs);
+//!     builder.push(status_cfg.builder());
 //! };
 //!
-//! let session = Session::new(ui, print_cfg, palette, constructor_hook);
+//! let session = SessionCfg::new(ui).with_file_fn(file_fn);
 //!
 //! let my_callers = vec!["lol", "lmao"];
-//! let lol_cmd = Command::new(my_callers, |_flags, _args| {
-//!     Ok(Some(String::from("😜")))
-//! });
-//!
-//! session.commands().write().try_add(lol_cmd).unwrap();
+//! let lol_cmd =
+//!     commands::add(my_callers, |_flags, _args| Ok(Some(text!("😜"))));
 //! # }
 //! ```
 //!
@@ -152,10 +138,9 @@
 //! });
 //! # }
 //! ```
-//!
-//! [`Controler`]: crate::Controler
 //! [`Session`]: crate::session::Session
 //! [`Session::commands`]: crate::session::Session::commands
+//! [`commans::run`]: crate::commands::run
 //! [`ModNode`]: crate::ui::ModNode
 //! [`ModNode::commands`]: crate::ui::ModNode::commands
 //! [`CommandLine`]: crate::widgets::CommandLine
@@ -810,7 +795,10 @@ impl Commands {
                         } else {
                             let alias = args.next().ok_or(text!("No alias was supplied."))?;
 
-                            inner.write().try_alias(alias, args).map_err(Error::into_text)
+                            inner
+                                .write()
+                                .try_alias(alias, args)
+                                .map_err(Error::into_text)
                         }
                     })
                 };
