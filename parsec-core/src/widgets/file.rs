@@ -251,9 +251,16 @@ impl File {
         self.related_widgets.push(related)
     }
 
+    pub(crate) fn inspect_related<W: 'static, R>(&self, f: impl FnOnce(&W) -> R) -> Option<R> {
+        self.related_widgets
+            .iter()
+            .find(|(widget, ..)| widget.data_is::<W>())
+            .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
+    }
+
     pub(crate) fn mutate_related_widget<W: 'static, R>(
         &mut self,
-        mut f: impl FnMut(&mut W, &mut dyn Area) -> R,
+        f: impl FnOnce(&mut W, &mut dyn Area) -> R,
     ) -> Option<R> {
         self.related_widgets
             .iter_mut()

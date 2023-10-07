@@ -68,7 +68,6 @@
 //! # use parsec_core::{
 //! #     commands,
 //! #     forms::FormPalette,
-//! #     input::InputMethod,
 //! #     session::SessionCfg,
 //! #     text::{PrintCfg, text},
 //! #     ui::{FileBuilder, Ui},
@@ -77,6 +76,7 @@
 //! # fn test_fn<U: Ui>(ui: U) {
 //! let file_fn = |builder: &mut FileBuilder<U>, _file| {
 //!     let output = commands::run("lol").unwrap().unwrap();
+//!     println!("{:#?}", output);
 //!     let status_cfg = status_cfg!["Output of \"lol\": " output];
 //!
 //!     builder.push(status_cfg.builder());

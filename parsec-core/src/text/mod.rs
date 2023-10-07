@@ -464,9 +464,6 @@ pub macro text {
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
-    (@push $builder:expr, [[$form_id:expr]]) => {
-        $builder.push_tag(crate::text::Tag::PushForm($form_id))
-    },
 
     // Plain text
     (@push $builder:expr, $part:expr) => {

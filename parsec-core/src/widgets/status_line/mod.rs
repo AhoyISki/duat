@@ -58,18 +58,18 @@ use crate::{
     data::{FileReader, RoData},
     forms::Form,
     input::InputMethod,
-    text::{Builder, Text},
+    text::{text, Builder, Tag, Text},
     ui::{Area, PushSpecs, Ui},
     CURRENT_FILE,
 };
 
-pub struct DynInput<T: Into<Text>, F: Fn(&dyn InputMethod) -> T>(pub F);
+pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
 
 /// A struct that reads state in order to return [`Text`].
 enum Appender<T> {
-    NoArgs(Box<dyn Fn() -> Text + Send + Sync + 'static>),
-    FromFile(Box<dyn Fn(&T) -> Text + Send + Sync + 'static>),
-    DynInput(Box<dyn Fn(&dyn InputMethod) -> Text + Send + Sync + 'static>),
+    NoArgs(Box<dyn FnMut() -> Text + Send + Sync + 'static>),
+    FromFile(Box<dyn FnMut(&T) -> Text + Send + Sync + 'static>),
+    DynInput(Box<dyn FnMut(&dyn InputMethod) -> Text + Send + Sync + 'static>),
     Text(Text),
 }
 
@@ -81,25 +81,34 @@ pub struct State<T: 'static> {
 }
 
 impl<T: 'static> State<T> {
-    pub fn appender_fn(
+    pub fn fns(
         self,
-    ) -> Box<dyn Fn(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync> {
-        match self.appender {
-            Appender::NoArgs(f) => Box::new(move |builder, _, _| builder.push_text(f())),
-            Appender::FromFile(f) => Box::new(move |builder, file, input| {
-                let text = input
-                    .inspect_as::<T, Text>(&f)
-                    .or_else(|| file.inspect_as::<T, Text>(&f));
+    ) -> (
+        Box<dyn FnMut(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync>,
+        Box<dyn Fn() -> bool>,
+    ) {
+        (
+            match self.appender {
+                Appender::NoArgs(mut f) => Box::new(move |builder, _, _| builder.push_text(f())),
+                Appender::FromFile(mut f) => Box::new(move |builder, file, input| {
+                    let text = input
+                        .inspect_as::<T, Text>(&mut f)
+                        .or_else(|| file.inspect_as::<T, Text>(&mut f))
+                        .or_else(|| file.raw_read().inspect_related::<T, Text>(&mut f));
 
-                if let Some(text) = text {
-                    builder.push_text(text)
+                    if let Some(text) = text {
+                        builder.push_text(text)
+                    }
+                }),
+                Appender::DynInput(mut f) => {
+                    Box::new(move |builder, _, input| builder.push_text(f(&*input.read())))
                 }
-            }),
-            Appender::DynInput(f) => {
-                Box::new(move |builder, _, input| builder.push_text(f(&*input.read())))
-            }
-            Appender::Text(text) => Box::new(move |builder, _, _| builder.push_text(text.clone())),
-        }
+                Appender::Text(text) => {
+                    Box::new(move |builder, _, _| builder.push_text(text.clone()))
+                }
+            },
+            Box::new(move || self.checker.as_ref().is_some_and(|check| check())),
+        )
     }
 }
 
@@ -125,6 +134,24 @@ impl From<String> for State<()> {
     fn from(value: String) -> Self {
         Self {
             appender: Appender::Text::<()>(Text::from(value)),
+            checker: None,
+        }
+    }
+}
+
+impl From<Text> for State<()> {
+    fn from(value: Text) -> Self {
+        Self {
+            appender: Appender::Text::<()>(value),
+            checker: None,
+        }
+    }
+}
+
+impl From<Tag> for State<()> {
+    fn from(value: Tag) -> Self {
+        Self {
+            appender: Appender::Text::<()>(text!(value)),
             checker: None,
         }
     }
@@ -174,7 +201,7 @@ where
 }
 
 pub struct StatusLineCfg {
-    text_fn: Box<dyn Fn(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+    text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
     checker: Box<dyn Fn() -> bool>,
     is_global: bool,
     specs: PushSpecs,
@@ -288,7 +315,7 @@ impl Default for StatusLineCfg {
 /// the next characters.
 pub struct StatusLine {
     reader: FileReader,
-    text_fn: Box<dyn Fn(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+    text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
     text: Text,
 }
 
@@ -304,7 +331,7 @@ impl PassiveWidget for StatusLine {
     }
 
     fn update(&mut self, _area: &impl Area) {
-        self.text = self.reader.inspect_data(&self.text_fn);
+        self.text = self.reader.inspect_data(&mut self.text_fn);
     }
 
     fn text(&self) -> &Text {
@@ -320,93 +347,71 @@ unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}
 
 pub macro status_cfg {
-    (@append $builder:expr, $_file:expr, $_input:expr, [$form:ident]) => {
-        use crate::widgets::__LazyLock;
-        static FORM_ID: __LazyLock<crate::forms::FormId> = __LazyLock::new(|| {
-            let name = stringify!($form);
-            crate::palette::palette().from_name(name).1
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
-    },
-    (@append $builder:expr, $_file:expr, $_input:expr, [[$form_id:expr]]) => {
-        $builder.push_tag(crate::text::Tag::PushForm($form_id))
-    },
+    // Insertion of directly named forms.
+    (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
+        let (_, form_id) = crate::palette::palette().from_name(stringify!($form));
 
-    // Other tags
-    (@append $builder:expr, $_file:expr, $_input:expr, ($tag:expr)) => {
-        use crate::widgets::__LazyLock;
-        static TAG: __LazyLock<crate::text::Tag> = __LazyLock::new(|| {
-            $tag
-        });
-        $builder.push_tag(TAG)
-    },
+        let text_fn =
+            move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
+                $text_fn(builder, file, input);
+                builder.push_tag(crate::text::Tag::PushForm(form_id));
+            };
 
-    // Direct Text insertions.
-    (@append $builder:expr, $file:expr, $input:expr, $text:expr) => {
-        use crate::widgets::__LazyLock;
-        static APPENDER: __LazyLock<
-            Box<dyn Fn(&mut Builder, &RoData<File>, &RoData<dyn InputMethod>) + Send + Sync>,
-        > = __LazyLock::new(|| State::from($text).appender_fn());
+        (text_fn, $checker)
+    }},
 
-        APPENDER(&mut $builder, $file, $input)
-    },
+	// Insertion of text, reading functions, or tags.
+    (@append $text_fn:expr, $checker:expr, $text:expr) => {{
+        let (mut appender, checker) = State::from($text).fns();
 
-    (@text $_builder:expr, $_file:expr, $_input:expr,) => {},
+        let text_fn =
+            move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
+                $text_fn(builder, file, input);
+                appender(builder, file, input);
+            };
 
-    (@text $builder:expr, $file:expr, $input:expr, $part:tt $($parts:tt)*) => {
-        status_cfg!(@append $builder, $file, $input, $part);
-        status_cfg!(@text $builder, $file, $input, $($parts)*);
-    },
+        let checker = move || $checker() || checker();
 
-	////////// Checker parsing
-    (@check $_needs_update:expr, [$_form:ident]) => {},
-    (@check $_needs_update:expr, [[$_form_id:expr]]) => {},
+        (text_fn, checker)
+    }},
 
-    // Other tags
-    (@check $_needs_update:expr, ($tag:expr)) => {},
+    (@parse $text_fn:expr, $checker:expr,) => { ($text_fn, $checker) },
 
-    // Direct Text insertions.
-    (@check $needs_update:expr, $text:expr) => {
-        use crate::widgets::__LazyLock;
-        static CHECKER: __LazyLock<Option<Box<dyn Fn() -> bool + Send + Sync>>> =
-            __LazyLock::new(|| State::from($text).checker);
-        $needs_update |= CHECKER.as_ref().is_some_and(|checker| checker());
-    },
+    (@parse $text_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
+        let (mut text_fn, checker) = status_cfg!(@append $text_fn, $checker, $part);
+        status_cfg!(@parse text_fn, checker, $($parts)*)
+    }},
 
-    (@checker $_needs_update:expr,) => {},
-
-    (@checker $needs_update:expr, $part:tt $($parts:tt)*) => {
-        status_cfg!(@check $needs_update, $part);
-        status_cfg!(@checker $needs_update, $($parts)*);
-    },
+    (@parse $($parts:tt)*) => {{
+        let text_fn = |_: &mut Builder, _: &RoData<File>, _: &RoData<dyn InputMethod>| {};
+        let checker = || { false };
+        status_cfg!(@parse text_fn, checker, $($parts)*)
+    }},
 
     ($($parts:tt)*) => {{
         use crate::{
             input::InputMethod,
             palette::palette,
-            text::{text, Tag},
+            text::{text, Tag, Builder},
             ui::PushSpecs,
             widgets::{File, StatusLineCfg},
-        };
-
-        let text_fn = |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
-            let mut builder = Text::builder();
-            text!(builder, { Tag::StartAlignRight });
-            status_cfg!(@text builder, file, input, $($parts)*);
-            text!(builder, "\n");
-            builder.finish()
-        };
-
-        let checker = || {
-            let mut needs_update = false;
-            status_cfg!(@checker needs_update, $($parts)*);
-            needs_update
         };
 
         palette().try_set_form("FileName", Form::new().yellow().italic());
         palette().try_set_form("Selections", Form::new().dark_blue());
         palette().try_set_form("Coords", Form::new().dark_red());
         palette().try_set_form("Separator", Form::new().cyan());
+
+		#[allow(unused_mut)]
+        let (mut text_fn, checker) = status_cfg!(@parse $($parts)*);
+
+        let text_fn = move |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
+            let mut builder = Builder::new();
+            text!(builder, { Tag::StartAlignRight });
+            text_fn(&mut builder, file, input);
+            text!(builder, "\n");
+            builder.finish()
+        };
 
         StatusLineCfg {
             text_fn: Box::new(text_fn),
@@ -415,20 +420,4 @@ pub macro status_cfg {
             specs: PushSpecs::below().with_lenght(1.0)
         }
     }}
-}
-
-pub struct __LazyLock<T, F = fn() -> T>(std::sync::LazyLock<T, F>);
-
-impl<T, F: FnOnce() -> T> __LazyLock<T, F> {
-    pub const fn new(f: F) -> Self {
-        __LazyLock(std::sync::LazyLock::new(f))
-    }
-}
-
-impl<T, F: FnOnce() -> T> std::ops::Deref for __LazyLock<T, F> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        std::sync::LazyLock::<T, F>::deref(&self.0)
-    }
 }
