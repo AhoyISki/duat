@@ -816,15 +816,6 @@ where
     }
 }
 
-impl<T> std::fmt::Display for RwData<T>
-where
-    T: std::fmt::Display + 'static,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&*self.read(), f)
-    }
-}
-
 impl<T> InnerData<T> for RwData<T>
 where
     T: ?Sized,

@@ -4,7 +4,11 @@ pub mod reader;
 mod tags;
 mod types;
 
-use std::{ops::Range, sync::LazyLock};
+use std::{
+    fmt::{Display, Write},
+    ops::Range,
+    sync::LazyLock,
+};
 
 use ropey::Rope;
 
@@ -16,6 +20,7 @@ pub use self::{
     types::Part,
 };
 use crate::{
+    data::{RoData, RwData},
     forms::{self, FormId},
     history::Change,
     input::Cursors,
@@ -111,6 +116,10 @@ impl Text {
         }
 
         ExactPos::default()
+    }
+
+    pub(crate) fn insert_str(&mut self, pos: usize, str: &str) {
+        self.replace_range(pos..pos, str);
     }
 
     pub(crate) fn apply_change(&mut self, change: &Change) {
@@ -263,9 +272,12 @@ impl Text {
     }
 }
 
-impl<S: ToString> From<S> for Text {
+impl<S> From<S> for Text
+where
+    S: ToString,
+{
     fn from(value: S) -> Self {
-        Text::new(value.to_string())
+        Self::new(value.to_string())
     }
 }
 
@@ -292,6 +304,7 @@ pub struct Builder {
     last_form: Option<Tag>,
     last_align: Option<Tag>,
     marker: Marker,
+    buffer: String,
 }
 
 impl Builder {
@@ -344,13 +357,17 @@ impl Builder {
         self.text.tags.append(text.tags);
     }
 
-    pub fn push_part(&mut self, part: BuilderPart) {
+    pub fn push_part<D: Display>(&mut self, part: BuilderPart<D>) {
         match part {
             BuilderPart::Text(text) => self.push_text(text),
             BuilderPart::Tag(tag) => {
                 self.push_tag(tag);
             }
-            BuilderPart::String(string) => self.push_str(string),
+            BuilderPart::ToString(to_string) => {
+                self.buffer.clear();
+                write!(self.buffer, "{}", to_string).unwrap();
+                self.text.insert_str(self.text.len_chars(), &self.buffer)
+            }
         }
     }
 
@@ -367,6 +384,7 @@ impl Default for Builder {
             last_form: None,
             last_align: None,
             marker: Marker::new(),
+            buffer: String::with_capacity(50),
         }
     }
 }
@@ -407,54 +425,75 @@ pub struct AlignLeft;
 pub struct AlignRight;
 pub struct Ghost(pub Text);
 
-pub enum BuilderPart {
+pub enum BuilderPart<D>
+where
+    D: Display,
+{
     Text(Text),
     Tag(Tag),
-    String(String),
+    ToString(D),
 }
 
-impl From<AlignCenter> for BuilderPart {
+impl From<AlignCenter> for BuilderPart<String> {
     fn from(_: AlignCenter) -> Self {
         BuilderPart::Tag(Tag::StartAlignCenter)
     }
 }
 
-impl From<AlignLeft> for BuilderPart {
+impl From<AlignLeft> for BuilderPart<String> {
     fn from(_: AlignLeft) -> Self {
         BuilderPart::Tag(Tag::StartAlignLeft)
     }
 }
 
-impl From<AlignRight> for BuilderPart {
+impl From<AlignRight> for BuilderPart<String> {
     fn from(_: AlignRight) -> Self {
         BuilderPart::Tag(Tag::StartAlignRight)
     }
 }
 
-impl From<Ghost> for BuilderPart {
+impl From<Ghost> for BuilderPart<String> {
     fn from(value: Ghost) -> Self {
         BuilderPart::Tag(Tag::GhostText(value.0))
     }
 }
 
-impl From<Tag> for BuilderPart {
+impl From<Tag> for BuilderPart<String> {
     fn from(value: Tag) -> Self {
         BuilderPart::Tag(value)
     }
 }
 
-impl From<Text> for BuilderPart {
+impl From<Text> for BuilderPart<String> {
     fn from(value: Text) -> Self {
         BuilderPart::Text(value)
     }
 }
 
-impl<S> From<S> for BuilderPart
+impl<D> From<&RwData<D>> for BuilderPart<String>
 where
-    S: ToString,
+    D: Display,
 {
-    fn from(value: S) -> Self {
-        BuilderPart::String(value.to_string())
+    fn from(value: &RwData<D>) -> Self {
+        BuilderPart::ToString(value.read().to_string())
+    }
+}
+
+impl<D> From<&RoData<D>> for BuilderPart<String>
+where
+    D: Display,
+{
+    fn from(value: &RoData<D>) -> Self {
+        BuilderPart::ToString(value.read().to_string())
+    }
+}
+
+impl<D> From<D> for BuilderPart<D>
+where
+    D: Display,
+{
+    fn from(value: D) -> Self {
+        BuilderPart::ToString(value)
     }
 }
 

@@ -531,16 +531,6 @@ where
     }
 }
 
-impl<T> std::fmt::Display for RoData<T>
-where
-    T: std::fmt::Display + 'static,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&*self.read(), f)
-    }
-}
-
-
 impl RoData<dyn ActiveWidget> {
     pub fn to_passive(self) -> RoData<dyn PassiveWidget> {
         RoData {

@@ -159,15 +159,20 @@
 //!
 //!     // This is optional, if you feel like your command shouldn't allow
 //!     // for more args than are required, you can call this.
-//!     args.next().map(|_| Err(text!("Too many arguments"))).transpose()?;
+//!     if args.next().is_some() {
+//!         return Err(text!("Too many arguments."));
+//!     }
 //!
 //!     if flags.unit("link") {
 //!         unimplemented!("Logic for linking files.");
 //!     } else {
-//!         unimplemented!("Logic for copying files."
+//!         unimplemented!("Logic for copying files.");
 //!     }
 //!
-//!     Ok(Some(format!("Wrote to {count} files successfully.")))
+//!     Ok(Some(text!(
+//!         "Copied from " [AccentOk] source [Default]
+//!         " to " [AccentOk] dest [Default] "."
+//!     )))
 //! });
 //! ```
 //!
@@ -212,6 +217,14 @@ mod global {
     pub type Args<'a, 'b> = &'a mut std::iter::Peekable<std::str::SplitWhitespace<'b>>;
     pub type Flags<'a, 'b> = &'a InnerFlags<'b>;
 
+    /// Adds a command to the global list of commands.
+    ///
+    /// This command cannot take any arguments beyond the [`Flags`] and
+    /// [`Args`], so any mutation of state must be done through captured
+    /// variables, usually in the form of [`RwData<T>`]s:
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands, data::RwData};
     pub fn add(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,

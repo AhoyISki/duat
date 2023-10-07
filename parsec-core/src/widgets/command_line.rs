@@ -19,7 +19,7 @@ use crate::{
     commands,
     data::RwData,
     input::{Commander, InputMethod},
-    text::{text, Tag, Text},
+    text::{text, Text, Ghost},
     ui::{Area, PushSpecs, Ui},
 };
 
@@ -172,7 +172,7 @@ impl ActiveWidget for CommandLine {
     }
 
     fn on_focus(&mut self, _area: &impl Area) {
-        self.text = text!({ Tag::GhostText(text!({ &*self.prompt.read() })) });
+        self.text = text!({ Ghost(text!({ &self.prompt })) });
     }
 
     fn on_unfocus(&mut self, _area: &impl Area) {

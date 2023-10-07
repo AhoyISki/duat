@@ -55,7 +55,7 @@ pub mod file_parts;
 pub use self::file_parts::*;
 use super::{file::File, PassiveWidget, Widget};
 use crate::{
-    data::{FileReader, RoData},
+    data::{FileReader, RoData, RwData},
     forms::Form,
     input::InputMethod,
     text::{text, Builder, Tag, Text},
@@ -112,41 +112,32 @@ impl<T: 'static> State<T> {
     }
 }
 
-impl From<char> for State<()> {
-    fn from(value: char) -> Self {
-        Self {
-            appender: Appender::Text::<()>(Text::from(value)),
-            checker: None,
+macro state_from($($value_type:ty),+) {
+    $(
+        impl From<$value_type> for State<()> {
+            fn from(value: $value_type) -> Self {
+                Self {
+                    appender: Appender::Text::<()>(Text::from(value)),
+                    checker: None,
+                }
+            }
         }
-    }
+
+        impl From<RwData<$value_type>> for State<()> {
+            fn from(value: RwData<$value_type>) -> Self {
+                Self {
+                    appender: Appender::NoArgs::<()>({
+                        let value = value.clone();
+                        Box::new(move || Text::from(value.read().clone()))
+                    }),
+                    checker: Some(Box::new(move || value.has_changed())),
+                }
+            }
+        }
+    )+
 }
 
-impl From<&'_ str> for State<()> {
-    fn from(value: &'_ str) -> Self {
-        Self {
-            appender: Appender::Text::<()>(Text::from(value)),
-            checker: None,
-        }
-    }
-}
-
-impl From<String> for State<()> {
-    fn from(value: String) -> Self {
-        Self {
-            appender: Appender::Text::<()>(Text::from(value)),
-            checker: None,
-        }
-    }
-}
-
-impl From<Text> for State<()> {
-    fn from(value: Text) -> Self {
-        Self {
-            appender: Appender::Text::<()>(value),
-            checker: None,
-        }
-    }
-}
+state_from!(char, &'_ str, String, Text);
 
 impl From<Tag> for State<()> {
     fn from(value: Tag) -> Self {
@@ -171,13 +162,13 @@ where
     }
 }
 
-impl<T, ReadFn, CheckFn> From<(ReadFn, CheckFn)> for State<()>
+impl<T, Reader, Checker> From<(Reader, Checker)> for State<()>
 where
     T: Into<Text>,
-    ReadFn: Fn() -> T + Send + Sync + 'static,
-    CheckFn: Fn() -> bool + Send + Sync + 'static,
+    Reader: Fn() -> T + Send + Sync + 'static,
+    Checker: Fn() -> bool + Send + Sync + 'static,
 {
-    fn from((reader, checker): (ReadFn, CheckFn)) -> Self {
+    fn from((reader, checker): (Reader, Checker)) -> Self {
         let reader = move || reader().into();
         State {
             appender: Appender::NoArgs::<()>(Box::new(reader)),
@@ -186,13 +177,13 @@ where
     }
 }
 
-impl<T, U, ReadFn> From<ReadFn> for State<U>
+impl<ToText, Arg, ReadFn> From<ReadFn> for State<Arg>
 where
-    T: Into<Text>,
-    ReadFn: Fn(&U) -> T + Send + Sync + 'static,
+    ToText: Into<Text>,
+    ReadFn: Fn(&Arg) -> ToText + Send + Sync + 'static,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |u: &U| reader(u).into();
+        let reader = move |u: &Arg| reader(u).into();
         State {
             appender: Appender::FromFile(Box::new(reader)),
             checker: None,

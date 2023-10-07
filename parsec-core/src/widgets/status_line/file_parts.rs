@@ -9,14 +9,6 @@ pub fn file_name(file: &File) -> String {
     file.name().unwrap_or(String::from("*scratch file*"))
 }
 
-pub fn main_cursor(input: &dyn InputMethod) -> Cursor {
-    input
-        .cursors()
-        .map(Cursors::main)
-        .cloned()
-        .unwrap_or(Cursor::default())
-}
-
 /// The byte of the main cursor in the file. Indexed at 1.
 pub fn main_byte(input: &dyn InputMethod) -> usize {
     main_cursor(input).byte()
@@ -69,4 +61,12 @@ pub fn len_chars(file: &File) -> usize {
 /// Returns a [`String`] with the number of bytes in the file.
 pub fn len_bytes(file: &File) -> usize {
     file.len_bytes()
+}
+
+fn main_cursor(input: &dyn InputMethod) -> Cursor {
+    input
+        .cursors()
+        .map(Cursors::main)
+        .cloned()
+        .unwrap_or(Cursor::default())
 }
