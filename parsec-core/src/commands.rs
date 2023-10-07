@@ -224,7 +224,13 @@ mod global {
     /// variables, usually in the form of [`RwData<T>`]s:
     ///
     /// ```rust
-    /// # use parsec_core::{commands, data::RwData};
+    /// # use parsec_core::{commands, data::RwData, widgets::status_cfg};
+    /// let var = RwData::new(
+    /// commands::add(["set-var"], {
+    /// 
+    /// });
+    /// let status_cfg = status_cfg!("Output of \"lol\": " output);
+    /// ```
     pub fn add(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
