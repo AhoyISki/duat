@@ -370,7 +370,7 @@ pub macro status_cfg {
                 appender(builder, file, input);
             };
 
-        let checker = move || $checker() || checker();
+        let checker = move || { $checker() || checker() };
 
         (text_fn, checker)
     }},

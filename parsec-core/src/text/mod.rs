@@ -4,7 +4,7 @@ pub mod reader;
 mod tags;
 mod types;
 
-use std::ops::Range;
+use std::{ops::Range, sync::LazyLock};
 
 use ropey::Rope;
 
@@ -15,7 +15,11 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{forms, history::Change, input::Cursors};
+use crate::{
+    forms::{self, FormId},
+    history::Change,
+    input::Cursors,
+};
 
 trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
     fn with_len(len: usize) -> Self;
@@ -457,8 +461,7 @@ where
 pub macro text {
     // Forms
     (@push $builder:expr, [$form:ident]) => {
-        use std::sync::LazyLock;
-        static FORM_ID: LazyLock<crate::forms::FormId> = LazyLock::new(|| {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
             let name = stringify!($form);
             crate::palette::palette().from_name(name).1
         });
@@ -486,4 +489,20 @@ pub macro text {
         text!(builder, $($parts)+);
         builder.finish()
     }},
+}
+
+pub struct __FormIdLock(LazyLock<FormId>);
+
+impl std::ops::Deref for __FormIdLock {
+    type Target = FormId;
+
+    fn deref(&self) -> &FormId {
+        self.0.deref()
+    }
+}
+
+impl __FormIdLock {
+    pub const fn new(f: fn() -> FormId) -> Self {
+        Self(LazyLock::new(f))
+    }
 }

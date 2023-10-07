@@ -21,7 +21,7 @@
 //! [`Args`] is merely an iterator over the remaining arguments, which are given
 //! as `&str`s to be consumed.
 //!
-//! Here's a simple example of how one would create a [`Command`]:
+//! Here's a simple example of how one would add a command:
 //!
 //! ```rust
 //! # use parsec_core::commands::{self, Flags, Args};
@@ -30,10 +30,16 @@
 //! #     Arc
 //! # };
 //! #
-//! let callers = vec!["my-command", "mc"];
-//! commands::add(callers, move |_flags: Flags, _args: Args| {
+//! // Any of these callers will work for running the command.
+//! let callers = ["my-command", "mc"];
+//!
+//! // `commands::add` will make the given command globally available.
+//! let result = commands::add(callers, move |_flags: Flags, _args: Args| {
 //!     unimplemented!();
 //! });
+//!
+//! // Adding a command can fail if a command with the same name already exists.
+//! assert!(result.is_ok());
 //! ```
 //!
 //! In this case, a command has been added that can be called with
@@ -49,17 +55,31 @@
 //! # };
 //! #
 //! let expression = Arc::new(AtomicU32::default());
-//! let callers = vec!["my-command", "mc"];
-//! let my_command = commands::add(callers, move |flags, _args| {
-//!     if flags.unit("happy") {
-//!         expression.store('😁' as u32, Ordering::Relaxed)
-//!     } else if flags.unit("sad") {
-//!         expression.store('😢' as u32, Ordering::Relaxed)
-//!     } else {
-//!         expression.store('😶' as u32, Ordering::Relaxed)
-//!     }
-//!     Ok(None)
-//! });
+//! let callers = ["my-command", "mc"];
+//! let my_command = {
+//!     let expression = expression.clone();
+//!     commands::add(callers, move |flags, _args| {
+//!         // `Flags::unit` will check if a `--` flag has been passed.
+//!         if flags.unit("happy") {
+//!             expression.store('😁' as u32, Ordering::Relaxed)
+//!         // `Flags::blob` will check if a `-` flag has been passed.
+//!         // They can check for any valid unicode character.
+//!         } else if flags.blob("🤯") {
+//!             expression.store('🤯' as u32, Ordering::Relaxed)
+//!         } else if flags.unit("sad") {
+//!             expression.store('😢' as u32, Ordering::Relaxed)
+//!         } else {
+//!             expression.store('😶' as u32, Ordering::Relaxed)
+//!         }
+//!         Ok(None)
+//!     })
+//! };
+//!
+//! // The order of flags doesn't matter, but the order of args does.
+//! commands::run("mc --sad -🤯 useless-arg-1 useless-arg-2").unwrap();
+//!
+//! let num = expression.load(Ordering::Relaxed);
+//! assert_eq!(char::from_u32(num), Some('🤯'))
 //! ```
 //!
 //! To run commands, simply call [`commands::run`]:
@@ -74,78 +94,87 @@
 //! #     widgets::{CommandLine, status_cfg},
 //! # };
 //! # fn test_fn<U: Ui>(ui: U) {
-//! let file_fn = |builder: &mut FileBuilder<U>, _file| {
-//!     let output = commands::run("lol").unwrap().unwrap();
-//!     println!("{:#?}", output);
-//!     let status_cfg = status_cfg!["Output of \"lol\": " output];
 //!
-//!     builder.push(status_cfg.builder());
-//! };
+//! let session = SessionCfg::new(ui)
+//!     .with_file_fn(|builder: &mut FileBuilder<U>, _file| {
+//!         // `commands::run` might return an `Ok(Some(Text))`, hence
+//!         // the double unwrap.
+//!         let output = commands::run("lol").unwrap().unwrap();
+//!         let status_cfg = status_cfg!("Output of \"lol\": " output);
 //!
-//! let session = SessionCfg::new(ui).with_file_fn(file_fn);
+//!         builder.push(status_cfg.builder());
+//!     });
 //!
-//! let my_callers = vec!["lol", "lmao"];
-//! let lol_cmd =
-//!     commands::add(my_callers, |_flags, _args| Ok(Some(text!("😜"))));
+//! let callers = ["lol", "lmao"];
+//! commands::add(callers, |_flags, _args| Ok(Some(text!("😜")))).unwrap();
 //! # }
 //! ```
 //!
-//! The [`Commands`] struct, in this snippet, is chronologically first
-//! accessed through
+//! In the above example, we are creating a new [`SessionCfg`], which will be
+//! used to start Parsec. in it, we're changing the "`file_fn`", a file
+//! constructor that, among other things, will attach widgets to files that are
+//! opened.
 //!
-//! ```rust
-//! # use parsec_core::{commands::Command, session::Session, ui::Ui};
-//! # fn test_fn<U>(session: Session<U>, lol_cmd: Command)
-//! # where
-//! #     U: Ui
-//! # {
-//! session.commands().write().try_add(lol_cmd);
-//! # }
-//! ```
-//!
-//! In this line, the [`Command`] `lol_cmd` is added to the list
-//! of commands, with 2 callers, simply returning a `"😜"`, which
-//! can be chained to other [`Command`]s or used in some other way.
-//!
-//! It is then accessed by the `constructor_hook`, where the `"lol"`
-//! caller is called upon, executing the `lol_cmd`. Also in the
-//! `constructor_hook`, a [`CommandLine`] is pushed below the
-//! [`FileWidget`]. The [`Controler`] parameter is
-//! then copied internally to the [`CommandLine`], giving it access
-//! to the [`Commands`] struct, allowing it to take user input to run
-//! commands.
+//! In that "`file_fn`", the command `"lol"` is being ran. Notice that the
+//! command doesn't exist at the time the closure was declared. But since this
+//! closure will only be ran after the [`Session`] has started, as long as the
+//! command was added before that point, everything will work just fine.
 //!
 //! Here's an example that makes use of the arguments of a command:
 //!
 //! ```rust
-//! # use parsec_core::{
-//! #     commands::{Command, Commands},
-//! #     data::{ReadableData, RwData}
-//! # };
-//! # fn test_fn(commands: &mut Commands) {
-//! let my_var = RwData::new(String::new());
-//! let my_var_clone = my_var.clone();
-//!
-//! let write = Command::new(["write", "w"], move |flags, args| {
+//! # use parsec_core::{commands, text::text};
+//! commands::add(["write", "w"], move |_flags, args| {
 //!     let mut count = 0;
 //!     for file in args {
 //!         count += 1;
-//!         todo!()
-//!         // Logic for writing to the files.
+//!         unimplemented!("Implicit logic for writing to the files.");
+//!     }
+//!
+//!     // The return message (if there is one) is in the form of a `Text`,
+//!     // so it is recommended that you use the `parsec_core::text::text`
+//!     // macro to facilitate the creation of that message.
+//!     Ok(Some(text!("Wrote to " [AccentOk] count [Default] " files successfully.")))
+//! });
+//! ```
+//!
+//! The returned result from a command should make use of 4 specific forms:
+//! `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and `"AccentErr"`. When errors
+//! are displayed, the `"Default"` [`Form`] gets mapped to `"CommandOk"` if the
+//! result is [`Ok`], and to `"CommandErr"` if the result is [`Err`]. The same
+//! goes for the accents.
+//! This formatting of result messages allows for more expressive feedback while
+//! still letting the end user configure their appearance.
+//!
+//! In the previous case, we handled a variable number of arguments. But we can
+//! also easily handle a static number of arguments:
+//!
+//! ```rust
+//! # use parsec_core::{commands, text::text};
+//! commands::add(["copy", "cp"], move |flags, args| {
+//!     // You can return custom error messages, to improve the feedback
+//!     // of failures when running the command.
+//!     let source = args.next().ok_or(text!("No source provided."))?;
+//!     let dest = args.next().ok_or(text!("No destination provided."))?;
+//!
+//!     // This is optional, if you feel like your command shouldn't allow
+//!     // for more args than are required, you can call this.
+//!     args.next().map(|_| Err(text!("Too many arguments"))).transpose()?;
+//!
+//!     if flags.unit("link") {
+//!         unimplemented!("Logic for linking files.");
+//!     } else {
+//!         unimplemented!("Logic for copying files."
 //!     }
 //!
 //!     Ok(Some(format!("Wrote to {count} files successfully.")))
 //! });
-//! # }
 //! ```
+//!
+//! [`SessionCfg`]: crate::session::SessionCfg
 //! [`Session`]: crate::session::Session
-//! [`Session::commands`]: crate::session::Session::commands
 //! [`commans::run`]: crate::commands::run
-//! [`ModNode`]: crate::ui::ModNode
-//! [`ModNode::commands`]: crate::ui::ModNode::commands
-//! [`CommandLine`]: crate::widgets::CommandLine
-//! [`FileWidget`]: crate::widgets::FileWidget
-//! [`Iterator<Item = &str>`]: std::iter::Iterator
+//! [`Form`]: crate::forms::Form
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{
