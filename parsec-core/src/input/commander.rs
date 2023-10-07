@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{key, Cursors, InputMethod, MultiCursorEditor};
-use crate::{controls, data::RwData, ui::Area, widgets::CommandLine};
+use crate::{data::RwData, ui::Area, widgets::CommandLine, commands::{self}};
 
 #[derive(Clone)]
 pub struct Commander {
@@ -85,11 +85,11 @@ impl InputMethod for Commander {
                 editor.edit_on_main(|editor| editor.replace(""));
 
 				self.cursors = Cursors::default();
-                controls::return_to_file().unwrap();
+                commands::return_to_file().unwrap();
             }
             key!(KeyCode::Enter) => {
 				self.cursors = Cursors::default();
-                controls::return_to_file().unwrap();
+                commands::return_to_file().unwrap();
             }
             _ => {}
         }

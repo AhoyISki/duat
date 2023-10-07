@@ -1,8 +1,6 @@
-//! Creation and execution of [`Command`]s.
+//! Creation and execution of commands.
 //!
-//! The [`Command`] struct, in Parsec, is a function that's supposed to
-//! be ran from any part of the program asynchronously, being able to
-//! mutate data through reference counting and internal mutability.
+//! Commands in Parsec work by
 //!
 //! [`Command`]s must act on 2 specific parameters, [`Flags`], and
 //! arguments coming from an [`Iterator<Item = &str>`].
@@ -170,6 +168,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+pub use global::*;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
@@ -179,6 +178,82 @@ use crate::{
     widgets::PassiveWidget,
     BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
 };
+
+mod global {
+    use std::sync::atomic::Ordering;
+
+    use super::{CmdResult, Commands, Error, InnerFlags};
+    use crate::{
+        data::RwData,
+        ui::{Area, Ui, Window},
+        widgets::{ActiveWidget, PassiveWidget},
+        BREAK_LOOP, SHOULD_QUIT,
+    };
+
+    static COMMANDS: Commands = Commands::new();
+
+    pub type Args<'a, 'b> = &'a mut std::iter::Peekable<std::str::SplitWhitespace<'b>>;
+    pub type Flags<'a, 'b> = &'a InnerFlags<'b>;
+
+    pub fn add(
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
+    ) -> std::result::Result<(), Error> {
+        COMMANDS.add(callers, f)
+    }
+
+    pub fn add_for_widget<W: PassiveWidget>(
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(&mut W, &dyn Area, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<(), Error> {
+        COMMANDS.add_for_widget(callers, f)
+    }
+
+    pub fn run(command: impl ToString) -> Result<Option<String>, Error> {
+        COMMANDS.run(command)
+    }
+
+    pub fn quit() {
+        BREAK_LOOP.store(true, Ordering::Release);
+        SHOULD_QUIT.store(true, Ordering::Release);
+    }
+
+    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, Error> {
+        COMMANDS.run(format!("switch-to {}", W::type_name()))
+    }
+
+    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, Error> {
+        COMMANDS.run(format!("buffer {}", file.as_ref()))
+    }
+
+    pub fn next_file() -> Result<Option<String>, Error> {
+        COMMANDS.run("next-file")
+    }
+
+    pub fn prev_file() -> Result<Option<String>, Error> {
+        COMMANDS.run("prev-file")
+    }
+
+    pub fn return_to_file() -> Result<Option<String>, Error> {
+        COMMANDS.run("return-to-file")
+    }
+
+    pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
+        COMMANDS.add_widget_getter(getter);
+    }
+
+    /// Tries to alias a `caller` to an existing `command`.
+    ///
+    /// Returns an [`Err`] if the `caller` is already a caller for
+    /// another command, or if `command` is not a real caller to an
+    /// exisiting [`Command`].
+    pub fn alias<'a>(
+        alias: impl ToString,
+        command: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Option<String>, Error> {
+        COMMANDS.inner.write().try_alias(alias, command)
+    }
+}
 
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
@@ -222,12 +297,12 @@ use crate::{
 /// assert!(flags.blob == String::from("abcde"));
 /// assert!(flags.units == vec!["foo", "bar"]);
 /// ```
-pub struct Flags<'a> {
+pub struct InnerFlags<'a> {
     pub blob: String,
     pub units: Vec<&'a str>,
 }
 
-impl<'a> Flags<'a> {
+impl<'a> InnerFlags<'a> {
     /// Checks if all of the [`char`]s in the `blob` passed.
     ///
     /// # Examples
@@ -422,7 +497,7 @@ impl<'a> Flags<'a> {
 /// [`CommandLine`]: crate::widgets::CommandLine
 /// [`FileWidget`]: crate::widgets::FileWidget
 /// [`Widget`]: crate::widgets::Widget
-pub struct Command {
+struct Command {
     /// A closure to trigger when any of the `callers` are called.
     ///
     /// # Arguments
@@ -439,7 +514,7 @@ pub struct Command {
     /// The [`String`] in [`Err(String)`] is used to tell the user
     /// what went wrong while running the command, and possibly to
     /// show a message somewhere on Parsec.
-    f: RwData<dyn FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CmdResult>,
+    f: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
     /// A list of [`String`]s that act as callers for [`self`].
     callers: Vec<String>,
 }
@@ -478,64 +553,9 @@ impl Command {
     /// This function will panic if any of the callers contain more
     /// than one word, as commands are only allowed to be one word
     /// long.
-    pub fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
+    fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
-        F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + 'static,
-    {
-        let callers = callers
-            .into_iter()
-            .map(|caller| caller.to_string())
-            .collect::<Vec<String>>();
-        if let Some(caller) = callers
-            .iter()
-            .find(|caller| caller.split_whitespace().count() != 1)
-        {
-            panic!("Command caller \"{caller}\" contains more than one word.");
-        }
-        Self {
-            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
-            callers,
-        }
-    }
-
-    /// Returns a new instance of [`Command`].
-    ///
-    /// # Arguments
-    ///
-    /// - `callers`: A list of names to call this function by. In other editors,
-    ///   you would see things like `["edit", "e"]`, or `["write-quit", "wq"]`,
-    ///   and this is no different.
-    /// - `f`: The closure to call when running the command. In order for the
-    ///   closure to actually do anything, you would want it to capture shared,
-    ///   multi-threaded objects (e.g. [`Arc`]s, [`RwData`]s, e.t.c.).
-    /// ```rust
-    /// # use parsec_core::{
-    /// #     commands::{Command},
-    /// #     data::{RwData, ReadableData},
-    /// # };
-    /// # use std::sync::atomic::AtomicBool;
-    /// let my_var = RwData::new(AtomicBool::new(false));
-    /// let clone_of_my_var = my_var.clone();
-    /// let callers = ["foo", "bar"];
-    /// let command = Command::new(callers, move |flags, args| {
-    ///     let read_var = my_var.read();
-    ///     todo!();
-    /// });
-    /// ```
-    ///
-    ///   This way, `my_var` will be accessible, both to the command,
-    ///   and to any reader that is interested in its value.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if any of the callers contain more
-    /// than one word, as commands are only allowed to be one word
-    /// long.
-    pub fn new_local<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
-    where
-        F: FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> Result<Option<String>, String>
-            + 'static,
+        F: FnMut(Flags, Args) -> Result<Option<String>, String> + 'static,
     {
         let callers = callers
             .into_iter()
@@ -555,11 +575,11 @@ impl Command {
 
     /// Executes the inner function if the `caller` matches any of the
     /// callers in [`self`].
-    fn try_exec<'a>(
+    fn try_exec(
         &self,
         caller: &str,
-        flags: &Flags,
-        args: &mut impl Iterator<Item = &'a str>,
+        flags: Flags,
+        args: Args<'_, '_>,
     ) -> Result<Option<String>, Error> {
         if self.callers.iter().any(|name| name == caller) {
             (self.f.write())(flags, args).map_err(Error::Failed)
@@ -637,7 +657,7 @@ unsafe impl Sync for Command {}
 ///
 /// [`CommandLine`]: crate::widgets::CommandLine
 /// [`Commands::try_add`]: Commands::try_add
-pub struct Commands {
+struct Commands {
     inner: LazyLock<RwData<InnerCommands>>,
     widget_getter: RwLock<MaybeUninit<RwData<dyn WidgetGetter>>>,
 }
@@ -681,7 +701,7 @@ impl Commands {
     /// assert!(&*my_var.read() == "😿");
     /// # }
     /// ```
-    pub fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
+    fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
         self.inner.read().run(command)
     }
 
@@ -719,20 +739,19 @@ impl Commands {
     /// assert!(result == "The caller \"cap\" already exists.");
     /// # }
     /// ```
-    pub fn add(
+    fn add(
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&Flags, &mut dyn Iterator<Item = &str>) -> CmdResult + 'static,
+        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
     ) -> Result<(), Error> {
         let command = Command::new(callers, f);
         self.inner.write().try_add(command)
     }
 
-    pub fn add_for_widget<W: PassiveWidget>(
+    fn add_for_widget<W: PassiveWidget>(
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&mut W, &dyn Area, &Flags, &mut dyn Iterator<Item = &str>) -> CmdResult
-        + 'static,
+        mut f: impl FnMut(&mut W, &dyn Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<(), Error> {
         let widget_getter = unsafe { self.widget_getter.read().unwrap().assume_init_ref().clone() };
 
@@ -760,19 +779,6 @@ impl Commands {
         self.inner.write().try_add(command)
     }
 
-    /// Tries to alias a `caller` to an existing `command`.
-    ///
-    /// Returns an [`Err`] if the `caller` is already a caller for
-    /// another command, or if `command` is not a real caller to an
-    /// exisiting [`Command`].
-    pub fn try_alias<'a>(
-        &self,
-        alias: impl ToString,
-        command: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Option<String>, Error> {
-        self.inner.write().try_alias(alias, command)
-    }
-
     /// Returns a new instance of [`Commands`].
     ///
     /// This function is primarily used in the creation of a
@@ -784,7 +790,7 @@ impl Commands {
     /// into full commands.
     ///
     /// [`Controler`]: crate::Controler
-    pub(crate) const fn new() -> Self {
+    const fn new() -> Self {
         Self {
             inner: LazyLock::new(|| {
                 let inner = RwData::new(InnerCommands {
@@ -829,7 +835,7 @@ impl Commands {
         }
     }
 
-    pub(crate) fn add_widget_getter<U: Ui>(&self, getter: RwData<Vec<Window<U>>>) {
+    fn add_widget_getter<U: Ui>(&self, getter: RwData<Vec<Window<U>>>) {
         let inner_arc = getter.inner_arc().clone() as Arc<RwLock<dyn WidgetGetter>>;
         let getter = RwData::new_unsized::<Window<U>>(inner_arc);
         let mut lock = self.widget_getter.write().unwrap();
@@ -860,7 +866,7 @@ impl InnerCommands {
     }
 
     /// Tries to execute a command or alias with the given argument.
-    pub fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
+    fn run(&self, command: impl ToString) -> Result<Option<String>, Error> {
         let command = command.to_string();
         let caller = command
             .split_whitespace()
@@ -873,7 +879,6 @@ impl InnerCommands {
         let caller = command.next().unwrap();
 
         let (flags, mut args) = split_flags(command);
-
         for cmd in &self.list {
             let result = cmd.try_exec(caller, &flags, &mut args);
             let Err(Error::NotFound(_)) = result else {
@@ -934,9 +939,7 @@ where
             .unwrap();
 
         let on_window = self[window].widgets();
-
         let previous = self.iter().take(window).flat_map(|w| w.widgets());
-
         let following = self.iter().skip(window + 1).flat_map(|w| w.widgets());
 
         on_window
@@ -975,9 +978,12 @@ where
 /// assert!(flags.blob == String::from("abcde"));
 /// assert!(flags.units == vec!["foo", "bar"]);
 /// ```
-pub fn split_flags<'a>(
-    args: impl Iterator<Item = &'a str>,
-) -> (Flags<'a>, impl Iterator<Item = &'a str>) {
+fn split_flags(
+    args: std::str::SplitWhitespace<'_>,
+) -> (
+    InnerFlags<'_>,
+    std::iter::Peekable<std::str::SplitWhitespace<'_>>,
+) {
     let mut blob = String::new();
     let mut units = Vec::new();
 
@@ -1004,7 +1010,7 @@ pub fn split_flags<'a>(
         }
     }
 
-    (Flags { blob, units }, args)
+    (InnerFlags { blob, units }, args)
 }
 
 /// An failure in executing or adding a [`Command`].
@@ -1037,4 +1043,4 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-type CmdResult = Result<Option<String>, String>;
+pub type CmdResult = Result<Option<String>, String>;

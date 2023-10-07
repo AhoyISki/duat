@@ -10,6 +10,7 @@ use std::{
 use crossterm::event::{self, Event};
 
 use crate::{
+    commands,
     data::RwData,
     input::{Editor, InputMethod},
     text::PrintCfg,
@@ -18,7 +19,7 @@ use crate::{
         ActiveWidget, ActiveWidgetCfg, File, FileCfg, LineNumbers, PassiveWidget, StatusLine,
         Widget,
     },
-    BREAK_LOOP, COMMANDS, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
+    BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
 };
 
 #[allow(clippy::type_complexity)]
@@ -82,7 +83,7 @@ where
             window_fn: self.window_fn,
         };
 
-        COMMANDS.add_widget_getter(session.windows.clone());
+        commands::add_widget_getter(session.windows.clone());
         add_session_commands(&session);
 
         // Open and process files..
@@ -337,79 +338,74 @@ where
     U: Ui,
     I: InputMethod<Widget = File>,
 {
-    COMMANDS
-        .add(["edit", "e"], move |_flags, args| {
-            let paths: Vec<&str> = args.collect();
-            if paths.is_empty() {
-                CURRENT_FILE.inspect(|file, _| {
-                    if let Some(name) = file.name() {
-                        file.write()
-                            .map(|bytes| Some(format!("Wrote {bytes} bytes to {name}")))
-                    } else {
-                        Err(String::from("Give the file a name, to write it with"))
-                    }
+    commands::add(["edit", "e"], move |_flags, args| {
+        let paths: Vec<&str> = args.collect();
+        if paths.is_empty() {
+            CURRENT_FILE.inspect(|file, _| {
+                if let Some(name) = file.name() {
+                    file.write()
+                        .map(|bytes| Some(format!("Wrote {bytes} bytes to {name}")))
+                } else {
+                    Err(String::from("Give the file a name, to write it with"))
+                }
+            })
+        } else {
+            CURRENT_FILE.inspect(|file, _| {
+                let mut bytes = 0;
+                for path in &paths {
+                    bytes = file.write_to(path)?;
+                }
+
+                Ok(Some(format!("Wrote {bytes} to {}", paths.join(", "))))
+            })
+        }
+    })
+    .unwrap();
+
+    commands::add(["edit", "e"], {
+        let windows = session.windows.clone();
+
+        move |_, args| {
+            let Some(file) = args.next() else {
+                return Err(String::from("No file to edit supplied"));
+            };
+
+            let path = PathBuf::from(file);
+            let name = path
+                .file_name()
+                .ok_or(String::from("No file in path"))?
+                .to_string_lossy()
+                .to_string();
+
+            let read_windows = windows.read();
+            let Some((window_index, entry)) = read_windows
+                .iter()
+                .enumerate()
+                .flat_map(window_index_widget)
+                .find(|(_, (widget, ..))| {
+                    widget
+                        .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
+                        .unwrap_or(false)
                 })
-            } else {
-                CURRENT_FILE.inspect(|file, _| {
-                    let mut bytes = 0;
-                    for path in &paths {
-                        bytes = file.write_to(path)?;
-                    }
+            else {
+                // TODO: this, lol
+                // files_to_open.write().push(path);
+                BREAK_LOOP.store(true, Ordering::Release);
+                return Ok(Some(format!("Created {file}")));
+            };
 
-                    Ok(Some(format!("Wrote {bytes} to {}", paths.join(", "))))
-                })
-            }
-        })
-        .unwrap();
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            let windows = windows.clone();
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &windows.read(), window_index);
+            });
 
-    COMMANDS
-        .add(["edit", "e"], {
-            let windows = session.windows.clone();
+            Ok(Some(format!("Switched to {}.", file_name(&entry))))
+        }
+    })
+    .unwrap();
 
-            move |_, args| {
-                let Some(file) = args.next() else {
-                    return Err(String::from("No file to edit supplied"));
-                };
-
-                let path = PathBuf::from(file);
-                let name = path
-                    .file_name()
-                    .ok_or(String::from("No file in path"))?
-                    .to_string_lossy()
-                    .to_string();
-
-                let read_windows = windows.read();
-                let Some((window_index, entry)) = read_windows
-                    .iter()
-                    .enumerate()
-                    .flat_map(window_index_widget)
-                    .find(|(_, (widget, ..))| {
-                        widget
-                            .inspect_as::<File, bool>(|file| {
-                                file.name().is_some_and(|cmp| cmp == name)
-                            })
-                            .unwrap_or(false)
-                    })
-                else {
-                    // TODO: this, lol
-                    // files_to_open.write().push(path);
-                    BREAK_LOOP.store(true, Ordering::Release);
-                    return Ok(Some(format!("Created {file}")));
-                };
-
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index);
-                });
-
-                Ok(Some(format!("Switched to {}.", file_name(&entry))))
-            }
-        })
-        .unwrap();
-
-    COMMANDS
-        .add(["buffer", "b"], {
+    commands::add(["buffer", "b"], {
             let windows = session.windows.clone();
 
             move |_, args| {
@@ -449,8 +445,7 @@ where
         })
         .unwrap();
 
-    COMMANDS
-        .add(["switch-to"], {
+    commands::add(["switch-to"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -492,8 +487,7 @@ where
         })
         .unwrap();
 
-    COMMANDS
-        .add(["next-file"], {
+    commands::add(["next-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -532,8 +526,7 @@ where
         })
         .unwrap();
 
-    COMMANDS
-        .add(["prev-file"], {
+    commands::add(["prev-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -572,8 +565,7 @@ where
         })
         .unwrap();
 
-    COMMANDS
-        .add(["return-to-file"], {
+    commands::add(["return-to-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 

@@ -16,12 +16,11 @@
 //! by running the `set-prompt` [`Command`].
 use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
-    controls,
+    commands,
     data::RwData,
     input::{Commander, InputMethod},
     text::{text, Tag, Text},
     ui::{Area, PushSpecs, Ui},
-    COMMANDS,
 };
 
 #[derive(Clone)]
@@ -92,7 +91,7 @@ where
                 prompt: RwData::new(self.prompt.clone()),
             };
 
-            let _ = COMMANDS.add_for_widget::<CommandLine>(
+            let _ = commands::add_for_widget::<CommandLine>(
                 ["set-prompt"],
                 move |command_line, _, _, args| {
                     let new_prompt: Vec<&str> = args.collect();
@@ -180,7 +179,7 @@ impl ActiveWidget for CommandLine {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.iter_chars_at(0).collect::<String>();
-        std::thread::spawn(|| controls::run(cmd));
+        std::thread::spawn(|| commands::run(cmd));
     }
 }
 

@@ -320,7 +320,7 @@ impl History {
         }
     }
 
-    /// Undoes the last [`Moment<U>`][crate::history::Moment].
+    /// Undoes the last [`Moment`][crate::history::Moment].
     pub fn undo(
         &mut self,
         text: &mut Text,
@@ -347,7 +347,7 @@ impl History {
         }
     }
 
-    /// Redoes the last [`Moment<U>`][crate::history::Moment] in the
+    /// Redoes the last [`Moment`][crate::history::Moment] in the
     /// [`History`].
     pub fn redo(
         &mut self,

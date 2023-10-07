@@ -16,7 +16,6 @@
 
 use std::sync::atomic::AtomicBool;
 
-use commands::Commands;
 use data::{CurrentFile, CurrentWidget};
 use forms::FormPalette;
 
@@ -38,7 +37,6 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
 static PALETTE: FormPalette = FormPalette::new();
-static COMMANDS: Commands = Commands::new();
 
 // Public control objects.
 pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
@@ -49,42 +47,6 @@ pub mod palette {
 
     pub fn palette() -> &'static FormPalette {
         &PALETTE
-    }
-}
-
-/// Quits Parsec.
-pub mod controls {
-    use std::sync::atomic::Ordering;
-
-    use crate::{commands::Error, widgets::ActiveWidget, BREAK_LOOP, COMMANDS, SHOULD_QUIT};
-
-    pub fn run(command: impl ToString) -> Result<Option<String>, Error> {
-        COMMANDS.run(command)
-    }
-
-    pub fn quit() {
-        BREAK_LOOP.store(true, Ordering::Release);
-        SHOULD_QUIT.store(true, Ordering::Release);
-    }
-
-    pub fn switch_to<W: ActiveWidget>() -> Result<Option<String>, Error> {
-        COMMANDS.run(format!("switch-to {}", W::type_name()))
-    }
-
-    pub fn buffer(file: impl AsRef<str>) -> Result<Option<String>, Error> {
-        COMMANDS.run(format!("buffer {}", file.as_ref()))
-    }
-
-    pub fn next_file() -> Result<Option<String>, Error> {
-        COMMANDS.run("next-file")
-    }
-
-    pub fn prev_file() -> Result<Option<String>, Error> {
-        COMMANDS.run("prev-file")
-    }
-
-    pub fn return_to_file() -> Result<Option<String>, Error> {
-        COMMANDS.run("return-to-file")
     }
 }
 

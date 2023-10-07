@@ -5,13 +5,13 @@ use crossterm::event::{
     KeyEvent, KeyModifiers,
 };
 use parsec_core::{
-    controls,
     data::RwData,
     history::History,
     input::{key, Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Area,
     widgets::{CommandLine, File},
     CURRENT_FILE,
+    commands
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -203,7 +203,7 @@ fn match_normal(
     match key {
         ////////// SessionControl commands.
         key!(KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-            controls::quit();
+            commands::quit();
         }
 
         ////////// Movement keys that retain or create selections.
@@ -251,7 +251,7 @@ fn match_normal(
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
-            if controls::switch_to::<CommandLine>().is_ok() {
+            if commands::switch_to::<CommandLine>().is_ok() {
                 *mode = Mode::Command;
             }
         }
@@ -272,7 +272,7 @@ fn match_goto(
 ) {
     match key {
         key!(KeyCode::Char('a')) => {
-            if controls::buffer(last_file.clone()).is_ok() {
+            if commands::buffer(last_file.clone()).is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
@@ -285,14 +285,14 @@ fn match_goto(
             editor.move_main(|mover| mover.move_to_coords(0, 0));
         }
         key!(KeyCode::Char('n')) => {
-            if controls::next_file().is_ok() {
+            if commands::next_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));
             }
         }
         key!(KeyCode::Char('N')) => {
-            if controls::prev_file().is_ok() {
+            if commands::prev_file().is_ok() {
                 *last_file = CURRENT_FILE
                     .name()
                     .unwrap_or(String::from("*scratch file*"));

@@ -59,8 +59,12 @@ impl Cursors {
         self.len() == 0
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.list = vec![Cursor::default()]
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.list.clear()
     }
 }
 

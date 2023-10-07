@@ -13,7 +13,7 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{private::InnerData, Data, Error};
-use crate::{widgets::{ActiveWidget, PassiveWidget}};
+use crate::widgets::{ActiveWidget, PassiveWidget};
 
 /// A read-write reference to information, that can tell readers if
 /// said information has changed.
