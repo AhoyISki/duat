@@ -18,8 +18,8 @@ mod global {
         PALETTE.set_form(name, form)
     }
 
-    pub fn try_set_form(name: impl AsRef<str>, form: Form) -> FormId {
-        PALETTE.try_set_form(name, form)
+    pub fn set_weak_form(name: impl AsRef<str>, form: Form) -> FormId {
+        PALETTE.set_weak_form(name, form)
     }
 
     /// Sets the `Form` with a given name to a new one.
@@ -27,8 +27,8 @@ mod global {
         PALETTE.set_ref(name, referenced)
     }
 
-    pub fn set_new_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
-        PALETTE.set_new_ref(name, referenced)
+    pub fn set_weak_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+        PALETTE.set_weak_ref(name, referenced)
     }
 
     /// Returns the `Form` associated to a given name with the index
@@ -232,7 +232,7 @@ impl FormPalette {
         }
     }
 
-    fn try_set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
@@ -265,7 +265,7 @@ impl FormPalette {
         }
     }
 
-    fn set_new_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    fn set_weak_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 

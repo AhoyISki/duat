@@ -200,6 +200,8 @@ use crate::{
     BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
 };
 
+/// Contains all of the functions that are meant to be re-exported for global
+/// access.
 mod global {
     use std::sync::atomic::Ordering;
 
@@ -296,12 +298,109 @@ mod global {
     ///
     /// # Examples
     ///
-    /// In this example, we create a simple chronometer widget, along with a
-    /// command to stop the counting.
+    /// In this example, we create a simple `Timer` widget, along with some
+    /// control commands.
     ///
     /// ```rust
+    /// // Required feature for widgets.
+    /// #![feature(return_position_impl_trait_in_trait)]
+    /// # use std::{
+    /// #    sync::{
+    /// #        atomic::{AtomicBool, Ordering},
+    /// #        Arc,
+    /// #    },
+    /// #    time::Instant,
+    /// # };
+    /// # use parsec_core::{
+    /// #    commands,
+    /// #    palette::{self, Form},
+    /// #    text::{text, Text, AlignCenter},
+    /// #    ui::{Area, PushSpecs, Ui},
+    /// #    widgets::{PassiveWidget, Widget},
+    /// # };
+    /// pub struct Timer {
+    ///    text: Text,
+    ///    instant: Instant,
+    ///    running: Arc<AtomicBool>,
+    /// }
     ///
-    /// 
+    /// impl PassiveWidget for Timer {
+    ///    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    ///
+    ///        let timer = Self {
+    ///            text: text!(AlignCenter [Counter] "0ms"),
+    ///            instant: Instant::now(),
+    ///            // No need to use an `RwData`, since `RwData::has_changed`
+    ///            // is never ran.
+    ///            running: Arc::new(AtomicBool::new(false)),
+    ///        };
+    ///
+    ///        // The checker should tell the `Timer` to update only if
+    ///        // `running` is `true`.
+    ///        let checker = {
+    ///            // Clone any variables that will be moved to the `checker`.
+    ///            let running = timer.running.clone();
+    ///            move || running.load(Ordering::Relaxed)
+    ///        };
+    ///
+    ///        let specs = PushSpecs::below().with_lenght(1.0);
+    ///
+    ///        (Widget::passive(timer), checker, specs)
+    ///    }
+    ///
+    ///    fn update(&mut self, _area: &impl Area) {
+    ///        if self.running.load(Ordering::Relaxed) {
+    ///            let duration = format!("{:.3?}\n", self.instant.elapsed());
+    ///            self.text = text!(
+    ///                AlignCenter [Counter] duration [Default] "elapsed"
+    ///            );
+    ///        }
+    ///    }
+    ///
+    ///    fn text(&self) -> &Text {
+    ///        &self.text
+    ///    }
+    ///
+    ///    // The `once` function of a `PassiveWidget` is only called when
+    ///    // that widget is first created.
+    ///    // It is generally useful to add commands and set forms in the
+    ///    // `palette`.
+    ///    fn once() {
+    ///        // `palette::set_weak_form` will only set that form if it
+    ///        // doesn't already exist.
+    ///        // That means that a user of the widget will be able to
+    ///        // control that form by changing it before or after this
+    ///        // widget is pushed.
+    ///        palette::set_weak_form("Counter", Form::new().green());
+    ///
+    ///        commands::add_for_widget::<Timer>(
+    ///            ["play"],
+    ///            |timer, _area, _flags, _args| {
+    ///                timer.running.store(true, Ordering::Relaxed);
+    ///
+    ///                Ok(None)
+    ///            })
+    ///            .unwrap();
+    ///
+    ///        commands::add_for_widget::<Timer>(
+    ///            ["pause"],
+    ///            |timer, _area, _flags, _args| {
+    ///                timer.running.store(false, Ordering::Relaxed);
+    ///
+    ///                Ok(None)
+    ///            })
+    ///            .unwrap();
+    ///
+    ///        commands::add_for_widget::<Timer>(
+    ///            ["pause"],
+    ///            |timer, _area, _flags, _args| {
+    ///                timer.instant = Instant::now();
+    ///
+    ///                Ok(None)
+    ///            })
+    ///            .unwrap();
+    ///    }
+    /// }
     /// ```
     ///
     /// [`dyn Area`]: crate::ui::Area
@@ -381,7 +480,8 @@ mod global {
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command =
+///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -395,8 +495,8 @@ mod global {
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
+/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
+///                -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -840,15 +940,16 @@ impl Commands {
     /// let my_var = RwData::new(String::new());
     /// let my_var_clone = my_var.clone();
     ///
-    /// let command = Command::new(["foo", "bar", "baz"], move |_flags, args| {
-    ///     if let Some(arg) = args.next() {
-    ///         *my_var_clone.write() = String::from(arg);
-    ///     } else {
-    ///         *my_var_clone.write() = String::from("😿");
-    ///     }
+    /// let command =
+    ///     Command::new(["foo", "bar", "baz"], move |_flags, args| {
+    ///         if let Some(arg) = args.next() {
+    ///             *my_var_clone.write() = String::from(arg);
+    ///         } else {
+    ///             *my_var_clone.write() = String::from("😿");
+    ///         }
     ///
-    ///     Ok(None)
-    /// });
+    ///         Ok(None)
+    ///     });
     ///
     /// commands.try_add(command).unwrap();
     ///
@@ -881,22 +982,24 @@ impl Commands {
     /// #     data::{ReadableData, RwData}
     /// # };
     /// # fn test_fn(commands: &mut Commands) {
-    /// let capitalize = Command::new(["capitalize", "cap"], |_flags, args| {
-    ///     Ok(Some(
-    ///         args.map(|arg| arg.to_string().to_uppercase())
-    ///             .collect::<String>(),
-    ///     ))
-    /// });
+    /// let capitalize =
+    ///     Command::new(["capitalize", "cap"], |_flags, args| {
+    ///         Ok(Some(
+    ///             args.map(|arg| arg.to_string().to_uppercase())
+    ///                 .collect::<String>(),
+    ///         ))
+    ///     });
     ///
     /// assert!(commands.try_add(capitalize).is_ok());
     ///
-    /// let capitals = Command::new(["capitals", "cap"], |_flags, args| {
-    ///     if let Some("USA!!1!1!") = args.next() {
-    ///         Ok(Some(String::from("Washington")))
-    ///     } else {
-    ///         Ok(Some(String::from("idk")))
-    ///     }
-    /// });
+    /// let capitals =
+    ///     Command::new(["capitals", "cap"], |_flags, args| {
+    ///         if let Some("USA!!1!1!") = args.next() {
+    ///             Ok(Some(String::from("Washington")))
+    ///         } else {
+    ///             Ok(Some(String::from("idk")))
+    ///         }
+    ///     });
     ///
     /// let result = format!("{:?}", commands.try_add(capitals));
     /// assert!(result == "The caller \"cap\" already exists.");
@@ -1069,7 +1172,8 @@ where
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command =
+///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -1083,8 +1187,8 @@ where
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
+/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
+///                -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -1180,47 +1284,4 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub type CmdResult = Result<Option<Text>, Text>; 
-
-//mod doc_code {
-    //use std::{time::Instant, sync::{Arc, atomic::AtomicBool}};
-//
-    //use crate::{text::{Text, text}, widgets::{PassiveWidget, Widget}, data::RwData};
-    //struct Chronometer {
-        //text: Text,
-        //start: RwData<Instant>,
-        //stopped: Arc<AtomicBool>
-    //}
-//
-    //impl PassiveWidget for Chronometer {
-        //fn build<U>() -> (crate::widgets::Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
-        //where
-            //U: crate::ui::Ui,
-            //Self: Sized {
-//                
-                //let chronometer = Self {
-                    //text: text!([,
-                    //start: todo!(),
-                    //stopped: todo!(),
-                //};
-//
-                //let chronometer = Widget::passive()
-        //}
-//
-        //fn update(&mut self, area: &impl crate::ui::Area)
-        //where
-            //Self: Sized {
-            //todo!()
-        //}
-//
-        //fn type_name() -> &'static str
-        //where
-            //Self: Sized {
-            //todo!()
-        //}
-//
-        //fn text(&self) -> &Text {
-            //todo!()
-        //}
-    //}
-//}
+pub type CmdResult = Result<Option<Text>, Text>;

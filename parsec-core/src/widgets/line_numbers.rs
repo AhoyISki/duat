@@ -25,7 +25,7 @@ use std::fmt::Alignment;
 use super::{PassiveWidget, Widget};
 use crate::{
     data::FileReader,
-    palette::{Form, self},
+    palette::{self, Form},
     text::{text, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
     CURRENT_FILE,
@@ -100,8 +100,8 @@ impl LineNumbers {
 impl PassiveWidget for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build<U: Ui>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        LineNumbersCfg::default().builder()()
+    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        LineNumbersCfg::default().build()
     }
 
     fn update(&mut self, area: &impl Area) {
@@ -116,8 +116,11 @@ impl PassiveWidget for LineNumbers {
         &self.text
     }
 
-    fn type_name() -> &'static str {
-        "LineNumbers"
+    fn once() {
+        palette::set_weak_form("LineNum", Form::new().grey());
+        palette::set_weak_form("MainLineNum", Form::new().yellow());
+        palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
+        palette::set_weak_ref("WrappedMainLineNum", "WrappedLineNumbers");
     }
 }
 
@@ -161,26 +164,19 @@ impl LineNumbersCfg {
         }
     }
 
-    pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move || {
-            let reader = CURRENT_FILE.constant();
-            let specs = self.specs;
+    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let reader = CURRENT_FILE.constant();
+        let specs = self.specs;
 
-            palette::try_set_form("LineNum", Form::new().grey());
-            palette::try_set_form("MainLineNum", Form::new().yellow());
-            palette::try_set_form("WrappedLineNum", Form::new().cyan().italic());
-            palette::set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
+        let mut line_numbers = LineNumbers {
+            reader: reader.clone(),
+            text: Text::default(),
+            cfg: self,
+        };
+        line_numbers.update_text();
 
-            let mut line_numbers = LineNumbers {
-                reader: reader.clone(),
-                text: Text::default(),
-                cfg: self,
-            };
-            line_numbers.update_text();
-
-            let widget = Widget::passive(line_numbers);
-            (widget, Box::new(move || reader.has_changed()), specs)
-        }
+        let widget = Widget::passive(line_numbers);
+        (widget, move || reader.has_changed(), specs)
     }
 
     pub fn absolute(self) -> Self {

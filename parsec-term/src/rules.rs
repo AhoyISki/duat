@@ -1,11 +1,61 @@
 use parsec_core::{
     data::FileReader,
-    palette::{Form, self},
+    palette::{self, Form},
     text::{text, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget},
     CURRENT_FILE,
 };
+
+/// A vertical line on screen, useful, for example, for the separation
+/// of a [`FileWidget<U>`] and
+/// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
+pub struct VertRule {
+    reader: FileReader,
+    text: Text,
+    sep_char: SepChar,
+}
+
+impl VertRule {
+    pub fn config() -> VertRuleCfg {
+        VertRuleCfg::new()
+    }
+}
+
+impl PassiveWidget for VertRule {
+    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        VertRuleCfg::new().build()
+    }
+
+    fn update(&mut self, _area: &impl Area) {
+        self.text = self.reader.inspect(|file, input| {
+            let main_line = input.cursors().unwrap().main().line();
+            let lines = file.printed_lines();
+
+            let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
+            let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
+            let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
+
+            let chars = self.sep_char.chars();
+
+            text!(
+                [UpperVertRule] { form_string(chars[0], upper) }
+                [VertRule] { form_string(chars[1], middle) }
+                [LowerVertRule] { form_string(chars[2], lower) }
+            )
+        });
+    }
+
+    fn text(&self) -> &Text {
+        &self.text
+    }
+
+    fn once() {
+        palette::set_weak_form("VertRule", Form::new().grey());
+        palette::set_weak_ref("UpperVertRule", "VertRule");
+        palette::set_weak_ref("LowerVertRule", "VertRule");
+    }
+}
 
 /// The [`char`]s that should be printed above, equal to, and below
 /// the main line.
@@ -93,78 +143,24 @@ impl VertRuleCfg {
         }
     }
 
-    pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move || {
-            let reader = CURRENT_FILE.constant();
+    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let reader = CURRENT_FILE.constant();
 
-            palette::try_set_form("VertRule", Form::new().grey());
-            palette::set_new_ref("UpperVertRule", "VertRule");
-            palette::set_new_ref("LowerVertRule", "VertRule");
+        let vert_rule = VertRule {
+            reader: reader.clone(),
+            text: Text::default(),
+            sep_char: self.sep_char,
+        };
 
-            let vert_rule = VertRule {
-                reader: reader.clone(),
-                text: Text::default(),
-                sep_char: self.sep_char,
-            };
-
-            let checker = Box::new(move || reader.has_changed());
-            let widget = Widget::passive(vert_rule);
-            (widget, checker, self.specs)
-        }
+        let checker = Box::new(move || reader.has_changed());
+        let widget = Widget::passive(vert_rule);
+        (widget, checker, self.specs)
     }
 }
 
 impl Default for VertRuleCfg {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// A vertical line on screen, useful, for example, for the separation
-/// of a [`FileWidget<U>`] and
-/// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
-pub struct VertRule {
-    reader: FileReader,
-    text: Text,
-    sep_char: SepChar,
-}
-
-impl VertRule {
-    pub fn config() -> VertRuleCfg {
-        VertRuleCfg::new()
-    }
-}
-
-impl PassiveWidget for VertRule {
-    fn build<U: Ui>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        VertRuleCfg::new().builder()()
-    }
-
-    fn update(&mut self, _area: &impl Area) {
-        self.text = self.reader.inspect(|file, input| {
-            let main_line = input.cursors().unwrap().main().line();
-            let lines = file.printed_lines();
-
-            let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
-            let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
-            let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
-
-            let chars = self.sep_char.chars();
-
-            text!(
-                [UpperVertRule] { form_string(chars[0], upper) }
-                [VertRule] { form_string(chars[1], middle) }
-                [LowerVertRule] { form_string(chars[2], lower) }
-            )
-        });
-    }
-
-    fn text(&self) -> &Text {
-        &self.text
-    }
-
-    fn type_name() -> &'static str {
-        "VertRule"
     }
 }
 

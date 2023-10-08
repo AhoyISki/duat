@@ -44,8 +44,8 @@ where
             ui,
             file_cfg: File::cfg(),
             file_fn: Box::new(|builder, _| {
-                builder.push(LineNumbers::build);
-                builder.push(StatusLine::build);
+                builder.push(LineNumbers::build());
+                builder.push(StatusLine::build());
             }),
             window_fn: Box::new(|_| {}),
         }

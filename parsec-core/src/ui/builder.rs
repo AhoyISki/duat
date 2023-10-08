@@ -90,13 +90,11 @@ where
     /// ```
     pub fn push<F>(
         &mut self,
-        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
+        (widget, checker, specs): (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder();
-
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
 
@@ -142,14 +140,12 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<F>(
         &mut self,
-        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
+        (widget, checker, specs): (Widget<U>, F, PushSpecs),
         area: U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder();
-
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
 
@@ -225,12 +221,11 @@ where
     /// [`Session`]: crate::session::Session
     pub fn push<F>(
         &mut self,
-        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
+        (widget, checker, specs): (Widget<U>, F, PushSpecs),
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder();
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
         if let Some(parent) = &parent {
@@ -257,13 +252,12 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<F>(
         &mut self,
-        builder: impl FnOnce() -> (Widget<U>, F, PushSpecs),
+        (widget, checker, specs): (Widget<U>, F, PushSpecs),
         area: U::Area,
     ) -> (U::Area, Option<U::Area>)
     where
         F: Fn() -> bool + 'static,
     {
-        let (widget, checker, specs) = builder();
         self.window.push(widget, &area, checker, specs, true)
     }
 }

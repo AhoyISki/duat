@@ -50,15 +50,17 @@
 //! information at the same time is quite redundant. But this is a
 //! good showing for the flexibility of this widget.
 
-mod file_parts;
+pub mod file_parts;
 mod state;
 
-pub use self::{file_parts::*, state::State};
+use file_parts::{file_name, main_col, main_line, selections_fmt};
+
+pub use self::state::State;
 use super::{file::File, PassiveWidget, Widget};
 use crate::{
     data::{FileReader, RoData},
-    palette::Form,
     input::InputMethod,
+    palette::{self, Form},
     text::{text, Builder, Text},
     ui::{Area, PushSpecs, Ui},
     CURRENT_FILE,
@@ -80,32 +82,30 @@ impl StatusLineCfg {
         )
     }
 
-    pub fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        move || {
-            let (reader, checker) = if self.is_global {
-                let reader = CURRENT_FILE.adaptive();
-                let checker = move || reader.has_changed() || (self.checker)();
-                (
-                    CURRENT_FILE.adaptive(),
-                    Box::new(checker) as Box<dyn Fn() -> bool>,
-                )
-            } else {
-                let reader = CURRENT_FILE.constant();
-                let checker = move || reader.has_changed() || (self.checker)();
-                (
-                    CURRENT_FILE.constant(),
-                    Box::new(checker) as Box<dyn Fn() -> bool>,
-                )
-            };
+    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let (reader, checker) = if self.is_global {
+            let reader = CURRENT_FILE.adaptive();
+            let checker = move || reader.has_changed() || (self.checker)();
+            (
+                CURRENT_FILE.adaptive(),
+                Box::new(checker) as Box<dyn Fn() -> bool>,
+            )
+        } else {
+            let reader = CURRENT_FILE.constant();
+            let checker = move || reader.has_changed() || (self.checker)();
+            (
+                CURRENT_FILE.constant(),
+                Box::new(checker) as Box<dyn Fn() -> bool>,
+            )
+        };
 
-            let widget = Widget::passive(StatusLine {
-                reader,
-                text_fn: self.text_fn,
-                text: Text::default(),
-            });
+        let widget = Widget::passive(StatusLine {
+            reader,
+            text_fn: self.text_fn,
+            text: Text::default(),
+        });
 
-            (widget, checker, self.specs)
-        }
+        (widget, checker, self.specs)
     }
 
     pub fn global(self) -> Self {
@@ -190,8 +190,8 @@ impl StatusLine {
 }
 
 impl PassiveWidget for StatusLine {
-    fn build<U: Ui>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
-        Self::config().builder()()
+    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        Self::config().build()
     }
 
     fn update(&mut self, _area: &impl Area) {
@@ -202,8 +202,11 @@ impl PassiveWidget for StatusLine {
         &self.text
     }
 
-    fn type_name() -> &'static str {
-        "StatusLine"
+    fn once() {
+        palette::set_weak_form("FileName", Form::new().yellow().italic());
+        palette::set_weak_form("Selections", Form::new().dark_blue());
+        palette::set_weak_form("Coords", Form::new().dark_red());
+        palette::set_weak_form("Separator", Form::new().cyan());
     }
 }
 
@@ -257,16 +260,10 @@ pub macro status_cfg {
     ($($parts:tt)*) => {{
         use crate::{
             input::InputMethod,
-            palette,
             text::{text, Tag, Builder},
             ui::PushSpecs,
             widgets::{File, StatusLineCfg},
         };
-
-        palette::try_set_form("FileName", Form::new().yellow().italic());
-        palette::try_set_form("Selections", Form::new().dark_blue());
-        palette::try_set_form("Coords", Form::new().dark_red());
-        palette::try_set_form("Separator", Form::new().cyan());
 
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status_cfg!(@parse $($parts)*);

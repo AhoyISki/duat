@@ -22,9 +22,9 @@ mod file;
 mod line_numbers;
 mod status_line;
 
-use std::sync::Arc;
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
+use std::sync::{Arc, LazyLock, OnceLock};
 
 use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
@@ -34,18 +34,19 @@ pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{status_cfg, DynInput, StatusLine, StatusLineCfg},
+    status_line::{file_parts::*, status_cfg, DynInput, StatusLine, StatusLineCfg},
 };
 use crate::{
     data::{Data, RwData},
     input::InputMethod,
+    palette,
     text::{PrintCfg, Text},
-    ui::{Area, PushSpecs, Ui}, palette,
+    ui::{Area, PushSpecs, Ui},
 };
 
 /// An area where text will be printed to the screen.
 pub trait PassiveWidget: Send + Sync + 'static {
-    fn build<U>() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs)
+    fn build<U>() -> (Widget<U>, impl Fn() -> bool, PushSpecs)
     where
         U: Ui,
         Self: Sized;
@@ -63,13 +64,33 @@ pub trait PassiveWidget: Send + Sync + 'static {
 
     fn type_name() -> &'static str
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        static NAME: OnceLock<String> = OnceLock::new();
+        NAME.get_or_init(|| {
+            let name = std::any::type_name::<Self>();
+            let mut shortened = String::new();
+
+            for segment in name.split("::") {
+                if segment.chars().any(|char| char.is_ascii_uppercase()) {
+                    shortened.push_str(segment);
+                }
+            }
+
+            shortened
+        })
+    }
 
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
 
+    fn once()
+    where
+        Self: Sized,
+    {
+    }
+
     fn print_cfg(&self) -> &PrintCfg {
-        use std::sync::LazyLock;
         static CFG: LazyLock<PrintCfg> = LazyLock::new(PrintCfg::default);
 
         &CFG
@@ -90,7 +111,7 @@ pub trait ActiveWidgetCfg: Sized + Clone {
     where
         NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs);
+    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs);
 
     fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
     where
@@ -325,6 +346,17 @@ where
     }
 }
 
+fn run_once<W: PassiveWidget>() {
+    static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
+        LazyLock::new(|| RwData::new(Vec::new()));
+
+    let mut once_list = ONCE_LIST.write();
+    if !once_list.contains(&W::type_name()) {
+        W::once();
+        once_list.push(W::type_name());
+    }
+}
+
 impl<U> Widget<U>
 where
     U: Ui,
@@ -333,6 +365,8 @@ where
     where
         W: PassiveWidget,
     {
+        run_once::<W>();
+
         let dyn_widget: RwData<dyn PassiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
 
@@ -349,6 +383,8 @@ where
         W: ActiveWidget,
         I: InputMethod<Widget = W>,
     {
+        run_once::<W>();
+
         let dyn_active: RwData<dyn ActiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
         let dyn_passive = dyn_active.clone().to_passive();

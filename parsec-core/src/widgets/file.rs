@@ -162,12 +162,10 @@ where
     type Widget = File;
     type WithInput<NewI> = FileCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
 
-    fn builder<U: Ui>(self) -> impl FnOnce() -> (Widget<U>, Box<dyn Fn() -> bool>, PushSpecs) {
+    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
-        move || {
-            let (widget, checker) = self.build();
-            (widget, checker, specs)
-        }
+        let (widget, checker) = self.build();
+        (widget, checker, specs)
     }
 
     fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
@@ -300,12 +298,13 @@ impl File {
 }
 
 impl PassiveWidget for File {
-    fn build<U>() -> (Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
+    fn build<U>() -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
     where
         U: Ui,
         Self: Sized,
     {
-        Self::cfg().builder()()
+        let (widget, checker) = Self::cfg().build();
+        (widget, checker, PushSpecs::above())
     }
 
     fn update(&mut self, _area: &impl Area) {}
@@ -324,10 +323,6 @@ impl PassiveWidget for File {
     {
         self.set_printed_lines(area);
         area.print(self.text(), self.print_cfg(), palette::painter())
-    }
-
-    fn type_name() -> &'static str {
-        "File"
     }
 }
 
