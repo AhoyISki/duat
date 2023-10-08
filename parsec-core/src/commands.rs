@@ -1,25 +1,26 @@
 //! Creation and execution of commands.
 //!
-//! Commands in Parsec work through the use of functions that don't require
-//! references (unless they're `'static`) and return results which may contain a
-//! [`Text`] to be displayed, if successful, and *must* contain an error
-//! [`Text`] to be displayed if they fail.
+//! Commands in Parsec work through the use of functions that don't
+//! require references (unless they're `'static`) and return results
+//! which may contain a [`Text`] to be displayed, if successful, and
+//! *must* contain an error [`Text`] to be displayed if they fail.
 //!
-//! Commands act on two parameters. which will be provided when ran: [`Flags`]
-//! and [`Args`].
+//! Commands act on two parameters. which will be provided when ran:
+//! [`Flags`] and [`Args`].
 //!
-//! [`Flags`] will contain a list of all flags that were passed to the command.
-//! These flags follow the UNIX conventions, that is `"-"` starts a blob
-//! cluster, `"--"` starts a single, larger flag, and `"--"` followed by nothing
-//! means that the remaining arguments are not flags. Here's an example:
+//! [`Flags`] will contain a list of all flags that were passed to the
+//! command. These flags follow the UNIX conventions, that is `"-"`
+//! starts a blob cluster, `"--"` starts a single, larger flag, and
+//! `"--"` followed by nothing means that the remaining arguments are
+//! not flags. Here's an example:
 //!
 //! `"my-command --flag1 --flag2 -blob -- --not-flag more-args"`
 //!
 //! `"--not-flag"` would not be treated as a flag, being instead
 //! treated as an argument in conjunction with `"more-args"`.
 //!
-//! [`Args`] is merely an iterator over the remaining arguments, which are given
-//! as `&str`s to be consumed.
+//! [`Args`] is merely an iterator over the remaining arguments, which
+//! are given as `&str`s to be consumed.
 //!
 //! Here's a simple example of how one would add a command:
 //!
@@ -97,28 +98,33 @@
 //!
 //! let session = SessionCfg::new(ui)
 //!     .with_file_fn(|builder: &mut FileBuilder<U>, _file| {
-//!         // `commands::run` might return an `Ok(Some(Text))`, hence
-//!         // the double unwrap.
+//!         // `commands::run` might return an `Ok(Some(Text))`,
+//!         // hence the double unwrap.
 //!         let output = commands::run("lol").unwrap().unwrap();
-//!         let status_cfg = status_cfg!("Output of \"lol\": " output);
+//!         let status_cfg = status_cfg!(
+//!             "Output of \"lol\": " output
+//!         );
 //!
 //!         builder.push(status_cfg.builder());
 //!     });
 //!
 //! let callers = ["lol", "lmao"];
-//! commands::add(callers, |_flags, _args| Ok(Some(text!("😜")))).unwrap();
+//! commands::add(callers, |_flags, _args| {
+//!     Ok(Some(text!("😜")))
+//! }).unwrap();
 //! # }
 //! ```
 //!
-//! In the above example, we are creating a new [`SessionCfg`], which will be
-//! used to start Parsec. in it, we're changing the "`file_fn`", a file
-//! constructor that, among other things, will attach widgets to files that are
-//! opened.
+//! In the above example, we are creating a new [`SessionCfg`], which
+//! will be used to start Parsec. in it, we're changing the
+//! "`file_fn`", a file constructor that, among other things, will
+//! attach widgets to files that are opened.
 //!
-//! In that "`file_fn`", the command `"lol"` is being ran. Notice that the
-//! command doesn't exist at the time the closure was declared. But since this
-//! closure will only be ran after the [`Session`] has started, as long as the
-//! command was added before that point, everything will work just fine.
+//! In that "`file_fn`", the command `"lol"` is being ran. Notice that
+//! the command doesn't exist at the time the closure was declared.
+//! But since this closure will only be ran after the [`Session`] has
+//! started, as long as the command was added before that point,
+//! everything will work just fine.
 //!
 //! Here's an example that makes use of the arguments of a command:
 //!
@@ -128,37 +134,41 @@
 //!     let mut count = 0;
 //!     for file in args {
 //!         count += 1;
-//!         unimplemented!("Implicit logic for writing to the files.");
+//!         unimplemented!("Logic for writing to the files.");
 //!     }
 //!
-//!     // The return message (if there is one) is in the form of a `Text`,
-//!     // so it is recommended that you use the `parsec_core::text::text`
-//!     // macro to facilitate the creation of that message.
-//!     Ok(Some(text!("Wrote to " [AccentOk] count [Default] " files successfully.")))
+//!     // The return message (if there is one) is in the form of
+//!     // a `Text`, so it is recommended that you use the
+//!     // `parsec_core::text::text` macro to facilitate the
+//!     // creation of that message.
+//!     Ok(Some(text!(
+//!         "Wrote to " [AccentOk] count
+//!         [Default] " files successfully."
+//!     )))
 //! });
 //! ```
 //!
-//! The returned result from a command should make use of 4 specific forms:
-//! `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and `"AccentErr"`. When errors
-//! are displayed, the `"Default"` [`Form`] gets mapped to `"CommandOk"` if the
-//! result is [`Ok`], and to `"CommandErr"` if the result is [`Err`]. The same
-//! goes for the accents.
-//! This formatting of result messages allows for more expressive feedback while
-//! still letting the end user configure their appearance.
+//! The returned result from a command should make use of 4 specific
+//! forms: `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and
+//! `"AccentErr"`. When errors are displayed, the `"Default"` [`Form`]
+//! gets mapped to `"CommandOk"` if the result is [`Ok`], and to
+//! `"CommandErr"` if the result is [`Err`]. . This formatting of
+//! result messages allows for more expressive feedback while still
+//! letting the end user configure their appearance.
 //!
-//! In the previous case, we handled a variable number of arguments. But we can
-//! also easily handle a static number of arguments:
+//! In the previous case, we handled a variable number of arguments.
+//! But we can also easily handle a static number of arguments:
 //!
 //! ```rust
 //! # use parsec_core::{commands, text::text};
 //! commands::add(["copy", "cp"], move |flags, args| {
-//!     // You can return custom error messages, to improve the feedback
-//!     // of failures when running the command.
-//!     let source = args.next().ok_or(text!("No source provided."))?;
-//!     let dest = args.next().ok_or(text!("No destination provided."))?;
+//!     // You can return custom error messages, to improve the
+//!     // feedback of failures when running the command.
+//!     let source = args.next().ok_or(text!("No source given."))?;
+//!     let target = args.next().ok_or(text!("No target given."))?;
 //!
-//!     // This is optional, if you feel like your command shouldn't allow
-//!     // for more args than are required, you can call this.
+//!     // This is optional, if you feel like your command shouldn't
+//!     // allow for more args than are required, you can call this.
 //!     if args.next().is_some() {
 //!         return Err(text!("Too many arguments."));
 //!     }
@@ -200,10 +210,10 @@ use crate::{
     BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
 };
 
-/// Contains all of the functions that are meant to be re-exported for global
-/// access.
+/// Contains all of the functions that are meant to be re-exported for
+/// global access.
 mod global {
-    use std::sync::atomic::Ordering;
+    use std::{iter::Peekable, str::SplitWhitespace, sync::atomic::Ordering};
 
     use super::{CmdResult, Commands, Error, InnerFlags};
     use crate::{
@@ -216,14 +226,15 @@ mod global {
 
     static COMMANDS: Commands = Commands::new();
 
-    pub type Args<'a, 'b> = &'a mut std::iter::Peekable<std::str::SplitWhitespace<'b>>;
+    pub type Args<'a, 'b> = &'a mut Peekable<SplitWhitespace<'b>>;
     pub type Flags<'a, 'b> = &'a InnerFlags<'b>;
 
     /// Adds a command to the global list of commands.
     ///
-    /// This command cannot take any arguments beyond the [`Flags`] and
-    /// [`Args`], so any mutation of state must be done through captured
-    /// variables, usually in the form of [`RwData<T>`]s.
+    /// This command cannot take any arguments beyond the [`Flags`]
+    /// and [`Args`], so any mutation of state must be done
+    /// through captured variables, usually in the form of
+    /// [`RwData<T>`]s.
     ///
     /// # Examples
     ///
@@ -238,13 +249,13 @@ mod global {
     /// let var = RwData::new(35);
     ///
     /// commands::add(["set-var"], {
-    ///     // A clone is necessary, in order to have one copy of `var` in
-    ///     // the closure, while the other is in the `StatusLine`.
+    ///     // A clone is necessary, in order to have one copy of `var`
+    ///     // in the closure, while the other is in the `StatusLine`.
     ///     let var = var.clone();
     ///     move |_flags, args| {
     ///         let value: usize = args
     ///             .next()
-    ///             .ok_or(text!("No value provided."))?
+    ///             .ok_or(text!("No value given."))?
     ///             .parse()
     ///             .map_err(Text::from)?;
     ///
@@ -254,14 +265,15 @@ mod global {
     ///     }
     /// });
     ///
-    /// // A `StatusLineCfg` which can be used to create a `StatusLine`.
+    /// // A `StatusLineCfg` that can be used to create a `StatusLine`.
     /// let status_cfg = status_cfg!("The value is currently " var);
     /// ```
     ///
-    /// In the above example, we created a variable that can be modified by the
-    /// command `"set-var"`, and then sent it to a [`StatusLineCfg`], so that it
-    /// could be displayed in a [`StatusLine`]. Note that the use of an
-    /// [`RwData<usize>`]/[`RoData<usize>`] means that the [`StatusLine`] will
+    /// In the above example, we created a variable that can be
+    /// modified by the command `"set-var"`, and then sent it to a
+    /// [`StatusLineCfg`], so that it could be displayed in a
+    /// [`StatusLine`]. Note that the use of an [`RwData<usize>`]/
+    /// [`RoData<usize>`] means that the [`StatusLine`] will
     /// be updated automatically, whenever the command is ran.
     ///
     /// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
@@ -274,50 +286,52 @@ mod global {
         COMMANDS.add(callers, f)
     }
 
-    /// Adds a command that can mutate a widget of the given type, along with
-    /// its associated [`dyn Area`].
+    /// Adds a command that can mutate a widget of the given type,
+    /// along with its associated [`dyn Area`].
     ///
-    /// This command will look for the given [`PassiveWidget`] in the following
-    /// order:
+    /// This command will look for the given [`PassiveWidget`] in the
+    /// following order:
     ///
-    /// 1. Any instance that is "related" to the currently active [`File`], that
-    ///    is, any widgets that were added during the [`Session`]'s "`file_fn`".
-    /// 2. Other widgets in the currently active window, related or not to any
-    ///    given [`File`].
-    /// 3. Any instance of the [`PassiveWidget`] that is found in other windows,
-    ///    looking first at windows ahead.
+    /// 1. Any instance that is "related" to the currently active
+    ///    [`File`], that is, any widgets that were added during the
+    ///    [`Session`]'s "`file_fn`".
+    /// 2. Other widgets in the currently active window, related or
+    ///    not to any given [`File`].
+    /// 3. Any instance of the [`PassiveWidget`] that is found in
+    ///    other windows, looking first at windows ahead.
     ///
-    /// Keep in mind that the search is deterministic, that is, if there are
-    /// multiple instances of the widget that fit the same category, only one of
-    /// them will ever be used.
+    /// Keep in mind that the search is deterministic, that is, if
+    /// there are multiple instances of the widget that fit the
+    /// same category, only one of them will ever be used.
     ///
-    /// This search algorithm allows a more versatile configuration of widgets,
-    /// for example, one may have a [`CommandLine`] per [`File`], or one
-    /// singular [`CommandLine`] that acts upon all files in the window, and
-    /// both would respond correctly to the `"set-prompt"` command.
+    /// This search algorithm allows a more versatile configuration of
+    /// widgets, for example, one may have a [`CommandLine`] per
+    /// [`File`], or one singular [`CommandLine`] that acts upon
+    /// all files in the window, and both would respond correctly
+    /// to the `"set-prompt"` command.
     ///
     /// # Examples
     ///
-    /// In this example, we create a simple `Timer` widget, along with some
-    /// control commands.
+    /// In this example, we create a simple `Timer` widget, along with
+    /// some control commands.
     ///
     /// ```rust
     /// // Required feature for widgets.
     /// #![feature(return_position_impl_trait_in_trait)]
-    /// # use std::{
-    /// #    sync::{
-    /// #        atomic::{AtomicBool, Ordering},
-    /// #        Arc,
-    /// #    },
-    /// #    time::Instant,
-    /// # };
-    /// # use parsec_core::{
-    /// #    commands,
-    /// #    palette::{self, Form},
-    /// #    text::{text, Text, AlignCenter},
-    /// #    ui::{Area, PushSpecs, Ui},
-    /// #    widgets::{PassiveWidget, Widget},
-    /// # };
+    /// use std::{
+    ///    sync::{
+    ///        atomic::{AtomicBool, Ordering},
+    ///        Arc,
+    ///    },
+    ///    time::Instant,
+    /// };
+    /// use parsec_core::{
+    ///    commands,
+    ///    palette::{self, Form},
+    ///    text::{text, Text, AlignCenter},
+    ///    ui::{Area, PushSpecs, Ui},
+    ///    widgets::{PassiveWidget, Widget},
+    /// };
     /// pub struct Timer {
     ///    text: Text,
     ///    instant: Instant,
@@ -325,81 +339,83 @@ mod global {
     /// }
     ///
     /// impl PassiveWidget for Timer {
-    ///    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    ///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    ///         let timer = Self {
+    ///             text: text!(AlignCenter [Counter] "0ms"),
+    ///             instant: Instant::now(),
+    ///             // No need to use an `RwData`, since
+    ///             // `RwData::has_changed` is never called.
+    ///             running: Arc::new(AtomicBool::new(false)),
+    ///         };
     ///
-    ///        let timer = Self {
-    ///            text: text!(AlignCenter [Counter] "0ms"),
-    ///            instant: Instant::now(),
-    ///            // No need to use an `RwData`, since `RwData::has_changed`
-    ///            // is never ran.
-    ///            running: Arc::new(AtomicBool::new(false)),
-    ///        };
+    ///         // The checker should tell the `Timer` to update only
+    ///         // if `running` is `true`.
+    ///         let checker = {
+    ///             // Clone any variables before moving them to
+    ///             // the `checker`.
+    ///             let running = timer.running.clone();
+    ///             move || running.load(Ordering::Relaxed)
+    ///         };
     ///
-    ///        // The checker should tell the `Timer` to update only if
-    ///        // `running` is `true`.
-    ///        let checker = {
-    ///            // Clone any variables that will be moved to the `checker`.
-    ///            let running = timer.running.clone();
-    ///            move || running.load(Ordering::Relaxed)
-    ///        };
+    ///         let specs = PushSpecs::below().with_lenght(1.0);
     ///
-    ///        let specs = PushSpecs::below().with_lenght(1.0);
+    ///         (Widget::passive(timer), checker, specs)
+    ///     }
     ///
-    ///        (Widget::passive(timer), checker, specs)
-    ///    }
+    ///     fn update(&mut self, _area: &impl Area) {
+    ///         if self.running.load(Ordering::Relaxed) {
+    ///             let duration = self.instant.elapsed();
+    ///             let duration = format!("{:.3?}", duration);
+    ///             self.text = text!(
+    ///                 AlignCenter [Counter] duration
+    ///                 [Default] "elapsed"
+    ///             );
+    ///         }
+    ///     }
     ///
-    ///    fn update(&mut self, _area: &impl Area) {
-    ///        if self.running.load(Ordering::Relaxed) {
-    ///            let duration = format!("{:.3?}\n", self.instant.elapsed());
-    ///            self.text = text!(
-    ///                AlignCenter [Counter] duration [Default] "elapsed"
-    ///            );
-    ///        }
-    ///    }
+    ///     fn text(&self) -> &Text {
+    ///         &self.text
+    ///     }
     ///
-    ///    fn text(&self) -> &Text {
-    ///        &self.text
-    ///    }
+    ///     // The `once` function of a `PassiveWidget` is only called
+    ///     // when that widget is first created.
+    ///     // It is generally useful to add commands and set forms
+    ///     // in the `palette`.
+    ///     fn once() {
+    ///         // `palette::set_weak_form` will only set that form if
+    ///         // it doesn't already exist.
+    ///         // That means that a user of the widget will be able to
+    ///         // control that form by changing it before or after this
+    ///         // widget is pushed.
+    ///         palette::set_weak_form("Counter", Form::new().green());
     ///
-    ///    // The `once` function of a `PassiveWidget` is only called when
-    ///    // that widget is first created.
-    ///    // It is generally useful to add commands and set forms in the
-    ///    // `palette`.
-    ///    fn once() {
-    ///        // `palette::set_weak_form` will only set that form if it
-    ///        // doesn't already exist.
-    ///        // That means that a user of the widget will be able to
-    ///        // control that form by changing it before or after this
-    ///        // widget is pushed.
-    ///        palette::set_weak_form("Counter", Form::new().green());
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["play"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.running.store(true, Ordering::Relaxed);
     ///
-    ///        commands::add_for_widget::<Timer>(
-    ///            ["play"],
-    ///            |timer, _area, _flags, _args| {
-    ///                timer.running.store(true, Ordering::Relaxed);
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
     ///
-    ///                Ok(None)
-    ///            })
-    ///            .unwrap();
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["pause"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.running.store(false, Ordering::Relaxed);
     ///
-    ///        commands::add_for_widget::<Timer>(
-    ///            ["pause"],
-    ///            |timer, _area, _flags, _args| {
-    ///                timer.running.store(false, Ordering::Relaxed);
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
     ///
-    ///                Ok(None)
-    ///            })
-    ///            .unwrap();
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["pause"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.instant = Instant::now();
     ///
-    ///        commands::add_for_widget::<Timer>(
-    ///            ["pause"],
-    ///            |timer, _area, _flags, _args| {
-    ///                timer.instant = Instant::now();
-    ///
-    ///                Ok(None)
-    ///            })
-    ///            .unwrap();
-    ///    }
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
+    ///     }
     /// }
     /// ```
     ///
@@ -480,8 +496,7 @@ mod global {
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -495,8 +510,8 @@ mod global {
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
-///                -also-not-flags";
+/// let command =
+///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -708,10 +723,10 @@ struct Command {
     ///
     /// # Arguments
     ///
-    /// - 1: A [`&Flags`][Flags] containing the flags that have been passed to
-    ///   the function.
-    /// - 2: An [`&mut dyn Iterator<Item = &str>`][Iterator] representing the
-    ///   arguments to be read by the function.
+    /// - 1: A [`&Flags`][Flags] containing the flags that have been
+    ///   passed to the function.
+    /// - 2: An [`&mut dyn Iterator<Item = &str>`][Iterator]
+    ///   representing the arguments to be read by the function.
     ///
     /// # Returns
     ///
@@ -730,12 +745,13 @@ impl Command {
     ///
     /// # Arguments
     ///
-    /// - `callers`: A list of names to call this function by. In other editors,
-    ///   you would see things like `["edit", "e"]`, or `["write-quit", "wq"]`,
-    ///   and this is no different.
-    /// - `f`: The closure to call when running the command. In order for the
-    ///   closure to actually do anything, you would want it to capture shared,
-    ///   multi-threaded objects (e.g. [`Arc`]s, [`RwData`]s, e.t.c.).
+    /// - `callers`: A list of names to call this function by. In
+    ///   other editors, you would see things like `["edit", "e"]`, or
+    ///   `["write-quit", "wq"]`, and this is no different.
+    /// - `f`: The closure to call when running the command. In order
+    ///   for the closure to actually do anything, you would want it
+    ///   to capture shared, multi-threaded objects (e.g. [`Arc`]s,
+    ///   [`RwData`]s, e.t.c.).
     /// ```rust
     /// # use parsec_core::{
     /// #     commands::{Command},
@@ -940,16 +956,15 @@ impl Commands {
     /// let my_var = RwData::new(String::new());
     /// let my_var_clone = my_var.clone();
     ///
-    /// let command =
-    ///     Command::new(["foo", "bar", "baz"], move |_flags, args| {
-    ///         if let Some(arg) = args.next() {
-    ///             *my_var_clone.write() = String::from(arg);
-    ///         } else {
-    ///             *my_var_clone.write() = String::from("😿");
-    ///         }
+    /// let command = Command::new(["foo", "bar", "baz"], move |_flags, args| {
+    ///     if let Some(arg) = args.next() {
+    ///         *my_var_clone.write() = String::from(arg);
+    ///     } else {
+    ///         *my_var_clone.write() = String::from("😿");
+    ///     }
     ///
-    ///         Ok(None)
-    ///     });
+    ///     Ok(None)
+    /// });
     ///
     /// commands.try_add(command).unwrap();
     ///
@@ -982,24 +997,22 @@ impl Commands {
     /// #     data::{ReadableData, RwData}
     /// # };
     /// # fn test_fn(commands: &mut Commands) {
-    /// let capitalize =
-    ///     Command::new(["capitalize", "cap"], |_flags, args| {
-    ///         Ok(Some(
-    ///             args.map(|arg| arg.to_string().to_uppercase())
-    ///                 .collect::<String>(),
-    ///         ))
-    ///     });
+    /// let capitalize = Command::new(["capitalize", "cap"], |_flags, args| {
+    ///     Ok(Some(
+    ///         args.map(|arg| arg.to_string().to_uppercase())
+    ///             .collect::<String>(),
+    ///     ))
+    /// });
     ///
     /// assert!(commands.try_add(capitalize).is_ok());
     ///
-    /// let capitals =
-    ///     Command::new(["capitals", "cap"], |_flags, args| {
-    ///         if let Some("USA!!1!1!") = args.next() {
-    ///             Ok(Some(String::from("Washington")))
-    ///         } else {
-    ///             Ok(Some(String::from("idk")))
-    ///         }
-    ///     });
+    /// let capitals = Command::new(["capitals", "cap"], |_flags, args| {
+    ///     if let Some("USA!!1!1!") = args.next() {
+    ///         Ok(Some(String::from("Washington")))
+    ///     } else {
+    ///         Ok(Some(String::from("idk")))
+    ///     }
+    /// });
     ///
     /// let result = format!("{:?}", commands.try_add(capitals));
     /// assert!(result == "The caller \"cap\" already exists.");
@@ -1096,8 +1109,8 @@ impl InnerCommands {
         Err(Error::CallerNotFound(String::from(caller)))
     }
 
-    /// Tries to alias a full command (caller, flags, and arguments) to an
-    /// alias.
+    /// Tries to alias a full command (caller, flags, and arguments)
+    /// to an alias.
     fn try_alias<'a>(
         &mut self,
         alias: impl ToString,
@@ -1172,8 +1185,7 @@ where
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
@@ -1187,8 +1199,8 @@ where
 ///
 /// ```rust
 /// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde -- --not-a-flag \
-///                -also-not-flags";
+/// let command =
+///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
 /// let mut command_args = command.split_whitespace().skip(1);
 /// let (flags, args) = split_flags(command_args);
 ///
