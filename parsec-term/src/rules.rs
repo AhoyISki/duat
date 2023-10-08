@@ -1,10 +1,10 @@
 use parsec_core::{
     data::FileReader,
-    forms::Form,
+    palette::{Form, self},
     text::{text, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget},
-    CURRENT_FILE, palette::palette,
+    CURRENT_FILE,
 };
 
 /// The [`char`]s that should be printed above, equal to, and below
@@ -97,9 +97,9 @@ impl VertRuleCfg {
         move || {
             let reader = CURRENT_FILE.constant();
 
-            palette().try_set_form("VertRule", Form::new().grey());
-            palette().set_new_ref("UpperVertRule", "VertRule");
-            palette().set_new_ref("LowerVertRule", "VertRule");
+            palette::try_set_form("VertRule", Form::new().grey());
+            palette::set_new_ref("UpperVertRule", "VertRule");
+            palette::set_new_ref("LowerVertRule", "VertRule");
 
             let vert_rule = VertRule {
                 reader: reader.clone(),

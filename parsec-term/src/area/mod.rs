@@ -15,7 +15,7 @@ use crossterm::{
 use iter::{print_iter, rev_print_iter};
 use parsec_core::{
     data::RwData,
-    forms::{FormFormer, FormPalette},
+    palette::Painter,
     position::Point,
     text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -254,7 +254,7 @@ impl ui::Area for Area {
         self.layout.write().active_index = self.index;
     }
 
-    fn print(&self, text: &Text, cfg: &PrintCfg, palette: &FormPalette) {
+    fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
         let info = self.print_info.borrow();
 
         let coords = self.coords();
@@ -277,10 +277,9 @@ impl ui::Area for Area {
             (text.iter_exactly_at(line_start), cfg)
         };
 
-        let form_former = palette.form_former();
         let active = self.is_active();
         let iter = print_iter(iter, coords.width(), cfg, *info);
-        let y = print_parts(iter, coords, active, *info, form_former, &mut stdout);
+        let y = print_parts(iter, coords, active, *info, painter, &mut stdout);
 
         for y in (0..y).rev() {
             let coord = Coord::new(coords.tl.x, coords.br.y - y);
@@ -395,7 +394,7 @@ fn print_parts(
     coords: Coords,
     is_active: bool,
     info: PrintInfo,
-    mut form_former: FormFormer,
+    mut painter: Painter,
     stdout: &mut StdoutLock,
 ) -> usize {
     let mut old_x = coords.tl.x;
@@ -414,7 +413,7 @@ fn print_parts(
             if y == coords.br.y {
                 break;
             }
-            indent_line(&form_former, x, info.x_shift, &mut line);
+            indent_line(&painter, x, info.x_shift, &mut line);
             y += 1;
         }
 
@@ -432,32 +431,32 @@ fn print_parts(
             }
 
             // Tags
-            Part::PushForm(id) => queue!(line, ResetColor, SetStyle(form_former.apply(id).style)),
+            Part::PushForm(id) => queue!(line, ResetColor, SetStyle(painter.apply(id).style)),
             Part::PopForm(id) => {
-                if let Some(form) = form_former.remove(id) {
+                if let Some(form) = painter.remove(id) {
                     queue!(line, ResetColor, SetStyle(form.style))
                 }
             }
             Part::MainCursor => {
-                let cursor_style = form_former.main_cursor();
+                let cursor_style = painter.main_cursor();
                 if let (Some(caret), true) = (cursor_style.caret, is_active) {
                     SHOW_CURSOR.store(true, Ordering::Release);
                     queue!(line, caret, cursor::SavePosition);
                 } else {
                     queue!(line, SetStyle(cursor_style.form.style));
-                    prev_style = Some(form_former.make_form().style);
+                    prev_style = Some(painter.make_form().style);
                 }
             }
             Part::ExtraCursor => {
-                queue!(line, SetStyle(form_former.extra_cursor().form.style));
-                prev_style = Some(form_former.make_form().style);
+                queue!(line, SetStyle(painter.extra_cursor().form.style));
+                prev_style = Some(painter.make_form().style);
             }
             Part::AlignLeft => alignment = Alignment::Left,
             Part::AlignCenter => alignment = Alignment::Center,
             Part::AlignRight => alignment = Alignment::Right,
             Part::Termination => {
                 alignment = Alignment::Left;
-                queue!(line, SetStyle(form_former.reset().style));
+                queue!(line, SetStyle(painter.reset().style));
             }
             Part::ToggleStart(_) => todo!(),
             Part::ToggleEnd(_) => todo!(),
@@ -518,7 +517,7 @@ fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut Stdout
 }
 
 #[inline(always)]
-fn indent_line(form_former: &FormFormer, x: usize, x_shift: usize, line: &mut Vec<u8>) {
+fn indent_line(form_former: &Painter, x: usize, x_shift: usize, line: &mut Vec<u8>) {
     let prev_style = form_former.make_form().style;
     let indent_count = x.saturating_sub(x_shift);
     let mut indent = Vec::<u8>::from(" ".repeat(indent_count));

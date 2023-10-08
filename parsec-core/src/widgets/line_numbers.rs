@@ -25,10 +25,10 @@ use std::fmt::Alignment;
 use super::{PassiveWidget, Widget};
 use crate::{
     data::FileReader,
-    forms::Form,
+    palette::{Form, self},
     text::{text, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
-    CURRENT_FILE, PALETTE,
+    CURRENT_FILE,
 };
 
 /// A simple [`Widget`] that shows what lines of a
@@ -117,7 +117,7 @@ impl PassiveWidget for LineNumbers {
     }
 
     fn type_name() -> &'static str {
-		"LineNumbers"
+        "LineNumbers"
     }
 }
 
@@ -166,10 +166,10 @@ impl LineNumbersCfg {
             let reader = CURRENT_FILE.constant();
             let specs = self.specs;
 
-            PALETTE.try_set_form("LineNum", Form::new().grey());
-            PALETTE.try_set_form("MainLineNum", Form::new().yellow());
-            PALETTE.try_set_form("WrappedLineNum", Form::new().cyan().italic());
-            PALETTE.set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
+            palette::try_set_form("LineNum", Form::new().grey());
+            palette::try_set_form("MainLineNum", Form::new().yellow());
+            palette::try_set_form("WrappedLineNum", Form::new().cyan().italic());
+            palette::set_new_ref("WrappedMainLineNum", "WrappedLineNumbers");
 
             let mut line_numbers = LineNumbers {
                 reader: reader.clone(),

@@ -10,7 +10,7 @@ use crossterm::event::KeyEvent;
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
     data::{RoData, RwData},
-    forms::FormPalette,
+    palette::Painter,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
     widgets::{File, PassiveWidget, Widget},
@@ -191,7 +191,7 @@ pub trait Area: Send + Sync {
     fn set_as_active(&self);
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(&self, text: &Text, cfg: &PrintCfg, palette: &FormPalette);
+    fn print(&self, text: &Text, cfg: &PrintCfg, former: Painter);
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>
     where

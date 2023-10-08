@@ -6,7 +6,7 @@ use super::{
     ids::{TextId, ToggleId},
     Marker,
 };
-use crate::{forms::FormId, position::Point, text::Text};
+use crate::{palette::FormId, position::Point, text::Text};
 
 pub enum Tag {
     // Implemented:

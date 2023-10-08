@@ -25,6 +25,7 @@ use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
 use crate::{
     data::RwData,
     input::{Editor, InputMethod},
+    palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -84,8 +85,8 @@ where
         #[cfg(feature = "wacky-colors")]
         {
             use crate::{
-                forms::Form,
-                palette::palette,
+                global::palette,
+                palette::Form,
                 text::{text, Marker, Tag},
             };
             let marker = Marker::new();
@@ -322,7 +323,7 @@ impl PassiveWidget for File {
         Self: Sized,
     {
         self.set_printed_lines(area);
-        area.print(self.text(), self.print_cfg(), &crate::PALETTE)
+        area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
     fn type_name() -> &'static str {

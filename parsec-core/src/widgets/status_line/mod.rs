@@ -57,7 +57,7 @@ pub use self::{file_parts::*, state::State};
 use super::{file::File, PassiveWidget, Widget};
 use crate::{
     data::{FileReader, RoData},
-    forms::Form,
+    palette::Form,
     input::InputMethod,
     text::{text, Builder, Text},
     ui::{Area, PushSpecs, Ui},
@@ -215,7 +215,7 @@ pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
 pub macro status_cfg {
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let (_, form_id) = crate::palette::palette().from_name(stringify!($form));
+        let (_, form_id) = crate::palette::from_name(stringify!($form));
 
         let text_fn =
             move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
@@ -257,16 +257,16 @@ pub macro status_cfg {
     ($($parts:tt)*) => {{
         use crate::{
             input::InputMethod,
-            palette::palette,
+            palette,
             text::{text, Tag, Builder},
             ui::PushSpecs,
             widgets::{File, StatusLineCfg},
         };
 
-        palette().try_set_form("FileName", Form::new().yellow().italic());
-        palette().try_set_form("Selections", Form::new().dark_blue());
-        palette().try_set_form("Coords", Form::new().dark_red());
-        palette().try_set_form("Separator", Form::new().cyan());
+        palette::try_set_form("FileName", Form::new().yellow().italic());
+        palette::try_set_form("Selections", Form::new().dark_blue());
+        palette::try_set_form("Coords", Form::new().dark_red());
+        palette::try_set_form("Separator", Form::new().cyan());
 
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status_cfg!(@parse $($parts)*);

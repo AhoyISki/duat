@@ -4,8 +4,71 @@ use crossterm::{
     cursor::SetCursorStyle,
     style::{Attribute, Attributes, Color, ContentStyle, Stylize},
 };
+pub use global::*;
 
 use crate::data::RwData;
+
+mod global {
+    use super::{CursorStyle, Form, FormId, FormPalette, Painter};
+
+    static PALETTE: FormPalette = FormPalette::new();
+
+    /// Sets the `Form` with a given name to a new one.
+    pub fn set_form(name: impl AsRef<str>, form: Form) -> FormId {
+        PALETTE.set_form(name, form)
+    }
+
+    pub fn try_set_form(name: impl AsRef<str>, form: Form) -> FormId {
+        PALETTE.try_set_form(name, form)
+    }
+
+    /// Sets the `Form` with a given name to a new one.
+    pub fn set_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+        PALETTE.set_ref(name, referenced)
+    }
+
+    pub fn set_new_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+        PALETTE.set_new_ref(name, referenced)
+    }
+
+    /// Returns the `Form` associated to a given name with the index
+    /// for efficient access.
+    ///
+    /// If a [`Form`] with the given name was not added prior, it will be added
+    /// with the same form as the "Default" form.
+    pub fn from_name(name: impl AsRef<str>) -> (Form, FormId) {
+        PALETTE.form_of_name(name)
+    }
+
+    /// Returns a form, given an index.
+    pub fn from_id(id: FormId) -> Form {
+        PALETTE.form_of_id(id)
+    }
+
+    pub fn name_from_id(id: FormId) -> &'static str {
+        PALETTE.name_from_id(id)
+    }
+
+    pub fn main_cursor() -> CursorStyle {
+        PALETTE.main_cursor()
+    }
+
+    pub fn extra_cursor() -> CursorStyle {
+        PALETTE.extra_cursor()
+    }
+
+    pub fn set_main_cursor(style: CursorStyle) {
+        PALETTE.set_main_cursor(style)
+    }
+
+    pub fn set_extra_cursor(style: CursorStyle) {
+        PALETTE.set_extra_cursor(style)
+    }
+
+    pub fn painter() -> Painter {
+        PALETTE.painter()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(usize);
@@ -121,10 +184,10 @@ impl InnerPalette {
 }
 
 /// The list of forms to be used when rendering.
-pub struct FormPalette(LazyLock<RwData<InnerPalette>>);
+struct FormPalette(LazyLock<RwData<InnerPalette>>);
 
 impl FormPalette {
-    pub(crate) const fn new() -> Self {
+    const fn new() -> Self {
         Self(LazyLock::new(|| {
             let main_cursor = CursorStyle::new(
                 Some(SetCursorStyle::DefaultUserShape),
@@ -150,7 +213,7 @@ impl FormPalette {
     }
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+    fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
@@ -169,7 +232,7 @@ impl FormPalette {
         }
     }
 
-    pub fn try_set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+    fn try_set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
@@ -183,30 +246,30 @@ impl FormPalette {
     }
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
-        let (_, id) = self.from_name(referenced);
+        let (_, id) = self.form_of_name(referenced);
 
         let mut inner = self.0.write();
 
         if let Some((_, old_form)) = inner.forms.iter_mut().find(|(cmp, _)| *cmp == name) {
             *old_form = Kind::Ref(id);
             drop(inner);
-            self.from_name(referenced).1
+            self.form_of_name(referenced).1
         } else {
             inner.forms.push((name, Kind::Ref(id)));
             drop(inner);
-            self.from_name(referenced).1
+            self.form_of_name(referenced).1
         }
     }
 
-    pub fn set_new_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    fn set_new_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
-        let (_, id) = self.from_name(referenced);
+        let (_, id) = self.form_of_name(referenced);
 
         let mut inner = self.0.write();
 
@@ -215,7 +278,7 @@ impl FormPalette {
         } else {
             inner.forms.push((name, Kind::Ref(id)));
             drop(inner);
-            self.from_name(referenced).1
+            self.form_of_name(referenced).1
         }
     }
 
@@ -224,7 +287,7 @@ impl FormPalette {
     ///
     /// If a [`Form`] with the given name was not added prior, it will be added
     /// with the same form as the "Default" form.
-    pub fn from_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
+    fn form_of_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
@@ -235,17 +298,17 @@ impl FormPalette {
             let name = name.to_string().leak();
             inner.forms.push((name, Kind::Ref(FormId(0))));
             drop(inner);
-            self.from_name("Default")
+            self.form_of_name("Default")
         }
     }
 
     /// Returns a form, given an index.
-    pub fn from_id(&self, id: FormId) -> Form {
+    fn form_of_id(&self, id: FormId) -> Form {
         let inner = self.0.read();
 
         let nth = inner.forms.get(id.0).map(|(_, kind)| match kind {
             Kind::Form(form) => *form,
-            Kind::Ref(id) => self.from_id(*id),
+            Kind::Ref(id) => self.form_of_id(*id),
         });
 
         let Some(ret) = nth else {
@@ -254,7 +317,7 @@ impl FormPalette {
         ret
     }
 
-    pub fn name_from_id(&self, id: FormId) -> &'static str {
+    fn name_from_id(&self, id: FormId) -> &'static str {
         let inner = self.0.read();
         let nth = inner.forms.get(id.0).map(|(name, _)| name);
 
@@ -264,24 +327,24 @@ impl FormPalette {
         ret
     }
 
-    pub fn main_cursor(&self) -> CursorStyle {
+    fn main_cursor(&self) -> CursorStyle {
         self.0.read().main_cursor
     }
 
-    pub fn extra_cursor(&self) -> CursorStyle {
+    fn extra_cursor(&self) -> CursorStyle {
         self.0.read().extra_cursor
     }
 
-    pub fn set_main_cursor(&self, style: CursorStyle) {
+    fn set_main_cursor(&self, style: CursorStyle) {
         self.0.write().main_cursor = style;
     }
 
-    pub fn set_extra_cursor(&self, style: CursorStyle) {
+    fn set_extra_cursor(&self, style: CursorStyle) {
         self.0.write().extra_cursor = style;
     }
 
-    pub fn form_former(&self) -> FormFormer {
-        FormFormer {
+    fn painter(&'static self) -> Painter {
+        Painter {
             palette: self.0.read(),
             forms: Vec::new(),
         }
@@ -294,12 +357,12 @@ impl Default for FormPalette {
     }
 }
 
-pub struct FormFormer<'a> {
-    palette: RwLockReadGuard<'a, InnerPalette>,
+pub struct Painter {
+    palette: RwLockReadGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
 }
 
-impl<'a> FormFormer<'a> {
+impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
     pub fn apply(&mut self, mut id: FormId) -> Form {
@@ -332,32 +395,35 @@ impl<'a> FormFormer<'a> {
             is_final: false,
         };
 
+        /// Internal method used only to shorten code in `make_form()`.
+        fn set_var<T: Clone>(
+            is_set: &mut bool,
+            var: &mut Option<T>,
+            maybe_new: &Option<T>,
+            is_final: bool,
+        ) {
+            if let (Some(new_var), false) = (maybe_new, &is_set) {
+                *var = Some(new_var.clone());
+                if is_final {
+                    *is_set = true
+                };
+            }
+        }
+
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
         for &(Form { style, is_final }, _) in &self.forms {
+            let to_change = &mut form.style.foreground_color;
             let new_foreground = style.foreground_color;
-            set_var(
-                &mut fg_done,
-                &mut form.style.foreground_color,
-                &new_foreground,
-                is_final,
-            );
+            set_var(&mut fg_done, to_change, &new_foreground, is_final);
 
+            let to_change = &mut form.style.background_color;
             let new_background = style.background_color;
-            set_var(
-                &mut bg_done,
-                &mut form.style.background_color,
-                &new_background,
-                is_final,
-            );
+            set_var(&mut bg_done, to_change, &new_background, is_final);
 
+            let to_change = &mut form.style.underline_color;
             let new_underline = style.underline_color;
-            set_var(
-                &mut ul_done,
-                &mut form.style.underline_color,
-                &new_underline,
-                is_final,
-            );
+            set_var(&mut ul_done, to_change, &new_underline, is_final);
 
             if !attr_done {
                 form.style.attributes.extend(style.attributes);
@@ -397,19 +463,6 @@ impl<'a> FormFormer<'a> {
 
     pub fn extra_cursor(&self) -> CursorStyle {
         self.palette.extra_cursor
-    }
-}
-
-/// Internal method used only to shorten code in `make_form()`.
-fn set_var<T>(is_set: &mut bool, var: &mut Option<T>, maybe_new: &Option<T>, is_final: bool)
-where
-    T: Clone,
-{
-    if let (Some(new_var), false) = (maybe_new, &is_set) {
-        *var = Some(new_var.clone());
-        if is_final {
-            *is_set = true
-        };
     }
 }
 

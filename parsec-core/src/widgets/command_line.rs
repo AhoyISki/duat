@@ -20,7 +20,7 @@ use crate::{
     data::RwData,
     input::{Commander, InputMethod},
     text::{text, Text, Ghost},
-    ui::{Area, PushSpecs, Ui},
+    ui::{Area, PushSpecs, Ui}, palette,
 };
 
 #[derive(Clone)]
@@ -149,7 +149,7 @@ impl PassiveWidget for CommandLine {
     where
         Self: Sized,
     {
-        area.print(self.text(), self.print_cfg(), &crate::PALETTE)
+        area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
     fn type_name() -> &'static str {

@@ -221,16 +221,50 @@ mod global {
     ///
     /// This command cannot take any arguments beyond the [`Flags`] and
     /// [`Args`], so any mutation of state must be done through captured
-    /// variables, usually in the form of [`RwData<T>`]s:
+    /// variables, usually in the form of [`RwData<T>`]s.
+    ///
+    /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands, data::RwData, widgets::status_cfg};
-    /// let var = RwData::new(
+    /// # use parsec_core::{
+    /// #     commands,
+    /// #     data::RwData,
+    /// #     text::{text, Text},
+    /// #     widgets::status_cfg
+    /// # };
+    /// // Shared state, which will be displayed in a `StatusLine`.
+    /// let var = RwData::new(35);
+    ///
     /// commands::add(["set-var"], {
-    /// 
+    ///     // A clone is necessary, in order to have one copy of `var` in
+    ///     // the closure, while the other is in the `StatusLine`.
+    ///     let var = var.clone();
+    ///     move |_flags, args| {
+    ///         let value: usize = args
+    ///             .next()
+    ///             .ok_or(text!("No value provided."))?
+    ///             .parse()
+    ///             .map_err(Text::from)?;
+    ///
+    ///         *var.write() = value;
+    ///
+    ///         Ok(None)
+    ///     }
     /// });
-    /// let status_cfg = status_cfg!("Output of \"lol\": " output);
+    ///
+    /// // A `StatusLineCfg` which can be used to create a `StatusLine`.
+    /// let status_cfg = status_cfg!("The value is currently " var);
     /// ```
+    ///
+    /// In the above example, we created a variable that can be modified by the
+    /// command `"set-var"`, and then sent it to a [`StatusLineCfg`], so that it
+    /// could be displayed in a [`StatusLine`]. Note that the use of an
+    /// [`RwData<usize>`]/[`RoData<usize>`] means that the [`StatusLine`] will
+    /// be updated automatically, whenever the command is ran.
+    ///
+    /// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`RoData<usize>`]: crate::data::RoData
     pub fn add(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
@@ -238,6 +272,42 @@ mod global {
         COMMANDS.add(callers, f)
     }
 
+    /// Adds a command that can mutate a widget of the given type, along with
+    /// its associated [`dyn Area`].
+    ///
+    /// This command will look for the given [`PassiveWidget`] in the following
+    /// order:
+    ///
+    /// 1. Any instance that is "related" to the currently active [`File`], that
+    ///    is, any widgets that were added during the [`Session`]'s "`file_fn`".
+    /// 2. Other widgets in the currently active window, related or not to any
+    ///    given [`File`].
+    /// 3. Any instance of the [`PassiveWidget`] that is found in other windows,
+    ///    looking first at windows ahead.
+    ///
+    /// Keep in mind that the search is deterministic, that is, if there are
+    /// multiple instances of the widget that fit the same category, only one of
+    /// them will ever be used.
+    ///
+    /// This search algorithm allows a more versatile configuration of widgets,
+    /// for example, one may have a [`CommandLine`] per [`File`], or one
+    /// singular [`CommandLine`] that acts upon all files in the window, and
+    /// both would respond correctly to the `"set-prompt"` command.
+    ///
+    /// # Examples
+    ///
+    /// In this example, we create a simple chronometer widget, along with a
+    /// command to stop the counting.
+    ///
+    /// ```rust
+    ///
+    /// 
+    /// ```
+    ///
+    /// [`dyn Area`]: crate::ui::Area
+    /// [`File`]: crate::widgets::File
+    /// [`Session`]: crate::session::Session
+    /// [`CommandLine`]: crate::widgets::CommandLine
     pub fn add_for_widget<Widget: PassiveWidget>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&mut Widget, &dyn Area, Flags, Args) -> CmdResult + 'static,
@@ -699,6 +769,63 @@ struct Commands {
 }
 
 impl Commands {
+    /// Returns a new instance of [`Commands`].
+    ///
+    /// This function is primarily used in the creation of a
+    /// [`Controler`], for bookkeeping of the available
+    /// [`Command`]s in an accessible place.
+    ///
+    /// It also has the purpose of preloading [`self`] with the
+    /// `"alias"` command, allowing the end user to alias callers
+    /// into full commands.
+    ///
+    /// [`Controler`]: crate::Controler
+    const fn new() -> Self {
+        Self {
+            inner: LazyLock::new(|| {
+                let inner = RwData::new(InnerCommands {
+                    list: Vec::new(),
+                    aliases: HashMap::new(),
+                });
+
+                let alias = {
+                    let inner = inner.clone();
+                    Command::new(["alias"], move |flags, args| {
+                        if !flags.is_empty() {
+                            Err(text!(
+                                "An alias cannot take any flags, try moving them after the \
+                                 command, like \"alias my-alias my-caller --foo --bar\", instead \
+                                 of \"alias --foo --bar my-alias my-caller\""
+                            ))
+                        } else {
+                            let alias = args.next().ok_or(text!("No alias was supplied."))?;
+
+                            inner
+                                .write()
+                                .try_alias(alias, args)
+                                .map_err(Error::into_text)
+                        }
+                    })
+                };
+
+                let quit = {
+                    Command::new(["quit", "q"], move |_, _| {
+                        BREAK_LOOP.store(true, std::sync::atomic::Ordering::Relaxed);
+                        SHOULD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
+
+                        Ok(None)
+                    })
+                };
+
+                inner.write().try_add(quit).unwrap();
+                inner.write().try_add(alias).unwrap();
+
+                inner
+            }),
+            widget_getter: RwLock::new(MaybeUninit::uninit()),
+        }
+    }
+
     /// Parses the `command`, dividing it into a caller, flags, and
     /// args, and then tries to run it.
     ///
@@ -810,63 +937,6 @@ impl Commands {
         });
 
         self.inner.write().try_add(command)
-    }
-
-    /// Returns a new instance of [`Commands`].
-    ///
-    /// This function is primarily used in the creation of a
-    /// [`Controler`], for bookkeeping of the available
-    /// [`Command`]s in an accessible place.
-    ///
-    /// It also has the purpose of preloading [`self`] with the
-    /// `"alias"` command, allowing the end user to alias callers
-    /// into full commands.
-    ///
-    /// [`Controler`]: crate::Controler
-    const fn new() -> Self {
-        Self {
-            inner: LazyLock::new(|| {
-                let inner = RwData::new(InnerCommands {
-                    list: Vec::new(),
-                    aliases: HashMap::new(),
-                });
-
-                let alias = {
-                    let inner = inner.clone();
-                    Command::new(["alias"], move |flags, args| {
-                        if !flags.is_empty() {
-                            Err(text!(
-                                "An alias cannot take any flags, try moving them after the \
-                                 command, like \"alias my-alias my-caller --foo --bar\", instead \
-                                 of \"alias --foo --bar my-alias my-caller\""
-                            ))
-                        } else {
-                            let alias = args.next().ok_or(text!("No alias was supplied."))?;
-
-                            inner
-                                .write()
-                                .try_alias(alias, args)
-                                .map_err(Error::into_text)
-                        }
-                    })
-                };
-
-                let quit = {
-                    Command::new(["quit", "q"], move |_, _| {
-                        BREAK_LOOP.store(true, std::sync::atomic::Ordering::Relaxed);
-                        SHOULD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
-
-                        Ok(None)
-                    })
-                };
-
-                inner.write().try_add(quit).unwrap();
-                inner.write().try_add(alias).unwrap();
-
-                inner
-            }),
-            widget_getter: RwLock::new(MaybeUninit::uninit()),
-        }
     }
 
     fn add_widget_getter<U: Ui>(&self, getter: RwData<Vec<Window<U>>>) {
@@ -1110,4 +1180,47 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub type CmdResult = Result<Option<Text>, Text>;
+pub type CmdResult = Result<Option<Text>, Text>; 
+
+//mod doc_code {
+    //use std::{time::Instant, sync::{Arc, atomic::AtomicBool}};
+//
+    //use crate::{text::{Text, text}, widgets::{PassiveWidget, Widget}, data::RwData};
+    //struct Chronometer {
+        //text: Text,
+        //start: RwData<Instant>,
+        //stopped: Arc<AtomicBool>
+    //}
+//
+    //impl PassiveWidget for Chronometer {
+        //fn build<U>() -> (crate::widgets::Widget<U>, Box<dyn Fn() -> bool>, crate::ui::PushSpecs)
+        //where
+            //U: crate::ui::Ui,
+            //Self: Sized {
+//                
+                //let chronometer = Self {
+                    //text: text!([,
+                    //start: todo!(),
+                    //stopped: todo!(),
+                //};
+//
+                //let chronometer = Widget::passive()
+        //}
+//
+        //fn update(&mut self, area: &impl crate::ui::Area)
+        //where
+            //Self: Sized {
+            //todo!()
+        //}
+//
+        //fn type_name() -> &'static str
+        //where
+            //Self: Sized {
+            //todo!()
+        //}
+//
+        //fn text(&self) -> &Text {
+            //todo!()
+        //}
+    //}
+//}

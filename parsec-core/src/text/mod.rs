@@ -21,7 +21,7 @@ pub use self::{
 };
 use crate::{
     data::{RoData, RwData},
-    forms::{self, FormId},
+    palette::{self, FormId},
     history::Change,
     input::Cursors,
 };
@@ -393,14 +393,14 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     if is_main {
         (
             Tag::MainCursor,
-            Tag::PushForm(forms::MAIN_SEL),
-            Tag::PopForm(forms::MAIN_SEL),
+            Tag::PushForm(palette::MAIN_SEL),
+            Tag::PopForm(palette::MAIN_SEL),
         )
     } else {
         (
             Tag::MainCursor,
-            Tag::PushForm(forms::EXTRA_SEL),
-            Tag::PopForm(forms::EXTRA_SEL),
+            Tag::PushForm(palette::EXTRA_SEL),
+            Tag::PopForm(palette::EXTRA_SEL),
         )
     }
 }
@@ -502,7 +502,7 @@ pub macro text {
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
             let name = stringify!($form);
-            crate::palette::palette().from_name(name).1
+            crate::palette::from_name(name).1
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },

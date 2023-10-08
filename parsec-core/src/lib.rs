@@ -17,11 +17,10 @@
 use std::sync::atomic::AtomicBool;
 
 use data::{CurrentFile, CurrentWidget};
-use forms::FormPalette;
 
 pub mod commands;
 pub mod data;
-pub mod forms;
+pub mod palette;
 pub mod history;
 pub mod input;
 pub mod position;
@@ -36,19 +35,10 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 // Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
-static PALETTE: FormPalette = FormPalette::new();
 
 // Public control objects.
 pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
-
-pub mod palette {
-    use crate::{forms::FormPalette, PALETTE};
-
-    pub fn palette() -> &'static FormPalette {
-        &PALETTE
-    }
-}
 
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{

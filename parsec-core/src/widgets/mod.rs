@@ -40,8 +40,7 @@ use crate::{
     data::{Data, RwData},
     input::InputMethod,
     text::{PrintCfg, Text},
-    ui::{Area, PushSpecs, Ui},
-    PALETTE,
+    ui::{Area, PushSpecs, Ui}, palette,
 };
 
 /// An area where text will be printed to the screen.
@@ -80,7 +79,7 @@ pub trait PassiveWidget: Send + Sync + 'static {
     where
         Self: Sized,
     {
-        area.print(self.text(), self.print_cfg(), &PALETTE)
+        area.print(self.text(), self.print_cfg(), palette::painter())
     }
 }
 
