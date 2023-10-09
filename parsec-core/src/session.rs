@@ -339,7 +339,7 @@ where
         let paths: Vec<&str> = args.collect();
         if paths.is_empty() {
             CURRENT_FILE.inspect(|file, _| {
-                if let Some(name) = file.name() {
+                if let Some(name) = file.set_name() {
                     file.write()
                         .map(|bytes| {
                             Some(text!(
@@ -403,7 +403,9 @@ where
                 .flat_map(window_index_widget)
                 .find(|(_, (widget, ..))| {
                     widget
-                        .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
+                        .inspect_as::<File, bool>(|file| {
+                            file.set_name().is_some_and(|cmp| cmp == name)
+                        })
                         .unwrap_or(false)
                 })
             else {
@@ -446,7 +448,9 @@ where
                 .flat_map(window_index_widget)
                 .find(|(_, (widget, ..))| {
                     widget
-                        .inspect_as::<File, bool>(|file| file.name().is_some_and(|cmp| cmp == name))
+                        .inspect_as::<File, bool>(|file| {
+                            file.set_name().is_some_and(|cmp| cmp == name)
+                        })
                         .unwrap_or(false)
                 })
                 .ok_or(text!("No open files named " [AccentErr] name [Default] "."))?;
@@ -705,8 +709,5 @@ fn switch_widget<U: Ui>(entry: &(Widget<U>, U::Area), windows: &[Window<U>], win
 }
 
 fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {
-    widget
-        .inspect_as::<File, Option<String>>(File::name)
-        .flatten()
-        .unwrap_or(String::from("*scratch file*"))
+    widget.inspect_as::<File, String>(File::name).unwrap()
 }

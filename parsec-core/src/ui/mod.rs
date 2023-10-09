@@ -43,16 +43,17 @@ pub enum Constraint {
 ///
 /// The [`Constraint`] can be one of five types:
 ///
-/// - [`Min(min)`][Constraint::Min] represents the minimum length, in the side's
-///   [`Axis`], that this new widget needs.
-/// - [`Max(max)`][Constraint::Max] represents the minimum length, in the side's
-///   [`Axis`], that this new widget needs.
-/// - [`Length(len)`][Constraint::Length] represents a length, in the side's
-///   [`Axis`], that cannot be altered by any means.
-/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio between the
-///   length of the child and the length of the parent.
-/// - [`Percent(per)`][Constraint::Percent] represents the percent of the parent
-///   that the child must take. Must go from 0 to 100 percent.
+/// - [`Min(min)`][Constraint::Min] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Max(max)`][Constraint::Max] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Length(len)`][Constraint::Length] represents a length, in the
+///   side's [`Axis`], that cannot be altered by any means.
+/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio
+///   between the length of the child and the length of the parent.
+/// - [`Percent(per)`][Constraint::Percent] represents the percent of
+///   the parent that the child must take. Must go from 0 to 100
+///   percent.
 ///
 /// So if, for example, if a widget is pushed with
 /// [`PushSpecs::left(Constraint::Min(3.0)`][Self::left()]
@@ -233,12 +234,13 @@ pub trait Area: Send + Sync {
     ///
     /// * On the first tuple:
     ///   - The first `usize` is the current horizontal position;
-    ///   - The second `usize` is the length of the [`Part`]. It is only greater
-    ///     than 0 if the part is a `char`;
-    ///   - The [`Option<usize>`] represents a wrapping. It is [`Some(usize)`],
-    ///     where the number is the current line, only if the `char` wraps
-    ///     around. For example, any `char` following a `'\n'` should return
-    ///     `Some(current_line)`, since they show up in the next line;
+    ///   - The second `usize` is the length of the [`Part`]. It is
+    ///     only greater than 0 if the part is a `char`;
+    ///   - The [`Option<usize>`] represents a wrapping. It is
+    ///     [`Some(usize)`], where the number is the current line,
+    ///     only if the `char` wraps around. For example, any `char`
+    ///     following a `'\n'` should return `Some(current_line)`,
+    ///     since they show up in the next line;
     ///
     /// * On the second tuple:
     ///   - The `usize` is the char index from the file's start;
@@ -277,12 +279,13 @@ pub trait Area: Send + Sync {
     ///
     /// * On the first tuple:
     ///   - The first `usize` is the current horizontal position;
-    ///   - The second `usize` is the length of the [`Part`]. It is only greater
-    ///     than 0 if the part is a `char`;
-    ///   - The [`Option<usize>`] represents a wrapping. It is [`Some(usize)`],
-    ///     where the number is the current line, only if the `char` wraps
-    ///     around. For example, any `char` following a `'\n'` should return
-    ///     `Some(current_line)`, since they show up in the next line;
+    ///   - The second `usize` is the length of the [`Part`]. It is
+    ///     only greater than 0 if the part is a `char`;
+    ///   - The [`Option<usize>`] represents a wrapping. It is
+    ///     [`Some(usize)`], where the number is the current line,
+    ///     only if the `char` wraps around. For example, any `char`
+    ///     following a `'\n'` should return `Some(current_line)`,
+    ///     since they show up in the next line;
     ///
     /// * On the second tuple:
     ///   - The `usize` is the char index from the file's start;
@@ -410,8 +413,8 @@ pub trait Ui: Sized + Default + 'static {
 
     /// Initiates and returns a new "master" [`Area`].
     ///
-    /// This [`Area`] must not have any parents, and must be placed on a new
-    /// window, that is, a plain region with nothing in it.
+    /// This [`Area`] must not have any parents, and must be placed on
+    /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
     fn new_root(&mut self) -> Self::Area;
@@ -546,11 +549,7 @@ where
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
                 widget.downcast::<File>().map(|file| {
-                    let name = file
-                        .read()
-                        .name()
-                        .unwrap_or_else(|| format!("*scratch file*"));
-                    (pos, name)
+                    (pos, file.read().name())
                 })
             })
     }

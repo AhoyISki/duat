@@ -21,9 +21,9 @@ pub use self::{
 };
 use crate::{
     data::{RoData, RwData},
-    palette::{self, FormId},
     history::Change,
     input::Cursors,
+    palette::{self, FormId},
 };
 
 trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
@@ -165,14 +165,10 @@ impl Text {
         }
     }
 
-    pub(crate) fn write_to(
-        &self,
-        writer: std::io::BufWriter<std::fs::File>,
-    ) -> Result<usize, String> {
+    pub(crate) fn write_to(&self, writer: impl std::io::Write) -> std::io::Result<usize> {
         self.rope
             .write_to(writer)
             .map(|_| self.rope.len_bytes())
-            .map_err(|err| err.to_string())
     }
 
     fn clear(&mut self) {
@@ -288,9 +284,11 @@ where
 /// peculiarities that are convenient in the situations where it is
 /// useful:
 ///
-/// - The user cannot insert [`Tag`]s directly, only by appending and modifying
+/// - The user cannot insert [`Tag`]s directly, only by appending and
+///   modifying
 /// existing tags.
-/// - All [`Tag`]s that are appended result in an inverse [`Tag`] being placed
+/// - All [`Tag`]s that are appended result in an inverse [`Tag`]
+///   being placed
 /// before the next one, or at the end of the [`Tags`] (e.g.
 /// [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
 /// - You can insert swappable text with

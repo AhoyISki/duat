@@ -131,7 +131,10 @@ where
         (
             Widget::active(
                 File {
-                    path: full_path,
+                    path: match full_path {
+                        Some(path) => Path::Set(path),
+                        None => Path::new_unset(),
+                    },
                     text,
                     cfg: self.cfg,
                     printed_lines: Vec::new(),
@@ -182,7 +185,7 @@ where
 
 /// The widget that is used to print and edit files.
 pub struct File {
-    path: Option<PathBuf>,
+    path: Path,
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
@@ -195,19 +198,22 @@ impl File {
     }
 
     pub fn write(&self) -> Result<usize, String> {
-        if let Some(path) = &self.path {
-            self.text.write_to(std::io::BufWriter::new(
-                fs::File::create(path).map_err(|err| err.to_string())?,
-            ))
+        if let Path::Set(path) = &self.path {
+            self.text
+                .write_to(std::io::BufWriter::new(
+                    fs::File::create(path).map_err(|err| err.to_string())?,
+                ))
+                .map_err(|err| err.to_string())
         } else {
-            Err(String::from("No path given to write to"))
+            Err(String::from(
+                "The file has no associated path, and no path was given to write to",
+            ))
         }
     }
 
-    pub fn write_to(&self, path: impl AsRef<str>) -> Result<usize, String> {
-        self.text.write_to(std::io::BufWriter::new(
-            fs::File::create(path.as_ref()).map_err(|err| err.to_string())?,
-        ))
+    pub fn write_to(&self, path: impl AsRef<str>) -> std::io::Result<usize> {
+        self.text
+            .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
     }
 
     /// The number of bytes in the file.
@@ -221,19 +227,26 @@ impl File {
     }
 
     /// The file's name.
-    pub fn name(&self) -> Option<String> {
-        self.path.as_ref().and_then(|path| {
-            path.file_name()
-                .map(|file| file.to_string_lossy().to_string())
-        })
+    pub fn name(&self) -> String {
+        match &self.path {
+            Path::Set(path) => path.file_name().unwrap().to_string_lossy().to_string(),
+            Path::UnSet(id) => format!("*scratch file {id}*"),
+        }
+    }
+
+    pub fn set_name(&self) -> Option<String> {
+        match &self.path {
+            Path::Set(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            Path::UnSet(_) => None,
+        }
     }
 
     /// The full path of the file.
     pub fn full_path(&self) -> String {
-        self.path
-            .as_ref()
-            .map(|path| path.to_string_lossy().to_string())
-            .unwrap_or(String::from("scratch file"))
+        match &self.path {
+            Path::Set(path) => path.to_string_lossy().to_string(),
+            Path::UnSet(id) => format!("*scratch file*#{id}"),
+        }
     }
 
     /// The number of [`char`]s in the file.
@@ -337,3 +350,17 @@ impl ActiveWidget for File {
 
 unsafe impl Send for File {}
 unsafe impl Sync for File {}
+
+enum Path {
+    Set(PathBuf),
+    UnSet(usize),
+}
+
+impl Path {
+    fn new_unset() -> Path {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
+
+        Path::UnSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}

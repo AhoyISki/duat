@@ -5,13 +5,13 @@ use crossterm::event::{
     KeyEvent, KeyModifiers,
 };
 use parsec_core::{
+    commands,
     data::RwData,
     history::History,
     input::{key, Cursors, InputMethod, MultiCursorEditor, WithHistory},
     ui::Area,
     widgets::{CommandLine, File},
     CURRENT_FILE,
-    commands
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -273,9 +273,7 @@ fn match_goto(
     match key {
         key!(KeyCode::Char('a')) => {
             if commands::buffer(last_file.clone()).is_ok() {
-                *last_file = CURRENT_FILE
-                    .name()
-                    .unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE.name();
             }
         }
         key!(KeyCode::Char('j')) => {
@@ -286,16 +284,12 @@ fn match_goto(
         }
         key!(KeyCode::Char('n')) => {
             if commands::next_file().is_ok() {
-                *last_file = CURRENT_FILE
-                    .name()
-                    .unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE.name();
             }
         }
         key!(KeyCode::Char('N')) => {
             if commands::prev_file().is_ok() {
-                *last_file = CURRENT_FILE
-                    .name()
-                    .unwrap_or(String::from("*scratch file*"));
+                *last_file = CURRENT_FILE.name();
             }
         }
         _ => {}

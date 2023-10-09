@@ -142,9 +142,23 @@ impl PrintCfg {
         }
     }
 
-    pub fn wrapping_with(self, wrap_method: WrapMethod) -> Self {
+    pub fn width_wrapped(self) -> Self {
         Self {
-            wrap_method,
+            wrap_method: WrapMethod::Width,
+            ..self
+        }
+    }
+
+    pub fn word_wrapped(self) -> Self {
+        Self {
+            wrap_method: WrapMethod::Word,
+            ..self
+        }
+    }
+
+    pub fn wrapped_on_cap(self, cap: usize) -> Self {
+        Self {
+            wrap_method: WrapMethod::Capped(cap),
             ..self
         }
     }
@@ -163,12 +177,48 @@ impl PrintCfg {
         }
     }
 
-    pub fn showing_new_line_as(self, new_line: NewLine) -> Self {
-        Self { new_line, ..self }
+    pub fn with_new_line_as(self, char: char) -> Self {
+        Self {
+            new_line: NewLine::AlwaysAs(char),
+            ..self
+        }
     }
 
-    pub fn with_scrolloff(self, scrolloff: ScrollOff) -> Self {
-        Self { scrolloff, ..self }
+    pub fn with_new_line_after_space_as(self, char: char) -> Self {
+        Self {
+            new_line: NewLine::AfterSpaceAs(char),
+            ..self
+        }
+    }
+
+    pub fn with_scrolloff(self, gap: usize) -> Self {
+        Self {
+            scrolloff: ScrollOff {
+                y_gap: gap,
+                x_gap: gap,
+            },
+            ..self
+        }
+    }
+
+    pub fn with_x_scrolloff(self, x_gap: usize) -> Self {
+        Self {
+            scrolloff: ScrollOff {
+                y_gap: self.scrolloff.y_gap,
+                x_gap,
+            },
+            ..self
+        }
+    }
+
+    pub fn with_y_scrolloff(self, y_gap: usize) -> Self {
+        Self {
+            scrolloff: ScrollOff {
+                x_gap: self.scrolloff.x_gap,
+                y_gap,
+            },
+            ..self
+        }
     }
 
     pub fn with_word_chars(self, word_chars: impl Iterator<Item = RangeInclusive<char>>) -> Self {

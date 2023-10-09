@@ -22,9 +22,9 @@ use data::{CurrentFile, CurrentWidget};
 
 pub mod commands;
 pub mod data;
-pub mod palette;
 pub mod history;
 pub mod input;
+pub mod palette;
 pub mod position;
 pub mod session;
 pub mod text;
@@ -33,7 +33,13 @@ pub mod widgets;
 
 pub mod prelude {
     pub use crate::{
-        commands, palette, session::Session
+        commands, palette,
+        session::Session,
+        text::{text, PrintCfg},
+        widgets::{
+            main_byte, main_char, main_col, main_line, status, CommandLine, DynInput, File,
+            LineNumbers, StatusLine,
+        },
     };
 }
 

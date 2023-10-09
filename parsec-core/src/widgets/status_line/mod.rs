@@ -53,7 +53,7 @@
 pub mod file_parts;
 mod state;
 
-use file_parts::{file_name, main_col, main_line, selections_fmt};
+use file_parts::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
 use super::{file::File, PassiveWidget, Widget, WidgetCfg};
@@ -90,9 +90,9 @@ impl StatusLineCfg {
 
     pub fn new() -> Self {
         status!(
-            [FileName] file_name " " [Selections] {DynInput(selections_fmt)}
+            [FileName] { File::name } " " [Selections] {DynInput(selections_fmt)}
             [Coords] {DynInput(main_col)} [Separator] ":" [Coords] {DynInput(main_line)}
-            [Separator] "/" {File::len_lines}
+            [Separator] "/" { File::len_lines }
         )
     }
 
@@ -236,7 +236,6 @@ pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
 pub macro status {
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        struct $form;
         let form_id = $crate::palette::weakest_id_of_name(stringify!($form));
 
         let text_fn =

@@ -66,7 +66,7 @@ impl CurrentFile {
     }
 
     /// The name of the active [`FileWidget`]'s file.
-    pub fn name(&self) -> Option<String> {
+    pub fn name(&self) -> String {
         unsafe { self.rw.raw_read().assume_init_ref().0.raw_read().name() }
     }
 
@@ -166,7 +166,7 @@ impl FileReader {
     }
 
     /// The name of the active [`FileWidget`]'s file.
-    pub fn name(&self) -> Option<String> {
+    pub fn name(&self) -> String {
         unsafe { self.data.read().assume_init_ref().0.read().name() }
     }
 
