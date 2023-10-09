@@ -31,6 +31,12 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
+pub mod prelude {
+    pub use crate::{
+        commands, palette, session::Session
+    };
+}
+
 // Debugging objects.
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 

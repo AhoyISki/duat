@@ -74,6 +74,20 @@ pub struct StatusLineCfg {
 }
 
 impl StatusLineCfg {
+    pub fn new_new(
+        text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+        checker: Box<dyn Fn() -> bool>,
+        is_global: bool,
+        specs: PushSpecs,
+    ) -> Self {
+        Self {
+            text_fn,
+            checker,
+            is_global,
+            specs,
+        }
+    }
+
     pub fn new() -> Self {
         status!(
             [FileName] file_name " " [Selections] {DynInput(selections_fmt)}
@@ -222,12 +236,13 @@ pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
 pub macro status {
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let form_id = crate::palette::weakest_id_of_name(stringify!($form));
+        struct $form;
+        let form_id = $crate::palette::weakest_id_of_name(stringify!($form));
 
         let text_fn =
             move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
                 $text_fn(builder, file, input);
-                builder.push_tag(crate::text::Tag::PushForm(form_id));
+                builder.push_tag($crate::text::Tag::PushForm(form_id));
             };
 
         (text_fn, $checker)
@@ -263,6 +278,7 @@ pub macro status {
 
     ($($parts:tt)*) => {{
         use crate::{
+            data::RoData,
             input::InputMethod,
             text::{text, Tag, Builder},
             ui::PushSpecs,
@@ -280,11 +296,11 @@ pub macro status {
             builder.finish()
         };
 
-        StatusLineCfg {
-            text_fn: Box::new(text_fn),
-            checker: Box::new(checker),
-            is_global: false,
-            specs: PushSpecs::below().with_lenght(1.0)
-        }
+        StatusLineCfg::new_new(
+            Box::new(text_fn),
+            Box::new(checker),
+            false,
+            PushSpecs::below().with_lenght(1.0)
+        )
     }}
 }

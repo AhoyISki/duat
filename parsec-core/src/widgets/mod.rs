@@ -38,7 +38,7 @@ pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{file_parts::*, status, DynInput, StatusLine, StatusLineCfg},
+    status_line::{file_parts::*, status, DynInput, State, StatusLine, StatusLineCfg},
 };
 use crate::{
     data::{Data, RwData},

@@ -25,10 +25,10 @@ where
     U: Ui,
     I: InputMethod<Widget = File> + Clone,
 {
-    ui: U,
-    file_cfg: FileCfg<I>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File>)>,
-    window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
+    pub ui: U,
+    pub file_cfg: FileCfg<I>,
+    pub file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File>)>,
+    pub window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
 }
 
 impl<U> SessionCfg<U, Editor>

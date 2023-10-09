@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 /// If and how to wrap lines at the end of the screen.
 #[derive(Default, Debug, Copy, Clone)]
 pub enum WrapMethod {
@@ -103,7 +105,7 @@ impl WordChars {
         word_chars
     }
 
-	#[inline]
+    #[inline]
     pub fn contains(&self, char: char) -> bool {
         self.0.iter().any(|chars| chars.contains(&char))
     }
@@ -129,10 +131,55 @@ pub struct PrintCfg {
 }
 
 impl PrintCfg {
+    pub fn new() -> Self {
+        Self {
+            wrap_method: WrapMethod::default(),
+            indent_wrap: true,
+            tab_stops: TabStops(4),
+            new_line: NewLine::default(),
+            scrolloff: ScrollOff::default(),
+            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
+        }
+    }
+
+    pub fn wrapping_with(self, wrap_method: WrapMethod) -> Self {
+        Self {
+            wrap_method,
+            ..self
+        }
+    }
+
+    pub fn indenting_wrap(self) -> Self {
+        Self {
+            indent_wrap: true,
+            ..self
+        }
+    }
+
+    pub fn with_tabs_size(self, tab_size: usize) -> Self {
+        Self {
+            tab_stops: TabStops(tab_size),
+            ..self
+        }
+    }
+
+    pub fn showing_new_line_as(self, new_line: NewLine) -> Self {
+        Self { new_line, ..self }
+    }
+
+    pub fn with_scrolloff(self, scrolloff: ScrollOff) -> Self {
+        Self { scrolloff, ..self }
+    }
+
+    pub fn with_word_chars(self, word_chars: impl Iterator<Item = RangeInclusive<char>>) -> Self {
+        let word_chars = WordChars::new(word_chars.collect());
+        Self { word_chars, ..self }
+    }
+
     /// Same as [`default`], but with a hidden new line.
     ///
     /// [`default`]: PrintCfg::default
-    pub fn default_for_files() -> Self {
+    pub(crate) fn default_for_files() -> Self {
         Self {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
@@ -146,14 +193,7 @@ impl PrintCfg {
 
 impl Default for PrintCfg {
     fn default() -> Self {
-        Self {
-            wrap_method: WrapMethod::default(),
-            indent_wrap: true,
-            tab_stops: TabStops(4),
-            new_line: NewLine::default(),
-            scrolloff: ScrollOff::default(),
-            word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
-        }
+        Self::new()
     }
 }
 
@@ -207,27 +247,27 @@ impl<'a> IterCfg<'a> {
         }
     }
 
-	#[inline]
+    #[inline]
     pub fn show_lf(&self) -> bool {
         self.iter_lfs
     }
 
-	#[inline]
+    #[inline]
     pub fn wrap_method(&self) -> WrapMethod {
         self.force_wrap.unwrap_or(self.cfg.wrap_method)
     }
 
-	#[inline]
+    #[inline]
     pub fn indent_wrap(&self) -> bool {
         !self.no_indent_wrap && self.cfg.indent_wrap
     }
 
-	#[inline]
+    #[inline]
     pub fn tab_stops(&self) -> TabStops {
         self.cfg.tab_stops
     }
 
-	#[inline]
+    #[inline]
     pub fn new_line(&self) -> NewLine {
         if self.iter_lfs {
             NewLine::Hidden
@@ -236,12 +276,12 @@ impl<'a> IterCfg<'a> {
         }
     }
 
-	#[inline]
+    #[inline]
     pub fn scrolloff(&self) -> ScrollOff {
         self.cfg.scrolloff
     }
 
-	#[inline]
+    #[inline]
     pub fn word_chars(&self) -> &WordChars {
         &self.cfg.word_chars
     }
