@@ -5,15 +5,12 @@
     result_option_inspect,
     trait_upcasting,
     let_chains,
-    option_zip,
     control_flow_enum,
     return_position_impl_trait_in_trait,
     decl_macro,
     generic_const_exprs,
     step_trait,
     type_alias_impl_trait,
-    negative_impls,
-    unboxed_closures
 )]
 
 use std::sync::atomic::AtomicBool;
@@ -33,12 +30,13 @@ pub mod widgets;
 
 pub mod prelude {
     pub use crate::{
-        commands, palette,
+        commands,
+        palette::{self, CursorStyle, Form},
         session::Session,
         text::{text, PrintCfg},
         widgets::{
-            main_byte, main_char, main_col, main_line, status, CommandLine, DynInput, File,
-            LineNumbers, StatusLine,
+            main_byte, main_char, main_col, main_line, selections, selections_fmt, status,
+            CommandLine, DynInput, File, LineNumbers, StatusLine,
         },
     };
 }
