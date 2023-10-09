@@ -34,12 +34,15 @@
 //! // Any of these callers will work for running the command.
 //! let callers = ["my-command", "mc"];
 //!
-//! // `commands::add` will make the given command globally available.
-//! let result = commands::add(callers, move |_flags: Flags, _args: Args| {
+//! // `commands::add` create a new globally avaliable command.
+//! let result = commands::add(callers, move |_flags, _args| {
 //!     unimplemented!();
 //! });
 //!
-//! // Adding a command can fail if a command with the same name already exists.
+//! // Adding a command can fail if a command with the same
+//! // name already exists.
+//! // In this case, the command is brand new, so no the
+//! // Result is `Ok`.
 //! assert!(result.is_ok());
 //! ```
 //!
@@ -60,10 +63,10 @@
 //! let my_command = {
 //!     let expression = expression.clone();
 //!     commands::add(callers, move |flags, _args| {
-//!         // `Flags::unit` will check if a `--` flag has been passed.
+//!         // `Flags::unit` checks for `--` flags
 //!         if flags.unit("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
-//!         // `Flags::blob` will check if a `-` flag has been passed.
+//!         // `Flags::blob` checks for `-` flags
 //!         // They can check for any valid unicode character.
 //!         } else if flags.blob("🤯") {
 //!             expression.store('🤯' as u32, Ordering::Relaxed)
@@ -76,8 +79,8 @@
 //!     })
 //! };
 //!
-//! // The order of flags doesn't matter, but the order of args does.
-//! commands::run("mc --sad -🤯 useless-arg-1 useless-arg-2").unwrap();
+//! // The order of flags doesn't matter.
+//! commands::run("mc --sad -🤯 unused-1 unused-2").unwrap();
 //!
 //! let num = expression.load(Ordering::Relaxed);
 //! assert_eq!(char::from_u32(num), Some('🤯'))
@@ -88,24 +91,20 @@
 //! ```rust
 //! # use parsec_core::{
 //! #     commands,
-//! #     forms::FormPalette,
 //! #     session::SessionCfg,
 //! #     text::{PrintCfg, text},
 //! #     ui::{FileBuilder, Ui},
-//! #     widgets::{CommandLine, status_cfg},
+//! #     widgets::{CommandLine, status},
 //! # };
 //! # fn test_fn<U: Ui>(ui: U) {
-//!
 //! let session = SessionCfg::new(ui)
 //!     .with_file_fn(|builder: &mut FileBuilder<U>, _file| {
 //!         // `commands::run` might return an `Ok(Some(Text))`,
 //!         // hence the double unwrap.
 //!         let output = commands::run("lol").unwrap().unwrap();
-//!         let status_cfg = status_cfg!(
-//!             "Output of \"lol\": " output
-//!         );
+//!         let status = status!("Output of \"lol\": " output);
 //!
-//!         builder.push(status_cfg.builder());
+//!         builder.push(status.build());
 //!     });
 //!
 //! let callers = ["lol", "lmao"];
@@ -181,7 +180,7 @@
 //!
 //!     Ok(Some(text!(
 //!         "Copied from " [AccentOk] source [Default]
-//!         " to " [AccentOk] dest [Default] "."
+//!         " to " [AccentOk] target [Default] "."
 //!     )))
 //! });
 //! ```
@@ -243,7 +242,7 @@ mod global {
     /// #     commands,
     /// #     data::RwData,
     /// #     text::{text, Text},
-    /// #     widgets::status_cfg
+    /// #     widgets::status
     /// # };
     /// // Shared state, which will be displayed in a `StatusLine`.
     /// let var = RwData::new(35);
@@ -266,7 +265,7 @@ mod global {
     /// });
     ///
     /// // A `StatusLineCfg` that can be used to create a `StatusLine`.
-    /// let status_cfg = status_cfg!("The value is currently " var);
+    /// let status_cfg = status!("The value is currently " var);
     /// ```
     ///
     /// In the above example, we created a variable that can be

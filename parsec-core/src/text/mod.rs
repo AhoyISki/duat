@@ -502,7 +502,7 @@ pub macro text {
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
             let name = stringify!($form);
-            crate::palette::from_name(name).1
+            crate::palette::weakest_id_of_name(name)
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },

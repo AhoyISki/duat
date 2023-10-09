@@ -24,7 +24,11 @@ mod status_line;
 
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
-use std::sync::{Arc, LazyLock, OnceLock};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 
 use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
@@ -34,7 +38,7 @@ pub use self::{
     command_line::{CommandLine, CommandLineCfg},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{file_parts::*, status_cfg, DynInput, StatusLine, StatusLineCfg},
+    status_line::{file_parts::*, status, DynInput, StatusLine, StatusLineCfg},
 };
 use crate::{
     data::{Data, RwData},
@@ -46,7 +50,7 @@ use crate::{
 
 /// An area where text will be printed to the screen.
 pub trait PassiveWidget: Send + Sync + 'static {
-    fn build<U>() -> (Widget<U>, impl Fn() -> bool, PushSpecs)
+    fn build<U>() -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
     where
         U: Ui,
         Self: Sized;
@@ -66,19 +70,28 @@ pub trait PassiveWidget: Send + Sync + 'static {
     where
         Self: Sized,
     {
-        static NAME: OnceLock<String> = OnceLock::new();
-        NAME.get_or_init(|| {
-            let name = std::any::type_name::<Self>();
-            let mut shortened = String::new();
+        static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
+            LazyLock::new(|| RwLock::new(HashMap::new()));
+        let mut names = NAMES.write().unwrap();
+        let type_id = TypeId::of::<Self>();
 
-            for segment in name.split("::") {
-                if segment.chars().any(|char| char.is_ascii_uppercase()) {
-                    shortened.push_str(segment);
+        if let Some(name) = names.get(&type_id) {
+            name
+        } else {
+            let verbose = std::any::type_name::<Self>();
+            let mut name = String::new();
+
+            for path in verbose.split_inclusive(['<', '>']) {
+                for segment in path.split("::") {
+                    if segment.chars().any(|char| char.is_ascii_uppercase()) {
+                        name.push_str(segment);
+                    }
                 }
             }
 
-            shortened
-        })
+            names.insert(type_id, name.leak());
+            names.get(&type_id).unwrap()
+        }
     }
 
     /// The text that this widget prints out.
@@ -105,31 +118,15 @@ pub trait PassiveWidget: Send + Sync + 'static {
 }
 
 #[allow(refining_impl_trait)]
-pub trait ActiveWidgetCfg: Sized + Clone {
-    type Widget: ActiveWidget;
-    type WithInput<NewI>: ActiveWidgetCfg
-    where
-        NewI: InputMethod<Widget = Self::Widget> + Clone;
-
-    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs);
-
-    fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
-    where
-        NewI: InputMethod<Widget = Self::Widget> + Clone;
+pub trait WidgetCfg: Sized {
+    type Widget: PassiveWidget;
+    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
 
 /// A widget that can receive input and show [`Cursor`]s.
 pub trait ActiveWidget: PassiveWidget {
-    type Config: ActiveWidgetCfg<Widget = Self>
-    where
-        Self: Sized;
-
     /// A mutable reference to the [`Text`] printed by this cursor.
     fn mut_text(&mut self) -> &mut Text;
-
-    fn cfg() -> Self::Config
-    where
-        Self: Sized;
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
     fn on_focus(&mut self, _area: &impl Area)
@@ -346,17 +343,6 @@ where
     }
 }
 
-fn run_once<W: PassiveWidget>() {
-    static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
-        LazyLock::new(|| RwData::new(Vec::new()));
-
-    let mut once_list = ONCE_LIST.write();
-    if !once_list.contains(&W::type_name()) {
-        W::once();
-        once_list.push(W::type_name());
-    }
-}
-
 impl<U> Widget<U>
 where
     U: Ui,
@@ -365,8 +351,6 @@ where
     where
         W: PassiveWidget,
     {
-        run_once::<W>();
-
         let dyn_widget: RwData<dyn PassiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
 
@@ -383,8 +367,6 @@ where
         W: ActiveWidget,
         I: InputMethod<Widget = W>,
     {
-        run_once::<W>();
-
         let dyn_active: RwData<dyn ActiveWidget> =
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
         let dyn_passive = dyn_active.clone().to_passive();

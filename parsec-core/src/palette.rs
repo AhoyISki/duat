@@ -34,19 +34,19 @@ mod global {
     /// Returns the `Form` associated to a given name with the index
     /// for efficient access.
     ///
-    /// If a [`Form`] with the given name was not added prior, it will be added
-    /// with the same form as the "Default" form.
-    pub fn from_name(name: impl AsRef<str>) -> (Form, FormId) {
-        PALETTE.form_of_name(name)
+    /// If a [`Form`] with the given name was not added prior, it will
+    /// be added with the same form as the "Default" form.
+    pub fn id_of_name(name: impl AsRef<str>) -> FormId {
+        PALETTE.id_of_name(name)
     }
 
     /// Returns a form, given an index.
-    pub fn from_id(id: FormId) -> Form {
+    pub fn form_of_id(id: FormId) -> Form {
         PALETTE.form_of_id(id)
     }
 
-    pub fn name_from_id(id: FormId) -> &'static str {
-        PALETTE.name_from_id(id)
+    pub fn name_of_id(id: FormId) -> &'static str {
+        PALETTE.name_of_id(id)
     }
 
     pub fn main_cursor() -> CursorStyle {
@@ -67,6 +67,12 @@ mod global {
 
     pub fn painter() -> Painter {
         PALETTE.painter()
+    }
+
+    /// Not meant for external use. Please use [`form_of_name`].
+    #[doc(hidden)]
+    pub fn weakest_id_of_name(name: impl AsRef<str>) -> FormId {
+        PALETTE.weakest_id_of_name(name)
     }
 }
 
@@ -151,39 +157,22 @@ pub const DEFAULT: FormId = FormId(0);
 pub const MAIN_SEL: FormId = FormId(5);
 pub const EXTRA_SEL: FormId = FormId(6);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum Kind {
     Form(Form),
     Ref(FormId),
+    WeakestRef(FormId),
 }
 
+#[derive(Debug)]
 struct InnerPalette {
     main_cursor: CursorStyle,
     extra_cursor: CursorStyle,
     forms: Vec<(&'static str, Kind)>,
 }
 
-impl InnerPalette {
-    fn get_from_name(&self, name: &'static str) -> Option<(Form, FormId)> {
-        let iter = self.forms.iter().enumerate();
-
-        let mut id = match iter.clone().find(|(_, (cmp, _))| *cmp == name) {
-            Some((_, (_, Kind::Ref(referenced)))) => referenced,
-            Some((i, (_, Kind::Form(form)))) => return Some((*form, FormId(i))),
-            None => return None,
-        };
-
-        loop {
-            id = match self.forms.get(id.0) {
-                Some((_, Kind::Ref(referenced))) => referenced,
-                Some((_, Kind::Form(form))) => break Some((*form, *id)),
-                None => break None,
-            }
-        }
-    }
-}
-
 /// The list of forms to be used when rendering.
+#[derive(Debug)]
 struct FormPalette(LazyLock<RwData<InnerPalette>>);
 
 impl FormPalette {
@@ -237,8 +226,16 @@ impl FormPalette {
 
         let mut inner = self.0.write();
 
-        if let Some((_, form_id)) = inner.get_from_name(name) {
-            form_id
+        if let Some((index, (_, kind))) = inner
+            .forms
+            .iter_mut()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+        {
+            if let Kind::WeakestRef(_) = *kind {
+                *kind = Kind::Form(form);
+            }
+            FormId(index)
         } else {
             inner.forms.push((name, Kind::Form(form)));
             FormId(inner.forms.len() - 1)
@@ -250,18 +247,21 @@ impl FormPalette {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
-        let (_, id) = self.form_of_name(referenced);
+        let id = self.id_of_name(referenced);
 
         let mut inner = self.0.write();
 
-        if let Some((_, old_form)) = inner.forms.iter_mut().find(|(cmp, _)| *cmp == name) {
+        if let Some((index, (_, old_form))) = inner
+            .forms
+            .iter_mut()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+        {
             *old_form = Kind::Ref(id);
-            drop(inner);
-            self.form_of_name(referenced).1
+            FormId(index)
         } else {
             inner.forms.push((name, Kind::Ref(id)));
-            drop(inner);
-            self.form_of_name(referenced).1
+            FormId(inner.forms.len() - 1)
         }
     }
 
@@ -269,36 +269,61 @@ impl FormPalette {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
 
-        let (_, id) = self.form_of_name(referenced);
+        let ref_id = self.id_of_name(referenced);
 
         let mut inner = self.0.write();
 
-        if let Some((_, id)) = inner.get_from_name(name) {
-            id
+        if let Some((index, (_, kind))) = inner
+            .forms
+            .iter_mut()
+            .enumerate()
+            .find(|(_, (cmp, _))| *cmp == name)
+        {
+            if let Kind::WeakestRef(_) = *kind {
+                *kind = Kind::Ref(ref_id);
+            }
+            FormId(index)
         } else {
-            inner.forms.push((name, Kind::Ref(id)));
-            drop(inner);
-            self.form_of_name(referenced).1
+            inner.forms.push((name, Kind::Ref(ref_id)));
+            FormId(inner.forms.len() - 1)
         }
     }
 
     /// Returns the `Form` associated to a given name with the index
     /// for efficient access.
     ///
-    /// If a [`Form`] with the given name was not added prior, it will be added
-    /// with the same form as the "Default" form.
-    fn form_of_name(&self, name: impl AsRef<str>) -> (Form, FormId) {
+    /// If a [`Form`] with the given name was not added prior, it will
+    /// be added with the same form as the "Default" form.
+    fn id_of_name(&self, name: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
 
         let mut inner = self.0.write();
 
-        if let Some((form, id)) = inner.get_from_name(name) {
-            (form, id)
+        if let Some(index) = inner.forms.iter_mut().position(|(cmp, _)| *cmp == name) {
+            FormId(index)
         } else {
             let name = name.to_string().leak();
             inner.forms.push((name, Kind::Ref(FormId(0))));
-            drop(inner);
-            self.form_of_name("Default")
+            FormId(inner.forms.len() - 1)
+        }
+    }
+
+    /// Returns the `Form` associated to a given name with the index
+    /// for efficient access.
+    ///
+    /// If a [`Form`] with the given name was not added prior, it will
+    /// be added with the same form as the "Default" form.
+    fn weakest_id_of_name(&self, name: impl AsRef<str>) -> FormId {
+        let name = name.as_ref().to_string().leak();
+
+        let mut inner = self.0.write();
+
+        if let Some(index) = inner.forms.iter_mut().position(|(cmp, _)| *cmp == name) {
+            FormId(index)
+        } else {
+            let name = name.to_string().leak();
+            inner.forms.push((name, Kind::WeakestRef(FormId(0))));
+            FormId(inner.forms.len() - 1)
         }
     }
 
@@ -309,6 +334,7 @@ impl FormPalette {
         let nth = inner.forms.get(id.0).map(|(_, kind)| match kind {
             Kind::Form(form) => *form,
             Kind::Ref(id) => self.form_of_id(*id),
+            Kind::WeakestRef(id) => self.form_of_id(*id),
         });
 
         let Some(ret) = nth else {
@@ -317,7 +343,7 @@ impl FormPalette {
         ret
     }
 
-    fn name_from_id(&self, id: FormId) -> &'static str {
+    fn name_of_id(&self, id: FormId) -> &'static str {
         let inner = self.0.read();
         let nth = inner.forms.get(id.0).map(|(name, _)| name);
 
@@ -370,6 +396,7 @@ impl Painter {
             match self.palette.forms.get(id.0) {
                 Some((_, Kind::Form(form))) => break form,
                 Some((_, Kind::Ref(referenced))) => id = *referenced,
+                Some((_, Kind::WeakestRef(referenced))) => id = *referenced,
                 _ => {
                     unreachable!("This should not be possible");
                 }
@@ -395,7 +422,8 @@ impl Painter {
             is_final: false,
         };
 
-        /// Internal method used only to shorten code in `make_form()`.
+        /// Internal method used only to shorten code in
+        /// `make_form()`.
         fn set_var<T: Clone>(
             is_set: &mut bool,
             var: &mut Option<T>,

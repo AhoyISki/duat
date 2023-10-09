@@ -15,10 +15,7 @@ use crate::{
     input::{Editor, InputMethod},
     text::{text, PrintCfg, Text},
     ui::{build_file, Area, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
-    widgets::{
-        ActiveWidget, ActiveWidgetCfg, File, FileCfg, LineNumbers, PassiveWidget, StatusLine,
-        Widget,
-    },
+    widgets::{File, FileCfg, LineNumbers, StatusLine, Widget},
     BREAK_LOOP, CURRENT_FILE, CURRENT_WIDGET, SHOULD_QUIT,
 };
 
@@ -44,8 +41,8 @@ where
             ui,
             file_cfg: File::cfg(),
             file_fn: Box::new(|builder, _| {
-                builder.push(LineNumbers::build());
-                builder.push(StatusLine::build());
+                builder.push::<LineNumbers>();
+                builder.push::<StatusLine>();
             }),
             window_fn: Box::new(|_| {}),
         }
@@ -286,9 +283,9 @@ where
             self.session_loop();
 
             // TODO: Files to open
-            // let mut files = std::mem::take(&mut *self.controler.files_to_open.write());
-            // for file in files.drain(..) {
-            //    self.open_file(file);
+            // let mut files = std::mem::take(&mut
+            // *self.controler.files_to_open.write()); for file in
+            // files.drain(..) {    self.open_file(file);
             //}
 
             if SHOULD_QUIT.load(Ordering::Acquire) {

@@ -48,11 +48,11 @@ impl std::fmt::Debug for Part {
             Part::Char(char) => f.debug_tuple("Char").field(char).finish(),
             Part::PushForm(id) => f
                 .debug_tuple("PushForm")
-                .field(&palette::name_from_id(*id))
+                .field(&palette::name_of_id(*id))
                 .finish(),
             Part::PopForm(id) => f
                 .debug_tuple("PopForm")
-                .field(&palette::name_from_id(*id))
+                .field(&palette::name_of_id(*id))
                 .finish(),
             Part::MainCursor => f.debug_tuple("MainCursor").finish(),
             Part::ExtraCursor => f.debug_tuple("ExtraCursor").finish(),

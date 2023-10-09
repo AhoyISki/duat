@@ -100,7 +100,7 @@ impl LineNumbers {
 impl PassiveWidget for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers<U>`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
         LineNumbersCfg::default().build()
     }
 

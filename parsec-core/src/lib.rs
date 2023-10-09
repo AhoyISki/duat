@@ -11,7 +11,9 @@
     decl_macro,
     generic_const_exprs,
     step_trait,
-    type_alias_impl_trait
+    type_alias_impl_trait,
+    negative_impls,
+    unboxed_closures
 )]
 
 use std::sync::atomic::AtomicBool;

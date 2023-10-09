@@ -56,7 +56,7 @@ mod state;
 use file_parts::{file_name, main_col, main_line, selections_fmt};
 
 pub use self::state::State;
-use super::{file::File, PassiveWidget, Widget};
+use super::{file::File, PassiveWidget, Widget, WidgetCfg};
 use crate::{
     data::{FileReader, RoData},
     input::InputMethod,
@@ -75,14 +75,32 @@ pub struct StatusLineCfg {
 
 impl StatusLineCfg {
     pub fn new() -> Self {
-        status_cfg!(
+        status!(
             [FileName] file_name " " [Selections] {DynInput(selections_fmt)}
             [Coords] {DynInput(main_col)} [Separator] ":" [Coords] {DynInput(main_line)}
             [Separator] "/" {File::len_lines}
         )
     }
 
-    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    pub fn global(self) -> Self {
+        Self {
+            is_global: true,
+            ..self
+        }
+    }
+
+    pub fn above(self) -> Self {
+        Self {
+            specs: PushSpecs::above().with_lenght(1.0),
+            ..self
+        }
+    }
+}
+
+impl WidgetCfg for StatusLineCfg {
+    type Widget = StatusLine;
+
+    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = if self.is_global {
             let reader = CURRENT_FILE.adaptive();
             let checker = move || reader.has_changed() || (self.checker)();
@@ -106,20 +124,6 @@ impl StatusLineCfg {
         });
 
         (widget, checker, self.specs)
-    }
-
-    pub fn global(self) -> Self {
-        Self {
-            is_global: true,
-            ..self
-        }
-    }
-
-    pub fn above(self) -> Self {
-        Self {
-            specs: PushSpecs::above().with_lenght(1.0),
-            ..self
-        }
     }
 }
 
@@ -215,10 +219,10 @@ unsafe impl Sync for StatusLine {}
 
 pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
 
-pub macro status_cfg {
+pub macro status {
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let (_, form_id) = crate::palette::from_name(stringify!($form));
+        let form_id = crate::palette::weakest_id_of_name(stringify!($form));
 
         let text_fn =
             move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
@@ -247,14 +251,14 @@ pub macro status_cfg {
     (@parse $text_fn:expr, $checker:expr,) => { ($text_fn, $checker) },
 
     (@parse $text_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
-        let (mut text_fn, checker) = status_cfg!(@append $text_fn, $checker, $part);
-        status_cfg!(@parse text_fn, checker, $($parts)*)
+        let (mut text_fn, checker) = status!(@append $text_fn, $checker, $part);
+        status!(@parse text_fn, checker, $($parts)*)
     }},
 
     (@parse $($parts:tt)*) => {{
         let text_fn = |_: &mut Builder, _: &RoData<File>, _: &RoData<dyn InputMethod>| {};
         let checker = || { false };
-        status_cfg!(@parse text_fn, checker, $($parts)*)
+        status!(@parse text_fn, checker, $($parts)*)
     }},
 
     ($($parts:tt)*) => {{
@@ -266,7 +270,7 @@ pub macro status_cfg {
         };
 
 		#[allow(unused_mut)]
-        let (mut text_fn, checker) = status_cfg!(@parse $($parts)*);
+        let (mut text_fn, checker) = status!(@parse $($parts)*);
 
         let text_fn = move |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
             let mut builder = Builder::new();

@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{fs, path::PathBuf};
 
-use super::{ActiveWidget, ActiveWidgetCfg, PassiveWidget, Widget};
+use super::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
 use crate::{
     data::RwData,
     input::{Editor, InputMethod},
@@ -153,31 +153,30 @@ where
     pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {
         Self { cfg, ..self }
     }
-}
 
-impl<I> ActiveWidgetCfg for FileCfg<I>
-where
-    I: InputMethod<Widget = File> + Clone,
-{
-    type Widget = File;
-    type WithInput<NewI> = FileCfg<NewI> where NewI: InputMethod<Widget = Self::Widget> + Clone;
-
-    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let specs = self.specs;
-        let (widget, checker) = self.build();
-        (widget, checker, specs)
-    }
-
-    fn with_input<NewI>(self, input: NewI) -> Self::WithInput<NewI>
+    pub fn with_input<NewI>(self, input: NewI) -> FileCfg<NewI>
     where
         NewI: InputMethod<Widget = File> + Clone,
     {
-        Self::WithInput {
+        FileCfg {
             input,
             cfg: self.cfg,
             specs: self.specs,
             path: self.path,
         }
+    }
+}
+
+impl<I> WidgetCfg for FileCfg<I>
+where
+    I: InputMethod<Widget = File> + Clone,
+{
+    type Widget = File;
+
+    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let specs = self.specs;
+        let (widget, checker) = self.build();
+        (widget, checker, specs)
     }
 }
 
@@ -191,6 +190,10 @@ pub struct File {
 }
 
 impl File {
+    pub fn cfg() -> FileCfg<Editor> {
+        FileCfg::new()
+    }
+
     pub fn write(&self) -> Result<usize, String> {
         if let Some(path) = &self.path {
             self.text.write_to(std::io::BufWriter::new(
@@ -327,14 +330,6 @@ impl PassiveWidget for File {
 }
 
 impl ActiveWidget for File {
-    type Config = FileCfg<Editor>
-    where
-        Self: Sized;
-
-    fn cfg() -> FileCfg<Editor> {
-        FileCfg::new()
-    }
-
     fn mut_text(&mut self) -> &mut Text {
         &mut self.text
     }
