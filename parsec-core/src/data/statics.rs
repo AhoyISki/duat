@@ -74,6 +74,20 @@ impl CurrentFile {
         unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
     }
 
+    pub(crate) fn mutate_related<T: 'static, R>(
+        &self,
+        mut f: impl FnMut(&mut T) -> R,
+    ) -> Option<R> {
+        let data = self.rw.raw_read();
+        let (file, input) = unsafe { data.assume_init_ref() };
+        file.mutate_as::<T, R>(&mut f)
+            .or_else(|| {
+                let file = file.read();
+                file.mutate_related(&mut f)
+            })
+            .or_else(|| input.mutate_as(&mut f))
+    }
+
     pub(crate) fn mutate_related_widget<W: PassiveWidget, R>(
         &self,
         mut f: impl FnMut(&mut W, &mut dyn Area) -> R,
@@ -88,7 +102,7 @@ impl CurrentFile {
         let data = self.rw.raw_read();
         let (file, _) = unsafe { data.assume_init_ref() };
 
-		let file = file.read();
+        let file = file.read();
         file.get_related_widget(type_name)
     }
 
@@ -269,6 +283,14 @@ impl CurrentWidget {
 
     pub fn widget_ptr_eq<U: Ui>(&self, other: &Widget<U>) -> bool {
         unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
+    }
+
+    pub(crate) fn mutate_as<T: 'static, R>(&self, mut f: impl FnMut(&mut T) -> R) -> Option<R> {
+        let data = self.rw.read();
+        let (widget, input) = unsafe { data.assume_init_ref() };
+        widget
+            .mutate_as::<T, R>(&mut f)
+            .or_else(|| input.mutate_as::<T, R>(f))
     }
 
     pub(crate) const fn new() -> Self {

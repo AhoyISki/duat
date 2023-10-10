@@ -273,6 +273,21 @@ impl File {
             .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
     }
 
+    pub(crate) fn get_related_widget(&self, type_name: &str) -> Option<RwData<dyn PassiveWidget>> {
+        self.related_widgets
+            .iter()
+            .find(|(_, cmp, _)| *cmp == type_name)
+            .map(|(widget, ..)| widget)
+            .cloned()
+    }
+
+    pub(crate) fn mutate_related<T: 'static, R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+        self.related_widgets
+            .iter()
+            .find(|(widget, ..)| widget.data_is::<T>())
+            .and_then(|(widget, ..)| widget.mutate_as::<T, R>(f))
+    }
+
     pub(crate) fn mutate_related_widget<W: 'static, R>(
         &mut self,
         f: impl FnOnce(&mut W, &mut dyn Area) -> R,
@@ -283,14 +298,6 @@ impl File {
             .and_then(|(widget, _, area)| {
                 widget.mutate_as::<W, R>(|widget| f(widget, area.as_mut()))
             })
-    }
-
-    pub(crate) fn get_related_widget(&self, type_name: &str) -> Option<RwData<dyn PassiveWidget>> {
-        self.related_widgets
-            .iter()
-            .find(|(_, cmp, _)| *cmp == type_name)
-            .map(|(widget, ..)| widget)
-            .cloned()
     }
 
     fn set_printed_lines(&mut self, area: &impl Area) {

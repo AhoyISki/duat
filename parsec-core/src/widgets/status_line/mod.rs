@@ -74,20 +74,6 @@ pub struct StatusLineCfg {
 }
 
 impl StatusLineCfg {
-    pub fn new_new(
-        text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
-        checker: Box<dyn Fn() -> bool>,
-        is_global: bool,
-        specs: PushSpecs,
-    ) -> Self {
-        Self {
-            text_fn,
-            checker,
-            is_global,
-            specs,
-        }
-    }
-
     pub fn new() -> Self {
         status!(
             [FileName] { File::name } " " [Selections] {DynInput(selections_fmt)}
@@ -295,11 +281,11 @@ pub macro status {
             builder.finish()
         };
 
-        StatusLineCfg::new_new(
-            Box::new(text_fn),
-            Box::new(checker),
-            false,
-            PushSpecs::below().with_lenght(1.0)
-        )
+        StatusLineCfg {
+            text_fn: Box::new(text_fn),
+            checker: Box::new(checker),
+            is_global: false,
+            specs: PushSpecs::below().with_lenght(1.0)
+        }
     }}
 }

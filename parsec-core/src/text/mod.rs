@@ -166,9 +166,7 @@ impl Text {
     }
 
     pub(crate) fn write_to(&self, writer: impl std::io::Write) -> std::io::Result<usize> {
-        self.rope
-            .write_to(writer)
-            .map(|_| self.rope.len_bytes())
+        self.rope.write_to(writer).map(|_| self.rope.len_bytes())
     }
 
     fn clear(&mut self) {
@@ -497,6 +495,13 @@ where
 
 pub macro text {
     // Forms
+    (@push $builder:expr, []) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::weakest_id_of_name("Default")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
             let name = stringify!($form);
@@ -528,6 +533,7 @@ pub macro text {
     }},
 }
 
+#[doc(hidden)]
 pub struct __FormIdLock(LazyLock<FormId>);
 
 impl std::ops::Deref for __FormIdLock {
@@ -539,6 +545,7 @@ impl std::ops::Deref for __FormIdLock {
 }
 
 impl __FormIdLock {
+    #[doc(hidden)]
     pub const fn new(f: fn() -> FormId) -> Self {
         Self(LazyLock::new(f))
     }

@@ -335,8 +335,17 @@ where
     U: Ui,
     I: InputMethod<Widget = File>,
 {
-    commands::add(["edit", "e"], move |_flags, args| {
-        let paths: Vec<&str> = args.collect();
+    commands::add(["write", "w"], move |_flags, mut args| {
+        let paths = {
+            let mut paths = Vec::new();
+
+            while let Ok(arg) = args.next() {
+                paths.push(arg.to_string());
+            }
+
+            paths
+        };
+
         if paths.is_empty() {
             CURRENT_FILE.inspect(|file, _| {
                 if let Some(name) = file.set_name() {
@@ -361,14 +370,14 @@ where
 
                 let files_text = {
                     let mut builder = Text::builder();
-                    text!(builder, [AccentErr] { paths[0] });
+                    text!(builder, [AccentErr] { &paths[0] });
 
                     for path in paths.iter().skip(1).take(paths.len() - 1) {
-                        text!(builder, [Default] ", " [AccentErr] path)
+                        text!(builder, [] ", " [AccentErr] path)
                     }
 
                     if paths.len() > 1 {
-                        text!(builder, [Default] " and " [AccentErr] { paths.last().unwrap() })
+                        text!(builder, [] " and " [AccentErr] { paths.last().unwrap() })
                     }
 
                     builder.finish()
@@ -386,8 +395,8 @@ where
     commands::add(["edit", "e"], {
         let windows = session.windows.clone();
 
-        move |_, args| {
-            let file = args.next().ok_or(text!("No path supplied."))?;
+        move |_, mut args| {
+            let file = args.next_or(text!("No path supplied."))?;
 
             let path = PathBuf::from(file);
             let name = path
@@ -431,8 +440,8 @@ where
     commands::add(["buffer", "b"], {
         let windows = session.windows.clone();
 
-        move |_, args| {
-            let file = args.next().ok_or(text!("No path supplied."))?;
+        move |_, mut args| {
+            let file = args.next_or(text!("No path supplied."))?;
 
             let path = PathBuf::from(file);
             let name = path
@@ -472,8 +481,8 @@ where
         let windows = session.windows.clone();
         let current_window = session.current_window.clone();
 
-        move |_, args| {
-            let type_name = args.next().ok_or(text!("No widget supplied."))?;
+        move |_, mut args| {
+            let type_name = args.next_or(text!("No widget supplied."))?;
 
             let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);
@@ -523,7 +532,7 @@ where
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
                 .unwrap();
 
-            let (new_window, entry) = if flags.unit("global") {
+            let (new_window, entry) = if flags.long("global") {
                 iter_around(&read_windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()
@@ -564,7 +573,7 @@ where
                 .position(|(widget, _)| CURRENT_FILE.file_ptr_eq(widget))
                 .unwrap();
 
-            let (new_window, entry) = if flags.unit("global") {
+            let (new_window, entry) = if flags.long("global") {
                 iter_around_rev(&read_windows, window_index, widget_index)
                     .find(|(_, (widget, _))| widget.data_is::<File>())
                     .unwrap()

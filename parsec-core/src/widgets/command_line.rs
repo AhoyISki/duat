@@ -140,12 +140,14 @@ impl PassiveWidget for CommandLine {
     fn once() {
         palette::set_weak_form("Prompt", Form::new().cyan());
 
-        commands::add_for_widget::<CommandLine>(["set-prompt"], move |command_line, _, _, args| {
-            let new_prompt: Vec<&str> = args.collect();
-            let new_prompt = new_prompt.join(" ");
-            *command_line.prompt.write() = new_prompt;
-            Ok(None)
-        })
+        commands::add_for_widget::<CommandLine>(
+            ["set-prompt"],
+            move |command_line, _, _, mut args| {
+                let new_prompt: String = args.collect();
+                *command_line.prompt.write() = new_prompt;
+                Ok(None)
+            },
+        )
         .unwrap();
     }
 }

@@ -2,6 +2,7 @@
 #![feature(
     lazy_cell,
     extract_if,
+    iter_intersperse,
     result_option_inspect,
     trait_upcasting,
     let_chains,
