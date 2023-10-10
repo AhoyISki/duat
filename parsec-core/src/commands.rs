@@ -104,7 +104,7 @@
 //!         let output = commands::run("lol").unwrap().unwrap();
 //!         let status = status!("Output of \"lol\": " output);
 //!
-//!         builder.push(status.build());
+//!         builder.push_cfg(status);
 //!     });
 //!
 //! let callers = ["lol", "lmao"];
@@ -131,7 +131,7 @@
 //! ```rust
 //! # use std::path::PathBuf;
 //! # use parsec_core::{commands, text::text};
-//! commands::add(["copy", "cp"], move |flags, args| {
+//! commands::add(["copy", "cp"], move |flags, mut args| {
 //!     // If there is a next argument, next will return `Ok(arg)`.
 //!     // If there isn't it will return `Err(Text)`.
 //!     // If you needed an argument but got none, you should
@@ -205,6 +205,7 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
+pub use self::inner::split_flags;
 use self::inner::{Commands, InnerFlags};
 use crate::{
     data::RwData,
@@ -214,175 +215,9 @@ use crate::{
     BREAK_LOOP, SHOULD_QUIT,
 };
 
+mod inner;
+
 static COMMANDS: Commands = Commands::new();
-
-/// The standard result for [`commands`] operations.
-///
-/// [`commands`]: super
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Clone)]
-pub struct Args<'a> {
-    count: usize,
-    args: Peekable<SplitWhitespace<'a>>,
-}
-
-impl<'a> Args<'a> {
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> std::result::Result<&str, Text> {
-        match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
-                Ok(arg)
-            }
-            None => Err(match self.count {
-                0 => text!("Received " [AccentErr] 0 [] " arguments."),
-                num => text!(
-                    "Expected " [AccentErr] { num + 1 } []
-                    "arguments, received " [AccentErr] num [] " instead."
-                ),
-            }),
-        }
-    }
-
-    pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
-        let arg = self.next()?;
-        arg.parse().map_err(|_| {
-            text!(
-                "Couldn't convert " [AccentErr] arg []
-                " to " [AccentErr] { std::any::type_name::<F>() } [] "."
-            )
-        })
-    }
-
-    pub fn next_or(&mut self, text: Text) -> std::result::Result<&str, Text> {
-        match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
-                Ok(arg)
-            }
-            None => Err(text),
-        }
-    }
-
-    pub fn ended(&mut self) -> std::result::Result<(), Text> {
-        match self.args.next() {
-            Some(_) => Err(text!(
-                "Expected " [AccentErr] { self.count } []
-                "arguments, received " [AccentErr] { self.count + 1 } [] " instead."
-            )),
-            None => Ok(()),
-        }
-    }
-
-    pub fn collect<B: FromIterator<&'a str> + 'static>(&mut self) -> B {
-        let args: Vec<&str> = (&mut self.args).collect();
-
-        if TypeId::of::<B>() == TypeId::of::<String>() {
-            B::from_iter(args.into_iter().intersperse(" "))
-        } else {
-            B::from_iter(args)
-        }
-    }
-}
-
-/// A struct representing flags passed down to [`Command`]s when
-/// running them.
-///
-/// There are 2 types of flag, the `short` and `long` flags.
-///
-/// `short` flags represent singular characters passed after a
-/// single `'-'` character, they can show up in multiple
-/// places, and should represent an incremental addition of
-/// features to a command.
-///
-/// `long` flags are words that come after any `"--"` sequence,
-/// and should represent more verbose, but more readable
-/// versions of `short` flags.
-///
-/// # Examples
-///
-/// Both `short` and `long` flags can only be counted once, no
-/// matter how many times they show up:
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags, Flags};
-/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
-/// let mut command_args = command.split_whitespace().skip(1);
-/// let (flags, args) = split_flags(command_args);
-///
-/// assert!(flags.short == String::from("abcdefgh"));
-/// assert!(flags.long == vec!["foo", "bar", "baz"]);
-/// ```
-///
-/// If you have any arguments that start with `'-'` or `"--"`, but
-/// are not supposed to be flags, you can insert an empty
-/// `"--"` after the flags, in order to distinguish them.
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags, Flags};
-/// let command =
-///     "my-command --foo --bar -abcde -- --not-a-flag -also-not-flags";
-/// let mut command_args = command.split_whitespace().skip(1);
-/// let (flags, args) = split_flags(command_args);
-///
-/// assert!(flags.short == String::from("abcde"));
-/// assert!(flags.long == vec!["foo", "bar"]);
-/// ```
-#[derive(Clone, Copy)]
-pub struct Flags<'a, 'b>(&'a InnerFlags<'b>);
-
-impl<'a, 'b> Flags<'a, 'b> {
-    /// Checks if all of the [`char`]s in the `short` passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::{split_flags, Flags};
-    /// let command = "run -abcdefgh -ablk args -wz";
-    /// let mut command_args = command.split_whitespace().skip(1);
-    /// let (flags, args) = split_flags(command_args);
-    ///
-    /// assert!(flags.short("k"));
-    /// assert!(!flags.short("w"));
-    /// ```
-    pub fn short(&self, short: impl AsRef<str>) -> bool {
-        self.0.short(short)
-    }
-
-    /// Returns `true` if the `long` flag was passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::{split_flags, Flags};
-    /// let command = "run --foo --bar args -baz";
-    /// let mut command_args = command.split_whitespace().skip(1);
-    /// let (flags, args) = split_flags(command_args);
-    ///
-    /// assert!(flags.long("foo"));
-    /// assert!(!flags.long("baz"));
-    /// ```
-    pub fn long(&self, flag: impl AsRef<str>) -> bool {
-        self.0.long(flag)
-    }
-
-    /// Returns `true` if no flags have been passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::{split_flags, Flags};
-    /// let command = "run arg1 --foo --bar arg2 -baz";
-    /// let mut command_args = command.split_whitespace().skip(1);
-    /// let (flags, args) = split_flags(command_args);
-    ///
-    /// assert!(flags.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
 
 /// Adds a command to the global list of commands.
 ///
@@ -407,13 +242,10 @@ impl<'a, 'b> Flags<'a, 'b> {
 ///     // A clone is necessary, in order to have one copy of `var`
 ///     // in the closure, while the other is in the `StatusLine`.
 ///     let var = var.clone();
-///     move |_flags, args| {
-///         let value: usize = args
-///             .next()
-///             .ok_or(text!("No value given."))?
-///             .parse()
-///             .map_err(Text::from)?;
-///
+///     move |_flags, mut args| {
+///         // You can easily parse arguments, and an appropriate
+///         // error will be returned if the parsing fails.
+///         let value: usize = args.next_as()?;
 ///         *var.write() = value;
 ///
 ///         Ok(None)
@@ -481,8 +313,8 @@ pub fn add(
 ///
 /// commands::add_for_current::<ModalEditor>(
 ///     ["set-mode"],
-///     |modal, flags, args| {
-///         let mode = args.next().ok_or(text!("No mode given"))?;
+///     |modal, flags, mut args| {
+///         let mode = args.next_or(text!("No mode given"))?;
 ///
 ///         match mode {
 ///             "normal" | "Normal" => modal.mode = Mode::Normal,
@@ -498,7 +330,6 @@ pub fn add(
 ///         }
 ///
 ///         let mode = format!("{:?}", modal.mode);
-///
 ///         Ok(Some(text!("Mode was set to " [AccentOk] mode [] ".")))
 ///     }
 /// )
@@ -682,8 +513,6 @@ pub fn run(command: impl ToString) -> Result<Option<Text>> {
     COMMANDS.run(command)
 }
 
-mod doc_code {}
-
 /// Canonical way to quit Parsec.
 ///
 /// By calling the quit command, all threads will finish their
@@ -723,14 +552,188 @@ pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text
     COMMANDS.try_alias(alias, command)
 }
 
-/// Adds a widget getter to the globally accessible [`Commands`].
-pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
-    COMMANDS.add_widget_getter(getter);
-}
-
 impl std::error::Error for Error {}
 
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
+
+/// The standard result for [`commands`] operations.
+///
+/// [`commands`]: super
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone)]
+pub struct Args<'a> {
+    count: usize,
+    args: Peekable<SplitWhitespace<'a>>,
+}
+
+impl<'a> Args<'a> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> std::result::Result<&str, Text> {
+        match self.args.next() {
+            Some(arg) => {
+                self.count += 1;
+                Ok(arg)
+            }
+            None => Err(match self.count {
+                0 => text!("Received " [AccentErr] 0 [] " arguments."),
+                num => text!(
+                    "Expected " [AccentErr] { num + 1 } []
+                    "arguments, received " [AccentErr] num [] " instead."
+                ),
+            }),
+        }
+    }
+
+    pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
+        let arg = self.next()?;
+        arg.parse().map_err(|_| {
+            text!(
+                "Couldn't convert " [AccentErr] arg []
+                " to " [AccentErr] { std::any::type_name::<F>() } [] "."
+            )
+        })
+    }
+
+    pub fn next_or(&mut self, text: Text) -> std::result::Result<&str, Text> {
+        match self.args.next() {
+            Some(arg) => {
+                self.count += 1;
+                Ok(arg)
+            }
+            None => Err(text),
+        }
+    }
+
+    pub fn ended(&mut self) -> std::result::Result<(), Text> {
+        match self.args.next() {
+            Some(_) => Err(text!(
+                "Expected " [AccentErr] { self.count } []
+                "arguments, received " [AccentErr] { self.count + 1 } [] " instead."
+            )),
+            None => Ok(()),
+        }
+    }
+
+    pub fn collect<B: FromIterator<&'a str> + 'static>(&mut self) -> B {
+        let args: Vec<&str> = (&mut self.args).collect();
+
+        if TypeId::of::<B>() == TypeId::of::<String>() {
+            B::from_iter(args.into_iter().intersperse(" "))
+        } else {
+            B::from_iter(args)
+        }
+    }
+}
+
+/// A struct representing flags passed down to [`Command`]s when
+/// running them.
+///
+/// There are 2 types of flag, the `short` and `long` flags.
+///
+/// `short` flags represent singular characters passed after a
+/// single `'-'` character, they can show up in multiple
+/// places, and should represent an incremental addition of
+/// features to a command.
+///
+/// `long` flags are words that come after any `"--"` sequence,
+/// and should represent more verbose, but more readable
+/// versions of `short` flags.
+///
+/// # Examples
+///
+/// Both `short` and `long` flags can only be counted once, no
+/// matter how many times they show up:
+///
+/// ```rust
+/// # use parsec_core::commands::{split_flags, Flags};
+/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
+/// let mut args = command.split_whitespace();
+/// let _caller = args.next();
+/// let (flags, mut args) = split_flags(args);
+///
+/// assert!(flags.short("abcdefgh"));
+/// assert!(flags.long("foo") && flags.long("bar") && flags.long("baz"));
+/// assert_eq!(args.collect::<Vec<&str>>(), vec!["arg1"]);
+/// ```
+///
+/// If you have any arguments that start with `'-'` or `"--"`, but
+/// are not supposed to be flags, you can insert an empty
+/// `"--"` after the flags, in order to distinguish them.
+///
+/// ```rust
+/// # use parsec_core::commands::{split_flags, Flags};
+/// let command = "my-command --foo --bar -abcde -- --not-flag -also-not";
+/// let mut args = command.split_whitespace();
+/// args.next();
+/// let (flags, mut args) = split_flags(args);
+///
+/// assert!(flags.short("abcde"));
+/// assert!(flags.long("foo") && flags.long("bar"));
+/// assert_eq!(args.collect::<Vec<&str>>(), vec!["--not-flag", "-also-not"])
+/// ```
+#[derive(Clone, Copy)]
+pub struct Flags<'a, 'b>(&'a InnerFlags<'b>);
+
+impl<'a, 'b> Flags<'a, 'b> {
+    /// Checks if all of the [`char`]s in the `short` passed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::commands::split_flags;
+    /// let command = "run -abcdefgh -ablk args -wz";
+    /// let mut args = command.split_whitespace();
+    /// let _caller = args.next();
+    /// let (flags, mut args) = split_flags(args);
+    ///
+    /// assert!(flags.short("k"));
+    /// assert!(!flags.short("w"));
+    /// assert_eq!(args.collect::<Vec<&str>>(), vec!["args", "-wz"]);
+    /// ```
+    pub fn short(&self, short: impl AsRef<str>) -> bool {
+        self.0.short(short)
+    }
+
+    /// Returns `true` if the `long` flag was passed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::commands::split_flags;
+    /// let command = "run --foo --bar args --baz";
+    /// let mut args = command.split_whitespace();
+    /// let _caller = args.next();
+    /// let (flags, mut args) = split_flags(args);
+    ///
+    /// assert!(flags.long("foo"));
+    /// assert!(!flags.long("baz"));
+    /// assert_eq!(args.collect::<Vec<&str>>(), vec!["args", "--baz"]);
+    /// ```
+    pub fn long(&self, flag: impl AsRef<str>) -> bool {
+        self.0.long(flag)
+    }
+
+    /// Returns `true` if no flags have been passed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::commands::split_flags;
+    /// let command = "run arg1 --foo --bar arg2 -baz";
+    /// let mut args = command.split_whitespace();
+    /// let _caller = args.next();
+    /// let (flags, mut args) = split_flags(args);
+    ///
+    /// assert!(flags.is_empty());
+    /// assert_eq!(args.collect::<Vec<&str>>(), vec![
+    ///     "arg1", "--foo", "--bar", "arg2", "-baz"
+    /// ]);
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
 
 /// An failure in executing or adding a command.
 #[derive(Debug)]
@@ -786,400 +789,7 @@ impl std::fmt::Display for Error {
     }
 }
 
-mod inner {
-    use std::{
-        collections::HashMap,
-        mem::MaybeUninit,
-        sync::{Arc, LazyLock, RwLock},
-    };
-
-    use super::{Args, CmdResult, Error, Flags, Result};
-    use crate::{
-        data::{Data, RwData},
-        text::{text, Text},
-        ui::{Area, Ui, Window},
-        widgets::PassiveWidget,
-        CURRENT_FILE, CURRENT_WIDGET,
-    };
-
-    /// A struct representing flags passed down to [`Command`]s when
-    /// running them.
-    pub struct InnerFlags<'a> {
-        short: String,
-        long: Vec<&'a str>,
-    }
-
-    impl<'a> InnerFlags<'a> {
-        /// Checks if all of the [`char`]s in the `short` passed.
-        pub fn short(&self, short: impl AsRef<str>) -> bool {
-            let mut all_chars = true;
-            for char in short.as_ref().chars() {
-                all_chars &= self.short.contains(char);
-            }
-            all_chars
-        }
-
-        /// Returns `true` if the `long` flag was passed.
-        pub fn long(&self, flag: impl AsRef<str>) -> bool {
-            self.long.contains(&flag.as_ref())
-        }
-
-        /// Returns `true` if no flags have been passed.
-        pub fn is_empty(&self) -> bool {
-            self.short.is_empty() && self.long.is_empty()
-        }
-    }
-
-    /// A function that can be called by name.
-    #[derive(Clone)]
-    struct Command {
-        f: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
-        callers: Arc<[String]>,
-    }
-
-    impl Command {
-        /// Returns a new instance of [`Command`].
-        fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
-        where
-            F: FnMut(Flags, Args) -> CmdResult + 'static,
-        {
-            let callers: Arc<[String]> = callers
-                .into_iter()
-                .map(|caller| caller.to_string())
-                .collect();
-
-            if let Some(caller) = callers
-                .iter()
-                .find(|caller| caller.split_whitespace().count() != 1)
-            {
-                panic!("Command caller \"{caller}\" contains more than one word.");
-            }
-            Self {
-                f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
-                callers,
-            }
-        }
-
-        /// Executes the inner function if the `caller` matches any of
-        /// the callers in [`self`].
-        fn try_exec(&self, flags: Flags, args: Args<'_>) -> Result<Option<Text>> {
-            (self.f.write())(flags, args).map_err(Error::Failed)
-        }
-
-        /// The list of callers that will trigger this command.
-        fn callers(&self) -> &[String] {
-            &self.callers
-        }
-    }
-
-    unsafe impl Send for Command {}
-    unsafe impl Sync for Command {}
-
-    /// A list of [`Command`]s.
-    pub struct Commands {
-        inner: LazyLock<RwData<InnerCommands>>,
-        widget_getter: RwLock<MaybeUninit<RwData<dyn WidgetGetter>>>,
-    }
-
-    impl Commands {
-        /// Returns a new instance of [`Commands`].
-        pub const fn new() -> Self {
-            Self {
-                inner: LazyLock::new(|| {
-                    let inner = RwData::new(InnerCommands {
-                        list: Vec::new(),
-                        aliases: HashMap::new(),
-                    });
-
-                    let alias = {
-                        let inner = inner.clone();
-                        Command::new(["alias"], move |flags, mut args| {
-                            if !flags.is_empty() {
-                                Err(text!(
-                                    "An alias cannot take any flags, try moving them after the \
-                                     command, like \"alias my-alias my-caller --foo --bar\", \
-                                     instead of \"alias --foo --bar my-alias my-caller\""
-                                ))
-                            } else {
-                                let alias = args.next()?.to_string();
-                                let args: String = args.collect();
-
-                                inner
-                                    .write()
-                                    .try_alias(alias, args)
-                                    .map_err(Error::into_text)
-                            }
-                        })
-                    };
-
-                    let quit = {
-                        Command::new(["quit", "q"], move |_, _| {
-                            super::quit();
-                            Ok(None)
-                        })
-                    };
-
-                    inner.write().try_add(quit).unwrap();
-                    inner.write().try_add(alias).unwrap();
-
-                    inner
-                }),
-                widget_getter: RwLock::new(MaybeUninit::uninit()),
-            }
-        }
-
-        /// Runs the given command.
-        pub fn run(&self, args: impl ToString) -> Result<Option<Text>> {
-            let args = args.to_string();
-            let mut args = args.split_whitespace();
-            let caller = args.next().ok_or(Error::Empty)?;
-
-            let (call, command) = self.inner.inspect(|inner| {
-                let args: String = args.intersperse(" ").collect();
-
-                let (args, caller) = if let Some(command) = inner.aliases.get(caller) {
-                    let (caller, aliased_args) = command;
-
-                    let args: String = aliased_args
-                        .split_whitespace()
-                        .chain(args.split_whitespace())
-                        .collect();
-
-                    (args, caller.clone())
-                } else {
-                    (args, caller.to_string())
-                };
-
-                if let Some(command) = inner
-                    .list
-                    .iter()
-                    .find(|command| command.callers.contains(&caller))
-                {
-                    Ok((args, command.clone()))
-                } else {
-                    Err(Error::CallerNotFound(caller))
-                }
-            })?;
-
-            let (flags, args) = split_flags(call.split_whitespace());
-
-            Ok(command.try_exec(Flags(&flags), args).unwrap())
-        }
-
-        /// Add a new command to the [`self`].
-        pub fn add(
-            &self,
-            callers: impl IntoIterator<Item = impl ToString>,
-            f: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        ) -> Result<()> {
-            let command = Command::new(callers, f);
-            self.inner.write().try_add(command)
-        }
-
-        /// Adds a command that will try to affect the currently
-        /// active widget or file.
-        pub fn add_for_current<T: 'static>(
-            &self,
-            callers: impl IntoIterator<Item = impl ToString>,
-            mut f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
-        ) -> Result<()> {
-            let command = Command::new(callers, move |flags, args| {
-                let result =
-                    CURRENT_FILE.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
-
-                result
-                    .or_else(|| {
-                        CURRENT_WIDGET.mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone()))
-                    })
-                    .transpose()?
-                    .ok_or_else(|| {
-                        text!(
-                            "The current file has no related structs of type {}"
-                            { std::any::type_name::<T>() }
-                        )
-                    })
-            });
-
-            self.inner.write().try_add(command)
-        }
-
-        /// Adds a command that will look for a given widget, and then
-        /// mutate it and its area.
-        pub fn add_for_widget<W: PassiveWidget>(
-            &self,
-            callers: impl IntoIterator<Item = impl ToString>,
-            mut f: impl FnMut(&mut W, &dyn Area, Flags, Args) -> CmdResult + 'static,
-        ) -> Result<()> {
-            let widget_getter =
-                unsafe { self.widget_getter.read().unwrap().assume_init_ref().clone() };
-
-            let command = Command::new(callers, move |flags, args| {
-                CURRENT_FILE
-                    .mutate_related_widget::<W, CmdResult>(|widget, area| {
-                        f(widget, area, flags, args.clone())
-                    })
-                    .unwrap_or_else(|| {
-                        let widget_getter = widget_getter.read();
-                        CURRENT_WIDGET.inspect_data(|widget, _| {
-                            let widget = widget.clone().to_passive();
-                            if let Some((w, a)) =
-                                widget_getter.get_from_name(W::type_name(), &widget)
-                            {
-                                w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
-                                    .unwrap()
-                            } else {
-                                let name = W::type_name();
-                                Err(text!("No widget of type " [AccentErr] name [] " found"))
-                            }
-                        })
-                    })
-            });
-
-            self.inner.write().try_add(command)
-        }
-
-        /// Adds a [`WidgetGetter`] to [`self`].
-        pub fn add_widget_getter<U: Ui>(&self, getter: RwData<Vec<Window<U>>>) {
-            let inner_arc = getter.inner_arc().clone() as Arc<RwLock<dyn WidgetGetter>>;
-            let getter = RwData::new_unsized::<Window<U>>(inner_arc);
-            let mut lock = self.widget_getter.write().unwrap();
-            *lock = MaybeUninit::new(getter)
-        }
-
-        pub fn try_alias(
-            &self,
-            alias: impl ToString,
-            command: impl ToString,
-        ) -> Result<Option<Text>> {
-            self.inner.write().try_alias(alias, command)
-        }
-    }
-
-    struct InnerCommands {
-        list: Vec<Command>,
-        aliases: HashMap<String, (String, String)>,
-    }
-
-    impl InnerCommands {
-        /// Tries to add the given [`Command`] to the list.
-        fn try_add(&mut self, command: Command) -> Result<()> {
-            let mut new_callers = command.callers().iter();
-
-            let commands = self.list.iter();
-            for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
-                if new_callers.any(|new_caller| new_caller == caller) {
-                    return Err(Error::AlreadyExists(caller.clone()));
-                }
-            }
-
-            self.list.push(command);
-
-            Ok(())
-        }
-
-        /// Tries to alias a full command (caller, flags, and
-        /// arguments) to an alias.
-        fn try_alias(
-            &mut self,
-            alias: impl ToString,
-            command: impl ToString,
-        ) -> Result<Option<Text>> {
-            let alias = alias.to_string();
-            let command = command.to_string();
-            let mut command = command.split_whitespace();
-
-            if alias.split_whitespace().count() != 1 {
-                return Err(Error::NotSingleWord(alias));
-            }
-            let caller = command.next().ok_or(Error::Empty)?.to_string();
-
-            let mut callers = self.list.iter().flat_map(|cmd| cmd.callers.iter());
-
-            if callers.any(|name| *name == caller) {
-                let args = command.intersperse(" ").collect::<String>();
-                match self
-                    .aliases
-                    .insert(alias.clone(), (caller.clone(), args.clone()))
-                {
-                    Some((prev_caller, prev_args)) => Ok(Some(text!(
-                        "Aliased " [AccentOk] alias []
-                        " from " [AccentOk] prev_caller " " prev_args []
-                        " to " [AccentOk] caller " " args [] "."
-                    ))),
-                    None => Ok(Some(text!(
-                         "Aliased " [AccentOk] alias []
-                         " to " [AccentOk] caller " " args [] "."
-                    ))),
-                }
-            } else {
-                Err(Error::CallerNotFound(caller))
-            }
-        }
-    }
-
-    trait WidgetGetter: Send + Sync {
-        fn get_from_name(
-            &self,
-            type_id: &'static str,
-            arc: &dyn Data<dyn PassiveWidget>,
-        ) -> Option<(&RwData<dyn PassiveWidget>, &dyn Area)>;
-    }
-
-    impl<U> WidgetGetter for Vec<Window<U>>
-    where
-        U: Ui,
-    {
-        fn get_from_name(
-            &self,
-            type_name: &'static str,
-            widget: &dyn Data<dyn PassiveWidget>,
-        ) -> Option<(&RwData<dyn PassiveWidget>, &dyn Area)> {
-            let window = self
-                .iter()
-                .position(|w| w.widgets().any(|(cmp, _)| cmp.ptr_eq(widget)))
-                .unwrap();
-
-            let on_window = self[window].widgets();
-            let previous = self.iter().take(window).flat_map(|w| w.widgets());
-            let following = self.iter().skip(window + 1).flat_map(|w| w.widgets());
-
-            on_window
-                .chain(following)
-                .chain(previous)
-                .find(|(w, _)| w.type_name() == type_name)
-                .map(|(w, a)| (w.as_passive(), a as &dyn Area))
-        }
-    }
-
-    /// Takes the [`Flags`] from an [`Iterator`] of `args`.
-    fn split_flags(args: std::str::SplitWhitespace<'_>) -> (InnerFlags<'_>, Args<'_>) {
-        let mut short = String::new();
-        let mut long = Vec::new();
-
-        let mut args = args.peekable();
-        while let Some(arg) = args.peek() {
-            if let Some(flag_arg) = arg.strip_prefix("--") {
-                if !flag_arg.is_empty() {
-                    args.next();
-                    if !long.contains(&flag_arg) {
-                        long.push(flag_arg)
-                    }
-                } else {
-                    args.next();
-                    break;
-                }
-            } else if let Some(short_arg) = arg.strip_prefix('-') {
-                args.next();
-                for char in short_arg.chars() {
-                    if !short.contains(char) {
-                        short.push(char)
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        (InnerFlags { short, long }, Args { count: 0, args })
-    }
+/// Adds a widget getter to the globally accessible [`Commands`].
+pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
+    COMMANDS.add_widget_getter(getter);
 }
