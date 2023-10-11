@@ -396,7 +396,7 @@ where
         let windows = session.windows.clone();
 
         move |_, mut args| {
-            let file = args.next_or(text!("No path supplied."))?;
+            let file = args.next_else(text!("No path supplied."))?;
 
             let path = PathBuf::from(file);
             let name = path
@@ -441,7 +441,7 @@ where
         let windows = session.windows.clone();
 
         move |_, mut args| {
-            let file = args.next_or(text!("No path supplied."))?;
+            let file = args.next_else(text!("No path supplied."))?;
 
             let path = PathBuf::from(file);
             let name = path
@@ -482,7 +482,7 @@ where
         let current_window = session.current_window.clone();
 
         move |_, mut args| {
-            let type_name = args.next_or(text!("No widget supplied."))?;
+            let type_name = args.next_else(text!("No widget supplied."))?;
 
             let read_windows = windows.read();
             let window_index = current_window.load(Ordering::Acquire);

@@ -139,7 +139,7 @@
 //!     let source = args.next()?;
 //!     // You can return custom error messages in order to improve
 //!     // the feedback of failures when running the command.
-//!     let target_1 = args.next_or(text!("No target given."))?;
+//!     let target_1 = args.next_else(text!("No target given."))?;
 //!     // You can also parse the arguments of the caller to any
 //!     // type that implements `FromStr`:
 //!     let target_2 = args.next_as::<PathBuf>()?;
@@ -314,7 +314,7 @@ pub fn add(
 /// commands::add_for_current::<ModalEditor>(
 ///     ["set-mode"],
 ///     |modal, flags, mut args| {
-///         let mode = args.next_or(text!("No mode given"))?;
+///         let mode = args.next_else(text!("No mode given"))?;
 ///
 ///         match mode {
 ///             "normal" | "Normal" => modal.mode = Mode::Normal,
@@ -561,13 +561,51 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 /// [`commands`]: super
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// The non flag arguments that were passed to the caller.
+///
+/// The first argument not prefixed with a "`-`" or a "`--`" will turn
+/// all remaining arguments into non flag arguments, even if they have
+/// those prefixes.
+///
+/// ```rust
+/// # use parsec_core::commands::{split_flags};
+/// let command = "my-command --foo -bar notflag --foo --baz -abfgh";
+/// let mut args = command.split_whitespace();
+/// let _caller = args.next();
+/// let (flags, mut args) = split_flags(args);
+///
+/// assert!(flags.short("bar"));
+/// assert!(flags.long("foo"));
+/// assert_eq!(args.collect::<Vec<&str>>(), vec![
+///     "notflag", "--foo", "--baz", "-abfgh"
+/// ]);
+/// ```
+///
+/// You can also make that happen by introducing an empty "`--`"
+/// argument:
+///
+/// ```rust
+/// # use parsec_core::commands::{split_flags};
+/// let command = "my-command --foo -bar -- --foo --baz -abfgh";
+/// let mut args = command.split_whitespace();
+/// let _caller = args.next();
+/// let (flags, mut args) = split_flags(args);
+///
+/// assert!(flags.short("bar"));
+/// assert!(flags.long("foo"));
+/// assert_eq!(args.collect::<Vec<&str>>(), vec![
+///     "--foo", "--baz", "-abfgh"
+/// ]);
+/// ```
 #[derive(Clone)]
 pub struct Args<'a> {
     count: usize,
+    expected: Option<usize>,
     args: Peekable<SplitWhitespace<'a>>,
 }
 
 impl<'a> Args<'a> {
+    /// Returns the
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> std::result::Result<&str, Text> {
         match self.args.next() {
@@ -575,12 +613,17 @@ impl<'a> Args<'a> {
                 self.count += 1;
                 Ok(arg)
             }
-            None => Err(match self.count {
-                0 => text!("Received " [AccentErr] 0 [] " arguments."),
-                num => text!(
-                    "Expected " [AccentErr] { num + 1 } []
-                    "arguments, received " [AccentErr] num [] " instead."
-                ),
+            None => Err({
+                let expected = match self.expected {
+                    Some(expected) => text!([AccentErr] expected),
+                    None => text!("at least " [AccentErr] { self.count + 1 }),
+                };
+                let received = match self.count {
+                    0 => text!([AccentErr] "none"),
+                    count => text!([AccentErr] { count + 1 }),
+                };
+
+                text!("Expected " expected [] " arguments, got " received [] ".")
             }),
         }
     }
@@ -595,7 +638,7 @@ impl<'a> Args<'a> {
         })
     }
 
-    pub fn next_or(&mut self, text: Text) -> std::result::Result<&str, Text> {
+    pub fn next_else(&mut self, text: Text) -> std::result::Result<&str, Text> {
         match self.args.next() {
             Some(arg) => {
                 self.count += 1;
@@ -624,6 +667,10 @@ impl<'a> Args<'a> {
             B::from_iter(args)
         }
     }
+
+    pub fn set_expected(&mut self, expected: usize) {
+        self.expected = Some(expected);
+    }
 }
 
 /// A struct representing flags passed down to [`Command`]s when
@@ -646,7 +693,7 @@ impl<'a> Args<'a> {
 /// matter how many times they show up:
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags, Flags};
+/// # use parsec_core::commands::{split_flags};
 /// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
 /// let mut args = command.split_whitespace();
 /// let _caller = args.next();
@@ -662,7 +709,7 @@ impl<'a> Args<'a> {
 /// `"--"` after the flags, in order to distinguish them.
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags, Flags};
+/// # use parsec_core::commands::{split_flags};
 /// let command = "my-command --foo --bar -abcde -- --not-flag -also-not";
 /// let mut args = command.split_whitespace();
 /// args.next();
@@ -735,7 +782,7 @@ impl<'a, 'b> Flags<'a, 'b> {
     }
 }
 
-/// An failure in executing or adding a command.
+/// An error relating to commands in general.
 #[derive(Debug)]
 pub enum Error {
     NotSingleWord(String),
