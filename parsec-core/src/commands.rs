@@ -274,6 +274,16 @@ pub fn add(
     COMMANDS.add(callers, f)
 }
 
+/// Adds a command to an object "related" to the current [`File`]
+///
+/// This object can be one of three things, a [`PassiveWidget`], an
+/// [`InputMethod`], or the [`File`] itself. When the command is ran,
+/// Parsec will look at the currently active file for any instance of
+/// an [`RwData<Thing>`] it can find. Those will either be the file
+/// itself, or will be added in the [`Session`]'s "file_fn".
+///
+/// # Examples
+///
 /// ```rust
 /// # use parsec_core::{
 /// #     commands,
@@ -336,6 +346,10 @@ pub fn add(
 /// )
 /// .unwrap();
 /// ```
+///
+/// [`File`]: crate::widgets::File
+/// [`InputMethod`]: crate::input::InputMethod
+/// [`Session`]: crate::session::Session
 pub fn add_for_current<T: 'static>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
@@ -550,6 +564,7 @@ pub fn switch_to<W: ActiveWidget>() -> Result<Option<Text>> {
 /// If there are more arguments, they will be ignored.
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::buffer`]: crate::commands::buffer
 pub fn edit(file: impl Display) -> Result<Option<Text>> {
     COMMANDS.run(format!("edit {}", file))
 }
@@ -562,6 +577,7 @@ pub fn edit(file: impl Display) -> Result<Option<Text>> {
 /// If there are more arguments, they will be ignored.
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::edit`]: crate::commands::edit
 pub fn buffer(file: impl Display) -> Result<Option<Text>> {
     COMMANDS.run(format!("buffer {}", file))
 }
@@ -573,6 +589,7 @@ pub fn buffer(file: impl Display) -> Result<Option<Text>> {
 /// search, use [`commands::next_global_file`].
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::next_global_file`]: crate::commands::next_global_file
 pub fn next_file() -> Result<Option<Text>> {
     COMMANDS.run("next-file")
 }
@@ -584,6 +601,7 @@ pub fn next_file() -> Result<Option<Text>> {
 /// search, use [`commands::prev_global_file`].
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::prev_global_file`]: crate::commands::prev_global_file
 pub fn prev_file() -> Result<Option<Text>> {
     COMMANDS.run("prev-file")
 }
@@ -595,6 +613,7 @@ pub fn prev_file() -> Result<Option<Text>> {
 /// [`commands::next_file`].
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::next_file`]: crate::commands::next_file
 pub fn next_global_file() -> Result<Option<Text>> {
     COMMANDS.run("next-file --global")
 }
@@ -606,6 +625,7 @@ pub fn next_global_file() -> Result<Option<Text>> {
 /// [`commands::prev_file`].
 ///
 /// [`File`]: crate::widgets::File
+/// [`commands::prev_file`]: crate::commands::prev_file
 pub fn prev_global_file() -> Result<Option<Text>> {
     COMMANDS.run("prev-file --global")
 }
@@ -631,6 +651,11 @@ pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text
     COMMANDS.try_alias(alias, command)
 }
 
+/// The standard error that should be returned when [`run`]ning
+/// commands.
+///
+/// This error _must_ include an error message in case of failure. It
+/// may also include a success message, but that is not required.
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
 
 /// The non flag arguments that were passed to the caller.
@@ -1063,7 +1088,6 @@ impl std::error::Error for Error {}
 ///
 /// [`commands`]: super
 pub type Result<T> = std::result::Result<T, Error>;
-
 
 /// Adds a widget getter to the globally accessible [`Commands`].
 pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
