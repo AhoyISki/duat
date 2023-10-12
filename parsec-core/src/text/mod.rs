@@ -31,11 +31,17 @@ trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
 }
 
 /// The text in a given area.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Eq)]
 pub struct Text {
     rope: Rope,
     pub tags: Tags,
     cursor_marker: Marker,
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.rope == other.rope && self.tags == other.tags
+    }
 }
 
 // TODO: Properly implement _replacements.
@@ -185,8 +191,8 @@ impl Text {
         self.rope.insert(start, edit.as_ref());
 
         if edit_len != old.clone().count() {
-            let new = old.start..(old.start + edit_len);
-            self.tags.transform_range(old, new.end);
+            let new_end = old.start + edit_len;
+            self.tags.transform_range(old, new_end);
         }
     }
 
@@ -194,8 +200,8 @@ impl Text {
         self.tags.iter_at(0)
     }
 
-    pub fn get_from_char(&self, char: usize) -> Option<(usize, TagOrSkip)> {
-        self.tags.get_from_pos(char)
+    pub fn get_from_char(&self, pos: usize) -> Option<(usize, TagOrSkip)> {
+        self.tags.get_from_pos(pos)
     }
 
     pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
@@ -206,16 +212,16 @@ impl Text {
         self.rope.chars_at(0)
     }
 
-    pub fn chars_at(&self, ch_index: usize) -> impl Iterator<Item = char> + Clone + '_ {
-        self.rope.chars_at(ch_index)
+    pub fn chars_at(&self, pos: usize) -> impl Iterator<Item = char> + Clone + '_ {
+        self.rope.chars_at(pos)
     }
 
-    pub fn insert(&mut self, char: usize, tag: Tag, marker: Marker) {
-        self.tags.insert(char, tag, marker);
+    pub fn insert_tag(&mut self, pos: usize, tag: Tag, marker: Marker) {
+        self.tags.insert(pos, tag, marker);
     }
 
-    pub fn remove_on(&mut self, ch_index: usize, markers: impl Markers) {
-        self.tags.remove_on(ch_index, markers)
+    pub fn remove_on(&mut self, pos: usize, markers: impl Markers) {
+        self.tags.remove_on(pos, markers)
     }
 }
 
@@ -322,10 +328,10 @@ impl Builder {
         self.text
     }
 
-    pub fn push_str(&mut self, str: impl AsRef<str>) {
-        let range = self.text.len_chars()..self.text.len_chars();
-        let change = Change::new(str.as_ref(), range, &self.text);
-        self.text.apply_change(&change);
+    pub fn push_str(&mut self, display: impl Display) {
+        self.buffer.clear();
+        write!(self.buffer, "{}", display).unwrap();
+        self.text.insert_str(self.text.len_chars(), &self.buffer)
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
@@ -348,9 +354,44 @@ impl Builder {
         self.text.tags.insert(len_chars, tag, self.marker)
     }
 
-    pub fn push_text(&mut self, text: Text) {
+    pub fn push_text(&mut self, mut text: Text) {
+        let end = self.text.len_chars();
+        self.text
+            .tags
+            .transform_range(end..end, end + text.len_chars());
         self.text.rope.append(text.rope);
-        self.text.tags.append(text.tags);
+        self.text.tags.toggles.extend(text.tags.toggles.drain());
+        self.text.tags.texts.extend(text.tags.texts.drain());
+
+        for entry in text.tags.iter_at(0) {
+            let (pos, tag): (usize, RawTag) = entry;
+
+            let last_inverted = match (tag, &self.last_form, &self.last_align) {
+                (RawTag::PushForm(_, id), ..) => self.last_form.replace(Tag::PopForm(id)),
+                (RawTag::StartAlignLeft(_), ..) => self.last_align.replace(Tag::EndAlignLeft),
+                (RawTag::StartAlignCenter(_), ..) => self.last_align.replace(Tag::EndAlignCenter),
+                (RawTag::StartAlignRight(_), ..) => self.last_align.replace(Tag::EndAlignRight),
+
+                // If the text already had the ending tags, don't duplicate them.
+                (RawTag::PopForm(_, lhs), Some(Tag::PopForm(rhs)), _) if lhs == *rhs => {
+                    self.last_form = None;
+                    None
+                }
+                (RawTag::EndAlignLeft(_), _, Some(Tag::EndAlignLeft))
+                | (RawTag::EndAlignCenter(_), _, Some(Tag::EndAlignCenter))
+                | (RawTag::EndAlignRight(_), _, Some(Tag::EndAlignRight)) => {
+                    self.last_align = None;
+                    None
+                }
+                _ => None,
+            };
+
+            if let Some(tag) = last_inverted {
+                self.text.tags.insert(end + pos, tag, self.marker);
+            }
+
+            self.text.tags.insert_raw(end + pos, tag);
+        }
     }
 
     pub fn push_part<D: Display>(&mut self, part: BuilderPart<D>) {
@@ -359,11 +400,7 @@ impl Builder {
             BuilderPart::Tag(tag) => {
                 self.push_tag(tag);
             }
-            BuilderPart::ToString(to_string) => {
-                self.buffer.clear();
-                write!(self.buffer, "{}", to_string).unwrap();
-                self.text.insert_str(self.text.len_chars(), &self.buffer)
-            }
+            BuilderPart::ToString(display) => self.push_str(display),
         }
     }
 

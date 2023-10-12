@@ -605,7 +605,38 @@ pub struct Args<'a> {
 }
 
 impl<'a> Args<'a> {
-    /// Returns the
+    /// Returns the next argument, if there is one.
+    ///
+    /// Since this method is supposed to be used inside of a command,
+    /// it returns an error that can easily be returned by `?`,
+    /// exiting the function with an appropriate error message,
+    /// formated to be shown somewhere in the editor.
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags}, text::text};
+    /// let command = "run away i'll kill you 👹";
+    /// let mut args = command.split_whitespace();
+    /// let _caller = args.next();
+    /// let (flags, mut args) = split_flags(args);
+    /// args.next();
+    /// args.next();
+    /// args.next();
+    /// args.next();
+    ///
+    /// let ogre = args.next();
+    /// assert_eq!(ogre, Ok("👹"));
+    ///
+    /// println!("error\n");
+    /// let error = args.next();
+    /// 
+    /// println!("error_msg\n");
+    /// let error_msg = text!(
+    ///     "Expected at least " [AccentErr] 6 []
+    ///     " arguments, got " [AccentErr] 5 [] "." 
+    /// );
+    /// assert_eq!(error, Err(error_msg));
+    ///
+    /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> std::result::Result<&str, Text> {
         match self.args.next() {
@@ -620,7 +651,7 @@ impl<'a> Args<'a> {
                 };
                 let received = match self.count {
                     0 => text!([AccentErr] "none"),
-                    count => text!([AccentErr] { count + 1 }),
+                    count => text!([AccentErr] count),
                 };
 
                 text!("Expected " expected [] " arguments, got " received [] ".")

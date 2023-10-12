@@ -21,23 +21,23 @@ pub enum Tag {
     /// Places an extra cursor.
     ExtraCursor,
 
-    /// Starts aligning to the left, should happen at the beginning of the next
-    /// line, if in the middle of a line.
+    /// Starts aligning to the left, should happen at the beginning of
+    /// the next line, if in the middle of a line.
     StartAlignLeft,
-    /// Ends alignment to the left, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the left, returning to the usual alignment
+    /// (by default, left).
     EndAlignLeft,
-    /// Starts aligning to the center, should happen at the beginning of the
-    /// next line, if in the middle of a line.
+    /// Starts aligning to the center, should happen at the beginning
+    /// of the next line, if in the middle of a line.
     StartAlignCenter,
-    /// Ends alignment to the center, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the center, returning to the usual alignment
+    /// (by default, left).
     EndAlignCenter,
-    /// Starts aligning to the right, should happen at the beginning of the next
-    /// line, if in the middle of a line.
+    /// Starts aligning to the right, should happen at the beginning
+    /// of the next line, if in the middle of a line.
     StartAlignRight,
-    /// Ends alignment to the right, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the right, returning to the usual alignment
+    /// (by default, left).
     EndAlignRight,
 
     GhostText(Text),
@@ -109,23 +109,23 @@ pub enum RawTag {
     /// Places an extra cursor.
     ExtraCursor(Marker),
 
-    /// Starts aligning to the left, should happen at the beginning of the next
-    /// line, if in the middle of a line.
+    /// Starts aligning to the left, should happen at the beginning of
+    /// the next line, if in the middle of a line.
     StartAlignLeft(Marker),
-    /// Ends alignment to the left, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the left, returning to the usual alignment
+    /// (by default, left).
     EndAlignLeft(Marker),
-    /// Starts aligning to the center, should happen at the beginning of the
-    /// next line, if in the middle of a line.
+    /// Starts aligning to the center, should happen at the beginning
+    /// of the next line, if in the middle of a line.
     StartAlignCenter(Marker),
-    /// Ends alignment to the center, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the center, returning to the usual alignment
+    /// (by default, left).
     EndAlignCenter(Marker),
-    /// Starts aligning to the right, should happen at the beginning of the next
-    /// line, if in the middle of a line.
+    /// Starts aligning to the right, should happen at the beginning
+    /// of the next line, if in the middle of a line.
     StartAlignRight(Marker),
-    /// Ends alignment to the right, returning to the usual alignment (by
-    /// default, left).
+    /// Ends alignment to the right, returning to the usual alignment
+    /// (by default, left).
     EndAlignRight(Marker),
 
     // In the process of implementing.
@@ -211,6 +211,20 @@ impl RawTag {
                 | RawTag::EndAlignRight(_)
                 | RawTag::ToggleEnd(..)
                 | RawTag::ConcealEnd(_)
+        )
+    }
+
+    pub fn is_start_align(&self) -> bool {
+        matches!(
+            self,
+            RawTag::StartAlignLeft(_) | RawTag::StartAlignCenter(_) | RawTag::StartAlignRight(_)
+        )
+    }
+
+    pub fn is_end_align(&self) -> bool {
+        matches!(
+            self,
+            RawTag::EndAlignLeft(_) | RawTag::EndAlignCenter(_) | RawTag::EndAlignRight(_)
         )
     }
 

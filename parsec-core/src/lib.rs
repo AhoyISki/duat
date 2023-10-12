@@ -3,6 +3,7 @@
     lazy_cell,
     extract_if,
     iter_intersperse,
+    iter_order_by,
     result_option_inspect,
     trait_upcasting,
     let_chains,
