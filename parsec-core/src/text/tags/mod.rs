@@ -174,7 +174,6 @@ impl Tags {
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
-        println!("{:#?}", self);
         // In case we're appending to the rope, a shortcut can be made.
         let Some((start, t_or_s)) = self.get_from_pos(old.start) else {
             let skip = TagOrSkip::Skip(new_end - old.end);
@@ -182,8 +181,6 @@ impl Tags {
             self.merge_surrounding_skips(old.start);
             return;
         };
-
-        println!("{:#?}, {:?}, {new_end}", (start, t_or_s), old);
 
         let new = old.start..new_end;
 

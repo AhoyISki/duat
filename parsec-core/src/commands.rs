@@ -205,7 +205,7 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
-pub use self::inner::split_flags;
+pub use self::inner::split_flags_and_args;
 use self::inner::{Commands, InnerFlags};
 use crate::{
     data::RwData,
@@ -567,12 +567,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// all remaining arguments into non flag arguments, even if they have
 /// those prefixes.
 ///
+/// # Examples
+///
 /// ```rust
-/// # use parsec_core::commands::{split_flags};
-/// let command = "my-command --foo -bar notflag --foo --baz -abfgh";
-/// let mut args = command.split_whitespace();
-/// let _caller = args.next();
-/// let (flags, mut args) = split_flags(args);
+/// # use parsec_core::commands::{split_flags_and_args};
+/// let call = "command --foo -bar notflag --foo --baz -abfgh";
+/// let (flags, mut args) = split_flags_and_args(call);
 ///
 /// assert!(flags.short("bar"));
 /// assert!(flags.long("foo"));
@@ -585,11 +585,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// argument:
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags};
-/// let command = "my-command --foo -bar -- --foo --baz -abfgh";
-/// let mut args = command.split_whitespace();
-/// let _caller = args.next();
-/// let (flags, mut args) = split_flags(args);
+/// # use parsec_core::commands::{split_flags_and_args};
+/// let call = "command --foo -bar -- --foo --baz -abfgh";
+/// let (flags, mut args) = split_flags_and_args(call);
 ///
 /// assert!(flags.short("bar"));
 /// assert!(flags.long("foo"));
@@ -612,12 +610,12 @@ impl<'a> Args<'a> {
     /// exiting the function with an appropriate error message,
     /// formated to be shown somewhere in the editor.
     ///
+    /// # Examples
+    ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags}, text::text};
-    /// let command = "run away i'll kill you 👹";
-    /// let mut args = command.split_whitespace();
-    /// let _caller = args.next();
-    /// let (flags, mut args) = split_flags(args);
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "run away i'll kill you 👹";
+    /// let (flags, mut args) = split_flags_and_args(call);
     /// args.next();
     /// args.next();
     /// args.next();
@@ -626,16 +624,13 @@ impl<'a> Args<'a> {
     /// let ogre = args.next();
     /// assert_eq!(ogre, Ok("👹"));
     ///
-    /// println!("error\n");
     /// let error = args.next();
-    /// 
-    /// println!("error_msg\n");
+    ///
     /// let error_msg = text!(
     ///     "Expected at least " [AccentErr] 6 []
-    ///     " arguments, got " [AccentErr] 5 [] "." 
+    ///     " arguments, got " [AccentErr] 5 [] "."
     /// );
     /// assert_eq!(error, Err(error_msg));
-    ///
     /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> std::result::Result<&str, Text> {
@@ -659,6 +654,32 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// Attempts to parse the next argument, if there is one.
+    ///
+    /// This method will return an [`Err`] in two different ways,
+    /// either there is no next argument, in which it defers to the
+    /// error message of [`Args::next`], or the parsing fails, then it
+    /// returns a custom built error message for that type.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "int-and-float 42 non-float-arg";
+    /// let (flags, mut args) = split_flags_and_args(call);
+    ///
+    /// let int = args.next_as::<usize>();
+    /// assert_eq!(int, Ok(42));
+    ///
+    /// let float = args.next_as::<f32>();
+    /// let error_msg = text!(
+    ///     "Couldn't convert " [AccentErr] "non-float-arg" []
+    ///     " to " [AccentErr] "f32" [] "."
+    /// );
+    /// assert_eq!(float, Err(error_msg));
+    /// ```
+    ///
+    /// [`Args::next`]: Args::next
     pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
         let arg = self.next()?;
         arg.parse().map_err(|_| {
@@ -669,6 +690,32 @@ impl<'a> Args<'a> {
         })
     }
 
+    /// Returns the next argument, if there is one, otherwise, returns
+    /// a custom error message.
+    ///
+    /// This method will replace the usual "not enough arguments"
+    /// error message from the [`Args::next`] method by a [`Text`]
+    /// provided by the user itself, usually with the [`text`] macro.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "expects-2-and-file arg-1 not-quite";
+    /// let (flags, mut args) = split_flags_and_args(call);
+    ///
+    /// let first = args.next();
+    /// assert_eq!(first, Ok("arg-1"));
+    ///
+    /// let second = args.next();
+    /// assert_eq!(second, Ok("not-quite"));
+    ///
+    /// let msg = text!("I expected a " [Wack] "file" [] ", damnit!");
+    /// let float = args.next_else(msg.clone());
+    /// assert_eq!(float, Err(msg));
+    /// ```
+    ///
+    /// [`Args::next`]: Args::next
     pub fn next_else(&mut self, text: Text) -> std::result::Result<&str, Text> {
         match self.args.next() {
             Some(arg) => {
@@ -679,6 +726,32 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// Optional function to return an error message in case there are
+    /// more arguments than expected.
+    ///
+    /// This is an optional function, in case you want to complain if
+    /// the user passes too many arguments. Of course, you could just
+    /// ignore them.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "just-1-arg,man arg-1 too-many";
+    /// let (flags, mut args) = split_flags_and_args(call);
+    ///
+    /// let first = args.next();
+    /// assert_eq!(first, Ok("arg-1"));
+    ///
+    /// let second = args.next();
+    /// assert_eq!(second, Ok("not-quite"));
+    ///
+    /// let msg = text!("I expected a " [Wack] "file" [] ", damnit!");
+    /// let float = args.next_else(msg.clone());
+    /// assert_eq!(float, Err(msg));
+    /// ```
+    ///
+    /// [`Args::next`]: Args::next
     pub fn ended(&mut self) -> std::result::Result<(), Text> {
         match self.args.next() {
             Some(_) => Err(text!(
@@ -724,14 +797,12 @@ impl<'a> Args<'a> {
 /// matter how many times they show up:
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags};
-/// let command = "my-command --foo --bar -abcde --foo --baz -abfgh arg1";
-/// let mut args = command.split_whitespace();
-/// let _caller = args.next();
-/// let (flags, mut args) = split_flags(args);
+/// # use parsec_core::commands::{split_flags_and_args};
+/// let call = "my-command --foo -abcde --foo --bar -abfgh arg1";
+/// let (flags, mut args) = split_flags_and_args(call);
 ///
 /// assert!(flags.short("abcdefgh"));
-/// assert!(flags.long("foo") && flags.long("bar") && flags.long("baz"));
+/// assert!(flags.long("foo") && flags.long("bar"));
 /// assert_eq!(args.collect::<Vec<&str>>(), vec!["arg1"]);
 /// ```
 ///
@@ -740,15 +811,13 @@ impl<'a> Args<'a> {
 /// `"--"` after the flags, in order to distinguish them.
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags};
-/// let command = "my-command --foo --bar -abcde -- --not-flag -also-not";
-/// let mut args = command.split_whitespace();
-/// args.next();
-/// let (flags, mut args) = split_flags(args);
+/// # use parsec_core::commands::{split_flags_and_args};
+/// let call = "command --foo --bar -abcde -- --!flag -also-not";
+/// let (flags, mut args) = split_flags_and_args(call);
 ///
 /// assert!(flags.short("abcde"));
 /// assert!(flags.long("foo") && flags.long("bar"));
-/// assert_eq!(args.collect::<Vec<&str>>(), vec!["--not-flag", "-also-not"])
+/// assert_eq!(args.collect::<String>(), "--!flag -also-not")
 /// ```
 #[derive(Clone, Copy)]
 pub struct Flags<'a, 'b>(&'a InnerFlags<'b>);
@@ -759,11 +828,9 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags;
-    /// let command = "run -abcdefgh -ablk args -wz";
-    /// let mut args = command.split_whitespace();
-    /// let _caller = args.next();
-    /// let (flags, mut args) = split_flags(args);
+    /// # use parsec_core::commands::split_flags_and_args;
+    /// let call = "run -abcdefgh -ablk args -wz";
+    /// let (flags, mut args) = split_flags_and_args(call);
     ///
     /// assert!(flags.short("k"));
     /// assert!(!flags.short("w"));
@@ -778,15 +845,13 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags;
-    /// let command = "run --foo --bar args --baz";
-    /// let mut args = command.split_whitespace();
-    /// let _caller = args.next();
-    /// let (flags, mut args) = split_flags(args);
+    /// # use parsec_core::commands::split_flags_and_args;
+    /// let call = "run --foo --bar args --baz";
+    /// let (flags, mut args) = split_flags_and_args(call);
     ///
     /// assert!(flags.long("foo"));
     /// assert!(!flags.long("baz"));
-    /// assert_eq!(args.collect::<Vec<&str>>(), vec!["args", "--baz"]);
+    /// assert_eq!(&args.collect::<String>(), "args --baz");
     /// ```
     pub fn long(&self, flag: impl AsRef<str>) -> bool {
         self.0.long(flag)
@@ -797,11 +862,9 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags;
-    /// let command = "run arg1 --foo --bar arg2 -baz";
-    /// let mut args = command.split_whitespace();
-    /// let _caller = args.next();
-    /// let (flags, mut args) = split_flags(args);
+    /// # use parsec_core::commands::split_flags_and_args;
+    /// let call = "run arg1 --foo --bar arg2 -baz";
+    /// let (flags, mut args) = split_flags_and_args(call);
     ///
     /// assert!(flags.is_empty());
     /// assert_eq!(args.collect::<Vec<&str>>(), vec![
