@@ -625,7 +625,6 @@ impl<'a> Args<'a> {
     /// assert_eq!(ogre, Ok("👹"));
     ///
     /// let error = args.next();
-    ///
     /// let error_msg = text!(
     ///     "Expected at least " [AccentErr] 6 []
     ///     " arguments, got " [AccentErr] 5 [] "."
@@ -644,12 +643,13 @@ impl<'a> Args<'a> {
                     Some(expected) => text!([AccentErr] expected),
                     None => text!("at least " [AccentErr] { self.count + 1 }),
                 };
-                let received = match self.count {
-                    0 => text!([AccentErr] "none"),
-                    count => text!([AccentErr] count),
+                let (args, received) = match self.count {
+                    0 => (" arguments", text!([AccentErr] "none")),
+                    1 => (" argument", text!([AccentErr] 1)),
+                    count => (" arguments", text!([AccentErr] count)),
                 };
 
-                text!("Expected " expected [] " arguments, got " received [] ".")
+                text!("Expected " expected [] args ", got " received [] ".")
             }),
         }
     }
@@ -737,31 +737,58 @@ impl<'a> Args<'a> {
     ///
     /// ```rust
     /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "just-1-arg,man arg-1 too-many";
+    /// let call = "just-1-arg,man arg-1 too-many wayy tooo many";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
     /// let first = args.next();
     /// assert_eq!(first, Ok("arg-1"));
     ///
-    /// let second = args.next();
-    /// assert_eq!(second, Ok("not-quite"));
-    ///
-    /// let msg = text!("I expected a " [Wack] "file" [] ", damnit!");
-    /// let float = args.next_else(msg.clone());
-    /// assert_eq!(float, Err(msg));
+    /// let error = args.ended();
+    /// let msg = text!(
+    ///     "Expected " [AccentErr] 1 []
+    ///     " argument, received " [AccentErr] 5 [] " instead."
+    /// );
+    /// assert_eq!(error, Err(msg));
     /// ```
     ///
     /// [`Args::next`]: Args::next
     pub fn ended(&mut self) -> std::result::Result<(), Text> {
-        match self.args.next() {
-            Some(_) => Err(text!(
-                "Expected " [AccentErr] { self.count } []
-                "arguments, received " [AccentErr] { self.count + 1 } [] " instead."
-            )),
-            None => Ok(()),
+        match self.args.clone().count() {
+            0 => Ok(()),
+            count => Err({
+                let args = match self.count == 1 {
+                    true => " argument",
+                    false => " arguments",
+                };
+                text!(
+                    "Expected " [AccentErr] { self.count } [] args
+                    ", received " [AccentErr] { self.count + count } [] " instead."
+                )
+            }),
         }
     }
 
+    /// Collects the remaining arguments.
+    ///
+    /// This is similar to any [`Iterator::collect`], but it will
+    /// collect differently depending on what struct is being used.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "runner arg1 arg2 arg3 arg4";
+    /// let (flags, mut args) = split_flags_and_args(call);
+    ///
+    /// let vector: Vec<&str> = args.clone().collect();
+    /// assert_eq!(vector, vec!["arg1", "arg2", "arg3", "arg4"]);
+    ///
+    /// // In strings, the arguments are joined by a " ".
+    /// let string: String = args.collect();
+    /// assert_eq!(&string, "arg1 arg2 arg3 arg4");
+    /// ```
+    ///
+    /// [`Args::next`]: Args::next
     pub fn collect<B: FromIterator<&'a str> + 'static>(&mut self) -> B {
         let args: Vec<&str> = (&mut self.args).collect();
 
@@ -772,6 +799,34 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// Sets an expected value for the number of arguments.
+    ///
+    /// This will change the default [`Args::next`] error message, so
+    /// that it shows how many arguments were actually expected.
+    ///
+    /// The reason why this method is here, instead of the command's
+    /// creator being able to set a specified number of arguments per
+    /// command when creating the given command, is because the number
+    /// of arguments to any given command may vary, depending on the
+    /// specifics of said command's implementation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// let call = "expects-5 arg1 arg2 ";
+    /// let (flags, mut args) = split_flags_and_args(call);
+    /// args.set_expected(5);
+    /// args.next();
+    /// args.next();
+    ///
+    /// let error = args.next();
+    /// let error_msg = text!(
+    ///     "Expected " [AccentErr] 5 []
+    ///     " arguments, got " [AccentErr] 2 [] "."
+    /// );
+    /// assert_eq!(error, Err(error_msg));
+    /// ```
     pub fn set_expected(&mut self, expected: usize) {
         self.expected = Some(expected);
     }
