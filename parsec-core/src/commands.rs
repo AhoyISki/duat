@@ -201,6 +201,7 @@
 use std::sync::atomic::Ordering;
 use std::{
     any::TypeId,
+    fmt::Display,
     iter::Peekable,
     str::{FromStr, SplitWhitespace},
 };
@@ -345,7 +346,7 @@ pub fn add_for_current<T: 'static>(
 /// Adds a command that can mutate a widget of the given type,
 /// along with its associated [`dyn Area`].
 ///
-/// This command will look for the given [`PassiveWidget`] in the
+/// This command will look for the [`PassiveWidget`] in the
 /// following order:
 ///
 /// 1. Any instance that is "related" to the currently active
@@ -509,7 +510,7 @@ pub fn add_for_widget<Widget: PassiveWidget>(
 ///
 /// [`CommandLine`]: crate::widgets::CommandLine
 /// [`commands::add_for_widget`]: crate::commands::add_for_widget
-pub fn run(command: impl ToString) -> Result<Option<Text>> {
+pub fn run(command: impl Display) -> Result<Option<Text>> {
     COMMANDS.run(command)
 }
 
@@ -523,22 +524,100 @@ pub fn quit() {
     SHOULD_QUIT.store(true, Ordering::Release);
 }
 
+/// Switches to the given [`ActiveWidget`].
+///
+/// The widget will be chosen in the following order:
+///
+/// 1. Any instance that is "related" to the currently active
+///    [`File`], that is, any widgets that were added during the
+///    [`Session`]'s "`file_fn`".
+/// 2. Other widgets in the currently active window, related or not to
+///    any given [`File`].
+/// 3. Any instance of the [`PassiveWidget`] that is found in other
+///    windows, looking first at windows ahead.
+///
+/// [`File`]: crate::widgets::File
+/// [`Session`]: crate::session::Session
 pub fn switch_to<W: ActiveWidget>() -> Result<Option<Text>> {
     COMMANDS.run(format!("switch-to {}", W::type_name()))
 }
 
-pub fn buffer(file: impl AsRef<str>) -> Result<Option<Text>> {
-    COMMANDS.run(format!("buffer {}", file.as_ref()))
+/// Switches to/opens a [`File`] with the given name.
+///
+/// If you wish to specifically switch to files that are already open,
+/// use [`commands::buffer`].
+///
+/// If there are more arguments, they will be ignored.
+///
+/// [`File`]: crate::widgets::File
+pub fn edit(file: impl Display) -> Result<Option<Text>> {
+    COMMANDS.run(format!("edit {}", file))
 }
 
+/// Switches to a [`File`] with the given name.
+///
+/// If there is no file open with that name, does nothing. Use
+/// [`commands::edit`] if you wish to open files.
+///
+/// If there are more arguments, they will be ignored.
+///
+/// [`File`]: crate::widgets::File
+pub fn buffer(file: impl Display) -> Result<Option<Text>> {
+    COMMANDS.run(format!("buffer {}", file))
+}
+
+/// Switches to the next [`File`].
+///
+/// This function will only look at files that are opened in the
+/// current window. If you want to include other windows in the
+/// search, use [`commands::next_global_file`].
+///
+/// [`File`]: crate::widgets::File
 pub fn next_file() -> Result<Option<Text>> {
     COMMANDS.run("next-file")
 }
 
+/// Switches to the previous [`File`].
+///
+/// This function will only look at files that are opened in the
+/// current window. If you want to include other windows in the
+/// search, use [`commands::prev_global_file`].
+///
+/// [`File`]: crate::widgets::File
 pub fn prev_file() -> Result<Option<Text>> {
     COMMANDS.run("prev-file")
 }
 
+/// Switches to the next [`File`].
+///
+/// This function will look for files in all windows. If you want to
+/// limit the search to just the current window, use
+/// [`commands::next_file`].
+///
+/// [`File`]: crate::widgets::File
+pub fn next_global_file() -> Result<Option<Text>> {
+    COMMANDS.run("next-file --global")
+}
+
+/// Switches to the previous [`File`].
+///
+/// This function will look for files in all windows. If you want to
+/// limit the search to just the current window, use
+/// [`commands::prev_file`].
+///
+/// [`File`]: crate::widgets::File
+pub fn prev_global_file() -> Result<Option<Text>> {
+    COMMANDS.run("prev-file --global")
+}
+
+/// If not in a [`File`], switches to the last active [`File`].
+///
+/// This is useful if the currently active widget is not a file (e.g.
+/// [`CommandLine`], a file tree, etc), and you want to return to the
+/// file seamlessly.
+///
+/// [`File`]: crate::widgets::File
+/// [`CommandLine`]: crate::widgets::CommandLine
 pub fn return_to_file() -> Result<Option<Text>> {
     COMMANDS.run("return-to-file")
 }
@@ -552,14 +631,7 @@ pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text
     COMMANDS.try_alias(alias, command)
 }
 
-impl std::error::Error for Error {}
-
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
-
-/// The standard result for [`commands`] operations.
-///
-/// [`commands`]: super
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// The non flag arguments that were passed to the caller.
 ///
@@ -984,6 +1056,14 @@ impl std::fmt::Display for Error {
         }
     }
 }
+
+impl std::error::Error for Error {}
+
+/// The standard result for [`commands`] operations.
+///
+/// [`commands`]: super
+pub type Result<T> = std::result::Result<T, Error>;
+
 
 /// Adds a widget getter to the globally accessible [`Commands`].
 pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
