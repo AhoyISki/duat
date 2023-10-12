@@ -1031,31 +1031,31 @@ impl<'a, 'b> Flags<'a, 'b> {
 /// An error relating to commands in general.
 #[derive(Debug)]
 pub enum Error {
-    NotSingleWord(String),
-    AlreadyExists(String),
+    /// An alias wasn't just a single word.
+    AliasNotSingleWord(String),
+    /// The caller for a command already pertains to another.
+    CallerAlreadyExists(String),
+    /// No commands have the given caller as one of their own.
     CallerNotFound(String),
-    Failed(Text),
-    WrongArgCount(usize, usize),
+    /// The command failed internally.
+    CommandFailed(Text),
+    /// There was no caller and no arguments.
     Empty,
 }
 
 impl Error {
     fn into_text(self) -> Text {
         match self {
-            Error::NotSingleWord(caller) => text!(
+            Error::AliasNotSingleWord(caller) => text!(
                 "The caller " [AccentErr] caller [] "is not a single word."
             ),
-            Error::AlreadyExists(caller) => text!(
+            Error::CallerAlreadyExists(caller) => text!(
                 "The caller " [AccentErr] caller [] "already exists."
             ),
             Error::CallerNotFound(caller) => text!(
                 "The caller " [AccentErr] caller [] "was not found."
             ),
-            Error::Failed(failure) => failure,
-            Error::WrongArgCount(needed, got) => text!(
-                "Wrong argument count, needed " [AccentErr] needed []
-                " and got " [AccentErr] got [] "."
-            ),
+            Error::CommandFailed(failure) => failure,
             Error::Empty => text!("The command is empty."),
         }
     }
@@ -1064,19 +1064,16 @@ impl Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::NotSingleWord(caller) => {
+            Error::AliasNotSingleWord(caller) => {
                 write!(f, "The caller \"{caller}\" is not a single word")
             }
-            Error::AlreadyExists(caller) => {
+            Error::CallerAlreadyExists(caller) => {
                 write!(f, "The caller \"{caller}\" already exists.")
             }
             Error::CallerNotFound(caller) => {
                 write!(f, "The caller \"{caller}\" was not found.")
             }
-            Error::Failed(failure) => f.write_str(&failure.chars().collect::<String>()),
-            Error::WrongArgCount(needed, got) => {
-                write!(f, "Wrong argument count, needed {needed} and got {got}.")
-            }
+            Error::CommandFailed(failure) => f.write_str(&failure.chars().collect::<String>()),
             Error::Empty => f.write_str("The command is empty"),
         }
     }
