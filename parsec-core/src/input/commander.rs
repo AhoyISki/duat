@@ -26,7 +26,7 @@ impl InputMethod for Commander {
     type Widget = CommandLine;
 
     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
-        let mut editor = MultiCursorEditor::no_history(widget, &mut self.cursors, area);
+        let mut editor = MultiCursorEditor::new(widget, &mut self.cursors, area);
 
         match key {
             key!(KeyCode::Backspace) => {

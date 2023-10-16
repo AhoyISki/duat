@@ -14,6 +14,7 @@
     step_trait,
     type_alias_impl_trait,
 )]
+#![doc = include_str!("../README.md")]
 
 use std::sync::atomic::AtomicBool;
 
@@ -34,7 +35,7 @@ pub mod prelude {
     pub use crate::{
         commands,
         palette::{self, CursorStyle, Form},
-        session::Session,
+        session::{Session, SessionCfg},
         text::{text, PrintCfg},
         widgets::{
             main_byte, main_char, main_col, main_line, selections, selections_fmt, status,

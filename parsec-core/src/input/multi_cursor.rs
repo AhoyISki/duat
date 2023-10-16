@@ -6,7 +6,7 @@ use crate::{
     position::{Cursor, Point},
     text::{PrintCfg, Text},
     ui::Area,
-    widgets::ActiveWidget,
+    widgets::{ActiveWidget, File, PassiveWidget},
 };
 
 #[derive(Clone, Debug)]
@@ -76,7 +76,7 @@ impl Default for Cursors {
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
-pub struct MultiCursorEditor<'a, H, W, A>
+pub struct MultiCursorEditor<'a, W, A>
 where
     W: ActiveWidget + 'static,
     A: Area,
@@ -85,139 +85,88 @@ where
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
     area: &'a A,
-    history: Option<&'a mut History>,
-    _h: std::marker::PhantomData<H>,
 }
 
-impl<'a, W, A> MultiCursorEditor<'a, WithHistory, W, A>
+impl<'a, W, A> MultiCursorEditor<'a, W, A>
 where
     W: ActiveWidget + 'static,
     A: Area,
 {
-    pub fn with_history(
-        widget: &'a RwData<W>,
-        cursors: &'a mut Cursors,
-        area: &'a A,
-        history: &'a mut History,
-    ) -> Self {
+    pub fn new(widget: &'a RwData<W>, cursors: &'a mut Cursors, area: &'a A) -> Self {
         MultiCursorEditor {
             clearing_needed: false,
             widget,
             cursors,
             area,
-            history: Some(history),
-            _h: std::marker::PhantomData,
-        }
-    }
-
-    /// Begins a new [`Moment`][crate::history::Moment].
-    pub fn new_moment(&mut self) {
-        self.history.as_mut().unwrap().new_moment()
-    }
-
-    /// Undoes the last [`Moment`][crate::history::Moment].
-    pub fn undo(&mut self) {
-        let mut widget = self.widget.write();
-        let cfg = widget.print_cfg().clone();
-
-        self.history
-            .as_mut()
-            .unwrap()
-            .undo(widget.mut_text(), self.area, self.cursors, cfg);
-
-        widget.update(self.area);
-    }
-
-    /// Redoes the last [`Moment`][crate::history::Moment].
-    pub fn redo(&mut self) {
-        let mut widget = self.widget.write();
-        let cfg = widget.print_cfg().clone();
-        self.history
-            .as_mut()
-            .unwrap()
-            .redo(widget.mut_text(), self.area, self.cursors, cfg);
-        widget.update(self.area);
-    }
-}
-
-impl<'a, W, A> MultiCursorEditor<'a, NoHistory, W, A>
-where
-    W: ActiveWidget + 'static,
-    A: Area,
-{
-    /// Returns a new instace of [`WidgetActor<U, AW>`].
-    pub fn no_history(
-        widget: &'a RwData<W>,
-        cursors: &'a mut Cursors,
-        area: &'a A,
-    ) -> MultiCursorEditor<'a, NoHistory, W, A> {
-        MultiCursorEditor {
-            clearing_needed: false,
-            widget,
-            cursors,
-            area,
-            history: None,
-            _h: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<'a, H, W, A> MultiCursorEditor<'a, H, W, A>
-where
-    W: ActiveWidget + 'static,
-    A: Area,
-{
-    /// Removes all intersecting [`Cursor`]s from the list, keeping
-    /// only the last from the bunch.
-    fn clear_intersections(&mut self) {
-        let (mut start, mut end) = self.cursors.list[0].pos_range();
-        let mut last_index = 0;
-        let mut to_remove = Vec::new();
-
-        for (index, cursor) in self.cursors.list.iter_mut().enumerate().skip(1) {
-            if try_merge_selections(cursor, start, end) {
-                to_remove.push(last_index);
-            }
-            (start, end) = cursor.pos_range();
-            last_index = index;
-        }
-
-        for index in to_remove.iter().rev() {
-            self.cursors.list.remove(*index);
         }
     }
 
     /// Edits on every cursor selection in the list.
-    pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor)) {
-        self.clear_intersections();
-        let mut widget = self.widget.write();
-        let mut edit_accum = EditAccum::default();
+    /// Edits on the nth cursor's selection.
+    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
+    where
+        F: FnMut(&mut Editor),
+    {
+        assert!(index < self.len_cursors(), "Index {index} out of bounds.");
+        if self.clearing_needed {
+            self.clear_intersections();
+            self.clearing_needed = false;
+        }
 
-        for cursor in self.cursors.list.iter_mut() {
-            let history = self.history.take();
-            let mut editor = Editor::new(cursor, widget.mut_text(), &mut edit_accum, history);
+        let mut edit_accum = EditAccum::default();
+        let cursor = &mut self.cursors.list[index];
+
+        let was_file = self.widget.mutate_as::<File, ()>(|file| {
+            let (text, history) = file.mut_text_and_history();
+            let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
             f(&mut editor);
-            self.history = editor.history.take();
+        });
+
+        let mut widget = self.widget.write();
+
+        if was_file.is_none() {
+            let mut editor = Editor::new(cursor, widget.mut_text(), &mut edit_accum, None);
+            f(&mut editor);
+        }
+
+        for cursor in self.cursors.list.iter_mut().skip(index + 1) {
+            if let Some(assoc_index) = &mut cursor.assoc_index {
+                *assoc_index = assoc_index.saturating_add_signed(edit_accum.changes);
+            }
+
+            cursor.caret.calibrate(edit_accum.chars, widget.text());
+
+            if let Some(anchor) = cursor.anchor.as_mut() {
+                anchor.calibrate(edit_accum.chars, widget.text())
+            }
         }
 
         widget.update(self.area);
     }
 
-    /// Alters every selection on the list.
-    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<A>)) {
+    pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor)) {
+        self.clear_intersections();
+        let mut edit_accum = EditAccum::default();
+
+        let was_file = self.widget.mutate_as::<File, ()>(|file| {
+            let (text, history) = file.mut_text_and_history();
+
+            for cursor in self.cursors.list.iter_mut() {
+                let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
+                f(&mut editor);
+            }
+        });
+
         let mut widget = self.widget.write();
-        for cursor in self.cursors.list.iter_mut() {
-            let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
-            f(&mut mover);
+
+        if was_file.is_none() {
+            for cursor in self.cursors.list.iter_mut() {
+                let mut editor = Editor::new(cursor, widget.mut_text(), &mut edit_accum, None);
+                f(&mut editor);
+            }
         }
 
-        // TODO: Figure out a better way to sort.
-        self.cursors
-            .list
-            .sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
-
         widget.update(self.area);
-        self.clearing_needed = self.cursors.list.len() > 1;
     }
 
     /// Alters the nth cursor's selection.
@@ -247,56 +196,21 @@ where
         self.clearing_needed = self.cursors.list.len() > 1;
     }
 
-    /// Alters the main cursor's selection.
-    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<A>)) {
-        self.move_nth(f, self.cursors.main);
-    }
-
-    /// Alters the last cursor's selection.
-    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<A>)) {
-        let len = self.len_cursors();
-        if len > 0 {
-            self.move_nth(f, len - 1);
-        }
-    }
-
-    /// Edits on the nth cursor's selection.
-    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
-    where
-        F: FnMut(&mut Editor),
-    {
-        assert!(index < self.len_cursors(), "Index {index} out of bounds.");
-        if self.clearing_needed {
-            self.clear_intersections();
-            self.clearing_needed = false;
-        }
-
+    /// Alters every selection on the list.
+    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<A>)) {
         let mut widget = self.widget.write();
-
-        let mut edit_accum = EditAccum::default();
-        let cursor = &mut self.cursors.list[index];
-        let mut editor = Editor::new(
-            cursor,
-            widget.mut_text(),
-            &mut edit_accum,
-            self.history.take(),
-        );
-        f(&mut editor);
-        self.history = editor.history;
-
-        for cursor in self.cursors.list.iter_mut().skip(index + 1) {
-            if let Some(assoc_index) = &mut cursor.assoc_index {
-                *assoc_index = assoc_index.saturating_add_signed(edit_accum.changes);
-            }
-
-            cursor.caret.calibrate(edit_accum.chars, widget.text());
-
-            if let Some(anchor) = cursor.anchor.as_mut() {
-                anchor.calibrate(edit_accum.chars, widget.text())
-            }
+        for cursor in self.cursors.list.iter_mut() {
+            let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
+            f(&mut mover);
         }
+
+        // TODO: Figure out a better way to sort.
+        self.cursors
+            .list
+            .sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
 
         widget.update(self.area);
+        self.clearing_needed = self.cursors.list.len() > 1;
     }
 
     /// Edits on the main cursor's selection.
@@ -315,6 +229,19 @@ where
         let len = self.len_cursors();
         if len > 0 {
             self.edit_on_nth(f, len - 1);
+        }
+    }
+
+    /// Alters the main cursor's selection.
+    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<A>)) {
+        self.move_nth(f, self.cursors.main);
+    }
+
+    /// Alters the last cursor's selection.
+    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<A>)) {
+        let len = self.len_cursors();
+        if len > 0 {
+            self.move_nth(f, len - 1);
         }
     }
 
@@ -368,6 +295,50 @@ where
 
     pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
         self.cursors.list.get(index).cloned()
+    }
+
+    /// Removes all intersecting [`Cursor`]s from the list, keeping
+    /// only the last from the bunch.
+    fn clear_intersections(&mut self) {
+        let (mut start, mut end) = self.cursors.list[0].pos_range();
+        let mut last_index = 0;
+        let mut to_remove = Vec::new();
+
+        for (index, cursor) in self.cursors.list.iter_mut().enumerate().skip(1) {
+            if try_merge_selections(cursor, start, end) {
+                to_remove.push(last_index);
+            }
+            (start, end) = cursor.pos_range();
+            last_index = index;
+        }
+
+        for index in to_remove.iter().rev() {
+            self.cursors.list.remove(*index);
+        }
+    }
+}
+
+impl<'a, A> MultiCursorEditor<'a, File, A>
+where
+    A: Area,
+{
+    /// Begins a new [`Moment`][crate::history::Moment].
+    pub fn new_moment(&mut self) {
+        self.widget.write().new_moment();
+    }
+
+    /// Undoes the last [`Moment`][crate::history::Moment].
+    pub fn undo(&mut self) {
+        let mut widget = self.widget.write();
+        widget.undo(self.area, self.cursors);
+        widget.update(self.area);
+    }
+
+    /// Redoes the last [`Moment`][crate::history::Moment].
+    pub fn redo(&mut self) {
+        let mut widget = self.widget.write();
+        widget.redo(self.area, self.cursors);
+        widget.update(self.area);
     }
 }
 
@@ -516,8 +487,8 @@ where
 
     /// Moves the cursor to a position in the file.
     ///
-    /// - If the position isn't valid, it will move to the "maximum" position
-    ///   allowed.
+    /// - If the position isn't valid, it will move to the "maximum"
+    ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
         self.cursor
@@ -526,8 +497,8 @@ where
 
     /// Moves the cursor to a line and a column on the file.
     ///
-    /// - If the coords isn't valid, it will move to the "maximum" position
-    ///   allowed.
+    /// - If the coords isn't valid, it will move to the "maximum"
+    ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let point = Point::from_coords(line, col, self.text);

@@ -467,8 +467,8 @@ where
     /// });
     ///
     /// // Two swaps will happen.
-    /// assert!(*data_1.read() == '😀');
-    /// assert!(*data_2.read() == '😁');
+    /// assert_eq!(*data_1.read(), '😀');
+    /// assert_eq!(*data_2.read(), '😁');
     /// ```
     /// The downside is that you may not want it to fail ever, in
     /// which case, you should probably use [`RwData::write`].
@@ -558,19 +558,6 @@ where
     /// update detection of the other point.
     pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
         self.data()
-    }
-
-    /// Non Blocking reference to the information.
-    ///
-    /// Also makes it so that [`has_changed()`][Self::has_changed()]
-    /// returns `false`.
-    ///
-    /// This method is only used in the [`RoNestedData<T>`] struct, as
-    /// it is important to keep the `read_state` of the inner
-    /// [`RoData<T>`] intact while other clones of the
-    /// [`RoNestedData<T>`] read it.
-    pub(crate) fn raw_try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
-        self.try_data()
     }
 }
 

@@ -7,8 +7,7 @@ use crossterm::event::{
 use parsec_core::{
     commands,
     data::RwData,
-    history::History,
-    input::{key, Cursors, InputMethod, MultiCursorEditor, WithHistory},
+    input::{key, Cursors, InputMethod, MultiCursorEditor},
     ui::Area,
     widgets::{CommandLine, File},
     CURRENT_FILE,
@@ -46,7 +45,6 @@ enum Side {
 #[derive(Default, Clone)]
 pub struct Editor {
     cursors: Cursors,
-    history: History,
     mode: Mode,
     last_file: String,
 }
@@ -66,8 +64,7 @@ impl InputMethod for Editor {
 
     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
         let cursors = &mut self.cursors;
-        let history = &mut self.history;
-        let editor = MultiCursorEditor::with_history(widget, cursors, area, history);
+        let editor = MultiCursorEditor::new(widget, cursors, area);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
@@ -97,7 +94,7 @@ impl InputMethod for Editor {
 
 /// Commands that are available in `Mode::Insert`.
 fn match_insert(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
+    mut editor: MultiCursorEditor<File, impl Area>,
     key: KeyEvent,
     mode: &mut Mode,
 ) {
@@ -196,7 +193,7 @@ fn match_insert(
 
 /// Commands that are available in `Mode::Normal`.
 fn match_normal(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
+    mut editor: MultiCursorEditor<File, impl Area>,
     key: KeyEvent,
     mode: &mut Mode,
 ) {
@@ -266,7 +263,7 @@ fn match_normal(
 
 /// Commands that are available in `Mode::GoTo`.
 fn match_goto(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
+    mut editor: MultiCursorEditor<File, impl Area>,
     key: KeyEvent,
     last_file: &mut String,
 ) {
@@ -297,7 +294,7 @@ fn match_goto(
 }
 
 fn move_each(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
+    mut editor: MultiCursorEditor<File, impl Area>,
     direction: Side,
     amount: usize,
 ) {
@@ -313,7 +310,7 @@ fn move_each(
 }
 
 fn move_each_and_select(
-    mut editor: MultiCursorEditor<WithHistory, File, impl Area>,
+    mut editor: MultiCursorEditor<File, impl Area>,
     direction: Side,
     amount: usize,
 ) {

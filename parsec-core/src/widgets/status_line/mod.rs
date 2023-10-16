@@ -82,6 +82,20 @@ impl StatusLineCfg {
         )
     }
 
+    pub fn new_with(
+        text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+        checker: Box<dyn Fn() -> bool>,
+        is_global: bool,
+        specs: PushSpecs,
+    ) -> Self {
+        Self {
+            text_fn,
+            checker,
+            is_global,
+            specs,
+        }
+    }
+
     pub fn global(self) -> Self {
         Self {
             is_global: true,
@@ -281,11 +295,11 @@ pub macro status {
             builder.finish()
         };
 
-        StatusLineCfg {
-            text_fn: Box::new(text_fn),
-            checker: Box::new(checker),
-            is_global: false,
-            specs: PushSpecs::below().with_lenght(1.0)
-        }
+        StatusLineCfg::new_with(
+            Box::new(text_fn),
+            Box::new(checker),
+            false,
+            PushSpecs::below().with_lenght(1.0)
+        )
     }}
 }

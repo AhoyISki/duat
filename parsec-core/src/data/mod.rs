@@ -23,7 +23,7 @@
 use std::marker::PhantomData;
 
 pub use self::{
-    ro::{RoData, RoNestedData},
+    ro::RoData,
     rw::RwData,
     statics::{CurrentFile, CurrentWidget, FileReader},
 };

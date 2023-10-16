@@ -1,17 +1,17 @@
 //! Parsec's history system.
 //!
 //! The history system is comprised of 2 concepts: [`Moment`]s and
-//! [`Change`]s. A [`Moment`] contains any number of [`Change`]s, and by
-//! undoing/redoing a [`Moment`], all of them will be undone/redone. The
-//! [`History`] struct, present in each file, holds the list of
-//! [`Moment`]s in that file's history, and can be moved forwards or
-//! backwards in time.
+//! [`Change`]s. A [`Moment`] contains any number of [`Change`]s, and
+//! by undoing/redoing a [`Moment`], all of them will be
+//! undone/redone. The [`History`] struct, present in each file, holds
+//! the list of [`Moment`]s in that file's history, and can be moved
+//! forwards or backwards in time.
 //!
 //! Undoing/redoing [`Moment`]s also has the effect of removing all
 //! [`Cursor`]s and placing new ones where the [`Change`]s took place.
 //!
-//! Parsec's [`History`] system is designed to allow the replication of
-//! the history system of many other editors, such as Vim/Neovim,
+//! Parsec's [`History`] system is designed to allow the replication
+//! of the history system of many other editors, such as Vim/Neovim,
 //! which is strictly one [`Change`] per [`Moment`], or Kakoune, where
 //! [`Moment`]s may contain as many [`Change`]s as is desired.
 //!
@@ -158,8 +158,8 @@ impl Moment {
     /// # Returns
     ///
     /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during its
-    ///   insertion.
+    /// - The number of changes that were added or subtracted during
+    ///   its insertion.
     fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let initial_len = self.changes.len();
         let chars_diff = change.added_end() as isize - change.taken_end() as isize;
@@ -279,8 +279,8 @@ impl History {
     /// # Returns
     ///
     /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during its
-    ///   insertion.
+    /// - The number of changes that were added or subtracted during
+    ///   its insertion.
     pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         // Cut off any actions that take place after the current one. We don't
         // really want trees.
@@ -326,7 +326,7 @@ impl History {
         text: &mut Text,
         area: &impl Area,
         cursors: &mut Cursors,
-        cfg: PrintCfg,
+        cfg: &PrintCfg,
     ) {
         let moment = match self.move_backwards() {
             Some(moment) => moment,
@@ -341,7 +341,7 @@ impl History {
 
             let new_caret_ch = change.taken_end().saturating_add_signed(chars);
             let point = Point::new(new_caret_ch, text);
-            cursors.insert(Cursor::new(point, text, area, &cfg));
+            cursors.insert(Cursor::new(point, text, area, cfg));
 
             chars += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -354,7 +354,7 @@ impl History {
         text: &mut Text,
         area: &impl Area,
         cursors: &mut Cursors,
-        cfg: PrintCfg,
+        cfg: &PrintCfg,
     ) {
         let moment = match self.move_forward() {
             Some(moment) => moment,
@@ -367,7 +367,7 @@ impl History {
             text.apply_change(change);
 
             let new_pos = Point::new(change.added_end(), text);
-            cursors.insert(Cursor::new(new_pos, text, area, &cfg));
+            cursors.insert(Cursor::new(new_pos, text, area, cfg));
         }
     }
 

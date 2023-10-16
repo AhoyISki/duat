@@ -8,7 +8,7 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 pub use self::{
     commander::Commander,
     default::Editor,
-    multi_cursor::{Cursors, MultiCursorEditor, NoHistory, WithHistory},
+    multi_cursor::{Cursors, MultiCursorEditor},
     remapper::Remapper,
 };
 use crate::{data::RwData, ui::Area, widgets::ActiveWidget};

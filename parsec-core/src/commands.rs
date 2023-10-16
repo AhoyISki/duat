@@ -1044,6 +1044,7 @@ pub enum Error {
 }
 
 impl Error {
+    /// Turns the [`Error`] into formatted [`Text`]
     fn into_text(self) -> Text {
         match self {
             Error::AliasNotSingleWord(caller) => text!(

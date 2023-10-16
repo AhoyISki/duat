@@ -24,7 +24,8 @@ use std::{fs, path::PathBuf};
 use super::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
 use crate::{
     data::RwData,
-    input::{Editor, InputMethod},
+    history::{Change, History},
+    input::{Cursors, Editor, InputMethod},
     palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -137,6 +138,7 @@ where
                     },
                     text,
                     cfg: self.cfg,
+                    history: History::new(),
                     printed_lines: Vec::new(),
                     related_widgets: Vec::new(),
                 },
@@ -188,6 +190,7 @@ pub struct File {
     path: Path,
     text: Text,
     cfg: PrintCfg,
+    history: History,
     printed_lines: Vec<(usize, bool)>,
     related_widgets: Vec<(RwData<dyn PassiveWidget>, &'static str, Box<dyn Area>)>,
 }
@@ -317,6 +320,26 @@ impl File {
             })
             .take(area.height())
             .collect();
+    }
+
+    pub fn new_moment(&mut self) {
+        self.history.new_moment()
+    }
+
+    pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
+        self.history.add_change(change, assoc_index)
+    }
+
+    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
+        self.history.redo(&mut self.text, area, cursors, &self.cfg)
+    }
+
+    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
+        self.history.undo(&mut self.text, area, cursors, &self.cfg)
+    }
+
+    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History)  {
+        (&mut self.text, &mut self.history)
     }
 }
 
