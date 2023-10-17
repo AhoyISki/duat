@@ -50,3 +50,4 @@ It will run the example crate, a basic, documented configuration that shows how 
 This project was mostly created as a fun side project to occupy my time, and I was also unsatified with the current offerings of text editors on github.
 # parsec-example
 # parsec-example
+# parsec-example
