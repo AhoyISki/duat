@@ -438,17 +438,17 @@ fn print_parts(
                 }
             }
             Part::MainCursor => {
-                let cursor_style = painter.main_cursor();
-                if let (Some(caret), true) = (cursor_style.caret, is_active) {
+                let (form, shape) = painter.main_cursor();
+                if let (Some(shape), true) = (shape, is_active) {
                     SHOW_CURSOR.store(true, Ordering::Release);
-                    queue!(line, caret, cursor::SavePosition);
+                    queue!(line, shape, cursor::SavePosition);
                 } else {
-                    queue!(line, SetStyle(cursor_style.form.style));
+                    queue!(line, SetStyle(form.style));
                     prev_style = Some(painter.make_form().style);
                 }
             }
             Part::ExtraCursor => {
-                queue!(line, SetStyle(painter.extra_cursor().form.style));
+                queue!(line, SetStyle(painter.extra_cursor().0.style));
                 prev_style = Some(painter.make_form().style);
             }
             Part::AlignLeft => alignment = Alignment::Left,

@@ -1,15 +1,13 @@
 use std::sync::{LazyLock, RwLockReadGuard};
 
-use crossterm::{
-    cursor::SetCursorStyle,
-    style::{Attribute, Attributes, Color, ContentStyle, Stylize},
-};
+pub use crossterm::cursor::SetCursorStyle as CursorShape;
+use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
 pub use global::*;
 
 use crate::data::RwData;
 
 mod global {
-    use super::{CursorStyle, Form, FormId, FormPalette, Painter};
+    use super::{CursorShape, Form, FormId, FormPalette, Painter};
 
     static PALETTE: FormPalette = FormPalette::new();
 
@@ -49,20 +47,20 @@ mod global {
         PALETTE.name_of_id(id)
     }
 
-    pub fn main_cursor() -> CursorStyle {
+    pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
     }
 
-    pub fn extra_cursor() -> CursorStyle {
+    pub fn extra_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.extra_cursor()
     }
 
-    pub fn set_main_cursor(style: CursorStyle) {
-        PALETTE.set_main_cursor(style)
+    pub fn set_main_cursor(form: Form, style: Option<CursorShape>) {
+        PALETTE.set_main_cursor(form, style)
     }
 
-    pub fn set_extra_cursor(style: CursorStyle) {
-        PALETTE.set_extra_cursor(style)
+    pub fn set_extra_cursor(form: Form, style: Option<CursorShape>) {
+        PALETTE.set_extra_cursor(form, style)
     }
 
     pub fn painter() -> Painter {
@@ -131,28 +129,6 @@ impl Form {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct CursorStyle {
-    /// An optional member when using application specific cursors.
-    pub caret: Option<SetCursorStyle>,
-    // NOTE: This is obligatory as a fallback for when the application can't render the
-    // cursor with `caret`.
-    /// To render the cursor as a form, not as an actual cursor.
-    pub form: Form,
-}
-
-impl CursorStyle {
-    pub const fn new(caret: Option<SetCursorStyle>, form: Form) -> Self {
-        Self { caret, form }
-    }
-}
-
-impl std::fmt::Debug for CursorStyle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.form, f)
-    }
-}
-
 pub const DEFAULT: FormId = FormId(0);
 pub const MAIN_SEL: FormId = FormId(5);
 pub const EXTRA_SEL: FormId = FormId(6);
@@ -164,24 +140,19 @@ enum Kind {
     WeakestRef(FormId),
 }
 
-#[derive(Debug)]
 struct InnerPalette {
-    main_cursor: CursorStyle,
-    extra_cursor: CursorStyle,
+    main_cursor: (Form, Option<CursorShape>),
+    extra_cursor: (Form, Option<CursorShape>),
     forms: Vec<(&'static str, Kind)>,
 }
 
 /// The list of forms to be used when rendering.
-#[derive(Debug)]
 struct FormPalette(LazyLock<RwData<InnerPalette>>);
 
 impl FormPalette {
     const fn new() -> Self {
         Self(LazyLock::new(|| {
-            let main_cursor = CursorStyle::new(
-                Some(SetCursorStyle::DefaultUserShape),
-                Form::new().reverse(),
-            );
+            let main_cursor = (Form::new().reverse(), Some(CursorShape::DefaultUserShape));
 
             let forms = vec![
                 ("Default", Kind::Form(Form::new())),
@@ -353,20 +324,20 @@ impl FormPalette {
         ret
     }
 
-    fn main_cursor(&self) -> CursorStyle {
+    fn main_cursor(&self) -> (Form, Option<CursorShape>) {
         self.0.read().main_cursor
     }
 
-    fn extra_cursor(&self) -> CursorStyle {
+    fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         self.0.read().extra_cursor
     }
 
-    fn set_main_cursor(&self, style: CursorStyle) {
-        self.0.write().main_cursor = style;
+    fn set_main_cursor(&self, form: Form, style: Option<CursorShape>) {
+        self.0.write().main_cursor = (form, style);
     }
 
-    fn set_extra_cursor(&self, style: CursorStyle) {
-        self.0.write().extra_cursor = style;
+    fn set_extra_cursor(&self, form: Form, style: Option<CursorShape>) {
+        self.0.write().extra_cursor = (form, style);
     }
 
     fn painter(&'static self) -> Painter {
@@ -485,11 +456,11 @@ impl Painter {
         self.make_form()
     }
 
-    pub fn main_cursor(&self) -> CursorStyle {
+    pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
         self.palette.main_cursor
     }
 
-    pub fn extra_cursor(&self) -> CursorStyle {
+    pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         self.palette.extra_cursor
     }
 }

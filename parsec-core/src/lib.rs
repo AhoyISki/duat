@@ -12,7 +12,7 @@
     decl_macro,
     generic_const_exprs,
     step_trait,
-    type_alias_impl_trait,
+    type_alias_impl_trait
 )]
 #![doc = include_str!("../README.md")]
 
@@ -34,7 +34,7 @@ pub mod widgets;
 pub mod prelude {
     pub use crate::{
         commands,
-        palette::{self, CursorStyle, Form},
+        palette::{self, CursorShape, Form},
         session::{Session, SessionCfg},
         text::{text, PrintCfg},
         widgets::{
