@@ -200,455 +200,600 @@
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::atomic::Ordering;
 use std::{
-    any::TypeId,
+    collections::HashMap,
     fmt::Display,
-    iter::Peekable,
-    str::{FromStr, SplitWhitespace},
+    mem::MaybeUninit,
+    sync::{Arc, LazyLock, RwLock},
 };
 
-pub use self::inner::split_flags_and_args;
-use self::inner::{Commands, InnerFlags};
+pub use self::parameters::split_flags_and_args;
+use self::parameters::{Args, Flags};
 use crate::{
-    data::RwData,
+    data::{CurrentFile, CurrentWidget, Data, RwData},
     text::{text, Text},
     ui::{Area, Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
     BREAK_LOOP, SHOULD_QUIT,
 };
 
-mod inner;
+mod parameters;
 
-static COMMANDS: Commands = Commands::new();
-
-/// Adds a command to the global list of commands.
-///
-/// This command cannot take any arguments beyond the [`Flags`]
-/// and [`Args`], so any mutation of state must be done
-/// through captured variables, usually in the form of
-/// [`RwData<T>`]s.
-///
-/// # Examples
-///
-/// ```rust
-/// # use parsec_core::{
-/// #     commands,
-/// #     data::RwData,
-/// #     text::{text, Text},
-/// #     widgets::status
-/// # };
-/// // Shared state, which will be displayed in a `StatusLine`.
-/// let var = RwData::new(35);
-///
-/// commands::add(["set-var"], {
-///     // A clone is necessary, in order to have one copy of `var`
-///     // in the closure, while the other is in the `StatusLine`.
-///     let var = var.clone();
-///     move |_flags, mut args| {
-///         // You can easily parse arguments, and an appropriate
-///         // error will be returned if the parsing fails.
-///         let value: usize = args.next_as()?;
-///         *var.write() = value;
-///
-///         Ok(None)
-///     }
-/// });
-///
-/// // A `StatusLineCfg` that can be used to create a `StatusLine`.
-/// let status_cfg = status!("The value is currently " var);
-/// ```
-///
-/// In the above example, we created a variable that can be
-/// modified by the command `"set-var"`, and then sent it to a
-/// [`StatusLineCfg`], so that it could be displayed in a
-/// [`StatusLine`]. Note that the use of an [`RwData<usize>`]/
-/// [`RoData<usize>`] means that the [`StatusLine`] will
-/// be updated automatically, whenever the command is ran.
-///
-/// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`RoData<usize>`]: crate::data::RoData
-pub fn add(
-    callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    COMMANDS.add(callers, f)
+/// A list of [`Command`]s.
+pub struct Commands<U>
+where
+    U: Ui,
+{
+    inner: LazyLock<RwData<InnerCommands>>,
+    windows: RwLock<MaybeUninit<RwData<Vec<Window<U>>>>>,
+    current_file: &'static CurrentFile<U>,
+    current_widget: &'static CurrentWidget<U>,
 }
 
-/// Adds a command to an object "related" to the current [`File`]
-///
-/// This object can be one of three things, a [`PassiveWidget`], an
-/// [`InputMethod`], or the [`File`] itself. When the command is ran,
-/// Parsec will look at the currently active file for any instance of
-/// an [`RwData<Thing>`] it can find. Those will either be the file
-/// itself, or will be added in the [`Session`]'s "file_fn".
-///
-/// # Examples
-///
-/// ```rust
-/// # use parsec_core::{
-/// #     commands,
-/// #     data::RwData,
-/// #     input::{InputMethod, MultiCursorEditor},
-/// #     text::text,
-/// #     widgets::File,
-/// # };
-/// #[derive(Debug)]
-/// enum Mode {
-///     Normal,
-///     Insert,
-///     Prompt,
-///     Visual,
-/// }
-///
-/// struct ModalEditor {
-///     mode: Mode,
-/// }
-///
-/// impl InputMethod for ModalEditor {
-///     // Implementation details.
-/// # type Widget = File
-/// # where
-/// #     Self: Sized;
-///
-/// # fn send_key(
-/// #     &mut self,
-/// #     key: crossterm::event::KeyEvent,
-/// #     widget: &RwData<Self::Widget>,
-/// #     area: &impl parsec_core::ui::Area,
-/// # ) where
-/// #     Self: Sized,
-/// # {
-/// #     todo!()
-/// # }
-/// }
-///
-/// commands::add_for_current::<ModalEditor>(
-///     ["set-mode"],
-///     |modal, flags, mut args| {
-///         let mode = args.next_else(text!("No mode given"))?;
-///
-///         match mode {
-///             "normal" | "Normal" => modal.mode = Mode::Normal,
-///             "insert" | "Insert" => modal.mode = Mode::Insert,
-///             "prompt" | "Prompt" => modal.mode = Mode::Prompt,
-///             "visual" | "Visual" => modal.mode = Mode::Visual,
-///             mode => {
-///                 return Err(text!(
-///                     "Mode" [AccentErr] mode []
-///                     "is not a valid mode"
-///                 ));
-///             }
-///         }
-///
-///         let mode = format!("{:?}", modal.mode);
-///         Ok(Some(text!("Mode was set to " [AccentOk] mode [] ".")))
-///     }
-/// )
-/// .unwrap();
-/// ```
-///
-/// [`File`]: crate::widgets::File
-/// [`InputMethod`]: crate::input::InputMethod
-/// [`Session`]: crate::session::Session
-pub fn add_for_current<T: 'static>(
-    callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    COMMANDS.add_for_current(callers, f)
-}
+impl<U> Commands<U>
+where
+    U: Ui,
+{
+    /// Returns a new instance of [`Commands`].
+    pub const fn new(
+        current_file: &'static CurrentFile<U>,
+        current_widget: &'static CurrentWidget<U>,
+    ) -> Self {
+        Self {
+            inner: LazyLock::new(|| {
+                let inner = RwData::new(InnerCommands {
+                    list: Vec::new(),
+                    aliases: HashMap::new(),
+                });
 
-/// Adds a command that can mutate a widget of the given type,
-/// along with its associated [`dyn Area`].
-///
-/// This command will look for the [`PassiveWidget`] in the
-/// following order:
-///
-/// 1. Any instance that is "related" to the currently active
-///    [`File`], that is, any widgets that were added during the
-///    [`Session`]'s "`file_fn`".
-/// 2. Other widgets in the currently active window, related or not to
-///    any given [`File`].
-/// 3. Any instance of the [`PassiveWidget`] that is found in other
-///    windows, looking first at windows ahead.
-///
-/// Keep in mind that the search is deterministic, that is, if
-/// there are multiple instances of the widget that fit the
-/// same category, only one of them will ever be used.
-///
-/// This search algorithm allows a more versatile configuration of
-/// widgets, for example, one may have a [`CommandLine`] per
-/// [`File`], or one singular [`CommandLine`] that acts upon
-/// all files in the window, and both would respond correctly
-/// to the `"set-prompt"` command.
-///
-/// # Examples
-///
-/// In this example, we create a simple `Timer` widget, along with
-/// some control commands.
-///
-/// ```rust
-/// // Required feature for widgets.
-/// #![feature(return_position_impl_trait_in_trait)]
-/// # use std::{
-/// #    sync::{
-/// #        atomic::{AtomicBool, Ordering},
-/// #        Arc,
-/// #    },
-/// #    time::Instant,
-/// # };
-/// # use parsec_core::{
-/// #    commands,
-/// #    palette::{self, Form},
-/// #    text::{text, Text, AlignCenter},
-/// #    ui::{Area, PushSpecs, Ui},
-/// #    widgets::{PassiveWidget, Widget},
-/// # };
-/// # pub struct Timer {
-/// #    text: Text,
-/// #    instant: Instant,
-/// #    running: Arc<AtomicBool>,
-/// # }
-/// impl PassiveWidget for Timer {
-///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-///         let timer = Self {
-///             text: text!(AlignCenter [Counter] "0ms"),
-///             instant: Instant::now(),
-///             // No need to use an `RwData`, since
-///             // `RwData::has_changed` is never called.
-///             running: Arc::new(AtomicBool::new(false)),
-///         };
-///
-///         // The checker should tell the `Timer` to update only
-///         // if `running` is `true`.
-///         let checker = {
-///             // Clone any variables before moving them to
-///             // the `checker`.
-///             let running = timer.running.clone();
-///             move || running.load(Ordering::Relaxed)
-///         };
-///
-///         let specs = PushSpecs::below().with_lenght(1.0);
-///
-///         (Widget::passive(timer), checker, specs)
-///     }
-///
-///     fn update(&mut self, _area: &impl Area) {
-///         if self.running.load(Ordering::Relaxed) {
-///             let duration = self.instant.elapsed();
-///             let duration = format!("{:.3?}", duration);
-///             self.text = text!(
-///                 AlignCenter [Counter] duration [] "elapsed"
-///             );
-///         }
-///     }
-///     
-///
-///     fn text(&self) -> &Text {
-///         &self.text
-///     }
-///
-///     // The `once` function of a `PassiveWidget` is only called
-///     // when that widget is first created.
-///     // It is generally useful to add commands and set forms
-///     // in the `palette`.
-///     fn once() {
-///         // `palette::set_weak_form` will only set that form if
-///         // it doesn't already exist.
-///         // That means that a user of the widget will be able to
-///         // control that form by changing it before or after this
-///         // widget is pushed.
-///         palette::set_weak_form("Counter", Form::new().green());
-///
-///         commands::add_for_widget::<Timer>(
-///             ["play"],
-///             |timer, _area, _flags, _args| {
-///                 timer.running.store(true, Ordering::Relaxed);
-///
-///                 Ok(None)
-///             })
-///             .unwrap();
-///
-///         commands::add_for_widget::<Timer>(
-///             ["pause"],
-///             |timer, _area, _flags, _args| {
-///                 timer.running.store(false, Ordering::Relaxed);
-///
-///                 Ok(None)
-///             })
-///             .unwrap();
-///
-///         commands::add_for_widget::<Timer>(
-///             ["pause"],
-///             |timer, _area, _flags, _args| {
-///                 timer.instant = Instant::now();
-///
-///                 Ok(None)
-///             })
-///             .unwrap();
-///     }
-/// }
-/// ```
-///
-/// [`dyn Area`]: crate::ui::Area
-/// [`File`]: crate::widgets::File
-/// [`Session`]: crate::session::Session
-/// [`CommandLine`]: crate::widgets::CommandLine
-pub fn add_for_widget<Widget: PassiveWidget>(
-    callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut Widget, &dyn Area, Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    COMMANDS.add_for_widget(callers, f)
-}
+                let alias = {
+                    let inner = inner.clone();
+                    Command::new(["alias"], move |flags, mut args| {
+                        if !flags.is_empty() {
+                            Err(text!(
+                                "An alias cannot take any flags, try moving them after the \
+                                 command, like \"alias my-alias my-caller --foo --bar\", instead \
+                                 of \"alias --foo --bar my-alias my-caller\""
+                            ))
+                        } else {
+                            let alias = args.next()?.to_string();
+                            let args: String = args.collect();
 
-/// Runs a full command, with a caller, [`Flags`], and [`Args`].
-///
-/// When running the command, the ordering of flags does not
-/// matter, as long as they are placed before the arguments to the
-/// command.
-///
-/// # Examples
-///
-/// ```rust
-/// # use parsec_core::{
-/// #     commands::{self, Result},
-/// #     text::Text,
-/// # };
-/// # fn test() -> Result<Option<Text>> {
-/// commands::run("set-prompt new-prompt")
-/// # }
-/// ```
-///
-/// In this case we're running a command that will affect the most
-/// relevant [`CommandLine`]. See [`commands::add_for_widget`] for
-/// more information.
-///
-/// [`CommandLine`]: crate::widgets::CommandLine
-/// [`commands::add_for_widget`]: crate::commands::add_for_widget
-pub fn run(command: impl Display) -> Result<Option<Text>> {
-    COMMANDS.run(command)
-}
+                            inner
+                                .write()
+                                .try_alias(alias, args)
+                                .map_err(Error::into_text)
+                        }
+                    })
+                };
 
-/// Canonical way to quit Parsec.
-///
-/// By calling the quit command, all threads will finish their
-/// tasks, and then Parsec will execute a program closing
-/// function, as defined by the [`Ui`].
-pub fn quit() {
-    BREAK_LOOP.store(true, Ordering::Release);
-    SHOULD_QUIT.store(true, Ordering::Release);
-}
+                let quit = {
+                    Command::new(["quit", "q"], move |_, _| {
+                        BREAK_LOOP.store(true, Ordering::Release);
+                        SHOULD_QUIT.store(true, Ordering::Release);
+                        Ok(None)
+                    })
+                };
 
-/// Switches to the given [`ActiveWidget`].
-///
-/// The widget will be chosen in the following order:
-///
-/// 1. Any instance that is "related" to the currently active
-///    [`File`], that is, any widgets that were added during the
-///    [`Session`]'s "`file_fn`".
-/// 2. Other widgets in the currently active window, related or not to
-///    any given [`File`].
-/// 3. Any instance of the [`PassiveWidget`] that is found in other
-///    windows, looking first at windows ahead.
-///
-/// [`File`]: crate::widgets::File
-/// [`Session`]: crate::session::Session
-pub fn switch_to<W: ActiveWidget>() -> Result<Option<Text>> {
-    COMMANDS.run(format!("switch-to {}", W::type_name()))
-}
+                inner.write().try_add(quit).unwrap();
+                inner.write().try_add(alias).unwrap();
 
-/// Switches to/opens a [`File`] with the given name.
-///
-/// If you wish to specifically switch to files that are already open,
-/// use [`commands::buffer`].
-///
-/// If there are more arguments, they will be ignored.
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::buffer`]: crate::commands::buffer
-pub fn edit(file: impl Display) -> Result<Option<Text>> {
-    COMMANDS.run(format!("edit {}", file))
-}
+                inner
+            }),
+            windows: RwLock::new(MaybeUninit::uninit()),
+            current_file,
+            current_widget,
+        }
+    }
 
-/// Switches to a [`File`] with the given name.
-///
-/// If there is no file open with that name, does nothing. Use
-/// [`commands::edit`] if you wish to open files.
-///
-/// If there are more arguments, they will be ignored.
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::edit`]: crate::commands::edit
-pub fn buffer(file: impl Display) -> Result<Option<Text>> {
-    COMMANDS.run(format!("buffer {}", file))
-}
+    /// Canonical way to quit Parsec.
+    ///
+    /// By calling the quit command, all threads will finish their
+    /// tasks, and then Parsec will execute a program closing
+    /// function, as defined by the [`Ui`].
+    pub fn quit(&self) {
+        self.run("quit");
+    }
 
-/// Switches to the next [`File`].
-///
-/// This function will only look at files that are opened in the
-/// current window. If you want to include other windows in the
-/// search, use [`commands::next_global_file`].
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::next_global_file`]: crate::commands::next_global_file
-pub fn next_file() -> Result<Option<Text>> {
-    COMMANDS.run("next-file")
-}
+    /// Switches to the given [`ActiveWidget`].
+    ///
+    /// The widget will be chosen in the following order:
+    ///
+    /// 1. Any instance that is "related" to the currently active
+    ///    [`File`], that is, any widgets that were added during the
+    ///    [`Session`]'s "`file_fn`".
+    /// 2. Other widgets in the currently active window, related or
+    ///    not to any given [`File`].
+    /// 3. Any instance of the [`PassiveWidget`] that is found in
+    ///    other windows, looking first at windows ahead.
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`Session`]: crate::session::Session
+    pub fn switch_to<W: ActiveWidget<U>>(&self) -> Result<Option<Text>> {
+        self.run(format!("switch-to {}", W::name()))
+    }
 
-/// Switches to the previous [`File`].
-///
-/// This function will only look at files that are opened in the
-/// current window. If you want to include other windows in the
-/// search, use [`commands::prev_global_file`].
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::prev_global_file`]: crate::commands::prev_global_file
-pub fn prev_file() -> Result<Option<Text>> {
-    COMMANDS.run("prev-file")
-}
+    /// Switches to/opens a [`File`] with the given name.
+    ///
+    /// If you wish to specifically switch to files that are already
+    /// open, use [`commands::buffer`].
+    ///
+    /// If there are more arguments, they will be ignored.
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::buffer`]: crate::commands::buffer
+    pub fn edit(&self, file: impl Display) -> Result<Option<Text>> {
+        self.run(format!("edit {}", file))
+    }
 
-/// Switches to the next [`File`].
-///
-/// This function will look for files in all windows. If you want to
-/// limit the search to just the current window, use
-/// [`commands::next_file`].
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::next_file`]: crate::commands::next_file
-pub fn next_global_file() -> Result<Option<Text>> {
-    COMMANDS.run("next-file --global")
-}
+    /// Switches to a [`File`] with the given name.
+    ///
+    /// If there is no file open with that name, does nothing. Use
+    /// [`commands::edit`] if you wish to open files.
+    ///
+    /// If there are more arguments, they will be ignored.
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::edit`]: crate::commands::edit
+    pub fn buffer(&self, file: impl Display) -> Result<Option<Text>> {
+        self.run(format!("buffer {}", file))
+    }
 
-/// Switches to the previous [`File`].
-///
-/// This function will look for files in all windows. If you want to
-/// limit the search to just the current window, use
-/// [`commands::prev_file`].
-///
-/// [`File`]: crate::widgets::File
-/// [`commands::prev_file`]: crate::commands::prev_file
-pub fn prev_global_file() -> Result<Option<Text>> {
-    COMMANDS.run("prev-file --global")
-}
+    /// Switches to the next [`File`].
+    ///
+    /// This function will only look at files that are opened in the
+    /// current window. If you want to include other windows in the
+    /// search, use [`commands::next_global_file`].
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::next_global_file`]: crate::commands::next_global_file
+    pub fn next_file(&self) -> Result<Option<Text>> {
+        self.run("next-file")
+    }
 
-/// If not in a [`File`], switches to the last active [`File`].
-///
-/// This is useful if the currently active widget is not a file (e.g.
-/// [`CommandLine`], a file tree, etc), and you want to return to the
-/// file seamlessly.
-///
-/// [`File`]: crate::widgets::File
-/// [`CommandLine`]: crate::widgets::CommandLine
-pub fn return_to_file() -> Result<Option<Text>> {
-    COMMANDS.run("return-to-file")
-}
+    /// Switches to the previous [`File`].
+    ///
+    /// This function will only look at files that are opened in the
+    /// current window. If you want to include other windows in the
+    /// search, use [`commands::prev_global_file`].
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::prev_global_file`]: crate::commands::prev_global_file
+    pub fn prev_file(&self) -> Result<Option<Text>> {
+        self.run("prev-file")
+    }
 
-/// Tries to alias a `caller` to an existing `command`.
-///
-/// Returns an [`Err`] if the `caller` is already a caller for
-/// another command, or if `command` is not a real caller to an
-/// exisiting [`Command`].
-pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-    COMMANDS.try_alias(alias, command)
+    /// Switches to the next [`File`].
+    ///
+    /// This function will look for files in all windows. If you want
+    /// to limit the search to just the current window, use
+    /// [`commands::next_file`].
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::next_file`]: crate::commands::next_file
+    pub fn next_global_file(&self) -> Result<Option<Text>> {
+        self.run("next-file --global")
+    }
+
+    /// Switches to the previous [`File`].
+    ///
+    /// This function will look for files in all windows. If you want
+    /// to limit the search to just the current window, use
+    /// [`commands::prev_file`].
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`commands::prev_file`]: crate::commands::prev_file
+    pub fn prev_global_file(&self) -> Result<Option<Text>> {
+        self.run("prev-file --global")
+    }
+
+    /// If not in a [`File`], switches to the last active [`File`].
+    ///
+    /// This is useful if the currently active widget is not a file
+    /// (e.g. [`CommandLine`], a file tree, etc), and you want to
+    /// return to the file seamlessly.
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`CommandLine`]: crate::widgets::CommandLine
+    pub fn return_to_file(&self) -> Result<Option<Text>> {
+        self.run("return-to-file")
+    }
+
+    /// Tries to alias a `caller` to an existing `command`.
+    ///
+    /// Returns an [`Err`] if the `caller` is already a caller for
+    /// another command, or if `command` is not a real caller to an
+    /// exisiting [`Command`].
+    pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+        self.try_alias(alias, command)
+    }
+
+    /// Runs a full command, with a caller, [`Flags`], and [`Args`].
+    ///
+    /// When running the command, the ordering of flags does not
+    /// matter, as long as they are placed before the arguments to the
+    /// command.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{
+    /// #     commands::{self, Result},
+    /// #     text::Text,
+    /// # };
+    /// # fn test() -> Result<Option<Text>> {
+    /// commands::run("set-prompt new-prompt")
+    /// # }
+    /// ```
+    ///
+    /// In this case we're running a command that will affect the most
+    /// relevant [`CommandLine`]. See [`commands::add_for_widget`] for
+    /// more information.
+    ///
+    /// [`CommandLine`]: crate::widgets::CommandLine
+    /// [`commands::add_for_widget`]: crate::commands::add_for_widget
+    pub fn run(&self, call: impl Display) -> Result<Option<Text>> {
+        let call = call.to_string();
+        let mut args = call.split_whitespace();
+        let caller = args.next().ok_or(Error::Empty)?.to_string();
+
+        let (command, call) = self.inner.inspect(|inner| {
+            if let Some(command) = inner.aliases.get(&caller) {
+                let (command, call) = command;
+                let mut call = call.clone() + " ";
+                call.extend(args);
+
+                Ok((command.clone(), call))
+            } else {
+                let command = inner
+                    .list
+                    .iter()
+                    .find(|cmd| cmd.callers().contains(&caller))
+                    .ok_or(Error::CallerNotFound(caller))?;
+
+                Ok((command.clone(), call.clone()))
+            }
+        })?;
+
+        let (flags, args) = split_flags_and_args(&call);
+
+        Ok(command.try_exec(Flags::new(&flags), args).unwrap())
+    }
+
+    /// Adds a command to the global list of commands.
+    ///
+    /// This command cannot take any arguments beyond the [`Flags`]
+    /// and [`Args`], so any mutation of state must be done
+    /// through captured variables, usually in the form of
+    /// [`RwData<T>`]s.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{
+    /// #     commands,
+    /// #     data::RwData,
+    /// #     text::{text, Text},
+    /// #     widgets::status
+    /// # };
+    /// // Shared state, which will be displayed in a `StatusLine`.
+    /// let var = RwData::new(35);
+    ///
+    /// commands::add(["set-var"], {
+    ///     // A clone is necessary, in order to have one copy of `var`
+    ///     // in the closure, while the other is in the `StatusLine`.
+    ///     let var = var.clone();
+    ///     move |_flags, mut args| {
+    ///         // You can easily parse arguments, and an appropriate
+    ///         // error will be returned if the parsing fails.
+    ///         let value: usize = args.next_as()?;
+    ///         *var.write() = value;
+    ///
+    ///         Ok(None)
+    ///     }
+    /// });
+    ///
+    /// // A `StatusLineCfg` that can be used to create a `StatusLine`.
+    /// let status_cfg = status!("The value is currently " var);
+    /// ```
+    ///
+    /// In the above example, we created a variable that can be
+    /// modified by the command `"set-var"`, and then sent it to a
+    /// [`StatusLineCfg`], so that it could be displayed in a
+    /// [`StatusLine`]. Note that the use of an [`RwData<usize>`]/
+    /// [`RoData<usize>`] means that the [`StatusLine`] will
+    /// be updated automatically, whenever the command is ran.
+    ///
+    /// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
+    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`RoData<usize>`]: crate::data::RoData
+    pub fn add(
+        &self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        let command = Command::new(callers, f);
+        self.inner.write().try_add(command)
+    }
+
+    /// Adds a command to an object "related" to the current [`File`]
+    ///
+    /// This object can be one of three things, a [`PassiveWidget`],
+    /// an [`InputMethod`], or the [`File`] itself. When the
+    /// command is ran, Parsec will look at the currently active
+    /// file for any instance of an [`RwData<Thing>`] it can find.
+    /// Those will either be the file itself, or will be added in
+    /// the [`Session`]'s "file_fn".
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use parsec_core::{
+    /// #     commands,
+    /// #     data::RwData,
+    /// #     input::{InputMethod, MultiCursorEditor},
+    /// #     text::text,
+    /// #     widgets::File,
+    /// # };
+    /// #[derive(Debug)]
+    /// enum Mode {
+    ///     Normal,
+    ///     Insert,
+    ///     Prompt,
+    ///     Visual,
+    /// }
+    ///
+    /// struct ModalEditor {
+    ///     mode: Mode,
+    /// }
+    ///
+    /// impl InputMethod for ModalEditor {
+    ///     // Implementation details.
+    /// # type Widget = File
+    /// # where
+    /// #     Self: Sized;
+    ///
+    /// # fn send_key(
+    /// #     &mut self,
+    /// #     key: crossterm::event::KeyEvent,
+    /// #     widget: &RwData<Self::Widget>,
+    /// #     area: &impl parsec_core::ui::Area,
+    /// # ) where
+    /// #     Self: Sized,
+    /// # {
+    /// #     todo!()
+    /// # }
+    /// }
+    ///
+    /// commands::add_for_current::<ModalEditor>(
+    ///     ["set-mode"],
+    ///     |modal, flags, mut args| {
+    ///         let mode = args.next_else(text!("No mode given"))?;
+    ///
+    ///         match mode {
+    ///             "normal" | "Normal" => modal.mode = Mode::Normal,
+    ///             "insert" | "Insert" => modal.mode = Mode::Insert,
+    ///             "prompt" | "Prompt" => modal.mode = Mode::Prompt,
+    ///             "visual" | "Visual" => modal.mode = Mode::Visual,
+    ///             mode => {
+    ///                 return Err(text!(
+    ///                     "Mode" [AccentErr] mode []
+    ///                     "is not a valid mode"
+    ///                 ));
+    ///             }
+    ///         }
+    ///
+    ///         let mode = format!("{:?}", modal.mode);
+    ///         Ok(Some(text!("Mode was set to " [AccentOk] mode [] ".")))
+    ///     }
+    /// )
+    /// .unwrap();
+    /// ```
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`InputMethod`]: crate::input::InputMethod
+    /// [`Session`]: crate::session::Session
+    pub fn add_for_current<T: 'static>(
+        &'static self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        mut f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        let command = Command::new(callers, move |flags, args| {
+            let result = self
+                .current_file
+                .mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
+
+            result
+                .or_else(|| {
+                    self.current_widget
+                        .mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone()))
+                })
+                .transpose()?
+                .ok_or_else(|| {
+                    text!(
+                        "The current file has no related structs of type {}"
+                        { std::any::type_name::<T>() }
+                    )
+                })
+        });
+
+        self.inner.write().try_add(command)
+    }
+
+    /// Adds a command that can mutate a widget of the given type,
+    /// along with its associated [`dyn Area`].
+    ///
+    /// This command will look for the [`PassiveWidget`] in the
+    /// following order:
+    ///
+    /// 1. Any instance that is "related" to the currently active
+    ///    [`File`], that is, any widgets that were added during the
+    ///    [`Session`]'s "`file_fn`".
+    /// 2. Other widgets in the currently active window, related or
+    ///    not to any given [`File`].
+    /// 3. Any instance of the [`PassiveWidget`] that is found in
+    ///    other windows, looking first at windows ahead.
+    ///
+    /// Keep in mind that the search is deterministic, that is, if
+    /// there are multiple instances of the widget that fit the
+    /// same category, only one of them will ever be used.
+    ///
+    /// This search algorithm allows a more versatile configuration of
+    /// widgets, for example, one may have a [`CommandLine`] per
+    /// [`File`], or one singular [`CommandLine`] that acts upon
+    /// all files in the window, and both would respond correctly
+    /// to the `"set-prompt"` command.
+    ///
+    /// # Examples
+    ///
+    /// In this example, we create a simple `Timer` widget, along with
+    /// some control commands.
+    ///
+    /// ```rust
+    /// // Required feature for widgets.
+    /// #![feature(return_position_impl_trait_in_trait)]
+    /// # use std::{
+    /// #    sync::{
+    /// #        atomic::{AtomicBool, Ordering},
+    /// #        Arc,
+    /// #    },
+    /// #    time::Instant,
+    /// # };
+    /// # use parsec_core::{
+    /// #    commands,
+    /// #    palette::{self, Form},
+    /// #    text::{text, Text, AlignCenter},
+    /// #    ui::{Area, PushSpecs, Ui},
+    /// #    widgets::{PassiveWidget, Widget},
+    /// # };
+    /// # pub struct Timer {
+    /// #    text: Text,
+    /// #    instant: Instant,
+    /// #    running: Arc<AtomicBool>,
+    /// # }
+    /// impl PassiveWidget for Timer {
+    ///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    ///         let timer = Self {
+    ///             text: text!(AlignCenter [Counter] "0ms"),
+    ///             instant: Instant::now(),
+    ///             // No need to use an `RwData`, since
+    ///             // `RwData::has_changed` is never called.
+    ///             running: Arc::new(AtomicBool::new(false)),
+    ///         };
+    ///
+    ///         // The checker should tell the `Timer` to update only
+    ///         // if `running` is `true`.
+    ///         let checker = {
+    ///             // Clone any variables before moving them to
+    ///             // the `checker`.
+    ///             let running = timer.running.clone();
+    ///             move || running.load(Ordering::Relaxed)
+    ///         };
+    ///
+    ///         let specs = PushSpecs::below().with_lenght(1.0);
+    ///
+    ///         (Widget::passive(timer), checker, specs)
+    ///     }
+    ///
+    ///     fn update(&mut self, _area: &impl Area) {
+    ///         if self.running.load(Ordering::Relaxed) {
+    ///             let duration = self.instant.elapsed();
+    ///             let duration = format!("{:.3?}", duration);
+    ///             self.text = text!(
+    ///                 AlignCenter [Counter] duration [] "elapsed"
+    ///             );
+    ///         }
+    ///     }
+    ///     
+    ///
+    ///     fn text(&self) -> &Text {
+    ///         &self.text
+    ///     }
+    ///
+    ///     // The `once` function of a `PassiveWidget` is only called
+    ///     // when that widget is first created.
+    ///     // It is generally useful to add commands and set forms
+    ///     // in the `palette`.
+    ///     fn once() {
+    ///         // `palette::set_weak_form` will only set that form if
+    ///         // it doesn't already exist.
+    ///         // That means that a user of the widget will be able to
+    ///         // control that form by changing it before or after this
+    ///         // widget is pushed.
+    ///         palette::set_weak_form("Counter", Form::new().green());
+    ///
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["play"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.running.store(true, Ordering::Relaxed);
+    ///
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
+    ///
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["pause"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.running.store(false, Ordering::Relaxed);
+    ///
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
+    ///
+    ///         commands::add_for_widget::<Timer>(
+    ///             ["pause"],
+    ///             |timer, _area, _flags, _args| {
+    ///                 timer.instant = Instant::now();
+    ///
+    ///                 Ok(None)
+    ///             })
+    ///             .unwrap();
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// [`dyn Area`]: crate::ui::Area
+    /// [`File`]: crate::widgets::File
+    /// [`Session`]: crate::session::Session
+    /// [`CommandLine`]: crate::widgets::CommandLine
+    pub fn add_for_widget<W: PassiveWidget<U>>(
+        &'static self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        mut f: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        let windows = unsafe { self.windows.read().unwrap().assume_init_ref().clone() };
+
+        let command = Command::new(callers, move |flags, args| {
+            self.current_file
+                .mutate_related_widget::<W, CmdResult>(|widget, area| {
+                    f(widget, area, flags, args.clone())
+                })
+                .unwrap_or_else(|| {
+                    let windows = windows.read();
+                    self.current_widget.inspect_data(|widget, _, _| {
+                        let widget = widget.clone().to_passive();
+                        if let Some((w, a)) = get_from_name(&windows, W::name(), &widget) {
+                            w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
+                                .unwrap()
+                        } else {
+                            let name = W::name();
+                            Err(text!("No widget of type " [AccentErr] name [] " found"))
+                        }
+                    })
+                })
+        });
+
+        self.inner.write().try_add(command)
+    }
+
+    /// Adds a [`WidgetGetter`] to [`self`].
+    pub fn add_windows(&self, windows: RwData<Vec<Window<U>>>) {
+        let mut lock = self.windows.write().unwrap();
+        *lock = MaybeUninit::new(windows)
+    }
+
+    pub fn try_alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+        self.inner.write().try_alias(alias, command)
+    }
 }
 
 /// The standard error that should be returned when [`run`]ning
@@ -657,376 +802,6 @@ pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
-
-/// The non flag arguments that were passed to the caller.
-///
-/// The first argument not prefixed with a "`-`" or a "`--`" will turn
-/// all remaining arguments into non flag arguments, even if they have
-/// those prefixes.
-///
-/// # Examples
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
-/// let call = "command --foo -bar notflag --foo --baz -abfgh";
-/// let (flags, mut args) = split_flags_and_args(call);
-///
-/// assert!(flags.short("bar"));
-/// assert!(flags.long("foo"));
-/// assert_eq!(args.collect::<Vec<&str>>(), vec![
-///     "notflag", "--foo", "--baz", "-abfgh"
-/// ]);
-/// ```
-///
-/// You can also make that happen by introducing an empty "`--`"
-/// argument:
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
-/// let call = "command --foo -bar -- --foo --baz -abfgh";
-/// let (flags, mut args) = split_flags_and_args(call);
-///
-/// assert!(flags.short("bar"));
-/// assert!(flags.long("foo"));
-/// assert_eq!(args.collect::<Vec<&str>>(), vec![
-///     "--foo", "--baz", "-abfgh"
-/// ]);
-/// ```
-#[derive(Clone)]
-pub struct Args<'a> {
-    count: usize,
-    expected: Option<usize>,
-    args: Peekable<SplitWhitespace<'a>>,
-}
-
-impl<'a> Args<'a> {
-    /// Returns the next argument, if there is one.
-    ///
-    /// Since this method is supposed to be used inside of a command,
-    /// it returns an error that can easily be returned by `?`,
-    /// exiting the function with an appropriate error message,
-    /// formated to be shown somewhere in the editor.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "run away i'll kill you 👹";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    /// args.next();
-    /// args.next();
-    /// args.next();
-    /// args.next();
-    ///
-    /// let ogre = args.next();
-    /// assert_eq!(ogre, Ok("👹"));
-    ///
-    /// let error = args.next();
-    /// let error_msg = text!(
-    ///     "Expected at least " [AccentErr] 6 []
-    ///     " arguments, got " [AccentErr] 5 [] "."
-    /// );
-    /// assert_eq!(error, Err(error_msg));
-    /// ```
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> std::result::Result<&str, Text> {
-        match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
-                Ok(arg)
-            }
-            None => Err({
-                let expected = match self.expected {
-                    Some(expected) => text!([AccentErr] expected),
-                    None => text!("at least " [AccentErr] { self.count + 1 }),
-                };
-                let (args, received) = match self.count {
-                    0 => (" arguments", text!([AccentErr] "none")),
-                    1 => (" argument", text!([AccentErr] 1)),
-                    count => (" arguments", text!([AccentErr] count)),
-                };
-
-                text!("Expected " expected [] args ", got " received [] ".")
-            }),
-        }
-    }
-
-    /// Attempts to parse the next argument, if there is one.
-    ///
-    /// This method will return an [`Err`] in two different ways,
-    /// either there is no next argument, in which it defers to the
-    /// error message of [`Args::next`], or the parsing fails, then it
-    /// returns a custom built error message for that type.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "int-and-float 42 non-float-arg";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// let int = args.next_as::<usize>();
-    /// assert_eq!(int, Ok(42));
-    ///
-    /// let float = args.next_as::<f32>();
-    /// let error_msg = text!(
-    ///     "Couldn't convert " [AccentErr] "non-float-arg" []
-    ///     " to " [AccentErr] "f32" [] "."
-    /// );
-    /// assert_eq!(float, Err(error_msg));
-    /// ```
-    ///
-    /// [`Args::next`]: Args::next
-    pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
-        let arg = self.next()?;
-        arg.parse().map_err(|_| {
-            text!(
-                "Couldn't convert " [AccentErr] arg []
-                " to " [AccentErr] { std::any::type_name::<F>() } [] "."
-            )
-        })
-    }
-
-    /// Returns the next argument, if there is one, otherwise, returns
-    /// a custom error message.
-    ///
-    /// This method will replace the usual "not enough arguments"
-    /// error message from the [`Args::next`] method by a [`Text`]
-    /// provided by the user itself, usually with the [`text`] macro.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "expects-2-and-file arg-1 not-quite";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// let first = args.next();
-    /// assert_eq!(first, Ok("arg-1"));
-    ///
-    /// let second = args.next();
-    /// assert_eq!(second, Ok("not-quite"));
-    ///
-    /// let msg = text!("I expected a " [Wack] "file" [] ", damnit!");
-    /// let float = args.next_else(msg.clone());
-    /// assert_eq!(float, Err(msg));
-    /// ```
-    ///
-    /// [`Args::next`]: Args::next
-    pub fn next_else(&mut self, text: Text) -> std::result::Result<&str, Text> {
-        match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
-                Ok(arg)
-            }
-            None => Err(text),
-        }
-    }
-
-    /// Optional function to return an error message in case there are
-    /// more arguments than expected.
-    ///
-    /// This is an optional function, in case you want to complain if
-    /// the user passes too many arguments. Of course, you could just
-    /// ignore them.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "just-1-arg,man arg-1 too-many wayy tooo many";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// let first = args.next();
-    /// assert_eq!(first, Ok("arg-1"));
-    ///
-    /// let error = args.ended();
-    /// let msg = text!(
-    ///     "Expected " [AccentErr] 1 []
-    ///     " argument, received " [AccentErr] 5 [] " instead."
-    /// );
-    /// assert_eq!(error, Err(msg));
-    /// ```
-    ///
-    /// [`Args::next`]: Args::next
-    pub fn ended(&mut self) -> std::result::Result<(), Text> {
-        match self.args.clone().count() {
-            0 => Ok(()),
-            count => Err({
-                let args = match self.count == 1 {
-                    true => " argument",
-                    false => " arguments",
-                };
-                text!(
-                    "Expected " [AccentErr] { self.count } [] args
-                    ", received " [AccentErr] { self.count + count } [] " instead."
-                )
-            }),
-        }
-    }
-
-    /// Collects the remaining arguments.
-    ///
-    /// This is similar to any [`Iterator::collect`], but it will
-    /// collect differently depending on what struct is being used.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "runner arg1 arg2 arg3 arg4";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// let vector: Vec<&str> = args.clone().collect();
-    /// assert_eq!(vector, vec!["arg1", "arg2", "arg3", "arg4"]);
-    ///
-    /// // In strings, the arguments are joined by a " ".
-    /// let string: String = args.collect();
-    /// assert_eq!(&string, "arg1 arg2 arg3 arg4");
-    /// ```
-    ///
-    /// [`Args::next`]: Args::next
-    pub fn collect<B: FromIterator<&'a str> + 'static>(&mut self) -> B {
-        let args: Vec<&str> = (&mut self.args).collect();
-
-        if TypeId::of::<B>() == TypeId::of::<String>() {
-            B::from_iter(args.into_iter().intersperse(" "))
-        } else {
-            B::from_iter(args)
-        }
-    }
-
-    /// Sets an expected value for the number of arguments.
-    ///
-    /// This will change the default [`Args::next`] error message, so
-    /// that it shows how many arguments were actually expected.
-    ///
-    /// The reason why this method is here, instead of the command's
-    /// creator being able to set a specified number of arguments per
-    /// command when creating the given command, is because the number
-    /// of arguments to any given command may vary, depending on the
-    /// specifics of said command's implementation.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "expects-5 arg1 arg2 ";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    /// args.set_expected(5);
-    /// args.next();
-    /// args.next();
-    ///
-    /// let error = args.next();
-    /// let error_msg = text!(
-    ///     "Expected " [AccentErr] 5 []
-    ///     " arguments, got " [AccentErr] 2 [] "."
-    /// );
-    /// assert_eq!(error, Err(error_msg));
-    /// ```
-    pub fn set_expected(&mut self, expected: usize) {
-        self.expected = Some(expected);
-    }
-}
-
-/// A struct representing flags passed down to [`Command`]s when
-/// running them.
-///
-/// There are 2 types of flag, the `short` and `long` flags.
-///
-/// `short` flags represent singular characters passed after a
-/// single `'-'` character, they can show up in multiple
-/// places, and should represent an incremental addition of
-/// features to a command.
-///
-/// `long` flags are words that come after any `"--"` sequence,
-/// and should represent more verbose, but more readable
-/// versions of `short` flags.
-///
-/// # Examples
-///
-/// Both `short` and `long` flags can only be counted once, no
-/// matter how many times they show up:
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
-/// let call = "my-command --foo -abcde --foo --bar -abfgh arg1";
-/// let (flags, mut args) = split_flags_and_args(call);
-///
-/// assert!(flags.short("abcdefgh"));
-/// assert!(flags.long("foo") && flags.long("bar"));
-/// assert_eq!(args.collect::<Vec<&str>>(), vec!["arg1"]);
-/// ```
-///
-/// If you have any arguments that start with `'-'` or `"--"`, but
-/// are not supposed to be flags, you can insert an empty
-/// `"--"` after the flags, in order to distinguish them.
-///
-/// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
-/// let call = "command --foo --bar -abcde -- --!flag -also-not";
-/// let (flags, mut args) = split_flags_and_args(call);
-///
-/// assert!(flags.short("abcde"));
-/// assert!(flags.long("foo") && flags.long("bar"));
-/// assert_eq!(args.collect::<String>(), "--!flag -also-not")
-/// ```
-#[derive(Clone, Copy)]
-pub struct Flags<'a, 'b>(&'a InnerFlags<'b>);
-
-impl<'a, 'b> Flags<'a, 'b> {
-    /// Checks if all of the [`char`]s in the `short` passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
-    /// let call = "run -abcdefgh -ablk args -wz";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// assert!(flags.short("k"));
-    /// assert!(!flags.short("w"));
-    /// assert_eq!(args.collect::<Vec<&str>>(), vec!["args", "-wz"]);
-    /// ```
-    pub fn short(&self, short: impl AsRef<str>) -> bool {
-        self.0.short(short)
-    }
-
-    /// Returns `true` if the `long` flag was passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
-    /// let call = "run --foo --bar args --baz";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// assert!(flags.long("foo"));
-    /// assert!(!flags.long("baz"));
-    /// assert_eq!(&args.collect::<String>(), "args --baz");
-    /// ```
-    pub fn long(&self, flag: impl AsRef<str>) -> bool {
-        self.0.long(flag)
-    }
-
-    /// Returns `true` if no flags have been passed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
-    /// let call = "run arg1 --foo --bar arg2 -baz";
-    /// let (flags, mut args) = split_flags_and_args(call);
-    ///
-    /// assert!(flags.is_empty());
-    /// assert_eq!(args.collect::<Vec<&str>>(), vec![
-    ///     "arg1", "--foo", "--bar", "arg2", "-baz"
-    /// ]);
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
 
 /// An error relating to commands in general.
 #[derive(Debug)]
@@ -1087,7 +862,125 @@ impl std::error::Error for Error {}
 /// [`commands`]: super
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Adds a widget getter to the globally accessible [`Commands`].
-pub(crate) fn add_widget_getter<U: Ui>(getter: RwData<Vec<Window<U>>>) {
-    COMMANDS.add_widget_getter(getter);
+/// A function that can be called by name.
+#[derive(Clone)]
+struct Command {
+    f: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
+    callers: Arc<[String]>,
+}
+
+impl Command {
+    /// Returns a new instance of [`Command`].
+    fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
+    where
+        F: FnMut(Flags, Args) -> CmdResult + 'static,
+    {
+        let callers: Arc<[String]> = callers
+            .into_iter()
+            .map(|caller| caller.to_string())
+            .collect();
+
+        if let Some(caller) = callers
+            .iter()
+            .find(|caller| caller.split_whitespace().count() != 1)
+        {
+            panic!("Command caller \"{caller}\" contains more than one word.");
+        }
+        Self {
+            f: RwData::new_unsized::<F>(Arc::new(RwLock::new(f))),
+            callers,
+        }
+    }
+
+    /// Executes the inner function if the `caller` matches any of
+    /// the callers in [`self`].
+    fn try_exec(&self, flags: Flags, args: Args<'_>) -> Result<Option<Text>> {
+        (self.f.write())(flags, args).map_err(Error::CommandFailed)
+    }
+
+    /// The list of callers that will trigger this command.
+    fn callers(&self) -> &[String] {
+        &self.callers
+    }
+}
+
+unsafe impl Send for Command {}
+unsafe impl Sync for Command {}
+struct InnerCommands {
+    list: Vec<Command>,
+    aliases: HashMap<String, (Command, String)>,
+}
+
+impl InnerCommands {
+    /// Tries to add the given [`Command`] to the list.
+    fn try_add(&mut self, command: Command) -> Result<()> {
+        let mut new_callers = command.callers().iter();
+
+        let commands = self.list.iter();
+        for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
+            if new_callers.any(|new_caller| new_caller == caller) {
+                return Err(Error::CallerAlreadyExists(caller.clone()));
+            }
+        }
+
+        self.list.push(command);
+
+        Ok(())
+    }
+
+    /// Tries to alias a full command (caller, flags, and
+    /// arguments) to an alias.
+    fn try_alias(&mut self, alias: impl ToString, call: impl ToString) -> Result<Option<Text>> {
+        let alias = alias.to_string();
+        if alias.split_whitespace().count() != 1 {
+            return Err(Error::AliasNotSingleWord(alias));
+        }
+
+        let call = call.to_string();
+        let caller = call
+            .split_whitespace()
+            .next()
+            .ok_or(Error::Empty)?
+            .to_string();
+
+        let mut cmds = self.list.iter();
+
+        if let Some(command) = cmds.find(|cmd| cmd.callers().contains(&caller)) {
+            let entry = (command.clone(), call.clone());
+            match self.aliases.insert(alias.clone(), entry) {
+                Some((_, prev_call)) => Ok(Some(text!(
+                    "Aliased " [AccentOk] alias []
+                    " from " [AccentOk] prev_call []
+                    " to " [AccentOk] call [] "."
+                ))),
+                None => Ok(Some(text!(
+                     "Aliased " [AccentOk] alias []
+                     " to " [AccentOk] call [] "."
+                ))),
+            }
+        } else {
+            Err(Error::CallerNotFound(caller))
+        }
+    }
+}
+
+fn get_from_name<'a, U: Ui>(
+    windows: &'a [Window<U>],
+    type_name: &'static str,
+    widget: &impl Data<dyn PassiveWidget<U>>,
+) -> Option<(&'a RwData<dyn PassiveWidget<U>>, &'a U::Area)> {
+    let window = windows
+        .iter()
+        .position(|w| w.widgets().any(|(cmp, _)| cmp.ptr_eq(widget)))
+        .unwrap();
+
+    let on_window = windows[window].widgets();
+    let previous = windows.iter().take(window).flat_map(|w| w.widgets());
+    let following = windows.iter().skip(window + 1).flat_map(|w| w.widgets());
+
+    on_window
+        .chain(following)
+        .chain(previous)
+        .find(|(w, _)| w.type_name() == type_name)
+        .map(|(w, a)| (w.as_passive(), a))
 }

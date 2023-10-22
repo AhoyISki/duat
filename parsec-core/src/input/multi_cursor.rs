@@ -5,7 +5,7 @@ use crate::{
     history::{Change, History},
     position::{Cursor, Point},
     text::{PrintCfg, Text},
-    ui::Area,
+    ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
 
@@ -76,23 +76,23 @@ impl Default for Cursors {
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
-pub struct MultiCursorEditor<'a, W, A>
+pub struct MultiCursorEditor<'a, W, U>
 where
-    W: ActiveWidget + 'static,
-    A: Area,
+    W: ActiveWidget<U> + 'static,
+    U: Ui
 {
     clearing_needed: bool,
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
-    area: &'a A,
+    area: &'a U::Area,
 }
 
-impl<'a, W, A> MultiCursorEditor<'a, W, A>
+impl<'a, W, U> MultiCursorEditor<'a, W, U>
 where
-    W: ActiveWidget + 'static,
-    A: Area,
+    W: ActiveWidget<U> + 'static,
+    U: Ui
 {
-    pub fn new(widget: &'a RwData<W>, cursors: &'a mut Cursors, area: &'a A) -> Self {
+    pub fn new(widget: &'a RwData<W>, cursors: &'a mut Cursors, area: &'a U::Area) -> Self {
         MultiCursorEditor {
             clearing_needed: false,
             widget,
@@ -116,7 +116,7 @@ where
         let mut edit_accum = EditAccum::default();
         let cursor = &mut self.cursors.list[index];
 
-        let was_file = self.widget.mutate_as::<File, ()>(|file| {
+        let was_file = self.widget.mutate_as::<File<U>, ()>(|file| {
             let (text, history) = file.mut_text_and_history();
             let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
             f(&mut editor);
@@ -148,7 +148,7 @@ where
         self.clear_intersections();
         let mut edit_accum = EditAccum::default();
 
-        let was_file = self.widget.mutate_as::<File, ()>(|file| {
+        let was_file = self.widget.mutate_as::<File<U>, ()>(|file| {
             let (text, history) = file.mut_text_and_history();
 
             for cursor in self.cursors.list.iter_mut() {
@@ -170,7 +170,7 @@ where
     }
 
     /// Alters the nth cursor's selection.
-    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<A>), index: usize) {
+    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<U::Area>), index: usize) {
         let mut widget = self.widget.write();
         let cursor = &mut self.cursors.list[index];
         let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -197,7 +197,7 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<A>)) {
+    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<U::Area>)) {
         let mut widget = self.widget.write();
         for cursor in self.cursors.list.iter_mut() {
             let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
@@ -233,12 +233,12 @@ where
     }
 
     /// Alters the main cursor's selection.
-    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<A>)) {
+    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<U::Area>)) {
         self.move_nth(f, self.cursors.main);
     }
 
     /// Alters the last cursor's selection.
-    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<A>)) {
+    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<U::Area>)) {
         let len = self.len_cursors();
         if len > 0 {
             self.move_nth(f, len - 1);
@@ -318,9 +318,9 @@ where
     }
 }
 
-impl<'a, A> MultiCursorEditor<'a, File, A>
+impl<'a, U> MultiCursorEditor<'a, File<U>, U>
 where
-    A: Area,
+    U: Ui,
 {
     /// Begins a new [`Moment`][crate::history::Moment].
     pub fn new_moment(&mut self) {

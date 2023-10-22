@@ -4,7 +4,6 @@ use parsec_core::{
     text::{text, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget},
-    CURRENT_FILE,
 };
 
 /// A vertical line on screen, useful, for example, for the separation

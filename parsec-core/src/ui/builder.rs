@@ -4,7 +4,7 @@ use super::{Area, Ui, Window};
 use crate::{
     data::RwData,
     widgets::{PassiveWidget, WidgetCfg},
-    CURRENT_FILE,
+    Globals,
 };
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -42,6 +42,7 @@ where
 {
     window: &'a mut Window<U>,
     mod_area: U::Area,
+    globals: Globals<U>,
 }
 
 impl<'a, U> FileBuilder<'a, U>
@@ -49,8 +50,12 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>, mod_area: U::Area) -> Self {
-        Self { window, mod_area }
+    pub fn new(window: &'a mut Window<U>, mod_area: U::Area, globals: Globals<U>) -> Self {
+        Self {
+            window,
+            mod_area,
+            globals,
+        }
     }
 
     /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
@@ -95,9 +100,9 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     #[allow(private_bounds)]
-    pub fn push<W: PassiveWidget>(&mut self) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = W::build();
+    pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = W::build(self.globals);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -107,9 +112,9 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            CURRENT_FILE.mutate(|file, _| {
-                file.add_related_widget((related, type_name, Box::new(child.clone())))
-            });
+            self.globals
+                .current_file
+                .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -169,12 +174,12 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     #[allow(private_bounds)]
-    pub fn push_cfg<W: PassiveWidget>(
+    pub fn push_cfg<W: PassiveWidget<U>>(
         &mut self,
-        cfg: impl WidgetCfg<Widget = W>,
+        cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = cfg.build();
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -184,9 +189,9 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            CURRENT_FILE.mutate(|file, _| {
-                file.add_related_widget((related, type_name, Box::new(child.clone())))
-            });
+            self.globals
+                .current_file
+                .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -220,16 +225,16 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     #[allow(private_bounds)]
-    pub fn push_to<W: PassiveWidget>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = W::build();
+    pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = W::build(self.globals);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        CURRENT_FILE.mutate(|file, _| {
-            file.add_related_widget((related, type_name, Box::new(child.clone())))
+        self.globals.current_file.mutate(|file, _, _| {
+            file.add_related_widget((related, type_name, child.clone()))
         });
         (child, parent)
     }
@@ -250,20 +255,20 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     #[allow(private_bounds)]
-    pub fn push_cfg_to<W: PassiveWidget>(
+    pub fn push_cfg_to<W: PassiveWidget<U>>(
         &mut self,
-        cfg: impl WidgetCfg<Widget = W>,
+        cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = cfg.build();
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        CURRENT_FILE.mutate(|file, _| {
-            file.add_related_widget((related, type_name, Box::new(child.clone())))
+        self.globals.current_file.mutate(|file, _, _| {
+            file.add_related_widget((related, type_name, child.clone()))
         });
         (child, parent)
     }
@@ -275,6 +280,7 @@ where
 {
     window: &'a mut Window<U>,
     area: U::Area,
+    globals: Globals<U>,
 }
 
 impl<'a, U> WindowBuilder<'a, U>
@@ -282,9 +288,13 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>) -> Self {
+    pub fn new(window: &'a mut Window<U>, globals: Globals<U>) -> Self {
         let area = window.files_region().clone();
-        Self { window, area }
+        Self {
+            window,
+            area,
+            globals,
+        }
     }
 
     /// Pushes a [`Widget<U>`] to the file's area, given a
@@ -336,9 +346,9 @@ where
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     #[allow(private_bounds)]
-    pub fn push<W: PassiveWidget>(&mut self) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = W::build();
+    pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = W::build(self.globals);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -398,12 +408,12 @@ where
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     #[allow(private_bounds)]
-    pub fn push_cfg<W: PassiveWidget>(
+    pub fn push_cfg<W: PassiveWidget<U>>(
         &mut self,
-        cfg: impl WidgetCfg<Widget = W>,
+        cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = cfg.build();
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -430,9 +440,9 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     #[allow(private_bounds)]
-    pub fn push_to<W: PassiveWidget>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = W::build();
+    pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = W::build(self.globals);
 
         self.window.push(widget, &area, checker, specs, true)
     }
@@ -453,25 +463,25 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     #[allow(private_bounds)]
-    pub fn push_cfg_to<W: PassiveWidget>(
+    pub fn push_cfg_to<W: PassiveWidget<U>>(
         &mut self,
-        pushable: impl WidgetCfg<Widget = W>,
+        pushable: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W>();
-        let (widget, checker, specs) = pushable.build();
+        run_once::<W, U>(self.globals);
+        let (widget, checker, specs) = pushable.build(self.globals);
 
         self.window.push(widget, &area, checker, specs, true)
     }
 }
 
-fn run_once<W: PassiveWidget>() {
+fn run_once<W: PassiveWidget<U>, U: Ui>(globals: Globals<U>) {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut once_list = ONCE_LIST.write();
-    if !once_list.contains(&W::type_name()) {
-        W::once();
-        once_list.push(W::type_name());
+    if !once_list.contains(&W::name()) {
+        W::once(globals);
+        once_list.push(W::name());
     }
 }

@@ -19,6 +19,9 @@
 use std::sync::atomic::AtomicBool;
 
 use data::{CurrentFile, CurrentWidget};
+use ui::Ui;
+
+use self::commands::Commands;
 
 pub mod commands;
 pub mod data;
@@ -37,11 +40,48 @@ pub mod prelude {
         palette::{self, CursorShape, Form},
         session::{Session, SessionCfg},
         text::{text, PrintCfg},
-        widgets::{
-            main_byte, main_char, main_col, main_line, selections, selections_fmt, status,
-            CommandLine, DynInput, File, LineNumbers, StatusLine,
-        },
+        widgets::File,
     };
+}
+
+pub struct Globals<U>
+where
+    U: Ui,
+{
+    pub commands: &'static Commands<U>,
+    pub current_file: &'static CurrentFile<U>,
+    pub current_widget: &'static CurrentWidget<U>,
+}
+
+impl<U> Clone for Globals<U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        Self {
+            commands: self.commands,
+            current_file: self.current_file,
+            current_widget: self.current_widget,
+        }
+    }
+}
+impl<U> Copy for Globals<U> where U: Ui {}
+
+impl<U> Globals<U>
+where
+    U: Ui,
+{
+    pub fn new(
+        commands: &'static Commands<U>,
+        current_file: &'static CurrentFile<U>,
+        current_widget: &'static CurrentWidget<U>,
+    ) -> Self {
+        Self {
+            commands,
+            current_file,
+            current_widget,
+        }
+    }
 }
 
 // Debugging objects.
@@ -50,10 +90,6 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 // Internal control objects.
 static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
-
-// Public control objects.
-pub static CURRENT_FILE: CurrentFile = CurrentFile::new();
-pub static CURRENT_WIDGET: CurrentWidget = CurrentWidget::new();
 
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{

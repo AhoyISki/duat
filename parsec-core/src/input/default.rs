@@ -1,7 +1,13 @@
 use crossterm::event::KeyEvent;
 
 use super::{Cursors, InputMethod};
-use crate::{data::RwData, history::History, ui::Area, widgets::File};
+use crate::{
+    data::RwData,
+    history::History,
+    ui::{Area, Ui},
+    widgets::File,
+    Globals,
+};
 
 #[derive(Clone)]
 pub struct Editor {
@@ -24,10 +30,19 @@ impl Default for Editor {
     }
 }
 
-impl InputMethod for Editor {
-    type Widget = File;
+impl<U> InputMethod<U> for Editor
+where
+    U: Ui,
+{
+    type Widget = File<U>;
 
-    fn send_key(&mut self, _key: KeyEvent, _widget: &RwData<Self::Widget>, _area: &impl Area) {
+    fn send_key(
+        &mut self,
+        _key: KeyEvent,
+        _widget: &RwData<Self::Widget>,
+        _area: &U::Area,
+        globals: Globals<U>,
+    ) {
         todo!()
     }
 

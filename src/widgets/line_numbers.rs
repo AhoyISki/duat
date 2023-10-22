@@ -22,24 +22,30 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use super::{PassiveWidget, Widget};
-use crate::{
+use super::{PassiveWidget, Widget, WidgetCfg};
+use parsec_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
-    CURRENT_FILE,
+    Globals,
 };
 
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget`] are shown on screen.
-pub struct LineNumbers {
-    reader: FileReader,
+pub struct LineNumbers<U>
+where
+    U: Ui,
+{
+    reader: FileReader<U>,
     text: Text,
     cfg: LineNumbersCfg,
 }
 
-impl LineNumbers {
+impl<U> LineNumbers<U>
+where
+    U: Ui,
+{
     pub fn config() -> LineNumbersCfg {
         LineNumbersCfg::new()
     }
@@ -97,11 +103,14 @@ impl LineNumbers {
     }
 }
 
-impl PassiveWidget for LineNumbers {
-    /// Returns a function that outputs a [`LineNumbers<U>`], taking a
+impl<U> PassiveWidget<U> for LineNumbers<U>
+where
+    U: Ui,
+{
+    /// Returns a function that outputs a [`LineNumbers`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-        LineNumbersCfg::default().build()
+    fn build(globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+        LineNumbersCfg::default().build(globals)
     }
 
     fn update(&mut self, area: &impl Area) {
@@ -162,21 +171,6 @@ impl LineNumbersCfg {
             show_wraps: false,
             specs: PushSpecs::left(),
         }
-    }
-
-    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let reader = CURRENT_FILE.constant();
-        let specs = self.specs;
-
-        let mut line_numbers = LineNumbers {
-            reader: reader.clone(),
-            text: Text::default(),
-            cfg: self,
-        };
-        line_numbers.update_text();
-
-        let widget = Widget::passive(line_numbers);
-        (widget, move || reader.has_changed(), specs)
     }
 
     pub fn absolute(self) -> Self {
@@ -264,8 +258,28 @@ impl LineNumbersCfg {
     }
 }
 
-unsafe impl Send for LineNumbers {}
-unsafe impl Sync for LineNumbers {}
+impl<U> WidgetCfg<U> for LineNumbersCfg
+where
+    U: Ui,
+{
+    fn build(self, globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let reader = globals.current_file.constant();
+        let specs = self.specs;
+
+        let mut line_numbers = LineNumbers {
+            reader: reader.clone(),
+            text: Text::default(),
+            cfg: self,
+        };
+        line_numbers.update_text();
+
+        let widget = Widget::passive(line_numbers);
+        (widget, move || reader.has_changed(), specs)
+    }
+}
+
+unsafe impl<U: Ui> Send for LineNumbers<U> {}
+unsafe impl<U: Ui> Sync for LineNumbers<U> {}
 
 /// Writes the text of the line number to a given [`String`].
 fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {

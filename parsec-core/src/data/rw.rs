@@ -13,7 +13,7 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{private::InnerData, Data, Error};
-use crate::widgets::{ActiveWidget, PassiveWidget};
+use crate::{widgets::{ActiveWidget, PassiveWidget}, ui::Ui};
 
 /// A read-write reference to information, that can tell readers if
 /// said information has changed.
@@ -824,10 +824,13 @@ where
     }
 }
 
-impl RwData<dyn ActiveWidget> {
-    pub fn to_passive(self) -> RwData<dyn PassiveWidget> {
+impl<U> RwData<dyn ActiveWidget<U>>
+where
+    U: Ui,
+{
+    pub fn to_passive(self) -> RwData<dyn PassiveWidget<U>> {
         RwData {
-            data: self.data as Arc<RwLock<dyn PassiveWidget>>,
+            data: self.data as Arc<RwLock<dyn PassiveWidget<U>>>,
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
             concrete_type: self.concrete_type,

@@ -14,7 +14,7 @@ use crate::{
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
     widgets::{File, PassiveWidget, Widget},
-    CURRENT_FILE, CURRENT_WIDGET,
+    Globals,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -548,9 +548,9 @@ where
             .iter()
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
-                widget.downcast::<File>().map(|file| {
-                    (pos, file.read().name())
-                })
+                widget
+                    .downcast::<File<U>>()
+                    .map(|file| (pos, file.read().name()))
             })
     }
 
@@ -558,12 +558,13 @@ where
         &'env self,
         key: KeyEvent,
         scope: &'scope std::thread::Scope<'scope, 'env>,
+        globals: Globals<U>,
     ) {
         if let Some(node) = self
             .nodes()
-            .find(|node| CURRENT_WIDGET.widget_ptr_eq(&node.widget))
+            .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
         {
-            scope.spawn(move || node.widget.send_key(key, &node.area));
+            scope.spawn(move || node.widget.send_key(key, &node.area, globals));
         }
     }
 
@@ -593,12 +594,12 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
+    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File<U>) -> B) -> B {
         self.0
             .nodes
             .iter()
             .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast::<File>() {
+                if let Some(file) = widget.downcast::<File<U>>() {
                     f(accum, &file.read())
                 } else {
                     accum
@@ -615,7 +616,7 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn PassiveWidget) -> B) -> B {
+    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn PassiveWidget<U>) -> B) -> B {
         self.0
             .nodes
             .iter()
@@ -655,7 +656,8 @@ where
 pub(crate) fn build_file<U>(
     window: &mut Window<U>,
     mod_area: U::Area,
-    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<File>),
+    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<File<U>>),
+    globals: Globals<U>,
 ) where
     U: Ui,
 {
@@ -666,21 +668,22 @@ pub(crate) fn build_file<U>(
             .find(|Node { area, .. }| *area == mod_area)
             .unwrap();
 
-        let old_file = node
-            .widget
-            .downcast::<File>()
-            .map(|file| CURRENT_FILE.swap(file, node.widget.input().unwrap().clone()));
+        let old_file = node.widget.downcast::<File<U>>().map(|file| {
+            globals
+                .current_file
+                .swap(file, node.area.clone(), node.widget.input().unwrap().clone())
+        });
 
-        let widget = node.widget.downcast::<File>().unwrap();
+        let widget = node.widget.downcast::<File<U>>().unwrap();
 
         (widget, old_file)
     };
 
-    let mut file_builder = FileBuilder::new(window, mod_area);
+    let mut file_builder = FileBuilder::new(window, mod_area, globals.clone());
 
     f(&mut file_builder, &widget);
 
-    if let Some((file, input)) = old_file {
-        CURRENT_FILE.swap(file, input);
+    if let Some((file, area, input)) = old_file {
+        globals.current_file.swap(file, area, input);
     };
 }

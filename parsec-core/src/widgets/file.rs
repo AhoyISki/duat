@@ -19,7 +19,7 @@
 //! method. This method is notably used by the
 //! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, rc::Rc};
 
 use super::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
 use crate::{
@@ -29,45 +29,34 @@ use crate::{
     palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
+    Globals,
 };
 
-#[derive(Clone)]
-pub struct FileCfg<I>
+pub struct FileCfg<U>
 where
-    I: InputMethod<Widget = File>,
+    U: Ui,
 {
     path: Option<PathBuf>,
-    input: I,
+    generator: Rc<dyn Fn(File<U>) -> Widget<U>>,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
 
-impl FileCfg<Editor> {
+impl<U> FileCfg<U>
+where
+    U: Ui,
+{
     pub fn new() -> Self {
         FileCfg {
             path: None,
-            input: Editor::new(),
+            generator: Rc::new(|file| Widget::active(file, RwData::new(Editor::new()))),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
         }
     }
-}
 
-impl Default for FileCfg<Editor> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<I> FileCfg<I>
-where
-    I: InputMethod<Widget = File>,
-{
-    pub(crate) fn build<U>(self) -> (Widget<U>, Box<dyn Fn() -> bool>)
-    where
-        U: Ui,
-    {
+    pub(crate) fn build(self) -> (Widget<U>, Box<dyn Fn() -> bool>) {
         let contents = self
             .path
             .as_ref()
@@ -127,25 +116,19 @@ where
             text.insert(90, Tag::PopForm(form2), marker);
         }
 
-        text.add_cursor_tags(self.input.cursors().unwrap());
+        let file = File {
+            path: match full_path {
+                Some(path) => Path::Set(path),
+                None => Path::new_unset(),
+            },
+            text,
+            cfg: self.cfg,
+            history: History::new(),
+            printed_lines: Vec::new(),
+            related_widgets: Vec::new(),
+        };
 
-        (
-            Widget::active(
-                File {
-                    path: match full_path {
-                        Some(path) => Path::Set(path),
-                        None => Path::new_unset(),
-                    },
-                    text,
-                    cfg: self.cfg,
-                    history: History::new(),
-                    printed_lines: Vec::new(),
-                    related_widgets: Vec::new(),
-                },
-                RwData::new(self.input),
-            ),
-            Box::new(|| false),
-        )
+        ((self.generator)(file), Box::new(|| false))
     }
 
     pub fn open(self, path: PathBuf) -> Self {
@@ -159,12 +142,9 @@ where
         Self { cfg, ..self }
     }
 
-    pub fn with_input<NewI>(self, input: NewI) -> FileCfg<NewI>
-    where
-        NewI: InputMethod<Widget = File> + Clone,
-    {
+    pub fn with_input(self, input: impl InputMethod<U, Widget = File<U>> + Clone) -> Self {
         FileCfg {
-            input,
+            generator: Rc::new(move|file| Widget::active(file, RwData::new(input.clone()))),
             cfg: self.cfg,
             specs: self.specs,
             path: self.path,
@@ -172,31 +152,60 @@ where
     }
 }
 
-impl<I> WidgetCfg for FileCfg<I>
+impl<U> WidgetCfg<U> for FileCfg<U>
 where
-    I: InputMethod<Widget = File> + Clone,
+    U: Ui,
 {
-    type Widget = File;
+    type Widget = File<U>;
 
-    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
         let (widget, checker) = self.build();
         (widget, checker, specs)
     }
 }
 
+impl<U> Default for FileCfg<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<U> Clone for FileCfg<U>
+where
+    U: Ui,
+{
+    fn clone(&self) -> Self {
+        Self {
+            path: self.path.clone(),
+            generator: self.generator.clone(),
+            cfg: self.cfg.clone(),
+            specs: self.specs.clone(),
+        }
+    }
+}
+
 /// The widget that is used to print and edit files.
-pub struct File {
+pub struct File<U>
+where
+    U: Ui,
+{
     path: Path,
     text: Text,
     cfg: PrintCfg,
     history: History,
     printed_lines: Vec<(usize, bool)>,
-    related_widgets: Vec<(RwData<dyn PassiveWidget>, &'static str, Box<dyn Area>)>,
+    related_widgets: Vec<(RwData<dyn PassiveWidget<U>>, &'static str, U::Area)>,
 }
 
-impl File {
-    pub fn cfg() -> FileCfg<Editor> {
+impl<U> File<U>
+where
+    U: Ui,
+{
+    pub fn cfg() -> FileCfg<U> {
         FileCfg::new()
     }
 
@@ -264,7 +273,7 @@ impl File {
 
     pub(crate) fn add_related_widget(
         &mut self,
-        related: (RwData<dyn PassiveWidget>, &'static str, Box<dyn Area>),
+        related: (RwData<dyn PassiveWidget<U>>, &'static str, U::Area),
     ) {
         self.related_widgets.push(related)
     }
@@ -276,12 +285,14 @@ impl File {
             .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
     }
 
-    pub(crate) fn get_related_widget(&self, type_name: &str) -> Option<RwData<dyn PassiveWidget>> {
+    pub(crate) fn get_related_widget(
+        &self,
+        type_name: &str,
+    ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
         self.related_widgets
             .iter()
             .find(|(_, cmp, _)| *cmp == type_name)
-            .map(|(widget, ..)| widget)
-            .cloned()
+            .map(|(widget, _, area)| (widget.clone(), area.clone()))
     }
 
     pub(crate) fn mutate_related<T: 'static, R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
@@ -293,14 +304,12 @@ impl File {
 
     pub(crate) fn mutate_related_widget<W: 'static, R>(
         &mut self,
-        f: impl FnOnce(&mut W, &mut dyn Area) -> R,
+        f: impl FnOnce(&mut W, &mut U::Area) -> R,
     ) -> Option<R> {
         self.related_widgets
             .iter_mut()
             .find(|(widget, ..)| widget.data_is::<W>())
-            .and_then(|(widget, _, area)| {
-                widget.mutate_as::<W, R>(|widget| f(widget, area.as_mut()))
-            })
+            .and_then(|(widget, _, area)| widget.mutate_as::<W, R>(|widget| f(widget, area)))
     }
 
     fn set_printed_lines(&mut self, area: &impl Area) {
@@ -338,22 +347,24 @@ impl File {
         self.history.undo(&mut self.text, area, cursors, &self.cfg)
     }
 
-    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History)  {
+    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History) {
         (&mut self.text, &mut self.history)
     }
 }
 
-impl PassiveWidget for File {
-    fn build<U>() -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
+impl<U> PassiveWidget<U> for File<U>
+where
+    U: Ui,
+{
+    fn build(_globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
     where
-        U: Ui,
         Self: Sized,
     {
         let (widget, checker) = Self::cfg().build();
         (widget, checker, PushSpecs::above())
     }
 
-    fn update(&mut self, _area: &impl Area) {}
+    fn update(&mut self, _area: &U::Area) {}
 
     fn text(&self) -> &Text {
         &self.text
@@ -363,23 +374,32 @@ impl PassiveWidget for File {
         &self.cfg
     }
 
-    fn print(&mut self, area: &impl Area)
+    fn print(&mut self, area: &U::Area)
     where
         Self: Sized,
     {
         self.set_printed_lines(area);
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
+
+    fn once(globals: crate::Globals<U>) {}
 }
 
-impl ActiveWidget for File {
+impl<U> ActiveWidget<U> for File<U>
+where
+    U: Ui,
+{
     fn mut_text(&mut self) -> &mut Text {
         &mut self.text
     }
+
+    fn on_focus(&mut self, _area: &<U as Ui>::Area) {}
+
+    fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {}
 }
 
-unsafe impl Send for File {}
-unsafe impl Sync for File {}
+unsafe impl<U: Ui> Send for File<U> {}
+unsafe impl<U: Ui> Sync for File<U> {}
 
 enum Path {
     Set(PathBuf),

@@ -11,3 +11,25 @@ exclude = [
 ]
 
 resolver = "2"
+
+[package]
+name = "parsec"
+version = "0.1.0"
+authors = ["AhoyISki"]
+description = "A Highly customizable text editor, configured through the use of a rust crate."
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "text", "application", "parsec"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2021"
+
+[[bin]]
+name = "parsec"
+
+[dependencies]
+parsec-core = { version = "0.1.4", path = "parsec-core" }
+parsec-term = { version = "0.1.4", path = "parsec-term", optional = true}
+
+[features]
+default = ["term-ui"]
+term-ui = ["dep:parsec-term"]
