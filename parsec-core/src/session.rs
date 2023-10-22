@@ -34,21 +34,6 @@ impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn new(
-        ui: U,
-        file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File<U>>)>,
-        globals: Globals<U>,
-    ) -> Self {
-        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
-        SessionCfg {
-            ui,
-            file_cfg: File::cfg(),
-            file_fn,
-            window_fn: Box::new(|_| {}),
-            globals,
-        }
-    }
-
     pub fn session_from_args(mut self) -> Session<U> {
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -105,92 +90,79 @@ where
         todo!()
     }
 
-    pub fn with_input(self, input: impl InputMethod<U, Widget = File<U>> + Clone) -> SessionCfg<U> {
-        SessionCfg {
-            file_cfg: self.file_cfg.with_input(input),
-            ui: self.ui,
-            file_fn: self.file_fn,
-            window_fn: self.window_fn,
-            globals: self.globals,
-        }
+    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
+        self.file_cfg.set_input(input);
     }
 
-    pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {
-        Self {
-            file_cfg: self.file_cfg.with_print_cfg(cfg),
-            ..self
-        }
+    pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
+        self.file_cfg.set_print_cfg(cfg);
     }
 
-    pub fn with_file_fn(
-        self,
+    pub fn set_file_fn(
+        &mut self,
         file_fn: impl FnMut(&mut FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) -> Self {
-        Self {
-            file_fn: Box::new(file_fn),
-            ..self
-        }
+    ) {
+        self.file_fn = Box::new(file_fn);
     }
 
-    pub fn with_file_fn_prefix(
-        mut self,
+    pub fn preffix_file_fn(
+        &mut self,
         mut preffix: impl FnMut(&FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) -> Self {
-        Self {
-            file_fn: Box::new(move |builder, file| {
-                preffix(builder, file);
-                (self.file_fn)(builder, file)
-            }),
-            ..self
-        }
+    ) {
+        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_, _| {}));
+
+        self.file_fn = Box::new(move |builder, file| {
+            preffix(builder, file);
+            file_fn(builder, file);
+        });
     }
 
-    pub fn with_file_fn_suffix(
-        mut self,
+    pub fn suffix_file_fn(
+        &mut self,
         mut suffix: impl FnMut(&FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) -> Self {
-        Self {
-            file_fn: Box::new(move |builder, file| {
-                (self.file_fn)(builder, file);
-                suffix(builder, file)
-            }),
-            ..self
-        }
+    ) {
+        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_, _| {}));
+
+        self.file_fn = Box::new(move |builder, file| {
+            file_fn(builder, file);
+            suffix(builder, file);
+        });
     }
 
-    pub fn with_window_fn(
-        self,
-        window_builder: impl FnMut(&mut WindowBuilder<U>) + 'static,
-    ) -> Self {
-        Self {
-            window_fn: Box::new(window_builder),
-            ..self
-        }
+    pub fn set_window_fn(&mut self, window_fn: impl FnMut(&mut WindowBuilder<U>) + 'static) {
+        self.window_fn = Box::new(window_fn);
     }
 
-    pub fn with_window_fn_prefix(
-        mut self,
-        mut preffix: impl FnMut(&WindowBuilder<U>) + 'static,
-    ) -> Self {
-        Self {
-            window_fn: Box::new(move |builder| {
-                preffix(builder);
-                (self.window_fn)(builder)
-            }),
-            ..self
-        }
+    pub fn preffix_window_fn(&mut self, mut preffix: impl FnMut(&WindowBuilder<U>) + 'static) {
+        let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
+
+        self.window_fn = Box::new(move |builder| {
+            preffix(builder);
+            window_fn(builder);
+        });
     }
 
-    pub fn with_window_fn_suffix(
-        mut self,
-        mut suffix: impl FnMut(&WindowBuilder<U>) + 'static,
-    ) -> Self {
-        Self {
-            window_fn: Box::new(move |builder| {
-                (self.window_fn)(builder);
-                suffix(builder)
-            }),
-            ..self
+    pub fn suffix_window_fn(&mut self, mut suffix: impl FnMut(&WindowBuilder<U>) + 'static) {
+        let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
+
+        self.window_fn = Box::new(move |builder| {
+            window_fn(builder);
+            suffix(builder);
+        });
+    }
+
+    pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {
+        self.file_cfg.mut_print_cfg()
+    }
+
+    pub fn __new(ui: U, globals: Globals<U>) -> Self {
+        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
+        SessionCfg {
+            ui,
+            file_cfg: File::cfg(),
+            file_fn: Box::new(|_, _| {}),
+            window_fn: Box::new(|_| {}),
+            globals,
         }
     }
 }

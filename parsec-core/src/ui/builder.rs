@@ -233,9 +233,9 @@ where
         let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.globals.current_file.mutate(|file, _, _| {
-            file.add_related_widget((related, type_name, child.clone()))
-        });
+        self.globals
+            .current_file
+            .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
         (child, parent)
     }
 
@@ -267,9 +267,9 @@ where
         let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.globals.current_file.mutate(|file, _, _| {
-            file.add_related_widget((related, type_name, child.clone()))
-        });
+        self.globals
+            .current_file
+            .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
         (child, parent)
     }
 }

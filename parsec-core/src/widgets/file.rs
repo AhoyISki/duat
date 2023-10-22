@@ -143,17 +143,16 @@ where
         }
     }
 
-    pub fn with_print_cfg(self, cfg: PrintCfg) -> Self {
-        Self { cfg, ..self }
+    pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
+        self.cfg = cfg;
     }
 
-    pub fn with_input(self, input: impl InputMethod<U, Widget = File<U>> + Clone) -> Self {
-        FileCfg {
-            generator: Rc::new(move |file| Widget::active(file, RwData::new(input.clone()))),
-            cfg: self.cfg,
-            specs: self.specs,
-            path: self.path,
-        }
+    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
+        self.generator = Rc::new(move |file| Widget::active(file, RwData::new(input.clone())));
+    }
+
+    pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {
+        &mut self.cfg
     }
 }
 

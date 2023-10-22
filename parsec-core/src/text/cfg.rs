@@ -78,13 +78,13 @@ impl NewLine {
 // usize as its builtin type.
 #[derive(Debug, Copy, Clone)]
 pub struct ScrollOff {
-    pub y_gap: usize,
-    pub x_gap: usize,
+    pub x: usize,
+    pub y: usize,
 }
 
 impl Default for ScrollOff {
     fn default() -> Self {
-        ScrollOff { y_gap: 3, x_gap: 3 }
+        ScrollOff { y: 3, x: 3 }
     }
 }
 
@@ -184,19 +184,16 @@ impl PrintCfg {
         }
     }
 
-    pub fn with_new_line_after_space_as(self, char: char) -> Self {
+    pub fn with_trailing_new_line_as(self, char: char) -> Self {
         Self {
             new_line: NewLine::AfterSpaceAs(char),
             ..self
         }
     }
 
-    pub fn with_scrolloff(self, gap: usize) -> Self {
+    pub fn with_scrolloff(self, x: usize, y: usize) -> Self {
         Self {
-            scrolloff: ScrollOff {
-                y_gap: gap,
-                x_gap: gap,
-            },
+            scrolloff: ScrollOff { x, y },
             ..self
         }
     }
@@ -204,8 +201,8 @@ impl PrintCfg {
     pub fn with_x_scrolloff(self, x_gap: usize) -> Self {
         Self {
             scrolloff: ScrollOff {
-                y_gap: self.scrolloff.y_gap,
-                x_gap,
+                y: self.scrolloff.y,
+                x: x_gap,
             },
             ..self
         }
@@ -214,8 +211,8 @@ impl PrintCfg {
     pub fn with_y_scrolloff(self, y_gap: usize) -> Self {
         Self {
             scrolloff: ScrollOff {
-                x_gap: self.scrolloff.x_gap,
-                y_gap,
+                x: self.scrolloff.x,
+                y: y_gap,
             },
             ..self
         }

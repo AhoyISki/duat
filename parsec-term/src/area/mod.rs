@@ -125,9 +125,9 @@ impl Area {
         let mut iter = iter.map(|item| item.pos);
 
         let target = if info.last_main > point {
-            cfg.scrolloff().y_gap
+            cfg.scrolloff().y
         } else {
-            self.height().saturating_sub(cfg.scrolloff().y_gap + 1)
+            self.height().saturating_sub(cfg.scrolloff().y + 1)
         };
 
         let first = if nl_on_point_was_concealed {
@@ -190,8 +190,8 @@ impl Area {
             (line_start, start, end)
         };
 
-        let max_dist = width - cfg.scrolloff().x_gap;
-        let min_dist = info.x_shift + cfg.scrolloff().x_gap;
+        let max_dist = width - cfg.scrolloff().x;
+        let min_dist = info.x_shift + cfg.scrolloff().x;
 
         if start < min_dist {
             info.x_shift = info.x_shift.saturating_sub(min_dist - start);

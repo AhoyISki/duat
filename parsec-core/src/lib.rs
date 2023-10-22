@@ -48,16 +48,18 @@ pub struct Globals<U>
 where
     U: Ui,
 {
-    pub commands: &'static Commands<U>,
     pub current_file: &'static CurrentFile<U>,
     pub current_widget: &'static CurrentWidget<U>,
+    pub commands: &'static Commands<U>,
 }
 
 impl<U> Clone for Globals<U>
 where
     U: Ui,
 {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 impl<U> Copy for Globals<U> where U: Ui {}
 
@@ -65,15 +67,15 @@ impl<U> Globals<U>
 where
     U: Ui,
 {
-    pub fn new(
-        commands: &'static Commands<U>,
+    pub const fn new(
         current_file: &'static CurrentFile<U>,
         current_widget: &'static CurrentWidget<U>,
+        commands: &'static Commands<U>,
     ) -> Self {
         Self {
-            commands,
             current_file,
             current_widget,
+            commands,
         }
     }
 }

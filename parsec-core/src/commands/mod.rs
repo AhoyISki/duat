@@ -206,8 +206,7 @@ use std::{
     sync::{Arc, LazyLock, RwLock},
 };
 
-pub use self::parameters::split_flags_and_args;
-use self::parameters::{Args, Flags};
+pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
     data::{CurrentFile, CurrentWidget, Data, RwData},
     text::{text, Text},
@@ -404,7 +403,7 @@ where
     /// another command, or if `command` is not a real caller to an
     /// exisiting [`Command`].
     pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        self.try_alias(alias, command)
+        self.inner.write().try_alias(alias, command)
     }
 
     /// Runs a full command, with a caller, [`Flags`], and [`Args`].
@@ -786,13 +785,9 @@ where
     }
 
     /// Adds a [`WidgetGetter`] to [`self`].
-    pub fn add_windows(&self, windows: RwData<Vec<Window<U>>>) {
+    pub(crate) fn add_windows(&self, windows: RwData<Vec<Window<U>>>) {
         let mut lock = self.windows.write().unwrap();
         *lock = MaybeUninit::new(windows)
-    }
-
-    pub fn try_alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        self.inner.write().try_alias(alias, command)
     }
 }
 

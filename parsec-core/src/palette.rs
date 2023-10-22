@@ -21,7 +21,7 @@ mod global {
     }
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    pub fn set_source(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         PALETTE.set_ref(name, referenced)
     }
 
