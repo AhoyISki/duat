@@ -679,7 +679,7 @@ pub(crate) fn build_file<U>(
         (widget, old_file)
     };
 
-    let mut file_builder = FileBuilder::new(window, mod_area, globals.clone());
+    let mut file_builder = FileBuilder::new(window, mod_area, globals);
 
     f(&mut file_builder, &widget);
 

@@ -1,7 +1,7 @@
 mod default;
 mod multi_cursor;
 
-use crossterm::event::{KeyEvent, KeyModifiers};
+pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub use self::{
     default::Editor,
@@ -49,6 +49,6 @@ pub macro key {
     },
 
     ($code:pat, $modifiers:pat) => {
-        crossterm::event::KeyEvent { code: $code, modifiers: $modifiers, .. }
+        KeyEvent { code: $code, modifiers: $modifiers, .. }
     }
 }

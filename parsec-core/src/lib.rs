@@ -57,13 +57,7 @@ impl<U> Clone for Globals<U>
 where
     U: Ui,
 {
-    fn clone(&self) -> Self {
-        Self {
-            commands: self.commands,
-            current_file: self.current_file,
-            current_widget: self.current_widget,
-        }
-    }
+    fn clone(&self) -> Self { *self }
 }
 impl<U> Copy for Globals<U> where U: Ui {}
 

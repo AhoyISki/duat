@@ -70,15 +70,18 @@ where
             std::env::current_dir().unwrap().join(file_name)
         });
 
-        let mut text = Text::new(contents.unwrap_or(String::from("\n")));
+        #[cfg(not(feature = "wacky-colors"))]
+        let text = Text::new(contents.unwrap_or(String::from("\n")));
 
         #[cfg(feature = "wacky-colors")]
-        {
+        let text = {
             use crate::{
                 global::palette,
                 palette::Form,
                 text::{text, Marker, Tag},
             };
+            let mut text = Text::new(contents.unwrap_or(String::from("\n")));
+
             let marker = Marker::new();
             let form1 = palette().set_form("form1lmao", Form::new().red());
             let form2 = palette().set_form("form2lmao", Form::new().on_blue());
@@ -114,7 +117,9 @@ where
             text.insert(80, Tag::PopForm(form2), marker);
             text.insert(80, Tag::PushForm(form2), marker);
             text.insert(90, Tag::PopForm(form2), marker);
-        }
+
+            text
+        };
 
         let file = File {
             path: match full_path {
@@ -144,7 +149,7 @@ where
 
     pub fn with_input(self, input: impl InputMethod<U, Widget = File<U>> + Clone) -> Self {
         FileCfg {
-            generator: Rc::new(move|file| Widget::active(file, RwData::new(input.clone()))),
+            generator: Rc::new(move |file| Widget::active(file, RwData::new(input.clone()))),
             cfg: self.cfg,
             specs: self.specs,
             path: self.path,
@@ -183,7 +188,7 @@ where
             path: self.path.clone(),
             generator: self.generator.clone(),
             cfg: self.cfg.clone(),
-            specs: self.specs.clone(),
+            specs: self.specs,
         }
     }
 }
@@ -271,18 +276,18 @@ where
         self.text.len_lines()
     }
 
+    pub fn inspect_related<W: 'static, R>(&self, f: impl FnOnce(&W) -> R) -> Option<R> {
+        self.related_widgets
+            .iter()
+            .find(|(widget, ..)| widget.data_is::<W>())
+            .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
+    }
+
     pub(crate) fn add_related_widget(
         &mut self,
         related: (RwData<dyn PassiveWidget<U>>, &'static str, U::Area),
     ) {
         self.related_widgets.push(related)
-    }
-
-    pub(crate) fn inspect_related<W: 'static, R>(&self, f: impl FnOnce(&W) -> R) -> Option<R> {
-        self.related_widgets
-            .iter()
-            .find(|(widget, ..)| widget.data_is::<W>())
-            .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
     }
 
     pub(crate) fn get_related_widget(
@@ -382,7 +387,7 @@ where
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(globals: crate::Globals<U>) {}
+    fn once(_globals: crate::Globals<U>) {}
 }
 
 impl<U> ActiveWidget<U> for File<U>

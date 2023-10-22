@@ -9,7 +9,7 @@ use std::{
 use super::{private::InnerData, RoData, RwData};
 use crate::{
     input::InputMethod,
-    ui::{Area, Ui},
+    ui::Ui,
     widgets::{ActiveWidget, File, PassiveWidget, Widget},
 };
 
@@ -25,6 +25,13 @@ impl<U> CurrentFile<U>
 where
     U: Ui,
 {
+    pub const fn new() -> Self {
+        Self {
+            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+        }
+    }
+
     pub fn constant(&self) -> FileReader<U> {
         let data = self.ro.raw_read();
         let (file, area, input) = unsafe { data.assume_init_ref() };
@@ -42,7 +49,7 @@ where
 
     pub fn adaptive(&self) -> FileReader<U> {
         let data = self.rw.raw_read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let (file, _, input) = unsafe { data.assume_init_ref() };
 
         FileReader {
             data: RoData::from(&*self.ro),
@@ -106,7 +113,7 @@ where
         mut f: impl FnMut(&mut W, &mut U::Area) -> R,
     ) -> Option<R> {
         let data = self.rw.raw_read();
-        let (file, area, _) = unsafe { data.assume_init_ref() };
+        let (file, ..) = unsafe { data.assume_init_ref() };
         let mut file = file.write();
         file.mutate_related_widget::<W, R>(&mut f)
     }
@@ -132,13 +139,6 @@ where
         input.mutate(|input| f(&mut file.write(), area, input))
     }
 
-    pub(crate) const fn new() -> Self {
-        Self {
-            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-        }
-    }
-
     pub(crate) fn swap(
         &self,
         file: RwData<File<U>>,
@@ -160,7 +160,8 @@ where
         area: U::Area,
         input: RwData<dyn InputMethod<U>>,
     ) {
-        *self.ro.write() = MaybeUninit::new((RoData::from(&file), area.clone(), RoData::from(&input)));
+        *self.ro.write() =
+            MaybeUninit::new((RoData::from(&file), area.clone(), RoData::from(&input)));
         *self.rw.write() = MaybeUninit::new((file, area, input));
     }
 }
@@ -274,6 +275,14 @@ impl<U> CurrentWidget<U>
 where
     U: Ui,
 {
+    pub const fn new() -> Self {
+        Self {
+            name: RwLock::new("none"),
+            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+        }
+    }
+
     pub fn has_name(&self, name: &'static str) -> bool {
         *self.name.read().unwrap() == name
     }
@@ -342,14 +351,6 @@ where
             .or_else(|| input.mutate_as::<T, R>(f))
     }
 
-    pub(crate) const fn new() -> Self {
-        Self {
-            name: RwLock::new("none"),
-            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-        }
-    }
-
     pub(crate) fn set(
         &self,
         name: &'static str,
@@ -364,12 +365,14 @@ where
     }
 }
 
+#[allow(type_alias_bounds)]
 pub type RoWidget<U: Ui> = (
     RoData<dyn ActiveWidget<U>>,
     U::Area,
     RoData<dyn InputMethod<U>>,
 );
 
+#[allow(type_alias_bounds)]
 pub type RwWidget<U: Ui> = (
     RwData<dyn ActiveWidget<U>>,
     U::Area,

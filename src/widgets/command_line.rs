@@ -15,33 +15,29 @@
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
 use parsec_core::{
-    commands,
     data::RwData,
-    input::{Cursors, InputMethod},
+    input::{key, Cursors, InputMethod, KeyEvent, MultiCursorEditor, KeyCode, KeyModifiers},
     palette::{self, Form},
     text::{text, Ghost, Text},
-    ui::{Area, PushSpecs, Ui},
+    ui::{PushSpecs, Area},
+    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
 
-use super::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
+use crate::Ui;
 
 #[derive(Clone)]
-pub struct CommandLineCfg<I, U>
+pub struct CommandLineCfg<I>
 where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone + 'static,
-    U: Ui,
+    I: InputMethod<Ui, Widget = CommandLine> + Clone + 'static,
 {
     input: I,
     prompt: String,
     specs: PushSpecs,
 }
 
-impl<U> CommandLineCfg<Commander, U>
-where
-    U: Ui,
-{
-    pub fn new() -> CommandLineCfg<Commander, U> {
+impl CommandLineCfg<Commander> {
+    pub fn new() -> CommandLineCfg<Commander> {
         CommandLineCfg {
             input: Commander::new(),
             prompt: String::from(":"),
@@ -50,19 +46,15 @@ where
     }
 }
 
-impl<U> Default for CommandLineCfg<Commander, U>
-where
-    U: Ui,
-{
+impl Default for CommandLineCfg<Commander> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I, U> CommandLineCfg<I, U>
+impl<I> CommandLineCfg<I>
 where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
-    U: Ui,
+    I: InputMethod<Ui, Widget = CommandLine> + Clone,
 {
     pub fn with_prompt(self, prompt: impl ToString) -> Self {
         Self {
@@ -85,9 +77,9 @@ where
         }
     }
 
-    pub fn with_input<NewI>(self, input: NewI) -> CommandLineCfg<NewI, U>
+    pub fn with_input<NewI>(self, input: NewI) -> CommandLineCfg<NewI>
     where
-        NewI: InputMethod<U, Widget = CommandLine<U>> + Clone,
+        NewI: InputMethod<Ui, Widget = CommandLine> + Clone,
     {
         CommandLineCfg {
             input,
@@ -97,13 +89,13 @@ where
     }
 }
 
-impl<I, U> WidgetCfg<U> for CommandLineCfg<I, U>
+impl<I> WidgetCfg<Ui> for CommandLineCfg<I>
 where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
+    I: InputMethod<Ui, Widget = CommandLine> + Clone,
 {
-    type Widget = CommandLine<U>;
+    type Widget = CommandLine;
 
-    fn build(self, globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let command_line = CommandLine {
             text: Text::new(" "),
             prompt: RwData::new(self.prompt.clone()),
@@ -122,40 +114,34 @@ where
 /// the future, it will be able to change its functionality to, for
 /// example, search for pieces of text on a
 /// [`FileWidget<U>`][crate::widgets::FileWidget] in real time.
-pub struct CommandLine<U> {
+pub struct CommandLine {
     text: Text,
     prompt: RwData<String>,
-    globals: Globals<U>,
+    globals: Globals<Ui>,
 }
 
-impl<U> CommandLine<U>
-where
-    U: Ui,
-{
-    pub fn cfg() -> CommandLineCfg<Commander, U> {
+impl CommandLine {
+    pub fn cfg() -> CommandLineCfg<Commander> {
         CommandLineCfg::new()
     }
 }
 
-impl<U> PassiveWidget<U> for CommandLine<U>
-where
-    U: Ui,
-{
-    fn build(_globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        CommandLineCfg::new().build()
+impl PassiveWidget<Ui> for CommandLine {
+    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        CommandLineCfg::new().build(globals)
     }
 
-    fn update(&mut self, _area: &impl Area) {}
+    fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {}
 
     fn text(&self) -> &Text {
         &self.text
     }
 
-    fn print(&mut self, area: &impl Area) {
+    fn print(&mut self, area: &<Ui as parsec_core::ui::Ui>::Area) {
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(globals: Globals<U>) {
+    fn once(globals: Globals<Ui>) {
         palette::set_weak_form("Prompt", Form::new().cyan());
 
         globals
@@ -169,19 +155,16 @@ where
     }
 }
 
-impl<U> ActiveWidget<U> for CommandLine<U>
-where
-    U: Ui,
-{
+impl ActiveWidget<Ui> for CommandLine {
     fn mut_text(&mut self) -> &mut Text {
         &mut self.text
     }
 
-    fn on_focus(&mut self, _area: &impl Area) {
+    fn on_focus(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
     }
 
-    fn on_unfocus(&mut self, _area: &impl Area) {
+    fn on_unfocus(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.iter_chars_at(0).collect::<String>();
@@ -189,7 +172,7 @@ where
     }
 }
 
-unsafe impl<U: Ui> Send for CommandLine<U> {}
+unsafe impl Send for CommandLine {}
 
 #[derive(Clone)]
 pub struct Commander {
@@ -210,18 +193,15 @@ impl Default for Commander {
     }
 }
 
-impl<U> InputMethod<U> for Commander
-where
-    U: Ui,
-{
-    type Widget = CommandLine<U>;
+impl InputMethod<Ui> for Commander {
+    type Widget = CommandLine;
 
     fn send_key(
         &mut self,
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        globals: Globals<U>,
+        area: &<Ui as parsec_core::ui::Ui>::Area,
+        globals: Globals<Ui>,
     ) {
         let mut editor = MultiCursorEditor::new(widget, &mut self.cursors, area);
 

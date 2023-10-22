@@ -211,7 +211,7 @@ use self::parameters::{Args, Flags};
 use crate::{
     data::{CurrentFile, CurrentWidget, Data, RwData},
     text::{text, Text},
-    ui::{Area, Ui, Window},
+    ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
     BREAK_LOOP, SHOULD_QUIT,
 };
@@ -291,7 +291,7 @@ where
     /// tasks, and then Parsec will execute a program closing
     /// function, as defined by the [`Ui`].
     pub fn quit(&self) {
-        self.run("quit");
+        self.run("quit").unwrap();
     }
 
     /// Switches to the given [`ActiveWidget`].

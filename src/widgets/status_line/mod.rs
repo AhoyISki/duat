@@ -54,20 +54,21 @@ pub mod file_parts;
 mod state;
 
 use file_parts::{main_col, main_line, selections_fmt};
-
-pub use self::state::State;
-use super::{file::File, PassiveWidget, Widget, WidgetCfg};
-use crate::{
+use parsec_core::{
     data::{FileReader, RoData},
     input::InputMethod,
     palette::{self, Form},
     text::{text, Builder, Text},
-    ui::{Area, PushSpecs, Ui},
-    CURRENT_FILE,
+    ui::PushSpecs,
+    widgets::{File, PassiveWidget, Widget, WidgetCfg},
+    Globals,
 };
 
+pub use self::state::State;
+use crate::Ui;
+
 pub struct StatusLineCfg {
-    text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+    text_fn: TextFn,
     checker: Box<dyn Fn() -> bool>,
     is_global: bool,
     specs: PushSpecs,
@@ -76,14 +77,14 @@ pub struct StatusLineCfg {
 impl StatusLineCfg {
     pub fn new() -> Self {
         status!(
-            [FileName] { File::name } " " [Selections] {DynInput(selections_fmt)}
-            [Coords] {DynInput(main_col)} [Separator] ":" [Coords] {DynInput(main_line)}
+            [FileName] { File::name } " " [Selections] selections_fmt
+            [Coords] main_col [Separator] ":" [Coords] main_line
             [Separator] "/" { File::len_lines }
         )
     }
 
     pub fn new_with(
-        text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+        text_fn: TextFn,
         checker: Box<dyn Fn() -> bool>,
         is_global: bool,
         specs: PushSpecs,
@@ -111,22 +112,22 @@ impl StatusLineCfg {
     }
 }
 
-impl WidgetCfg for StatusLineCfg {
+impl WidgetCfg<Ui> for StatusLineCfg {
     type Widget = StatusLine;
 
-    fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = if self.is_global {
-            let reader = CURRENT_FILE.adaptive();
+            let reader = globals.current_file.adaptive();
             let checker = move || reader.has_changed() || (self.checker)();
             (
-                CURRENT_FILE.adaptive(),
+                globals.current_file.adaptive(),
                 Box::new(checker) as Box<dyn Fn() -> bool>,
             )
         } else {
-            let reader = CURRENT_FILE.constant();
+            let reader = globals.current_file.constant();
             let checker = move || reader.has_changed() || (self.checker)();
             (
-                CURRENT_FILE.constant(),
+                globals.current_file.constant(),
                 Box::new(checker) as Box<dyn Fn() -> bool>,
             )
         };
@@ -196,8 +197,8 @@ impl Default for StatusLineCfg {
 /// to change the active [`Form`][crate::tags::form::Form] to print
 /// the next characters.
 pub struct StatusLine {
-    reader: FileReader,
-    text_fn: Box<dyn FnMut(&RoData<File>, &RoData<dyn InputMethod>) -> Text>,
+    reader: FileReader<Ui>,
+    text_fn: TextFn,
     text: Text,
 }
 
@@ -207,20 +208,22 @@ impl StatusLine {
     }
 }
 
-impl PassiveWidget for StatusLine {
-    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        Self::config().build()
+impl PassiveWidget<Ui> for StatusLine {
+    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        Self::config().build(globals)
     }
 
-    fn update(&mut self, _area: &impl Area) {
-        self.text = self.reader.inspect_data(&mut self.text_fn);
+    fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
+        self.text = self
+            .reader
+            .inspect_data(|file, _, input| (self.text_fn)(file, input));
     }
 
     fn text(&self) -> &Text {
         &self.text
     }
 
-    fn once() {
+    fn once(_globals: Globals<Ui>) {
         palette::set_weak_form("FileName", Form::new().yellow().italic());
         palette::set_weak_form("Selections", Form::new().dark_blue());
         palette::set_weak_form("Coords", Form::new().dark_red());
@@ -231,18 +234,17 @@ impl PassiveWidget for StatusLine {
 unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}
 
-pub struct DynInput<T: Into<Text>, F: FnMut(&dyn InputMethod) -> T>(pub F);
-
 pub macro status {
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let form_id = $crate::palette::weakest_id_of_name(stringify!($form));
+        let form_id = parsec_core::palette::weakest_id_of_name(stringify!($form));
 
-        let text_fn =
-            move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
-                $text_fn(builder, file, input);
-                builder.push_tag($crate::text::Tag::PushForm(form_id));
-            };
+        let text_fn = move |builder: &mut Builder,
+                            file: &RoData<File<Ui>>,
+                            input: &RoData<dyn InputMethod<Ui>>| {
+            $text_fn(builder, file, input);
+            builder.push_tag(parsec_core::text::Tag::PushForm(form_id));
+        };
 
         (text_fn, $checker)
     }},
@@ -251,13 +253,14 @@ pub macro status {
     (@append $text_fn:expr, $checker:expr, $text:expr) => {{
         let (mut appender, checker) = State::from($text).fns();
 
-        let text_fn =
-            move |builder: &mut Builder, file: &RoData<File>, input: &RoData<dyn InputMethod>| {
-                $text_fn(builder, file, input);
-                appender(builder, file, input);
-            };
-
         let checker = move || { $checker() || checker() };
+
+        let text_fn = move |builder: &mut Builder,
+                            file: &RoData<File<Ui>>,
+                            input: &RoData<dyn InputMethod<Ui>>| {
+            $text_fn(builder, file, input);
+            appender(builder, file, input);
+        };
 
         (text_fn, checker)
     }},
@@ -270,24 +273,24 @@ pub macro status {
     }},
 
     (@parse $($parts:tt)*) => {{
-        let text_fn = |_: &mut Builder, _: &RoData<File>, _: &RoData<dyn InputMethod>| {};
+        let text_fn = |_: &mut Builder, _: &RoData<File<Ui>>, _: &RoData<dyn InputMethod<Ui>>| {};
         let checker = || { false };
         status!(@parse text_fn, checker, $($parts)*)
     }},
 
     ($($parts:tt)*) => {{
-        use crate::{
+        use parsec_core::{
             data::RoData,
             input::InputMethod,
             text::{text, Tag, Builder},
             ui::PushSpecs,
-            widgets::{File, StatusLineCfg},
+            widgets::{File},
         };
 
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status!(@parse $($parts)*);
 
-        let text_fn = move |file: &RoData<File>, input: &RoData<dyn InputMethod>| {
+        let text_fn = move |file: &RoData<File<Ui>>, input: &RoData<dyn InputMethod<Ui>>| {
             let mut builder = Builder::new();
             text!(builder, { Tag::StartAlignRight });
             text_fn(&mut builder, file, input);
@@ -303,3 +306,5 @@ pub macro status {
         )
     }}
 }
+
+type TextFn = Box<dyn FnMut(&RoData<File<Ui>>, &RoData<dyn InputMethod<Ui>>) -> Text>;

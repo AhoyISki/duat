@@ -1,10 +1,16 @@
-use parsec_core::input::InputMethod;
+use parsec_core::{
+    data::RwData,
+    input::{InputMethod, KeyCode, KeyEvent},
+    Globals,
+};
+
+use super::Ui;
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
 pub struct Remap<I>
 where
-    I: InputMethod<super::Ui> + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     /// Takes this sequence of [`KeyEvent`]s.
     takes: Vec<KeyEvent>,
@@ -19,7 +25,7 @@ where
 
 impl<I> Remap<I>
 where
-    I: InputMethod + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     pub fn new(
         takes: impl Into<Vec<KeyEvent>>,
@@ -38,7 +44,7 @@ where
 
 impl<I> Clone for Remap<I>
 where
-    I: InputMethod + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -50,14 +56,14 @@ where
     }
 }
 
-unsafe impl<I: InputMethod + Clone> Send for Remap<I> {}
-unsafe impl<I: InputMethod + Clone> Sync for Remap<I> {}
+unsafe impl<I: InputMethod<Ui> + Clone> Send for Remap<I> {}
+unsafe impl<I: InputMethod<Ui> + Clone> Sync for Remap<I> {}
 
 /// The structure responsible for remapping sequences of characters.
 #[derive(Clone)]
 pub struct Remapper<I>
 where
-    I: InputMethod + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     /// The [`InputMethod`] to send the characters to.
     input_method: I,
@@ -74,7 +80,7 @@ where
 
 impl<I> Remapper<I>
 where
-    I: InputMethod + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     pub fn new(input_method: I) -> Self {
         Remapper {
@@ -132,13 +138,19 @@ where
     }
 }
 
-impl<I> InputMethod for Remapper<I>
+impl<I> InputMethod<Ui> for Remapper<I>
 where
-    I: InputMethod + Clone,
+    I: InputMethod<Ui> + Clone,
 {
     type Widget = I::Widget;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
+    fn send_key(
+        &mut self,
+        key: KeyEvent,
+        widget: &RwData<Self::Widget>,
+        area: &<Ui as parsec_core::ui::Ui>::Area,
+        globals: Globals<Ui>,
+    ) {
         let remaps = self
             .remaps
             .iter()
@@ -177,17 +189,26 @@ where
         }
 
         for key in keys_to_send {
-            self.input_method.send_key(key, widget, area);
+            self.input_method.send_key(key, widget, area, globals);
         }
 
         if new_to_check.is_empty() {
-            self.input_method.send_key(key, widget, area);
+            self.input_method.send_key(key, widget, area, globals);
         }
 
         self.to_check = new_to_check;
     }
 }
 
-pub trait Remap: InputMethod<super::Ui> + Sized {
+pub trait Remapable: InputMethod<Ui> + Clone + Sized {
     fn remapper(self) -> Remapper<Self>;
+}
+
+impl<I> Remapable for I
+where
+    I: InputMethod<Ui> + Clone,
+{
+    fn remapper(self) -> Remapper<Self> {
+        Remapper::new(self)
+    }
 }

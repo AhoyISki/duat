@@ -22,30 +22,26 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use super::{PassiveWidget, Widget, WidgetCfg};
 use parsec_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Tag, Text},
-    ui::{Area, Constraint, PushSpecs, Ui},
+    ui::{Constraint, PushSpecs, Area},
+    widgets::{PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
 
+use crate::Ui;
+
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget`] are shown on screen.
-pub struct LineNumbers<U>
-where
-    U: Ui,
-{
-    reader: FileReader<U>,
+pub struct LineNumbers {
+    reader: FileReader<Ui>,
     text: Text,
     cfg: LineNumbersCfg,
 }
 
-impl<U> LineNumbers<U>
-where
-    U: Ui,
-{
+impl LineNumbers {
     pub fn config() -> LineNumbersCfg {
         LineNumbersCfg::new()
     }
@@ -55,7 +51,7 @@ where
         let mut width = 1.0;
         let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _| file.len_lines());
+        let len = self.reader.inspect(|file, _, _| file.len_lines());
 
         while len > num_exp {
             num_exp *= 10;
@@ -68,7 +64,7 @@ where
     /// Updates the [`TextBuilder`]'s [`Text`] with the
     /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self) {
-        self.text = self.reader.inspect(|file, input| {
+        self.text = self.reader.inspect(|file, _, input| {
             let printed_lines = file.printed_lines();
             let main_line = input.cursors().map(|cursors| cursors.main().line());
 
@@ -103,17 +99,14 @@ where
     }
 }
 
-impl<U> PassiveWidget<U> for LineNumbers<U>
-where
-    U: Ui,
-{
+impl PassiveWidget<Ui> for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build(globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
         LineNumbersCfg::default().build(globals)
     }
 
-    fn update(&mut self, area: &impl Area) {
+    fn update(&mut self, area: &<Ui as parsec_core::ui::Ui>::Area) {
         let width = self.calculate_width();
         area.change_constraint(Constraint::Length(width + 1.0))
             .unwrap();
@@ -125,7 +118,7 @@ where
         &self.text
     }
 
-    fn once() {
+    fn once(_globals: Globals<Ui>) {
         palette::set_weak_form("LineNum", Form::new().grey());
         palette::set_weak_form("MainLineNum", Form::new().yellow());
         palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
@@ -258,11 +251,10 @@ impl LineNumbersCfg {
     }
 }
 
-impl<U> WidgetCfg<U> for LineNumbersCfg
-where
-    U: Ui,
-{
-    fn build(self, globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+impl WidgetCfg<Ui> for LineNumbersCfg {
+    type Widget = LineNumbers;
+
+    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let reader = globals.current_file.constant();
         let specs = self.specs;
 
@@ -278,8 +270,8 @@ where
     }
 }
 
-unsafe impl<U: Ui> Send for LineNumbers<U> {}
-unsafe impl<U: Ui> Sync for LineNumbers<U> {}
+unsafe impl Send for LineNumbers {}
+unsafe impl Sync for LineNumbers {}
 
 /// Writes the text of the line number to a given [`String`].
 fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {

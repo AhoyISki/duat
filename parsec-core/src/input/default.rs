@@ -1,13 +1,7 @@
 use crossterm::event::KeyEvent;
 
 use super::{Cursors, InputMethod};
-use crate::{
-    data::RwData,
-    history::History,
-    ui::{Area, Ui},
-    widgets::File,
-    Globals,
-};
+use crate::{data::RwData, history::History, ui::Ui, widgets::File, Globals};
 
 #[derive(Clone)]
 pub struct Editor {
@@ -41,7 +35,7 @@ where
         _key: KeyEvent,
         _widget: &RwData<Self::Widget>,
         _area: &U::Area,
-        globals: Globals<U>,
+        _globals: Globals<U>,
     ) {
         todo!()
     }
