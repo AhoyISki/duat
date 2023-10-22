@@ -2,15 +2,20 @@ use parsec_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Text},
-    ui::{Area, PushSpecs, Ui},
-    widgets::{PassiveWidget, Widget},
+    ui::PushSpecs,
+    widgets::{PassiveWidget, Widget, WidgetCfg},
+    Globals,
 };
 
+use crate::{Area, Ui};
+
 /// A vertical line on screen, useful, for example, for the separation
-/// of a [`FileWidget<U>`] and
-/// [`LineNumbers<U>`][parsec_core::widgets::LineNumbers<U>].
+/// of a [`File`] and [`LineNumbers`].
+///
+/// [`File`]: parsec_core::widgets::File
+/// [`LineNumbers`]: parsec_core::widgets::LineNumbers
 pub struct VertRule {
-    reader: FileReader,
+    reader: FileReader<Ui>,
     text: Text,
     sep_char: SepChar,
 }
@@ -21,13 +26,13 @@ impl VertRule {
     }
 }
 
-impl PassiveWidget for VertRule {
-    fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        VertRuleCfg::new().build()
+impl PassiveWidget<Ui> for VertRule {
+    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        VertRuleCfg::new().build(globals)
     }
 
-    fn update(&mut self, _area: &impl Area) {
-        self.text = self.reader.inspect(|file, input| {
+    fn update(&mut self, _area: &Area) {
+        self.text = self.reader.inspect(|file, _, input| {
             let main_line = input.cursors().unwrap().main().line();
             let lines = file.printed_lines();
 
@@ -49,7 +54,7 @@ impl PassiveWidget for VertRule {
         &self.text
     }
 
-    fn once() {
+    fn once(_globals: Globals<Ui>) {
         palette::set_weak_form("VertRule", Form::new().grey());
         palette::set_weak_ref("UpperVertRule", "VertRule");
         palette::set_weak_ref("LowerVertRule", "VertRule");
@@ -141,9 +146,19 @@ impl VertRuleCfg {
             ..self
         }
     }
+}
 
-    pub fn build<U: Ui>(self) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let reader = CURRENT_FILE.constant();
+impl Default for VertRuleCfg {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WidgetCfg<Ui> for VertRuleCfg {
+    type Widget = VertRule;
+
+    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+        let reader = globals.current_file.constant();
 
         let vert_rule = VertRule {
             reader: reader.clone(),
@@ -154,12 +169,6 @@ impl VertRuleCfg {
         let checker = Box::new(move || reader.has_changed());
         let widget = Widget::passive(vert_rule);
         (widget, checker, self.specs)
-    }
-}
-
-impl Default for VertRuleCfg {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
