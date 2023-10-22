@@ -7,8 +7,10 @@ use parsec_core::{
     text::PrintCfg,
     Globals,
 };
+use parsec_term::VertRule;
 
 use crate::{
+    prelude::CommandLine,
     widgets::{LineNumbers, StatusLine},
     Ui,
 };
@@ -55,6 +57,45 @@ pub mod config {
     }
 }
 
+pub mod hooks {
+    use parsec_core::ui::FileBuilder;
+
+    use super::{default_cfg_fn, CFG_FN};
+    use crate::Ui;
+
+    pub fn on_file_open(f: impl FnMut(&FileBuilder<Ui>) + Send + Sync + 'static) {
+        let mut cfg_fn = CFG_FN.write().unwrap();
+        let prev = cfg_fn.take();
+
+        *cfg_fn = Some(match prev {
+            Some(mut prev_fn) => Box::new(move |cfg| {
+                prev_fn(cfg);
+                cfg.suffix_file_fn(f);
+            }),
+            None => Box::new(move |cfg| {
+                default_cfg_fn(cfg);
+                cfg.suffix_file_fn(f);
+            }),
+        })
+    }
+
+    pub fn reset_file_fn() {
+        let mut cfg_fn = CFG_FN.write().unwrap();
+        let prev = cfg_fn.take();
+
+        *cfg_fn = Some(match prev {
+            Some(mut prev_fn) => Box::new(move |cfg| {
+                prev_fn(cfg);
+                cfg.set_file_fn(|_| {})
+            }),
+            None => Box::new(move |cfg| {
+                default_cfg_fn(cfg);
+                cfg.set_file_fn(|_| {})
+            }),
+        })
+    }
+}
+
 pub mod print {
     use std::ops::RangeInclusive;
 
@@ -64,7 +105,7 @@ pub mod print {
 
     pub mod forms {
         pub use parsec_core::palette::{
-            set_extra_cursor as extra_cursor, set_form as form, set_main_cursor as main_cursor,
+            set_extra_cursor as extra_cursor, set_form as set, set_main_cursor as main_cursor,
             set_source as source,
         };
     }
@@ -609,13 +650,25 @@ pub mod control {
     }
 }
 
-pub type UiFn = RwLock<Option<Box<dyn FnMut() -> Ui + Send + Sync>>>;
-pub type CfgFn = RwLock<Option<Box<dyn FnMut(&mut SessionCfg<Ui>) + Send + Sync>>>;
+pub type UiFn = RwLock<Option<Box<dyn FnOnce() -> Ui + Send + Sync>>>;
+pub type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 pub fn default_cfg_fn(cfg: &mut SessionCfg<Ui>) {
-    cfg.set_file_fn(|builder, _file| {
+    cfg.set_print_cfg(
+        PRINT_CFG
+            .write()
+            .unwrap()
+            .take()
+            .unwrap_or_default()
+            .width_wrapped(),
+    );
+
+    cfg.set_file_fn(|builder| {
+        builder.push::<VertRule>();
         builder.push::<LineNumbers>();
-        builder.push::<parsec_term::VertRule>();
-        builder.push::<StatusLine>();
+        let (child, _) = builder.push::<StatusLine>();
+        builder.push_cfg_to(CommandLine::cfg().left_with_percent(50), child);
     });
+
+    cfg.set_input(parsec_kak::Editor::new());
 }

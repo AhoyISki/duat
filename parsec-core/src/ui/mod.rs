@@ -2,14 +2,18 @@ mod builder;
 
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use crossterm::event::KeyEvent;
 
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
-    data::{RoData, RwData},
+    data::RoData,
+    log_info,
     palette::Painter,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
@@ -656,12 +660,12 @@ where
 pub(crate) fn build_file<U>(
     window: &mut Window<U>,
     mod_area: U::Area,
-    f: &mut impl FnMut(&mut FileBuilder<U>, &RwData<File<U>>),
+    f: &mut impl FnMut(&mut FileBuilder<U>),
     globals: Globals<U>,
 ) where
     U: Ui,
 {
-    let (widget, old_file) = {
+    let old_file = {
         let node = window
             .nodes
             .iter()
@@ -669,19 +673,19 @@ pub(crate) fn build_file<U>(
             .unwrap();
 
         let old_file = node.widget.downcast::<File<U>>().map(|file| {
-            globals
-                .current_file
-                .swap(file, node.area.clone(), node.widget.input().unwrap().clone())
+            globals.current_file.swap(
+                file,
+                node.area.clone(),
+                node.widget.input().unwrap().clone(),
+            )
         });
 
-        let widget = node.widget.downcast::<File<U>>().unwrap();
-
-        (widget, old_file)
+        old_file
     };
 
     let mut file_builder = FileBuilder::new(window, mod_area, globals);
 
-    f(&mut file_builder, &widget);
+    f(&mut file_builder);
 
     if let Some((file, area, input)) = old_file {
         globals.current_file.swap(file, area, input);

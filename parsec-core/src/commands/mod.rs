@@ -211,8 +211,7 @@ use crate::{
     data::{CurrentFile, CurrentWidget, Data, RwData},
     text::{text, Text},
     ui::{Ui, Window},
-    widgets::{ActiveWidget, PassiveWidget},
-    BREAK_LOOP, SHOULD_QUIT,
+    widgets::{ActiveWidget, PassiveWidget}, BREAK, BreakReason,
 };
 
 mod parameters;
@@ -267,8 +266,7 @@ where
 
                 let quit = {
                     Command::new(["quit", "q"], move |_, _| {
-                        BREAK_LOOP.store(true, Ordering::Release);
-                        SHOULD_QUIT.store(true, Ordering::Release);
+                        BREAK.store(BreakReason::ToQuitParsec);
                         Ok(None)
                     })
                 };

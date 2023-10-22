@@ -1,4 +1,12 @@
-#![feature(return_position_impl_trait_in_trait, decl_macro, lazy_cell)]
+#![feature(
+    return_position_impl_trait_in_trait,
+    decl_macro,
+    lazy_cell,
+    generic_const_exprs
+)]
+#![allow(incomplete_features)]
+
+use std::sync::mpsc;
 
 use hotpatch::patchable;
 use parsec_core::{session::SessionCfg, Globals};
@@ -9,10 +17,15 @@ mod utils;
 mod widgets;
 
 pub mod prelude {
+    pub use hotpatch::*;
+    pub use parsec_core::palette::Form;
+
     pub use crate::{
+        finish,
         remapper::Remapable,
         utils::{config, control, print},
         widgets::{file_parts::*, CommandLine, LineNumbers, StatusLine},
+        SessionStarter,
     };
 }
 
@@ -28,20 +41,27 @@ compile_error! {
 #[cfg(feature = "term-ui")]
 type Ui = parsec_term::Ui;
 
+#[allow(dead_code)]
 fn main() {
     let starter: SessionStarter = parsec();
 
     let ui = match starter.ui_fn.write().unwrap().take() {
-        Some(mut ui_fn) => ui_fn(),
+        Some(ui_fn) => ui_fn(),
         None => Ui::default(),
     };
 
     let mut cfg = SessionCfg::__new(ui, starter.globals);
 
     match starter.cfg_fn.write().unwrap().take() {
-        Some(mut cfg_fn) => cfg_fn(&mut cfg),
+        Some(cfg_fn) => cfg_fn(&mut cfg),
         None => default_cfg_fn(&mut cfg),
     }
+
+    let (tx, rx) = mpsc::channel();
+
+    let mut session = cfg.session_from_args();
+
+    session.start(true, rx);
 }
 
 #[patchable]

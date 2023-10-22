@@ -5,12 +5,11 @@ use crossterm::event::{
     KeyEvent, KeyModifiers,
 };
 use parsec_core::{
-    commands,
     data::RwData,
     input::{key, Cursors, InputMethod, MultiCursorEditor},
-    ui::Area,
-    widgets::{CommandLine, File},
-    CURRENT_FILE,
+    ui::{Area, Ui},
+    widgets::File,
+    Globals,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -59,18 +58,27 @@ impl Editor {
     }
 }
 
-impl InputMethod for Editor {
-    type Widget = File;
+impl<U> InputMethod<U> for Editor
+where
+    U: Ui,
+{
+    type Widget = File<U>;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &impl Area) {
+    fn send_key(
+        &mut self,
+        key: KeyEvent,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        globals: Globals<U>,
+    ) {
         let cursors = &mut self.cursors;
         let editor = MultiCursorEditor::new(widget, cursors, area);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
-            Mode::Normal => match_normal(editor, key, &mut self.mode),
+            Mode::Normal => match_normal(editor, key, &mut self.mode, globals),
             Mode::GoTo => {
-                match_goto(editor, key, &mut self.last_file);
+                match_goto(editor, key, &mut self.last_file, globals);
                 self.mode = Mode::Normal;
             }
             Mode::View => todo!(),
@@ -84,7 +92,7 @@ impl InputMethod for Editor {
         Some(&self.cursors)
     }
 
-    fn on_focus(&mut self, _area: &impl Area)
+    fn on_focus(&mut self, _area: &U::Area)
     where
         Self: Sized,
     {
@@ -93,11 +101,7 @@ impl InputMethod for Editor {
 }
 
 /// Commands that are available in `Mode::Insert`.
-fn match_insert(
-    mut editor: MultiCursorEditor<File, impl Area>,
-    key: KeyEvent,
-    mode: &mut Mode,
-) {
+fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, key: KeyEvent, mode: &mut Mode) {
     match key {
         key!(KeyCode::Char(ch)) => {
             editor.edit_on_each_cursor(|editor| {
@@ -192,15 +196,16 @@ fn match_insert(
 }
 
 /// Commands that are available in `Mode::Normal`.
-fn match_normal(
-    mut editor: MultiCursorEditor<File, impl Area>,
+fn match_normal<U: Ui>(
+    mut editor: MultiCursorEditor<File<U>, U>,
     key: KeyEvent,
     mode: &mut Mode,
+    globals: Globals<U>,
 ) {
     match key {
         ////////// SessionControl commands.
         key!(KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-            commands::quit();
+            globals.commands.quit();
         }
 
         ////////// Movement keys that retain or create selections.
@@ -248,7 +253,7 @@ fn match_normal(
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
-            if commands::switch_to::<CommandLine>().is_ok() {
+            if globals.commands.run("switch-to CommandLine").is_ok() {
                 *mode = Mode::Command;
             }
         }
@@ -262,15 +267,16 @@ fn match_normal(
 }
 
 /// Commands that are available in `Mode::GoTo`.
-fn match_goto(
-    mut editor: MultiCursorEditor<File, impl Area>,
+fn match_goto<U: Ui>(
+    mut editor: MultiCursorEditor<File<U>, U>,
     key: KeyEvent,
     last_file: &mut String,
+    globals: Globals<U>,
 ) {
     match key {
         key!(KeyCode::Char('a')) => {
-            if commands::buffer(last_file.clone()).is_ok() {
-                *last_file = CURRENT_FILE.name();
+            if globals.commands.buffer(last_file.clone()).is_ok() {
+                *last_file = globals.current_file.name();
             }
         }
         key!(KeyCode::Char('j')) => {
@@ -280,24 +286,20 @@ fn match_goto(
             editor.move_main(|mover| mover.move_to_coords(0, 0));
         }
         key!(KeyCode::Char('n')) => {
-            if commands::next_file().is_ok() {
-                *last_file = CURRENT_FILE.name();
+            if globals.commands.next_file().is_ok() {
+                *last_file = globals.current_file.name();
             }
         }
         key!(KeyCode::Char('N')) => {
-            if commands::prev_file().is_ok() {
-                *last_file = CURRENT_FILE.name();
+            if globals.commands.prev_file().is_ok() {
+                *last_file = globals.current_file.name();
             }
         }
         _ => {}
     }
 }
 
-fn move_each(
-    mut editor: MultiCursorEditor<File, impl Area>,
-    direction: Side,
-    amount: usize,
-) {
+fn move_each<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
@@ -309,8 +311,8 @@ fn move_each(
     });
 }
 
-fn move_each_and_select(
-    mut editor: MultiCursorEditor<File, impl Area>,
+fn move_each_and_select<U: Ui>(
+    mut editor: MultiCursorEditor<File<U>, U>,
     direction: Side,
     amount: usize,
 ) {

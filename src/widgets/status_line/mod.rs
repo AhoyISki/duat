@@ -77,9 +77,9 @@ pub struct StatusLineCfg {
 impl StatusLineCfg {
     pub fn new() -> Self {
         status!(
-            [FileName] { File::name } " " [Selections] selections_fmt
+            [FileName] { File::name } " " [Selections] selections_fmt " "
             [Coords] main_col [Separator] ":" [Coords] main_line
-            [Separator] "/" { File::len_lines }
+            [Separator] "/" [Coords] { File::len_lines }
         )
     }
 

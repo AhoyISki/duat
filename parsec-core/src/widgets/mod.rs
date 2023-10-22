@@ -192,7 +192,7 @@ where
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
-        self.widget.write().update(area)
+        self.widget.raw_write().update(area)
     }
 
     fn type_name(&self) -> &'static str {
@@ -284,7 +284,10 @@ where
     where
         W: PassiveWidget<U>,
     {
-        Widget::Passive(RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))), W::name())
+        Widget::Passive(
+            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))),
+            W::name(),
+        )
     }
 
     pub fn active<W, I>(widget: W, input: RwData<I>) -> Self
@@ -387,7 +390,7 @@ where
 
     pub fn update(&self, area: &U::Area) {
         match self {
-            Widget::Passive(widget, _) => widget.write().update(area),
+            Widget::Passive(widget, _) => widget.raw_write().update(area),
             Widget::Active(holder) => holder.update(area),
         }
     }
@@ -415,7 +418,7 @@ where
 
     pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Globals<U>) {
         match self {
-            Widget::Passive(..) => {}
+            Widget::Passive(..) => unreachable!("Sending keys to passive widgets is impossible"),
             Widget::Active(holder) => holder.send_key(key, area, globals),
         }
     }

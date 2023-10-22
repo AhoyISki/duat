@@ -2,7 +2,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        mpsc, Arc,
     },
     time::Duration,
 };
@@ -13,9 +13,9 @@ use crate::{
     data::RwData,
     input::InputMethod,
     text::{text, PrintCfg, Text},
-    ui::{build_file, Area, FileBuilder, PushSpecs, Ui, Window, WindowBuilder},
+    ui::{build_file, Area, FileBuilder, Node, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Widget},
-    Globals, BREAK_LOOP, SHOULD_QUIT,
+    BreakReason, Globals, BREAK, log_info,
 };
 
 #[allow(clippy::type_complexity)]
@@ -25,7 +25,7 @@ where
 {
     ui: U,
     file_cfg: FileCfg<U>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File<U>>)>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
 }
@@ -98,34 +98,25 @@ where
         self.file_cfg.set_print_cfg(cfg);
     }
 
-    pub fn set_file_fn(
-        &mut self,
-        file_fn: impl FnMut(&mut FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) {
+    pub fn set_file_fn(&mut self, file_fn: impl FnMut(&mut FileBuilder<U>) + 'static) {
         self.file_fn = Box::new(file_fn);
     }
 
-    pub fn preffix_file_fn(
-        &mut self,
-        mut preffix: impl FnMut(&FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) {
-        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_, _| {}));
+    pub fn preffix_file_fn(&mut self, mut preffix: impl FnMut(&FileBuilder<U>) + 'static) {
+        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
-        self.file_fn = Box::new(move |builder, file| {
-            preffix(builder, file);
-            file_fn(builder, file);
+        self.file_fn = Box::new(move |builder| {
+            preffix(builder);
+            file_fn(builder);
         });
     }
 
-    pub fn suffix_file_fn(
-        &mut self,
-        mut suffix: impl FnMut(&FileBuilder<U>, &RwData<File<U>>) + 'static,
-    ) {
-        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_, _| {}));
+    pub fn suffix_file_fn(&mut self, mut suffix: impl FnMut(&FileBuilder<U>) + 'static) {
+        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
-        self.file_fn = Box::new(move |builder, file| {
-            file_fn(builder, file);
-            suffix(builder, file);
+        self.file_fn = Box::new(move |builder| {
+            file_fn(builder);
+            suffix(builder);
         });
     }
 
@@ -160,7 +151,7 @@ where
         SessionCfg {
             ui,
             file_cfg: File::cfg(),
-            file_fn: Box::new(|_, _| {}),
+            file_fn: Box::new(|_| {}),
             window_fn: Box::new(|_| {}),
             globals,
         }
@@ -176,7 +167,7 @@ where
     windows: RwData<Vec<Window<U>>>,
     current_window: Arc<AtomicUsize>,
     file_cfg: FileCfg<U>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>, &RwData<File<U>>)>,
+    file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
 }
@@ -237,30 +228,50 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(&mut self) {
-        self.ui.startup();
+    pub fn start(&mut self, is_new_session: bool, rx: mpsc::Receiver<()>) -> bool {
+        if is_new_session {
+            self.ui.startup();
+        }
+
+        std::thread::spawn(move || {
+            if rx.recv().is_ok() {
+                BREAK.store(BreakReason::ToOpenFiles);
+            }
+        });
 
         // The main loop.
         loop {
+            BREAK.store(BreakReason::None);
+
             let current_window = self.current_window.load(Ordering::Relaxed);
-            for (widget, area) in self.windows.read()[current_window].widgets() {
-                widget.update_and_print(area);
-            }
+            self.windows.inspect(|windows| {
+                while windows
+                    .iter()
+                    .flat_map(Window::nodes)
+                    .any(Node::needs_update)
+                {
+                    for (widget, area) in windows.iter().flat_map(Window::widgets) {
+                        widget.update(area);
+                    }
+                }
+
+                for (widget, area) in windows[current_window].widgets() {
+                    widget.update_and_print(area);
+                }
+            });
 
             self.session_loop();
 
-            // TODO: Files to open
-            // let mut files = std::mem::take(&mut
-            // *self.controler.files_to_open.write()); for file in
-            // files.drain(..) {    self.open_file(file);
-            //}
-
-            if SHOULD_QUIT.load(Ordering::Acquire) {
+            if BREAK == BreakReason::ToQuitParsec || BREAK == BreakReason::ToReloadConfig {
                 break;
             }
         }
 
-        self.ui.shutdown();
+        if BREAK == BreakReason::ToQuitParsec {
+            self.ui.shutdown();
+        }
+
+        BREAK == BreakReason::ToReloadConfig
     }
 
     /// The primary application loop, executed while no breaking
@@ -272,8 +283,7 @@ where
             loop {
                 let active_window = &windows[current_window];
 
-                if BREAK_LOOP.load(Ordering::Relaxed) {
-                    BREAK_LOOP.store(false, Ordering::Relaxed);
+                if BREAK.needed() {
                     break;
                 }
 
@@ -285,9 +295,7 @@ where
 
                 for node in active_window.nodes() {
                     if node.needs_update() {
-                        scope.spawn(|| {
-                            node.update_and_print();
-                        });
+                        scope.spawn(|| node.update_and_print());
                     }
                 }
 
@@ -388,9 +396,7 @@ where
                             .unwrap_or(false)
                     })
                 else {
-                    // TODO: this, lol
-                    // files_to_open.write().push(path);
-                    BREAK_LOOP.store(true, Ordering::Release);
+                    BREAK.store(BreakReason::ToOpenFiles);
                     return Ok(Some(text!("Created " [AccentOk] file [Default] ".")));
                 };
 

@@ -16,7 +16,10 @@
 )]
 #![doc = include_str!("../README.md")]
 
-use std::sync::atomic::AtomicBool;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+    RwLock,
+};
 
 use data::{CurrentFile, CurrentWidget};
 use ui::Ui;
@@ -83,9 +86,38 @@ where
 // Debugging objects.
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
+// Internal enum to coordinate breaks in the main loop.
+#[derive(Clone, Copy)]
+enum BreakReason {
+    None = 0,
+    ToOpenFiles = 1,
+    ToQuitParsec = 2,
+    ToReloadConfig = 3,
+}
+
+struct Break(AtomicU8);
+
+impl Break {
+    #[inline]
+    fn store(&self, reason: BreakReason) {
+        self.0.store(reason as u8, Ordering::Relaxed);
+    }
+
+#[inline]
+    fn needed(&self) -> bool {
+        self.0.load(Ordering::Relaxed) > BreakReason::None as u8
+    }
+}
+
 // Internal control objects.
-static BREAK_LOOP: AtomicBool = AtomicBool::new(false);
-static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+static BREAK: Break = Break(AtomicU8::new(BreakReason::None as u8));
+
+impl PartialEq<BreakReason> for Break {
+    #[inline]
+    fn eq(&self, other: &BreakReason) -> bool {
+        self.0.load(Ordering::Relaxed) == *other as u8
+    }
+}
 
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{
