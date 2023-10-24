@@ -2,10 +2,7 @@ mod builder;
 
 use std::{
     fmt::Debug,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use crossterm::event::KeyEvent;
@@ -13,7 +10,6 @@ use crossterm::event::KeyEvent;
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
     data::RoData,
-    log_info,
     palette::Painter,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},

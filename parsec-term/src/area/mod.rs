@@ -290,7 +290,7 @@ impl ui::Area for Area {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        queue!(stdout, ResetColor);
+        crossterm::execute!(stdout, ResetColor).unwrap();
     }
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {

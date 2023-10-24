@@ -7,7 +7,7 @@ use crossterm::event::{
 use parsec_core::{
     data::RwData,
     input::{key, Cursors, InputMethod, MultiCursorEditor},
-    ui::{Area, Ui},
+    ui::Ui,
     widgets::File,
     Globals,
 };

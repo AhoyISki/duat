@@ -17,8 +17,6 @@
 //! implementation for Parsec, defines "rule" widgets, which are
 //! separators that only really make sense in the context of a
 //! terminal.
-mod file;
-
 #[cfg(not(feature = "deadlock-detection"))]
 use std::sync::RwLock;
 use std::{
@@ -31,7 +29,7 @@ use crossterm::event::KeyEvent;
 #[cfg(feature = "deadlock-detection")]
 use no_deadlocks::RwLock;
 
-pub use self::file::{File, FileCfg};
+pub use crate::file::{File, FileCfg};
 use crate::{
     data::{Data, RwData},
     input::InputMethod,

@@ -25,8 +25,8 @@ use std::fmt::Alignment;
 use parsec_core::{
     data::FileReader,
     palette::{self, Form},
-    text::{text, Tag, Text},
-    ui::{Constraint, PushSpecs, Area},
+    text::{text, Builder, Tag, Text},
+    ui::{Area, Constraint, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
@@ -69,15 +69,13 @@ impl LineNumbers {
             let main_line = input.cursors().map(|cursors| cursors.main().line());
 
             let mut builder = Text::builder();
-            text!(builder, { tag_from_align(self.cfg.alignment) });
+            text!(builder, { tag_from_align(self.cfg.align) });
 
             for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
                 let is_main_line = main_line.is_some_and(|main| main == *line);
 
-                let num_text = get_text(*line, main_line, *is_wrapped && index > 0, &self.cfg);
-
                 if is_main_line {
-                    text!(builder, { tag_from_align(self.cfg.main_alignment) });
+                    text!(builder, { tag_from_align(self.cfg.main_align) });
                 }
 
                 match (is_main_line, is_wrapped) {
@@ -87,10 +85,11 @@ impl LineNumbers {
                     (true, true) => text!(builder, [WrappedMainLineNum]),
                 }
 
-                text!(builder, num_text);
+                let is_wrapped = *is_wrapped && index > 0;
+                push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
 
                 if is_main_line {
-                    text!(builder, { tag_from_align(self.cfg.alignment) });
+                    text!(builder, { tag_from_align(self.cfg.align) });
                 }
             }
 
@@ -143,8 +142,8 @@ enum Numbers {
 #[derive(Debug, Clone, Copy)]
 pub struct LineNumbersCfg {
     numbers: Numbers,
-    alignment: Alignment,
-    main_alignment: Alignment,
+    align: Alignment,
+    main_align: Alignment,
     show_wraps: bool,
     specs: PushSpecs,
 }
@@ -159,8 +158,8 @@ impl LineNumbersCfg {
     pub fn new() -> Self {
         Self {
             numbers: Numbers::Absolute,
-            alignment: Alignment::Left,
-            main_alignment: Alignment::Right,
+            align: Alignment::Left,
+            main_align: Alignment::Right,
             show_wraps: false,
             specs: PushSpecs::left(),
         }
@@ -189,45 +188,45 @@ impl LineNumbersCfg {
 
     pub fn align_left(self) -> Self {
         Self {
-            main_alignment: Alignment::Left,
-            alignment: Alignment::Left,
+            main_align: Alignment::Left,
+            align: Alignment::Left,
             ..self
         }
     }
 
     pub fn align_center(self) -> Self {
         Self {
-            main_alignment: Alignment::Center,
-            alignment: Alignment::Center,
+            main_align: Alignment::Center,
+            align: Alignment::Center,
             ..self
         }
     }
 
     pub fn align_right(self) -> Self {
         Self {
-            main_alignment: Alignment::Right,
-            alignment: Alignment::Right,
+            main_align: Alignment::Right,
+            align: Alignment::Right,
             ..self
         }
     }
 
     pub fn align_main_left(self) -> Self {
         Self {
-            main_alignment: Alignment::Left,
+            main_align: Alignment::Left,
             ..self
         }
     }
 
     pub fn align_main_center(self) -> Self {
         Self {
-            main_alignment: Alignment::Center,
+            main_align: Alignment::Center,
             ..self
         }
     }
 
     pub fn align_main_right(self) -> Self {
         Self {
-            main_alignment: Alignment::Right,
+            main_align: Alignment::Right,
             ..self
         }
     }
@@ -274,23 +273,31 @@ unsafe impl Send for LineNumbers {}
 unsafe impl Sync for LineNumbers {}
 
 /// Writes the text of the line number to a given [`String`].
-fn get_text(line: usize, main: Option<usize>, is_wrapped: bool, cfg: &LineNumbersCfg) -> String {
+fn push_text(
+    builder: &mut Builder,
+    line: usize,
+    main: Option<usize>,
+    is_wrapped: bool,
+    cfg: &LineNumbersCfg,
+) {
     if is_wrapped && !cfg.show_wraps {
-        String::from("\n")
+        text!(*builder, "\n");
     } else if let Some(main) = main {
-        match cfg.numbers {
-            Numbers::Absolute => (line + 1).to_string() + "\n",
-            Numbers::Relative => usize::abs_diff(line, main).to_string() + "\n",
+        let num = match cfg.numbers {
+            Numbers::Absolute => line + 1,
+            Numbers::Relative => line.abs_diff(main),
             Numbers::RelAbs => {
                 if line != main {
-                    usize::abs_diff(line, main).to_string() + "\n"
+                    line.abs_diff(main)
                 } else {
-                    (line + 1).to_string() + "\n"
+                    line + 1
                 }
             }
-        }
+        };
+
+        text!(*builder, num "\n");
     } else {
-        (line + 1).to_string() + "\n"
+        text!(*builder, { line + 1 } "\n");
     }
 }
 

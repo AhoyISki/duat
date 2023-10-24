@@ -4,13 +4,12 @@
     result_option_inspect,
     iter_collect_into,
     let_chains,
-    return_position_impl_trait_in_trait,
     generic_const_exprs
 )]
 
 use std::{
     fmt::Debug,
-    io::{self, Write},
+    io,
 };
 
 use crossterm::{
@@ -107,9 +106,7 @@ impl ui::Ui for Ui {
         terminal::disable_raw_mode().unwrap();
     }
 
-    fn finish_printing(&self) {
-        std::io::stdout().flush().unwrap();
-    }
+    fn finish_printing(&self) {}
 }
 
 pub enum ConstraintChangeErr {

@@ -15,7 +15,7 @@ use crate::{
     text::{text, PrintCfg, Text},
     ui::{build_file, Area, FileBuilder, Node, PushSpecs, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Widget},
-    BreakReason, Globals, BREAK, log_info,
+    BreakReason, Globals, BREAK,
 };
 
 #[allow(clippy::type_complexity)]
@@ -235,7 +235,7 @@ where
 
         std::thread::spawn(move || {
             if rx.recv().is_ok() {
-                BREAK.store(BreakReason::ToOpenFiles);
+                BREAK.store(BreakReason::ToReloadConfig);
             }
         });
 

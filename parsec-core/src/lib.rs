@@ -8,7 +8,6 @@
     trait_upcasting,
     let_chains,
     control_flow_enum,
-    return_position_impl_trait_in_trait,
     decl_macro,
     generic_const_exprs,
     step_trait,
@@ -16,10 +15,7 @@
 )]
 #![doc = include_str!("../README.md")]
 
-use std::sync::{
-    atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-    RwLock,
-};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use data::{CurrentFile, CurrentWidget};
 use ui::Ui;
@@ -36,6 +32,7 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+pub mod file;
 
 pub mod prelude {
     pub use crate::{
@@ -103,7 +100,7 @@ impl Break {
         self.0.store(reason as u8, Ordering::Relaxed);
     }
 
-#[inline]
+    #[inline]
     fn needed(&self) -> bool {
         self.0.load(Ordering::Relaxed) > BreakReason::None as u8
     }

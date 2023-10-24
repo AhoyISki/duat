@@ -3,6 +3,7 @@ mod iter;
 pub mod reader;
 mod tags;
 mod types;
+mod gap_buffer;
 
 use std::{
     fmt::{Display, Write},

@@ -1,5 +1,6 @@
 use std::sync::RwLock;
 
+use hotpatch::patchable;
 use parsec_core::{
     commands::Commands,
     data::{CurrentFile, CurrentWidget},
@@ -23,6 +24,25 @@ pub static GLOBALS: Globals<Ui> = Globals::new(&CURRENT_FILE, &CURRENT_WIDGET, &
 pub static UI_FN: UiFn = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
+
+#[patchable]
+pub fn parsec() -> SessionStarter {
+    finish()
+}
+
+pub struct SessionStarter {
+    pub(crate) globals: Globals<Ui>,
+    pub(crate) ui_fn: &'static UiFn,
+    pub(crate) cfg_fn: &'static CfgFn,
+}
+
+pub fn finish() -> SessionStarter {
+    SessionStarter {
+        globals: GLOBALS,
+        ui_fn: &UI_FN,
+        cfg_fn: &CFG_FN,
+    }
+}
 
 pub mod config {
     use parsec_core::{input::InputMethod, session::SessionCfg, widgets::File};

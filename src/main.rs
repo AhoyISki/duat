@@ -1,16 +1,10 @@
-#![feature(
-    return_position_impl_trait_in_trait,
-    decl_macro,
-    lazy_cell,
-    generic_const_exprs
-)]
+#![feature(decl_macro, lazy_cell, generic_const_exprs)]
 #![allow(incomplete_features)]
 
 use std::sync::mpsc;
 
-use hotpatch::patchable;
-use parsec_core::{session::SessionCfg, Globals};
-use utils::{default_cfg_fn, CfgFn, UiFn, CFG_FN, GLOBALS, UI_FN};
+use parsec_core::session::SessionCfg;
+use utils::{default_cfg_fn, parsec, SessionStarter};
 
 mod remapper;
 mod utils;
@@ -21,11 +15,9 @@ pub mod prelude {
     pub use parsec_core::palette::Form;
 
     pub use crate::{
-        finish,
         remapper::Remapable,
-        utils::{config, control, print},
+        utils::{config, control, finish, print, SessionStarter},
         widgets::{file_parts::*, CommandLine, LineNumbers, StatusLine},
-        SessionStarter,
     };
 }
 
@@ -62,23 +54,4 @@ fn main() {
     let mut session = cfg.session_from_args();
 
     session.start(true, rx);
-}
-
-#[patchable]
-pub fn parsec() -> SessionStarter {
-    finish()
-}
-
-pub struct SessionStarter {
-    globals: Globals<Ui>,
-    ui_fn: &'static UiFn,
-    cfg_fn: &'static CfgFn,
-}
-
-pub fn finish() -> SessionStarter {
-    SessionStarter {
-        globals: GLOBALS,
-        ui_fn: &UI_FN,
-        cfg_fn: &CFG_FN,
-    }
 }

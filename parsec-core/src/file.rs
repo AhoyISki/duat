@@ -21,7 +21,7 @@
 //! the numbers of the currently printed lines.
 use std::{fs, path::PathBuf, rc::Rc};
 
-use super::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
+use crate::widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
 use crate::{
     data::RwData,
     history::{Change, History},
@@ -76,47 +76,18 @@ where
         #[cfg(feature = "wacky-colors")]
         let text = {
             use crate::{
-                global::palette,
-                palette::Form,
+                palette::{self, Form},
                 text::{text, Marker, Tag},
             };
             let mut text = Text::new(contents.unwrap_or(String::from("\n")));
 
             let marker = Marker::new();
-            let form1 = palette().set_form("form1lmao", Form::new().red());
-            let form2 = palette().set_form("form2lmao", Form::new().on_blue());
-            for i in (0..100000).step_by(250) {
-                text.insert(i, Tag::ConcealStart, marker);
-                text.insert(i + 60, Tag::ConcealEnd, marker);
-                text.insert(i, Tag::ConcealStart, marker);
-                text.insert(i + 30, Tag::ConcealEnd, marker);
-                text.insert(
-                    i,
-                    Tag::GhostText(text!(
-                        "《施氏食狮史》\n石室诗士施氏，嗜狮，誓食十狮。\n氏时时适市视狮。\n十时，\
-                         适十狮适市。\n是时，适施氏适市。\n氏视是十狮，恃矢势，使是十狮逝世。\\
-                         \
-                         n氏拾是十狮尸，适石室。\n石室湿，氏使侍拭石室。\n石室拭，氏始试食是十狮。\
-                         \n食时，始识是十狮尸，实十石狮尸。\n试释是事。"
-                    )),
-                    marker,
-                );
-                text.insert(
-                    i,
-                    Tag::GhostText(text!(
-                    "\nhello everynyan\n" [form1lmao]
-                    "How are you?\n" [form2lmao]
-                    "Fine. Thank you.\n\n")),
-                    marker,
-                );
+            let form1 = palette::set_form("form1lmao", Form::new().red());
+            let form2 = palette::set_form("form2lmao", Form::new().on_blue());
+            for i in (0..4047390).step_by(8) {
+                text.insert_tag(i, Tag::PushForm(form1), marker);
+                text.insert_tag(i + 4, Tag::PopForm(form1), marker);
             }
-            text.insert(110, Tag::PopForm(form1), marker);
-            text.insert(10, Tag::PushForm(form1), marker);
-            text.insert(15, Tag::PopForm(form1), marker);
-            text.insert(30, Tag::PushForm(form2), marker);
-            text.insert(80, Tag::PopForm(form2), marker);
-            text.insert(80, Tag::PushForm(form2), marker);
-            text.insert(90, Tag::PopForm(form2), marker);
 
             text
         };

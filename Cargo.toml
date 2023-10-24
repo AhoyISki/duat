@@ -24,13 +24,6 @@ keywords = ["editor", "text", "application", "parsec"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
-[[bin]]
-name = "parsec"
-
-[lib]
-name = "parsec"
-path = "src/main.rs"
-
 [dependencies]
 hotpatch = "0.3.0"
 parsec-core = { version = "0.1.4", path = "parsec-core" }
@@ -40,3 +33,9 @@ parsec-term = { version = "0.1.4", path = "parsec-term", optional = true}
 [features]
 default = ["term-ui"]
 term-ui = ["dep:parsec-term"]
+
+[[bin]]
+name = "parsec"
+
+[lib]
+name = "parsec"

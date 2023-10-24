@@ -198,7 +198,6 @@
 //! [`commands::run`]: crate::commands::run
 //! [`Form`]: crate::forms::Form
 #[cfg(not(feature = "deadlock-detection"))]
-use std::sync::atomic::Ordering;
 use std::{
     collections::HashMap,
     fmt::Display,
