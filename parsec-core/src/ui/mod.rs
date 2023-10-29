@@ -10,6 +10,7 @@ use crossterm::event::KeyEvent;
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
     data::RoData,
+    log_info,
     palette::Painter,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
@@ -191,9 +192,9 @@ pub trait Area: Send + Sync {
     /// any other active [`Area`].
     fn set_as_active(&self);
 
-	/// Returns `true` if this is the currently active [`Area`].
-	///
-	/// Only one [`Area`] should be active at any given moment.
+    /// Returns `true` if this is the currently active [`Area`].
+    ///
+    /// Only one [`Area`] should be active at any given moment.
     fn is_active(&self) -> bool;
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
@@ -661,7 +662,7 @@ where
 pub(crate) fn build_file<U>(
     window: &mut Window<U>,
     mod_area: U::Area,
-    f: &mut impl FnMut(&mut FileBuilder<U>),
+    f: &mut Box<dyn FnMut(&mut FileBuilder<U>)>,
     globals: Globals<U>,
 ) where
     U: Ui,
@@ -673,15 +674,13 @@ pub(crate) fn build_file<U>(
             .find(|Node { area, .. }| *area == mod_area)
             .unwrap();
 
-        let old_file = node.widget.downcast::<File<U>>().map(|file| {
+        node.widget.downcast::<File<U>>().map(|file| {
             globals.current_file.swap(
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
             )
-        });
-
-        old_file
+        })
     };
 
     let mut file_builder = FileBuilder::new(window, mod_area, globals);

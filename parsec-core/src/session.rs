@@ -107,9 +107,7 @@ where
             is_new_session: false,
         };
 
-        if is_active {
-            session.set_active_file(widget, &area);
-        }
+        session.set_active_file(widget, &area);
 
         self.globals.commands.add_windows(session.windows.clone());
         add_session_commands(&session, self.globals);
@@ -143,11 +141,17 @@ where
         self.file_cfg.set_print_cfg(cfg);
     }
 
-    pub fn set_file_fn(&mut self, file_fn: impl FnMut(&mut FileBuilder<U>) + 'static) {
+    pub fn set_file_fn(
+        &mut self,
+        file_fn: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
+    ) {
         self.file_fn = Box::new(file_fn);
     }
 
-    pub fn preffix_file_fn(&mut self, mut preffix: impl FnMut(&mut FileBuilder<U>) + 'static) {
+    pub fn preffix_file_fn(
+        &mut self,
+        mut preffix: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
+    ) {
         let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
         self.file_fn = Box::new(move |builder| {
@@ -156,7 +160,10 @@ where
         });
     }
 
-    pub fn suffix_file_fn(&mut self, mut suffix: impl FnMut(&mut FileBuilder<U>) + 'static) {
+    pub fn suffix_file_fn(
+        &mut self,
+        mut suffix: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
+    ) {
         let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
         self.file_fn = Box::new(move |builder| {

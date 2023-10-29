@@ -18,12 +18,8 @@ crossterm = ">=0.26.0"
 ropey = ">=1.6.0"
 any-rope = ">=1.2.2"
 
-# For testing only
-no_deadlocks = { path = "../../no-deadlocks/" }
-
 [features]
 # NOTE: Features meant for testing only by myself.
 default = []
 disable-testing = []
-deadlock-detection = []
 wacky-colors = []

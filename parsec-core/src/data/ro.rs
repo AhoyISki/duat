@@ -1,15 +1,10 @@
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{RwLock, RwLockReadGuard};
 use std::{
     any::TypeId,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockError, TryLockResult,
+        Arc, RwLock, RwLockReadGuard, TryLockError, TryLockResult,
     },
 };
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::{RwLock, RwLockReadGuard};
 
 use super::{private::InnerData, Data, Error, RwData};
 use crate::{

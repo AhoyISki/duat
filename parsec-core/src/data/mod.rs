@@ -88,12 +88,7 @@ where
 }
 
 mod private {
-    #[cfg(not(feature = "deadlock-detection"))]
-    use std::sync::RwLockReadGuard;
-    use std::sync::{atomic::AtomicUsize, Arc, TryLockResult};
-
-    #[cfg(feature = "deadlock-detection")]
-    use no_deadlocks::RwLockReadGuard;
+    use std::sync::{atomic::AtomicUsize, Arc, RwLockReadGuard, TryLockResult};
 
     pub trait InnerData<T: ?Sized> {
         /// The data, usually an [`Arc`]

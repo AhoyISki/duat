@@ -12,7 +12,7 @@ use std::{
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parsec_core::{data::RwData, widgets::File};
-pub use utils::run_parsec;
+use utils::run_parsec;
 mod remapper;
 mod utils;
 mod widgets;
@@ -146,23 +146,7 @@ compile_error! {
 }
 
 #[cfg(feature = "term-ui")]
-pub type Ui = parsec_term::Ui;
-
-pub mod prelude {
-    pub use parsec_core::{
-        self,
-        file::File,
-        palette::Form,
-        position,
-        text::{text, Builder, Text},
-    };
-
-    pub use crate::{
-        run,
-        utils::{control, hook, print, setup},
-        widgets::{common::*, status, CommandLine, LineNumbers, StatusLine},
-    };
-}
+type Ui = parsec_term::Ui;
 
 type PrevFiles = Vec<(RwData<File<Ui>>, bool)>;
 type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

@@ -1,16 +1,11 @@
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     any::TypeId,
     marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, TryLockError, TryLockResult,
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError, TryLockResult,
     },
 };
-
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{private::InnerData, Data, Error};
 use crate::{
@@ -613,8 +608,9 @@ where
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static,
-    {        self.type_id == TypeId::of::<U>()
-}
+    {
+        self.type_id == TypeId::of::<U>()
+    }
 
     /// Tries to downcast to a concrete type.
     ///

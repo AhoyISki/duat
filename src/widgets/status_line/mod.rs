@@ -58,7 +58,7 @@ use parsec_core::{
     data::{FileReader, RoData},
     input::InputMethod,
     palette::{self, Form},
-    text::{text, Builder, Text},
+    text::{text, Builder, Text, Tag},
     ui::PushSpecs,
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
     Globals,
@@ -252,14 +252,13 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        use $crate::prelude::parsec_core::{palette, text};
         let form_id = palette::__weakest_id_of_name(stringify!($form));
 
         let text_fn = move |builder: &mut Builder,
                             file: &RoData<File<Ui>>,
                             input: &RoData<dyn InputMethod<Ui>>| {
             $text_fn(builder, file, input);
-            builder.push_tag(text::Tag::PushForm(form_id));
+            builder.push_tag(Tag::PushForm(form_id));
         };
 
         (text_fn, $checker)
@@ -295,14 +294,6 @@ pub macro status {
     }},
 
     ($($parts:tt)*) => {{
-        use $crate::prelude::parsec_core::{
-            data::RoData,
-            input::InputMethod,
-            text::{text, Tag, Builder},
-            ui::PushSpecs,
-            widgets::{File},
-        };
-
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status!(@parse $($parts)*);
 
