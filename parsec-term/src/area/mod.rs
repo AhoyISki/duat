@@ -65,6 +65,10 @@ impl Coords {
     fn width(&self) -> usize {
         self.br.x - self.tl.x
     }
+
+    fn height(&self) -> usize {
+        self.br.y - self.tl.y
+    }
 }
 
 #[derive(Clone)]
@@ -256,8 +260,12 @@ impl ui::Area for Area {
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
         let info = self.print_info.borrow();
-
         let coords = self.coords();
+
+        if coords.width() == 0 || coords.height() == 0 {
+            return;
+        }
+
         let mut stdout = stdout().lock();
         print_edges(self.layout.read().edges(), &mut stdout);
 

@@ -15,7 +15,11 @@
 )]
 #![doc = include_str!("../README.md")]
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::{
+    sync::{
+        atomic::{AtomicU8, Ordering},
+    },
+};
 
 use data::{CurrentFile, CurrentWidget};
 use ui::Ui;
@@ -24,6 +28,7 @@ use self::commands::Commands;
 
 pub mod commands;
 pub mod data;
+pub mod file;
 pub mod history;
 pub mod input;
 pub mod palette;
@@ -32,7 +37,6 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-pub mod file;
 
 pub mod prelude {
     pub use crate::{
@@ -121,17 +125,22 @@ pub macro log_info($($text:tt)*) {{
     use std::{fs, io::Write, time::Instant};
     let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
     let mut text = format!($($text)*);
-    if text.lines().count() > 1 {
-        let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
-        let nl_indices: Vec<usize> = chars.collect();
-        for index in nl_indices.iter().rev() {
-            text.insert_str(index + 1, "  ");
-        }
 
-        let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
-        write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
+    if let Some(start) = $crate::DEBUG_TIME_START.get() {
+        if text.lines().count() > 1 {
+            let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
+            let nl_indices: Vec<usize> = chars.collect();
+            for index in nl_indices.iter().rev() {
+                text.insert_str(index + 1, "  ");
+            }
+
+            let duration = Instant::now().duration_since(*start);
+            write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
+        } else {
+            let duration = Instant::now().duration_since(*start);
+            write!(log, "\nat {:.4?}: {text}", duration).unwrap();
+        }
     } else {
-        let duration = Instant::now().duration_since(*$crate::DEBUG_TIME_START.get().unwrap());
-        write!(log, "\nat {:.4?}: {text}", duration).unwrap();
+        write!(log, "\n{text}").unwrap();
     }
 }}

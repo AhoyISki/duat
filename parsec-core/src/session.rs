@@ -102,7 +102,7 @@ where
         self.file_fn = Box::new(file_fn);
     }
 
-    pub fn preffix_file_fn(&mut self, mut preffix: impl FnMut(&FileBuilder<U>) + 'static) {
+    pub fn preffix_file_fn(&mut self, mut preffix: impl FnMut(&mut FileBuilder<U>) + 'static) {
         let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
         self.file_fn = Box::new(move |builder| {
@@ -111,7 +111,7 @@ where
         });
     }
 
-    pub fn suffix_file_fn(&mut self, mut suffix: impl FnMut(&FileBuilder<U>) + 'static) {
+    pub fn suffix_file_fn(&mut self, mut suffix: impl FnMut(&mut FileBuilder<U>) + 'static) {
         let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
 
         self.file_fn = Box::new(move |builder| {
@@ -124,7 +124,7 @@ where
         self.window_fn = Box::new(window_fn);
     }
 
-    pub fn preffix_window_fn(&mut self, mut preffix: impl FnMut(&WindowBuilder<U>) + 'static) {
+    pub fn preffix_window_fn(&mut self, mut preffix: impl FnMut(&mut WindowBuilder<U>) + 'static) {
         let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
 
         self.window_fn = Box::new(move |builder| {
@@ -133,7 +133,7 @@ where
         });
     }
 
-    pub fn suffix_window_fn(&mut self, mut suffix: impl FnMut(&WindowBuilder<U>) + 'static) {
+    pub fn suffix_window_fn(&mut self, mut suffix: impl FnMut(&mut WindowBuilder<U>) + 'static) {
         let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
 
         self.window_fn = Box::new(move |builder| {
@@ -148,6 +148,7 @@ where
 
     pub fn __new(ui: U, globals: Globals<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
+
         SessionCfg {
             ui,
             file_cfg: File::cfg(),
@@ -228,13 +229,13 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(&mut self, is_new_session: bool, rx: mpsc::Receiver<()>) -> bool {
+    pub fn start(mut self, is_new_session: bool, rx: mpsc::Receiver<()>) -> Option<Self> {
         if is_new_session {
             self.ui.startup();
         }
 
         std::thread::spawn(move || {
-            if rx.recv().is_ok() {
+            if let Ok(()) = rx.recv() {
                 BREAK.store(BreakReason::ToReloadConfig);
             }
         });
@@ -271,7 +272,7 @@ where
             self.ui.shutdown();
         }
 
-        BREAK == BreakReason::ToReloadConfig
+        (BREAK == BreakReason::ToReloadConfig).then_some(self)
     }
 
     /// The primary application loop, executed while no breaking
@@ -301,7 +302,7 @@ where
 
                 self.ui.finish_printing()
             }
-        });
+        })
     }
 }
 
@@ -716,3 +717,9 @@ fn switch_widget<U: Ui>(
 fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {
     widget.inspect_as::<File<U>, String>(File::name).unwrap()
 }
+
+unsafe impl<U: Ui> Send for SessionCfg<U> {}
+unsafe impl<U: Ui> Sync for SessionCfg<U> {}
+
+unsafe impl<U: Ui> Send for Session<U> {}
+unsafe impl<U: Ui> Sync for Session<U> {}

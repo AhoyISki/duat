@@ -69,7 +69,7 @@ mod global {
 
     /// Not meant for external use. Please use [`form_of_name`].
     #[doc(hidden)]
-    pub fn weakest_id_of_name(name: impl AsRef<str>) -> FormId {
+    pub fn __weakest_id_of_name(name: impl AsRef<str>) -> FormId {
         PALETTE.weakest_id_of_name(name)
     }
 }

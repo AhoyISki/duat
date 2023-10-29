@@ -12,7 +12,10 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard};
 
 use super::{private::InnerData, Data, Error, RwData};
-use crate::{widgets::{ActiveWidget, PassiveWidget}, ui::Ui};
+use crate::{
+    ui::Ui,
+    widgets::{ActiveWidget, PassiveWidget},
+};
 
 /// A read-only reference to information.
 ///
@@ -39,7 +42,7 @@ where
     data: Arc<RwLock<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
-    concrete_type: TypeId,
+    type_id: TypeId,
 }
 
 impl<T> RoData<T> {
@@ -55,7 +58,7 @@ impl<T> RoData<T> {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<T>(),
+            type_id: TypeId::of::<T>(),
         }
     }
 }
@@ -78,7 +81,7 @@ where
             data,
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<SizedT>(),
+            type_id: TypeId::of::<SizedT>(),
         }
     }
 
@@ -398,7 +401,7 @@ where
     ///
     /// [`RwData<dyn Trait>`]: RwData
     pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
-        (self.concrete_type == TypeId::of::<U>()).then(|| {
+        self.data_is::<U>().then(|| {
             let ptr = Arc::as_ptr(&self.data);
             let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
 
@@ -413,7 +416,7 @@ where
     where
         U: 'static,
     {
-        self.concrete_type == TypeId::of::<U>()
+        self.type_id == TypeId::of::<U>()
     }
 
     /// Tries to downcast to a concrete type.
@@ -421,7 +424,7 @@ where
     where
         U: 'static,
     {
-        if self.concrete_type == TypeId::of::<U>() {
+        if self.data_is::<U>() {
             let Self {
                 data,
                 cur_state,
@@ -434,7 +437,7 @@ where
                 data,
                 cur_state,
                 read_state,
-                concrete_type: TypeId::of::<U>(),
+                type_id: TypeId::of::<U>(),
             })
         } else {
             Err(Error::<RoData<T>, T, U>::CastingFailed)
@@ -465,7 +468,7 @@ where
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(0)),
             read_state: AtomicUsize::new(0),
-            concrete_type: TypeId::of::<T>(),
+            type_id: TypeId::of::<T>(),
         }
     }
 }
@@ -488,7 +491,7 @@ where
             data: value.data.clone(),
             cur_state: value.cur_state.clone(),
             read_state: AtomicUsize::new(value.cur_state.load(Ordering::Relaxed)),
-            concrete_type: value.concrete_type,
+            type_id: value.type_id,
         }
     }
 }
@@ -525,7 +528,7 @@ where
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
-            concrete_type: self.concrete_type,
+            type_id: self.type_id,
         }
     }
 }
@@ -539,7 +542,7 @@ where
             data: self.data as Arc<RwLock<dyn PassiveWidget<U>>>,
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
-            concrete_type: self.concrete_type,
+            type_id: self.type_id,
         }
     }
 }

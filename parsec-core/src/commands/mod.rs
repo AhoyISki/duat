@@ -210,7 +210,8 @@ use crate::{
     data::{CurrentFile, CurrentWidget, Data, RwData},
     text::{text, Text},
     ui::{Ui, Window},
-    widgets::{ActiveWidget, PassiveWidget}, BREAK, BreakReason,
+    widgets::{ActiveWidget, PassiveWidget},
+    BreakReason, BREAK,
 };
 
 mod parameters;
@@ -263,12 +264,10 @@ where
                     })
                 };
 
-                let quit = {
-                    Command::new(["quit", "q"], move |_, _| {
-                        BREAK.store(BreakReason::ToQuitParsec);
-                        Ok(None)
-                    })
-                };
+                let quit = Command::new(["quit", "q"], move |_, _| {
+                    BREAK.store(BreakReason::ToQuitParsec);
+                    Ok(None)
+                });
 
                 inner.write().try_add(quit).unwrap();
                 inner.write().try_add(alias).unwrap();

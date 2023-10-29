@@ -7,6 +7,9 @@ use crossterm::event::{
 use parsec_core::{
     data::RwData,
     input::{key, Cursors, InputMethod, MultiCursorEditor},
+    palette,
+    prelude::Form,
+    text::{text, Text},
     ui::Ui,
     widgets::File,
     Globals,
@@ -53,8 +56,13 @@ impl Editor {
         Self::default()
     }
 
-    pub fn mode(input: &Self) -> String {
-        input.mode.to_string()
+    pub fn mode(&self) -> String {
+        self.mode.to_string()
+    }
+
+    pub fn mode_fmt(&self) -> Text {
+        palette::set_weak_form("Mode", Form::new().green());
+        text!([Mode] { self.mode.to_string() })
     }
 }
 

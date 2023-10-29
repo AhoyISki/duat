@@ -19,9 +19,8 @@
 //! method. This method is notably used by the
 //! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{fs, path::PathBuf, rc::Rc};
+use std::{fs, path::PathBuf, sync::Arc};
 
-use crate::widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg};
 use crate::{
     data::RwData,
     history::{Change, History},
@@ -29,6 +28,7 @@ use crate::{
     palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
+    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
 
@@ -37,7 +37,7 @@ where
     U: Ui,
 {
     path: Option<PathBuf>,
-    generator: Rc<dyn Fn(File<U>) -> Widget<U>>,
+    generator: Arc<dyn Fn(File<U>) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
@@ -49,7 +49,7 @@ where
     pub fn new() -> Self {
         FileCfg {
             path: None,
-            generator: Rc::new(|file| Widget::active(file, RwData::new(Editor::new()))),
+            generator: Arc::new(|file| Widget::active(file, RwData::new(Editor::new()))),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
@@ -119,7 +119,7 @@ where
     }
 
     pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
-        self.generator = Rc::new(move |file| Widget::active(file, RwData::new(input.clone())));
+        self.generator = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
     }
 
     pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {

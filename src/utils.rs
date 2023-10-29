@@ -1,18 +1,16 @@
-use std::sync::RwLock;
+use std::sync::{mpsc, RwLock};
 
-use hotpatch::patchable;
 use parsec_core::{
     commands::Commands,
     data::{CurrentFile, CurrentWidget},
-    session::SessionCfg,
+    session::{Session, SessionCfg},
     text::PrintCfg,
     Globals,
 };
 use parsec_term::VertRule;
 
 use crate::{
-    prelude::CommandLine,
-    widgets::{LineNumbers, StatusLine},
+    widgets::{CommandLine, LineNumbers, StatusLine},
     Ui,
 };
 
@@ -25,39 +23,43 @@ pub static UI_FN: UiFn = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
-#[patchable]
-pub fn parsec() -> SessionStarter {
-    finish()
-}
+pub fn run_parsec(is_first: bool, rx: mpsc::Receiver<()>) -> Option<Session<Ui>> {
+    let ui = {
+        let mut ui = Ui::default();
+        if let Some(ui_fn) = UI_FN.write().unwrap().take() {
+            ui_fn(&mut ui)
+        }
+        ui
+    };
 
-pub struct SessionStarter {
-    pub(crate) globals: Globals<Ui>,
-    pub(crate) ui_fn: &'static UiFn,
-    pub(crate) cfg_fn: &'static CfgFn,
-}
+    let mut cfg = SessionCfg::__new(ui, GLOBALS);
 
-pub fn finish() -> SessionStarter {
-    SessionStarter {
-        globals: GLOBALS,
-        ui_fn: &UI_FN,
-        cfg_fn: &CFG_FN,
+    match CFG_FN.write().unwrap().take() {
+        Some(cfg_fn) => cfg_fn(&mut cfg),
+        None => default_cfg_fn(&mut cfg),
     }
+
+    let session = cfg.session_from_args();
+    session.start(is_first, rx)
 }
 
-pub mod config {
+pub mod setup {
     use parsec_core::{input::InputMethod, session::SessionCfg, widgets::File};
 
     use super::{default_cfg_fn, CFG_FN, UI_FN};
     use crate::Ui;
 
-    pub fn set_ui(f: impl FnMut() -> Ui + Send + Sync + 'static) {
+    #[inline(never)]
+    pub fn set_ui(f: impl FnMut(&mut Ui) + Send + Sync + 'static) {
         *UI_FN.write().unwrap() = Some(Box::new(f));
     }
 
+    #[inline(never)]
     pub fn set_fn(f: impl FnMut(&mut SessionCfg<Ui>) + Send + Sync + 'static) {
         *CFG_FN.write().unwrap() = Some(Box::new(f));
     }
 
+    #[inline(never)]
     pub fn set_input<I: InputMethod<Ui, Widget = File<Ui>> + Clone>(
         mut f: impl FnMut() -> I + Send + Sync + 'static,
     ) {
@@ -65,7 +67,7 @@ pub mod config {
         let prev = cfg_fn.take();
 
         *cfg_fn = Some(match prev {
-            Some(mut prev_fn) => Box::new(move |cfg| {
+            Some(prev_fn) => Box::new(move |cfg| {
                 prev_fn(cfg);
                 cfg.set_input(f())
             }),
@@ -77,18 +79,19 @@ pub mod config {
     }
 }
 
-pub mod hooks {
-    use parsec_core::ui::FileBuilder;
+pub mod hook {
+    use parsec_core::ui::{FileBuilder, WindowBuilder};
 
     use super::{default_cfg_fn, CFG_FN};
     use crate::Ui;
 
-    pub fn on_file_open(f: impl FnMut(&FileBuilder<Ui>) + Send + Sync + 'static) {
+    #[inline(never)]
+    pub fn on_file_open(f: impl FnMut(&mut FileBuilder<Ui>) + Send + Sync + 'static) {
         let mut cfg_fn = CFG_FN.write().unwrap();
         let prev = cfg_fn.take();
 
         *cfg_fn = Some(match prev {
-            Some(mut prev_fn) => Box::new(move |cfg| {
+            Some(prev_fn) => Box::new(move |cfg| {
                 prev_fn(cfg);
                 cfg.suffix_file_fn(f);
             }),
@@ -99,18 +102,53 @@ pub mod hooks {
         })
     }
 
+    #[inline(never)]
     pub fn reset_file_fn() {
         let mut cfg_fn = CFG_FN.write().unwrap();
         let prev = cfg_fn.take();
 
         *cfg_fn = Some(match prev {
-            Some(mut prev_fn) => Box::new(move |cfg| {
+            Some(prev_fn) => Box::new(move |cfg| {
                 prev_fn(cfg);
                 cfg.set_file_fn(|_| {})
             }),
             None => Box::new(move |cfg| {
                 default_cfg_fn(cfg);
                 cfg.set_file_fn(|_| {})
+            }),
+        })
+    }
+
+    #[inline(never)]
+    pub fn on_window_open(f: impl FnMut(&mut WindowBuilder<Ui>) + Send + Sync + 'static) {
+        let mut cfg_fn = CFG_FN.write().unwrap();
+        let prev = cfg_fn.take();
+
+        *cfg_fn = Some(match prev {
+            Some(prev_fn) => Box::new(move |cfg| {
+                prev_fn(cfg);
+                cfg.suffix_window_fn(f);
+            }),
+            None => Box::new(move |cfg| {
+                default_cfg_fn(cfg);
+                cfg.suffix_window_fn(f);
+            }),
+        })
+    }
+
+    #[inline(never)]
+    pub fn reset_window_fn() {
+        let mut cfg_fn = CFG_FN.write().unwrap();
+        let prev = cfg_fn.take();
+
+        *cfg_fn = Some(match prev {
+            Some(prev_fn) => Box::new(move |cfg| {
+                prev_fn(cfg);
+                cfg.set_window_fn(|_| {})
+            }),
+            None => Box::new(move |cfg| {
+                default_cfg_fn(cfg);
+                cfg.set_window_fn(|_| {})
             }),
         })
     }
@@ -134,6 +172,7 @@ pub mod print {
         pub use parsec_core::palette::{extra_cursor, form_of_id, id_of_name, main_cursor};
     }
 
+    #[inline(never)]
     pub fn wrap_on_width() {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -144,6 +183,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn wrap_on_words() {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -154,6 +194,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn wrap_on_cap(cap: usize) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -164,6 +205,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn indent_on_wrap() {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -174,6 +216,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn tab_size(tab_size: usize) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -184,6 +227,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn new_line(char: char) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -194,6 +238,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn trailing_new_line(char: char) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -204,6 +249,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn scrolloff(x: usize, y: usize) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -214,6 +260,7 @@ pub mod print {
         })
     }
 
+    #[inline(never)]
     pub fn word_chars(word_chars: impl Iterator<Item = RangeInclusive<char>>) {
         let mut print_cfg = PRINT_CFG.write().unwrap();
         let prev = print_cfg.take();
@@ -243,6 +290,7 @@ pub mod control {
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Parsec will execute a program closing
     /// function, as defined by the [`Ui`].
+    #[inline(never)]
     pub fn quit() {
         COMMANDS.quit();
     }
@@ -261,6 +309,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
+    #[inline(never)]
     pub fn switch_to<W: ActiveWidget<Ui>>() -> Result<Option<Text>> {
         COMMANDS.run(format!("switch-to {}", W::name()))
     }
@@ -274,6 +323,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::buffer`]: crate::commands::buffer
+    #[inline(never)]
     pub fn edit(file: impl Display) -> Result<Option<Text>> {
         COMMANDS.run(format!("edit {}", file))
     }
@@ -287,6 +337,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::edit`]: crate::commands::edit
+    #[inline(never)]
     pub fn buffer(file: impl Display) -> Result<Option<Text>> {
         COMMANDS.run(format!("buffer {}", file))
     }
@@ -299,6 +350,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::next_global_file`]: crate::commands::next_global_file
+    #[inline(never)]
     pub fn next_file() -> Result<Option<Text>> {
         COMMANDS.run("next-file")
     }
@@ -311,6 +363,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::prev_global_file`]: crate::commands::prev_global_file
+    #[inline(never)]
     pub fn prev_file() -> Result<Option<Text>> {
         COMMANDS.run("prev-file")
     }
@@ -323,6 +376,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::next_file`]: crate::commands::next_file
+    #[inline(never)]
     pub fn next_global_file() -> Result<Option<Text>> {
         COMMANDS.run("next-file --global")
     }
@@ -335,6 +389,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`commands::prev_file`]: crate::commands::prev_file
+    #[inline(never)]
     pub fn prev_global_file() -> Result<Option<Text>> {
         COMMANDS.run("prev-file --global")
     }
@@ -347,6 +402,7 @@ pub mod control {
     ///
     /// [`File`]: crate::widgets::File
     /// [`CommandLine`]: crate::widgets::CommandLine
+    #[inline(never)]
     pub fn return_to_file() -> Result<Option<Text>> {
         COMMANDS.run("return-to-file")
     }
@@ -356,6 +412,7 @@ pub mod control {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// exisiting [`Command`].
+    #[inline(never)]
     pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
         COMMANDS.alias(alias, command)
     }
@@ -384,6 +441,7 @@ pub mod control {
     ///
     /// [`CommandLine`]: crate::widgets::CommandLine
     /// [`commands::add_for_widget`]: crate::commands::add_for_widget
+    #[inline(never)]
     pub fn run(call: impl Display) -> Result<Option<Text>> {
         COMMANDS.run(call)
     }
@@ -435,6 +493,7 @@ pub mod control {
     /// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`RoData<usize>`]: crate::data::RoData
+    #[inline(never)]
     pub fn add(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
@@ -519,6 +578,7 @@ pub mod control {
     /// [`File`]: crate::widgets::File
     /// [`InputMethod`]: crate::input::InputMethod
     /// [`Session`]: crate::session::Session
+    #[inline(never)]
     pub fn add_for_current<T: 'static>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
@@ -662,6 +722,7 @@ pub mod control {
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
     /// [`CommandLine`]: crate::widgets::CommandLine
+    #[inline(never)]
     pub fn add_for_widget<W: PassiveWidget<Ui>>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&mut W, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
@@ -670,9 +731,10 @@ pub mod control {
     }
 }
 
-pub type UiFn = RwLock<Option<Box<dyn FnOnce() -> Ui + Send + Sync>>>;
+pub type UiFn = RwLock<Option<Box<dyn FnOnce(&mut Ui) + Send + Sync>>>;
 pub type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
+#[inline(never)]
 pub fn default_cfg_fn(cfg: &mut SessionCfg<Ui>) {
     cfg.set_print_cfg(
         PRINT_CFG

@@ -99,7 +99,6 @@ where
     /// │╰──────╯╰───────╯│     │╰───────────────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
-    #[allow(private_bounds)]
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
         let (widget, checker, specs) = W::build(self.globals);
@@ -173,7 +172,6 @@ where
     /// │╰──────╯╰───────╯│     │╰───────────────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
-    #[allow(private_bounds)]
     pub fn push_cfg<W: PassiveWidget<U>>(
         &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
@@ -224,7 +222,6 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    #[allow(private_bounds)]
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
         let (widget, checker, specs) = W::build(self.globals);
@@ -254,7 +251,6 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    #[allow(private_bounds)]
     pub fn push_cfg_to<W: PassiveWidget<U>>(
         &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
@@ -345,7 +341,6 @@ where
     /// [`StatusLine<U>`]: crate::widgets::StatusLine
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
-    #[allow(private_bounds)]
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
         let (widget, checker, specs) = W::build(self.globals);
@@ -407,7 +402,6 @@ where
     /// [`StatusLine<U>`]: crate::widgets::StatusLine
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
-    #[allow(private_bounds)]
     pub fn push_cfg<W: PassiveWidget<U>>(
         &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
@@ -439,7 +433,6 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    #[allow(private_bounds)]
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
         let (widget, checker, specs) = W::build(self.globals);
@@ -462,7 +455,6 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    #[allow(private_bounds)]
     pub fn push_cfg_to<W: PassiveWidget<U>>(
         &mut self,
         pushable: impl WidgetCfg<U, Widget = W>,

@@ -7,10 +7,7 @@
     generic_const_exprs
 )]
 
-use std::{
-    fmt::Debug,
-    io,
-};
+use std::{fmt::Debug, io};
 
 use crossterm::{
     cursor, execute,
@@ -106,7 +103,12 @@ impl ui::Ui for Ui {
         terminal::disable_raw_mode().unwrap();
     }
 
-    fn finish_printing(&self) {}
+    fn finish_printing(&self) {
+        static FIRST_TIME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+        if FIRST_TIME.load(std::sync::atomic::Ordering::Relaxed) {
+            FIRST_TIME.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
 }
 
 pub enum ConstraintChangeErr {

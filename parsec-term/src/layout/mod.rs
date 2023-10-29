@@ -110,11 +110,11 @@ impl std::fmt::Debug for VarPoint {
 /// location, in relation to other [`Rect`]s. They instead deal with
 /// two things, affecting a [`Rect`]s lenght in its parent's [`Axis`]:
 ///
-/// - `defined`: A [`Constraint`], provided by the user, which details specific
-///   requests for the lenght of a [`Rect`].
-/// - `ratio`: A [`Constraint`] which details the ratio between the lenght of
-///   this [`Rect`] and the lenght of the [`Rect`] that follows it, if there is
-///   any.
+/// - `defined`: A [`Constraint`], provided by the user, which details
+///   specific requests for the lenght of a [`Rect`].
+/// - `ratio`: A [`Constraint`] which details the ratio between the
+///   lenght of this [`Rect`] and the lenght of the [`Rect`] that
+///   follows it, if there is any.
 ///
 /// Both of these constraints are optional, and are meant to be
 /// replaceable at runtime.

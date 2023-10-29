@@ -50,10 +50,10 @@
 //! information at the same time is quite redundant. But this is a
 //! good showing for the flexibility of this widget.
 
-pub mod file_parts;
+pub mod common;
 mod state;
 
-use file_parts::{main_col, main_line, selections_fmt};
+use common::{main_col, main_line, selections_fmt};
 use parsec_core::{
     data::{FileReader, RoData},
     input::InputMethod,
@@ -235,15 +235,31 @@ unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}
 
 pub macro status {
-    // Insertion of directly named forms.
-    (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let form_id = parsec_core::palette::weakest_id_of_name(stringify!($form));
+    (@push $builder:expr, []) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("Default")
+        });
 
         let text_fn = move |builder: &mut Builder,
                             file: &RoData<File<Ui>>,
                             input: &RoData<dyn InputMethod<Ui>>| {
             $text_fn(builder, file, input);
-            builder.push_tag(parsec_core::text::Tag::PushForm(form_id));
+            builder.push_tag(text::Tag::PushForm(form_id));
+        };
+
+        (text_fn, $checker)
+    },
+
+    // Insertion of directly named forms.
+    (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
+        use $crate::prelude::parsec_core::{palette, text};
+        let form_id = palette::__weakest_id_of_name(stringify!($form));
+
+        let text_fn = move |builder: &mut Builder,
+                            file: &RoData<File<Ui>>,
+                            input: &RoData<dyn InputMethod<Ui>>| {
+            $text_fn(builder, file, input);
+            builder.push_tag(text::Tag::PushForm(form_id));
         };
 
         (text_fn, $checker)
@@ -279,7 +295,7 @@ pub macro status {
     }},
 
     ($($parts:tt)*) => {{
-        use parsec_core::{
+        use $crate::prelude::parsec_core::{
             data::RoData,
             input::InputMethod,
             text::{text, Tag, Builder},

@@ -13,7 +13,10 @@ use std::{
 use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::{private::InnerData, Data, Error};
-use crate::{widgets::{ActiveWidget, PassiveWidget}, ui::Ui};
+use crate::{
+    ui::Ui,
+    widgets::{ActiveWidget, PassiveWidget},
+};
 
 /// A read-write reference to information, that can tell readers if
 /// said information has changed.
@@ -63,7 +66,7 @@ where
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
-    pub(super) concrete_type: TypeId,
+    pub(super) type_id: TypeId,
 }
 
 impl<T> RwData<T> {
@@ -79,7 +82,7 @@ impl<T> RwData<T> {
             data: Arc::new(RwLock::new(data)),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<T>(),
+            type_id: TypeId::of::<T>(),
         }
     }
 }
@@ -102,7 +105,7 @@ where
             data,
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<SizedT>(),
+            type_id: TypeId::of::<SizedT>(),
         }
     }
 
@@ -610,9 +613,8 @@ where
     pub fn data_is<U>(&self) -> bool
     where
         U: 'static,
-    {
-        self.concrete_type == TypeId::of::<U>()
-    }
+    {        self.type_id == TypeId::of::<U>()
+}
 
     /// Tries to downcast to a concrete type.
     ///
@@ -666,7 +668,7 @@ where
     where
         U: 'static,
     {
-        if self.concrete_type == TypeId::of::<U>() {
+        if self.data_is::<U>() {
             let Self {
                 data,
                 cur_state,
@@ -679,7 +681,7 @@ where
                 data,
                 cur_state,
                 read_state,
-                concrete_type: TypeId::of::<U>(),
+                type_id: TypeId::of::<U>(),
             })
         } else {
             Err(Error::<RwData<T>, T, U>::CastingFailed)
@@ -734,7 +736,7 @@ where
     ///
     /// [`RwData<dyn Trait>`]: RwData
     pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
-        (self.concrete_type == TypeId::of::<U>()).then(|| {
+        (self.data_is::<U>()).then(|| {
             let ptr = Arc::as_ptr(&self.data);
             let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
 
@@ -746,7 +748,7 @@ where
     }
 
     pub fn mutate_as<U: 'static, R>(&self, f: impl FnOnce(&mut U) -> R) -> Option<R> {
-        (self.concrete_type == TypeId::of::<U>()).then(|| {
+        (self.data_is::<U>()).then(|| {
             let ptr = Arc::as_ptr(&self.data);
             let cast = unsafe { ptr.cast::<RwLock<U>>().as_ref().unwrap() };
 
@@ -784,7 +786,7 @@ where
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
-            concrete_type: self.concrete_type,
+            type_id: self.type_id,
         }
     }
 }
@@ -798,7 +800,7 @@ where
             data: Arc::new(RwLock::new(T::default())),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
-            concrete_type: TypeId::of::<T>(),
+            type_id: TypeId::of::<T>(),
         }
     }
 }
@@ -833,7 +835,7 @@ where
             data: self.data as Arc<RwLock<dyn PassiveWidget<U>>>,
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
-            concrete_type: self.concrete_type,
+            type_id: self.type_id,
         }
     }
 }
