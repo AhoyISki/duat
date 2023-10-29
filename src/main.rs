@@ -18,7 +18,7 @@ mod utils;
 mod widgets;
 
 static FILES_CHANGED: AtomicBool = AtomicBool::new(false);
-static BREAK: AtomicU32 = AtomicU32::new(NO);
+static BREAK: AtomicU32 = AtomicU32::new(0);
 
 fn main() {
     // Assert that the configuration crate actually exists.
@@ -74,7 +74,7 @@ fn main() {
             };
 
             loop {
-                atomic_wait::wait(&BREAK, NO);
+                atomic_wait::wait(&BREAK, 0);
 
                 if !FILES_CHANGED.load(Ordering::Relaxed) {
                     break;
@@ -164,6 +164,5 @@ pub mod prelude {
     };
 }
 
-const NO: u32 = 0;
 type PrevFiles = Vec<(RwData<File<Ui>>, bool)>;
 type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

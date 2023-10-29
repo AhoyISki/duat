@@ -12,7 +12,7 @@ use cassowary::{
     Constraint as CassowaryConstraint, Expression, Solver, Variable,
     WeightedRelation::*,
 };
-pub use frame::{Edge, EdgeBrush, EdgeCoords, Frame};
+pub use frame::{Edge, Brush, EdgeCoords, Frame};
 use parsec_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},

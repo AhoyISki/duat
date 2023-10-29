@@ -77,7 +77,7 @@ pub struct StatusLineCfg {
 impl StatusLineCfg {
     pub fn new() -> Self {
         status!(
-            [FileName] { File::name } " " [Selections] selections_fmt " "
+            [File] { File::name } " " [Selections] selections_fmt " "
             [Coords] main_col [Separator] ":" [Coords] main_line
             [Separator] "/" [Coords] { File::len_lines }
         )
@@ -183,9 +183,9 @@ impl Default for StatusLineCfg {
 /// let palette: FormPalette = palette_fn();
 ///
 /// let parts = status_parts![
-///     "file name: [FileName]",
+///     "file name: [File]",
 ///     file_name::<U>(),
-///     "[Default] main cursor: [Coords]",
+///     "[] main cursor: [Coords]",
 ///     main_cursor(),
 /// ];
 ///
@@ -224,9 +224,9 @@ impl PassiveWidget<Ui> for StatusLine {
     }
 
     fn once(_globals: Globals<Ui>) {
-        palette::set_weak_form("FileName", Form::new().yellow().italic());
+        palette::set_weak_form("File", Form::new().yellow().italic());
         palette::set_weak_form("Selections", Form::new().dark_blue());
-        palette::set_weak_form("Coords", Form::new().dark_red());
+        palette::set_weak_form("Coord", Form::new().dark_red());
         palette::set_weak_form("Separator", Form::new().cyan());
     }
 }

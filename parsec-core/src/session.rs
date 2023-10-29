@@ -356,8 +356,6 @@ where
                         scope.spawn(|| node.update_and_print());
                     }
                 }
-
-                self.ui.finish_printing()
             }
         })
     }

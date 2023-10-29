@@ -3,7 +3,7 @@ use std::sync::{mpsc, RwLock};
 use parsec_core::{
     commands::Commands,
     data::{CurrentFile, CurrentWidget, RwData},
-    session::{SessionCfg},
+    session::SessionCfg,
     text::PrintCfg,
     widgets::File,
     Globals,
@@ -20,7 +20,7 @@ pub static CURRENT_WIDGET: CurrentWidget<Ui> = CurrentWidget::new();
 pub static COMMANDS: Commands<Ui> = Commands::new(&CURRENT_FILE, &CURRENT_WIDGET);
 pub static GLOBALS: Globals<Ui> = Globals::new(&CURRENT_FILE, &CURRENT_WIDGET, &COMMANDS);
 
-pub static UI_FN: UiFn = RwLock::new(None);
+pub static UI: RwLock<Option<Ui>> = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
@@ -28,12 +28,9 @@ pub fn run_parsec(
     prev: Vec<(RwData<File<Ui>>, bool)>,
     rx: mpsc::Receiver<()>,
 ) -> Vec<(RwData<File<Ui>>, bool)> {
-    let ui = {
-        let mut ui = Ui::default();
-        if let Some(ui_fn) = UI_FN.write().unwrap().take() {
-            ui_fn(&mut ui)
-        }
-        ui
+    let ui = match UI.write().unwrap().take() {
+        Some(ui) => ui,
+        None => Ui::default(),
     };
 
     let mut cfg = SessionCfg::__new(ui, GLOBALS);
@@ -54,21 +51,16 @@ pub fn run_parsec(
 pub mod setup {
     use parsec_core::{input::InputMethod, session::SessionCfg, widgets::File};
 
-    use super::{default_cfg_fn, CFG_FN, UI_FN};
+    use super::{default_cfg_fn, CFG_FN, UI};
     use crate::Ui;
 
     #[inline(never)]
-    pub fn set_ui(f: impl FnMut(&mut Ui) + Send + Sync + 'static) {
-        *UI_FN.write().unwrap() = Some(Box::new(f));
+    pub fn ui(ui: Ui) {
+        *UI.write().unwrap() = Some(ui);
     }
 
     #[inline(never)]
-    pub fn set_fn(f: impl FnMut(&mut SessionCfg<Ui>) + Send + Sync + 'static) {
-        *CFG_FN.write().unwrap() = Some(Box::new(f));
-    }
-
-    #[inline(never)]
-    pub fn set_input<I: InputMethod<Ui, Widget = File<Ui>> + Clone>(
+    pub fn input<I: InputMethod<Ui, Widget = File<Ui>> + Clone>(
         mut f: impl FnMut() -> I + Send + Sync + 'static,
     ) {
         let mut cfg_fn = CFG_FN.write().unwrap();
@@ -84,6 +76,11 @@ pub mod setup {
                 cfg.set_input(f())
             }),
         })
+    }
+
+    #[inline(never)]
+    pub fn cfg_fn(f: impl FnMut(&mut SessionCfg<Ui>) + Send + Sync + 'static) {
+        *CFG_FN.write().unwrap() = Some(Box::new(f));
     }
 }
 
@@ -739,7 +736,7 @@ pub mod control {
     }
 }
 
-pub type UiFn = RwLock<Option<Box<dyn FnOnce(&mut Ui) + Send + Sync>>>;
+pub type UiFn = RwLock<Option<Box<dyn FnOnce() -> Ui + Send + Sync>>>;
 pub type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 #[inline(never)]

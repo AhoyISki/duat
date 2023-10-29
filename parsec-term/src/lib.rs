@@ -9,12 +9,15 @@
 
 use std::{fmt::Debug, io};
 
+pub use area::{Area, Coords};
 use crossterm::{
     cursor, execute,
     terminal::{self, ClearType},
 };
-use layout::{Frame, Layout};
+pub use layout::{Frame, Brush};
+use layout::Layout;
 use parsec_core::{data::RwData, ui};
+pub use rules::{VertRule, VertRuleCfg};
 
 mod area;
 mod layout;
@@ -24,7 +27,7 @@ mod rules;
 pub enum Anchor {
     TopLeft,
     TopRight,
-    
+
     BottomLeft,
     BottomRight,
 }
@@ -108,6 +111,3 @@ impl std::fmt::Debug for ConstraintChangeErr {
         }
     }
 }
-
-pub use area::{Area, Coords};
-pub use rules::{VertRule, VertRuleCfg};

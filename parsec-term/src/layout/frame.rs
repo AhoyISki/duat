@@ -7,7 +7,7 @@ use crate::area::Coord;
 
 /// What type of line should be used to [`Frame`] a given [`Rect`].
 #[derive(Default, Clone, Copy, Debug)]
-pub enum EdgeBrush {
+pub enum Brush {
     #[default]
     Regular,
     Thick,
@@ -81,11 +81,11 @@ pub struct EdgeCoords {
     pub tl: Coord,
     pub br: Coord,
     pub axis: Axis,
-    pub line: Option<EdgeBrush>,
+    pub line: Option<Brush>,
 }
 
 impl EdgeCoords {
-    pub fn new(tl: Coord, br: Coord, axis: Axis, line: Option<EdgeBrush>) -> Self {
+    pub fn new(tl: Coord, br: Coord, axis: Axis, line: Option<Brush>) -> Self {
         Self { tl, br, axis, line }
     }
 
@@ -95,10 +95,10 @@ impl EdgeCoords {
         other: EdgeCoords,
     ) -> Option<(
         Coord,
-        Option<EdgeBrush>,
-        Option<EdgeBrush>,
-        Option<EdgeBrush>,
-        Option<EdgeBrush>,
+        Option<Brush>,
+        Option<Brush>,
+        Option<Brush>,
+        Option<Brush>,
     )> {
         if let Axis::Vertical = self.axis {
             if let Axis::Vertical = other.axis
@@ -181,17 +181,17 @@ impl EdgeCoords {
 #[derive(Clone, Copy, Debug)]
 pub enum Frame {
     Empty,
-    Surround(EdgeBrush),
-    Border(EdgeBrush),
-    Vertical(EdgeBrush),
-    VerBorder(EdgeBrush),
-    Horizontal(EdgeBrush),
-    HorBorder(EdgeBrush),
+    Surround(Brush),
+    Border(Brush),
+    Vertical(Brush),
+    VerBorder(Brush),
+    Horizontal(Brush),
+    HorBorder(Brush),
 }
 
 impl Default for Frame {
     fn default() -> Self {
-        Self::Border(EdgeBrush::Regular)
+        Self::Border(Brush::Regular)
     }
 }
 
@@ -209,7 +209,7 @@ impl Frame {
 
     /// The [`Line`] of [`self`], which is [`None`] in the
     /// [`Frame::Empty`] case.
-    pub fn line(&self) -> Option<EdgeBrush> {
+    pub fn line(&self) -> Option<Brush> {
         match self {
             Frame::Empty => None,
             Frame::Surround(line)

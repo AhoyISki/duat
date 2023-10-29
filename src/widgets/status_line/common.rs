@@ -43,12 +43,12 @@ pub fn selections(input: &dyn InputMethod<Ui>) -> usize {
 }
 
 /// Returns a [`String`] with the number of selections in the file.
-pub fn selections_fmt(input: &dyn InputMethod<Ui>) -> String {
+pub fn selections_fmt(input: &dyn InputMethod<Ui>) -> Text {
     let len = input.cursors().map(|cursors| cursors.len()).unwrap_or(0);
     if len == 1 {
-        String::from("1 sel")
+        text!([Selections] "1 sel")
     } else {
-        format!("{len} sels")
+        text!([Selections] len "sels")
     }
 }
 
