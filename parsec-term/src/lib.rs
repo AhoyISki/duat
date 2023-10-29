@@ -24,6 +24,7 @@ mod rules;
 pub enum Anchor {
     TopLeft,
     TopRight,
+    
     BottomLeft,
     BottomRight,
 }
@@ -68,26 +69,6 @@ impl ui::Ui for Ui {
     }
 
     fn startup(&mut self) {
-        // This makes it so that if the application panics, the panic message
-        // is printed nicely and the terminal is left in a usable
-        // state.
-        use std::panic;
-        let orig_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            execute!(
-                io::stdout(),
-                terminal::Clear(ClearType::All),
-                terminal::LeaveAlternateScreen,
-                cursor::Show
-            )
-            .unwrap();
-
-            terminal::disable_raw_mode().unwrap();
-
-            orig_hook(panic_info);
-            std::process::exit(1)
-        }));
-
         execute!(io::stdout(), terminal::EnterAlternateScreen).unwrap();
         terminal::enable_raw_mode().unwrap();
     }
@@ -103,12 +84,7 @@ impl ui::Ui for Ui {
         terminal::disable_raw_mode().unwrap();
     }
 
-    fn finish_printing(&self) {
-        static FIRST_TIME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-        if FIRST_TIME.load(std::sync::atomic::Ordering::Relaxed) {
-            FIRST_TIME.store(false, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
+    fn finish_printing(&self) {}
 }
 
 pub enum ConstraintChangeErr {

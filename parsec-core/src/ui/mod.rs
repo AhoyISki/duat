@@ -191,6 +191,11 @@ pub trait Area: Send + Sync {
     /// any other active [`Area`].
     fn set_as_active(&self);
 
+	/// Returns `true` if this is the currently active [`Area`].
+	///
+	/// Only one [`Area`] should be active at any given moment.
+    fn is_active(&self) -> bool;
+
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
     fn print(&self, text: &Text, cfg: &PrintCfg, former: Painter);
 

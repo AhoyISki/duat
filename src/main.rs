@@ -1,6 +1,7 @@
 #![feature(decl_macro, lazy_cell, generic_const_exprs)]
 #![allow(incomplete_features, dead_code)]
 use std::{
+    path::Path,
     process::Command,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
@@ -10,7 +11,7 @@ use std::{
 
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use parsec_core::{session::Session, log_info};
+use parsec_core::{data::RwData, widgets::File};
 pub use utils::run_parsec;
 mod remapper;
 mod utils;
@@ -35,7 +36,7 @@ fn main() {
                 ..
             }) => {
                 FILES_CHANGED.store(true, Ordering::Relaxed);
-                atomic_wait::wake_all(&BREAK);
+                atomic_wait::wake_one(&BREAK);
             }
             Ok(_) | Err(_) => {}
         })
@@ -48,26 +49,26 @@ fn main() {
 
         Some((watcher, toml_path, so_path))
     }) {
+        let _ = run_cargo(&toml_path);
+
         let mut cur_lib = unsafe { Library::new(&so_path).ok() };
         #[allow(unused_assignments)]
         let mut run = cur_lib.as_ref().and_then(find_run_fn);
-        let mut is_first = true;
+        let mut prev = Vec::new();
 
         loop {
             let (tx, rx) = mpsc::channel();
 
             let handle = if let Some(run) = run.take() {
                 std::thread::spawn(move || {
-                    let ret = run(is_first, rx);
-                    atomic_wait::wake_one(&BREAK);
-                    run.into_raw();
+                    let ret = run(prev, rx);
+                    atomic_wait::wake_all(&BREAK);
                     ret
                 })
             } else {
                 std::thread::spawn(move || {
-                    let ret = run_parsec(is_first, rx);
-                    BREAK.store(YES, Ordering::Relaxed);
-                    atomic_wait::wake_one(&BREAK);
+                    let ret = run_parsec(prev, rx);
+                    atomic_wait::wake_all(&BREAK);
                     ret
                 })
             };
@@ -80,62 +81,58 @@ fn main() {
                 }
                 FILES_CHANGED.store(false, Ordering::Relaxed);
 
-                let mut cargo = Command::new("cargo");
-                cargo.args([
-                    "build",
-                    "--release",
-                    "--quiet",
-                    "--manifest-path",
-                    toml_path.to_str().unwrap(),
-                ]);
-
-                let output = cargo.output();
-
-                if output.is_ok() {
-                    let lib = unsafe { Library::new(&so_path).ok() };
-                    if lib.as_ref().and_then(find_run_fn).is_some() {
-                        tx.send(()).unwrap();
+                if run_cargo(&toml_path).is_ok() {
+                    let cur_lib = unsafe { Library::new(&so_path).ok() };
+                    #[allow(unused_assignments)]
+                    if cur_lib.as_ref().and_then(find_run_fn).is_some() {
+                        let _ = tx.send(());
                         break;
-                    } else {
-                        panic!();
                     }
                 }
             }
 
-            if handle.join().unwrap().is_some() {
+            prev = handle.join().unwrap();
+
+            if prev.is_empty() {
+                break;
+            } else {
                 cur_lib.take().unwrap().close().unwrap();
                 cur_lib = unsafe { Library::new(&so_path).ok() };
-
                 run = cur_lib.as_ref().and_then(find_run_fn);
-                is_first = false;
-            } else {
-                break;
             }
         }
     } else {
         let (_tx, rx) = mpsc::channel();
-        run_parsec(true, rx);
+        run_parsec(Vec::new(), rx);
     }
 }
 
-fn find_run_fn(
-    lib: &Library,
-) -> Option<Symbol<fn(bool, mpsc::Receiver<()>) -> Option<Session<Ui>>>> {
-    unsafe {
-        lib.get::<fn(bool, mpsc::Receiver<()>) -> Option<Session<Ui>>>(b"run")
-            .ok()
-    }
+fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
+    let mut cargo = Command::new("cargo");
+    cargo.args([
+        "build",
+        "--release",
+        "--quiet",
+        "--manifest-path",
+        toml_path.to_str().unwrap(),
+    ]);
+
+    cargo.output()
+}
+
+fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
+    unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
 // The main macro to run parsec.
 pub macro run($($tree:tt)*) {
     #[no_mangle]
-    fn run(is_first: bool, rx: mpsc::Receiver<()>) -> Option<Session<Ui>> {
+    fn run(prev: PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles {
         {
             $($tree)*
         };
 
-        run_parsec(is_first, rx)
+        run_parsec(prev, rx)
     }
 }
 
@@ -168,4 +165,5 @@ pub mod prelude {
 }
 
 const NO: u32 = 0;
-const YES: u32 = 1;
+type PrevFiles = Vec<(RwData<File<Ui>>, bool)>;
+type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

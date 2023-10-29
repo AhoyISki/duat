@@ -258,6 +258,10 @@ impl ui::Area for Area {
         self.layout.write().active_index = self.index;
     }
 
+    fn is_active(&self) -> bool {
+        self.layout.read().active_index == self.index
+    }
+
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
         let info = self.print_info.borrow();
         let coords = self.coords();

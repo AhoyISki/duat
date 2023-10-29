@@ -32,11 +32,17 @@ use crate::{
     Globals,
 };
 
+enum TextOp {
+    NewBuffer,
+    TakeText(Text, Path),
+    OpenPath(PathBuf),
+}
+
 pub struct FileCfg<U>
 where
     U: Ui,
 {
-    path: Option<PathBuf>,
+    text_op: TextOp,
     generator: Arc<dyn Fn(File<U>) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
@@ -46,9 +52,9 @@ impl<U> FileCfg<U>
 where
     U: Ui,
 {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         FileCfg {
-            path: None,
+            text_op: TextOp::NewBuffer,
             generator: Arc::new(|file| Widget::active(file, RwData::new(Editor::new()))),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
@@ -57,24 +63,27 @@ where
     }
 
     pub(crate) fn build(self) -> (Widget<U>, Box<dyn Fn() -> bool>) {
-        let contents = self
-            .path
-            .as_ref()
-            .and_then(|path| match std::fs::read_to_string(path) {
-                Ok(contents) => Some(contents),
-                Err(_) => None,
-            });
+        let (text, path) = match self.text_op {
+            TextOp::NewBuffer => (Text::new(String::from("\n")), Path::new_unset()),
+            TextOp::TakeText(text, path) => (text, path),
+            TextOp::OpenPath(path) => {
+                let text = match std::fs::read_to_string(&path) {
+                    Ok(contents) => Text::new(contents),
+                    Err(_) => Text::new(String::from("\n")),
+                };
 
-        let full_path = self.path.map(|path| {
-            let file_name = path.file_name().unwrap();
-            std::env::current_dir().unwrap().join(file_name)
-        });
+                let full_path = {
+                    let file_name = path.file_name().unwrap();
+                    std::env::current_dir().unwrap().join(file_name)
+                };
 
-        #[cfg(not(feature = "wacky-colors"))]
-        let text = Text::new(contents.unwrap_or(String::from("\n")));
+                (text, Path::Set(full_path))
+            }
+        };
 
         #[cfg(feature = "wacky-colors")]
         let text = {
+            let mut text = text;
             use crate::{
                 palette::{self, Form},
                 text::{text, Marker, Tag},
@@ -93,10 +102,7 @@ where
         };
 
         let file = File {
-            path: match full_path {
-                Some(path) => Path::Set(path),
-                None => Path::new_unset(),
-            },
+            path,
             text,
             cfg: self.cfg,
             history: History::new(),
@@ -107,22 +113,30 @@ where
         ((self.generator)(file), Box::new(|| false))
     }
 
-    pub fn open(self, path: PathBuf) -> Self {
+    pub(crate) fn open_path(self, path: PathBuf) -> Self {
         Self {
-            path: Some(path),
+            text_op: TextOp::OpenPath(path),
             ..self
         }
     }
 
-    pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
+    pub(crate) fn take_from_prev(self, prev: &mut File<U>) -> Self {
+        let text = std::mem::take(&mut prev.text);
+        Self {
+            text_op: TextOp::TakeText(text, prev.path.clone()),
+            ..self
+        }
+    }
+
+    pub(crate) fn set_print_cfg(&mut self, cfg: PrintCfg) {
         self.cfg = cfg;
     }
 
-    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
+    pub(crate) fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
         self.generator = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
     }
 
-    pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {
+    pub(crate) fn mut_print_cfg(&mut self) -> &mut PrintCfg {
         &mut self.cfg
     }
 }
@@ -155,7 +169,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            path: self.path.clone(),
+            text_op: TextOp::NewBuffer,
             generator: self.generator.clone(),
             cfg: self.cfg.clone(),
             specs: self.specs,
@@ -253,6 +267,26 @@ where
             .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
     }
 
+    pub fn new_moment(&mut self) {
+        self.history.new_moment()
+    }
+
+    pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
+        self.history.add_change(change, assoc_index)
+    }
+
+    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
+        self.history.redo(&mut self.text, area, cursors, &self.cfg)
+    }
+
+    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
+        self.history.undo(&mut self.text, area, cursors, &self.cfg)
+    }
+
+    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History) {
+        (&mut self.text, &mut self.history)
+    }
+
     pub(crate) fn add_related_widget(
         &mut self,
         related: (RwData<dyn PassiveWidget<U>>, &'static str, U::Area),
@@ -305,26 +339,6 @@ where
             .take(area.height())
             .collect();
     }
-
-    pub fn new_moment(&mut self) {
-        self.history.new_moment()
-    }
-
-    pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
-        self.history.add_change(change, assoc_index)
-    }
-
-    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.redo(&mut self.text, area, cursors, &self.cfg)
-    }
-
-    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.undo(&mut self.text, area, cursors, &self.cfg)
-    }
-
-    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History) {
-        (&mut self.text, &mut self.history)
-    }
 }
 
 impl<U> PassiveWidget<U> for File<U>
@@ -376,6 +390,7 @@ where
 unsafe impl<U: Ui> Send for File<U> {}
 unsafe impl<U: Ui> Sync for File<U> {}
 
+#[derive(Clone)]
 enum Path {
     Set(PathBuf),
     UnSet(usize),

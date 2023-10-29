@@ -39,21 +39,12 @@ where
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, checker) = if let Some(path) = first {
-            self.file_cfg.clone().open(path).build()
+            self.file_cfg.clone().open_path(path).build()
         } else {
             self.file_cfg.clone().build()
         };
 
-        let (active, input) = widget.as_active().unwrap();
-        let file = active.clone().try_downcast::<File<U>>().unwrap();
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
-
-        self.globals
-            .current_file
-            .set(file, area.clone(), input.clone());
-        self.globals
-            .current_widget
-            .set("File", active.clone(), area.clone(), input.clone());
 
         let mut session = Session {
             ui: self.ui,
@@ -63,7 +54,10 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
             globals: self.globals,
+            is_new_session: true,
         };
+
+        session.set_active_file(widget, &area);
 
         self.globals.commands.add_windows(session.windows.clone());
         add_session_commands(&session, self.globals);
@@ -86,8 +80,59 @@ where
         session
     }
 
-    pub fn session_from_prev(self, _prev: Session<U>) -> Session<U> {
-        todo!()
+    pub fn session_from_prev(mut self, prev_files: Vec<(RwData<File<U>>, bool)>) -> Session<U> {
+        let mut inherited_cfgs = Vec::new();
+        for (file, is_active) in prev_files {
+            let mut file = file.write();
+            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file);
+            inherited_cfgs.push((file_cfg, is_active))
+        }
+
+        let Some((file_cfg, is_active)) = inherited_cfgs.pop() else {
+            unreachable!("There should've been at least one file.")
+        };
+
+        let (widget, checker) = file_cfg.build();
+
+        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
+
+        let mut session = Session {
+            ui: self.ui,
+            windows: RwData::new(vec![window]),
+            current_window: Arc::new(AtomicUsize::new(0)),
+            file_cfg: self.file_cfg,
+            file_fn: self.file_fn,
+            window_fn: self.window_fn,
+            globals: self.globals,
+            is_new_session: false,
+        };
+
+        if is_active {
+            session.set_active_file(widget, &area);
+        }
+
+        self.globals.commands.add_windows(session.windows.clone());
+        add_session_commands(&session, self.globals);
+
+        // Open and process files..
+        build_file(
+            &mut session.windows.write()[0],
+            area,
+            &mut session.file_fn,
+            self.globals,
+        );
+
+        for (file_cfg, is_active) in inherited_cfgs {
+            session.open_file_from_cfg(file_cfg, is_active);
+        }
+
+        // Build the window's widgets.
+        session.windows.mutate(|windows| {
+            let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
+            (session.window_fn)(&mut builder);
+        });
+
+        session
     }
 
     pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
@@ -171,6 +216,7 @@ where
     file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
+    is_new_session: bool,
 }
 
 impl<U> Session<U>
@@ -181,7 +227,7 @@ where
         let mut windows = self.windows.write();
         let current_window = self.current_window.load(Ordering::Relaxed);
 
-        let (file, checker) = self.file_cfg.clone().open(path).build();
+        let (file, checker) = self.file_cfg.clone().open_path(path).build();
 
         let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::right());
 
@@ -229,11 +275,12 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, is_new_session: bool, rx: mpsc::Receiver<()>) -> Option<Self> {
-        if is_new_session {
+    pub fn start(mut self, rx: mpsc::Receiver<()>) -> Vec<(RwData<File<U>>, bool)> {
+        if self.is_new_session {
             self.ui.startup();
         }
 
+        // Notifier for configuration changes.
         std::thread::spawn(move || {
             if let Ok(()) = rx.recv() {
                 BREAK.store(BreakReason::ToReloadConfig);
@@ -270,9 +317,17 @@ where
 
         if BREAK == BreakReason::ToQuitParsec {
             self.ui.shutdown();
+            Vec::new()
+        } else {
+            let windows = self.windows.read();
+            windows
+                .iter()
+                .flat_map(Window::widgets)
+                .filter_map(|(widget, area)| {
+                    widget.downcast::<File<U>>().zip(Some(area.is_active()))
+                })
+                .collect()
         }
-
-        (BREAK == BreakReason::ToReloadConfig).then_some(self)
     }
 
     /// The primary application loop, executed while no breaking
@@ -294,6 +349,8 @@ where
                     }
                 }
 
+                std::thread::sleep(Duration::from_millis(5));
+
                 for node in active_window.nodes() {
                     if node.needs_update() {
                         scope.spawn(|| node.update_and_print());
@@ -303,6 +360,42 @@ where
                 self.ui.finish_printing()
             }
         })
+    }
+
+    fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
+        let mut windows = self.windows.write();
+        let current_window = self.current_window.load(Ordering::Relaxed);
+
+        let (widget, checker) = file_cfg.build();
+
+        let (area, _) =
+            windows[current_window].push_file(widget.clone(), checker, PushSpecs::right());
+
+        if is_active {
+            self.set_active_file(widget, &area);
+        }
+
+        build_file(
+            &mut windows[current_window],
+            area,
+            &mut self.file_fn,
+            self.globals,
+        );
+    }
+
+    fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
+        let Some((active, file, input)) = widget.as_active().and_then(|(active, input)| {
+            let file = active.clone().try_downcast::<File<U>>().ok()?;
+            Some((active, file, input))
+        }) else {
+            return;
+        };
+        self.globals
+            .current_file
+            .set(file, area.clone(), input.clone());
+        self.globals
+            .current_widget
+            .set("File", active.clone(), area.clone(), input.clone());
     }
 }
 

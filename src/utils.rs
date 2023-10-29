@@ -2,9 +2,10 @@ use std::sync::{mpsc, RwLock};
 
 use parsec_core::{
     commands::Commands,
-    data::{CurrentFile, CurrentWidget},
-    session::{Session, SessionCfg},
+    data::{CurrentFile, CurrentWidget, RwData},
+    session::{SessionCfg},
     text::PrintCfg,
+    widgets::File,
     Globals,
 };
 use parsec_term::VertRule;
@@ -23,7 +24,10 @@ pub static UI_FN: UiFn = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
-pub fn run_parsec(is_first: bool, rx: mpsc::Receiver<()>) -> Option<Session<Ui>> {
+pub fn run_parsec(
+    prev: Vec<(RwData<File<Ui>>, bool)>,
+    rx: mpsc::Receiver<()>,
+) -> Vec<(RwData<File<Ui>>, bool)> {
     let ui = {
         let mut ui = Ui::default();
         if let Some(ui_fn) = UI_FN.write().unwrap().take() {
@@ -39,8 +43,12 @@ pub fn run_parsec(is_first: bool, rx: mpsc::Receiver<()>) -> Option<Session<Ui>>
         None => default_cfg_fn(&mut cfg),
     }
 
-    let session = cfg.session_from_args();
-    session.start(is_first, rx)
+    let session = if prev.is_empty() {
+        cfg.session_from_args()
+    } else {
+        cfg.session_from_prev(prev)
+    };
+    session.start(rx)
 }
 
 pub mod setup {
