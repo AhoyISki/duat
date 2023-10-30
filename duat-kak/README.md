@@ -1,3 +1,3 @@
-# parsec-kak
+# duat-kak
 
-An editing mode for Parsec, inspired by the Kakoune text editor.
+An editing mode for Duat, inspired by the Kakoune text editor.

@@ -1,6 +1,6 @@
-# Parsec
+# Duat
 
-Parsec is a work in progress for a text editor that is configured through the use of a rust crate, allowing for a massive amount of customizability.
+Duat is a work in progress for a text editor that is configured through the use of a rust crate, allowing for a massive amount of customizability.
 
 ## Roadmap
 
@@ -39,11 +39,11 @@ __NOTE:__ These are not set in stone, and may be done out of order.
 
 If you wish to try it out, assuming you have cargo installed, the recommended way is the one below:
 ```
-git clone https://github.com/AhoyISki/parsec
-cd parsec/example
+git clone https://github.com/AhoyISki/duat
+cd duat/example
 cargo run --release <your file path here>
 ```
-It will run the example crate, a basic, documented configuration that shows how to customize and extend parsec. When running the example crate in this manner, you will be pulling `parsec-core`, `parsec-term` and `parsec-kak` from the local repository, as opposed to crates.io. This is useful in order to keep up with the latest version of Parsec, updating as desired with `git pull`. While these three crates are in crates.io, the version in there won't be kept up to date as often as the ones in the repository.
+It will run the example crate, a basic, documented configuration that shows how to customize and extend duat. When running the example crate in this manner, you will be pulling `duat-core`, `duat-term` and `duat-kak` from the local repository, as opposed to crates.io. This is useful in order to keep up with the latest version of Duat, updating as desired with `git pull`. While these three crates are in crates.io, the version in there won't be kept up to date as often as the ones in the repository.
 
 ## Motivation
 
