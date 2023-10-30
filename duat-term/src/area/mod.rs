@@ -13,7 +13,7 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use iter::{print_iter, rev_print_iter};
-use parsec_core::{
+use duat_core::{
     data::RwData,
     palette::Painter,
     position::Point,

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use parsec_core::{
+use duat_core::{
     text::{Item, IterCfg, Part, WrapMethod},
     ui::Caret,
 };

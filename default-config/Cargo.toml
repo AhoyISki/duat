@@ -7,5 +7,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parsec-editor = { version = ">=0.2.0", path = "../" }
-parsec-kak = ">=0.2.0"
+duat = { version = ">=0.1.0", path = "../" }
+duat-kak = { version = ">=0.1.0", path = "../duat-kak" }

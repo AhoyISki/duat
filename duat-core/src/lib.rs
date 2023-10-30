@@ -92,7 +92,7 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 enum BreakReason {
     None = 0,
     ToOpenFiles = 1,
-    ToQuitParsec = 2,
+    ToQuitDuat = 2,
     ToReloadConfig = 3,
 }
 

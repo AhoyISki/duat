@@ -14,7 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use parsec_core::{
+use duat_core::{
     data::RwData,
     input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
     palette::{self, Form},
@@ -131,13 +131,13 @@ impl PassiveWidget<Ui> for CommandLine {
         CommandLineCfg::new().build(globals, on_file)
     }
 
-    fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {}
+    fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {}
 
     fn text(&self) -> &Text {
         &self.text
     }
 
-    fn print(&mut self, area: &<Ui as parsec_core::ui::Ui>::Area) {
+    fn print(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
@@ -160,11 +160,11 @@ impl ActiveWidget<Ui> for CommandLine {
         &mut self.text
     }
 
-    fn on_focus(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
+    fn on_focus(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
     }
 
-    fn on_unfocus(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
+    fn on_unfocus(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.iter_chars_at(0).collect::<String>();
@@ -200,7 +200,7 @@ impl InputMethod<Ui> for Commander {
         &mut self,
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
-        area: &<Ui as parsec_core::ui::Ui>::Area,
+        area: &<Ui as duat_core::ui::Ui>::Area,
         globals: Globals<Ui>,
     ) {
         let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);

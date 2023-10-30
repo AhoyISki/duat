@@ -1,12 +1,12 @@
 [package]
-name = "parsec-core"
-version = "0.2.0"
+name = "duat-core"
+version = "0.1.0"
 authors = ["AhoyISki"]
-description = "The core of Parsec, a highly customizable text editor."
+description = "The core of Duat, a highly customizable text editor."
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
-keywords = ["editor", "text", "application", "parsec"]
+keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
@@ -21,5 +21,4 @@ any-rope = ">=1.2.2"
 [features]
 # NOTE: Features meant for testing only by myself.
 default = []
-disable-testing = []
 wacky-colors = []

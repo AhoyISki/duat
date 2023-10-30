@@ -1,12 +1,12 @@
 [package]
-name = "parsec-editor"
-version = "0.2.0"
+name = "duat"
+version = "0.1.0"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
-homepage = "https://github.com/AhoyISki/parsec"
+homepage = "https://github.com/AhoyISki/duat"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
-keywords = ["editor", "text", "application", "parsec"]
+keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 include = ["default-config/Cargo.toml", "default-config/src/lib.rs"]
@@ -17,32 +17,30 @@ dirs-next = "2.0.0"
 libloading = "0.8.1"
 notify = "6.1.1"
 
-parsec-core = { version = ">=0.2.0", path = "parsec-core" }
+duat-core = { version = ">=0.1.0", path = "duat-core" }
 
 # List of UIs.
-parsec-term = { version = ">=0.2.0", path = "parsec-term", optional = true }
+duat-term = { version = ">=0.1.0", path = "duat-term", optional = true }
 
 [workspace]
 members = [
   "default-config",
-  "parsec-core",
-  "parsec-term",
-  "parsec-kak",
+  "duat-core",
+  "duat-kak",
+  "duat-term",
 ]
 
 resolver = "2"
 
 [features]
 default = ["term-ui"]
-term-ui = ["dep:parsec-term"]
+term-ui = ["dep:duat-term"]
 
 [[bin]]
-name = "parsec"
-path = "src/main.rs"
+name = "duat"
 
 [lib]
-name = "parsec_editor"
-path = "src/lib.rs"
+name = "duat"
 
 [build-dependencies]
 dirs-next = "2.0.0"

@@ -13,7 +13,7 @@ use cassowary::{
     WeightedRelation::*,
 };
 pub use frame::{Edge, Brush, EdgeCoords, Frame};
-use parsec_core::{
+use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
 };
@@ -64,7 +64,7 @@ impl PartialOrd<VarValue> for VarValue {
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]
-/// and interpreted by `parsec_term`.
+/// and interpreted by `duat_term`.
 #[derive(Clone, PartialEq, PartialOrd)]
 struct VarPoint {
     x: VarValue,
@@ -137,7 +137,7 @@ impl Constraints {
 }
 
 /// An area on the screen, which can hold other [`Rect`]s or be host
-/// for printing a [`Widget`][parsec_core::widgets::Widget].
+/// for printing a [`Widget`][duat_core::widgets::Widget].
 ///
 /// [`Rect`]s hold the [`Constraint`]s that define them, handling
 /// which sides of the [`Rect`] should be equal to that of other
@@ -454,7 +454,7 @@ impl Rect {
     }
 }
 
-/// The overrall structure of a window on `parsec_term`.
+/// The overrall structure of a window on `duat_term`.
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
 /// including all of the [`Variable`]s and

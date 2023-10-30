@@ -317,12 +317,12 @@ where
 
             self.session_loop();
 
-            if BREAK == BreakReason::ToQuitParsec || BREAK == BreakReason::ToReloadConfig {
+            if BREAK == BreakReason::ToQuitDuat || BREAK == BreakReason::ToReloadConfig {
                 break;
             }
         }
 
-        if BREAK == BreakReason::ToQuitParsec {
+        if BREAK == BreakReason::ToQuitDuat {
             self.ui.shutdown();
             Vec::new()
         } else {

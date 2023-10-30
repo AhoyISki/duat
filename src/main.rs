@@ -11,8 +11,8 @@ use std::{
 
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use parsec_core::{data::RwData, widgets::File};
-use utils::run_parsec;
+use duat_core::{data::RwData, widgets::File};
+use utils::run_duat;
 mod remapper;
 mod utils;
 mod widgets;
@@ -24,7 +24,7 @@ fn main() {
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
-        let crate_dir = config_dir.join("parsec");
+        let crate_dir = config_dir.join("duat");
 
         let so_path = crate_dir.join("target/release/libconfig.so");
         let src_path = crate_dir.join("src");
@@ -67,7 +67,7 @@ fn main() {
                 })
             } else {
                 std::thread::spawn(move || {
-                    let ret = run_parsec(prev, rx);
+                    let ret = run_duat(prev, rx);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
@@ -105,7 +105,7 @@ fn main() {
         }
     } else {
         let (_tx, rx) = mpsc::channel();
-        run_parsec(Vec::new(), rx);
+        run_duat(Vec::new(), rx);
     }
 }
 
@@ -126,7 +126,7 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
-// The main macro to run parsec.
+// The main macro to run duat.
 pub macro run($($tree:tt)*) {
     #[no_mangle]
     fn run(prev: PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles {
@@ -134,7 +134,7 @@ pub macro run($($tree:tt)*) {
             $($tree)*
         };
 
-        run_parsec(prev, rx)
+        run_duat(prev, rx)
     }
 }
 
@@ -148,7 +148,7 @@ compile_error! {
 }
 
 #[cfg(feature = "term-ui")]
-type Ui = parsec_term::Ui;
+type Ui = duat_term::Ui;
 
 type PrevFiles = Vec<(RwData<File<Ui>>, bool)>;
 type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

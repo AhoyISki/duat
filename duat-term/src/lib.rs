@@ -16,7 +16,7 @@ use crossterm::{
 };
 pub use layout::{Frame, Brush};
 use layout::Layout;
-use parsec_core::{data::RwData, ui};
+use duat_core::{data::RwData, ui};
 pub use rules::{VertRule, VertRuleCfg};
 
 mod area;

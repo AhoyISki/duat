@@ -4,11 +4,11 @@
 #![allow(incomplete_features)]
 
 // The prelude contains all of the commonly used commands.
-use parsec::prelude::{ui::VertRule, *};
+use duat::prelude::{ui::VertRule, *};
 // An `InputMethod` for `File`s.
-use parsec_kak::KeyMap;
+use duat_kak::KeyMap;
 
-// This macro expands to the function that Parsec understands.
+// This macro expands to the function that Duat understands.
 // Will be replaced by a proc-macro at some point.
 run! {
     // Resets all existant hooks related to the opening of

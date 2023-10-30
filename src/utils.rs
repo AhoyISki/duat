@@ -1,6 +1,6 @@
 use std::sync::{mpsc, RwLock};
 
-use parsec_core::{
+use duat_core::{
     commands::Commands,
     data::{CurrentFile, CurrentWidget, RwData},
     session::SessionCfg,
@@ -8,7 +8,7 @@ use parsec_core::{
     widgets::File,
     Globals,
 };
-use parsec_term::VertRule;
+use duat_term::VertRule;
 
 use crate::{
     widgets::{CommandLine, LineNumbers, StatusLine},
@@ -24,7 +24,7 @@ pub static UI: RwLock<Option<Ui>> = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
-pub fn run_parsec(
+pub fn run_duat(
     prev: Vec<(RwData<File<Ui>>, bool)>,
     rx: mpsc::Receiver<()>,
 ) -> Vec<(RwData<File<Ui>>, bool)> {
@@ -49,7 +49,7 @@ pub fn run_parsec(
 }
 
 pub mod setup {
-    use parsec_core::{input::InputMethod, session::SessionCfg, widgets::File};
+    use duat_core::{input::InputMethod, session::SessionCfg, widgets::File};
 
     use super::{default_cfg_fn, CFG_FN, UI};
     use crate::Ui;
@@ -83,7 +83,7 @@ pub mod setup {
 }
 
 pub mod hook {
-    use parsec_core::ui::{FileBuilder, WindowBuilder};
+    use duat_core::ui::{FileBuilder, WindowBuilder};
 
     use super::{default_cfg_fn, CFG_FN};
     use crate::Ui;
@@ -160,19 +160,19 @@ pub mod hook {
 pub mod print {
     use std::ops::RangeInclusive;
 
-    use parsec_core::text::PrintCfg;
+    use duat_core::text::PrintCfg;
 
     use super::PRINT_CFG;
 
     pub mod forms {
-        pub use parsec_core::palette::{
+        pub use duat_core::palette::{
             set_extra_cursor as extra_cursor, set_form as set, set_main_cursor as main_cursor,
             set_source as source,
         };
     }
 
     pub mod get {
-        pub use parsec_core::palette::{extra_cursor, form_of_id, id_of_name, main_cursor};
+        pub use duat_core::palette::{extra_cursor, form_of_id, id_of_name, main_cursor};
     }
 
     #[inline(never)]
@@ -278,7 +278,7 @@ pub mod print {
 pub mod control {
     use std::fmt::Display;
 
-    use parsec_core::{
+    use duat_core::{
         commands::{Args, CmdResult, Flags, Result},
         text::Text,
         ui,
@@ -429,7 +429,7 @@ pub mod control {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands::{self, Result},
     /// #     text::Text,
     /// # };
@@ -459,7 +459,7 @@ pub mod control {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands,
     /// #     data::RwData,
     /// #     text::{text, Text},
@@ -516,7 +516,7 @@ pub mod control {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands,
     /// #     data::RwData,
     /// #     input::{InputMethod, MultiCursorEditor},
@@ -545,7 +545,7 @@ pub mod control {
     /// #     &mut self,
     /// #     key: crossterm::event::KeyEvent,
     /// #     widget: &RwData<Self::Widget>,
-    /// #     area: &impl parsec_core::ui::Area,
+    /// #     area: &impl duat_core::ui::Area,
     /// # ) where
     /// #     Self: Sized,
     /// # {
@@ -628,7 +628,7 @@ pub mod control {
     /// #    },
     /// #    time::Instant,
     /// # };
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #    commands,
     /// #    palette::{self, Form},
     /// #    text::{text, Text, AlignCenter},

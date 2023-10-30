@@ -1,4 +1,4 @@
-use parsec_core::{
+use duat_core::{
     data::RwData,
     input::{KeyCode, KeyEvent, InputMethod},
     Globals,
@@ -148,7 +148,7 @@ where
         &mut self,
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
-        area: &<Ui as parsec_core::ui::Ui>::Area,
+        area: &<Ui as duat_core::ui::Ui>::Area,
         globals: Globals<Ui>,
     ) {
         let remaps = self

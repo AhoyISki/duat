@@ -1,4 +1,4 @@
-use parsec_core::{
+use duat_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Text},

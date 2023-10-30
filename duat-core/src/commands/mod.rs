@@ -1,6 +1,6 @@
 //! Creation and execution of commands.
 //!
-//! Commands in Parsec work through the use of functions that don't
+//! Commands in Duat work through the use of functions that don't
 //! require references (unless they're `'static`) and return results
 //! which may contain a [`Text`] to be displayed, if successful, and
 //! *must* contain an error [`Text`] to be displayed if they fail.
@@ -115,7 +115,7 @@
 //! ```
 //!
 //! In the above example, we are creating a new [`SessionCfg`], which
-//! will be used to start Parsec. in it, we're changing the
+//! will be used to start Duat. in it, we're changing the
 //! "`file_fn`", a file constructor that, among other things, will
 //! attach widgets to files that are opened.
 //!
@@ -265,7 +265,7 @@ where
                 };
 
                 let quit = Command::new(["quit", "q"], move |_, _| {
-                    BREAK.store(BreakReason::ToQuitParsec);
+                    BREAK.store(BreakReason::ToQuitDuat);
                     Ok(None)
                 });
 
@@ -280,10 +280,10 @@ where
         }
     }
 
-    /// Canonical way to quit Parsec.
+    /// Canonical way to quit Duat.
     ///
     /// By calling the quit command, all threads will finish their
-    /// tasks, and then Parsec will execute a program closing
+    /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
     pub fn quit(&self) {
         self.run("quit").unwrap();
@@ -514,7 +514,7 @@ where
     ///
     /// This object can be one of three things, a [`PassiveWidget`],
     /// an [`InputMethod`], or the [`File`] itself. When the
-    /// command is ran, Parsec will look at the currently active
+    /// command is ran, Duat will look at the currently active
     /// file for any instance of an [`RwData<Thing>`] it can find.
     /// Those will either be the file itself, or will be added in
     /// the [`Session`]'s "file_fn".

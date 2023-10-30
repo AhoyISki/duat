@@ -9,7 +9,7 @@ fn main() {
             return;
         }
 
-        let dest = config_path.join("parsec");
+        let dest = config_path.join("duat");
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("default-config");
 
         copy_dir_all(source, dest).unwrap();

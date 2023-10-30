@@ -22,7 +22,7 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use parsec_core::{
+use duat_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Builder, Tag, Text},
@@ -108,7 +108,7 @@ impl PassiveWidget<Ui> for LineNumbers {
         LineNumbersCfg::default().build(globals, on_file)
     }
 
-    fn update(&mut self, area: &<Ui as parsec_core::ui::Ui>::Area) {
+    fn update(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
         let width = self.calculate_width();
         area.change_constraint(Constraint::Length(width + 1.0))
             .unwrap();

@@ -2,13 +2,13 @@
 #![allow(incomplete_features, dead_code)]
 use std::sync::mpsc;
 
-use parsec_core::{data::RwData, widgets::File};
-pub use utils::run_parsec;
+use duat_core::{data::RwData, widgets::File};
+pub use utils::run_duat;
 mod remapper;
 mod utils;
 mod widgets;
 
-// The main macro to run parsec.
+// The main macro to run duat.
 pub macro run($($tree:tt)*) {
     #[no_mangle]
     fn run(prev: PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles {
@@ -16,7 +16,7 @@ pub macro run($($tree:tt)*) {
             $($tree)*
         };
 
-        run_parsec(prev, rx)
+        run_duat(prev, rx)
     }
 }
 
@@ -30,10 +30,10 @@ compile_error! {
 }
 
 #[cfg(feature = "term-ui")]
-pub type Ui = parsec_term::Ui;
+pub type Ui = duat_term::Ui;
 
 pub mod prelude {
-    pub use parsec_core::{
+    pub use duat_core::{
         self as core,
         file::File,
         palette::Form,
@@ -41,7 +41,7 @@ pub mod prelude {
         text::{text, Builder, Text},
     };
     #[cfg(feature = "term-ui")]
-    pub use parsec_term as ui;
+    pub use duat_term as ui;
 
     pub use crate::{
         run,

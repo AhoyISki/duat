@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use parsec_core::ui::Axis;
+use duat_core::ui::Axis;
 
 use super::VarPoint;
 use crate::area::Coord;

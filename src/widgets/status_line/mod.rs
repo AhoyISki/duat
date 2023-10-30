@@ -9,7 +9,7 @@
 //! currently active [`File`]:
 //!
 //! ```rust
-//! # use parsec_core::{
+//! # use duat_core::{
 //! #     tags::form::FormPalette,
 //! #     text::PrintCfg,
 //! #     ui::{ModNode, PushSpecs, Constraint, Ui},
@@ -54,7 +54,7 @@ pub mod common;
 mod state;
 
 use common::{main_col, main_line, selections_fmt};
-use parsec_core::{
+use duat_core::{
     data::{FileReader, RoData},
     input::InputMethod,
     palette::{self, Form},
@@ -142,7 +142,7 @@ impl Default for StatusLineCfg {
     }
 }
 
-/// A [`NormalWidget`] that can display information about Parsec and
+/// A [`NormalWidget`] that can display information about Duat and
 /// its extensions.
 ///
 /// The [`StatusLine`] is built around a [`Vec<Reader>`], which
@@ -156,7 +156,7 @@ impl Default for StatusLineCfg {
 /// as well as the main cursor's coordinates.
 ///
 /// ```rust
-/// # use parsec_core::{
+/// # use duat_core::{
 /// #     data::RoData,
 /// #     tags::form::FormPalette,
 /// #     ui::{PushSpecs, Ui},
@@ -207,7 +207,7 @@ impl PassiveWidget<Ui> for StatusLine {
         Self::config().build(globals, on_file)
     }
 
-    fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
+    fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
         self.text = self
             .reader
             .inspect_data(|file, _, input| (self.text_fn)(file, input));

@@ -1,6 +1,6 @@
 use std::{fmt::Display, marker::PhantomData};
 
-use parsec_core::{
+use duat_core::{
     data::{RoData, RwData},
     input::InputMethod,
     text::{text, Builder, Tag, Text},

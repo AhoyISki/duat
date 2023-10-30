@@ -1,4 +1,4 @@
-use parsec_core::{
+use duat_core::{
     input::{Cursors, InputMethod},
     position::Cursor,
     text::{text, Text},
