@@ -27,7 +27,6 @@ mod rules;
 pub enum Anchor {
     TopLeft,
     TopRight,
-
     BottomLeft,
     BottomRight,
 }

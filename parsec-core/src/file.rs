@@ -24,7 +24,7 @@ use std::{fs, path::PathBuf, sync::Arc};
 use crate::{
     data::RwData,
     history::{Change, History},
-    input::{Cursors, KeyMap, InputMethod},
+    input::{Cursors, InputMethod, KeyMap},
     palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -147,7 +147,7 @@ where
 {
     type Widget = File<U>;
 
-    fn build(self, _globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _globals: Globals<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
         let (widget, checker) = self.build();
         (widget, checker, specs)
@@ -345,7 +345,7 @@ impl<U> PassiveWidget<U> for File<U>
 where
     U: Ui,
 {
-    fn build(_globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
+    fn build(_globals: Globals<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
     where
         Self: Sized,
     {

@@ -2,7 +2,7 @@ use parsec_core::{
     data::FileReader,
     palette::{self, Form},
     text::{text, Text},
-    ui::PushSpecs,
+    ui::{Area as UiArea, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
@@ -15,39 +15,45 @@ use crate::{Area, Ui};
 /// [`File`]: parsec_core::widgets::File
 /// [`LineNumbers`]: parsec_core::widgets::LineNumbers
 pub struct VertRule {
-    reader: FileReader<Ui>,
+    reader: Option<FileReader<Ui>>,
     text: Text,
     sep_char: SepChar,
 }
 
 impl VertRule {
-    pub fn config() -> VertRuleCfg {
+    pub fn cfg() -> VertRuleCfg {
         VertRuleCfg::new()
     }
 }
 
 impl PassiveWidget<Ui> for VertRule {
-    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        VertRuleCfg::new().build(globals)
+    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        VertRuleCfg::new().build(globals, on_file)
     }
 
-    fn update(&mut self, _area: &Area) {
-        self.text = self.reader.inspect(|file, _, input| {
-            let main_line = input.cursors().unwrap().main().line();
-            let lines = file.printed_lines();
+    fn update(&mut self, area: &Area) {
+        self.text = if let Some(reader) = self.reader.as_ref() {
+            reader.inspect(|file, _, input| {
+                let main_line = input.cursors().unwrap().main().line();
+                let lines = file.printed_lines();
 
-            let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
-            let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
-            let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
+                let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
+                let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
+                let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
 
-            let chars = self.sep_char.chars();
+                let chars = self.sep_char.chars();
 
-            text!(
-                [UpperVertRule] { form_string(chars[0], upper) }
-                [VertRule] { form_string(chars[1], middle) }
-                [LowerVertRule] { form_string(chars[2], lower) }
-            )
-        });
+                text!(
+                    [UpperVertRule] { form_string(chars[0], upper) }
+                    [VertRule] { form_string(chars[1], middle) }
+                    [LowerVertRule] { form_string(chars[2], lower) }
+                )
+            })
+        } else {
+            let full_line = format!("{}\n", self.sep_char.chars()[1]).repeat(area.height());
+
+            text!([VertRule] full_line)
+        }
     }
 
     fn text(&self) -> &Text {
@@ -157,8 +163,12 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        let reader = globals.current_file.constant();
+    fn build(
+        self,
+        globals: Globals<Ui>,
+        on_file: bool,
+    ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+        let reader = on_file.then_some(globals.current_file.constant());
 
         let vert_rule = VertRule {
             reader: reader.clone(),
@@ -166,7 +176,11 @@ impl WidgetCfg<Ui> for VertRuleCfg {
             sep_char: self.sep_char,
         };
 
-        let checker = Box::new(move || reader.has_changed());
+        let checker = if let Some(reader) = reader {
+            Box::new(move || reader.has_changed()) as Box<dyn Fn() -> bool>
+        } else {
+            Box::new(move || false) as Box<dyn Fn() -> bool>
+        };
         let widget = Widget::passive(vert_rule);
         (widget, checker, self.specs)
     }

@@ -42,7 +42,7 @@ pub struct LineNumbers {
 }
 
 impl LineNumbers {
-    pub fn config() -> LineNumbersCfg {
+    pub fn cfg() -> LineNumbersCfg {
         LineNumbersCfg::new()
     }
 
@@ -101,8 +101,11 @@ impl LineNumbers {
 impl PassiveWidget<Ui> for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers`], taking a
     /// [`LineNumbersCfg`] as argument.
-    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        LineNumbersCfg::default().build(globals)
+    fn build(
+        globals: Globals<Ui>,
+        on_file: bool,
+    ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+        LineNumbersCfg::default().build(globals, on_file)
     }
 
     fn update(&mut self, area: &<Ui as parsec_core::ui::Ui>::Area) {
@@ -245,15 +248,18 @@ impl LineNumbersCfg {
         }
     }
 
-    pub fn with_specs(self, specs: PushSpecs) -> Self {
-        Self { specs, ..self }
+    pub fn on_the_right(self) -> Self {
+        Self {
+            specs: self.specs.to_right(),
+            ..self
+        }
     }
 }
 
 impl WidgetCfg<Ui> for LineNumbersCfg {
     type Widget = LineNumbers;
 
-    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, globals: Globals<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let reader = globals.current_file.constant();
         let specs = self.specs;
 

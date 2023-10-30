@@ -96,7 +96,9 @@ fn main() {
             if prev.is_empty() {
                 break;
             } else {
-                cur_lib.take().unwrap().close().unwrap();
+                if let Some(cur_lib) = cur_lib.take() {
+                    cur_lib.close().unwrap()
+                }
                 cur_lib = unsafe { Library::new(&so_path).ok() };
                 run = cur_lib.as_ref().and_then(find_run_fn);
             }

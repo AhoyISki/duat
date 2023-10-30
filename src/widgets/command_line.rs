@@ -95,7 +95,7 @@ where
 {
     type Widget = CommandLine;
 
-    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, globals: Globals<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let command_line = CommandLine {
             text: Text::new(" "),
             prompt: RwData::new(self.prompt.clone()),
@@ -127,8 +127,8 @@ impl CommandLine {
 }
 
 impl PassiveWidget<Ui> for CommandLine {
-    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        CommandLineCfg::new().build(globals)
+    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        CommandLineCfg::new().build(globals, on_file)
     }
 
     fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {}

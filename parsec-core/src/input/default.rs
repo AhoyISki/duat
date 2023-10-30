@@ -31,7 +31,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        _globals: Globals<U>,
+        globals: Globals<U>,
     ) {
         let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
         match key {
@@ -124,6 +124,12 @@ where
             key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
             key!(KeyCode::Up) => move_each(editor, Side::Top, 1),
             key!(KeyCode::Down) => move_each(editor, Side::Bottom, 1),
+
+            // Control
+            key!(KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                let _ = globals.commands.run("switch-to CommandLine");
+            }
+
             _ => {}
         }
     }

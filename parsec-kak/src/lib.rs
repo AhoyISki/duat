@@ -6,7 +6,7 @@ use crossterm::event::{
 };
 use parsec_core::{
     data::RwData,
-    input::{key, Cursors, MultiCursorEditor, InputMethod},
+    input::{key, Cursors, InputMethod, MultiCursorEditor},
     palette,
     prelude::Form,
     text::{text, Text},
@@ -53,6 +53,7 @@ pub struct KeyMap {
 
 impl KeyMap {
     pub fn new() -> Self {
+        palette::set_weak_form("Mode", Form::new().green());
         Self::default()
     }
 
@@ -61,7 +62,6 @@ impl KeyMap {
     }
 
     pub fn mode_fmt(&self) -> Text {
-        palette::set_weak_form("Mode", Form::new().green());
         text!([Mode] { self.mode.to_string() })
     }
 }

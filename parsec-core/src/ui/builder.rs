@@ -101,7 +101,7 @@ where
     /// ```
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals);
+        let (widget, checker, specs) = W::build(self.globals, true);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -177,7 +177,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals, true);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -224,7 +224,7 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals);
+        let (widget, checker, specs) = W::build(self.globals, true);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -257,7 +257,7 @@ where
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals, true);
 
         let related = widget.as_passive().clone();
         let type_name = widget.type_name();
@@ -343,7 +343,7 @@ where
     /// [`Session`]: crate::session::Session
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals);
+        let (widget, checker, specs) = W::build(self.globals, false);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -407,7 +407,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals);
+        let (widget, checker, specs) = cfg.build(self.globals, false);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -435,7 +435,7 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals);
+        let (widget, checker, specs) = W::build(self.globals, true);
 
         self.window.push(widget, &area, checker, specs, true)
     }
@@ -461,7 +461,7 @@ where
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = pushable.build(self.globals);
+        let (widget, checker, specs) = pushable.build(self.globals, false);
 
         self.window.push(widget, &area, checker, specs, true)
     }

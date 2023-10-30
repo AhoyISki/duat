@@ -58,7 +58,7 @@ use parsec_core::{
     data::{FileReader, RoData},
     input::InputMethod,
     palette::{self, Form},
-    text::{text, Builder, Text, Tag},
+    text::{text, Builder, Tag, Text},
     ui::PushSpecs,
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
     Globals,
@@ -70,7 +70,6 @@ use crate::Ui;
 pub struct StatusLineCfg {
     text_fn: TextFn,
     checker: Box<dyn Fn() -> bool>,
-    is_global: bool,
     specs: PushSpecs,
 }
 
@@ -86,21 +85,12 @@ impl StatusLineCfg {
     pub fn new_with(
         text_fn: TextFn,
         checker: Box<dyn Fn() -> bool>,
-        is_global: bool,
         specs: PushSpecs,
     ) -> Self {
         Self {
             text_fn,
             checker,
-            is_global,
             specs,
-        }
-    }
-
-    pub fn global(self) -> Self {
-        Self {
-            is_global: true,
-            ..self
         }
     }
 
@@ -115,19 +105,23 @@ impl StatusLineCfg {
 impl WidgetCfg<Ui> for StatusLineCfg {
     type Widget = StatusLine;
 
-    fn build(self, globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        let (reader, checker) = if self.is_global {
-            let reader = globals.current_file.adaptive();
-            let checker = move || reader.has_changed() || (self.checker)();
-            (
-                globals.current_file.adaptive(),
-                Box::new(checker) as Box<dyn Fn() -> bool>,
-            )
-        } else {
+    fn build(
+        self,
+        globals: Globals<Ui>,
+        on_file: bool,
+    ) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        let (reader, checker) = if on_file {
             let reader = globals.current_file.constant();
             let checker = move || reader.has_changed() || (self.checker)();
             (
                 globals.current_file.constant(),
+                Box::new(checker) as Box<dyn Fn() -> bool>,
+            )
+        } else {
+            let reader = globals.current_file.adaptive();
+            let checker = move || reader.has_changed() || (self.checker)();
+            (
+                globals.current_file.adaptive(),
                 Box::new(checker) as Box<dyn Fn() -> bool>,
             )
         };
@@ -209,8 +203,8 @@ impl StatusLine {
 }
 
 impl PassiveWidget<Ui> for StatusLine {
-    fn build(globals: Globals<Ui>) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        Self::config().build(globals)
+    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        Self::config().build(globals, on_file)
     }
 
     fn update(&mut self, _area: &<Ui as parsec_core::ui::Ui>::Area) {
@@ -308,7 +302,6 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            false,
             PushSpecs::below().with_lenght(1.0)
         )
     }}

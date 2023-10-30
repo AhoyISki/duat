@@ -44,7 +44,10 @@ pub trait PassiveWidget<U>: Send + Sync + 'static
 where
     U: Ui,
 {
-    fn build(globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
+    fn build(
+        globals: Globals<U>,
+        on_file: bool,
+    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
     where
         Self: Sized;
 
@@ -109,7 +112,11 @@ where
     U: Ui,
 {
     type Widget: PassiveWidget<U>;
-    fn build(self, globals: Globals<U>) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
+    fn build(
+        self,
+        globals: Globals<U>,
+        on_file: bool,
+    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
 
 /// A widget that can receive input and show [`Cursor`]s.

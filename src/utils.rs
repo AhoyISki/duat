@@ -60,20 +60,18 @@ pub mod setup {
     }
 
     #[inline(never)]
-    pub fn input<I: InputMethod<Ui, Widget = File<Ui>> + Clone>(
-        mut f: impl FnMut() -> I + Send + Sync + 'static,
-    ) {
+    pub fn input(input: impl InputMethod<Ui, Widget = File<Ui>> + Clone) {
         let mut cfg_fn = CFG_FN.write().unwrap();
         let prev = cfg_fn.take();
 
         *cfg_fn = Some(match prev {
             Some(prev_fn) => Box::new(move |cfg| {
                 prev_fn(cfg);
-                cfg.set_input(f())
+                cfg.set_input(input)
             }),
             None => Box::new(move |cfg| {
                 default_cfg_fn(cfg);
-                cfg.set_input(f())
+                cfg.set_input(input)
             }),
         })
     }
@@ -753,6 +751,9 @@ pub fn default_cfg_fn(cfg: &mut SessionCfg<Ui>) {
     cfg.set_file_fn(|builder| {
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();
+    });
+
+    cfg.set_window_fn(|builder| {
         let (child, _) = builder.push::<StatusLine>();
         builder.push_cfg_to(CommandLine::cfg().left_with_percent(50), child);
     });

@@ -103,6 +103,38 @@ impl PushSpecs {
         }
     }
 
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn to_left(self) -> Self {
+        Self {
+            side: Side::Left,
+            ..self
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn to_right(self) -> Self {
+        Self {
+            side: Side::Right,
+            ..self
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn to_above(self) -> Self {
+        Self {
+            side: Side::Above,
+            ..self
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`].
+    pub fn to_below(self) -> Self {
+        Self {
+            side: Side::Below,
+            ..self
+        }
+    }
+
     pub fn with_lenght(self, len: f64) -> Self {
         Self {
             constraint: Some(Constraint::Length(len)),
