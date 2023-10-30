@@ -4,7 +4,7 @@ use crossterm::event::{
     KeyCode::{self, *},
     KeyEvent, KeyModifiers,
 };
-use parsec_core::{
+use duat_core::{
     data::RwData,
     input::{key, Cursors, InputMethod, MultiCursorEditor},
     palette,
@@ -111,17 +111,17 @@ where
 /// Commands that are available in `Mode::Insert`.
 fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, key: KeyEvent, mode: &mut Mode) {
     match key {
-        key!(KeyCode::Char(ch)) => {
+        key!(KeyCode::Char(char)) => {
             editor.edit_on_each_cursor(|editor| {
-                editor.insert(ch);
+                editor.insert(char);
             });
             editor.move_each_cursor(|mover| {
                 mover.move_hor(1);
             });
         }
-        key!(KeyCode::Char(ch), KeyModifiers::SHIFT) => {
+        key!(KeyCode::Char(char), KeyModifiers::SHIFT) => {
             editor.edit_on_each_cursor(|editor| {
-                editor.insert(ch);
+                editor.insert(char);
             });
             editor.move_each_cursor(|mover| {
                 mover.move_hor(1);
