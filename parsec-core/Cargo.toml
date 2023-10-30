@@ -1,6 +1,6 @@
 [package]
 name = "parsec-core"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["AhoyISki"]
 description = "The core of Parsec, a highly customizable text editor."
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"
