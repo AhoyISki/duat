@@ -1,11 +1,11 @@
-//! The primary widget of Parsec, used to display files.
+//! The primary widget of Duat, used to display files.
 //!
-//! The [`FileWidget`] is Parsec's way of display text files. It is
+//! The [`FileWidget`] is Duat's way of display text files. It is
 //! an [`ActionableWidget`] with [`Text`] containing a
 //! [`ropey::Rope`] and a [`any_rope::Rope`] as its backing, unlike
 //! most other widgets, that just use [`String`]s and [`Vec`]s.
 //!
-//! Most extensible features of Parsec have the primary purpose of
+//! Most extensible features of Duat have the primary purpose of
 //! serving the [`FileWidget`], such as multiple [`Cursor`]s, a
 //! [`History`] system, [`PrintInfo`], etc.
 //!

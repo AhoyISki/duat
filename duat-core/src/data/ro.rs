@@ -93,7 +93,7 @@ where
     /// #     thread,
     /// #     time::{Duration, Instant}
     /// # };
-    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{ReadableData, RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -121,7 +121,7 @@ where
     /// #     thread,
     /// #     time::{Duration, Instant}
     /// # };
-    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{ReadableData, RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -158,7 +158,7 @@ where
     ///
     /// You can do this:
     /// ```rust
-    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{ReadableData, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -178,7 +178,7 @@ where
     /// ```
     /// Instead of this:
     /// ```rust
-    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{ReadableData, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -200,7 +200,7 @@ where
     /// ```
     /// Or this:
     /// ```rust
-    /// # use parsec_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{ReadableData, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -240,7 +240,7 @@ where
     /// underlying data:
     /// ```rust
     /// # use std::{sync::TryLockError};
-    /// # use parsec_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{ReadableData, RwData};
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let mut blocking_write = new_data.write();
@@ -270,7 +270,7 @@ where
     /// underlying data:
     /// ```rust
     /// # use std::sync::TryLockError;
-    /// # use parsec_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{ReadableData, RwData};
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let try_inspect = new_data.mutate(|blocking_mutate| {
@@ -308,7 +308,7 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use parsec_core::data::{ReadableData, RoData, RwData};
+    /// use duat_core::data::{ReadableData, RoData, RwData};
     /// let new_data = RwData::new("Initial text");
     /// assert!(!new_data.has_changed());
     ///
@@ -337,7 +337,7 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// # use parsec_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{ReadableData, RwData};
     /// let data_1 = RwData::new(false);
     /// let data_1_clone = data_1.clone();
     ///
@@ -366,7 +366,7 @@ where
     /// #     fmt::Display,
     /// #     sync::{Arc, RwLock}
     /// # };
-    /// # use parsec_core::data::{RwData};
+    /// # use duat_core::data::{RwData};
     /// # struct DownCastableChar(char);
     /// # struct DownCastableString(String);
     /// # impl AsAny for DownCastableChar {

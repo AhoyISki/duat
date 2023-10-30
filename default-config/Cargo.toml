@@ -7,5 +7,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-duat = { version = ">=0.1.0", path = "../" }
-duat-kak = { version = ">=0.1.0", path = "../duat-kak" }
+duat = { version = ">=0.1.0", path = "/home/mateus/Development/duat/" }
+duat-kak = ">=0.1.0"

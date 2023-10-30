@@ -15,7 +15,7 @@ use crate::text::{text, Text};
 /// # Examples
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
+/// # use duat_core::commands::{split_flags_and_args};
 /// let call = "command --foo -bar notflag --foo --baz -abfgh";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
@@ -30,7 +30,7 @@ use crate::text::{text, Text};
 /// argument:
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
+/// # use duat_core::commands::{split_flags_and_args};
 /// let call = "command --foo -bar -- --foo --baz -abfgh";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
@@ -58,7 +58,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "run away i'll kill you 👹";
     /// let (flags, mut args) = split_flags_and_args(call);
     /// args.next();
@@ -109,7 +109,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "int-and-float 42 non-float-arg";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -145,7 +145,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "expects-2-and-file arg-1 not-quite";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -181,7 +181,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "just-1-arg,man arg-1 too-many wayy tooo many";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -221,7 +221,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "runner arg1 arg2 arg3 arg4";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -258,7 +258,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
     /// let call = "expects-5 arg1 arg2 ";
     /// let (flags, mut args) = split_flags_and_args(call);
     /// args.set_expected(5);
@@ -297,7 +297,7 @@ impl<'a> Args<'a> {
 /// matter how many times they show up:
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
+/// # use duat_core::commands::{split_flags_and_args};
 /// let call = "my-command --foo -abcde --foo --bar -abfgh arg1";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
@@ -311,7 +311,7 @@ impl<'a> Args<'a> {
 /// `"--"` after the flags, in order to distinguish them.
 ///
 /// ```rust
-/// # use parsec_core::commands::{split_flags_and_args};
+/// # use duat_core::commands::{split_flags_and_args};
 /// let call = "command --foo --bar -abcde -- --!flag -also-not";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
@@ -332,7 +332,7 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
+    /// # use duat_core::commands::split_flags_and_args;
     /// let call = "run -abcdefgh -ablk args -wz";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -349,7 +349,7 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
+    /// # use duat_core::commands::split_flags_and_args;
     /// let call = "run --foo --bar args --baz";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -366,7 +366,7 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::commands::split_flags_and_args;
+    /// # use duat_core::commands::split_flags_and_args;
     /// let call = "run arg1 --foo --bar arg2 -baz";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///

@@ -1,9 +1,9 @@
-//! Data types that are meant to be shared and read across Parsec.
+//! Data types that are meant to be shared and read across Duat.
 //!
 //! The data types revolve around the [`RwLock<T>`] struct from std,
 //! and are adapters that may block the mutation of the inner data,
 //! for the purpose of making it available for reading to any
-//! extension on Parsec.
+//! extension on Duat.
 //!
 //! The first data type is [`RwData<T>`], which is a read and write
 //! wrapper over information. It should mostly not be shared, being

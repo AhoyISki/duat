@@ -1,4 +1,4 @@
-//! Parsec's history system.
+//! Duat's history system.
 //!
 //! The history system is comprised of 2 concepts: [`Moment`]s and
 //! [`Change`]s. A [`Moment`] contains any number of [`Change`]s, and
@@ -10,7 +10,7 @@
 //! Undoing/redoing [`Moment`]s also has the effect of removing all
 //! [`Cursor`]s and placing new ones where the [`Change`]s took place.
 //!
-//! Parsec's [`History`] system is designed to allow the replication
+//! Duat's [`History`] system is designed to allow the replication
 //! of the history system of many other editors, such as Vim/Neovim,
 //! which is strictly one [`Change`] per [`Moment`], or Kakoune, where
 //! [`Moment`]s may contain as many [`Change`]s as is desired.

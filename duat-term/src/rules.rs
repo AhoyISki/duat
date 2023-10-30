@@ -12,8 +12,8 @@ use crate::{Area, Ui};
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`File`] and [`LineNumbers`].
 ///
-/// [`File`]: parsec_core::widgets::File
-/// [`LineNumbers`]: parsec_core::widgets::LineNumbers
+/// [`File`]: duat_core::widgets::File
+/// [`LineNumbers`]: duat_core::widgets::LineNumbers
 pub struct VertRule {
     reader: Option<FileReader<Ui>>,
     text: Text,

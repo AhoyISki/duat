@@ -17,7 +17,7 @@ use crate::{
 /// to the left of a widget (which in this case is a [`FileWidget<U>`]
 ///
 /// ```rust
-/// # use parsec_core::{
+/// # use duat_core::{
 /// #     data::RoData,
 /// #     ui::{ModNode, PushSpecs, Constraint, Ui},
 /// #     widgets::{FileWidget, LineNumbers}
@@ -296,7 +296,7 @@ where
     /// Pushes a [`Widget<U>`] to the file's area, given a
     /// [`Widget<U>`] builder function.
     ///
-    /// In Parsec, windows have two parts: the central area and the
+    /// In Duat, windows have two parts: the central area and the
     /// periphery. The central part is the "file's region", it
     /// contains all [`FileWidget<U>`]s, as well as all directly
     /// related [`Widget<U>`]s ([`LineNumbers<U>`]s,
@@ -331,7 +331,7 @@ where
     /// # Examples
     ///
     /// This method would be used when defining how a new window will
-    /// be opened, from Parsec's [`Session`]
+    /// be opened, from Duat's [`Session`]
     ///
     /// ```rust
     /// ```
@@ -357,7 +357,7 @@ where
     /// Pushes a [`Widget<U>`] to the file's area, given a
     /// [`Widget<U>`] builder function.
     ///
-    /// In Parsec, windows have two parts: the central area and the
+    /// In Duat, windows have two parts: the central area and the
     /// periphery. The central part is the "file's region", it
     /// contains all [`FileWidget<U>`]s, as well as all directly
     /// related [`Widget<U>`]s ([`LineNumbers<U>`]s,
@@ -392,7 +392,7 @@ where
     /// # Examples
     ///
     /// This method would be used when defining how a new window will
-    /// be opened, from Parsec's [`Session`]
+    /// be opened, from Duat's [`Session`]
     ///
     /// ```rust
     /// ```

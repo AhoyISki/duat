@@ -34,7 +34,7 @@ pub type Ui = duat_term::Ui;
 
 pub mod prelude {
     pub use duat_core::{
-        self as core,
+        self,
         file::File,
         palette::Form,
         position,

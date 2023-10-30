@@ -495,13 +495,13 @@ where
             busy_updating: AtomicBool::new(false),
         };
 
-        let parsec_window = Self {
+        let window = Self {
             nodes: vec![main_node],
             files_region: area.clone(),
             master_area: area.clone(),
         };
 
-        (parsec_window, area)
+        (window, area)
     }
 
     /// Pushes a [`Widget<U>`] onto an existing one.

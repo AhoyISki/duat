@@ -52,7 +52,7 @@ run! {
             // Any type that implements `Into<Text>` works.
             " "
             // You can also use closures. This one reads from a
-            // `parsec_kak::KeyMap`.
+            // `duat_kak::KeyMap`.
             { |map: &KeyMap| KeyMap::mode_fmt(map) } " "
             // Finally, these two functions return `Text`s.
             // Any function that returns `Text` should be have

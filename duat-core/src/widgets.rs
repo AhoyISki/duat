@@ -13,8 +13,8 @@
 //!
 //! These widgets are supposed to be universal, not needing a specific
 //! [`Ui`] implementation to work. As an example, the
-//! [`parsec-term`](https://docs.rs/parsec-term) crate, which is a ui
-//! implementation for Parsec, defines "rule" widgets, which are
+//! [`duat-term`](https://docs.rs/duat-term) crate, which is a ui
+//! implementation for Duat, defines "rule" widgets, which are
 //! separators that only really make sense in the context of a
 //! terminal.
 #[cfg(not(feature = "deadlock-detection"))]
@@ -54,7 +54,7 @@ where
     /// Updates the widget, allowing the modification of its
     /// [`Area`][Ui::Area].
     ///
-    /// This function will be called when Parsec determines that the
+    /// This function will be called when Duat determines that the
     /// [`WidgetNode`]
     ///
     /// [`Session`]: crate::session::Session
@@ -145,7 +145,7 @@ where
     /// Updates the widget, allowing the modification of its
     /// [`Area`][Ui::Area].
     ///
-    /// This function will be called when Parsec determines that the
+    /// This function will be called when Duat determines that the
     /// [`WidgetNode`]
     ///
     /// [`Session`]: crate::session::Session

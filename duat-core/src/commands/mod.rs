@@ -25,7 +25,7 @@
 //! Here's a simple example of how one would add a command:
 //!
 //! ```rust
-//! # use parsec_core::commands::{self, Flags, Args};
+//! # use duat_core::commands::{self, Flags, Args};
 //! # use std::sync::{
 //! #     atomic::{AtomicBool, Ordering},
 //! #     Arc
@@ -52,7 +52,7 @@
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use parsec_core::commands;
+//! # use duat_core::commands;
 //! # use std::sync::{
 //! #     atomic::{AtomicU32, Ordering},
 //! #     Arc
@@ -89,7 +89,7 @@
 //! To run commands, simply call [`commands::run`]:
 //!
 //! ```rust
-//! # use parsec_core::{
+//! # use duat_core::{
 //! #     commands,
 //! #     session::SessionCfg,
 //! #     text::{PrintCfg, text},
@@ -130,7 +130,7 @@
 //!
 //! ```rust
 //! # use std::path::PathBuf;
-//! # use parsec_core::{commands, text::text};
+//! # use duat_core::{commands, text::text};
 //! commands::add(["copy", "cp"], move |flags, mut args| {
 //!     // If there is a next argument, next will return `Ok(arg)`.
 //!     // If there isn't it will return `Err(Text)`.
@@ -156,7 +156,7 @@
 //!
 //!     // The return message (if there is one) is in the form of
 //!     // a `Text`, so it is recommended that you use the
-//!     // `parsec_core::text::text` macro to facilitate the
+//!     // `duat_core::text::text` macro to facilitate the
 //!     // creation of that message.
 //!     Ok(Some(text!(
 //!         "Copied from " [AccentOk] source []
@@ -177,7 +177,7 @@
 //! results".
 //!
 //! ```rust
-//! # use parsec_core::{commands, text::text};
+//! # use duat_core::{commands, text::text};
 //! commands::add(["write", "w"], move |_flags, mut args| {
 //!     let mut count = 0;
 //!     while let Ok(arg) = args.next() {
@@ -411,7 +411,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands::{self, Result},
     /// #     text::Text,
     /// # };
@@ -464,7 +464,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands,
     /// #     data::RwData,
     /// #     text::{text, Text},
@@ -522,7 +522,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #     commands,
     /// #     data::RwData,
     /// #     input::{InputMethod, MultiCursorEditor},
@@ -551,7 +551,7 @@ where
     /// #     &mut self,
     /// #     key: crossterm::event::KeyEvent,
     /// #     widget: &RwData<Self::Widget>,
-    /// #     area: &impl parsec_core::ui::Area,
+    /// #     area: &impl duat_core::ui::Area,
     /// # ) where
     /// #     Self: Sized,
     /// # {
@@ -653,7 +653,7 @@ where
     /// #    },
     /// #    time::Instant,
     /// # };
-    /// # use parsec_core::{
+    /// # use duat_core::{
     /// #    commands,
     /// #    palette::{self, Form},
     /// #    text::{text, Text, AlignCenter},
