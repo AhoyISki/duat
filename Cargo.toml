@@ -1,18 +1,5 @@
-[workspace]
-members = [
-  "parsec-core",
-  "parsec-term",
-  "parsec-kak",
-]
-
-exclude = [
-  "default-config",
-]
-
-resolver = "2"
-
 [package]
-name = "parsec"
+name = "parsec-rs"
 version = "0.2.0"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
@@ -32,6 +19,19 @@ parsec-core = { version = ">=0.2.0", path = "parsec-core" }
 
 # List of UIs.
 parsec-term = { version = ">=0.2.0", path = "parsec-term", optional = true }
+
+[workspace]
+members = [
+  "parsec-core",
+  "parsec-term",
+  "parsec-kak",
+]
+
+exclude = [
+  "default-config",
+]
+
+resolver = "2"
 
 [features]
 default = ["term-ui"]
