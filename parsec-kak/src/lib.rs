@@ -6,7 +6,7 @@ use crossterm::event::{
 };
 use parsec_core::{
     data::RwData,
-    input::{key, Cursors, InputMethod, MultiCursorEditor},
+    input::{key, Cursors, MultiCursorEditor, InputMethod},
     palette,
     prelude::Form,
     text::{text, Text},
@@ -45,13 +45,13 @@ enum Side {
 }
 
 #[derive(Default, Clone)]
-pub struct Editor {
+pub struct KeyMap {
     cursors: Cursors,
     mode: Mode,
     last_file: String,
 }
 
-impl Editor {
+impl KeyMap {
     pub fn new() -> Self {
         Self::default()
     }
@@ -66,7 +66,7 @@ impl Editor {
     }
 }
 
-impl<U> InputMethod<U> for Editor
+impl<U> InputMethod<U> for KeyMap
 where
     U: Ui,
 {
@@ -80,7 +80,7 @@ where
         globals: Globals<U>,
     ) {
         let cursors = &mut self.cursors;
-        let editor = MultiCursorEditor::new(widget, cursors, area);
+        let editor = MultiCursorEditor::new(widget, area, cursors);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
@@ -211,11 +211,6 @@ fn match_normal<U: Ui>(
     globals: Globals<U>,
 ) {
     match key {
-        ////////// SessionControl commands.
-        key!(KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-            globals.commands.quit();
-        }
-
         ////////// Movement keys that retain or create selections.
         key!(KeyCode::Char('H') | Left, KeyModifiers::SHIFT) => {
             move_each_and_select(editor, Side::Left, 1);

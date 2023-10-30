@@ -4,7 +4,7 @@ mod multi_cursor;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub use self::{
-    default::Editor,
+    default::KeyMap,
     multi_cursor::{Cursors, MultiCursorEditor},
 };
 use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Globals};

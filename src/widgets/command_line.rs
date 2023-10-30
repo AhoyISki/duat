@@ -16,10 +16,10 @@
 //! by running the `set-prompt` [`Command`].
 use parsec_core::{
     data::RwData,
-    input::{key, Cursors, InputMethod, KeyEvent, MultiCursorEditor, KeyCode, KeyModifiers},
+    input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
     palette::{self, Form},
     text::{text, Ghost, Text},
-    ui::{PushSpecs, Area},
+    ui::{Area, PushSpecs},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
@@ -203,7 +203,7 @@ impl InputMethod<Ui> for Commander {
         area: &<Ui as parsec_core::ui::Ui>::Area,
         globals: Globals<Ui>,
     ) {
-        let mut editor = MultiCursorEditor::new(widget, &mut self.cursors, area);
+        let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
 
         match key {
             key!(KeyCode::Backspace) => {

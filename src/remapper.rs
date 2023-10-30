@@ -1,6 +1,6 @@
 use parsec_core::{
     data::RwData,
-    input::{InputMethod, KeyCode, KeyEvent},
+    input::{KeyCode, KeyEvent, InputMethod},
     Globals,
 };
 

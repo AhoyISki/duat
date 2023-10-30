@@ -24,7 +24,7 @@ use std::{fs, path::PathBuf, sync::Arc};
 use crate::{
     data::RwData,
     history::{Change, History},
-    input::{Cursors, Editor, InputMethod},
+    input::{Cursors, KeyMap, InputMethod},
     palette,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -55,7 +55,7 @@ where
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            generator: Arc::new(|file| Widget::active(file, RwData::new(Editor::new()))),
+            generator: Arc::new(|file| Widget::active(file, RwData::new(KeyMap::new()))),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),

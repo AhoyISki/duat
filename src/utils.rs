@@ -756,6 +756,4 @@ pub fn default_cfg_fn(cfg: &mut SessionCfg<Ui>) {
         let (child, _) = builder.push::<StatusLine>();
         builder.push_cfg_to(CommandLine::cfg().left_with_percent(50), child);
     });
-
-    cfg.set_input(parsec_kak::Editor::new());
 }

@@ -88,7 +88,7 @@ where
             inherited_cfgs.push((file_cfg, is_active))
         }
 
-        let Some((file_cfg, is_active)) = inherited_cfgs.pop() else {
+        let Some((file_cfg, _)) = inherited_cfgs.pop() else {
             unreachable!("There should've been at least one file.")
         };
 

@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "default",
+  "default-config",
   "parsec-core",
   "parsec-term",
   "parsec-kak",
@@ -30,8 +30,10 @@ atomic-wait = "1.1.0"
 dirs-next = "2.0.0"
 libloading = "0.8.1"
 notify = "6.1.1"
+
 parsec-core = { version = "0.1.4", path = "parsec-core" }
-parsec-kak = { version = "0.1.3", path = "parsec-kak" }
+
+# List of UIs.
 parsec-term = { version = "0.1.4", path = "parsec-term", optional = true }
 
 [features]

@@ -92,7 +92,7 @@ where
     W: ActiveWidget<U> + 'static,
     U: Ui
 {
-    pub fn new(widget: &'a RwData<W>, cursors: &'a mut Cursors, area: &'a U::Area) -> Self {
+    pub fn new(widget: &'a RwData<W>, area: &'a U::Area, cursors: &'a mut Cursors) -> Self {
         MultiCursorEditor {
             clearing_needed: false,
             widget,
