@@ -45,3 +45,6 @@ name = "parsec"
 
 [lib]
 name = "parsec"
+
+[build-dependencies]
+dirs-next = "2.0.0"
