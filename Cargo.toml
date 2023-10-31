@@ -38,9 +38,11 @@ term-ui = ["dep:duat-term"]
 
 [[bin]]
 name = "duat"
+path = "src/main.rs"
 
 [lib]
 name = "duat"
+path = "src/lib.rs"
 
 [build-dependencies]
 dirs-next = "2.0.0"
