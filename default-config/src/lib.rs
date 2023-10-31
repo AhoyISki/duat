@@ -19,9 +19,8 @@ run! {
         // Push some widgets to the edge of the file, in order,
         // from inner to outer.
         //
-        // By default, these specific widgets go on the left,
-        // but you can override that:
-        //
+        // By default, these two widgets go on the left, but
+        // you can override that:
         // // *Uncomment me* //
         // let cfg = VertRule::cfg().on_the_right();
         // builder.push_cfg(cfg);

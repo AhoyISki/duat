@@ -350,13 +350,11 @@ where
                     break;
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(5)) {
+                if let Ok(true) = event::poll(Duration::from_millis(10)) {
                     if let Event::Key(key) = event::read().unwrap() {
                         active_window.send_key(key, scope, self.globals);
                     }
                 }
-
-                std::thread::sleep(Duration::from_millis(5));
 
                 for node in active_window.nodes() {
                     if node.needs_update() {

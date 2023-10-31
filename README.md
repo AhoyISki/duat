@@ -1,6 +1,20 @@
 # Duat
 
-Duat is a work in progress for a text editor that is configured through the use of a rust crate, allowing for a massive amount of customizability.
+Duat is the underworld in egyptian mythology, home to the god Osiris, where the deceased go in order to be judged, and possibly have their rights to an afterlife revoked by the weight of a feather. It is also a text editor.
+
+Duat is a text editor that is configured through the use of a Rust crate in the user's config directory. The use of a crate for such a purpose means that the extensibility potential -- as well as my ability to add features -- is increased dramatically.
+
+Duat, when installed, will be able to automatically detect changes in the user's configuration, and change in real time -- with a delay of a few seconds -- in order to reflect the new configuration.
+
+It is currently a work in progress, and many features are yet to come (such as an LSP plugin...).
+
+## How to use
+
+In order to use it, you must have `cargo` installed. If you do, run
+
+`cargo install duat`
+
+This will install the default version of Duat, which uses a terminal user interface. It will also create a configuration directoy in `XDG_CONFIG_HOME` or `~/.config/duat/`. This config will have some default changes, but you can modify it as you wish. It also has some documentation explaining the basics of Duat.
 
 ## Roadmap
 
@@ -21,30 +35,22 @@ These are the goals that have been acomplished or are on their way:
 - [x] Create a command creation interface and a command line;
 - [x] Add the ability to frame areas;
 - [x] Implement concealment;
+- [x] Implement hot reloading of configuration;
+- [x] Create a "normal editing" mode;
 - [ ] Add the ability to create hooks;
+- [ ] Create a more generalized plugin system;
 - [ ] Add floating widgets, not tied to the session layout;
 - [ ] Implement autocompletion lists;
-- [ ] Create a "normal editing" mode;
-- [ ] Create a vim mode;
-- [ ] Create a more generalized plugin system;
 - [ ] Create an LSP plugin;
+- [ ] Create a vim mode;
+- [ ] Add a regex searcher (possibly a new regex-streams?!?!);
 
 ︙
 
-- [ ] Create a GTK or ICED frontend;
+- [ ] Create an EGUI frontend;
 
 __NOTE:__ These are not set in stone, and may be done out of order.
 
-## Trying it out
-
-If you wish to try it out, assuming you have cargo installed, the recommended way is the one below:
-```
-git clone https://github.com/AhoyISki/duat
-cd duat/example
-cargo run --release <your file path here>
-```
-It will run the example crate, a basic, documented configuration that shows how to customize and extend duat. When running the example crate in this manner, you will be pulling `duat-core`, `duat-term` and `duat-kak` from the local repository, as opposed to crates.io. This is useful in order to keep up with the latest version of Duat, updating as desired with `git pull`. While these three crates are in crates.io, the version in there won't be kept up to date as often as the ones in the repository.
-
 ## Motivation
 
-This project was mostly created as a fun side project to occupy my time, and I was also unsatified with the current offerings of text editors on github.
+This project was mostly created as a fun side project to occupy my time, and I was also unsatified with the current offerings of open source text editors.

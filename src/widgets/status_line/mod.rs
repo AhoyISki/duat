@@ -82,11 +82,7 @@ impl StatusLineCfg {
         )
     }
 
-    pub fn new_with(
-        text_fn: TextFn,
-        checker: Box<dyn Fn() -> bool>,
-        specs: PushSpecs,
-    ) -> Self {
+    pub fn new_with(text_fn: TextFn, checker: Box<dyn Fn() -> bool>, specs: PushSpecs) -> Self {
         Self {
             text_fn,
             checker,
@@ -229,20 +225,18 @@ unsafe impl Send for StatusLine {}
 unsafe impl Sync for StatusLine {}
 
 pub macro status {
-    (@push $builder:expr, []) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::palette::__weakest_id_of_name("Default")
-        });
+    (@append $text_fn:expr, $checker:expr, []) => {{
+        let form_id = palette::__weakest_id_of_name("Default");
 
         let text_fn = move |builder: &mut Builder,
                             file: &RoData<File<Ui>>,
                             input: &RoData<dyn InputMethod<Ui>>| {
             $text_fn(builder, file, input);
-            builder.push_tag(text::Tag::PushForm(form_id));
+            builder.push_tag(Tag::PushForm(form_id));
         };
 
         (text_fn, $checker)
-    },
+    }},
 
     // Insertion of directly named forms.
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
