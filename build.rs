@@ -1,36 +1,41 @@
-use std::{fs, io::Write, path::PathBuf};
+use std::{
+    fs::{self, File},
+    io::Write,
+};
 
 const UI_TO_USE: &[u8] = b"features = [\"term-ui\"]";
 
+const LIB: &[u8] = include_bytes!("default-config/lib.rs_");
+const TOML: &[u8] = include_bytes!("default-config/Cargo.toml_");
+
 fn main() {
-    if let Some(config_path) = dirs_next::config_dir() {
-        if !config_path.exists() {
-            return;
-        }
+    let Some(config_path) = dirs_next::config_dir() else {
+        return;
+    };
 
-        let dest = config_path.join("duat");
-        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("default-config");
-
-        if dest.exists() {
-            return;
-        }
-
-        if fs::create_dir_all(&dest).is_err() {
-            return;
-        };
-
-        if fs::create_dir_all(dest.join("src")).is_err() {
-            return;
-        };
-
-        fs::copy(source.join("src/lib.rs"), dest.join("src/lib.rs")).unwrap();
-        fs::copy(source.join("Cargo.toml"), dest.join("Cargo.toml")).unwrap();
-
-        let mut toml = fs::OpenOptions::new()
-            .append(true)
-            .open(dest.join("Cargo.toml"))
-            .unwrap();
-
-        toml.write_all(UI_TO_USE).unwrap();
+    if !config_path.exists() {
+        return;
     }
+
+    let dest = config_path.join("duat");
+
+    if dest.exists() {
+        return;
+    }
+
+    if fs::create_dir_all(&dest).is_err() {
+        return;
+    };
+
+    if fs::create_dir_all(dest.join("src")).is_err() {
+        return;
+    };
+
+    let mut src = File::create(dest.join("src/lib.rs")).unwrap();
+    src.write_all(LIB).unwrap();
+
+    let mut toml = File::create(dest.join("Cargo.toml")).unwrap();
+
+    toml.write_all(TOML).unwrap();
+    toml.write_all(UI_TO_USE).unwrap();
 }

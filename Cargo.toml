@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
 homepage = "https://github.com/AhoyISki/duat"
@@ -8,18 +8,14 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
+include = ["/src/", "/default-config", "/build.rs"]
 edition = "2021"
-include = ["src/", "default-config/"]
 
 [workspace]
 members = [
   "duat-core",
   "duat-kak",
   "duat-term",
-]
-
-exclude = [
-  "default-config"
 ]
 
 [dependencies]
