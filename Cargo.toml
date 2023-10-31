@@ -9,7 +9,15 @@ readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
-include = ["default-config/Cargo.toml", "default-config/src/lib.rs"]
+include = ["src/", "default-config/"]
+
+[workspace]
+members = [
+  "default-config",
+  "duat-core",
+  "duat-kak",
+  "duat-term",
+]
 
 [dependencies]
 atomic-wait = "1.1.0"
@@ -22,16 +30,6 @@ duat-core = { version = ">=0.1.0", path = "duat-core" }
 # List of UIs.
 duat-term = { version = ">=0.1.0", path = "duat-term", optional = true }
 
-[workspace]
-members = [
-  "default-config",
-  "duat-core",
-  "duat-kak",
-  "duat-term",
-]
-
-resolver = "2"
-
 [features]
 default = ["term-ui"]
 term-ui = ["dep:duat-term"]
@@ -41,8 +39,7 @@ name = "duat"
 path = "src/main.rs"
 
 [lib]
-name = "duat"
-path = "src/lib.rs"
+path = "src/main.rs"
 
 [build-dependencies]
 dirs-next = "2.0.0"
