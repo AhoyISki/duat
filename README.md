@@ -14,7 +14,7 @@ In order to use it, you must have `cargo` installed. If you do, run
 
 `cargo install duat`
 
-This will install the default version of Duat, which uses a terminal user interface. It will also create a configuration directory in `$XDG_CONFIG_HOME/duat` or `~/.config/duat/`. This config will have some default changes, but you can modify it as you wish. It also has some documentation explaining the basics of Duat.
+This will install the default version of Duat, which uses a terminal user interface. It will also create a configuration directory in `$XDG_CONFIG_HOME/duat/` or `~/.config/duat/`. This config will have some default changes, but you can modify it as you wish. It also has some documentation explaining the basics of Duat.
 
 At the moment, the only Ui is the terminal one, but Duat is built in such a way that creating a new Ui is within the realm of possibility.
 
