@@ -6,7 +6,7 @@ use duat_core::{data::RwData, widgets::File};
 pub use utils::run_duat;
 mod remapper;
 mod utils;
-mod widgets;
+pub mod widgets;
 
 // The main macro to run duat.
 pub macro run($($tree:tt)*) {

@@ -1,7 +1,6 @@
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
+
+const UI_TO_USE: &[u8] = b"features = [\"term-ui\"]";
 
 fn main() {
     if let Some(config_path) = dirs_next::config_dir() {
@@ -12,26 +11,26 @@ fn main() {
         let dest = config_path.join("duat");
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("default-config");
 
-        copy_dir_all(source, dest).unwrap();
-    }
-}
-
-fn copy_dir_all(source: impl AsRef<Path>, dest: impl AsRef<Path>) -> io::Result<()> {
-    fs::create_dir_all(&dest)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-
-        let dest = dest.as_ref().join(entry.file_name());
         if dest.exists() {
-            continue;
+            return;
         }
 
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(entry.path(), dest)?;
-        } else {
-            fs::copy(entry.path(), dest)?;
-        }
+        if fs::create_dir_all(&dest).is_err() {
+            return;
+        };
+
+        if fs::create_dir_all(dest.join("src")).is_err() {
+            return;
+        };
+
+        fs::copy(source.join("src/lib.rs"), dest.join("src/lib.rs")).unwrap();
+        fs::copy(source.join("Cargo.toml"), dest.join("Cargo.toml")).unwrap();
+
+        let mut toml = fs::OpenOptions::new()
+            .append(true)
+            .open(dest.join("Cargo.toml"))
+            .unwrap();
+
+        toml.write_all(UI_TO_USE).unwrap();
     }
-    Ok(())
 }

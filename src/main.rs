@@ -1,5 +1,5 @@
 #![feature(decl_macro, lazy_cell, generic_const_exprs)]
-#![allow(incomplete_features, dead_code)]
+#![allow(incomplete_features)]
 use std::{
     path::Path,
     process::Command,
@@ -9,13 +9,10 @@ use std::{
     },
 };
 
+use duat::{prelude::*, run_duat};
+use duat_core::{data::RwData, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use duat_core::{data::RwData, widgets::File};
-use utils::run_duat;
-mod remapper;
-mod utils;
-mod widgets;
 
 static FILES_CHANGED: AtomicBool = AtomicBool::new(false);
 static BREAK: AtomicU32 = AtomicU32::new(0);

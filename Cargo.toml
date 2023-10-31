@@ -13,10 +13,13 @@ include = ["src/", "default-config/"]
 
 [workspace]
 members = [
-  "default-config",
   "duat-core",
   "duat-kak",
   "duat-term",
+]
+
+exclude = [
+  "default-config"
 ]
 
 [dependencies]
@@ -39,7 +42,8 @@ name = "duat"
 path = "src/main.rs"
 
 [lib]
-path = "src/main.rs"
+name = "duat"
+path = "src/lib.rs"
 
 [build-dependencies]
 dirs-next = "2.0.0"
