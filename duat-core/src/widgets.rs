@@ -17,8 +17,6 @@
 //! implementation for Duat, defines "rule" widgets, which are
 //! separators that only really make sense in the context of a
 //! terminal.
-#[cfg(not(feature = "deadlock-detection"))]
-use std::sync::RwLock;
 use std::{
     any::TypeId,
     collections::HashMap,
@@ -26,9 +24,7 @@ use std::{
 };
 
 use crossterm::event::KeyEvent;
-#[cfg(feature = "deadlock-detection")]
-use no_deadlocks::RwLock;
-
+use parking_lot::RwLock;
 pub use crate::file::{File, FileCfg};
 use crate::{
     data::{Data, RwData},
@@ -83,7 +79,7 @@ where
     {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
             LazyLock::new(|| RwLock::new(HashMap::new()));
-        let mut names = NAMES.write().unwrap();
+        let mut names = NAMES.write();
         let type_id = TypeId::of::<Self>();
 
         if let Some(name) = names.get(&type_id) {
@@ -165,6 +161,8 @@ where
     fn on_focus(&self, area: &U::Area);
 
     fn on_unfocus(&self, area: &U::Area);
+
+    fn related_widgets(&self) -> Option<RelatedWidgets<U>>;
 }
 
 struct InnerActiveWidget<W, I, U>
@@ -178,6 +176,7 @@ where
     dyn_passive: RwData<dyn PassiveWidget<U>>,
     input: RwData<I>,
     dyn_input: RwData<dyn InputMethod<U>>,
+    related: Option<RelatedWidgets<U>>,
 }
 
 impl<W, I, U> ActiveHolder<U> for InnerActiveWidget<W, I, U>
@@ -191,9 +190,11 @@ where
     }
 
     fn update_and_print(&self, area: &U::Area) {
-        let mut widget = self.widget.raw_write();
-        widget.update(area);
-        widget.print(area);
+        {
+            let mut widget = self.widget.raw_write();
+            widget.update(area);
+            widget.print(area);
+        }
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
@@ -212,7 +213,7 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Globals<U>) {
+    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, globals: Globals<U>) {
         let mut input = self.input.write();
 
         if let Some(cursors) = input.cursors() {
@@ -241,22 +242,9 @@ where
         self.input.mutate(|input| input.on_unfocus(area));
         self.widget.mutate(|widget| widget.on_unfocus(area));
     }
-}
 
-impl<W, I, U> Clone for InnerActiveWidget<W, I, U>
-where
-    W: ActiveWidget<U>,
-    I: InputMethod<U, Widget = W>,
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        Self {
-            widget: self.widget.clone(),
-            dyn_active: self.dyn_active.clone(),
-            dyn_passive: self.dyn_passive.clone(),
-            input: self.input.clone(),
-            dyn_input: self.dyn_input.clone(),
-        }
+    fn related_widgets(&self) -> Option<RelatedWidgets<U>> {
+        self.related.clone()
     }
 }
 
@@ -312,6 +300,11 @@ where
             dyn_passive,
             input,
             dyn_input: RwData::new_unsized::<I>(input_data),
+            related: if TypeId::of::<W>() == TypeId::of::<File>() {
+                Some(RwData::new(Vec::new()))
+            } else {
+                None
+            },
         };
 
         Widget::Active(Arc::new(inner))
@@ -336,8 +329,8 @@ where
         W: PassiveWidget<U>,
     {
         match self {
-            Widget::Passive(widget, _) => widget.clone().try_downcast::<W>().ok(),
-            Widget::Active(holder) => holder.active_widget().clone().try_downcast::<W>().ok(),
+            Widget::Passive(widget, _) => widget.clone().try_downcast::<W>(),
+            Widget::Active(holder) => holder.active_widget().clone().try_downcast::<W>(),
         }
     }
 
@@ -434,4 +427,14 @@ where
             Widget::Active(holder) => f(&*holder.active_widget().raw_read()),
         }
     }
+
+    pub(crate) fn related_widgets(&self) -> Option<RelatedWidgets<U>> {
+        match self {
+            Widget::Passive(..) => None,
+            Widget::Active(holder) => holder.related_widgets(),
+        }
+    }
 }
+
+pub type RelatedWidgets<U> =
+    RwData<Vec<(RwData<dyn PassiveWidget<U>>, <U as Ui>::Area, &'static str)>>;

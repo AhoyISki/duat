@@ -202,8 +202,10 @@ use std::{
     collections::HashMap,
     fmt::Display,
     mem::MaybeUninit,
-    sync::{Arc, LazyLock, RwLock},
+    sync::{Arc, LazyLock},
 };
+
+use parking_lot::RwLock;
 
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
@@ -755,7 +757,7 @@ where
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let windows = unsafe { self.windows.read().unwrap().assume_init_ref().clone() };
+        let windows = unsafe { self.windows.read().assume_init_ref().clone() };
 
         let command = Command::new(callers, move |flags, args| {
             self.current_file
@@ -764,7 +766,7 @@ where
                 })
                 .unwrap_or_else(|| {
                     let windows = windows.read();
-                    self.current_widget.inspect_data(|widget, _, _| {
+                    self.current_widget.mutate_data(|widget, _, _| {
                         let widget = widget.clone().to_passive();
                         if let Some((w, a)) = get_from_name(&windows, W::name(), &widget) {
                             w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
@@ -782,7 +784,7 @@ where
 
     /// Adds a [`WidgetGetter`] to [`self`].
     pub(crate) fn add_windows(&self, windows: RwData<Vec<Window<U>>>) {
-        let mut lock = self.windows.write().unwrap();
+        let mut lock = self.windows.write();
         *lock = MaybeUninit::new(windows)
     }
 }

@@ -2,11 +2,13 @@ use std::{
     any::TypeId,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, TryLockError, TryLockResult,
+        Arc,
     },
 };
 
-use super::{private::InnerData, Data, Error, RwData};
+use parking_lot::{RwLock, RwLockReadGuard};
+
+use super::{private::InnerData, Data, RwData};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},
@@ -252,7 +254,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`read`]: Self::read
-    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+    pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
         self.try_data().inspect(|_| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -284,10 +286,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`inspect`]: Self::inspect
-    pub fn try_inspect<U>(
-        &self,
-        f: impl FnOnce(&T) -> U,
-    ) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
+    pub fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Option<U> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -403,7 +402,7 @@ where
             self.read_state
                 .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
 
-            f(&cast.read().unwrap())
+            f(&cast.read())
         })
     }
 
@@ -415,7 +414,7 @@ where
     }
 
     /// Tries to downcast to a concrete type.
-    pub fn try_downcast<U>(self) -> Result<RoData<U>, Error<RoData<T>, T, U>>
+    pub fn try_downcast<U>(&self) -> Option<RoData<U>>
     where
         U: 'static,
     {
@@ -425,32 +424,18 @@ where
                 cur_state,
                 read_state,
                 ..
-            } = self;
+            } = self.clone();
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
-            Ok(RoData {
+            Some(RoData {
                 data,
                 cur_state,
                 read_state,
                 type_id: TypeId::of::<U>(),
             })
         } else {
-            Err(Error::<RoData<T>, T, U>::CastingFailed)
+            None
         }
-    }
-
-    /// Blocking reference to the information.
-    ///
-    /// Unlike [`read()`][Self::read()], *DOES NOT* make it so
-    /// [`has_changed()`][Self::has_changed()] returns `false`.
-    ///
-    /// This method should only be used in very specific
-    /// circumstances, such as when multiple owners have nested
-    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
-    /// a way that reading from one point would interfere in the
-    /// update detection of the other point.
-    pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
-        self.data()
     }
 }
 
@@ -473,7 +458,7 @@ where
     T: ?Sized + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
+        std::fmt::Debug::fmt(&*self.data.read(), f)
     }
 }
 
@@ -496,10 +481,10 @@ where
     T: ?Sized,
 {
     fn data(&self) -> RwLockReadGuard<'_, T> {
-        self.data.read().unwrap()
+        self.data.read()
     }
 
-    fn try_data(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+    fn try_data(&self) -> Option<RwLockReadGuard<'_, T>> {
         self.data.try_read()
     }
 

@@ -79,7 +79,7 @@ impl Default for Cursors {
 pub struct MultiCursorEditor<'a, W, U>
 where
     W: ActiveWidget<U> + 'static,
-    U: Ui
+    U: Ui,
 {
     clearing_needed: bool,
     widget: &'a RwData<W>,
@@ -90,7 +90,7 @@ where
 impl<'a, W, U> MultiCursorEditor<'a, W, U>
 where
     W: ActiveWidget<U> + 'static,
-    U: Ui
+    U: Ui,
 {
     pub fn new(widget: &'a RwData<W>, area: &'a U::Area, cursors: &'a mut Cursors) -> Self {
         MultiCursorEditor {
@@ -116,7 +116,7 @@ where
         let mut edit_accum = EditAccum::default();
         let cursor = &mut self.cursors.list[index];
 
-        let was_file = self.widget.mutate_as::<File<U>, ()>(|file| {
+        let was_file = self.widget.mutate_as::<File, ()>(|file| {
             let (text, history) = file.mut_text_and_history();
             let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
             f(&mut editor);
@@ -148,7 +148,7 @@ where
         self.clear_intersections();
         let mut edit_accum = EditAccum::default();
 
-        let was_file = self.widget.mutate_as::<File<U>, ()>(|file| {
+        let was_file = self.widget.mutate_as::<File, ()>(|file| {
             let (text, history) = file.mut_text_and_history();
 
             for cursor in self.cursors.list.iter_mut() {
@@ -318,7 +318,7 @@ where
     }
 }
 
-impl<'a, U> MultiCursorEditor<'a, File<U>, U>
+impl<'a, U> MultiCursorEditor<'a, File, U>
 where
     U: Ui,
 {
@@ -331,14 +331,14 @@ where
     pub fn undo(&mut self) {
         let mut widget = self.widget.write();
         widget.undo(self.area, self.cursors);
-        widget.update(self.area);
+        <File as PassiveWidget<U>>::update(&mut widget, self.area);
     }
 
     /// Redoes the last [`Moment`][crate::history::Moment].
     pub fn redo(&mut self) {
         let mut widget = self.widget.write();
         widget.redo(self.area, self.cursors);
-        widget.update(self.area);
+        <File as PassiveWidget<U>>::update(&mut widget, self.area);
     }
 }
 

@@ -19,9 +19,6 @@
 //!
 //! [`FileWidget]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
-
-use std::marker::PhantomData;
-
 pub use self::{
     ro::RoData,
     rw::RwData,
@@ -31,51 +28,6 @@ pub use self::{
 mod ro;
 mod rw;
 mod statics;
-
-/// Errors related to reading or writing to the various data types.
-pub enum Error<Holder, T, C>
-where
-    Holder: Data<T>,
-    T: ?Sized,
-    C: ?Sized,
-{
-    WriteBlocked(PhantomData<(Holder, Box<T>, Box<C>)>),
-    ReadBlocked,
-    NestedReadBlocked,
-    CastingFailed,
-}
-
-impl<Holder, T, C> std::fmt::Debug for Error<Holder, T, C>
-where
-    Holder: Data<T>,
-    T: ?Sized,
-    C: ?Sized,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let holder = std::any::type_name::<Holder>();
-        match self {
-            Error::WriteBlocked(_) => {
-                write!(f, "The {holder} could not be written to at this moment.")
-            }
-            Error::ReadBlocked => {
-                write!(f, "The {holder} could not be read this moment.")
-            }
-            Error::NestedReadBlocked => {
-                let data = std::any::type_name::<T>();
-                write!(
-                    f,
-                    "In the RonestedData<{data}>, the initial RoData<{holder}> could not be read \
-                     at the moment."
-                )
-            }
-            Error::CastingFailed => {
-                let orig = std::any::type_name::<T>();
-                let cast = std::any::type_name::<C>();
-                write!(f, "The given {orig} could not be casted to {cast}.")
-            }
-        }
-    }
-}
 
 /// Private trait for the [`RwData`] and [`RoData`] structs.
 ///
@@ -88,14 +40,16 @@ where
 }
 
 mod private {
-    use std::sync::{atomic::AtomicUsize, Arc, RwLockReadGuard, TryLockResult};
+    use std::sync::{atomic::AtomicUsize, Arc};
+
+    use parking_lot::RwLockReadGuard;
 
     pub trait InnerData<T: ?Sized> {
         /// The data, usually an [`Arc`]
         fn data(&self) -> RwLockReadGuard<'_, T>;
 
         /// Attempt to get the data, that is usually an [`Arc`]
-        fn try_data(&self) -> TryLockResult<RwLockReadGuard<'_, T>>;
+        fn try_data(&self) -> Option<RwLockReadGuard<'_, T>>;
 
         /// The most up to date state of the data.
         fn cur_state(&self) -> &Arc<AtomicUsize>;

@@ -12,7 +12,6 @@ use crossterm::{
     cursor,
     style::{Print, ResetColor, SetStyle},
 };
-use iter::{print_iter, rev_print_iter};
 use duat_core::{
     data::RwData,
     palette::Painter,
@@ -20,10 +19,11 @@ use duat_core::{
     text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
+use iter::{print_iter, rev_print_iter};
 
 use crate::{
-    layout::{Edge, Brush, EdgeCoords, Layout},
-    AreaIndex, ConstraintChangeErr,
+    layout::{Brush, Edge, EdgeCoords, Layout},
+    AreaId, ConstraintChangeErr,
 };
 
 static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
@@ -75,17 +75,17 @@ impl Coords {
 pub struct Area {
     pub layout: RwData<Layout>,
     print_info: RefCell<PrintInfo>,
-    pub index: AreaIndex,
+    pub index: AreaId,
 }
 
 impl PartialEq for Area {
     fn eq(&self, other: &Self) -> bool {
-        self.layout.ptr_eq(&other.layout) && self.index == other.index
+        self.index == other.index
     }
 }
 
 impl Area {
-    pub fn new(index: AreaIndex, layout: RwData<Layout>) -> Self {
+    pub fn new(index: AreaId, layout: RwData<Layout>) -> Self {
         Self {
             layout,
             print_info: RefCell::new(PrintInfo::default()),
@@ -99,8 +99,7 @@ impl Area {
 
     fn coords(&self) -> Coords {
         let layout = self.layout.read();
-        let rect = layout.fetch_index(self.index).unwrap();
-        let rect = rect.read();
+        let rect = layout.get(self.index).unwrap();
 
         Coords {
             tl: rect.tl(),
@@ -214,7 +213,9 @@ impl Area {
                     },
                 );
 
-            if let std::ops::ControlFlow::Break(line_width) = line_width && line_width <= width {
+            if let std::ops::ControlFlow::Break(line_width) = line_width
+                && line_width <= width
+            {
                 return;
             }
             info.x_shift = end - max_dist;
@@ -229,16 +230,14 @@ impl ui::Area for Area {
 
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
-            let rect = layout.fetch_index(self.index).unwrap();
-            let rect = rect.read();
+            let rect = layout.get(self.index).unwrap();
             rect.br().x - rect.tl().x
         })
     }
 
     fn height(&self) -> usize {
         self.layout.inspect(|window| {
-            let rect = window.fetch_index(self.index).unwrap();
-            let rect = rect.read();
+            let rect = window.get(self.index).unwrap();
             rect.br().y - rect.tl().y
         })
     }
@@ -307,14 +306,13 @@ impl ui::Area for Area {
 
     fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {
         let mut layout = self.layout.write();
-        let (parent, index) = layout
-            .fetch_parent(self.index)
+        let layout = &mut *layout;
+        let (index, parent) = layout
+            .rects
+            .get_parent_mut(self.index)
             .ok_or(ConstraintChangeErr::NoParent)?;
-        if parent
-            .write()
-            .change_child_constraint(index, constraint, &mut layout.solver)
-        {
-            layout.update();
+        if parent.change_child_constraint(index, constraint, &mut layout.vars) {
+            layout.vars.update();
         }
 
         Ok(())
@@ -325,18 +323,16 @@ impl ui::Area for Area {
     }
 
     fn has_changed(&self) -> bool {
-        let rect = self.layout.read().fetch_index(self.index).unwrap();
-        let rect = rect.read();
-        rect.has_changed()
+        self.layout.read().get(self.index).unwrap().has_changed()
     }
 
     fn is_senior_of(&self, other: &Self) -> bool {
         self.layout.inspect(|layout| {
             let mut parent_index = other.index;
-            while let Some((parent, _)) = layout.fetch_parent(parent_index) {
-                parent_index = parent.read().index();
-                if parent_index == self.index {
-                    break;
+            while let Some((_, parent)) = layout.get_parent(parent_index) {
+                parent_index = parent.index();
+                if parent.index() == self.index {
+                    return true;
                 }
             }
 

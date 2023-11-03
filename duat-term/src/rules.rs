@@ -32,7 +32,9 @@ impl PassiveWidget<Ui> for VertRule {
     }
 
     fn update(&mut self, area: &Area) {
-        self.text = if let Some(reader) = self.reader.as_ref() {
+        self.text = if let Some(reader) = self.reader.as_ref()
+            && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
+        {
             reader.inspect(|file, _, input| {
                 let main_line = input.cursors().unwrap().main().line();
                 let lines = file.printed_lines();
@@ -179,8 +181,9 @@ impl WidgetCfg<Ui> for VertRuleCfg {
         let checker = if let Some(reader) = reader {
             Box::new(move || reader.has_changed()) as Box<dyn Fn() -> bool>
         } else {
-            Box::new(move || false) as Box<dyn Fn() -> bool>
+            Box::new(move || false)
         };
+
         let widget = Widget::passive(vert_rule);
         (widget, checker, self.specs)
     }

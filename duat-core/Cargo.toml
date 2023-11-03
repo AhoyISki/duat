@@ -17,6 +17,7 @@ crossterm = ">=0.26.0"
 # Utility
 ropey = ">=1.6.0"
 any-rope = ">=1.2.2"
+parking_lot = "0.12.1"
 
 [features]
 # NOTE: Features meant for testing only by myself.

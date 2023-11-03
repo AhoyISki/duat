@@ -25,9 +25,9 @@ pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
 pub fn run_duat(
-    prev: Vec<(RwData<File<Ui>>, bool)>,
+    prev: Vec<(RwData<File>, bool)>,
     rx: mpsc::Receiver<()>,
-) -> Vec<(RwData<File<Ui>>, bool)> {
+) -> Vec<(RwData<File>, bool)> {
     let ui = match UI.write().unwrap().take() {
         Some(ui) => ui,
         None => Ui::default(),
@@ -39,6 +39,14 @@ pub fn run_duat(
         Some(cfg_fn) => cfg_fn(&mut cfg),
         None => default_cfg_fn(&mut cfg),
     }
+
+    cfg.set_print_cfg(
+        PRINT_CFG
+            .write()
+            .unwrap()
+            .take()
+            .unwrap_or_default()
+    );
 
     let session = if prev.is_empty() {
         cfg.session_from_args()
@@ -60,7 +68,7 @@ pub mod setup {
     }
 
     #[inline(never)]
-    pub fn input(input: impl InputMethod<Ui, Widget = File<Ui>> + Clone) {
+    pub fn input(input: impl InputMethod<Ui, Widget = File> + Clone) {
         let mut cfg_fn = CFG_FN.write().unwrap();
         let prev = cfg_fn.take();
 
@@ -173,6 +181,17 @@ pub mod print {
 
     pub mod get {
         pub use duat_core::palette::{extra_cursor, form_of_id, id_of_name, main_cursor};
+    }
+
+    #[inline(never)]
+    pub fn no_wrapping() {
+        let mut print_cfg = PRINT_CFG.write().unwrap();
+        let prev = print_cfg.take();
+
+        *print_cfg = Some(match prev {
+            Some(prev) => prev.with_no_wrapping(),
+            None => PrintCfg::default().with_no_wrapping(),
+        })
     }
 
     #[inline(never)]
@@ -739,15 +758,6 @@ pub type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync
 
 #[inline(never)]
 pub fn default_cfg_fn(cfg: &mut SessionCfg<Ui>) {
-    cfg.set_print_cfg(
-        PRINT_CFG
-            .write()
-            .unwrap()
-            .take()
-            .unwrap_or_default()
-            .width_wrapped(),
-    );
-
     cfg.set_file_fn(|builder| {
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();

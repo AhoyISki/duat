@@ -142,6 +142,13 @@ impl PrintCfg {
         }
     }
 
+    pub fn with_no_wrapping(self) -> Self {
+        Self {
+            wrap_method: WrapMethod::NoWrap,
+            ..self
+        }
+    }
+
     pub fn width_wrapped(self) -> Self {
         Self {
             wrap_method: WrapMethod::Width,

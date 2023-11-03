@@ -2,7 +2,7 @@ use std::{
     mem::MaybeUninit,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        LazyLock, RwLock,
+        LazyLock,
     },
 };
 
@@ -10,15 +10,14 @@ use super::{private::InnerData, RoData, RwData};
 use crate::{
     input::InputMethod,
     ui::Ui,
-    widgets::{ActiveWidget, File, PassiveWidget, Widget},
+    widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget},
 };
 
 pub struct CurrentFile<U>
 where
     U: Ui,
 {
-    rw: LazyLock<RwData<MaybeUninit<(RwData<File<U>>, U::Area, RwData<dyn InputMethod<U>>)>>>,
-    ro: LazyLock<RwData<MaybeUninit<(RoData<File<U>>, U::Area, RoData<dyn InputMethod<U>>)>>>,
+    cur: LazyLock<RwData<MaybeUninit<FileParts<U>>>>,
 }
 
 impl<U> CurrentFile<U>
@@ -27,20 +26,20 @@ where
 {
     pub const fn new() -> Self {
         Self {
-            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+            cur: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
         }
     }
 
     pub fn constant(&self) -> FileReader<U> {
-        let data = self.ro.raw_read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (file, area, input, related) = unsafe { data.assume_init_ref() };
 
         FileReader {
             data: RoData::new(MaybeUninit::new((
                 file.clone(),
                 area.clone(),
                 input.clone(),
+                related.clone(),
             ))),
             file_state: AtomicUsize::new(file.cur_state().load(Ordering::Relaxed)),
             input_state: AtomicUsize::new(input.cur_state().load(Ordering::Relaxed)),
@@ -48,121 +47,103 @@ where
     }
 
     pub fn adaptive(&self) -> FileReader<U> {
-        let data = self.rw.raw_read();
-        let (file, _, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (file, _, input, _) = unsafe { data.assume_init_ref() };
 
         FileReader {
-            data: RoData::from(&*self.ro),
+            data: RoData::from(&*self.cur),
             file_state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
             input_state: AtomicUsize::new(input.cur_state.load(Ordering::Relaxed)),
         }
     }
 
-    pub fn inspect<R>(&self, f: impl FnOnce(&File<U>, &U::Area, &dyn InputMethod<U>) -> R) -> R {
-        let data = self.rw.raw_read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &dyn InputMethod<U>) -> R) -> R {
+        let data = self.cur.raw_read();
+        let (file, area, input, _) = unsafe { data.assume_init_ref() };
 
         input.inspect(|input| f(&file.read(), area, input))
     }
 
     pub fn inspect_as<I: InputMethod<U>, R>(
         &self,
-        f: impl FnOnce(&File<U>, &U::Area, &I) -> R,
+        f: impl FnOnce(&File, &U::Area, &I) -> R,
     ) -> Option<R> {
-        let data = self.rw.raw_read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (file, area, input, _) = unsafe { data.assume_init_ref() };
 
         input.inspect_as::<I, R>(|input| f(&file.read(), area, input))
     }
 
-    pub fn inspect_data<R>(
-        &self,
-        f: impl FnOnce(&RoData<File<U>>, &U::Area, &RoData<dyn InputMethod<U>>) -> R,
-    ) -> R {
-        let data = self.ro.raw_read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
-
-        f(file, area, input)
-    }
-
     /// The name of the active [`FileWidget`]'s file.
     pub fn name(&self) -> String {
-        unsafe { self.rw.raw_read().assume_init_ref().0.raw_read().name() }
+        unsafe { self.cur.raw_read().assume_init_ref().0.raw_read().name() }
     }
 
     pub fn file_ptr_eq(&self, other: &Widget<U>) -> bool {
-        unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
+        unsafe { other.ptr_eq(&self.cur.read().assume_init_ref().0) }
     }
 
-    pub(crate) fn mutate_related<T: 'static, R>(
-        &self,
-        mut f: impl FnMut(&mut T) -> R,
-    ) -> Option<R> {
-        let data = self.rw.raw_read();
-        let (file, _, input) = unsafe { data.assume_init_ref() };
-        file.mutate_as::<T, R>(&mut f)
-            .or_else(|| {
-                let file = file.read();
-                file.mutate_related(&mut f)
-            })
-            .or_else(|| input.mutate_as(&mut f))
+    pub(crate) fn mutate_related<T: 'static, R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+        let data = self.cur.raw_read();
+        let (file, _, input, related) = unsafe { data.assume_init_ref() };
+
+        if file.data_is::<T>() {
+            file.mutate_as(f)
+        } else if input.data_is::<T>() {
+            input.mutate_as(f)
+        } else {
+            let related = related.read();
+            related
+                .iter()
+                .find(|(widget, ..)| widget.data_is::<T>())
+                .and_then(|(widget, ..)| widget.mutate_as(f))
+        }
     }
 
-    pub(crate) fn mutate_related_widget<W: PassiveWidget<U>, R>(
+    pub(crate) fn mutate_related_widget<W: 'static, R>(
         &self,
-        mut f: impl FnMut(&mut W, &mut U::Area) -> R,
+        f: impl FnOnce(&mut W, &mut U::Area) -> R,
     ) -> Option<R> {
-        let data = self.rw.raw_read();
-        let (file, ..) = unsafe { data.assume_init_ref() };
-        let mut file = file.write();
-        file.mutate_related_widget::<W, R>(&mut f)
+        let data = self.cur.raw_read();
+        let (.., related) = unsafe { data.assume_init_ref() };
+        let mut related = related.write();
+
+        related
+            .iter_mut()
+            .find(|(widget, ..)| widget.data_is::<W>())
+            .and_then(|(widget, area, _)| widget.mutate_as::<W, R>(|widget| f(widget, area)))
+    }
+
+    pub(crate) fn swap(&self, parts: FileParts<U>) -> FileParts<U> {
+        unsafe { std::mem::replace(&mut *self.cur.write(), MaybeUninit::new(parts)).assume_init() }
+    }
+
+    pub(crate) fn set(&self, parts: FileParts<U>) {
+        *self.cur.write() = MaybeUninit::new(parts);
     }
 
     pub(crate) fn get_related_widget(
         &self,
         type_name: &str,
     ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
-        let data = self.rw.raw_read();
-        let (file, ..) = unsafe { data.assume_init_ref() };
+        let mut data = self.cur.write();
+        let (.., related) = unsafe { data.assume_init_mut() };
+        let related = related.read();
 
-        let file = file.read();
-        file.get_related_widget(type_name)
+        related.iter().find_map(|(widget, area, cmp)| {
+            (*cmp == type_name).then(|| (widget.clone(), area.clone()))
+        })
     }
 
-    pub(crate) fn mutate<R>(
+    pub(crate) fn add_related_widget(
         &self,
-        f: impl FnOnce(&mut File<U>, &mut U::Area, &mut dyn InputMethod<U>) -> R,
-    ) -> R {
-        let mut data = self.rw.write();
-        let (file, area, input) = unsafe { data.assume_init_mut() };
-
-        input.mutate(|input| f(&mut file.write(), area, input))
-    }
-
-    pub(crate) fn swap(
-        &self,
-        file: RwData<File<U>>,
-        area: U::Area,
-        input: RwData<dyn InputMethod<U>>,
-    ) -> (RwData<File<U>>, U::Area, RwData<dyn InputMethod<U>>) {
-        *self.ro.write() =
-            MaybeUninit::new((RoData::from(&file), area.clone(), RoData::from(&input)));
-
-        unsafe {
-            std::mem::replace(&mut *self.rw.write(), MaybeUninit::new((file, area, input)))
-                .assume_init()
-        }
-    }
-
-    pub(crate) fn set(
-        &self,
-        file: RwData<File<U>>,
-        area: U::Area,
-        input: RwData<dyn InputMethod<U>>,
+        new: (RwData<dyn PassiveWidget<U>>, U::Area, &'static str),
     ) {
-        *self.ro.write() =
-            MaybeUninit::new((RoData::from(&file), area.clone(), RoData::from(&input)));
-        *self.rw.write() = MaybeUninit::new((file, area, input));
+        let mut data = self.cur.write();
+        let (.., related) = unsafe { data.assume_init_mut() };
+        let mut related = related.write();
+
+        related.push(new)
     }
 }
 
@@ -170,7 +151,7 @@ pub struct FileReader<U>
 where
     U: Ui,
 {
-    data: RoData<MaybeUninit<(RoData<File<U>>, U::Area, RoData<dyn InputMethod<U>>)>>,
+    data: RoData<MaybeUninit<FileParts<U>>>,
     file_state: AtomicUsize,
     input_state: AtomicUsize,
 }
@@ -179,9 +160,9 @@ impl<U> FileReader<U>
 where
     U: Ui,
 {
-    pub fn inspect<R>(&self, f: impl FnOnce(&File<U>, &U::Area, &dyn InputMethod<U>) -> R) -> R {
+    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &dyn InputMethod<U>) -> R) -> R {
         let data = self.data.read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let (file, area, input, _) = unsafe { data.assume_init_ref() };
 
         self.file_state
             .store(file.cur_state().load(Ordering::Acquire), Ordering::Release);
@@ -191,12 +172,12 @@ where
         input.inspect(|input| f(&file.read(), area, input))
     }
 
-    pub fn inspect_as<I: InputMethod<U>, R>(
+    pub fn inspect_sized<I: InputMethod<U>, R>(
         &self,
-        f: impl FnOnce(&File<U>, &U::Area, &I) -> R,
+        f: impl FnOnce(&File, &U::Area, &I) -> R,
     ) -> Option<R> {
         let data = self.data.read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let (file, area, input, _) = unsafe { data.assume_init_ref() };
 
         self.file_state
             .store(file.cur_state().load(Ordering::Acquire), Ordering::Release);
@@ -206,14 +187,36 @@ where
         file.inspect_as::<I, R>(|input| f(&file.raw_read(), area, input))
     }
 
-    pub fn inspect_data<R>(
-        &self,
-        f: impl FnOnce(&RoData<File<U>>, &U::Area, &RoData<dyn InputMethod<U>>) -> R,
-    ) -> R {
+    pub fn inspect_related<T: 'static, R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
         let data = self.data.read();
-        let (file, area, input) = unsafe { data.assume_init_ref() };
+        let (file, _, input, related) = unsafe { data.assume_init_ref() };
 
-        f(file, area, input)
+        if file.data_is::<T>() {
+            file.inspect_as(f)
+        } else if input.data_is::<T>() {
+            input.inspect_as(f)
+        } else {
+            let related = related.read();
+            related
+                .iter()
+                .find_map(|(widget, ..)| widget.data_is::<T>().then_some(widget))
+                .and_then(|widget| widget.inspect_as(f))
+        }
+    }
+
+    pub fn inspect_file_and<T: 'static, R>(&self, f: impl FnOnce(&File, &T) -> R) -> Option<R> {
+        let data = self.data.read();
+        let (file, _, input, related) = unsafe { data.assume_init_ref() };
+
+        if input.data_is::<T>() {
+            input.inspect_as(|input| f(&file.read(), input))
+        } else {
+            let related = related.read();
+            related
+                .iter()
+                .find_map(|(widget, ..)| widget.data_is::<T>().then_some(widget))
+                .and_then(|widget| widget.inspect_as(|widget| f(&file.read(), widget)))
+        }
     }
 
     /// The name of the active [`FileWidget`]'s file.
@@ -228,7 +231,7 @@ where
     pub fn has_changed(&self) -> bool {
         let mut has_changed = self.data.has_changed();
         let data = self.data.read();
-        let (file, _, input) = unsafe { data.assume_init_ref() };
+        let (file, _, input, _) = unsafe { data.assume_init_ref() };
 
         has_changed |= {
             let file_state = file.cur_state().load(Ordering::Acquire);
@@ -252,7 +255,7 @@ where
 {
     fn clone(&self) -> Self {
         let data = self.data.read();
-        let (file, _, input) = unsafe { data.assume_init_ref() };
+        let (file, _, input, _) = unsafe { data.assume_init_ref() };
 
         Self {
             data: self.data.clone(),
@@ -266,9 +269,7 @@ pub struct CurrentWidget<U>
 where
     U: Ui,
 {
-    name: RwLock<&'static str>,
-    rw: LazyLock<RwData<MaybeUninit<RwWidget<U>>>>,
-    ro: LazyLock<RwData<MaybeUninit<RoWidget<U>>>>,
+    cur: LazyLock<RwData<MaybeUninit<(Widget<U>, U::Area)>>>,
 }
 
 impl<U> CurrentWidget<U>
@@ -277,22 +278,24 @@ where
 {
     pub const fn new() -> Self {
         Self {
-            name: RwLock::new("none"),
-            rw: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
-            ro: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
+            cur: LazyLock::new(|| RwData::new(MaybeUninit::uninit())),
         }
     }
 
-    pub fn has_name(&self, name: &'static str) -> bool {
-        *self.name.read().unwrap() == name
+    pub fn type_name_is(&self, name: &'static str) -> bool {
+        let data = self.cur.raw_read();
+        let (widget, _) = unsafe { data.assume_init_ref() };
+
+        widget.type_name() == name
     }
 
     pub fn inspect<R>(
         &self,
         f: impl FnOnce(&dyn ActiveWidget<U>, &U::Area, &dyn InputMethod<U>) -> R,
     ) -> R {
-        let data = self.rw.raw_read();
-        let (widget, area, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (widget, area) = unsafe { data.assume_init_ref() };
+        let (widget, input) = widget.as_active().unwrap();
 
         input.inspect(|input| f(&*widget.read(), area, input))
     }
@@ -304,8 +307,9 @@ where
     where
         W: ActiveWidget<U>,
     {
-        let data = self.rw.raw_read();
-        let (widget, area, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (widget, area) = unsafe { data.assume_init_ref() };
+        let (widget, input) = widget.as_active().unwrap();
 
         let input = input.read();
         widget.inspect_as::<W, R>(|widget| f(widget, area, &*input))
@@ -319,8 +323,9 @@ where
         W: ActiveWidget<U>,
         I: InputMethod<U>,
     {
-        let data = self.rw.raw_read();
-        let (widget, area, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.raw_read();
+        let (widget, area) = unsafe { data.assume_init_ref() };
+        let (widget, input) = widget.as_active().unwrap();
 
         input
             .inspect_as::<I, Option<R>>(|input| {
@@ -329,52 +334,43 @@ where
             .flatten()
     }
 
-    pub fn inspect_data<R>(
-        &self,
-        f: impl FnOnce(&RoData<dyn ActiveWidget<U>>, &U::Area, &RoData<dyn InputMethod<U>>) -> R,
-    ) -> R {
-        let data = self.ro.raw_read();
-        let (widget, area, input) = unsafe { data.assume_init_ref() };
-
-        f(widget, area, input)
-    }
-
     pub fn widget_ptr_eq(&self, other: &Widget<U>) -> bool {
-        unsafe { other.ptr_eq(&self.rw.read().assume_init_ref().0) }
+        let data = self.cur.raw_read();
+        let (widget, _) = unsafe { data.assume_init_ref() };
+        let (widget, _) = widget.as_active().unwrap();
+
+        other.ptr_eq(widget)
     }
 
     pub(crate) fn mutate_as<T: 'static, R>(&self, mut f: impl FnMut(&mut T) -> R) -> Option<R> {
-        let data = self.rw.read();
-        let (widget, _, input) = unsafe { data.assume_init_ref() };
+        let data = self.cur.read();
+        let (widget, _) = unsafe { data.assume_init_ref() };
+        let (widget, input) = widget.as_active().unwrap();
+
         widget
             .mutate_as::<T, R>(&mut f)
             .or_else(|| input.mutate_as::<T, R>(f))
     }
 
-    pub(crate) fn set(
+    pub(crate) fn set(&self, widget: Widget<U>, area: U::Area) {
+        *self.cur.write() = MaybeUninit::new((widget, area.clone()));
+    }
+
+    pub(crate) fn mutate_data<R>(
         &self,
-        name: &'static str,
-        widget: RwData<dyn ActiveWidget<U>>,
-        area: U::Area,
-        input: RwData<dyn InputMethod<U>>,
-    ) {
-        *self.name.write().unwrap() = name;
-        *self.ro.write() =
-            MaybeUninit::new((RoData::from(&widget), area.clone(), RoData::from(&input)));
-        *self.rw.write() = MaybeUninit::new((widget, area, input));
+        f: impl FnOnce(&RwData<dyn ActiveWidget<U>>, &U::Area, &RwData<dyn InputMethod<U>>) -> R,
+    ) -> R {
+        let data = self.cur.read();
+        let (widget, area) = unsafe { data.assume_init_ref() };
+        let (widget, input) = widget.as_active().unwrap();
+
+        f(widget, area, input)
     }
 }
 
-#[allow(type_alias_bounds)]
-pub type RoWidget<U: Ui> = (
-    RoData<dyn ActiveWidget<U>>,
-    U::Area,
-    RoData<dyn InputMethod<U>>,
-);
-
-#[allow(type_alias_bounds)]
-pub type RwWidget<U: Ui> = (
-    RwData<dyn ActiveWidget<U>>,
-    U::Area,
+type FileParts<U> = (
+    RwData<File>,
+    <U as Ui>::Area,
     RwData<dyn InputMethod<U>>,
+    RelatedWidgets<U>,
 );

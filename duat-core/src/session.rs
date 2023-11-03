@@ -80,7 +80,7 @@ where
         session
     }
 
-    pub fn session_from_prev(mut self, prev_files: Vec<(RwData<File<U>>, bool)>) -> Session<U> {
+    pub fn session_from_prev(mut self, prev_files: Vec<(RwData<File>, bool)>) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev_files {
             let mut file = file.write();
@@ -133,7 +133,7 @@ where
         session
     }
 
-    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
+    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File> + Clone) {
         self.file_cfg.set_input(input);
     }
 
@@ -282,7 +282,7 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, rx: mpsc::Receiver<()>) -> Vec<(RwData<File<U>>, bool)> {
+    pub fn start(mut self, rx: mpsc::Receiver<()>) -> Vec<(RwData<File>, bool)> {
         if self.is_new_session {
             self.ui.startup();
         }
@@ -330,9 +330,7 @@ where
             windows
                 .iter()
                 .flat_map(Window::widgets)
-                .filter_map(|(widget, area)| {
-                    widget.downcast::<File<U>>().zip(Some(area.is_active()))
-                })
+                .filter_map(|(widget, area)| widget.downcast::<File>().zip(Some(area.is_active())))
                 .collect()
         }
     }
@@ -350,7 +348,7 @@ where
                     break;
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
+                if let Ok(true) = event::poll(Duration::from_millis(5)) {
                     if let Event::Key(key) = event::read().unwrap() {
                         active_window.send_key(key, scope, self.globals);
                     }
@@ -387,18 +385,19 @@ where
     }
 
     fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
-        let Some((active, file, input)) = widget.as_active().and_then(|(active, input)| {
-            let file = active.clone().try_downcast::<File<U>>().ok()?;
+        let Some((_, file, input)) = widget.as_active().and_then(|(active, input)| {
+            let file = active.clone().try_downcast::<File>()?;
             Some((active, file, input))
         }) else {
             return;
         };
-        self.globals
-            .current_file
-            .set(file, area.clone(), input.clone());
-        self.globals
-            .current_widget
-            .set("File", active.clone(), area.clone(), input.clone());
+        self.globals.current_file.set((
+            file,
+            area.clone(),
+            input.clone(),
+            widget.related_widgets().unwrap(),
+        ));
+        self.globals.current_widget.set(widget, area.clone());
     }
 }
 
@@ -487,7 +486,7 @@ where
                     .flat_map(window_index_widget)
                     .find(|(_, (widget, ..))| {
                         widget
-                            .inspect_as::<File<U>, bool>(|file| {
+                            .inspect_as::<File, bool>(|file| {
                                 file.set_name().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
@@ -532,7 +531,7 @@ where
                     .flat_map(window_index_widget)
                     .find(|(_, (widget, ..))| {
                         widget
-                            .inspect_as::<File<U>, bool>(|file| {
+                            .inspect_as::<File, bool>(|file| {
                                 file.set_name().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
@@ -613,12 +612,12 @@ where
 
                 let (new_window, entry) = if flags.long("global") {
                     iter_around(&read_windows, window_index, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File<U>>())
+                        .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap()
                 } else {
                     let slice = &read_windows[window_index..=window_index];
                     let (_, entry) = iter_around(slice, 0, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File<U>>())
+                        .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap();
 
                     (window_index, entry)
@@ -656,12 +655,12 @@ where
 
                 let (new_window, entry) = if flags.long("global") {
                     iter_around_rev(&read_windows, window_index, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File<U>>())
+                        .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap()
                 } else {
                     let slice = &read_windows[window_index..=window_index];
                     let (_, entry) = iter_around_rev(slice, 0, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File<U>>())
+                        .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap();
 
                     (window_index, entry)
@@ -792,17 +791,16 @@ fn switch_widget<U: Ui>(
         widget.update_and_print(area);
     }
 
-    let (active, input) = widget.as_active().unwrap();
-    globals.current_widget.set(
-        widget.type_name(),
-        active.clone(),
-        area.clone(),
-        input.clone(),
-    );
+    globals.current_widget.set(widget.clone(), area.clone());
 
     let (active, input) = widget.as_active().unwrap();
-    if let Ok(file) = active.clone().try_downcast::<File<U>>() {
-        globals.current_file.set(file, area.clone(), input.clone());
+    if let Some(file) = active.try_downcast::<File>() {
+        globals.current_file.set((
+            file,
+            area.clone(),
+            input.clone(),
+            widget.related_widgets().unwrap(),
+        ));
     }
 
     area.set_as_active();
@@ -811,7 +809,7 @@ fn switch_widget<U: Ui>(
 }
 
 fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {
-    widget.inspect_as::<File<U>, String>(File::name).unwrap()
+    widget.inspect_as::<File, String>(File::name).unwrap()
 }
 
 unsafe impl<U: Ui> Send for SessionCfg<U> {}

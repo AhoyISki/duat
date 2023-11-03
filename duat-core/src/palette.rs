@@ -1,8 +1,9 @@
-use std::sync::{LazyLock, RwLockReadGuard};
+use std::sync::LazyLock;
 
 pub use crossterm::cursor::SetCursorStyle as CursorShape;
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
 pub use global::*;
+use parking_lot::RwLockReadGuard;
 
 use crate::data::RwData;
 

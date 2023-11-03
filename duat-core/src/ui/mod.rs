@@ -3,6 +3,7 @@ mod builder;
 use std::{
     fmt::Debug,
     sync::atomic::{AtomicBool, Ordering},
+    thread::Scope,
 };
 
 use crossterm::event::KeyEvent;
@@ -522,7 +523,9 @@ where
             busy_updating: AtomicBool::new(false),
         };
 
-        if *area == self.master_area && let Some(new_master_node) = parent.clone() {
+        if *area == self.master_area
+            && let Some(new_master_node) = parent.clone()
+        {
             self.master_area = new_master_node;
         }
 
@@ -530,11 +533,11 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`File<U>`] to the file's parent.
+    /// Pushes a [`File`] to the file's parent.
     ///
     /// This function will push to the edge of `self.files_parent`.
     /// This is an area, usually in the center, that contains all
-    /// [`File<U>`]s, and their associated [`Widget<U>`]s,
+    /// [`File`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self,
@@ -578,7 +581,7 @@ where
         self.nodes.iter()
     }
 
-    /// Returns an [`Iterator`] over the names of [`File<U>`]s
+    /// Returns an [`Iterator`] over the names of [`File`]s
     /// and their respective [`ActionableWidget`] indices.
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
@@ -586,7 +589,7 @@ where
             .enumerate()
             .filter_map(|(pos, Node { widget, .. })| {
                 widget
-                    .downcast::<File<U>>()
+                    .downcast::<File>()
                     .map(|file| (pos, file.read().name()))
             })
     }
@@ -594,7 +597,7 @@ where
     pub fn send_key<'scope, 'env>(
         &'env self,
         key: KeyEvent,
-        scope: &'scope std::thread::Scope<'scope, 'env>,
+        scope: &'scope Scope<'scope, 'env>,
         globals: Globals<U>,
     ) {
         if let Some(node) = self
@@ -623,7 +626,7 @@ where
     U: Ui,
 {
     /// Similar to the [`Iterator::fold`] operation, folding each
-    /// [`&File<U>`][File`] by applying an operation,
+    /// [`&File`][File`] by applying an operation,
     /// returning a final result.
     ///
     /// The reason why this is a `fold` operation, and doesn't just
@@ -631,12 +634,12 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File<U>) -> B) -> B {
+    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
         self.0
             .nodes
             .iter()
             .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast::<File<U>>() {
+                if let Some(file) = widget.downcast::<File>() {
                     f(accum, &file.read())
                 } else {
                     accum
@@ -684,9 +687,7 @@ where
     pub fn try_inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
         self.0
             .try_read()
-            .map(|windows| windows.get(index).map(|window| f(RoWindow(window))))
-            .ok()
-            .flatten()
+            .and_then(|windows| windows.get(index).map(|window| f(RoWindow(window))))
     }
 }
 
@@ -705,12 +706,13 @@ pub(crate) fn build_file<U>(
             .find(|Node { area, .. }| *area == mod_area)
             .unwrap();
 
-        node.widget.downcast::<File<U>>().map(|file| {
-            globals.current_file.swap(
+        node.widget.downcast::<File>().map(|file| {
+            globals.current_file.swap((
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
-            )
+                node.widget.related_widgets().unwrap(),
+            ))
         })
     };
 
@@ -718,7 +720,7 @@ pub(crate) fn build_file<U>(
 
     f(&mut file_builder);
 
-    if let Some((file, area, input)) = old_file {
-        globals.current_file.swap(file, area, input);
+    if let Some(parts) = old_file {
+        globals.current_file.swap(parts);
     };
 }

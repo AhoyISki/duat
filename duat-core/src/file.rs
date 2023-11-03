@@ -43,7 +43,7 @@ where
     U: Ui,
 {
     text_op: TextOp,
-    generator: Arc<dyn Fn(File<U>) -> Widget<U> + Send + Sync + 'static>,
+    generator: Arc<dyn Fn(File) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
@@ -107,7 +107,6 @@ where
             cfg: self.cfg,
             history: History::new(),
             printed_lines: Vec::new(),
-            related_widgets: Vec::new(),
         };
 
         ((self.generator)(file), Box::new(|| false))
@@ -120,7 +119,7 @@ where
         }
     }
 
-    pub(crate) fn take_from_prev(self, prev: &mut File<U>) -> Self {
+    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
         let text = std::mem::take(&mut prev.text);
         Self {
             text_op: TextOp::TakeText(text, prev.path.clone()),
@@ -132,7 +131,7 @@ where
         self.cfg = cfg;
     }
 
-    pub(crate) fn set_input(&mut self, input: impl InputMethod<U, Widget = File<U>> + Clone) {
+    pub(crate) fn set_input(&mut self, input: impl InputMethod<U, Widget = File> + Clone) {
         self.generator = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
     }
 
@@ -145,7 +144,7 @@ impl<U> WidgetCfg<U> for FileCfg<U>
 where
     U: Ui,
 {
-    type Widget = File<U>;
+    type Widget = File;
 
     fn build(self, _globals: Globals<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
@@ -178,23 +177,16 @@ where
 }
 
 /// The widget that is used to print and edit files.
-pub struct File<U>
-where
-    U: Ui,
-{
+pub struct File {
     path: Path,
     text: Text,
     cfg: PrintCfg,
     history: History,
     printed_lines: Vec<(usize, bool)>,
-    related_widgets: Vec<(RwData<dyn PassiveWidget<U>>, &'static str, U::Area)>,
 }
 
-impl<U> File<U>
-where
-    U: Ui,
-{
-    pub fn cfg() -> FileCfg<U> {
+impl File {
+    pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
         FileCfg::new()
     }
 
@@ -260,13 +252,6 @@ where
         self.text.len_lines()
     }
 
-    pub fn inspect_related<W: 'static, R>(&self, f: impl FnOnce(&W) -> R) -> Option<R> {
-        self.related_widgets
-            .iter()
-            .find(|(widget, ..)| widget.data_is::<W>())
-            .and_then(|(widget, ..)| widget.inspect_as::<W, R>(f))
-    }
-
     pub fn new_moment(&mut self) {
         self.history.new_moment()
     }
@@ -287,40 +272,6 @@ where
         (&mut self.text, &mut self.history)
     }
 
-    pub(crate) fn add_related_widget(
-        &mut self,
-        related: (RwData<dyn PassiveWidget<U>>, &'static str, U::Area),
-    ) {
-        self.related_widgets.push(related)
-    }
-
-    pub(crate) fn get_related_widget(
-        &self,
-        type_name: &str,
-    ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
-        self.related_widgets
-            .iter()
-            .find(|(_, cmp, _)| *cmp == type_name)
-            .map(|(widget, _, area)| (widget.clone(), area.clone()))
-    }
-
-    pub(crate) fn mutate_related<T: 'static, R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
-        self.related_widgets
-            .iter()
-            .find(|(widget, ..)| widget.data_is::<T>())
-            .and_then(|(widget, ..)| widget.mutate_as::<T, R>(f))
-    }
-
-    pub(crate) fn mutate_related_widget<W: 'static, R>(
-        &mut self,
-        f: impl FnOnce(&mut W, &mut U::Area) -> R,
-    ) -> Option<R> {
-        self.related_widgets
-            .iter_mut()
-            .find(|(widget, ..)| widget.data_is::<W>())
-            .and_then(|(widget, _, area)| widget.mutate_as::<W, R>(|widget| f(widget, area)))
-    }
-
     fn set_printed_lines(&mut self, area: &impl Area) {
         let start = area.first_char();
 
@@ -329,7 +280,7 @@ where
             .find_map(|(caret, item)| caret.wrap.then_some(item.line));
 
         self.printed_lines = area
-            .print_iter_from_top(self.text(), IterCfg::new(&self.cfg))
+            .print_iter_from_top(&self.text, IterCfg::new(&self.cfg))
             .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
             .map(|line| {
                 let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
@@ -341,7 +292,7 @@ where
     }
 }
 
-impl<U> PassiveWidget<U> for File<U>
+impl<U> PassiveWidget<U> for File
 where
     U: Ui,
 {
@@ -368,13 +319,13 @@ where
         Self: Sized,
     {
         self.set_printed_lines(area);
-        area.print(self.text(), self.print_cfg(), palette::painter())
+        area.print(&self.text, &self.cfg, palette::painter());
     }
 
     fn once(_globals: crate::Globals<U>) {}
 }
 
-impl<U> ActiveWidget<U> for File<U>
+impl<U> ActiveWidget<U> for File
 where
     U: Ui,
 {
@@ -387,8 +338,8 @@ where
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {}
 }
 
-unsafe impl<U: Ui> Send for File<U> {}
-unsafe impl<U: Ui> Sync for File<U> {}
+unsafe impl Send for File {}
+unsafe impl Sync for File {}
 
 #[derive(Clone)]
 enum Path {

@@ -104,7 +104,6 @@ where
         let (widget, checker, specs) = W::build(self.globals, true);
 
         let related = widget.as_passive().clone();
-        let type_name = widget.type_name();
 
         let (child, parent) = {
             let (child, parent) = self
@@ -113,7 +112,7 @@ where
 
             self.globals
                 .current_file
-                .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
+                .add_related_widget((related, child.clone(), W::name()));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -180,7 +179,6 @@ where
         let (widget, checker, specs) = cfg.build(self.globals, true);
 
         let related = widget.as_passive().clone();
-        let type_name = widget.type_name();
 
         let (child, parent) = {
             let (child, parent) = self
@@ -189,7 +187,7 @@ where
 
             self.globals
                 .current_file
-                .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
+                .add_related_widget((related, child.clone(), W::name()));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -227,12 +225,11 @@ where
         let (widget, checker, specs) = W::build(self.globals, true);
 
         let related = widget.as_passive().clone();
-        let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
         self.globals
             .current_file
-            .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
+            .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
     }
 
@@ -260,12 +257,11 @@ where
         let (widget, checker, specs) = cfg.build(self.globals, true);
 
         let related = widget.as_passive().clone();
-        let type_name = widget.type_name();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
         self.globals
             .current_file
-            .mutate(|file, _, _| file.add_related_widget((related, type_name, child.clone())));
+            .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
     }
 }

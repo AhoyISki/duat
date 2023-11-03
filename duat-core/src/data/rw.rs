@@ -1,13 +1,14 @@
 use std::{
     any::TypeId,
-    marker::PhantomData,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError, TryLockResult,
+        Arc,
     },
 };
 
-use super::{private::InnerData, Data, Error};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use super::{private::InnerData, Data};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},
@@ -276,7 +277,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`read`]: Self::read
-    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+    pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
         self.try_data().inspect(|_| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -308,10 +309,7 @@ where
     ///
     /// [`has_changed`]: Self::has_changed
     /// [`inspect`]: Self::inspect
-    pub fn try_inspect<U>(
-        &self,
-        f: impl FnOnce(&T) -> U,
-    ) -> Result<U, TryLockError<RwLockReadGuard<'_, T>>> {
+    pub fn try_inspect<U>(&self, f: impl FnOnce(&T) -> U) -> Option<U> {
         self.try_data().map(|data| {
             let cur_state = self.cur_state().load(Ordering::Acquire);
             self.read_state().store(cur_state, Ordering::Release);
@@ -421,7 +419,7 @@ where
     ///
     /// [`has_changed`]: ReadableData::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
-        let data = self.data.write().unwrap();
+        let data = self.data.write();
         ReadWriteGuard {
             guard: data,
             cur_state: &self.cur_state,
@@ -472,14 +470,11 @@ where
     /// which case, you should probably use [`RwData::write`].
     ///
     /// [`has_changed`]: ReadableData::has_changed
-    pub fn try_write(&self) -> Result<ReadWriteGuard<T>, Error<RwData<T>, T, ()>> {
-        self.data
-            .try_write()
-            .map(|guard| ReadWriteGuard {
-                guard,
-                cur_state: &self.cur_state,
-            })
-            .map_err(|_| Error::WriteBlocked(PhantomData))
+    pub fn try_write(&self) -> Option<ReadWriteGuard<'_, T>> {
+        self.data.try_write().map(|guard| ReadWriteGuard {
+            guard,
+            cur_state: &self.cur_state,
+        })
     }
 
     /// Blocking mutation of the inner data.
@@ -522,7 +517,7 @@ where
     /// in which the data is only needed for a short time.
     ///
     /// [`has_changed`]: ReadableData::has_changed
-    pub fn mutate<B>(&self, f: impl FnOnce(&mut T) -> B) -> B {
+    pub fn mutate<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         f(&mut self.write().guard)
     }
 
@@ -539,7 +534,7 @@ where
     /// when you are fine with not writing the data.
     ///
     /// [`has_changed`]: ReadableData::has_changed
-    pub fn try_mutate<B>(&self, f: impl FnOnce(&mut T) -> B) -> Result<B, Error<RwData<T>, T, ()>> {
+    pub fn try_mutate<R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
     }
@@ -660,7 +655,7 @@ where
     /// matches, consider using [`RwData::data_is`].
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn try_downcast<U>(&self) -> Result<RwData<U>, Error<RwData<T>, T, U>>
+    pub fn try_downcast<U>(&self) -> Option<RwData<U>>
     where
         U: 'static,
     {
@@ -673,14 +668,14 @@ where
             } = self.clone();
             let pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
-            Ok(RwData {
+            Some(RwData {
                 data,
                 cur_state,
                 read_state,
                 type_id: TypeId::of::<U>(),
             })
         } else {
-            Err(Error::<RwData<T>, T, U>::CastingFailed)
+            None
         }
     }
 
@@ -739,7 +734,7 @@ where
             self.read_state
                 .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
 
-            f(&cast.read().unwrap())
+            f(&cast.read())
         })
     }
 
@@ -751,12 +746,12 @@ where
             self.read_state
                 .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
 
-            f(&mut cast.write().unwrap())
+            f(&mut cast.write())
         })
     }
 
     pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
-        self.data.write().unwrap()
+        self.data.write()
     }
 
     pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {
@@ -769,7 +764,7 @@ where
     T: ?Sized + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&*self.data.read().unwrap(), f)
+        std::fmt::Debug::fmt(&*self.data.read(), f)
     }
 }
 
@@ -806,10 +801,10 @@ where
     T: ?Sized,
 {
     fn data(&self) -> RwLockReadGuard<'_, T> {
-        self.data.read().unwrap()
+        self.data.read()
     }
 
-    fn try_data(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
+    fn try_data(&self) -> Option<RwLockReadGuard<'_, T>> {
         self.data.try_read()
     }
 

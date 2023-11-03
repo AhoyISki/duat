@@ -29,7 +29,7 @@ pub fn main_line(input: &dyn InputMethod<Ui>) -> usize {
 
 /// A convenience function that prints the main cursor alongside the
 /// lenght of the file, in lines.
-pub fn main_fmt(file: &File<Ui>, input: &dyn InputMethod<Ui>) -> Text {
+pub fn main_fmt(file: &File, input: &dyn InputMethod<Ui>) -> Text {
     let cursor = main_cursor(input);
     text!(
         [Coord] { cursor.col() } [Separator] ":"

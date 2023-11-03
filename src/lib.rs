@@ -50,5 +50,5 @@ pub mod prelude {
     };
 }
 
-type PrevFiles = Vec<(RwData<File<Ui>>, bool)>;
+type PrevFiles = Vec<(RwData<File>, bool)>;
 type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

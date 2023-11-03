@@ -24,7 +24,7 @@ impl<U> super::InputMethod<U> for KeyMap
 where
     U: Ui,
 {
-    type Widget = File<U>;
+    type Widget = File;
 
     fn send_key(
         &mut self,
@@ -33,7 +33,7 @@ where
         area: &U::Area,
         globals: Globals<U>,
     ) {
-        let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
+        let mut editor = MultiCursorEditor::<File, U>::new(widget, area, &mut self.cursors);
         match key {
             // Characters
             key!(KeyCode::Char(ch)) => {
@@ -139,7 +139,7 @@ where
     }
 }
 
-fn move_each<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, direction: Side, amount: usize) {
+fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
@@ -152,7 +152,7 @@ fn move_each<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, direction: Side, 
 }
 
 fn move_each_and_select<U: Ui>(
-    mut editor: MultiCursorEditor<File<U>, U>,
+    mut editor: MultiCursorEditor<File, U>,
     direction: Side,
     amount: usize,
 ) {

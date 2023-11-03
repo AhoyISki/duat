@@ -55,8 +55,7 @@ mod state;
 
 use common::{main_col, main_line, selections_fmt};
 use duat_core::{
-    data::{FileReader, RoData},
-    input::InputMethod,
+    data::FileReader,
     palette::{self, Form},
     text::{text, Builder, Tag, Text},
     ui::PushSpecs,
@@ -204,9 +203,7 @@ impl PassiveWidget<Ui> for StatusLine {
     }
 
     fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
-        self.text = self
-            .reader
-            .inspect_data(|file, _, input| (self.text_fn)(file, input));
+        self.text = (self.text_fn)(&self.reader);
     }
 
     fn text(&self) -> &Text {
@@ -228,10 +225,8 @@ pub macro status {
     (@append $text_fn:expr, $checker:expr, []) => {{
         let form_id = palette::__weakest_id_of_name("Default");
 
-        let text_fn = move |builder: &mut Builder,
-                            file: &RoData<File<Ui>>,
-                            input: &RoData<dyn InputMethod<Ui>>| {
-            $text_fn(builder, file, input);
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+            $text_fn(builder, reader);
             builder.push_tag(Tag::PushForm(form_id));
         };
 
@@ -242,10 +237,8 @@ pub macro status {
     (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
         let form_id = palette::__weakest_id_of_name(stringify!($form));
 
-        let text_fn = move |builder: &mut Builder,
-                            file: &RoData<File<Ui>>,
-                            input: &RoData<dyn InputMethod<Ui>>| {
-            $text_fn(builder, file, input);
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+            $text_fn(builder, reader);
             builder.push_tag(Tag::PushForm(form_id));
         };
 
@@ -258,11 +251,9 @@ pub macro status {
 
         let checker = move || { $checker() || checker() };
 
-        let text_fn = move |builder: &mut Builder,
-                            file: &RoData<File<Ui>>,
-                            input: &RoData<dyn InputMethod<Ui>>| {
-            $text_fn(builder, file, input);
-            appender(builder, file, input);
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+            $text_fn(builder, reader);
+            appender(builder, reader);
         };
 
         (text_fn, checker)
@@ -276,7 +267,7 @@ pub macro status {
     }},
 
     (@parse $($parts:tt)*) => {{
-        let text_fn = |_: &mut Builder, _: &RoData<File<Ui>>, _: &RoData<dyn InputMethod<Ui>>| {};
+        let text_fn = |_: &mut Builder, _: &FileReader<Ui>| {};
         let checker = || { false };
         status!(@parse text_fn, checker, $($parts)*)
     }},
@@ -285,10 +276,10 @@ pub macro status {
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status!(@parse $($parts)*);
 
-        let text_fn = move |file: &RoData<File<Ui>>, input: &RoData<dyn InputMethod<Ui>>| {
+        let text_fn = move |reader: &FileReader<Ui>| {
             let mut builder = Builder::new();
             text!(builder, { Tag::StartAlignRight });
-            text_fn(&mut builder, file, input);
+            text_fn(&mut builder, reader);
             text!(builder, "\n");
             builder.finish()
         };
@@ -301,4 +292,4 @@ pub macro status {
     }}
 }
 
-type TextFn = Box<dyn FnMut(&RoData<File<Ui>>, &RoData<dyn InputMethod<Ui>>) -> Text>;
+type TextFn = Box<dyn FnMut(&FileReader<Ui>) -> Text>;

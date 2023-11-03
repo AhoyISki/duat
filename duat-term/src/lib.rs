@@ -14,9 +14,9 @@ use crossterm::{
     cursor, execute,
     terminal::{self, ClearType},
 };
-pub use layout::{Frame, Brush};
-use layout::Layout;
 use duat_core::{data::RwData, ui};
+use layout::Layout;
+pub use layout::{Brush, Frame};
 pub use rules::{VertRule, VertRuleCfg};
 
 mod area;
@@ -32,9 +32,19 @@ pub enum Anchor {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub struct AreaIndex(usize);
+pub struct AreaId(usize);
 
-impl std::fmt::Debug for AreaIndex {
+impl AreaId {
+    /// Generates a unique index for [`Rect`]s.
+    fn new() -> Self {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        AreaId(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+impl std::fmt::Debug for AreaId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0))
     }

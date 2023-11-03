@@ -70,7 +70,7 @@ impl<U> InputMethod<U> for KeyMap
 where
     U: Ui,
 {
-    type Widget = File<U>;
+    type Widget = File;
 
     fn send_key(
         &mut self,
@@ -109,7 +109,7 @@ where
 }
 
 /// Commands that are available in `Mode::Insert`.
-fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, key: KeyEvent, mode: &mut Mode) {
+fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mode: &mut Mode) {
     match key {
         key!(KeyCode::Char(char)) => {
             editor.edit_on_each_cursor(|editor| {
@@ -205,7 +205,7 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, key: KeyEvent,
 
 /// Commands that are available in `Mode::Normal`.
 fn match_normal<U: Ui>(
-    mut editor: MultiCursorEditor<File<U>, U>,
+    mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     mode: &mut Mode,
     globals: Globals<U>,
@@ -271,7 +271,7 @@ fn match_normal<U: Ui>(
 
 /// Commands that are available in `Mode::GoTo`.
 fn match_goto<U: Ui>(
-    mut editor: MultiCursorEditor<File<U>, U>,
+    mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     last_file: &mut String,
     globals: Globals<U>,
@@ -302,7 +302,7 @@ fn match_goto<U: Ui>(
     }
 }
 
-fn move_each<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, direction: Side, amount: usize) {
+fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
@@ -315,7 +315,7 @@ fn move_each<U: Ui>(mut editor: MultiCursorEditor<File<U>, U>, direction: Side, 
 }
 
 fn move_each_and_select<U: Ui>(
-    mut editor: MultiCursorEditor<File<U>, U>,
+    mut editor: MultiCursorEditor<File, U>,
     direction: Side,
     amount: usize,
 ) {
