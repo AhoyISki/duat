@@ -7,7 +7,11 @@
     generic_const_exprs
 )]
 
-use std::{fmt::Debug, io};
+use std::{
+    fmt::Debug,
+    io,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 pub use area::{Area, Coords};
 use crossterm::{
@@ -21,7 +25,10 @@ pub use rules::{VertRule, VertRuleCfg};
 
 mod area;
 mod layout;
+mod print;
 mod rules;
+
+static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 pub enum Anchor {
@@ -37,7 +44,7 @@ pub struct AreaId(usize);
 impl AreaId {
     /// Generates a unique index for [`Rect`]s.
     fn new() -> Self {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::atomic::AtomicUsize;
         static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         AreaId(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
@@ -86,6 +93,7 @@ impl ui::Ui for Ui {
     }
 
     fn shutdown(&mut self) {
+        SHUTDOWN.store(true, Ordering::Relaxed);
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),

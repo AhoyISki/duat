@@ -2,8 +2,9 @@ use std::sync::atomic::Ordering;
 
 use duat_core::ui::Axis;
 
-use super::VarPoint;
 use crate::area::Coord;
+
+use super::VarPoint;
 
 /// What type of line should be used to [`Frame`] a given [`Rect`].
 #[derive(Default, Clone, Copy, Debug)]

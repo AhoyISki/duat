@@ -171,6 +171,13 @@ impl PushSpecs {
         }
     }
 
+    pub fn axis(&self) -> Axis {
+        match self.side {
+            Side::Above | Side::Below => Axis::Vertical,
+            Side::Right | Side::Left => Axis::Horizontal,
+        }
+    }
+
     pub fn comes_earlier(&self) -> bool {
         matches!(self.side, Side::Left | Side::Above)
     }
@@ -232,7 +239,11 @@ pub trait Area: Send + Sync {
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
     fn print(&self, text: &Text, cfg: &PrintCfg, former: Painter);
 
-    fn change_constraint(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>
+    fn change_constraint(
+        &self,
+        constraint: Constraint,
+        axis: Axis,
+    ) -> Result<(), Self::ConstraintChangeErr>
     where
         Self: Sized;
 

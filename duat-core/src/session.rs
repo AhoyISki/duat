@@ -348,7 +348,7 @@ where
                     break;
                 }
 
-                if let Ok(true) = event::poll(Duration::from_millis(5)) {
+                if let Ok(true) = event::poll(Duration::from_millis(10)) {
                     if let Event::Key(key) = event::read().unwrap() {
                         active_window.send_key(key, scope, self.globals);
                     }

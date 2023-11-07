@@ -75,12 +75,12 @@ impl Coords {
 pub struct Area {
     pub layout: RwData<Layout>,
     print_info: RefCell<PrintInfo>,
-    pub index: AreaId,
+    pub id: AreaId,
 }
 
 impl PartialEq for Area {
     fn eq(&self, other: &Self) -> bool {
-        self.index == other.index
+        self.id == other.id
     }
 }
 
@@ -89,17 +89,17 @@ impl Area {
         Self {
             layout,
             print_info: RefCell::new(PrintInfo::default()),
-            index,
+            id: index,
         }
     }
 
     fn is_active(&self) -> bool {
-        self.layout.read().active_index == self.index
+        self.layout.read().active_id == self.id
     }
 
     fn coords(&self) -> Coords {
         let layout = self.layout.read();
-        let rect = layout.get(self.index).unwrap();
+        let rect = layout.get(self.id).unwrap();
 
         Coords {
             tl: rect.tl(),
@@ -230,14 +230,14 @@ impl ui::Area for Area {
 
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
-            let rect = layout.get(self.index).unwrap();
+            let rect = layout.get(self.id).unwrap();
             rect.br().x - rect.tl().x
         })
     }
 
     fn height(&self) -> usize {
         self.layout.inspect(|window| {
-            let rect = window.get(self.index).unwrap();
+            let rect = window.get(self.id).unwrap();
             rect.br().y - rect.tl().y
         })
     }
@@ -254,11 +254,11 @@ impl ui::Area for Area {
     }
 
     fn set_as_active(&self) {
-        self.layout.write().active_index = self.index;
+        self.layout.write().active_id = self.id;
     }
 
     fn is_active(&self) -> bool {
-        self.layout.read().active_index == self.index
+        self.layout.read().active_id == self.id
     }
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
@@ -304,14 +304,17 @@ impl ui::Area for Area {
         crossterm::execute!(stdout, ResetColor).unwrap();
     }
 
-    fn change_constraint(&self, constraint: Constraint) -> Result<(), ConstraintChangeErr> {
+    fn change_constraint(
+        &self,
+        constraint: Constraint,
+        axis: Axis,
+    ) -> Result<(), ConstraintChangeErr> {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
-        let (index, parent) = layout
+        let prev_cons = layout
             .rects
-            .get_parent_mut(self.index)
-            .ok_or(ConstraintChangeErr::NoParent)?;
-        if parent.change_child_constraint(index, constraint, &mut layout.vars) {
+            .set_constraint(self.id, constraint, axis, &mut layout.vars);
+        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) {
             layout.vars.update();
         }
 
@@ -323,27 +326,27 @@ impl ui::Area for Area {
     }
 
     fn has_changed(&self) -> bool {
-        self.layout.read().get(self.index).unwrap().has_changed()
+        self.layout.read().get(self.id).unwrap().has_changed()
     }
 
     fn is_senior_of(&self, other: &Self) -> bool {
         self.layout.inspect(|layout| {
-            let mut parent_index = other.index;
+            let mut parent_index = other.id;
             while let Some((_, parent)) = layout.get_parent(parent_index) {
                 parent_index = parent.index();
-                if parent.index() == self.index {
+                if parent.index() == self.id {
                     return true;
                 }
             }
 
-            parent_index == self.index
+            parent_index == self.id
         })
     }
 
     fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
         let (child, parent) = self
             .layout
-            .mutate(|layout| layout.bisect(self.index, specs, is_glued));
+            .mutate(|layout| layout.bisect(self.id, specs, is_glued));
 
         (
             Area::new(child, self.layout.clone()),
