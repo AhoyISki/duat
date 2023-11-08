@@ -8,7 +8,11 @@ use cassowary::{
 use duat_core::ui::{Axis, Constraint};
 
 use super::{Edge, Equality, Length, VarPoint, Vars};
-use crate::{area::Coord, print::Sender, Area, AreaId, Frame};
+use crate::{
+    area::Coord,
+    print::{Printer, Sender},
+    Area, AreaId, Coords, Frame,
+};
 
 #[derive(Debug)]
 enum Kind {
@@ -473,7 +477,7 @@ impl Rects {
         };
 
         let parent_len = parent.len(axis);
-        let Kind::Middle { children, axis, .. } = &mut self.get_mut(id).unwrap().kind else {
+        let Kind::Middle { children, axis, .. } = &mut parent.kind else {
             unreachable!();
         };
 
@@ -583,6 +587,28 @@ impl Rects {
                 self.set_edges(id, frame, vars, edges, max)
             }
         }
+    }
+
+    pub fn set_senders(&mut self, printer: &mut Printer) {
+        fn set_sender(rect: &mut Rect, printer: &mut Printer) {
+            let coords = Coords::new(rect.tl(), rect.br());
+            match &mut rect.kind {
+                Kind::End(sender) => {
+                    *sender = if coords.width() == 0 || coords.height() == 0 {
+                        None
+                    } else {
+                        Some(printer.sender(coords))
+                    };
+                }
+                Kind::Middle { children, .. } => {
+                    for (child, _) in children {
+                        set_sender(child, printer);
+                    }
+                }
+            }
+        }
+
+        set_sender(&mut self.main, printer);
     }
 }
 

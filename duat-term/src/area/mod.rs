@@ -27,8 +27,6 @@ use crate::{
     AreaId, ConstraintChangeErr,
 };
 
-static SHOW_CURSOR: AtomicBool = AtomicBool::new(false);
-
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
         unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
@@ -281,10 +279,6 @@ impl ui::Area for Area {
         };
         let mut lines = sender.lines();
 
-        if self.is_active() {
-            lines.show_cursor();
-        }
-
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.first);
             let cfg = IterCfg::new(cfg).outsource_lfs();
@@ -300,7 +294,7 @@ impl ui::Area for Area {
             clear_line(coord, coords, 0, &mut lines);
         }
 
-        queue!(lines, ResetColor);
+        sender.send(lines);
     }
 
     fn change_constraint(
@@ -313,8 +307,11 @@ impl ui::Area for Area {
         let prev_cons = layout
             .rects
             .set_constraint(self.id, constraint, axis, &mut layout.vars);
-        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) {
-            layout.vars.update();
+
+        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) && layout.vars.update() {
+            let mut printer = layout.printer.write();
+            printer.reset();
+            layout.rects.set_senders(&mut printer);
         }
 
         Ok(())
@@ -343,9 +340,14 @@ impl ui::Area for Area {
     }
 
     fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
-        let (child, parent) = self
-            .layout
-            .mutate(|layout| layout.bisect(self.id, specs, is_glued));
+        let mut layout = self.layout.write();
+        let layout = &mut *layout;
+        let (child, parent) = layout.bisect(self.id, specs, is_glued);
+
+        layout.printer.mutate(|printer| {
+            printer.reset();
+            layout.rects.set_senders(printer)
+        });
 
         (
             Area::new(child, self.layout.clone()),
@@ -418,7 +420,7 @@ fn print_parts(
         if wrap {
             if y > coords.tl.y {
                 let shifted_x = old_x.saturating_sub(info.x_shift);
-                print_line(shifted_x, y, coords, alignment, &mut line, lines);
+                print_line(shifted_x, coords, alignment, &mut line, lines);
             }
             if y == coords.br.y {
                 break;
@@ -450,7 +452,7 @@ fn print_parts(
             Part::MainCursor => {
                 let (form, shape) = painter.main_cursor();
                 if let (Some(shape), true) = (shape, is_active) {
-                    SHOW_CURSOR.store(true, Ordering::Release);
+                    lines.show_cursor();
                     queue!(line, shape, cursor::SavePosition);
                 } else {
                     queue!(line, SetStyle(form.style));
@@ -475,7 +477,7 @@ fn print_parts(
 
     if !line.is_empty() {
         queue!(line, Print(" "));
-        print_line(old_x, y, coords, alignment, &mut line, lines);
+        print_line(old_x, coords, alignment, &mut line, lines);
     }
 
     coords.br.y - y
@@ -484,7 +486,6 @@ fn print_parts(
 #[inline(always)]
 fn print_line(
     x: usize,
-    y: usize,
     coords: Coords,
     alignment: Alignment,
     line: &mut Vec<u8>,
@@ -508,7 +509,6 @@ fn print_line(
         Print(std::str::from_utf8(line).unwrap()),
         ResetColor,
         Print(" ".repeat(right)),
-        cursor::MoveTo(coords.tl.x as u16, y as u16)
     );
 
     lines.flush().unwrap();
@@ -519,12 +519,10 @@ fn print_line(
 #[inline(always)]
 fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, lines: &mut Lines) {
     let len = (coords.br.x + x_shift).saturating_sub(cursor.x);
-    let (x, y) = (coords.tl.x, cursor.y);
     queue!(
         lines,
         ResetColor,
         Print(" ".repeat(len.min(coords.width()))),
-        cursor::MoveTo(x as u16, y as u16)
     );
 
     lines.flush().unwrap();

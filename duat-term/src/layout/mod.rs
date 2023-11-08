@@ -15,7 +15,7 @@ use duat_core::{
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{set_ratios, Rect, Rects};
-use crate::{area::Coord, AreaId, print::Printer};
+use crate::{area::Coord, print::Printer, AreaId};
 
 mod rect;
 
@@ -144,14 +144,18 @@ impl Vars {
 
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> bool {
+        let mut any_has_changed = false;
         for (var, new) in self.solver.fetch_changes() {
             let (value, has_changed) = &self.list[var];
 
             let new = new.round() as usize;
             let old = value.swap(new, Ordering::Release);
+            any_has_changed |= old != new;
             has_changed.store(old != new, Ordering::Release);
         }
+
+        any_has_changed
     }
 
     pub fn add_equality(&mut self, constraint: Equality) {
@@ -187,7 +191,7 @@ pub struct Layout {
     frame: Frame,
     edges: Vec<Edge>,
     pub vars: Vars,
-    lines: RwData<Printer>,
+    pub printer: RwData<Printer>,
 }
 
 impl Layout {
@@ -210,7 +214,7 @@ impl Layout {
             frame,
             edges: Vec::new(),
             vars,
-            lines: RwData::new(Printer::new(max)),
+            printer: RwData::new(Printer::new(max)),
         };
 
         let (vars, edges) = (&mut layout.vars, &mut layout.edges);
@@ -228,11 +232,13 @@ impl Layout {
 
         vars.update();
 
-        let lines = layout.lines.clone();
+        layout.rects.set_senders(&mut layout.printer.write());
+
+        let printer = layout.printer.clone();
         std::thread::spawn(move || {
             loop {
-                lines.write().print();
-                std::thread::sleep(std::time::Duration::from_millis(7));
+                printer.read().print();
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
         });
 
@@ -336,7 +342,7 @@ impl Layout {
             let rect = self.rects.get_mut(new_parent_id).unwrap();
             (rect, pos, Some(new_parent_id))
         };
-        
+
         let parent_id = parent.id();
         vars.update();
 
