@@ -8,21 +8,38 @@ use cassowary::{
 use duat_core::ui::{Axis, Constraint};
 
 use super::{Edge, Equality, Length, VarPoint, Vars};
-use crate::{area::Coord, Area, AreaId, Frame};
+use crate::{area::Coord, print::Sender, Area, AreaId, Frame};
 
 #[derive(Debug)]
-struct Lineage {
-    children: Vec<(Rect, Length)>,
-    axis: Axis,
-    clustered: bool,
+enum Kind {
+    End(Option<Sender>),
+    Middle {
+        children: Vec<(Rect, Length)>,
+        axis: Axis,
+        clustered: bool,
+    },
 }
 
-impl Lineage {
-    fn new(axis: Axis, clustered: bool) -> Self {
-        Self {
+impl Kind {
+    fn middle(axis: Axis, clustered: bool) -> Self {
+        Self::Middle {
             children: Vec::new(),
             axis,
             clustered,
+        }
+    }
+
+    fn is_clustered(&self) -> bool {
+        match self {
+            Kind::End(_) => false,
+            Kind::Middle { clustered, .. } => *clustered,
+        }
+    }
+
+    fn axis(&self) -> Option<Axis> {
+        match self {
+            Kind::Middle { axis, .. } => Some(*axis),
+            Kind::End(_) => None,
         }
     }
 }
@@ -49,19 +66,19 @@ pub struct Rect {
     tl: VarPoint,
     br: VarPoint,
     edge_equalities: Vec<Equality>,
-    lineage: Option<Lineage>,
+    kind: Kind,
 }
 
 impl Rect {
     /// Returns a new instance of [`Rect`], already adding its
     /// [`Variable`]s to the list.
-    pub fn new(constrainer: &mut Vars) -> Self {
+    pub fn new(vars: &mut Vars) -> Self {
         Rect {
             id: AreaId::new(),
-            tl: VarPoint::new(constrainer),
-            br: VarPoint::new(constrainer),
+            tl: VarPoint::new(vars),
+            br: VarPoint::new(vars),
             edge_equalities: Vec::new(),
-            lineage: None,
+            kind: Kind::End(None),
         }
     }
 
@@ -73,7 +90,7 @@ impl Rect {
             tl: rect.tl.clone(),
             br: rect.br.clone(),
             edge_equalities: rect.edge_equalities.clone(),
-            lineage: Some(Lineage::new(axis, clustered)),
+            kind: Kind::middle(axis, clustered),
         };
 
         rect.edge_equalities.clear();
@@ -81,6 +98,14 @@ impl Rect {
         rect.br = VarPoint::new(vars);
 
         parent
+    }
+
+    pub fn set_sender(&mut self, new: Sender) {
+        let Kind::End(sender) = &mut self.kind else {
+            unreachable!();
+        };
+
+        *sender = Some(new);
     }
 
     /// Removes all [`Equality`]s which define the edges of
@@ -149,7 +174,7 @@ impl Rect {
 
     /// Wether or not [`self`] has children.
     pub fn is_parent(&self) -> bool {
-        self.lineage.is_some()
+        matches!(self.kind, Kind::Middle { .. })
     }
 
     /// The index that identifies [`self`].
@@ -171,26 +196,31 @@ impl Rect {
     }
 
     pub fn is_clustered(&self) -> bool {
-        self.lineage
-            .as_ref()
-            .is_some_and(|lineage| lineage.clustered)
+        match &self.kind {
+            Kind::Middle { clustered, .. } => *clustered,
+            Kind::End(_) => false,
+        }
     }
 
-    pub fn aligns_with(&self, axis: Axis) -> bool {
-        self.lineage
-            .as_ref()
-            .is_some_and(|lineage| lineage.axis == axis)
+    pub fn aligns_with(&self, other: Axis) -> bool {
+        match &self.kind {
+            Kind::Middle { axis, .. } => *axis == other,
+            Kind::End(_) => false,
+        }
     }
 
     pub fn children_len(&self) -> usize {
-        self.lineage
-            .as_ref()
-            .map(|lineage| lineage.children.len())
-            .unwrap_or(0)
+        match &self.kind {
+            Kind::Middle { children, .. } => children.len(),
+            Kind::End(_) => 0,
+        }
     }
 
-    pub fn axis(&self) -> Option<Axis> {
-        self.lineage.as_ref().map(|lineage| lineage.axis)
+    pub fn sender(&self) -> Option<&Sender> {
+        match &self.kind {
+            Kind::End(sender) => sender.as_ref(),
+            Kind::Middle { .. } => None,
+        }
     }
 
     /// Sets the [`Equality`]s for the edges of [`self`],
@@ -283,9 +313,9 @@ impl Rect {
 
     /// Wheter or not [`self`] can be framed.
     fn is_frameable(&self, parent: Option<&Rect>) -> bool {
-        if parent.is_some_and(|parent| parent.lineage.as_ref().unwrap().clustered) {
+        if parent.is_some_and(|parent| parent.kind.is_clustered()) {
             false
-        } else if let Some(Lineage { clustered, .. }) = &self.lineage {
+        } else if let Kind::Middle { clustered, .. } = &self.kind {
             *clustered
         } else {
             true
@@ -367,10 +397,10 @@ impl Rects {
         fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
             if rect.id == id {
                 Some(rect)
+            } else if let Kind::Middle { children, .. } = &rect.kind {
+                children.iter().find_map(|(child, _)| fetch(child, id))
             } else {
-                rect.lineage.as_ref().and_then(|Lineage { children, .. }| {
-                    children.iter().find_map(|(child, _)| fetch(child, id))
-                })
+                None
             }
         }
 
@@ -391,12 +421,11 @@ impl Rects {
     }
 
     pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Length)]> {
-        self.get_parent(id).and_then(|(_, parent)| {
-            parent
-                .lineage
-                .as_ref()
-                .map(|lineage| lineage.children.as_slice())
-        })
+        self.get_parent(id)
+            .and_then(|(_, parent)| match &parent.kind {
+                Kind::Middle { children, .. } => Some(children.as_slice()),
+                Kind::End(_) => None,
+            })
     }
 
     /// Fetches the [`RwData<Rect>`] of the given index, if there is
@@ -424,8 +453,11 @@ impl Rects {
     }
 
     pub fn insert_child(&mut self, pos: usize, id: AreaId, child: Rect) {
-        let lineage = self.get_mut(id).unwrap().lineage.as_mut().unwrap();
-        lineage.children.insert(pos, (child, Length::default()));
+        let Kind::Middle { children, .. } = &mut self.get_mut(id).unwrap().kind else {
+            unreachable!();
+        };
+
+        children.insert(pos, (child, Length::default()));
     }
 
     /// Changes a child's constraint.
@@ -441,11 +473,13 @@ impl Rects {
         };
 
         let parent_len = parent.len(axis);
-        let lineage = parent.lineage.as_mut().unwrap();
+        let Kind::Middle { children, axis, .. } = &mut self.get_mut(id).unwrap().kind else {
+            unreachable!();
+        };
 
-        let (child, length) = &mut lineage.children[pos];
+        let (child, length) = &mut children[pos];
         if let Some((equality, cmp)) = length.constraint.as_mut() {
-            if *cmp == (constraint, axis) {
+            if *cmp == (constraint, *axis) {
                 return Some(*cmp);
             }
             vars.remove_equality(equality);
@@ -454,32 +488,34 @@ impl Rects {
         let equality = match constraint {
             Constraint::Ratio(den, div) => {
                 assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
+                child.len(*axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
             }
             Constraint::Percent(percent) => {
                 assert!(
                     percent <= 100,
                     "Constraint::Percent must be smaller than 100"
                 );
-                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
+                child.len(*axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
             }
-            Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
-            Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
-            Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max,
+            Constraint::Length(len) => child.len(*axis) | EQ(STRONG) | len,
+            Constraint::Min(min) => child.len(*axis) | GE(MEDIUM) | min,
+            Constraint::Max(max) => child.len(*axis) | LE(MEDIUM) | max,
         };
 
         vars.add_equality(equality.clone());
 
         length
             .constraint
-            .replace((equality, (constraint, axis)))
+            .replace((equality, (constraint, *axis)))
             .map(|(_, prev)| prev)
     }
 
     pub fn take_constraint(&mut self, id: AreaId, vars: &mut Vars) -> Option<(Constraint, Axis)> {
         self.get_parent_mut(id).and_then(|(pos, parent)| {
-            let lineage = parent.lineage.as_mut().unwrap();
-            let length = std::mem::take(&mut lineage.children[pos].1);
+            let Kind::Middle { children, .. } = &mut parent.kind else {
+                unreachable!();
+            };
+            let length = std::mem::take(&mut children[pos].1);
             length.constraint.map(|(equality, constraint)| {
                 vars.remove_equality(&equality);
                 constraint
@@ -531,12 +567,13 @@ impl Rects {
         edges: &mut Vec<Edge>,
         max: Coord,
     ) {
-        let (pos, lineage) = self
-            .get_parent(id)
-            .and_then(|(pos, parent)| Some(pos).zip(parent.lineage.as_ref()))
-            .unwrap();
+        let Some((pos, Kind::Middle { children, .. })) =
+            self.get_parent(id).map(|(pos, parent)| (pos, &parent.kind))
+        else {
+            unreachable!();
+        };
 
-        let ids: Vec<_> = lineage.children.iter().map(|(child, _)| child.id).collect();
+        let ids: Vec<_> = children.iter().map(|(child, _)| child.id).collect();
 
         for &pos in [pos.checked_sub(1), Some(pos), Some(pos + 1)]
             .iter()
@@ -553,7 +590,7 @@ fn fetch_parent(main: &Rect, id: AreaId) -> Option<(usize, &Rect)> {
     if main.id == id {
         return None;
     }
-    let Some(Lineage { children, .. }) = &main.lineage else {
+    let Kind::Middle { children, .. } = &main.kind else {
         return None;
     };
 
@@ -569,12 +606,12 @@ fn fetch_parent(main: &Rect, id: AreaId) -> Option<(usize, &Rect)> {
 fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
     if rect.id == id {
         Some(rect)
+    } else if let Kind::Middle { children, .. } = &mut rect.kind {
+        children
+            .iter_mut()
+            .find_map(|(child, _)| fetch_mut(child, id))
     } else {
-        rect.lineage.as_mut().and_then(|Lineage { children, .. }| {
-            children
-                .iter_mut()
-                .find_map(|(child, _)| fetch_mut(child, id))
-        })
+        None
     }
 }
 
@@ -588,13 +625,14 @@ fn prepare_child(
     max: Coord,
     edges: &mut Vec<Edge>,
 ) {
-    let Lineage {
-        mut children,
-        axis,
-        clustered,
-    } = parent.lineage.take().unwrap();
+    let axis = parent.kind.axis().unwrap();
+    let clustered = parent.kind.is_clustered();
 
-    parent.lineage = Some(Lineage::new(axis, clustered));
+    let temp = Kind::middle(axis, parent.kind.is_clustered());
+    let Kind::Middle { mut children, .. } = std::mem::replace(&mut parent.kind, temp) else {
+        unreachable!();
+    };
+
     let child = &mut children[pos].0;
 
     child.clear_equalities(vars);
@@ -618,26 +656,28 @@ fn prepare_child(
 
     vars.add_equalities(&child.edge_equalities);
 
-    if let Some(Lineage { children, .. }) = &mut child.lineage {
+    if let Kind::Middle { children, .. } = &mut child.kind {
         let len = children.len();
         for pos in 0..len {
             prepare_child(child, pos, vars, frame, max, edges);
         }
     }
 
-    parent.lineage = Some(Lineage {
+    parent.kind = Kind::Middle {
         children,
         axis,
         clustered,
-    });
+    };
 }
 
 /// Sets the ratio [`Equality`]s for the child of the given
 /// index. This does include setting the [`Equality`] for
 /// the previous child, if there is one.
 pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
-    let &Lineage { axis, .. } = parent.lineage.as_ref().unwrap();
-    let Lineage { children, .. } = parent.lineage.as_mut().unwrap();
+    let axis = parent.kind.axis().unwrap();
+    let Kind::Middle { children, .. } = &mut parent.kind else {
+        unreachable!();
+    };
 
     let (new, _) = &children[pos];
     let new_len = new.len(axis);
@@ -646,12 +686,12 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
     let prev = children.iter().take(pos);
     let resizable_pos = prev.filter(|(_, length)| length.is_resizable()).count();
 
-    let mut children = children
+    let mut iter = children
         .iter_mut()
         .filter(|(_, length)| length.is_resizable());
 
     if resizable_pos > 0 {
-        let (prev, length) = children.nth(resizable_pos - 1).unwrap();
+        let (prev, length) = iter.nth(resizable_pos - 1).unwrap();
 
         let ratio = if new_len_value == 0 {
             1.0
@@ -664,7 +704,7 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
         vars.add_equality(equality);
     }
 
-    let ratio = children.nth(1).map(|(next, _)| {
+    let ratio = iter.nth(1).map(|(next, _)| {
         let ratio = if next.len_value(axis) == 0 {
             1.0
         } else {
@@ -677,5 +717,5 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
         (equality, ratio)
     });
 
-    parent.lineage.as_mut().unwrap().children[pos].1.ratio = ratio;
+    children[pos].1.ratio = ratio;
 }

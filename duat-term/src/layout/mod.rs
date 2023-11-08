@@ -15,7 +15,7 @@ use duat_core::{
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{set_ratios, Rect, Rects};
-use crate::{area::Coord, print::Lines, AreaId};
+use crate::{area::Coord, AreaId, print::Printer};
 
 mod rect;
 
@@ -187,7 +187,7 @@ pub struct Layout {
     frame: Frame,
     edges: Vec<Edge>,
     pub vars: Vars,
-    lines: RwData<Lines>,
+    lines: RwData<Printer>,
 }
 
 impl Layout {
@@ -210,7 +210,7 @@ impl Layout {
             frame,
             edges: Vec::new(),
             vars,
-            lines: RwData::new(Lines::default()),
+            lines: RwData::new(Printer::new(max)),
         };
 
         let (vars, edges) = (&mut layout.vars, &mut layout.edges);

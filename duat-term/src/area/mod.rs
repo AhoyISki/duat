@@ -4,7 +4,7 @@ mod line;
 use std::{
     cell::RefCell,
     fmt::Alignment,
-    io::{stdout, StdoutLock},
+    io::{stdout, StdoutLock, Write},
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -23,6 +23,7 @@ use iter::{print_iter, rev_print_iter};
 
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
+    print::{Lines, Sender},
     AreaId, ConstraintChangeErr,
 };
 
@@ -34,7 +35,7 @@ macro_rules! queue {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
     pub x: usize,
     pub y: usize,
@@ -52,7 +53,7 @@ impl Coord {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coords {
     tl: Coord,
     br: Coord,
@@ -62,12 +63,20 @@ impl Coords {
         Coords { tl, br }
     }
 
-    fn width(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.br.x - self.tl.x
     }
 
-    fn height(&self) -> usize {
+    pub fn height(&self) -> usize {
         self.br.y - self.tl.y
+    }
+
+    pub fn tl(&self) -> Coord {
+        self.tl
+    }
+
+    pub fn br(&self) -> Coord {
+        self.br
     }
 }
 
@@ -262,25 +271,19 @@ impl ui::Area for Area {
     }
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
+        let layout = self.layout.read();
+
         let info = self.print_info.borrow();
         let coords = self.coords();
 
-        if coords.width() == 0 || coords.height() == 0 {
+        let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
             return;
-        }
-
-        let mut stdout = stdout().lock();
-        print_edges(self.layout.read().edges(), &mut stdout);
+        };
+        let mut lines = sender.lines();
 
         if self.is_active() {
-            SHOW_CURSOR.store(false, Ordering::Release);
+            lines.show_cursor();
         }
-
-        queue!(
-            stdout,
-            cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
-            cursor::Hide
-        );
 
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.first);
@@ -290,18 +293,14 @@ impl ui::Area for Area {
 
         let active = self.is_active();
         let iter = print_iter(iter, coords.width(), cfg, *info);
-        let y = print_parts(iter, coords, active, *info, painter, &mut stdout);
+        let y = print_parts(iter, coords, active, *info, painter, &mut lines);
 
         for y in (0..y).rev() {
             let coord = Coord::new(coords.tl.x, coords.br.y - y);
-            clear_line(coord, coords, 0, &mut stdout);
+            clear_line(coord, coords, 0, &mut lines);
         }
 
-        if SHOW_CURSOR.load(Ordering::Acquire) {
-            queue!(stdout, cursor::RestorePosition, cursor::Show);
-        }
-
-        crossterm::execute!(stdout, ResetColor).unwrap();
+        queue!(lines, ResetColor);
     }
 
     fn change_constraint(
@@ -406,7 +405,7 @@ fn print_parts(
     is_active: bool,
     info: PrintInfo,
     mut painter: Painter,
-    stdout: &mut StdoutLock,
+    lines: &mut Lines,
 ) -> usize {
     let mut old_x = coords.tl.x;
     // The y here represents the bottom line of the current row of cells.
@@ -419,7 +418,7 @@ fn print_parts(
         if wrap {
             if y > coords.tl.y {
                 let shifted_x = old_x.saturating_sub(info.x_shift);
-                print_line(shifted_x, y, coords, alignment, &mut line, stdout);
+                print_line(shifted_x, y, coords, alignment, &mut line, lines);
             }
             if y == coords.br.y {
                 break;
@@ -476,7 +475,7 @@ fn print_parts(
 
     if !line.is_empty() {
         queue!(line, Print(" "));
-        print_line(old_x, y, coords, alignment, &mut line, stdout);
+        print_line(old_x, y, coords, alignment, &mut line, lines);
     }
 
     coords.br.y - y
@@ -489,7 +488,7 @@ fn print_line(
     coords: Coords,
     alignment: Alignment,
     line: &mut Vec<u8>,
-    stdout: &mut StdoutLock,
+    lines: &mut Lines,
 ) {
     let remainder = coords.br.x.saturating_sub(x.max(coords.tl.x));
 
@@ -503,7 +502,7 @@ fn print_line(
     };
 
     queue!(
-        stdout,
+        lines,
         ResetColor,
         Print(" ".repeat(left)),
         Print(std::str::from_utf8(line).unwrap()),
@@ -512,19 +511,23 @@ fn print_line(
         cursor::MoveTo(coords.tl.x as u16, y as u16)
     );
 
+    lines.flush().unwrap();
+
     line.clear();
 }
 
 #[inline(always)]
-fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, stdout: &mut StdoutLock) {
+fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, lines: &mut Lines) {
     let len = (coords.br.x + x_shift).saturating_sub(cursor.x);
     let (x, y) = (coords.tl.x, cursor.y);
     queue!(
-        stdout,
+        lines,
         ResetColor,
         Print(" ".repeat(len.min(coords.width()))),
         cursor::MoveTo(x as u16, y as u16)
     );
+
+    lines.flush().unwrap();
 }
 
 #[inline(always)]
