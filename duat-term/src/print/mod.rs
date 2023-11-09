@@ -102,6 +102,7 @@ impl Sender {
 
 pub struct Printer {
     recvs: Vec<Receiver>,
+    is_offline: bool,
     max: Coord,
 }
 
@@ -109,6 +110,7 @@ impl Printer {
     pub fn new(max: Coord) -> Self {
         Self {
             recvs: Vec::new(),
+            is_offline: false,
             max,
         }
     }
@@ -137,6 +139,14 @@ impl Printer {
 
     pub fn reset(&mut self) {
         self.recvs.clear();
+    }
+
+    pub fn shutdown(&mut self) {
+        self.is_offline = true;
+    }
+
+    pub fn is_offline(&self) -> bool{
+        self.is_offline
     }
 
     pub fn print(&self) {

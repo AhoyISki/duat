@@ -326,6 +326,7 @@ where
             self.ui.shutdown();
             Vec::new()
         } else {
+            self.ui.unload();
             let windows = self.windows.read();
             windows
                 .iter()

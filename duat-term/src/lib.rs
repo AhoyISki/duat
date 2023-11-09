@@ -28,7 +28,7 @@ mod layout;
 mod print;
 mod rules;
 
-static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+static STOP_PRINTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 pub enum Anchor {
@@ -92,8 +92,12 @@ impl ui::Ui for Ui {
         terminal::enable_raw_mode().unwrap();
     }
 
+    fn unload(&mut self) {
+        STOP_PRINTING.store(true, Ordering::Relaxed);
+    }
+
     fn shutdown(&mut self) {
-        SHUTDOWN.store(true, Ordering::Relaxed);
+        STOP_PRINTING.store(true, Ordering::Relaxed);
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),

@@ -471,6 +471,9 @@ pub trait Ui: Sized + Default + 'static {
     /// Functions to trigger when the program begins.
     fn startup(&mut self);
 
+    /// Quits the current ui to reload a new on.
+    fn unload(&mut self);
+
     /// Functions to trigger when the program ends.
     fn shutdown(&mut self);
 
