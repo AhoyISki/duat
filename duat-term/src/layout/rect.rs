@@ -380,6 +380,7 @@ impl PartialEq<Area> for Rect {
     }
 }
 
+#[derive(Debug)]
 pub struct Rects {
     pub main: Rect,
     floating: Vec<Rect>,
@@ -477,13 +478,13 @@ impl Rects {
         };
 
         let parent_len = parent.len(axis);
-        let Kind::Middle { children, axis, .. } = &mut parent.kind else {
+        let Kind::Middle { children, .. } = &mut parent.kind else {
             unreachable!();
         };
 
         let (child, length) = &mut children[pos];
         if let Some((equality, cmp)) = length.constraint.as_mut() {
-            if *cmp == (constraint, *axis) {
+            if *cmp == (constraint, axis) {
                 return Some(*cmp);
             }
             vars.remove_equality(equality);
@@ -492,25 +493,25 @@ impl Rects {
         let equality = match constraint {
             Constraint::Ratio(den, div) => {
                 assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-                child.len(*axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
+                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
             }
             Constraint::Percent(percent) => {
                 assert!(
                     percent <= 100,
                     "Constraint::Percent must be smaller than 100"
                 );
-                child.len(*axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
+                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
             }
-            Constraint::Length(len) => child.len(*axis) | EQ(STRONG) | len,
-            Constraint::Min(min) => child.len(*axis) | GE(MEDIUM) | min,
-            Constraint::Max(max) => child.len(*axis) | LE(MEDIUM) | max,
+            Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
+            Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
+            Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max,
         };
 
         vars.add_equality(equality.clone());
 
         length
             .constraint
-            .replace((equality, (constraint, *axis)))
+            .replace((equality, (constraint, axis)))
             .map(|(_, prev)| prev)
     }
 

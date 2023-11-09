@@ -4,8 +4,7 @@ mod line;
 use std::{
     cell::RefCell,
     fmt::Alignment,
-    io::{stdout, StdoutLock, Write},
-    sync::atomic::{AtomicBool, Ordering},
+    io::{StdoutLock, Write},
 };
 
 use crossterm::{
@@ -14,6 +13,7 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
+    log_info,
     palette::Painter,
     position::Point,
     text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
@@ -23,9 +23,11 @@ use iter::{print_iter, rev_print_iter};
 
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
-    print::{Lines, Sender},
+    print::Lines,
     AreaId, ConstraintChangeErr,
 };
+
+static BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -289,9 +291,12 @@ impl ui::Area for Area {
         let iter = print_iter(iter, coords.width(), cfg, *info);
         let y = print_parts(iter, coords, active, *info, painter, &mut lines);
 
-        for y in (0..y).rev() {
-            let coord = Coord::new(coords.tl.x, coords.br.y - y);
-            clear_line(coord, coords, 0, &mut lines);
+        for _ in (0..y).rev() {
+            lines
+                .write_all(&BLANK.as_bytes()[..coords.width()])
+                .unwrap();
+
+            lines.flush().unwrap();
         }
 
         sender.send(lines);
@@ -309,6 +314,7 @@ impl ui::Area for Area {
             .set_constraint(self.id, constraint, axis, &mut layout.vars);
 
         if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) && layout.vars.update() {
+            layout.vars.update();
             let mut printer = layout.printer.write();
             printer.reset();
             layout.rects.set_senders(&mut printer);
@@ -342,12 +348,12 @@ impl ui::Area for Area {
     fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
+
+        layout.printer.write().reset();
+
         let (child, parent) = layout.bisect(self.id, specs, is_glued);
 
-        layout.printer.mutate(|printer| {
-            printer.reset();
-            layout.rects.set_senders(printer)
-        });
+        layout.rects.set_senders(&mut layout.printer.write());
 
         (
             Area::new(child, self.layout.clone()),
@@ -452,9 +458,10 @@ fn print_parts(
             Part::MainCursor => {
                 let (form, shape) = painter.main_cursor();
                 if let (Some(shape), true) = (shape, is_active) {
-                    lines.show_cursor();
+                    lines.show_real_cursor();
                     queue!(line, shape, cursor::SavePosition);
                 } else {
+                    lines.hide_real_cursor();
                     queue!(line, SetStyle(form.style));
                     prev_style = Some(painter.make_form().style);
                 }
@@ -502,14 +509,14 @@ fn print_line(
         }
     };
 
-    queue!(
-        lines,
-        ResetColor,
-        Print(" ".repeat(left)),
-        Print(std::str::from_utf8(line).unwrap()),
-        ResetColor,
-        Print(" ".repeat(right)),
-    );
+    queue!(lines, ResetColor,);
+
+    lines.write_all(BLANK[..left].as_bytes()).unwrap();
+    lines.write_all(line).unwrap();
+
+    queue!(lines, ResetColor,);
+
+    lines.write_all(BLANK[..right].as_bytes()).unwrap();
 
     lines.flush().unwrap();
 
@@ -517,22 +524,10 @@ fn print_line(
 }
 
 #[inline(always)]
-fn clear_line(cursor: Coord, coords: Coords, x_shift: usize, lines: &mut Lines) {
-    let len = (coords.br.x + x_shift).saturating_sub(cursor.x);
-    queue!(
-        lines,
-        ResetColor,
-        Print(" ".repeat(len.min(coords.width()))),
-    );
-
-    lines.flush().unwrap();
-}
-
-#[inline(always)]
 fn indent_line(form_former: &Painter, x: usize, x_shift: usize, line: &mut Vec<u8>) {
     let prev_style = form_former.make_form().style;
     let indent_count = x.saturating_sub(x_shift);
-    let mut indent = Vec::<u8>::from(" ".repeat(indent_count));
+    let mut indent = Vec::<u8>::from(&BLANK[..indent_count]);
     queue!(indent, SetStyle(prev_style));
     line.splice(0..0, indent);
 }
@@ -549,18 +544,22 @@ fn write_char(
     // Case where the cursor hasn't yet reached the left edge.
     if x < coords.tl.x + x_shift {
         let len = (x + len).saturating_sub(coords.tl.x + x_shift);
-        queue!(line, Print(" ".repeat(len)));
+        line.write_all(BLANK[..len].as_bytes()).unwrap();
     // Case where the end of the cursor, after printing, would be
     // located before the right edge.
     } else if x + len <= coords.br.x + x_shift {
         match char {
-            '\t' => queue!(line, Print(" ".repeat(len))),
-            char => queue!(line, Print(char)),
+            '\t' => line.write_all(BLANK[..len].as_bytes()).unwrap(),
+            char => {
+                let mut bytes = [0; 4];
+                char.encode_utf8(&mut bytes);
+                line.write_all(&bytes).unwrap();
+            }
         };
     // Case where it wouldn't.
     } else if x < coords.br.x + x_shift {
         let len = coords.br.x + x_shift - x;
-        queue!(line, Print(" ".repeat(len)));
+        line.write_all(BLANK[..len].as_bytes()).unwrap();
     }
 }
 

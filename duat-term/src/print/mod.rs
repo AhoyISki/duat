@@ -1,6 +1,9 @@
 use std::{
     io::{stdout, Write},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use crossterm::cursor::{self, MoveTo, MoveToColumn, MoveToNextLine};
@@ -18,23 +21,34 @@ pub struct Lines {
     bytes: Vec<u8>,
     cutoffs: Vec<usize>,
     coords: Coords,
-    show_cursor: bool,
+    real_cursor: Option<bool>,
 }
 
 impl Lines {
-    pub fn show_cursor(&mut self) {
-        self.show_cursor = true;
+    pub fn show_real_cursor(&mut self) {
+        self.real_cursor = Some(true);
+    }
+
+    pub fn hide_real_cursor(&mut self) {
+        self.real_cursor = Some(false);
     }
 
     fn on(&self, y: usize) -> Option<(&[u8], usize, usize)> {
-        y.checked_sub(self.coords.tl().y).map(|y| {
-            let start = self.cutoffs[y];
+        let (tl, br) = (self.coords.tl(), self.coords.br());
+
+        if (tl.y..br.y).contains(&y) {
+            let start = self.cutoffs[y - tl.y];
+
             let (start_x, end_x) = (self.coords.tl().x, self.coords.br().x);
-            match self.cutoffs.get(y + 1) {
+            let ret = match self.cutoffs.get(y + 1) {
                 Some(end) => (&self.bytes[start..*end], start_x, end_x),
                 None => (&self.bytes[start..], start_x, end_x),
-            }
-        })
+            };
+
+            Some(ret)
+        } else {
+            None
+        }
     }
 }
 
@@ -77,7 +91,7 @@ impl Sender {
             bytes: Vec::with_capacity(area * 2),
             cutoffs,
             coords: self.coords,
-            show_cursor: false,
+            real_cursor: None,
         }
     }
 
@@ -126,6 +140,7 @@ impl Printer {
     }
 
     pub fn print(&self) {
+        static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
         let lines: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
 
         if lines.is_empty() {
@@ -152,7 +167,18 @@ impl Printer {
             queue!(stdout, MoveToNextLine(1))
         }
 
-        if lines.iter().any(|lines| lines.show_cursor) {
+        let was_real = if let Some(was_real) = lines
+            .iter()
+            .filter_map(|lines| lines.real_cursor)
+            .reduce(|prev, was_real| prev || was_real)
+        {
+            CURSOR_IS_REAL.store(was_real, Ordering::Relaxed);
+            was_real
+        } else {
+            CURSOR_IS_REAL.load(Ordering::Relaxed)
+        };
+
+        if was_real {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
