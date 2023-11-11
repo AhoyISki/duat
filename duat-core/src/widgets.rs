@@ -25,6 +25,7 @@ use std::{
 
 use crossterm::event::KeyEvent;
 use parking_lot::RwLock;
+
 pub use crate::file::{File, FileCfg};
 use crate::{
     data::{Data, RwData},
@@ -190,7 +191,11 @@ where
     }
 
     fn update_and_print(&self, area: &U::Area) {
-        {
+        if self.widget.data_is::<File>() {
+            self.widget
+                .mutate_as::<File, ()>(|file| file.set_printed_lines(area));
+            self.widget.inspect_as::<File, ()>(|file| file.print(area));
+        } else {
             let mut widget = self.widget.raw_write();
             widget.update(area);
             widget.print(area);

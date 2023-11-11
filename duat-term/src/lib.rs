@@ -28,7 +28,7 @@ mod layout;
 mod print;
 mod rules;
 
-static STOP_PRINTING: AtomicBool = AtomicBool::new(false);
+static DUAT_ENDED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 pub enum Anchor {
@@ -93,11 +93,11 @@ impl ui::Ui for Ui {
     }
 
     fn unload(&mut self) {
-        STOP_PRINTING.store(true, Ordering::Relaxed);
+        DUAT_ENDED.store(true, Ordering::Relaxed);
     }
 
     fn shutdown(&mut self) {
-        STOP_PRINTING.store(true, Ordering::Relaxed);
+        DUAT_ENDED.store(true, Ordering::Relaxed);
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),

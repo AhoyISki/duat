@@ -15,7 +15,7 @@ use duat_core::{
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{set_ratios, Rect, Rects};
-use crate::{area::Coord, print::Printer, AreaId, STOP_PRINTING};
+use crate::{area::Coord, print::Printer, AreaId, DUAT_ENDED};
 
 mod rect;
 
@@ -240,7 +240,7 @@ impl Layout {
                 printer.read().print();
                 std::thread::sleep(std::time::Duration::from_millis(10));
 
-                if STOP_PRINTING.load(Ordering::Relaxed) {
+                if DUAT_ENDED.load(Ordering::Relaxed) {
                     break;
                 }
             }

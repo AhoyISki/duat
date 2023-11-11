@@ -35,6 +35,8 @@ where
     U: Ui,
 {
     pub fn session_from_args(mut self) -> Session<U> {
+        self.ui.startup();
+
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
@@ -54,7 +56,6 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
             globals: self.globals,
-            is_new_session: true,
         };
 
         session.set_active_file(widget, &area);
@@ -104,7 +105,6 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
             globals: self.globals,
-            is_new_session: false,
         };
 
         session.set_active_file(widget, &area);
@@ -223,7 +223,6 @@ where
     file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
-    is_new_session: bool,
 }
 
 impl<U> Session<U>
@@ -283,10 +282,6 @@ where
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<()>) -> Vec<(RwData<File>, bool)> {
-        if self.is_new_session {
-            self.ui.startup();
-        }
-
         // Notifier for configuration changes.
         std::thread::spawn(move || {
             if let Ok(()) = rx.recv() {
@@ -357,7 +352,7 @@ where
 
                 for node in active_window.nodes() {
                     if node.needs_update() {
-                        scope.spawn(|| node.update_and_print());
+                        node.update_and_print();
                     }
                 }
             }

@@ -618,7 +618,7 @@ where
             .nodes()
             .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
         {
-            scope.spawn(move || node.widget.send_key(key, &node.area, globals));
+            node.widget.send_key(key, &node.area, globals);
         }
     }
 

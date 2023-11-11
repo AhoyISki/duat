@@ -186,10 +186,6 @@ pub struct File {
 }
 
 impl File {
-    pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
-        FileCfg::new()
-    }
-
     pub fn write(&self) -> Result<usize, String> {
         if let Path::Set(path) = &self.path {
             self.text
@@ -272,7 +268,15 @@ impl File {
         (&mut self.text, &mut self.history)
     }
 
-    fn set_printed_lines(&mut self, area: &impl Area) {
+    pub(crate) fn print(&self,area: &impl Area) {
+        area.print(&self.text, &self.cfg, palette::painter());
+    }
+
+    pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
+        FileCfg::new()
+    }
+
+    pub(crate) fn set_printed_lines(&mut self, area: &impl Area) {
         let start = area.first_char();
 
         let mut last_line_num = area
@@ -312,14 +316,6 @@ where
 
     fn print_cfg(&self) -> &PrintCfg {
         &self.cfg
-    }
-
-    fn print(&mut self, area: &U::Area)
-    where
-        Self: Sized,
-    {
-        self.set_printed_lines(area);
-        area.print(&self.text, &self.cfg, palette::painter());
     }
 
     fn once(_globals: crate::Globals<U>) {}

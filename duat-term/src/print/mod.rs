@@ -18,7 +18,7 @@ macro_rules! queue {
 
 #[derive(Debug)]
 pub struct Lines {
-    bytes: Vec<u8>,
+    pub bytes: Vec<u8>,
     cutoffs: Vec<usize>,
     coords: Coords,
     real_cursor: Option<bool>,
@@ -37,15 +37,16 @@ impl Lines {
         let (tl, br) = (self.coords.tl(), self.coords.br());
 
         if (tl.y..br.y).contains(&y) {
-            let start = self.cutoffs[y - tl.y];
+            let y = y - tl.y;
+            let start = self.cutoffs[y];
 
             let (start_x, end_x) = (self.coords.tl().x, self.coords.br().x);
-            let ret = match self.cutoffs.get(y + 1) {
-                Some(end) => (&self.bytes[start..*end], start_x, end_x),
-                None => (&self.bytes[start..], start_x, end_x),
+            let bytes = match self.cutoffs.get(y + 1) {
+                Some(end) => &self.bytes[start..*end],
+                None => &self.bytes[start..],
             };
 
-            Some(ret)
+            Some((bytes, start_x, end_x))
         } else {
             None
         }
@@ -145,15 +146,15 @@ impl Printer {
         self.is_offline = true;
     }
 
-    pub fn is_offline(&self) -> bool{
+    pub fn is_offline(&self) -> bool {
         self.is_offline
     }
 
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        let lines: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
+        let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
 
-        if lines.is_empty() {
+        if list.is_empty() {
             return;
         }
 
@@ -163,8 +164,9 @@ impl Printer {
         for y in 0..self.max.y {
             let mut x = 0;
 
-            let lines = lines.iter().flat_map(|lines| lines.on(y));
-            for (bytes, start, end) in lines {
+            let iter = list.iter().flat_map(|lines| lines.on(y));
+
+            for (bytes, start, end) in iter {
                 if x != start {
                     queue!(stdout, MoveToColumn(start as u16));
                 }
@@ -174,10 +176,10 @@ impl Printer {
                 x = end;
             }
 
-            queue!(stdout, MoveToNextLine(1))
+            queue!(stdout, MoveToNextLine(1));
         }
 
-        let was_real = if let Some(was_real) = lines
+        let was_real = if let Some(was_real) = list
             .iter()
             .filter_map(|lines| lines.real_cursor)
             .reduce(|prev, was_real| prev || was_real)

@@ -1,11 +1,7 @@
 mod iter;
 mod line;
 
-use std::{
-    cell::RefCell,
-    fmt::Alignment,
-    io::{StdoutLock, Write},
-};
+use std::{cell::RefCell, fmt::Alignment, io::Write};
 
 use crossterm::{
     cursor,
@@ -13,7 +9,6 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::Painter,
     position::Point,
     text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
@@ -37,8 +32,8 @@ macro_rules! queue {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
-    pub x: usize,
     pub y: usize,
+    pub x: usize,
 }
 
 impl std::fmt::Debug for Coord {
@@ -318,6 +313,8 @@ impl ui::Area for Area {
             let mut printer = layout.printer.write();
             printer.reset();
             layout.rects.set_senders(&mut printer);
+
+            print_edges(layout.edges());
         }
 
         Ok(())
@@ -354,6 +351,8 @@ impl ui::Area for Area {
         let (child, parent) = layout.bisect(self.id, specs, is_glued);
 
         layout.rects.set_senders(&mut layout.printer.write());
+
+        print_edges(layout.edges());
 
         (
             Area::new(child, self.layout.clone()),
@@ -484,7 +483,7 @@ fn print_parts(
 
     if !line.is_empty() {
         queue!(line, Print(" "));
-        print_line(old_x, coords, alignment, &mut line, lines);
+        print_line(old_x + 1, coords, alignment, &mut line, lines);
     }
 
     coords.br.y - y
@@ -563,7 +562,9 @@ fn write_char(
     }
 }
 
-fn print_edges(edges: &[Edge], stdout: &mut StdoutLock) {
+fn print_edges(edges: &[Edge]) {
+    let mut stdout = std::io::stdout().lock();
+
     let edges = edges
         .iter()
         .map(|edge| edge.line_coords())
