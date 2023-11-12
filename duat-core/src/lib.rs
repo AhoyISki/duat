@@ -16,7 +16,6 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     thread::JoinHandle,
 };
@@ -89,12 +88,16 @@ where
         }
     }
 
-    pub fn spawn<R: Send + 'static>(&self, f: impl FnOnce() -> R + Send + 'static) -> Handle<R> {
+    pub fn spawn<R: Send + 'static>(
+        &self,
+        f: impl FnOnce() -> R + Send + 'static,
+    ) -> JoinHandle<R> {
         self.handles.fetch_add(1, Ordering::Relaxed);
-        Handle {
-            handle: std::thread::spawn(f),
-            handles: self.handles,
-        }
+        std::thread::spawn(|| {
+            let ret = f();
+            self.handles.fetch_sub(1, Ordering::Relaxed);
+            ret
+        })
     }
 
     pub fn has_ended(&self) -> bool {
@@ -107,31 +110,6 @@ where
 
     fn end(&self) {
         self.has_ended.store(true, Ordering::Relaxed);
-    }
-}
-
-pub struct Handle<T> {
-    handle: JoinHandle<T>,
-    handles: &'static AtomicUsize,
-}
-
-impl<T> Deref for Handle<T> {
-    type Target = JoinHandle<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.handle
-    }
-}
-
-impl<T> DerefMut for Handle<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.handle
-    }
-}
-
-impl<T> Drop for Handle<T> {
-    fn drop(&mut self) {
-        self.handles.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
