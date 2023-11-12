@@ -1,6 +1,5 @@
 #![feature(decl_macro, lazy_cell, generic_const_exprs)]
 #![allow(incomplete_features, dead_code)]
-use std::sync::mpsc;
 
 use duat_core::{data::RwData, widgets::File};
 pub use utils::run_duat;
@@ -10,13 +9,20 @@ pub mod widgets;
 
 // The main macro to run duat.
 pub macro run($($tree:tt)*) {
+    use std::sync::mpsc;
+    use crate::prelude::duat_core::ui;
+
     #[no_mangle]
-    fn run(prev: PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles {
+    fn run(
+        prev: PrevFiles,
+        tx: mpsc::Sender<ui::Event>,
+        rx: mpsc::Receiver<ui::Event>
+    ) -> PrevFiles {
         {
             $($tree)*
         };
 
-        run_duat(prev, rx)
+        run_duat(prev, tx, rx)
     }
 }
 
@@ -51,4 +57,3 @@ pub mod prelude {
 }
 
 type PrevFiles = Vec<(RwData<File>, bool)>;
-type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;

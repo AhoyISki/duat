@@ -10,7 +10,7 @@ use std::{
 };
 
 use duat::{prelude::*, run_duat};
-use duat_core::{data::RwData, widgets::File};
+use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
@@ -57,14 +57,16 @@ fn main() {
             let (tx, rx) = mpsc::channel();
 
             let handle = if let Some(run) = run.take() {
+                let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run(prev, rx);
+                    let ret = run(prev, tx, rx);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
             } else {
+                let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run_duat(prev, rx);
+                    let ret = run_duat(prev, tx, rx);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
@@ -82,7 +84,7 @@ fn main() {
                     let cur_lib = unsafe { Library::new(&so_path).ok() };
                     #[allow(unused_assignments)]
                     if cur_lib.as_ref().and_then(find_run_fn).is_some() {
-                        let _ = tx.send(());
+                        let _ = tx.send(ui::Event::ReloadConfig);
                         break;
                     }
                 }
@@ -101,8 +103,8 @@ fn main() {
             }
         }
     } else {
-        let (_tx, rx) = mpsc::channel();
-        run_duat(Vec::new(), rx);
+        let (tx, rx) = mpsc::channel();
+        run_duat(Vec::new(), tx, rx);
     }
 }
 
@@ -136,4 +138,4 @@ pub macro run($($tree:tt)*) {
 }
 
 type PrevFiles = Vec<(RwData<File>, bool)>;
-type RunFn = fn(PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles;
+type RunFn = fn(PrevFiles, tx: mpsc::Sender<ui::Event>, rx: mpsc::Receiver<ui::Event>) -> PrevFiles;

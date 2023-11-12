@@ -7,7 +7,11 @@ use std::{
     },
 };
 
-use cassowary::{strength::WEAK, Solver, Variable, WeightedRelation::*};
+use cassowary::{
+    strength::{STRONG, WEAK},
+    Solver, Variable,
+    WeightedRelation::*,
+};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
@@ -64,18 +68,25 @@ pub struct VarPoint {
 }
 
 impl VarPoint {
+    pub fn coord(&self) -> Coord {
+        let x = self.x.value.load(Ordering::Relaxed);
+        let y = self.y.value.load(Ordering::Relaxed);
+
+        Coord::new(x, y)
+    }
+
     /// Returns a new instance of [`VarPoint`]
-    fn new(constrainer: &mut Vars) -> Self {
+    pub fn new(vars: &mut Vars) -> Self {
         let element = VarPoint {
             x: VarValue::new(),
             y: VarValue::new(),
         };
 
-        constrainer.list.insert(
+        vars.list.insert(
             element.x.var,
             (element.x.value.clone(), element.x.has_changed.clone()),
         );
-        constrainer.list.insert(
+        vars.list.insert(
             element.y.var,
             (element.y.value.clone(), element.y.has_changed.clone()),
         );
@@ -186,7 +197,7 @@ impl Vars {
 /// become a thing.
 pub struct Layout {
     pub rects: Rects,
-    max: Coord,
+    max: VarPoint,
     pub active_id: AreaId,
     frame: Frame,
     edges: Vec<Edge>,
@@ -198,18 +209,27 @@ impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
     pub fn new(frame: Frame) -> Self {
+        let mut vars = Vars::new();
+
         let max = {
             let (width, height) = crossterm::terminal::size().unwrap();
-            Coord::new(width as usize, height as usize)
+            let max = VarPoint::new(&mut vars);
+            let strong = STRONG * 5.0;
+            vars.solver.add_edit_variable(max.x.var, strong).unwrap();
+            vars.solver.suggest_value(max.x.var, width as f64).unwrap();
+
+            vars.solver.add_edit_variable(max.y.var, strong).unwrap();
+            vars.solver.suggest_value(max.y.var, height as f64).unwrap();
+
+            max
         };
 
-        let mut vars = Vars::new();
         let rects = Rects::new(&mut vars);
         let main_id = rects.main.id();
 
         let mut layout = Layout {
             rects,
-            max,
+            max: max.clone(),
             active_id: main_id,
             frame,
             edges: Vec::new(),
@@ -221,14 +241,14 @@ impl Layout {
 
         layout
             .rects
-            .set_edges(main_id, Frame::Empty, vars, edges, max);
+            .set_edges(main_id, Frame::Empty, vars, edges, &layout.max);
 
         vars.update();
 
         layout.rects.main.clear_equalities(vars);
         layout
             .rects
-            .set_edges(main_id, layout.frame, vars, edges, max);
+            .set_edges(main_id, layout.frame, vars, edges, &layout.max);
 
         vars.update();
 
@@ -247,6 +267,19 @@ impl Layout {
         });
 
         layout
+    }
+
+    pub fn set_max(&mut self) {
+        let (width, height) = crossterm::terminal::size().unwrap();
+        let max = &self.max;
+        self.vars
+            .solver
+            .suggest_value(max.x.var, width as f64)
+            .unwrap();
+        self.vars
+            .solver
+            .suggest_value(max.y.var, height as f64)
+            .unwrap();
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -340,7 +373,7 @@ impl Layout {
             // If the child is clustered, the frame doesn't need to be redone.
             if !cluster {
                 self.rects
-                    .set_new_child_edges(child_id, self.frame, vars, edges, self.max)
+                    .set_new_child_edges(child_id, self.frame, vars, edges, &self.max)
             }
 
             let rect = self.rects.get_mut(new_parent_id).unwrap();
@@ -367,7 +400,7 @@ impl Layout {
             // does mean that we have to run `prepare_child()` twice for each
             // affected area.
             self.rects
-                .set_edges_around(new_id, Frame::Empty, vars, edges, self.max);
+                .set_edges_around(new_id, Frame::Empty, vars, edges, &self.max);
 
             // Add a constraint so that the new child `Rect` has a len equal to
             // `resizable_len / resizable_children`, a self imposed rule.
@@ -412,7 +445,7 @@ impl Layout {
         vars.update();
 
         self.rects
-            .set_edges_around(new_id, self.frame, vars, edges, self.max);
+            .set_edges_around(new_id, self.frame, vars, edges, &self.max);
 
         vars.update();
 

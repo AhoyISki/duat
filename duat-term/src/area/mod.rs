@@ -1,7 +1,7 @@
 mod iter;
 mod line;
 
-use std::{cell::RefCell, fmt::Alignment, io::Write};
+use std::{cell::RefCell, fmt::Alignment, io::Write, sync::atomic::Ordering};
 
 use crossterm::{
     cursor,
@@ -19,7 +19,7 @@ use iter::{print_iter, rev_print_iter};
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
     print::Lines,
-    AreaId, ConstraintChangeErr,
+    AreaId, ConstraintChangeErr, PRINT_EDGES,
 };
 
 static BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
@@ -266,6 +266,19 @@ impl ui::Area for Area {
     }
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
+        if PRINT_EDGES.fetch_and(false, Ordering::Acquire) {
+            let mut layout = self.layout.write();
+            let layout = &mut *layout;
+            layout.set_max();
+
+            let mut printer = layout.printer.write();
+
+            printer.reset();
+            layout.vars.update();
+            layout.rects.set_senders(&mut printer);
+            print_edges(layout.edges());
+        }
+
         let layout = self.layout.read();
 
         let info = self.print_info.borrow();
@@ -482,7 +495,7 @@ fn print_parts(
     }
 
     if !line.is_empty() {
-        queue!(line, Print(" "));
+        line.write_all(b" ").unwrap();
         print_line(old_x + 1, coords, alignment, &mut line, lines);
     }
 

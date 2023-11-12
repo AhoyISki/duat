@@ -7,15 +7,15 @@ use std::{
     time::Duration,
 };
 
-use crossterm::event::{self, Event};
-
 use crate::{
     data::RwData,
     input::InputMethod,
     text::{text, PrintCfg, Text},
-    ui::{build_file, Area, FileBuilder, Node, PushSpecs, Ui, Window, WindowBuilder},
+    ui::{
+        build_file, Area, Event, FileBuilder, Node, PushSpecs, Sender, Ui, Window, WindowBuilder,
+    },
     widgets::{File, FileCfg, Widget},
-    BreakReason, Globals, BREAK,
+    Globals,
 };
 
 #[allow(clippy::type_complexity)]
@@ -34,7 +34,7 @@ impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn session_from_args(mut self) -> Session<U> {
+    pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
         self.ui.startup();
 
         let mut args = std::env::args();
@@ -56,12 +56,13 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
             globals: self.globals,
+            tx,
         };
 
         session.set_active_file(widget, &area);
 
         self.globals.commands.add_windows(session.windows.clone());
-        add_session_commands(&session, self.globals);
+        add_session_commands(&session, self.globals, session.tx.clone());
 
         // Open and process files..
         build_file(
@@ -81,7 +82,11 @@ where
         session
     }
 
-    pub fn session_from_prev(mut self, prev_files: Vec<(RwData<File>, bool)>) -> Session<U> {
+    pub fn session_from_prev(
+        mut self,
+        prev_files: Vec<(RwData<File>, bool)>,
+        tx: mpsc::Sender<Event>,
+    ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev_files {
             let mut file = file.write();
@@ -105,12 +110,13 @@ where
             file_fn: self.file_fn,
             window_fn: self.window_fn,
             globals: self.globals,
+            tx,
         };
 
         session.set_active_file(widget, &area);
 
         self.globals.commands.add_windows(session.windows.clone());
-        add_session_commands(&session, self.globals);
+        add_session_commands(&session, self.globals, session.tx.clone());
 
         // Open and process files..
         build_file(
@@ -223,6 +229,7 @@ where
     file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
     window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
+    tx: mpsc::Sender<Event>,
 }
 
 impl<U> Session<U>
@@ -281,18 +288,11 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, rx: mpsc::Receiver<()>) -> Vec<(RwData<File>, bool)> {
-        // Notifier for configuration changes.
-        std::thread::spawn(move || {
-            if let Ok(()) = rx.recv() {
-                BREAK.store(BreakReason::ToReloadConfig);
-            }
-        });
+    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+        self.ui.set_sender(Sender::new(self.tx.clone()));
 
         // The main loop.
         loop {
-            BREAK.store(BreakReason::None);
-
             let current_window = self.current_window.load(Ordering::Relaxed);
             self.windows.inspect(|windows| {
                 while windows
@@ -310,49 +310,61 @@ where
                 }
             });
 
-            self.session_loop();
+            let reason = self.session_loop(&rx);
 
-            if BREAK == BreakReason::ToQuitDuat || BREAK == BreakReason::ToReloadConfig {
-                break;
+            match reason {
+                BreakTo::QuitDuat => {
+                    self.ui.shutdown();
+                    break Vec::new();
+                }
+                BreakTo::ReloadConfig => {
+                    self.ui.unload();
+                    let windows = self.windows.read();
+                    break windows
+                        .iter()
+                        .flat_map(Window::widgets)
+                        .filter_map(|(widget, area)| {
+                            widget.downcast::<File>().zip(Some(area.is_active()))
+                        })
+                        .collect();
+                }
+                _ => {}
             }
-        }
-
-        if BREAK == BreakReason::ToQuitDuat {
-            self.ui.shutdown();
-            Vec::new()
-        } else {
-            self.ui.unload();
-            let windows = self.windows.read();
-            windows
-                .iter()
-                .flat_map(Window::widgets)
-                .filter_map(|(widget, area)| widget.downcast::<File>().zip(Some(area.is_active())))
-                .collect()
         }
     }
 
     /// The primary application loop, executed while no breaking
     /// commands have been sent to [`Controls`].
-    fn session_loop(&mut self) {
+    fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
         let current_window = self.current_window.load(Ordering::Relaxed);
         let windows = self.windows.read();
+        
         std::thread::scope(|scope| {
             loop {
                 let active_window = &windows[current_window];
 
-                if BREAK.needed() {
-                    break;
-                }
-
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    if let Event::Key(key) = event::read().unwrap() {
-                        active_window.send_key(key, scope, self.globals);
+                if let Ok(event) = rx.try_recv() {
+                    match event {
+                        Event::Key(key) => {
+                            active_window.send_key(key, scope, self.globals);
+                        }
+                        Event::Resize | Event::FormChange => {
+                            for node in active_window.nodes() {
+                                node.update_and_print();
+                            }
+                            continue;
+                        }
+                        Event::ReloadConfig => break BreakTo::ReloadConfig,
+                        Event::Quit => break BreakTo::QuitDuat,
+                        Event::OpenFiles => break BreakTo::OpenFiles,
                     }
                 }
 
+                std::thread::sleep(Duration::from_millis(10));
+
                 for node in active_window.nodes() {
                     if node.needs_update() {
-                        node.update_and_print();
+                        scope.spawn(|| node.update_and_print());
                     }
                 }
             }
@@ -397,10 +409,28 @@ where
     }
 }
 
-fn add_session_commands<U>(session: &Session<U>, globals: Globals<U>)
+enum BreakTo {
+    ReloadConfig,
+    OpenFiles,
+    QuitDuat,
+}
+
+fn add_session_commands<U>(session: &Session<U>, globals: Globals<U>, tx: mpsc::Sender<Event>)
 where
     U: Ui,
 {
+    globals
+        .commands
+        .add(["quit", "q"], {
+            let tx = tx.clone();
+
+            move |_flags, _args| {
+                tx.send(Event::Quit).unwrap();
+                Ok(None)
+            }
+        })
+        .unwrap();
+
     globals
         .commands
         .add(["write", "w"], move |_flags, mut args| {
@@ -488,8 +518,8 @@ where
                             .unwrap_or(false)
                     })
                 else {
-                    BREAK.store(BreakReason::ToOpenFiles);
-                    return Ok(Some(text!("Created " [AccentOk] file [Default] ".")));
+                    tx.send(Event::OpenFiles).unwrap();
+                    return Ok(Some(text!("Created " [AccentOk] file [] ".")));
                 };
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());

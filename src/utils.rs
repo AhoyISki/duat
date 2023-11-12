@@ -5,6 +5,7 @@ use duat_core::{
     data::{CurrentFile, CurrentWidget, RwData},
     session::SessionCfg,
     text::PrintCfg,
+    ui::Event,
     widgets::File,
     Globals,
 };
@@ -26,7 +27,8 @@ pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
 pub fn run_duat(
     prev: Vec<(RwData<File>, bool)>,
-    rx: mpsc::Receiver<()>,
+    tx: mpsc::Sender<Event>,
+    rx: mpsc::Receiver<Event>,
 ) -> Vec<(RwData<File>, bool)> {
     let ui = match UI.write().unwrap().take() {
         Some(ui) => ui,
@@ -40,18 +42,12 @@ pub fn run_duat(
         None => default_cfg_fn(&mut cfg),
     }
 
-    cfg.set_print_cfg(
-        PRINT_CFG
-            .write()
-            .unwrap()
-            .take()
-            .unwrap_or_default()
-    );
+    cfg.set_print_cfg(PRINT_CFG.write().unwrap().take().unwrap_or_default());
 
     let session = if prev.is_empty() {
-        cfg.session_from_args()
+        cfg.session_from_args(tx)
     } else {
-        cfg.session_from_prev(prev)
+        cfg.session_from_prev(prev, tx)
     };
     session.start(rx)
 }

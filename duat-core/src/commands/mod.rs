@@ -213,7 +213,6 @@ use crate::{
     text::{text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
-    BreakReason, BREAK,
 };
 
 mod parameters;
@@ -266,12 +265,6 @@ where
                     })
                 };
 
-                let quit = Command::new(["quit", "q"], move |_, _| {
-                    BREAK.store(BreakReason::ToQuitDuat);
-                    Ok(None)
-                });
-
-                inner.write().try_add(quit).unwrap();
                 inner.write().try_add(alias).unwrap();
 
                 inner

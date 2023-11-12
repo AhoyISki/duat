@@ -235,8 +235,8 @@ impl Rect {
         parent: &Rect,
         axis: Axis,
         frame: Frame,
-        max: Coord,
         edges: &mut Vec<Edge>,
+        max: &VarPoint,
     ) -> (f64, f64) {
         self.edge_equalities.extend([
             self.tl.x.var | GE(REQUIRED) | 0.0,
@@ -247,7 +247,7 @@ impl Rect {
 
         edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         let (right, up, left, down) = if self.is_frameable(Some(parent)) {
-            self.form_frame(frame, max, edges)
+            self.form_frame(frame, edges, max.coord())
         } else {
             (0.0, 0.0, 0.0, 0.0)
         };
@@ -268,7 +268,13 @@ impl Rect {
     /// Sets the [`Equality`]s for the main [`Rect`], which
     /// is supposed to be parentless. It takes into account a possible
     /// [`Frame`].
-    fn set_main_edges(&mut self, frame: Frame, vars: &mut Vars, edges: &mut Vec<Edge>, max: Coord) {
+    fn set_main_edges(
+        &mut self,
+        frame: Frame,
+        vars: &mut Vars,
+        edges: &mut Vec<Edge>,
+        max: &VarPoint,
+    ) {
         let (hor_edge, ver_edge) = if self.is_frameable(None) {
             frame.main_edges()
         } else {
@@ -308,8 +314,8 @@ impl Rect {
         self.edge_equalities = vec![
             self.tl.x.var | EQ(REQUIRED) | hor_edge,
             self.tl.y.var | EQ(REQUIRED) | ver_edge,
-            self.br.x.var | EQ(REQUIRED) | (max.x as f64 - hor_edge),
-            self.br.y.var | EQ(REQUIRED) | (max.y as f64 - ver_edge),
+            self.br.x.var | EQ(REQUIRED) | (max.x.var - hor_edge),
+            self.br.y.var | EQ(REQUIRED) | (max.y.var - ver_edge),
         ];
 
         vars.add_equalities(&self.edge_equalities);
@@ -328,7 +334,12 @@ impl Rect {
 
     /// Forms the frame surrounding [`self`], considering its position
     /// and a [`Frame`].
-    fn form_frame(&self, frame: Frame, max: Coord, edges: &mut Vec<Edge>) -> (f64, f64, f64, f64) {
+    fn form_frame(
+        &self,
+        frame: Frame,
+        edges: &mut Vec<Edge>,
+        max: Coord,
+    ) -> (f64, f64, f64, f64) {
         let (right, up, left, down) = frame.edges(&self.br, &self.tl, max);
 
         if right == 1.0 {
@@ -534,7 +545,7 @@ impl Rects {
         frame: Frame,
         vars: &mut Vars,
         edges: &mut Vec<Edge>,
-        max: Coord,
+        max: &VarPoint,
     ) {
         if self.main.id == id {
             let rect = self.get_mut(id).unwrap();
@@ -542,7 +553,7 @@ impl Rects {
             rect.set_main_edges(frame, vars, edges, max);
         } else {
             let (pos, parent) = self.get_parent_mut(id).unwrap();
-            prepare_child(parent, pos, vars, frame, max, edges)
+            prepare_child(parent, pos, vars, frame, edges, max)
         }
     }
 
@@ -552,7 +563,7 @@ impl Rects {
         frame: Frame,
         vars: &mut Vars,
         edges: &mut Vec<Edge>,
-        max: Coord,
+        max: &VarPoint,
     ) {
         let child_is_main = self.main.id == self.get(id).unwrap().id;
         let (pos, parent) = self.get_parent_mut(id).unwrap();
@@ -560,7 +571,7 @@ impl Rects {
             parent.clear_equalities(vars);
             parent.set_main_edges(frame, vars, edges, max);
         } else {
-            prepare_child(parent, pos, vars, frame, max, edges)
+            prepare_child(parent, pos, vars, frame, edges, max)
         }
     }
 
@@ -570,7 +581,7 @@ impl Rects {
         frame: Frame,
         vars: &mut Vars,
         edges: &mut Vec<Edge>,
-        max: Coord,
+        max: &VarPoint,
     ) {
         let Some((pos, Kind::Middle { children, .. })) =
             self.get_parent(id).map(|(pos, parent)| (pos, &parent.kind))
@@ -649,8 +660,8 @@ fn prepare_child(
     pos: usize,
     vars: &mut Vars,
     frame: Frame,
-    max: Coord,
     edges: &mut Vec<Edge>,
+    max: &VarPoint,
 ) {
     let axis = parent.kind.axis().unwrap();
     let clustered = parent.kind.is_clustered();
@@ -663,7 +674,7 @@ fn prepare_child(
     let child = &mut children[pos].0;
 
     child.clear_equalities(vars);
-    let (start, end) = child.set_equalities(parent, axis, frame, max, edges);
+    let (start, end) = child.set_equalities(parent, axis, frame, edges, max);
 
     if pos == 0 {
         let constraint = child.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
@@ -686,7 +697,7 @@ fn prepare_child(
     if let Kind::Middle { children, .. } = &mut child.kind {
         let len = children.len();
         for pos in 0..len {
-            prepare_child(child, pos, vars, frame, max, edges);
+            prepare_child(child, pos, vars, frame, edges, max);
         }
     }
 

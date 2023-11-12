@@ -2,7 +2,10 @@ mod builder;
 
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread::Scope,
 };
 
@@ -454,11 +457,46 @@ impl From<PushSpecs> for Axis {
     }
 }
 
+pub enum Event {
+    Key(KeyEvent),
+    Resize,
+    FormChange,
+    ReloadConfig,
+    OpenFiles,
+    Quit
+}
+
+pub struct Sender(mpsc::Sender<Event>);
+
+impl Sender {
+    pub fn new(sender: mpsc::Sender<Event>) -> Self {
+        Self(sender)
+    }
+
+    pub fn send_key(&self, key: KeyEvent) {
+        self.0.send(Event::Key(key)).unwrap();
+    }
+
+    pub fn send_resize(&self) {
+        self.0.send(Event::Resize).unwrap();
+    }
+
+    pub fn send_reload_config(&self) {
+        self.0.send(Event::ReloadConfig).unwrap();
+    }
+
+    pub(crate) fn send_form_changed(&self) {
+        self.0.send(Event::FormChange).unwrap();
+    }
+}
+
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Sized + Default + 'static {
     type ConstraintChangeErr: Debug;
     type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr> + Clone + PartialEq;
+
+    fn set_sender(&mut self, sender: Sender);
 
     /// Initiates and returns a new "master" [`Area`].
     ///
@@ -618,7 +656,7 @@ where
             .nodes()
             .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
         {
-            node.widget.send_key(key, &node.area, globals);
+            scope.spawn(move || node.widget.send_key(key, &node.area, globals));
         }
     }
 

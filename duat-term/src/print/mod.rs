@@ -8,7 +8,7 @@ use std::{
 
 use crossterm::cursor::{self, MoveTo, MoveToColumn, MoveToNextLine};
 
-use crate::{area::Coord, Coords};
+use crate::{area::Coord, Coords, layout::VarPoint};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -104,11 +104,11 @@ impl Sender {
 pub struct Printer {
     recvs: Vec<Receiver>,
     is_offline: bool,
-    max: Coord,
+    max: VarPoint,
 }
 
 impl Printer {
-    pub fn new(max: Coord) -> Self {
+    pub fn new(max: VarPoint) -> Self {
         Self {
             recvs: Vec::new(),
             is_offline: false,
@@ -161,7 +161,7 @@ impl Printer {
         let mut stdout = stdout().lock();
         queue!(stdout, cursor::Hide, MoveTo(0, 0));
 
-        for y in 0..self.max.y {
+        for y in 0..self.max.coord().y {
             let mut x = 0;
 
             let iter = list.iter().flat_map(|lines| lines.on(y));

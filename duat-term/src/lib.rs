@@ -11,14 +11,15 @@ use std::{
     fmt::Debug,
     io,
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 
 pub use area::{Area, Coords};
 use crossterm::{
-    cursor, execute,
+    cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui};
+use duat_core::{data::RwData, ui, log_info};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 pub use rules::{VertRule, VertRuleCfg};
@@ -29,6 +30,7 @@ mod print;
 mod rules;
 
 static DUAT_ENDED: AtomicBool = AtomicBool::new(false);
+static PRINT_EDGES: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 pub enum Anchor {
@@ -75,6 +77,32 @@ impl Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
+
+    fn set_sender(&mut self, sender: ui::Sender) {
+        std::thread::spawn(move || {
+            loop {
+                if let Ok(true) = event::poll(Duration::from_millis(10)) {
+                    match event::read().unwrap() {
+                        event::Event::Key(key) => {
+                            sender.send_key(key)
+                        }
+                        event::Event::Resize(..) => {
+                            PRINT_EDGES.store(true, Ordering::Release);
+                            sender.send_resize();
+                        },
+                        event::Event::FocusGained
+                        | event::Event::FocusLost
+                        | event::Event::Mouse(_)
+                        | event::Event::Paste(_) => {}
+                    }
+                }
+
+                if DUAT_ENDED.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
+        });
+    }
 
     fn new_root(&mut self) -> Self::Area {
         let layout = Layout::new(self.frame);
