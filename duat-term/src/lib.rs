@@ -109,7 +109,9 @@ impl ui::Ui for Ui {
                     }
                 }
 
-                printer.read().print();
+                if let Some(printer) = printer.try_read() {
+                    printer.print();
+                }
 
                 if globals.has_ended() {
                     break;

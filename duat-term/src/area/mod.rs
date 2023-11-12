@@ -97,20 +97,6 @@ impl Area {
         }
     }
 
-    fn is_active(&self) -> bool {
-        self.layout.read().active_id == self.id
-    }
-
-    fn coords(&self) -> Coords {
-        let layout = self.layout.read();
-        let rect = layout.get(self.id).unwrap();
-
-        Coords {
-            tl: rect.tl(),
-            br: rect.br(),
-        }
-    }
-
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
@@ -273,9 +259,7 @@ impl ui::Area for Area {
         }
 
         let layout = self.layout.read();
-
         let info = self.print_info.borrow();
-        let coords = self.coords();
 
         let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
             return;
@@ -288,13 +272,13 @@ impl ui::Area for Area {
             (text.iter_exactly_at(line_start), cfg)
         };
 
-        let active = self.is_active();
-        let iter = print_iter(iter, coords.width(), cfg, *info);
-        let y = print_parts(iter, coords, active, *info, painter, &mut lines);
+        let active = layout.active_id == self.id;
+        let iter = print_iter(iter, sender.coords().width(), cfg, *info);
+        let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines);
 
         for _ in (0..y).rev() {
             lines
-                .write_all(&BLANK.as_bytes()[..coords.width()])
+                .write_all(&BLANK.as_bytes()[..sender.coords().width()])
                 .unwrap();
 
             lines.flush().unwrap();

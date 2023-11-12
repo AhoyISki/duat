@@ -101,6 +101,10 @@ impl Sender {
     pub fn send(&self, lines: Lines) {
         *self.lines.lock().unwrap() = Some(lines);
     }
+
+    pub fn coords(&self) -> Coords {
+        self.coords
+    }
 }
 
 pub struct Printer {
