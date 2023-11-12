@@ -292,7 +292,17 @@ impl ui::Area for Area {
         constraint: Constraint,
         axis: Axis,
     ) -> Result<(), ConstraintChangeErr> {
-        let mut layout = self.layout.write();
+        if self
+            .layout
+            .read()
+            .rects
+            .get_constraint(self.id)
+            .is_some_and(|cmp| cmp == (constraint, axis))
+        {
+            return Ok(());
+        };
+
+		let mut layout = self.layout.write();
         let layout = &mut *layout;
         let mut printer = layout.printer.write();
         let prev_cons = layout

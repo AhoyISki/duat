@@ -617,6 +617,19 @@ impl Rects {
 
         set_sender(&mut self.main, printer);
     }
+
+    pub fn get_constraint(&self, id: AreaId) -> Option<(Constraint, Axis)> {
+        self.get_parent(id).and_then(|(pos, parent)| {
+            let Kind::Middle { children, .. } = &parent.kind else {
+                unreachable!();
+            };
+            children[pos]
+                .1
+                .constraint
+                .clone()
+                .map(|(_, (constraint, axis))| (constraint, axis))
+        })
+    }
 }
 
 fn fetch_parent(main: &Rect, id: AreaId) -> Option<(usize, &Rect)> {
