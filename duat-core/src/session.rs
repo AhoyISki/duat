@@ -36,7 +36,8 @@ where
     U: Ui,
 {
     pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
-        self.ui.startup();
+        self.ui.open();
+        self.ui.start(Sender::new(tx.clone()), self.globals);
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -88,6 +89,8 @@ where
         prev_files: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
+        self.ui.start(Sender::new(tx.clone()), self.globals);
+
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev_files {
             let mut file = file.write();
@@ -290,8 +293,6 @@ where
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
-        self.ui.set_sender(Sender::new(self.tx.clone()));
-
         // The main loop.
         loop {
             let current_window = self.current_window.load(Ordering::Relaxed);
@@ -315,11 +316,18 @@ where
 
             match reason {
                 BreakTo::QuitDuat => {
-                    self.ui.shutdown();
+                    self.ui.close();
+                    self.globals.end();
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
-                    self.ui.unload();
+                    self.ui.end();
+                    self.globals.end();
+
+					while self.globals.threads_are_running() {
+    					std::thread::sleep(Duration::from_micros(500));
+					}
+                    
                     let windows = self.windows.read();
                     break windows
                         .iter()

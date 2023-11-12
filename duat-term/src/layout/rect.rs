@@ -7,11 +7,11 @@ use cassowary::{
 };
 use duat_core::ui::{Axis, Constraint};
 
-use super::{Edge, Equality, Length, VarPoint, Vars};
+use super::{Edge, Length, VarPoint};
 use crate::{
     area::Coord,
     print::{Printer, Sender},
-    Area, AreaId, Coords, Frame,
+    Area, AreaId, Coords, Equality, Frame,
 };
 
 #[derive(Debug)]
@@ -76,11 +76,11 @@ pub struct Rect {
 impl Rect {
     /// Returns a new instance of [`Rect`], already adding its
     /// [`Variable`]s to the list.
-    pub fn new(vars: &mut Vars) -> Self {
+    pub fn new(printer: &mut Printer) -> Self {
         Rect {
             id: AreaId::new(),
-            tl: VarPoint::new(vars),
-            br: VarPoint::new(vars),
+            tl: VarPoint::new(printer),
+            br: VarPoint::new(printer),
             edge_equalities: Vec::new(),
             kind: Kind::End(None),
         }
@@ -88,7 +88,12 @@ impl Rect {
 
     /// Returns a new [`Rect`], which is supposed to replace an
     /// existing [`Rect`], as its new parent.
-    pub fn new_parent_of(rect: &mut Rect, axis: Axis, vars: &mut Vars, clustered: bool) -> Self {
+    pub fn new_parent_of(
+        rect: &mut Rect,
+        axis: Axis,
+        printer: &mut Printer,
+        clustered: bool,
+    ) -> Self {
         let parent = Rect {
             id: AreaId::new(),
             tl: rect.tl.clone(),
@@ -98,8 +103,8 @@ impl Rect {
         };
 
         rect.edge_equalities.clear();
-        rect.tl = VarPoint::new(vars);
-        rect.br = VarPoint::new(vars);
+        rect.tl = VarPoint::new(printer);
+        rect.br = VarPoint::new(printer);
 
         parent
     }
@@ -114,9 +119,9 @@ impl Rect {
 
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
-    pub fn clear_equalities(&mut self, vars: &mut Vars) {
-        for constraint in self.edge_equalities.drain(..) {
-            vars.remove_equality(&constraint);
+    pub fn clear_equalities(&mut self, vars: &mut Printer) {
+        for eq in self.edge_equalities.drain(..) {
+            vars.remove_equality(&eq).unwrap();
         }
     }
 
@@ -268,13 +273,7 @@ impl Rect {
     /// Sets the [`Equality`]s for the main [`Rect`], which
     /// is supposed to be parentless. It takes into account a possible
     /// [`Frame`].
-    fn set_main_edges(
-        &mut self,
-        frame: Frame,
-        vars: &mut Vars,
-        edges: &mut Vec<Edge>,
-        max: &VarPoint,
-    ) {
+    fn set_main_edges(&mut self, frame: Frame, printer: &mut Printer, edges: &mut Vec<Edge>) {
         let (hor_edge, ver_edge) = if self.is_frameable(None) {
             frame.main_edges()
         } else {
@@ -314,11 +313,11 @@ impl Rect {
         self.edge_equalities = vec![
             self.tl.x.var | EQ(REQUIRED) | hor_edge,
             self.tl.y.var | EQ(REQUIRED) | ver_edge,
-            self.br.x.var | EQ(REQUIRED) | (max.x.var - hor_edge),
-            self.br.y.var | EQ(REQUIRED) | (max.y.var - ver_edge),
+            self.br.x.var | EQ(REQUIRED) | (printer.max().x.var - hor_edge),
+            self.br.y.var | EQ(REQUIRED) | (printer.max().y.var - ver_edge),
         ];
 
-        vars.add_equalities(&self.edge_equalities);
+        printer.add_equalities(&self.edge_equalities).unwrap();
     }
 
     /// Wheter or not [`self`] can be framed.
@@ -334,12 +333,7 @@ impl Rect {
 
     /// Forms the frame surrounding [`self`], considering its position
     /// and a [`Frame`].
-    fn form_frame(
-        &self,
-        frame: Frame,
-        edges: &mut Vec<Edge>,
-        max: Coord,
-    ) -> (f64, f64, f64, f64) {
+    fn form_frame(&self, frame: Frame, edges: &mut Vec<Edge>, max: Coord) -> (f64, f64, f64, f64) {
         let (right, up, left, down) = frame.edges(&self.br, &self.tl, max);
 
         if right == 1.0 {
@@ -398,9 +392,9 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(vars: &mut Vars) -> Self {
+    pub fn new(printer: &mut Printer) -> Self {
         Self {
-            main: Rect::new(vars),
+            main: Rect::new(printer),
             floating: Vec::new(),
         }
     }
@@ -482,7 +476,7 @@ impl Rects {
         id: AreaId,
         constraint: Constraint,
         axis: Axis,
-        vars: &mut Vars,
+        printer: &mut Printer,
     ) -> Option<(Constraint, Axis)> {
         let Some((pos, parent)) = self.get_parent_mut(id) else {
             return None;
@@ -498,7 +492,7 @@ impl Rects {
             if *cmp == (constraint, axis) {
                 return Some(*cmp);
             }
-            vars.remove_equality(equality);
+            printer.remove_equality(equality).unwrap();
         }
 
         let equality = match constraint {
@@ -518,7 +512,7 @@ impl Rects {
             Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max,
         };
 
-        vars.add_equality(equality.clone());
+        printer.add_equality(equality.clone()).unwrap();
 
         length
             .constraint
@@ -526,14 +520,18 @@ impl Rects {
             .map(|(_, prev)| prev)
     }
 
-    pub fn take_constraint(&mut self, id: AreaId, vars: &mut Vars) -> Option<(Constraint, Axis)> {
+    pub fn take_constraint(
+        &mut self,
+        id: AreaId,
+        vars: &mut Printer,
+    ) -> Option<(Constraint, Axis)> {
         self.get_parent_mut(id).and_then(|(pos, parent)| {
             let Kind::Middle { children, .. } = &mut parent.kind else {
                 unreachable!();
             };
             let length = std::mem::take(&mut children[pos].1);
             length.constraint.map(|(equality, constraint)| {
-                vars.remove_equality(&equality);
+                vars.remove_equality(&equality).unwrap();
                 constraint
             })
         })
@@ -543,17 +541,16 @@ impl Rects {
         &mut self,
         id: AreaId,
         frame: Frame,
-        vars: &mut Vars,
+        printer: &mut Printer,
         edges: &mut Vec<Edge>,
-        max: &VarPoint,
     ) {
         if self.main.id == id {
             let rect = self.get_mut(id).unwrap();
-            rect.clear_equalities(vars);
-            rect.set_main_edges(frame, vars, edges, max);
+            rect.clear_equalities(printer);
+            rect.set_main_edges(frame, printer, edges);
         } else {
             let (pos, parent) = self.get_parent_mut(id).unwrap();
-            prepare_child(parent, pos, vars, frame, edges, max)
+            prepare_child(parent, pos, printer, frame, edges)
         }
     }
 
@@ -561,17 +558,16 @@ impl Rects {
         &mut self,
         id: AreaId,
         frame: Frame,
-        vars: &mut Vars,
+        printer: &mut Printer,
         edges: &mut Vec<Edge>,
-        max: &VarPoint,
     ) {
         let child_is_main = self.main.id == self.get(id).unwrap().id;
         let (pos, parent) = self.get_parent_mut(id).unwrap();
         if child_is_main {
-            parent.clear_equalities(vars);
-            parent.set_main_edges(frame, vars, edges, max);
+            parent.clear_equalities(printer);
+            parent.set_main_edges(frame, printer, edges);
         } else {
-            prepare_child(parent, pos, vars, frame, edges, max)
+            prepare_child(parent, pos, printer, frame, edges)
         }
     }
 
@@ -579,9 +575,8 @@ impl Rects {
         &mut self,
         id: AreaId,
         frame: Frame,
-        vars: &mut Vars,
+        printer: &mut Printer,
         edges: &mut Vec<Edge>,
-        max: &VarPoint,
     ) {
         let Some((pos, Kind::Middle { children, .. })) =
             self.get_parent(id).map(|(pos, parent)| (pos, &parent.kind))
@@ -596,7 +591,7 @@ impl Rects {
             .flatten()
         {
             if let Some(&id) = ids.get(pos) {
-                self.set_edges(id, frame, vars, edges, max)
+                self.set_edges(id, frame, printer, edges)
             }
         }
     }
@@ -658,10 +653,9 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
 fn prepare_child(
     parent: &mut Rect,
     pos: usize,
-    vars: &mut Vars,
+    printer: &mut Printer,
     frame: Frame,
     edges: &mut Vec<Edge>,
-    max: &VarPoint,
 ) {
     let axis = parent.kind.axis().unwrap();
     let clustered = parent.kind.is_clustered();
@@ -673,8 +667,8 @@ fn prepare_child(
 
     let child = &mut children[pos].0;
 
-    child.clear_equalities(vars);
-    let (start, end) = child.set_equalities(parent, axis, frame, edges, max);
+    child.clear_equalities(printer);
+    let (start, end) = child.set_equalities(parent, axis, frame, edges, printer.max());
 
     if pos == 0 {
         let constraint = child.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
@@ -692,12 +686,12 @@ fn prepare_child(
     let child = &mut children[pos].0;
     child.edge_equalities.push(constraint);
 
-    vars.add_equalities(&child.edge_equalities);
+    printer.add_equalities(&child.edge_equalities).unwrap();
 
     if let Kind::Middle { children, .. } = &mut child.kind {
         let len = children.len();
         for pos in 0..len {
-            prepare_child(child, pos, vars, frame, edges, max);
+            prepare_child(child, pos, printer, frame, edges);
         }
     }
 
@@ -711,7 +705,7 @@ fn prepare_child(
 /// Sets the ratio [`Equality`]s for the child of the given
 /// index. This does include setting the [`Equality`] for
 /// the previous child, if there is one.
-pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
+pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
     let axis = parent.kind.axis().unwrap();
     let Kind::Middle { children, .. } = &mut parent.kind else {
         unreachable!();
@@ -739,7 +733,7 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
 
         let equality = prev.len(axis) | EQ(WEAK) | (ratio * new_len.clone());
         length.ratio = Some((equality.clone(), ratio));
-        vars.add_equality(equality);
+        printer.add_equality(equality).unwrap();
     }
 
     let ratio = iter.nth(1).map(|(next, _)| {
@@ -750,7 +744,7 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, vars: &mut Vars) {
         };
 
         let equality = new_len | EQ(WEAK) | (ratio * next.len(axis));
-        vars.add_equality(equality.clone());
+        printer.add_equality(equality.clone()).unwrap();
 
         (equality, ratio)
     });

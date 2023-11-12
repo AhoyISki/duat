@@ -19,9 +19,10 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, log_info};
+use duat_core::{data::RwData, ui, Globals};
 use layout::Layout;
 pub use layout::{Brush, Frame};
+use print::Printer;
 pub use rules::{VertRule, VertRuleCfg};
 
 mod area;
@@ -29,8 +30,7 @@ mod layout;
 mod print;
 mod rules;
 
-static DUAT_ENDED: AtomicBool = AtomicBool::new(false);
-static PRINT_EDGES: AtomicBool = AtomicBool::new(false);
+static RESIZED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug)]
 pub enum Anchor {
@@ -59,16 +59,25 @@ impl std::fmt::Debug for AreaId {
     }
 }
 
-#[derive(Default)]
 pub struct Ui {
     windows: Vec<Area>,
+    printer: RwData<Printer>,
     frame: Frame,
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Self::new(Frame::default())
+    }
 }
 
 impl Ui {
     pub fn new(frame: Frame) -> Self {
+        let printer = Printer::new();
+
         Self {
             windows: Vec::new(),
+            printer: RwData::new(printer),
             frame,
         }
     }
@@ -78,14 +87,15 @@ impl ui::Ui for Ui {
     type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
 
-    fn set_sender(&mut self, sender: ui::Sender) {
-        std::thread::spawn(move || {
+    fn start(&mut self, sender: ui::Sender, globals: Globals<Self>) {
+        let printer = self.printer.clone();
+        globals.spawn(move || {
             loop {
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
                     let res = match event::read().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
-                            PRINT_EDGES.store(true, Ordering::Release);
+                            RESIZED.store(true, Ordering::Release);
                             sender.send_resize()
                         }
                         event::Event::FocusGained
@@ -99,7 +109,9 @@ impl ui::Ui for Ui {
                     }
                 }
 
-                if DUAT_ENDED.fetch_and(false, Ordering::Relaxed) {
+                printer.read().print();
+
+                if globals.has_ended() {
                     break;
                 }
             }
@@ -107,7 +119,7 @@ impl ui::Ui for Ui {
     }
 
     fn new_root(&mut self) -> Self::Area {
-        let layout = Layout::new(self.frame);
+        let layout = Layout::new(self.frame, self.printer.clone());
         let root = Area::new(layout.main_index(), RwData::new(layout));
 
         let area = Area::new(root.layout.read().main_index(), root.layout.clone());
@@ -117,17 +129,14 @@ impl ui::Ui for Ui {
         area
     }
 
-    fn startup(&mut self) {
+    fn open(&mut self) {
         execute!(io::stdout(), terminal::EnterAlternateScreen).unwrap();
         terminal::enable_raw_mode().unwrap();
     }
 
-    fn unload(&mut self) {
-        DUAT_ENDED.store(true, Ordering::Relaxed);
-    }
+    fn end(&mut self) {}
 
-    fn shutdown(&mut self) {
-        DUAT_ENDED.store(true, Ordering::Relaxed);
+    fn close(&mut self) {
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),
@@ -162,3 +171,5 @@ impl std::fmt::Debug for ConstraintChangeErr {
         }
     }
 }
+
+type Equality = cassowary::Constraint;

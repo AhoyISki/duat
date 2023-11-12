@@ -19,7 +19,7 @@ use iter::{print_iter, rev_print_iter};
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
     print::Lines,
-    AreaId, ConstraintChangeErr, PRINT_EDGES,
+    AreaId, ConstraintChangeErr, RESIZED,
 };
 
 static BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
@@ -266,16 +266,9 @@ impl ui::Area for Area {
     }
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
-        if PRINT_EDGES.fetch_and(false, Ordering::Acquire) {
+        if RESIZED.fetch_and(false, Ordering::Acquire) {
             let mut layout = self.layout.write();
-            let layout = &mut *layout;
-            layout.set_max();
-
-            let mut printer = layout.printer.write();
-
-            printer.reset();
-            layout.vars.update();
-            layout.rects.set_senders(&mut printer);
+            layout.resize();
             print_edges(layout.edges());
         }
 
@@ -317,15 +310,14 @@ impl ui::Area for Area {
     ) -> Result<(), ConstraintChangeErr> {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
+        let mut printer = layout.printer.write();
         let prev_cons = layout
             .rects
-            .set_constraint(self.id, constraint, axis, &mut layout.vars);
+            .set_constraint(self.id, constraint, axis, &mut printer);
 
-        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) && layout.vars.update() {
-            layout.vars.update();
-            let mut printer = layout.printer.write();
-            printer.reset();
-            layout.rects.set_senders(&mut printer);
+        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) && printer.update(false) {
+            drop(printer);
+            layout.resize();
 
             print_edges(layout.edges());
         }
@@ -359,11 +351,12 @@ impl ui::Area for Area {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
 
-        layout.printer.write().reset();
-
         let (child, parent) = layout.bisect(self.id, specs, is_glued);
 
-        layout.rects.set_senders(&mut layout.printer.write());
+        layout.printer.mutate(|printer| {
+            printer.update(false);
+            layout.rects.set_senders(printer);
+        });
 
         print_edges(layout.edges());
 

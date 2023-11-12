@@ -10,7 +10,7 @@ use std::{
 };
 
 use duat::{prelude::*, run_duat};
-use duat_core::{data::RwData, ui, widgets::File};
+use duat_core::{data::RwData, ui, widgets::File, log_info};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
@@ -80,6 +80,7 @@ fn main() {
                 FILES_CHANGED.store(false, Ordering::Relaxed);
 
                 if run_cargo(&toml_path).is_ok() {
+                    log_info!("ran cargo");
                     let cur_lib = unsafe { Library::new(&so_path).ok() };
                     if cur_lib.as_ref().and_then(find_run_fn).is_some() {
                         let _ = tx.send(ui::Event::ReloadConfig);

@@ -15,6 +15,12 @@
 )]
 #![doc = include_str!("../README.md")]
 
+use std::{
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    thread::JoinHandle,
+};
+
 use data::{CurrentFile, CurrentWidget};
 use ui::Ui;
 
@@ -49,6 +55,8 @@ where
     pub current_file: &'static CurrentFile<U>,
     pub current_widget: &'static CurrentWidget<U>,
     pub commands: &'static Commands<U>,
+    handles: &'static AtomicUsize,
+    has_ended: &'static AtomicBool,
 }
 
 impl<U> Clone for Globals<U>
@@ -69,12 +77,61 @@ where
         current_file: &'static CurrentFile<U>,
         current_widget: &'static CurrentWidget<U>,
         commands: &'static Commands<U>,
+        handles: &'static AtomicUsize,
+        has_ended: &'static AtomicBool,
     ) -> Self {
         Self {
             current_file,
             current_widget,
             commands,
+            handles,
+            has_ended,
         }
+    }
+
+    pub fn spawn<R: Send + 'static>(&self, f: impl FnOnce() -> R + Send + 'static) -> Handle<R> {
+        self.handles.fetch_add(1, Ordering::Relaxed);
+        Handle {
+            handle: std::thread::spawn(f),
+            handles: self.handles,
+        }
+    }
+
+    pub fn has_ended(&self) -> bool {
+        self.has_ended.load(Ordering::Relaxed)
+    }
+
+    fn threads_are_running(&self) -> bool {
+        self.handles.load(Ordering::Relaxed) > 0
+    }
+
+    fn end(&self) {
+        self.has_ended.store(true, Ordering::Relaxed);
+    }
+}
+
+pub struct Handle<T> {
+    handle: JoinHandle<T>,
+    handles: &'static AtomicUsize,
+}
+
+impl<T> Deref for Handle<T> {
+    type Target = JoinHandle<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handle
+    }
+}
+
+impl<T> DerefMut for Handle<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.handle
+    }
+}
+
+impl<T> Drop for Handle<T> {
+    fn drop(&mut self) {
+        self.handles.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

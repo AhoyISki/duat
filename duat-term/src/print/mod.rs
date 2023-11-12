@@ -1,14 +1,16 @@
 use std::{
+    collections::HashMap,
     io::{stdout, Write},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
 };
 
+use cassowary::{strength::STRONG, AddConstraintError, RemoveConstraintError, Solver, Variable};
 use crossterm::cursor::{self, MoveTo, MoveToColumn, MoveToNextLine};
 
-use crate::{layout::VarPoint, Coords};
+use crate::{layout::VarPoint, Coords, Equality};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -102,18 +104,68 @@ impl Sender {
 }
 
 pub struct Printer {
+    solver: Solver,
+    map: HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
+
     recvs: Vec<Receiver>,
     is_offline: bool,
     max: VarPoint,
 }
 
 impl Printer {
-    pub fn new(max: VarPoint) -> Self {
+    pub fn new() -> Self {
+        let (map, solver, max) = {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            let (width, height) = (width as f64, height as f64);
+
+            let mut map = HashMap::new();
+            let mut solver = Solver::new();
+            let max = VarPoint::new_from_hash_map(&mut map);
+            let strong = STRONG * 5.0;
+            solver.add_edit_variable(max.x_var(), strong).unwrap();
+            solver.suggest_value(max.x_var(), width).unwrap();
+
+            solver.add_edit_variable(max.y_var(), strong).unwrap();
+            solver.suggest_value(max.y_var(), height).unwrap();
+
+            (map, solver, max)
+        };
+
         Self {
+            solver,
+            map,
+
             recvs: Vec::new(),
             is_offline: false,
             max,
         }
+    }
+
+    /// Updates the value of all [`VarPoint`]s that have changed,
+    /// returning true if any of them have.
+    pub fn update(&mut self, change_max: bool) -> bool {
+        if change_max {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            let (width, height) = (width as f64, height as f64);
+
+            let max = &self.max;
+            self.solver.suggest_value(max.x_var(), width).unwrap();
+            self.solver.suggest_value(max.y_var(), height).unwrap();
+        }
+
+        self.recvs.clear();
+
+        let mut any_has_changed = false;
+        for (var, new) in self.solver.fetch_changes() {
+            let (value, has_changed) = &self.map[var];
+
+            let new = new.round() as usize;
+            let old = value.swap(new, Ordering::Release);
+            any_has_changed |= old != new;
+            has_changed.store(old != new, Ordering::Release);
+        }
+
+        any_has_changed
     }
 
     pub fn sender(&mut self, coords: Coords) -> Sender {
@@ -136,10 +188,6 @@ impl Printer {
         }
 
         sender
-    }
-
-    pub fn reset(&mut self) {
-        self.recvs.clear();
     }
 
     pub fn shutdown(&mut self) {
@@ -196,4 +244,36 @@ impl Printer {
 
         stdout.flush().unwrap();
     }
+
+    pub fn vars_mut(&mut self) -> &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)> {
+        &mut self.map
+    }
+
+    pub fn add_equality(&mut self, eq: Equality) -> Result<(), AddConstraintError> {
+        self.solver.add_constraint(eq)
+    }
+
+    pub fn add_equalities<'a>(
+        &mut self,
+        eqs: impl IntoIterator<Item = &'a Equality>,
+    ) -> Result<(), AddConstraintError> {
+        self.solver.add_constraints(eqs)
+    }
+
+    pub fn remove_equality(&mut self, eq: &Equality) -> Result<(), RemoveConstraintError> {
+        self.solver.remove_constraint(eq)
+    }
+
+    pub fn max(&self) -> &VarPoint {
+        &self.max
+    }
 }
+
+impl Default for Printer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+unsafe impl Send for Printer {}
+unsafe impl Sync for Printer {}

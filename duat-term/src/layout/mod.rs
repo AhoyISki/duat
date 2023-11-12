@@ -7,11 +7,7 @@ use std::{
     },
 };
 
-use cassowary::{
-    strength::{STRONG, WEAK},
-    Solver, Variable,
-    WeightedRelation::*,
-};
+use cassowary::{strength::WEAK, Variable, WeightedRelation::*};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
@@ -19,7 +15,7 @@ use duat_core::{
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{set_ratios, Rect, Rects};
-use crate::{area::Coord, print::Printer, AreaId, DUAT_ENDED};
+use crate::{area::Coord, print::Printer, AreaId, Equality};
 
 mod rect;
 
@@ -68,6 +64,46 @@ pub struct VarPoint {
 }
 
 impl VarPoint {
+    /// Returns a new instance of [`VarPoint`]
+    pub fn new(printer: &mut Printer) -> Self {
+        let element = VarPoint {
+            x: VarValue::new(),
+            y: VarValue::new(),
+        };
+
+        printer.vars_mut().insert(
+            element.x.var,
+            (element.x.value.clone(), element.x.has_changed.clone()),
+        );
+        printer.vars_mut().insert(
+            element.y.var,
+            (element.y.value.clone(), element.y.has_changed.clone()),
+        );
+
+        element
+    }
+
+    /// Returns a new instance of [`VarPoint`]
+    pub fn new_from_hash_map(
+        map: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
+    ) -> Self {
+        let element = VarPoint {
+            x: VarValue::new(),
+            y: VarValue::new(),
+        };
+
+        map.insert(
+            element.x.var,
+            (element.x.value.clone(), element.x.has_changed.clone()),
+        );
+        map.insert(
+            element.y.var,
+            (element.y.value.clone(), element.y.has_changed.clone()),
+        );
+
+        element
+    }
+
     pub fn coord(&self) -> Coord {
         let x = self.x.value.load(Ordering::Relaxed);
         let y = self.y.value.load(Ordering::Relaxed);
@@ -75,23 +111,12 @@ impl VarPoint {
         Coord::new(x, y)
     }
 
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new(vars: &mut Vars) -> Self {
-        let element = VarPoint {
-            x: VarValue::new(),
-            y: VarValue::new(),
-        };
+    pub fn x_var(&self) -> Variable {
+        self.x.var
+    }
 
-        vars.list.insert(
-            element.x.var,
-            (element.x.value.clone(), element.x.has_changed.clone()),
-        );
-        vars.list.insert(
-            element.y.var,
-            (element.y.value.clone(), element.y.has_changed.clone()),
-        );
-
-        element
+    pub fn y_var(&self) -> Variable {
+        self.y.var
     }
 }
 
@@ -139,49 +164,6 @@ impl Length {
     }
 }
 
-pub struct Vars {
-    pub solver: Solver,
-    list: HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
-}
-
-impl Vars {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            solver: Solver::new(),
-            list: HashMap::new(),
-        }
-    }
-
-    /// Updates the value of all [`VarPoint`]s that have changed,
-    /// returning true if any of them have.
-    pub fn update(&mut self) -> bool {
-        let mut any_has_changed = false;
-        for (var, new) in self.solver.fetch_changes() {
-            let (value, has_changed) = &self.list[var];
-
-            let new = new.round() as usize;
-            let old = value.swap(new, Ordering::Release);
-            any_has_changed |= old != new;
-            has_changed.store(old != new, Ordering::Release);
-        }
-
-        any_has_changed
-    }
-
-    pub fn add_equality(&mut self, constraint: Equality) {
-        self.solver.add_constraint(constraint).unwrap();
-    }
-
-    pub fn add_equalities<'a>(&mut self, constraints: impl IntoIterator<Item = &'a Equality>) {
-        self.solver.add_constraints(constraints).unwrap()
-    }
-
-    pub fn remove_equality(&mut self, constraint: &Equality) {
-        self.solver.remove_constraint(constraint).unwrap();
-    }
-}
-
 /// The overrall structure of a window on `duat_term`.
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
@@ -197,89 +179,52 @@ impl Vars {
 /// become a thing.
 pub struct Layout {
     pub rects: Rects,
-    max: VarPoint,
     pub active_id: AreaId,
     frame: Frame,
     edges: Vec<Edge>,
-    pub vars: Vars,
     pub printer: RwData<Printer>,
 }
 
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(frame: Frame) -> Self {
-        let mut vars = Vars::new();
-
-        let max = {
-            let (width, height) = crossterm::terminal::size().unwrap();
-            let max = VarPoint::new(&mut vars);
-            let strong = STRONG * 5.0;
-            vars.solver.add_edit_variable(max.x.var, strong).unwrap();
-            vars.solver.suggest_value(max.x.var, width as f64).unwrap();
-
-            vars.solver.add_edit_variable(max.y.var, strong).unwrap();
-            vars.solver.suggest_value(max.y.var, height as f64).unwrap();
-
-            max
-        };
-
-        let rects = Rects::new(&mut vars);
+    pub fn new(frame: Frame, printer: RwData<Printer>) -> Self {
+        let rects = Rects::new(&mut printer.write());
         let main_id = rects.main.id();
 
         let mut layout = Layout {
             rects,
-            max: max.clone(),
             active_id: main_id,
             frame,
             edges: Vec::new(),
-            vars,
-            printer: RwData::new(Printer::new(max)),
+            printer,
         };
 
-        let (vars, edges) = (&mut layout.vars, &mut layout.edges);
+        let (mut printer, edges) = (layout.printer.write(), &mut layout.edges);
 
         layout
             .rects
-            .set_edges(main_id, Frame::Empty, vars, edges, &layout.max);
+            .set_edges(main_id, Frame::Empty, &mut printer, edges);
 
-        vars.update();
+        printer.update(false);
 
-        layout.rects.main.clear_equalities(vars);
+        layout.rects.main.clear_equalities(&mut printer);
         layout
             .rects
-            .set_edges(main_id, layout.frame, vars, edges, &layout.max);
+            .set_edges(main_id, layout.frame, &mut printer, edges);
 
-        vars.update();
+        printer.update(false);
 
-        layout.rects.set_senders(&mut layout.printer.write());
-
-        let printer = layout.printer.clone();
-        std::thread::spawn(move || {
-            loop {
-                printer.read().print();
-                std::thread::sleep(std::time::Duration::from_millis(10));
-
-                if DUAT_ENDED.load(Ordering::Relaxed) {
-                    break;
-                }
-            }
-        });
+        layout.rects.set_senders(&mut printer);
+        drop(printer);
 
         layout
     }
 
-    pub fn set_max(&mut self) {
-        let (width, height) = crossterm::terminal::size().unwrap();
-        let max = &self.max;
-        self.vars
-            .solver
-            .suggest_value(max.x.var, width as f64)
-            .unwrap();
-        self.vars
-            .solver
-            .suggest_value(max.y.var, height as f64)
-            .unwrap();
+    pub fn resize(&mut self) {
+        let mut printer = self.printer.write();
+        printer.update(true);
+        self.rects.set_senders(&mut printer)
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -310,7 +255,8 @@ impl Layout {
         specs: PushSpecs,
         cluster: bool,
     ) -> (AreaId, Option<AreaId>) {
-        let (vars, edges) = (&mut self.vars, &mut self.edges);
+        let mut printer = self.printer.write();
+        let (printer, edges) = (&mut printer, &mut self.edges);
         let axis = specs.axis();
         let (can_be_sibling, can_be_child) = {
             let parent_is_cluster = self
@@ -351,7 +297,7 @@ impl Layout {
         } else {
             let (new_parent_id, child) = {
                 let rect = self.rects.get_mut(id).unwrap();
-                let parent = Rect::new_parent_of(rect, axis, vars, cluster);
+                let parent = Rect::new_parent_of(rect, axis, printer, cluster);
 
                 (parent.id(), std::mem::replace(rect, parent))
             };
@@ -362,18 +308,19 @@ impl Layout {
                 false => 1,
             };
 
-            let constraint = self.rects.take_constraint(new_parent_id, vars);
+            let constraint = self.rects.take_constraint(new_parent_id, printer);
 
             self.rects.insert_child(0, new_parent_id, child);
 
             if let Some((constraint, axis)) = constraint {
-                self.rects.set_constraint(child_id, constraint, axis, vars);
+                self.rects
+                    .set_constraint(child_id, constraint, axis, printer);
             }
 
             // If the child is clustered, the frame doesn't need to be redone.
             if !cluster {
                 self.rects
-                    .set_new_child_edges(child_id, self.frame, vars, edges, &self.max)
+                    .set_new_child_edges(child_id, self.frame, printer, edges)
             }
 
             let rect = self.rects.get_mut(new_parent_id).unwrap();
@@ -381,16 +328,16 @@ impl Layout {
         };
 
         let parent_id = parent.id();
-        vars.update();
+        printer.update(false);
 
-        let (temp_constraint, new_id) = {
-            let new = Rect::new(vars);
+        let (temp_eq, new_id) = {
+            let new = Rect::new(printer);
             let new_id = new.id();
 
             self.rects.insert_child(pos, parent_id, new);
 
             if let Some(constraint) = specs.constraint() {
-                self.rects.set_constraint(new_id, constraint, axis, vars);
+                self.rects.set_constraint(new_id, constraint, axis, printer);
             }
 
             // We initially set the frame to `Frame::Empty`, since that will make
@@ -400,7 +347,7 @@ impl Layout {
             // does mean that we have to run `prepare_child()` twice for each
             // affected area.
             self.rects
-                .set_edges_around(new_id, Frame::Empty, vars, edges, &self.max);
+                .set_edges_around(new_id, Frame::Empty, printer, edges);
 
             // Add a constraint so that the new child `Rect` has a len equal to
             // `resizable_len / resizable_children`, a self imposed rule.
@@ -418,36 +365,36 @@ impl Layout {
                         (count + 1, len + child.len_value(axis))
                     });
 
-                let temp_constraint = {
+                let temp_eq = {
                     let (new, _) = &children[pos];
                     new.len(axis) | EQ(WEAK * 2.0) | (res_len as f64 / res_count as f64)
                 };
 
-                vars.solver.add_constraint(temp_constraint.clone()).unwrap();
+                printer.add_equality(temp_eq.clone()).unwrap();
 
-                (Some(temp_constraint), new_id)
+                (Some(temp_eq), new_id)
             } else {
                 (None, new_id)
             }
         };
 
-        vars.update();
+        printer.update(false);
 
         let parent = self.rects.get_mut(parent_id).unwrap();
         if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint() {
-            set_ratios(parent, pos, vars);
+            set_ratios(parent, pos, printer);
         }
 
-        if let Some(temp_constraint) = temp_constraint {
-            vars.solver.remove_constraint(&temp_constraint).unwrap();
+        if let Some(temp_eq) = temp_eq {
+            printer.remove_equality(&temp_eq).unwrap();
         }
 
-        vars.update();
+        printer.update(false);
 
         self.rects
-            .set_edges_around(new_id, self.frame, vars, edges, &self.max);
+            .set_edges_around(new_id, self.frame, printer, edges);
 
-        vars.update();
+        printer.update(false);
 
         (new_id, new_parent_id)
     }
@@ -475,5 +422,3 @@ impl Layout {
         self.rects.get_parent(id)
     }
 }
-
-type Equality = cassowary::Constraint;

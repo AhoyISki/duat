@@ -1,4 +1,7 @@
-use std::sync::{mpsc, RwLock};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize},
+    mpsc, RwLock,
+};
 
 use duat_core::{
     commands::Commands,
@@ -16,11 +19,22 @@ use crate::{
     Ui,
 };
 
+// Globals's statics.
 pub static CURRENT_FILE: CurrentFile<Ui> = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget<Ui> = CurrentWidget::new();
 pub static COMMANDS: Commands<Ui> = Commands::new(&CURRENT_FILE, &CURRENT_WIDGET);
-pub static GLOBALS: Globals<Ui> = Globals::new(&CURRENT_FILE, &CURRENT_WIDGET, &COMMANDS);
+pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
+pub static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
+pub static GLOBALS: Globals<Ui> = Globals::new(
+    &CURRENT_FILE,
+    &CURRENT_WIDGET,
+    &COMMANDS,
+    &HANDLES,
+    &HAS_ENDED,
+);
+
+// Setup statics.
 pub static UI: RwLock<Option<Ui>> = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);

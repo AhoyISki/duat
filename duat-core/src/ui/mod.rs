@@ -496,8 +496,6 @@ pub trait Ui: Sized + Default + 'static {
     type ConstraintChangeErr: Debug;
     type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr> + Clone + PartialEq;
 
-    fn set_sender(&mut self, sender: Sender);
-
     /// Initiates and returns a new "master" [`Area`].
     ///
     /// This [`Area`] must not have any parents, and must be placed on
@@ -507,13 +505,22 @@ pub trait Ui: Sized + Default + 'static {
     fn new_root(&mut self) -> Self::Area;
 
     /// Functions to trigger when the program begins.
-    fn startup(&mut self);
+    fn open(&mut self);
 
-    /// Quits the current ui to reload a new on.
-    fn unload(&mut self);
+    /// Starts the Ui.
+    ///
+    /// This is different from [`Ui::open`], as this is going to run
+    /// on reloads as well.
+    fn start(&mut self, sender: Sender, globals: Globals<Self>);
+
+    /// Ends the Ui.
+    ///
+    /// This is different from [`Ui::close`], as this is going to run
+    /// on reloads as well.
+    fn end(&mut self);
 
     /// Functions to trigger when the program ends.
-    fn shutdown(&mut self);
+    fn close(&mut self);
 
     fn finish_printing(&self);
 }
