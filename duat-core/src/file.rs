@@ -268,7 +268,7 @@ impl File {
         (&mut self.text, &mut self.history)
     }
 
-    pub(crate) fn print(&self,area: &impl Area) {
+    pub(crate) fn print(&self, area: &impl Area) {
         area.print(&self.text, &self.cfg, palette::painter());
     }
 
@@ -276,7 +276,7 @@ impl File {
         FileCfg::new()
     }
 
-    pub(crate) fn set_printed_lines(&mut self, area: &impl Area) {
+    fn set_printed_lines(&mut self, area: &impl Area) {
         let start = area.first_char();
 
         let mut last_line_num = area
@@ -319,6 +319,11 @@ where
     }
 
     fn once(_globals: crate::Globals<U>) {}
+
+    fn print(&mut self, area: &<U as Ui>::Area) {
+        self.set_printed_lines(area);
+        area.print(&self.text, &self.cfg, palette::painter())
+    }
 }
 
 impl<U> ActiveWidget<U> for File

@@ -191,15 +191,9 @@ where
     }
 
     fn update_and_print(&self, area: &U::Area) {
-        if self.widget.data_is::<File>() {
-            self.widget
-                .mutate_as::<File, ()>(|file| file.set_printed_lines(area));
-            self.widget.inspect_as::<File, ()>(|file| file.print(area));
-        } else {
-            let mut widget = self.widget.raw_write();
-            widget.update(area);
-            widget.print(area);
-        }
+        let mut widget = self.widget.raw_write();
+        widget.update(area);
+        widget.print(area);
     }
 
     fn update(&self, area: &<U as Ui>::Area) {
