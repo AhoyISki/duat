@@ -8,7 +8,7 @@ use std::{
 
 use crossterm::cursor::{self, MoveTo, MoveToColumn, MoveToNextLine};
 
-use crate::{area::Coord, Coords, layout::VarPoint};
+use crate::{layout::VarPoint, Coords};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {

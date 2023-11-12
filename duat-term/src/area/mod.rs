@@ -521,12 +521,12 @@ fn print_line(
         }
     };
 
-    queue!(lines, ResetColor,);
+    queue!(lines, ResetColor);
 
     lines.write_all(BLANK[..left].as_bytes()).unwrap();
     lines.write_all(line).unwrap();
 
-    queue!(lines, ResetColor,);
+    queue!(lines, ResetColor);
 
     lines.write_all(BLANK[..right].as_bytes()).unwrap();
 

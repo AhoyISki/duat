@@ -49,9 +49,8 @@ fn main() {
         let _ = run_cargo(&toml_path);
 
         let mut cur_lib = unsafe { Library::new(&so_path).ok() };
-        #[allow(unused_assignments)]
         let mut run = cur_lib.as_ref().and_then(find_run_fn);
-        let mut prev = Vec::new();
+        let mut prev_files = Vec::new();
 
         loop {
             let (tx, rx) = mpsc::channel();
@@ -59,14 +58,14 @@ fn main() {
             let handle = if let Some(run) = run.take() {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run(prev, tx, rx);
+                    let ret = run(prev_files, tx, rx);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
             } else {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run_duat(prev, tx, rx);
+                    let ret = run_duat(prev_files, tx, rx);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
@@ -82,7 +81,6 @@ fn main() {
 
                 if run_cargo(&toml_path).is_ok() {
                     let cur_lib = unsafe { Library::new(&so_path).ok() };
-                    #[allow(unused_assignments)]
                     if cur_lib.as_ref().and_then(find_run_fn).is_some() {
                         let _ = tx.send(ui::Event::ReloadConfig);
                         break;
@@ -90,9 +88,9 @@ fn main() {
                 }
             }
 
-            prev = handle.join().unwrap();
+            prev_files = handle.join().unwrap();
 
-            if prev.is_empty() {
+            if prev_files.is_empty() {
                 break;
             } else {
                 if let Some(cur_lib) = cur_lib.take() {
@@ -125,17 +123,6 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
-// The main macro to run duat.
-pub macro run($($tree:tt)*) {
-    #[no_mangle]
-    fn run(prev: PrevFiles, rx: mpsc::Receiver<()>) -> PrevFiles {
-        {
-            $($tree)*
-        };
-
-        run_duat(prev, rx)
-    }
-}
-
 type PrevFiles = Vec<(RwData<File>, bool)>;
-type RunFn = fn(PrevFiles, tx: mpsc::Sender<ui::Event>, rx: mpsc::Receiver<ui::Event>) -> PrevFiles;
+type RunFn =
+    fn(prev: PrevFiles, tx: mpsc::Sender<ui::Event>, rx: mpsc::Receiver<ui::Event>) -> PrevFiles;

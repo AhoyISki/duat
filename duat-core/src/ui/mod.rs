@@ -463,7 +463,7 @@ pub enum Event {
     FormChange,
     ReloadConfig,
     OpenFiles,
-    Quit
+    Quit,
 }
 
 pub struct Sender(mpsc::Sender<Event>);
@@ -473,20 +473,20 @@ impl Sender {
         Self(sender)
     }
 
-    pub fn send_key(&self, key: KeyEvent) {
-        self.0.send(Event::Key(key)).unwrap();
+    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::Key(key))
     }
 
-    pub fn send_resize(&self) {
-        self.0.send(Event::Resize).unwrap();
+    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::Resize)
     }
 
-    pub fn send_reload_config(&self) {
-        self.0.send(Event::ReloadConfig).unwrap();
+    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::ReloadConfig)
     }
 
-    pub(crate) fn send_form_changed(&self) {
-        self.0.send(Event::FormChange).unwrap();
+    pub(crate) fn _send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::FormChange)
     }
 }
 

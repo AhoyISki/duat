@@ -268,10 +268,6 @@ impl File {
         (&mut self.text, &mut self.history)
     }
 
-    pub(crate) fn print(&self, area: &impl Area) {
-        area.print(&self.text, &self.cfg, palette::painter());
-    }
-
     pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
         FileCfg::new()
     }

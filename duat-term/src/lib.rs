@@ -82,22 +82,24 @@ impl ui::Ui for Ui {
         std::thread::spawn(move || {
             loop {
                 if let Ok(true) = event::poll(Duration::from_millis(10)) {
-                    match event::read().unwrap() {
-                        event::Event::Key(key) => {
-                            sender.send_key(key)
-                        }
+                    let res = match event::read().unwrap() {
+                        event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
                             PRINT_EDGES.store(true, Ordering::Release);
-                            sender.send_resize();
-                        },
+                            sender.send_resize()
+                        }
                         event::Event::FocusGained
                         | event::Event::FocusLost
                         | event::Event::Mouse(_)
-                        | event::Event::Paste(_) => {}
+                        | event::Event::Paste(_) => Ok(()),
+                    };
+
+                    if res.is_err() {
+                        break;
                     }
                 }
 
-                if DUAT_ENDED.load(Ordering::Relaxed) {
+                if DUAT_ENDED.fetch_and(false, Ordering::Relaxed) {
                     break;
                 }
             }

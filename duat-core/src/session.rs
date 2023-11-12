@@ -2,7 +2,8 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        mpsc, Arc,
+        mpsc::{self, TryRecvError},
+        Arc,
     },
     time::Duration,
 };
@@ -338,13 +339,13 @@ where
     fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
         let current_window = self.current_window.load(Ordering::Relaxed);
         let windows = self.windows.read();
-        
+
         std::thread::scope(|scope| {
             loop {
                 let active_window = &windows[current_window];
 
-                if let Ok(event) = rx.try_recv() {
-                    match event {
+                match rx.try_recv() {
+                    Ok(event) => match event {
                         Event::Key(key) => {
                             active_window.send_key(key, scope, self.globals);
                         }
@@ -357,7 +358,9 @@ where
                         Event::ReloadConfig => break BreakTo::ReloadConfig,
                         Event::Quit => break BreakTo::QuitDuat,
                         Event::OpenFiles => break BreakTo::OpenFiles,
-                    }
+                    },
+                    Err(TryRecvError::Disconnected) => break BreakTo::QuitDuat,
+                    _ => (),
                 }
 
                 std::thread::sleep(Duration::from_millis(10));
