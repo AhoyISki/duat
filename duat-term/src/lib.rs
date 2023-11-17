@@ -91,7 +91,7 @@ impl ui::Ui for Ui {
         let printer = self.printer.clone();
         globals.spawn(move || {
             loop {
-                if let Ok(true) = event::poll(Duration::from_millis(10)) {
+                if let Ok(true) = event::poll(Duration::from_millis(100)) {
                     let res = match event::read().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
@@ -109,9 +109,7 @@ impl ui::Ui for Ui {
                     }
                 }
 
-                if let Some(printer) = printer.try_read() {
-                    printer.print();
-                }
+                printer.read().print();
 
                 if globals.has_ended() {
                     break;
@@ -132,7 +130,12 @@ impl ui::Ui for Ui {
     }
 
     fn open(&mut self) {
-        execute!(io::stdout(), terminal::EnterAlternateScreen).unwrap();
+        execute!(
+            io::stdout(),
+            terminal::EnterAlternateScreen,
+            terminal::DisableLineWrap
+        )
+        .unwrap();
         terminal::enable_raw_mode().unwrap();
     }
 
@@ -143,6 +146,7 @@ impl ui::Ui for Ui {
             io::stdout(),
             terminal::Clear(ClearType::All),
             terminal::LeaveAlternateScreen,
+            terminal::EnableLineWrap,
             cursor::Show
         )
         .unwrap();

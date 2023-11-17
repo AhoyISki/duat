@@ -2,7 +2,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        mpsc::{self, TryRecvError},
+        mpsc::{self},
         Arc,
     },
     time::Duration,
@@ -318,16 +318,17 @@ where
                 BreakTo::QuitDuat => {
                     self.ui.close();
                     self.globals.end();
+
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
                     self.ui.end();
                     self.globals.end();
 
-					while self.globals.threads_are_running() {
-    					std::thread::sleep(Duration::from_micros(500));
-					}
-                    
+                    while self.globals.threads_are_running() {
+                        std::thread::sleep(Duration::from_micros(500));
+                    }
+
                     let windows = self.windows.read();
                     break windows
                         .iter()
@@ -348,38 +349,32 @@ where
         let current_window = self.current_window.load(Ordering::Relaxed);
         let windows = self.windows.read();
 
-        std::thread::scope(|scope| {
-            loop {
-                let active_window = &windows[current_window];
+        loop {
+            let active_window = &windows[current_window];
 
-                match rx.try_recv() {
-                    Ok(event) => match event {
-                        Event::Key(key) => {
-                            active_window.send_key(key, scope, self.globals);
-                        }
-                        Event::Resize | Event::FormChange => {
-                            for node in active_window.nodes() {
-                                node.update_and_print();
-                            }
-                            continue;
-                        }
-                        Event::ReloadConfig => break BreakTo::ReloadConfig,
-                        Event::Quit => break BreakTo::QuitDuat,
-                        Event::OpenFiles => break BreakTo::OpenFiles,
-                    },
-                    Err(TryRecvError::Disconnected) => break BreakTo::QuitDuat,
-                    _ => (),
-                }
-
-                std::thread::sleep(Duration::from_millis(10));
-
-                for node in active_window.nodes() {
-                    if node.needs_update() {
-                        scope.spawn(|| node.update_and_print());
+            if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
+                match event {
+                    Event::Key(key) => {
+                        active_window.send_key(key, self.globals);
                     }
+                    Event::Resize | Event::FormChange => {
+                        for node in active_window.nodes() {
+                            node.update_and_print();
+                        }
+                        continue;
+                    }
+                    Event::ReloadConfig => break BreakTo::ReloadConfig,
+                    Event::Quit => break BreakTo::QuitDuat,
+                    Event::OpenFiles => break BreakTo::OpenFiles,
                 }
             }
-        })
+
+            for node in active_window.nodes() {
+                if node.needs_update() {
+                    node.update_and_print();
+                }
+            }
+        }
     }
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {

@@ -224,7 +224,7 @@ impl Layout {
     pub fn resize(&mut self) {
         let mut printer = self.printer.write();
         printer.update(true);
-        self.rects.set_senders(&mut printer)
+        self.rects.set_senders(&mut printer);
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)

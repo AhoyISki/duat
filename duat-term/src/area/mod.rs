@@ -213,6 +213,48 @@ impl Area {
 
         info.x_shift = info.x_shift.min(max_x_shift);
     }
+
+    fn print<'a>(
+        &self,
+        text: &Text,
+        cfg: &PrintCfg,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    ) {
+        if RESIZED.fetch_and(false, Ordering::Acquire) {
+            let mut layout = self.layout.write();
+            layout.resize();
+            print_edges(layout.edges());
+        }
+
+        let layout = self.layout.read();
+        let info = self.print_info.borrow();
+
+        let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
+            return;
+        };
+        let mut lines = sender.lines();
+
+        let (iter, cfg) = {
+            let line_start = text.visual_line_start(info.first);
+            let cfg = IterCfg::new(cfg).outsource_lfs();
+            (text.iter_exactly_at(line_start), cfg)
+        };
+
+        let active = layout.active_id == self.id;
+        let iter = print_iter(iter, sender.coords().width(), cfg, *info);
+        let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines, f);
+
+        for _ in (0..y).rev() {
+            lines
+                .write_all(&BLANK.as_bytes()[..sender.coords().width()])
+                .unwrap();
+
+            lines.flush().unwrap();
+        }
+
+        sender.send(lines);
+    }
 }
 
 impl ui::Area for Area {
@@ -252,39 +294,17 @@ impl ui::Area for Area {
     }
 
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
-        if RESIZED.fetch_and(false, Ordering::Acquire) {
-            let mut layout = self.layout.write();
-            layout.resize();
-            print_edges(layout.edges());
-        }
+        self.print(text, cfg, painter, |_, _| {})
+    }
 
-        let layout = self.layout.read();
-        let info = self.print_info.borrow();
-
-        let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
-            return;
-        };
-        let mut lines = sender.lines();
-
-        let (iter, cfg) = {
-            let line_start = text.visual_line_start(info.first);
-            let cfg = IterCfg::new(cfg).outsource_lfs();
-            (text.iter_exactly_at(line_start), cfg)
-        };
-
-        let active = layout.active_id == self.id;
-        let iter = print_iter(iter, sender.coords().width(), cfg, *info);
-        let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines);
-
-        for _ in (0..y).rev() {
-            lines
-                .write_all(&BLANK.as_bytes()[..sender.coords().width()])
-                .unwrap();
-
-            lines.flush().unwrap();
-        }
-
-        sender.send(lines);
+    fn print_with<'a>(
+        &self,
+        text: &Text,
+        cfg: &PrintCfg,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    ) {
+        self.print(text, cfg, painter, f)
     }
 
     fn change_constraint(
@@ -302,7 +322,7 @@ impl ui::Area for Area {
             return Ok(());
         };
 
-		let mut layout = self.layout.write();
+        let mut layout = self.layout.write();
         let layout = &mut *layout;
         let mut printer = layout.printer.write();
         let prev_cons = layout
@@ -406,13 +426,14 @@ pub struct PrintInfo {
     last_main: Point,
 }
 
-fn print_parts(
+fn print_parts<'a>(
     iter: impl Iterator<Item = (Caret, Item)>,
     coords: Coords,
     is_active: bool,
     info: PrintInfo,
     mut painter: Painter,
     lines: &mut Lines,
+    mut f: impl FnMut(&Caret, &Item) + 'a,
 ) -> usize {
     let mut old_x = coords.tl.x;
     // The y here represents the bottom line of the current row of cells.
@@ -421,7 +442,12 @@ fn print_parts(
     let mut alignment = Alignment::Left;
     let mut line = Vec::new();
 
-    for (Caret { x, len, wrap }, Item { part, .. }) in iter {
+    for (caret, item) in iter {
+        f(&caret, &item);
+
+        let Caret { x, len, wrap } = caret;
+        let Item { part, .. } = item;
+
         if wrap {
             if y > coords.tl.y {
                 let shifted_x = old_x.saturating_sub(info.x_shift);
@@ -448,7 +474,11 @@ fn print_parts(
             }
 
             // Tags
-            Part::PushForm(id) => queue!(line, ResetColor, SetStyle(painter.apply(id).style)),
+            Part::PushForm(id) => {
+                if let Some(form) = painter.apply(id) {
+                    queue!(line, ResetColor, SetStyle(form.style));
+                }
+            }
             Part::PopForm(id) => {
                 if let Some(form) = painter.remove(id) {
                     queue!(line, ResetColor, SetStyle(form.style))
@@ -474,7 +504,9 @@ fn print_parts(
             Part::AlignRight => alignment = Alignment::Right,
             Part::Termination => {
                 alignment = Alignment::Left;
-                queue!(line, SetStyle(painter.reset().style));
+                if let Some(form) = painter.reset() {
+                    queue!(line, SetStyle(form.style));
+                }
             }
             Part::ToggleStart(_) => todo!(),
             Part::ToggleEnd(_) => todo!(),

@@ -79,7 +79,7 @@ mod global {
 pub struct FormId(usize);
 
 /// A style for text.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should
@@ -345,6 +345,7 @@ impl FormPalette {
         Painter {
             palette: self.0.read(),
             forms: Vec::new(),
+            cur_form: self.form_of_id(DEFAULT),
         }
     }
 }
@@ -358,12 +359,14 @@ impl Default for FormPalette {
 pub struct Painter {
     palette: RwLockReadGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
+    cur_form: Form,
 }
 
 impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
-    pub fn apply(&mut self, mut id: FormId) -> Form {
+    #[inline(always)]
+    pub fn apply(&mut self, mut id: FormId) -> Option<Form> {
         let form = loop {
             match self.palette.forms.get(id.0) {
                 Some((_, Kind::Form(form))) => break form,
@@ -376,11 +379,18 @@ impl Painter {
         };
 
         self.forms.push((*form, id));
-        self.make_form()
+        let form = self.make_form();
+        if form == self.cur_form {
+            None
+        } else {
+            self.cur_form = form;
+            Some(form)
+        }
     }
 
     /// Generates the form to be printed, given all the previously
     /// pushed forms in the `Form` stack.
+    #[inline(always)]
     pub fn make_form(&self) -> Form {
         let style = ContentStyle {
             foreground_color: Some(Color::Reset),
@@ -442,19 +452,33 @@ impl Painter {
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
+    #[inline(always)]
     pub fn remove(&mut self, id: FormId) -> Option<Form> {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
-            Some(self.make_form())
+            let form = self.make_form();
+            if form == self.cur_form {
+                None
+            } else {
+                self.cur_form = form;
+                Some(form)
+            }
         } else {
             None
         }
     }
 
-    pub fn reset(&mut self) -> Form {
+    #[inline(always)]
+    pub fn reset(&mut self) -> Option<Form> {
         self.forms.clear();
-        self.make_form()
+        let form = self.make_form();
+        if form == self.cur_form {
+            self.cur_form = form;
+            Some(form)
+        } else {
+            None
+        }
     }
 
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{stdout, Write},
+    io::{stdout, Write, BufWriter},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -8,7 +8,10 @@ use std::{
 };
 
 use cassowary::{strength::STRONG, AddConstraintError, RemoveConstraintError, Solver, Variable};
-use crossterm::cursor::{self, MoveTo, MoveToColumn, MoveToNextLine};
+use crossterm::{
+    cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
+    execute, terminal,
+};
 
 use crate::{layout::VarPoint, Coords, Equality};
 
@@ -153,8 +156,8 @@ impl Printer {
             let (width, height) = (width as f64, height as f64);
 
             let max = &self.max;
-            self.solver.suggest_value(max.x_var(), width).unwrap();
-            self.solver.suggest_value(max.y_var(), height).unwrap();
+            let _ = self.solver.suggest_value(max.x_var(), width);
+            let _ = self.solver.suggest_value(max.y_var(), height);
         }
 
         self.recvs.clear();
@@ -204,6 +207,7 @@ impl Printer {
 
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
+
         let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
 
         if list.is_empty() {
@@ -211,7 +215,10 @@ impl Printer {
         }
 
         let mut stdout = stdout().lock();
-        queue!(stdout, cursor::Hide, MoveTo(0, 0));
+        let mut buf = BufWriter::new(&mut stdout);
+
+        execute!(buf, terminal::BeginSynchronizedUpdate).unwrap();
+        queue!(buf, cursor::Hide, MoveTo(0, 0));
 
         for y in 0..self.max.coord().y {
             let mut x = 0;
@@ -220,15 +227,15 @@ impl Printer {
 
             for (bytes, start, end) in iter {
                 if x != start {
-                    queue!(stdout, MoveToColumn(start as u16));
+                    queue!(buf, MoveToColumn(start as u16));
                 }
 
-                stdout.write_all(bytes).unwrap();
+                buf.write_all(bytes).unwrap();
 
                 x = end;
             }
 
-            queue!(stdout, MoveToNextLine(1));
+            queue!(buf, MoveToNextLine(1));
         }
 
         let was_real = if let Some(was_real) = list
@@ -243,10 +250,10 @@ impl Printer {
         };
 
         if was_real {
-            queue!(stdout, cursor::RestorePosition, cursor::Show);
+            queue!(buf, cursor::RestorePosition, cursor::Show);
         }
 
-        stdout.flush().unwrap();
+        execute!(buf, terminal::EndSynchronizedUpdate).unwrap();
     }
 
     pub fn vars_mut(&mut self) -> &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)> {

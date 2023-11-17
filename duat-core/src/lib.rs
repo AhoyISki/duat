@@ -11,7 +11,8 @@
     decl_macro,
     generic_const_exprs,
     step_trait,
-    type_alias_impl_trait
+    type_alias_impl_trait,
+    fmt_internals
 )]
 #![doc = include_str!("../README.md")]
 

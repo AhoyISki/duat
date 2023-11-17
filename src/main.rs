@@ -10,7 +10,7 @@ use std::{
 };
 
 use duat::{prelude::*, run_duat};
-use duat_core::{data::RwData, ui, widgets::File, log_info};
+use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
@@ -48,7 +48,7 @@ fn main() {
     }) {
         let _ = run_cargo(&toml_path);
 
-        let mut cur_lib = unsafe { Library::new(&so_path).ok() };
+        let mut cur_lib = unsafe { Some(Library::new(&so_path).unwrap()) };
         let mut run = cur_lib.as_ref().and_then(find_run_fn);
         let mut prev_files = Vec::new();
 
@@ -80,7 +80,6 @@ fn main() {
                 FILES_CHANGED.store(false, Ordering::Relaxed);
 
                 if run_cargo(&toml_path).is_ok() {
-                    log_info!("ran cargo");
                     let cur_lib = unsafe { Library::new(&so_path).ok() };
                     if cur_lib.as_ref().and_then(find_run_fn).is_some() {
                         let _ = tx.send(ui::Event::ReloadConfig);

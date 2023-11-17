@@ -300,7 +300,7 @@ where
 ///
 /// These properties allow for quick and easy modification of the
 /// [`Text`] within, which can then be accessed with
-/// [`text()`][Self::text()].
+/// [`text`][Self::text].
 pub struct Builder {
     text: Text,
     last_form: Option<Tag>,

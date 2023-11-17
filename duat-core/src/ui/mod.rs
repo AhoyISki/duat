@@ -6,7 +6,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
-    thread::Scope,
 };
 
 use crossterm::event::KeyEvent;
@@ -208,10 +207,8 @@ impl Caret {
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Send + Sync {
-    type ConstraintChangeErr: Debug
-    where
-        Self: Sized;
+pub trait Area: Send + Sync + Sized {
+    type ConstraintChangeErr: Debug;
 
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -240,21 +237,25 @@ pub trait Area: Send + Sync {
     fn is_active(&self) -> bool;
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
-    fn print(&self, text: &Text, cfg: &PrintCfg, former: Painter);
+    fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter);
+
+    fn print_with<'a>(
+        &self,
+        text: &Text,
+        cfg: &PrintCfg,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    );
 
     fn change_constraint(
         &self,
         constraint: Constraint,
         axis: Axis,
-    ) -> Result<(), Self::ConstraintChangeErr>
-    where
-        Self: Sized;
+    ) -> Result<(), Self::ConstraintChangeErr>;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>
-    where
-        Self: Sized;
+    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
     //////////////////// Queries
     /// Wether or not [`self`] has changed.
@@ -268,9 +269,7 @@ pub trait Area: Send + Sync {
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_senior_of(&self, other: &Self) -> bool
-    where
-        Self: Sized;
+    fn is_senior_of(&self, other: &Self) -> bool;
 
     /// Returns a printing iterator.
     ///
@@ -350,9 +349,7 @@ pub trait Area: Send + Sync {
         &self,
         iter: impl Iterator<Item = Item> + Clone + 'a,
         cfg: IterCfg<'a>,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
-    where
-        Self: Sized;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
@@ -391,9 +388,7 @@ pub trait Area: Send + Sync {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>)
-    where
-        Self: Sized;
+    fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>);
 }
 
 /// Elements related to the [`Widget<U>`]s.
@@ -653,17 +648,12 @@ where
             })
     }
 
-    pub fn send_key<'scope, 'env>(
-        &'env self,
-        key: KeyEvent,
-        scope: &'scope Scope<'scope, 'env>,
-        globals: Globals<U>,
-    ) {
+    pub fn send_key(&self, key: KeyEvent, globals: Globals<U>) {
         if let Some(node) = self
             .nodes()
             .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
         {
-            scope.spawn(move || node.widget.send_key(key, &node.area, globals));
+            node.widget.send_key(key, &node.area, globals);
         }
     }
 

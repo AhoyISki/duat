@@ -271,25 +271,6 @@ impl File {
     pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
         FileCfg::new()
     }
-
-    fn set_printed_lines(&mut self, area: &impl Area) {
-        let start = area.first_char();
-
-        let mut last_line_num = area
-            .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
-            .find_map(|(caret, item)| caret.wrap.then_some(item.line));
-
-        self.printed_lines = area
-            .print_iter_from_top(&self.text, IterCfg::new(&self.cfg))
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.line))
-            .map(|line| {
-                let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
-                last_line_num = Some(line);
-                (line, wrapped)
-            })
-            .take(area.height())
-            .collect();
-    }
 }
 
 impl<U> PassiveWidget<U> for File
@@ -317,8 +298,28 @@ where
     fn once(_globals: crate::Globals<U>) {}
 
     fn print(&mut self, area: &<U as Ui>::Area) {
-        self.set_printed_lines(area);
-        area.print(&self.text, &self.cfg, palette::painter())
+        let start = area.first_char();
+
+        let mut last_line_num = area
+            .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
+            .find_map(|(caret, item)| caret.wrap.then_some(item.line));
+
+        self.printed_lines.clear();
+        let printed_lines = &mut self.printed_lines;
+
+        area.print_with(
+            &self.text,
+            &self.cfg,
+            palette::painter(),
+            move |caret, item| {
+                if caret.wrap {
+                    let line = item.line;
+                    let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
+                    last_line_num = Some(line);
+                    printed_lines.push((line, wrapped));
+                }
+            },
+        )
     }
 }
 
