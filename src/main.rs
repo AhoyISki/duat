@@ -5,7 +5,7 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
-        mpsc,
+        mpsc, LazyLock,
     },
 };
 
@@ -16,8 +16,11 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 
 static FILES_CHANGED: AtomicBool = AtomicBool::new(false);
 static BREAK: AtomicU32 = AtomicU32::new(0);
+static UI_STATICS: LazyLock<Statics> = LazyLock::new(Statics::default as fn() -> Statics);
 
 fn main() {
+    let statics = LazyLock::force(&UI_STATICS);
+
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
@@ -65,7 +68,7 @@ fn main() {
             } else {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run_duat(prev_files, tx, rx);
+                    let ret = run_duat(prev_files, tx, rx, statics);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
@@ -102,7 +105,7 @@ fn main() {
         }
     } else {
         let (tx, rx) = mpsc::channel();
-        run_duat(Vec::new(), tx, rx);
+        run_duat(Vec::new(), tx, rx, statics);
     }
 }
 
@@ -126,3 +129,4 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
 type PrevFiles = Vec<(RwData<File>, bool)>;
 type RunFn =
     fn(prev: PrevFiles, tx: mpsc::Sender<ui::Event>, rx: mpsc::Receiver<ui::Event>) -> PrevFiles;
+type Statics = <duat::Ui as ui::Ui>::Statics;

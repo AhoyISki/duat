@@ -1,16 +1,13 @@
 #![allow(incomplete_features)]
-#![feature(
-    lazy_cell,
-    result_option_inspect,
-    iter_collect_into,
-    let_chains,
-    generic_const_exprs
-)]
+#![feature(lazy_cell, iter_collect_into, let_chains, generic_const_exprs)]
 
 use std::{
     fmt::Debug,
     io,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        OnceLock,
+    },
     time::Duration,
 };
 
@@ -30,34 +27,8 @@ mod layout;
 mod print;
 mod rules;
 
+static CROSSTERM: OnceLock<&'static dyn CrossTerm> = OnceLock::new();
 static RESIZED: AtomicBool = AtomicBool::new(false);
-
-#[derive(Debug)]
-pub enum Anchor {
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub struct AreaId(usize);
-
-impl AreaId {
-    /// Generates a unique index for [`Rect`]s.
-    fn new() -> Self {
-        use std::sync::atomic::AtomicUsize;
-        static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-        AreaId(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
-    }
-}
-
-impl std::fmt::Debug for AreaId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.0))
-    }
-}
 
 pub struct Ui {
     windows: Vec<Area>,
@@ -65,34 +36,28 @@ pub struct Ui {
     frame: Frame,
 }
 
-impl Default for Ui {
-    fn default() -> Self {
-        Self::new(Frame::default())
-    }
-}
-
-impl Ui {
-    pub fn new(frame: Frame) -> Self {
-        let printer = Printer::new();
-
-        Self {
-            windows: Vec::new(),
-            printer: RwData::new(printer),
-            frame,
-        }
-    }
-}
-
 impl ui::Ui for Ui {
     type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
+    type DynStatics = dyn CrossTerm;
+    type Statics = Statics;
+
+    fn new(statics: &'static Self::DynStatics) -> Self {
+        CROSSTERM.get_or_init(|| statics);
+        Ui {
+            windows: Vec::new(),
+            printer: RwData::new(Printer::new()),
+            frame: Frame::default(),
+        }
+    }
 
     fn start(&mut self, sender: ui::Sender, globals: Globals<Self>) {
+        let crossterm = CROSSTERM.get().unwrap();
         let printer = self.printer.clone();
         globals.spawn(move || {
             loop {
-                if let Ok(true) = event::poll(Duration::from_millis(100)) {
-                    let res = match event::read().unwrap() {
+                if let Ok(true) = crossterm.poll() {
+                    let res = match crossterm.read().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
                             RESIZED.store(true, Ordering::Release);
@@ -156,6 +121,25 @@ impl ui::Ui for Ui {
     fn finish_printing(&self) {}
 }
 
+pub trait CrossTerm: Send + Sync {
+    fn poll(&self) -> Result<bool, io::Error>;
+
+    fn read(&self) -> Result<event::Event, io::Error>;
+}
+
+#[derive(Default)]
+pub struct Statics(bool);
+
+impl CrossTerm for Statics {
+    fn poll(&self) -> Result<bool, io::Error> {
+        crossterm::event::poll(Duration::from_millis(50))
+    }
+
+    fn read(&self) -> Result<event::Event, io::Error> {
+        crossterm::event::read()
+    }
+}
+
 pub enum ConstraintChangeErr {
     NoParent,
     Impossible,
@@ -175,6 +159,33 @@ impl std::fmt::Debug for ConstraintChangeErr {
                 write!(f, "The constraint change is impossible.")
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum Anchor {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct AreaId(usize);
+
+impl AreaId {
+    /// Generates a unique index for [`Rect`]s.
+    fn new() -> Self {
+        use std::sync::atomic::AtomicUsize;
+        static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        AreaId(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+impl std::fmt::Debug for AreaId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.0))
     }
 }
 

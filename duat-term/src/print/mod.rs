@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{stdout, Write, BufWriter},
+    io::{stdout, Write},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -207,7 +207,6 @@ impl Printer {
 
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-
         let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
 
         if list.is_empty() {
@@ -215,10 +214,8 @@ impl Printer {
         }
 
         let mut stdout = stdout().lock();
-        let mut buf = BufWriter::new(&mut stdout);
-
-        execute!(buf, terminal::BeginSynchronizedUpdate).unwrap();
-        queue!(buf, cursor::Hide, MoveTo(0, 0));
+        execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
+        queue!(stdout, cursor::Hide, MoveTo(0, 0));
 
         for y in 0..self.max.coord().y {
             let mut x = 0;
@@ -227,15 +224,15 @@ impl Printer {
 
             for (bytes, start, end) in iter {
                 if x != start {
-                    queue!(buf, MoveToColumn(start as u16));
+                    queue!(stdout, MoveToColumn(start as u16));
                 }
 
-                buf.write_all(bytes).unwrap();
+                stdout.write_all(bytes).unwrap();
 
                 x = end;
             }
 
-            queue!(buf, MoveToNextLine(1));
+            queue!(stdout, MoveToNextLine(1));
         }
 
         let was_real = if let Some(was_real) = list
@@ -250,10 +247,10 @@ impl Printer {
         };
 
         if was_real {
-            queue!(buf, cursor::RestorePosition, cursor::Show);
+            queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
-        execute!(buf, terminal::EndSynchronizedUpdate).unwrap();
+        execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
     }
 
     pub fn vars_mut(&mut self) -> &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)> {

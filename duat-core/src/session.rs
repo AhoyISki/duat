@@ -208,6 +208,7 @@ where
         self.file_cfg.mut_print_cfg()
     }
 
+	#[doc(hidden)]
     pub fn __new(ui: U, globals: Globals<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
@@ -246,7 +247,7 @@ where
 
         let (file, checker) = self.file_cfg.clone().open_path(path).build();
 
-        let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::right());
+        let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::below());
 
         build_file(
             &mut windows[current_window],

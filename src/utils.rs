@@ -8,7 +8,7 @@ use duat_core::{
     data::{CurrentFile, CurrentWidget, RwData},
     session::SessionCfg,
     text::PrintCfg,
-    ui::Event,
+    ui::{Event, Ui as TraitUi},
     widgets::File,
     Globals,
 };
@@ -35,7 +35,7 @@ pub static GLOBALS: Globals<Ui> = Globals::new(
 );
 
 // Setup statics.
-pub static UI: RwLock<Option<Ui>> = RwLock::new(None);
+pub static UI_FN: UiFn = RwLock::new(None);
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
@@ -43,10 +43,15 @@ pub fn run_duat(
     prev: Vec<(RwData<File>, bool)>,
     tx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
+    statics: &'static <Ui as TraitUi>::DynStatics,
 ) -> Vec<(RwData<File>, bool)> {
-    let ui = match UI.write().unwrap().take() {
-        Some(ui) => ui,
-        None => Ui::default(),
+    let ui = match UI_FN.write().unwrap().take() {
+        Some(f) => {
+            let mut ui = Ui::new(statics);
+            f(&mut ui);
+            ui
+        }
+        None => Ui::new(statics),
     };
 
     let mut cfg = SessionCfg::__new(ui, GLOBALS);
@@ -69,12 +74,21 @@ pub fn run_duat(
 pub mod setup {
     use duat_core::{input::InputMethod, session::SessionCfg, widgets::File};
 
-    use super::{default_cfg_fn, CFG_FN, UI};
+    use super::{default_cfg_fn, CFG_FN, UI_FN};
     use crate::Ui;
 
     #[inline(never)]
-    pub fn ui(ui: Ui) {
-        *UI.write().unwrap() = Some(ui);
+    pub fn ui(f: impl FnOnce(&mut Ui) + Send + Sync + 'static) {
+        let mut ui_fn = UI_FN.write().unwrap();
+        let prev = ui_fn.take();
+
+        *ui_fn = Some(match prev {
+            Some(prev) => Box::new(move |ui| {
+                prev(ui);
+                f(ui);
+            }),
+            None => Box::new(f),
+        });
     }
 
     #[inline(never)]
@@ -763,7 +777,7 @@ pub mod control {
     }
 }
 
-pub type UiFn = RwLock<Option<Box<dyn FnOnce() -> Ui + Send + Sync>>>;
+pub type UiFn = RwLock<Option<Box<dyn FnOnce(&mut Ui) + Send + Sync>>>;
 pub type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;
 
 #[inline(never)]

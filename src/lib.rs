@@ -16,13 +16,14 @@ pub macro run($($tree:tt)*) {
     fn run(
         prev: PrevFiles,
         tx: mpsc::Sender<ui::Event>,
-        rx: mpsc::Receiver<ui::Event>
+        rx: mpsc::Receiver<ui::Event>,
+        statics: &'static <Ui as ui::Ui>::DynStatics
     ) -> PrevFiles {
         {
             $($tree)*
         };
 
-        run_duat(prev, tx, rx)
+        run_duat(prev, tx, rx, statics)
     }
 }
 
