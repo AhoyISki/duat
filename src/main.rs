@@ -5,7 +5,7 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
-        mpsc, LazyLock,
+        mpsc::{self, Receiver, Sender},
     },
 };
 
@@ -16,17 +16,22 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 
 static FILES_CHANGED: AtomicBool = AtomicBool::new(false);
 static BREAK: AtomicU32 = AtomicU32::new(0);
-static UI_STATICS: LazyLock<Statics> = LazyLock::new(Statics::default as fn() -> Statics);
+
+static PROFILE: &str = if cfg!(debug_assertions) {
+    "debug"
+} else {
+    "release"
+};
 
 fn main() {
-    let statics = LazyLock::force(&UI_STATICS);
+    let statics = Statics::default();
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
         let crate_dir = config_dir.join("duat");
 
-        let so_path = crate_dir.join("target/release/libconfig.so");
+        let so_path = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
         let src_path = crate_dir.join("src");
         let toml_path = crate_dir.join("Cargo.toml");
 
@@ -61,7 +66,7 @@ fn main() {
             let handle = if let Some(run) = run.take() {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    let ret = run(prev_files, tx, rx);
+                    let ret = run(prev_files, tx, rx, statics);
                     atomic_wait::wake_all(&BREAK);
                     ret
                 })
@@ -113,7 +118,7 @@ fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
-        "--release",
+        format!("--{PROFILE}").as_str(),
         "--quiet",
         "--manifest-path",
         toml_path.to_str().unwrap(),
@@ -127,6 +132,5 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
 }
 
 type PrevFiles = Vec<(RwData<File>, bool)>;
-type RunFn =
-    fn(prev: PrevFiles, tx: mpsc::Sender<ui::Event>, rx: mpsc::Receiver<ui::Event>) -> PrevFiles;
-type Statics = <duat::Ui as ui::Ui>::Statics;
+type RunFn = fn(PrevFiles, Sender<ui::Event>, Receiver<ui::Event>, Statics) -> PrevFiles;
+type Statics = <duat::Ui as ui::Ui>::StaticFns;

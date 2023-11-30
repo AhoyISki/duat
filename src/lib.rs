@@ -17,7 +17,7 @@ pub macro run($($tree:tt)*) {
         prev: PrevFiles,
         tx: mpsc::Sender<ui::Event>,
         rx: mpsc::Receiver<ui::Event>,
-        statics: &'static <Ui as ui::Ui>::DynStatics
+        statics: <Ui as ui::Ui>::StaticFns
     ) -> PrevFiles {
         {
             $($tree)*

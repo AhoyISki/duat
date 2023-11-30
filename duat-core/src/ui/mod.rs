@@ -489,19 +489,12 @@ impl Sender {
 /// order to use Parsec.
 pub trait Ui: Sized + 'static {
     /// This is the underlying type that will be handled dynamically.
-    type Statics: Default + Sized + Send + Sync;
-    /// This type *cannot* be sized. It should be `dyn SomeTrait`.
-    ///
-    /// The reason for this is so that the code is ran dynamically,
-    /// rather than statically, that is, it will reference code
-    /// compiled in the master instance of the ui, rather than
-    /// reloaded versions.
-    type DynStatics: ?Sized + Send + Sync;
+    type StaticFns: Default + Clone + Copy + Send + Sync;
     // May be removed later.
     type ConstraintChangeErr: Debug;
     type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr> + Clone + PartialEq;
 
-    fn new(statics: &'static Self::DynStatics) -> Self;
+    fn new(statics: Self::StaticFns) -> Self;
 
     /// Initiates and returns a new "master" [`Area`].
     ///

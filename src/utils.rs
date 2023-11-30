@@ -43,7 +43,7 @@ pub fn run_duat(
     prev: Vec<(RwData<File>, bool)>,
     tx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
-    statics: &'static <Ui as TraitUi>::DynStatics,
+    statics: <Ui as TraitUi>::StaticFns,
 ) -> Vec<(RwData<File>, bool)> {
     let ui = match UI_FN.write().unwrap().take() {
         Some(f) => {

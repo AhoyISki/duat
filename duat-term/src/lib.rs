@@ -16,7 +16,7 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, Globals};
+use duat_core::{data::RwData, ui, Globals, log_info};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 use print::Printer;
@@ -27,7 +27,7 @@ mod layout;
 mod print;
 mod rules;
 
-static CROSSTERM: OnceLock<&'static dyn CrossTerm> = OnceLock::new();
+static FNS: OnceLock<StaticFns> = OnceLock::new();
 static RESIZED: AtomicBool = AtomicBool::new(false);
 
 pub struct Ui {
@@ -39,11 +39,10 @@ pub struct Ui {
 impl ui::Ui for Ui {
     type Area = Area;
     type ConstraintChangeErr = ConstraintChangeErr;
-    type DynStatics = dyn CrossTerm;
-    type Statics = Statics;
+    type StaticFns = StaticFns;
 
-    fn new(statics: &'static Self::DynStatics) -> Self {
-        CROSSTERM.get_or_init(|| statics);
+    fn new(statics: Self::StaticFns) -> Self {
+        FNS.get_or_init(|| statics);
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
@@ -52,12 +51,12 @@ impl ui::Ui for Ui {
     }
 
     fn start(&mut self, sender: ui::Sender, globals: Globals<Self>) {
-        let crossterm = CROSSTERM.get().unwrap();
+        let fns = FNS.get().unwrap();
         let printer = self.printer.clone();
         globals.spawn(move || {
             loop {
-                if let Ok(true) = crossterm.poll() {
-                    let res = match crossterm.read().unwrap() {
+                if let Ok(true) = (fns.poll)() {
+                    let res = match (fns.read)().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
                             RESIZED.store(true, Ordering::Release);
@@ -121,22 +120,22 @@ impl ui::Ui for Ui {
     fn finish_printing(&self) {}
 }
 
-pub trait CrossTerm: Send + Sync {
-    fn poll(&self) -> Result<bool, io::Error>;
-
-    fn read(&self) -> Result<event::Event, io::Error>;
+#[derive(Clone, Copy)]
+pub struct StaticFns {
+    poll: fn() -> Result<bool, io::Error>,
+    read: fn() -> Result<event::Event, io::Error>,
 }
 
-#[derive(Default)]
-pub struct Statics(bool);
+impl Default for StaticFns {
+    fn default() -> Self {
+        fn poll() -> Result<bool, io::Error> {
+            crossterm::event::poll(Duration::from_millis(50))
+        }
 
-impl CrossTerm for Statics {
-    fn poll(&self) -> Result<bool, io::Error> {
-        crossterm::event::poll(Duration::from_millis(50))
-    }
-
-    fn read(&self) -> Result<event::Event, io::Error> {
-        crossterm::event::read()
+        Self {
+            poll,
+            read: crossterm::event::read,
+        }
     }
 }
 
