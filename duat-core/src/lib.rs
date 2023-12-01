@@ -36,16 +36,7 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-
-pub mod prelude {
-    pub use crate::{
-        commands,
-        palette::{self, CursorShape, Form},
-        session::{Session, SessionCfg},
-        text::{text, PrintCfg},
-        widgets::File,
-    };
-}
+pub mod hooks;
 
 pub struct Globals<U>
 where

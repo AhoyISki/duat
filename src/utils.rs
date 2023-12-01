@@ -114,7 +114,8 @@ pub mod setup {
     }
 }
 
-pub mod hook {
+pub mod hooks {
+    pub use duat_core::hooks::add;
     use duat_core::ui::{FileBuilder, WindowBuilder};
 
     use super::{default_cfg_fn, CFG_FN};

@@ -52,7 +52,7 @@ pub mod prelude {
 
     pub use crate::{
         run,
-        utils::{control, hook, print, setup},
+        utils::{control, hooks, print, setup},
         widgets::{common::*, status, CommandLine, LineNumbers, StatusLine},
     };
 }

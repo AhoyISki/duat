@@ -16,7 +16,7 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, Globals, log_info};
+use duat_core::{data::RwData, ui, Globals};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 use print::Printer;
@@ -27,7 +27,7 @@ mod layout;
 mod print;
 mod rules;
 
-static FNS: OnceLock<StaticFns> = OnceLock::new();
+static FUNCTIONS: OnceLock<StaticFns> = OnceLock::new();
 static RESIZED: AtomicBool = AtomicBool::new(false);
 
 pub struct Ui {
@@ -42,7 +42,7 @@ impl ui::Ui for Ui {
     type StaticFns = StaticFns;
 
     fn new(statics: Self::StaticFns) -> Self {
-        FNS.get_or_init(|| statics);
+        FUNCTIONS.get_or_init(|| statics);
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
@@ -51,12 +51,12 @@ impl ui::Ui for Ui {
     }
 
     fn start(&mut self, sender: ui::Sender, globals: Globals<Self>) {
-        let fns = FNS.get().unwrap();
+        let functions = FUNCTIONS.get().unwrap();
         let printer = self.printer.clone();
         globals.spawn(move || {
             loop {
-                if let Ok(true) = (fns.poll)() {
-                    let res = match (fns.read)().unwrap() {
+                if let Ok(true) = (functions.poll)() {
+                    let res = match (functions.read)().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
                             RESIZED.store(true, Ordering::Release);
@@ -149,10 +149,7 @@ impl std::fmt::Debug for ConstraintChangeErr {
         match self {
             // NOTE: Might not be true in the future.
             ConstraintChangeErr::NoParent => {
-                write!(
-                    f,
-                    "The area does not have a parent, so its constraint cannot be changed."
-                )
+                write!(f, "No parents, so its constraint can't be changed.")
             }
             ConstraintChangeErr::Impossible => {
                 write!(f, "The constraint change is impossible.")
