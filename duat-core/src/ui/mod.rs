@@ -13,6 +13,7 @@ use crossterm::event::KeyEvent;
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
     data::RoData,
+    hooks::{self, OnFileOpen},
     palette::Painter,
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
@@ -745,12 +746,8 @@ where
     }
 }
 
-pub(crate) fn build_file<U>(
-    window: &mut Window<U>,
-    mod_area: U::Area,
-    f: &mut Box<dyn FnMut(&mut FileBuilder<U>)>,
-    globals: Globals<U>,
-) where
+pub(crate) fn build_file<U>(window: &mut Window<U>, mod_area: U::Area, globals: Globals<U>)
+where
     U: Ui,
 {
     let old_file = {
@@ -770,9 +767,8 @@ pub(crate) fn build_file<U>(
         })
     };
 
-    let mut file_builder = FileBuilder::new(window, mod_area, globals);
-
-    f(&mut file_builder);
+    let mut builder = FileBuilder::new(window, mod_area, globals);
+    hooks::activate::<OnFileOpen<U>>(&mut builder);
 
     if let Some(parts) = old_file {
         globals.current_file.swap(parts);

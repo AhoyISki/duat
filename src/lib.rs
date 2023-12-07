@@ -1,10 +1,11 @@
 #![feature(decl_macro, lazy_cell, generic_const_exprs)]
 #![allow(incomplete_features, dead_code)]
 
-use duat_core::{data::RwData, widgets::File};
-pub use utils::run_duat;
+use duat_core::{data::RwData, hooks::Hookable, widgets::File};
+pub use setup::{pre_hooks, run_duat};
+mod config;
 mod remapper;
-mod utils;
+mod setup;
 pub mod widgets;
 
 // The main macro to run duat.
@@ -19,6 +20,8 @@ pub macro run($($tree:tt)*) {
         rx: mpsc::Receiver<ui::Event>,
         statics: <Ui as ui::Ui>::StaticFns
     ) -> PrevFiles {
+		pre_hooks();
+
         {
             $($tree)*
         };
@@ -50,11 +53,21 @@ pub mod prelude {
     #[cfg(feature = "term-ui")]
     pub use duat_term as ui;
 
+    pub use super::{OnFileOpen, OnWindowOpen};
     pub use crate::{
+        config::{control, hooks, print, set_input},
         run,
-        utils::{control, hooks, print, setup},
         widgets::{common::*, status, CommandLine, LineNumbers, StatusLine},
     };
 }
+
+struct OnUiStart;
+
+impl Hookable for OnUiStart {
+    type Args<'args> = Ui;
+}
+
+pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
+pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
 
 type PrevFiles = Vec<(RwData<File>, bool)>;

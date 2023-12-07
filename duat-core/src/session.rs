@@ -10,24 +10,21 @@ use std::{
 
 use crate::{
     data::RwData,
+    hooks::{self, OnWindowOpen},
     input::InputMethod,
     text::{text, PrintCfg, Text},
-    ui::{
-        build_file, Area, Event, FileBuilder, Node, PushSpecs, Sender, Ui, Window, WindowBuilder,
-    },
+    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Widget},
     Globals,
 };
 
-#[allow(clippy::type_complexity)]
+#[doc(hidden)]
 pub struct SessionCfg<U>
 where
     U: Ui,
 {
     ui: U,
     file_cfg: FileCfg<U>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
-    window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
 }
 
@@ -35,6 +32,16 @@ impl<U> SessionCfg<U>
 where
     U: Ui,
 {
+    pub fn new(ui: U, globals: Globals<U>) -> Self {
+        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
+
+        SessionCfg {
+            ui,
+            file_cfg: File::cfg(),
+            globals,
+        }
+    }
+
     pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
         self.ui.open();
         self.ui.start(Sender::new(tx.clone()), self.globals);
@@ -55,8 +62,6 @@ where
             windows: RwData::new(vec![window]),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
-            file_fn: self.file_fn,
-            window_fn: self.window_fn,
             globals: self.globals,
             tx,
         };
@@ -67,18 +72,13 @@ where
         add_session_commands(&session, self.globals, session.tx.clone());
 
         // Open and process files..
-        build_file(
-            &mut session.windows.write()[0],
-            area,
-            &mut session.file_fn,
-            self.globals,
-        );
+        build_file(&mut session.windows.write()[0], area, self.globals);
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
         // Build the window's widgets.
         session.windows.mutate(|windows| {
             let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
-            (session.window_fn)(&mut builder);
+            hooks::activate::<OnWindowOpen<U>>(&mut builder);
         });
 
         session
@@ -111,8 +111,6 @@ where
             windows: RwData::new(vec![window]),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
-            file_fn: self.file_fn,
-            window_fn: self.window_fn,
             globals: self.globals,
             tx,
         };
@@ -123,12 +121,7 @@ where
         add_session_commands(&session, self.globals, session.tx.clone());
 
         // Open and process files..
-        build_file(
-            &mut session.windows.write()[0],
-            area,
-            &mut session.file_fn,
-            self.globals,
-        );
+        build_file(&mut session.windows.write()[0], area, self.globals);
 
         for (file_cfg, is_active) in inherited_cfgs {
             session.open_file_from_cfg(file_cfg, is_active);
@@ -137,7 +130,7 @@ where
         // Build the window's widgets.
         session.windows.mutate(|windows| {
             let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
-            (session.window_fn)(&mut builder);
+            hooks::activate::<OnWindowOpen<U>>(&mut builder);
         });
 
         session
@@ -151,74 +144,8 @@ where
         self.file_cfg.set_print_cfg(cfg);
     }
 
-    pub fn set_file_fn(
-        &mut self,
-        file_fn: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
-    ) {
-        self.file_fn = Box::new(file_fn);
-    }
-
-    pub fn preffix_file_fn(
-        &mut self,
-        mut preffix: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
-    ) {
-        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
-
-        self.file_fn = Box::new(move |builder| {
-            preffix(builder);
-            file_fn(builder);
-        });
-    }
-
-    pub fn suffix_file_fn(
-        &mut self,
-        mut suffix: impl FnMut(&mut FileBuilder<U>) + Send + Sync + 'static,
-    ) {
-        let mut file_fn = std::mem::replace(&mut self.file_fn, Box::new(|_| {}));
-
-        self.file_fn = Box::new(move |builder| {
-            file_fn(builder);
-            suffix(builder);
-        });
-    }
-
-    pub fn set_window_fn(&mut self, window_fn: impl FnMut(&mut WindowBuilder<U>) + 'static) {
-        self.window_fn = Box::new(window_fn);
-    }
-
-    pub fn preffix_window_fn(&mut self, mut preffix: impl FnMut(&mut WindowBuilder<U>) + 'static) {
-        let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
-
-        self.window_fn = Box::new(move |builder| {
-            preffix(builder);
-            window_fn(builder);
-        });
-    }
-
-    pub fn suffix_window_fn(&mut self, mut suffix: impl FnMut(&mut WindowBuilder<U>) + 'static) {
-        let mut window_fn = std::mem::replace(&mut self.window_fn, Box::new(|_| {}));
-
-        self.window_fn = Box::new(move |builder| {
-            window_fn(builder);
-            suffix(builder);
-        });
-    }
-
     pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {
         self.file_cfg.mut_print_cfg()
-    }
-
-	#[doc(hidden)]
-    pub fn __new(ui: U, globals: Globals<U>) -> Self {
-        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
-
-        SessionCfg {
-            ui,
-            file_cfg: File::cfg(),
-            file_fn: Box::new(|_| {}),
-            window_fn: Box::new(|_| {}),
-            globals,
-        }
     }
 }
 
@@ -231,8 +158,6 @@ where
     windows: RwData<Vec<Window<U>>>,
     current_window: Arc<AtomicUsize>,
     file_cfg: FileCfg<U>,
-    file_fn: Box<dyn FnMut(&mut FileBuilder<U>)>,
-    window_fn: Box<dyn FnMut(&mut WindowBuilder<U>)>,
     globals: Globals<U>,
     tx: mpsc::Sender<Event>,
 }
@@ -249,12 +174,7 @@ where
 
         let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::below());
 
-        build_file(
-            &mut windows[current_window],
-            area,
-            &mut self.file_fn,
-            self.globals,
-        );
+        build_file(&mut windows[current_window], area, self.globals);
     }
 
     pub fn push_widget<F>(
@@ -391,12 +311,7 @@ where
             self.set_active_file(widget, &area);
         }
 
-        build_file(
-            &mut windows[current_window],
-            area,
-            &mut self.file_fn,
-            self.globals,
-        );
+        build_file(&mut windows[current_window], area, self.globals);
     }
 
     fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
