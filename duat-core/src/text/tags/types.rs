@@ -92,9 +92,9 @@ impl Tag {
 unsafe impl Send for Tag {}
 unsafe impl Sync for Tag {}
 
-// NOTE: Unlike `TextPos`, character tags are line-byte indexed, not
-// character indexed. The reason is that modules like `regex` and
-// `tree-sitter` work on `u8`s, rather than `char`s.
+// NOTE: Unlike `TextPos`, tags are line-byte indexed, not character
+// indexed. The reason is that modules like `regex` and `tree-sitter`
+// work on `u8`s, rather than `char`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
@@ -149,9 +149,9 @@ pub enum RawTag {
     GhostText(Marker, TextId),
 
     // Not Implemented:
-    /// Begins a hoverable section in the file.
+    /// Begins a toggleable section in the text.
     ToggleStart(Marker, ToggleId),
-    /// Ends a hoverable section in the file.
+    /// Ends a toggleable section in the text.
     ToggleEnd(Marker, ToggleId),
 }
 

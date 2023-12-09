@@ -46,7 +46,7 @@ pub mod prelude {
     pub use duat_core::{
         self,
         file::File,
-        palette::Form,
+        palette::{CursorShape, Form},
         position,
         text::{text, Builder, Text},
     };

@@ -2,7 +2,7 @@ use super::tags::{RawTag, ToggleId};
 use crate::palette::{self, FormId};
 
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     Char(char),
     PushForm(FormId),

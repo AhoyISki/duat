@@ -30,11 +30,12 @@ pub mod print {
     use crate::setup::PRINT_CFG;
 
     pub mod forms {
-        pub use duat_core::palette::{
-            set_extra_cursor as extra_cursor, set_form as set, set_main_cursor as main_cursor,
-            set_source as source,
-        };
+        pub use duat_core::palette::{set_form as set, set_source as source};
     }
+
+    pub use duat_core::palette::{
+        set_extra_cursor as extra_cursor, set_main_cursor as main_cursor,
+    };
 
     pub mod get {
         pub use duat_core::palette::{extra_cursor, form_of_id, id_of_name, main_cursor};

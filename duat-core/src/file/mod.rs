@@ -32,11 +32,9 @@ use crate::{
     Globals,
 };
 
-enum TextOp {
-    NewBuffer,
-    TakeText(Text, Path),
-    OpenPath(PathBuf),
-}
+use self::read::Reader;
+
+mod read;
 
 pub struct FileCfg<U>
 where
@@ -107,6 +105,7 @@ where
             cfg: self.cfg,
             history: History::new(),
             printed_lines: Vec::new(),
+            readers: Vec::new(),
         };
 
         ((self.generator)(file), Box::new(|| false))
@@ -183,6 +182,7 @@ pub struct File {
     cfg: PrintCfg,
     history: History,
     printed_lines: Vec<(usize, bool)>,
+    readers: Vec<Box<dyn Reader>>
 }
 
 impl File {
@@ -352,4 +352,10 @@ impl Path {
 
         Path::UnSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
     }
+}
+
+enum TextOp {
+    NewBuffer,
+    TakeText(Text, Path),
+    OpenPath(PathBuf),
 }
