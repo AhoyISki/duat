@@ -117,29 +117,8 @@ impl<'a> Iter<'a> {
         self.backup_iter.is_some()
     }
 
-    pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
-        let pos = pos.min(text.len_chars());
-        let tags_start = pos.saturating_sub(text.tags.back_check_amount());
-
-        Self {
-            text,
-            chars: text.rope.chars_at(pos),
-            tags: text.tags.iter_at(tags_start),
-            pos,
-            line: text.rope.char_to_line(pos),
-            conceals: 0,
-
-            backup_iter: None,
-            ghosts_to_ignore: Vec::new(),
-            ghost_shift: 0,
-
-            print_ghosts: true,
-            _conceals: Conceal::All,
-        }
-    }
-
-    pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let ExactPos { real, mut ghost } = exact_pos.clamp(text);
+    pub(super) fn new_at(text: &'a Text, pos: impl Positional) -> Self {
+        let ExactPos { real, mut ghost } = pos.to_exact().clamp(text);
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
@@ -276,13 +255,14 @@ impl<'a> Iter<'a> {
 impl Iterator for Iter<'_> {
     /// In order:
     ///
-    /// - The position of the [`Part`] in the [`Text`], it can be [`None`], when
-    ///   iterating over ghost text.
-    /// - The line the [`Part`] would be situated in, given a count of `'\n'`s
-    ///   before it, iterating over the unconcealed text without any ghost texts
-    ///   within.
-    /// - The [`Part`] itself, giving either a [`char`] or a text modifier,
-    ///   which should be used to change the way the [`Text`] is printed.
+    /// - The position of the [`Part`] in the [`Text`], it can be
+    ///   [`None`], when iterating over ghost text.
+    /// - The line the [`Part`] would be situated in, given a count of
+    ///   `'\n'`s before it, iterating over the unconcealed text
+    ///   without any ghost texts within.
+    /// - The [`Part`] itself, giving either a [`char`] or a text
+    ///   modifier, which should be used to change the way the
+    ///   [`Text`] is printed.
     type Item = Item;
 
     #[inline]
@@ -349,27 +329,8 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> RevIter<'a> {
-    pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
-        let pos = pos.min(text.len_chars());
-        let tags_start = pos + text.tags.back_check_amount();
-        Self {
-            text,
-            chars: text.rope.chars_at(pos).reversed(),
-            tags: text.tags.rev_iter_at(tags_start),
-            pos,
-            line: text.char_to_line(pos),
-            conceals: 0,
-            backup_iter: None,
-            ghosts_to_ignore: Vec::new(),
-            ghost_shift: 0,
-
-            print_ghosts: true,
-            _conceals: Conceal::All,
-        }
-    }
-
-    pub(super) fn new_exactly_at(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let ExactPos { real, mut ghost } = exact_pos.clamp(text);
+    pub(super) fn new_at(text: &'a Text, pos: impl Positional) -> Self {
+        let ExactPos { real, mut ghost } = pos.to_exact().clamp(text);
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
@@ -434,9 +395,9 @@ impl<'a> RevIter<'a> {
         }
     }
 
-    pub(super) fn new_following(text: &'a Text, exact_pos: ExactPos) -> Self {
-        let mut ghost = exact_pos.ghost();
-        let exact_pos = if text.tags.on(exact_pos.real()).any(|tag| {
+    pub(super) fn new_following(text: &'a Text, pos: impl Positional) -> Self {
+        let ExactPos { real, mut ghost } = pos.to_exact().clamp(text);
+        let exact_pos = if text.tags.on(real).any(|tag| {
             if let RawTag::GhostText(_, id) = tag {
                 text.tags.texts.get(&id).is_some_and(|text| {
                     if ghost < text.len_chars() {
@@ -450,12 +411,12 @@ impl<'a> RevIter<'a> {
                 false
             }
         }) {
-            ExactPos::new(exact_pos.real(), exact_pos.ghost() + 1)
+            ExactPos::new(real, ghost + 1)
         } else {
-            ExactPos::new(exact_pos.real() + 1, 0)
+            ExactPos::new(real + 1, 0)
         };
 
-        Self::new_exactly_at(text, exact_pos)
+        Self::new_at(text, exact_pos)
     }
 
     pub fn no_conceals(self) -> Self {
@@ -586,6 +547,22 @@ impl Iterator for RevIter<'_> {
                 break None;
             }
         }
+    }
+}
+
+pub(crate) trait Positional {
+    fn to_exact(self) -> ExactPos;
+}
+
+impl Positional for ExactPos {
+    fn to_exact(self) -> ExactPos {
+        self
+    }
+}
+
+impl Positional for usize {
+    fn to_exact(self) -> ExactPos {
+        ExactPos::new(self, 0)
     }
 }
 

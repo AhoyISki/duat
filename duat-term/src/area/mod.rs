@@ -191,7 +191,7 @@ impl Area {
         } else if end < start {
             info.x_shift = info.x_shift.saturating_sub(min_dist - end);
         } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_exactly_at(line_start), width, cfg, *info)
+            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info)
                 .try_fold(
                     (0, 0),
                     |(right_end, some_count), (Caret { x, len, wrap }, _)| {
@@ -238,7 +238,7 @@ impl Area {
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.first);
             let cfg = IterCfg::new(cfg).outsource_lfs();
-            (text.iter_exactly_at(line_start), cfg)
+            (text.iter_at(line_start), cfg)
         };
 
         let active = layout.active_id == self.id;
@@ -395,7 +395,7 @@ impl ui::Area for Area {
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = self.print_info.borrow();
         let line_start = text.visual_line_start(info.first);
-        let iter = text.iter_exactly_at(line_start);
+        let iter = text.iter_at(line_start);
 
         print_iter(iter, self.width(), cfg, *info)
     }

@@ -12,6 +12,7 @@ use std::{
 
 use ropey::Rope;
 
+pub(crate) use self::iter::Positional;
 use self::tags::{Markers, RawTag, TagOrSkip, Tags};
 pub use self::{
     cfg::*,
@@ -104,15 +105,16 @@ impl Text {
         self.rope.try_char_to_byte(char).ok()
     }
 
-    pub fn visual_line_start(&self, exact_pos: ExactPos) -> ExactPos {
-        if exact_pos == ExactPos::default() {
+    pub fn visual_line_start(&self, pos: impl Positional) -> ExactPos {
+        let pos = pos.to_exact();
+        if pos == ExactPos::default() {
             return ExactPos::default();
         }
 
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
-        let mut iter = self.rev_iter_exactly_at(exact_pos).peekable();
-        let mut cur_pos = exact_pos;
+        let mut iter = self.rev_iter_at(pos).peekable();
+        let mut cur_pos = pos;
         while let Some(peek) = iter.peek() {
             match peek.part {
                 Part::Char('\n') => return cur_pos,
@@ -231,40 +233,32 @@ impl Text {
         Iter::new_at(self, 0)
     }
 
-    /// TO BE DEPRECATED.
-    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = Item> + Clone + '_ {
-        let start = self.line_to_char(line);
-        let end = self.get_line_to_char(line + 1).unwrap_or(start);
-
-        Iter::new_at(self, start).take_while(move |item| item.real() < end)
-    }
-
-    pub fn iter_at(&self, pos: usize) -> Iter<'_> {
+    pub fn iter_at(&self, pos: impl Positional) -> Iter<'_> {
         Iter::new_at(self, pos)
-    }
-
-    pub fn iter_exactly_at(&self, exact_pos: ExactPos) -> Iter<'_> {
-        Iter::new_exactly_at(self, exact_pos)
     }
 
     pub fn rev_iter(&self) -> RevIter {
         RevIter::new_at(self, self.len_chars())
     }
 
-    pub fn rev_iter_at(&self, pos: usize) -> RevIter<'_> {
+    pub fn rev_iter_at(&self, pos: impl Positional) -> RevIter<'_> {
         RevIter::new_at(self, pos)
     }
 
-    pub fn rev_iter_exactly_at(&self, exact_pos: ExactPos) -> RevIter<'_> {
-        RevIter::new_exactly_at(self, exact_pos)
-    }
-
-    pub fn rev_iter_following(&self, exact_pos: ExactPos) -> RevIter<'_> {
-        RevIter::new_following(self, exact_pos)
+    pub fn rev_iter_following(&self, pos: impl Positional) -> RevIter<'_> {
+        RevIter::new_following(self, pos)
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
         self.rope.chars_at(pos)
+    }
+
+    /// TO BE DEPRECATED.
+    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = Item> + Clone + '_ {
+        let start = self.line_to_char(line);
+        let end = self.get_line_to_char(line + 1).unwrap_or(start);
+
+        Iter::new_at(self, start).take_while(move |item| item.real() < end)
     }
 
     pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {

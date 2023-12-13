@@ -24,10 +24,10 @@ use std::{fs, path::PathBuf, sync::Arc};
 use self::read::{Reader, Searcher};
 use crate::{
     data::RwData,
-    history::{Change, History},
+    history::History,
     input::{Cursors, InputMethod, KeyMap},
     palette,
-    text::{ExactPos, IterCfg, PrintCfg, Text},
+    text::{ExactPos, IterCfg, PrintCfg, Text, Positional},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
@@ -214,8 +214,8 @@ impl File {
         Searcher::new_at(ExactPos::default(), self)
     }
 
-    pub fn search_on(&self, pos: usize) -> Searcher<'_> {
-        Searcher::new_at(ExactPos::new(pos, 0), self)
+    pub fn search_at(&self, pos: impl Positional) -> Searcher<'_> {
+        Searcher::new_at(pos.to_exact(), self)
     }
 
     /// The full path of the file.

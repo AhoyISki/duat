@@ -19,11 +19,11 @@ pub struct Searcher<'a> {
     iter: Iter<'a>,
 }
 
-impl Searcher<'_> {
-    pub fn new_at(pos: ExactPos, file: &File) -> Self {
+impl<'a> Searcher<'a> {
+    pub fn new_at(pos: ExactPos, file: &'a File) -> Self {
         Self {
             pos,
-            iter: file.text.iter_exactly_at(pos),
+            iter: file.text.iter_at(pos),
         }
     }
 

@@ -12,6 +12,7 @@ edition = "2021"
 
 [lints.rust]
 incomplete_features = "allow"
+private_bounds = "allow"
 
 [lints.clippy]
 type_complexity = "allow"
