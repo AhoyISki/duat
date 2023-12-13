@@ -76,7 +76,7 @@ impl<'a> RevSearcher<'a> {
 
         while let Some(item) = self.iter.next() {
             if index == 0 {
-                return Some((self.pos, start_pos));
+                return Some((start_pos, self.pos));
             }
 
             start_pos = item.pos;

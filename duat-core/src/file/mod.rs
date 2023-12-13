@@ -21,13 +21,13 @@
 //! the numbers of the currently printed lines.
 use std::{fs, path::PathBuf, sync::Arc};
 
-use self::read::{Reader, Searcher};
+use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     data::RwData,
     history::History,
     input::{Cursors, InputMethod, KeyMap},
     palette,
-    text::{ExactPos, IterCfg, PrintCfg, Text, Positional},
+    text::{ExactPos, IterCfg, Positional, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
@@ -211,11 +211,31 @@ impl File {
 /// the [`File`].
 impl File {
     pub fn search(&self) -> Searcher<'_> {
-        Searcher::new_at(ExactPos::default(), self)
+        Searcher::new_at(
+            ExactPos::default(),
+            self.text.iter().no_ghosts().no_conceals(),
+        )
     }
 
     pub fn search_at(&self, pos: impl Positional) -> Searcher<'_> {
-        Searcher::new_at(pos.to_exact(), self)
+        Searcher::new_at(
+            pos.to_exact(),
+            self.text.iter_at(pos).no_ghosts().no_conceals(),
+        )
+    }
+
+    pub fn rev_search(&self) -> RevSearcher<'_> {
+        RevSearcher::new_at(
+            ExactPos::default(),
+            self.text.rev_iter().no_ghosts().no_conceals(),
+        )
+    }
+
+    pub fn rev_search_at(&self, pos: impl Positional) -> RevSearcher<'_> {
+        RevSearcher::new_at(
+            pos.to_exact(),
+            self.text.rev_iter_at(pos).no_ghosts().no_conceals(),
+        )
     }
 
     /// The full path of the file.

@@ -554,7 +554,7 @@ impl Iterator for RevIter<'_> {
     }
 }
 
-pub(crate) trait Positional {
+pub(crate) trait Positional: Clone + Copy {
     fn to_exact(self) -> ExactPos;
 }
 
