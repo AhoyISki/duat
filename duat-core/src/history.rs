@@ -289,7 +289,7 @@ impl History {
         let ret = if let Some(moment) = self.mut_current_moment() {
             moment.add_change(change, assoc_index)
         } else {
-            self.new_moment();
+            self.add_moment();
             self.moments
                 .last_mut()
                 .unwrap()
@@ -304,7 +304,7 @@ impl History {
 
     /// Declares that the current [Moment] is complete and starts a
     /// new one.
-    pub fn new_moment(&mut self) {
+    pub fn add_moment(&mut self) {
         // If the last moment in history is empty, we can keep using it.
         if self
             .mut_current_moment()

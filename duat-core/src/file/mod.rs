@@ -21,18 +21,17 @@
 //! the numbers of the currently printed lines.
 use std::{fs, path::PathBuf, sync::Arc};
 
+use self::read::{Reader, Searcher};
 use crate::{
     data::RwData,
     history::{Change, History},
     input::{Cursors, InputMethod, KeyMap},
     palette,
-    text::{IterCfg, PrintCfg, Text},
+    text::{ExactPos, IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Globals,
 };
-
-use self::read::Reader;
 
 mod read;
 
@@ -182,7 +181,7 @@ pub struct File {
     cfg: PrintCfg,
     history: History,
     printed_lines: Vec<(usize, bool)>,
-    readers: Vec<Box<dyn Reader>>
+    readers: Vec<Box<dyn Reader>>,
 }
 
 impl File {
@@ -204,18 +203,44 @@ impl File {
         self.text
             .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
     }
+}
 
-    /// The number of bytes in the file.
-    pub fn len_bytes(&self) -> usize {
-        self.text.len_bytes()
+/// # Querying functions
+///
+/// These functions serve the purpose of querying information from
+/// the [`File`].
+impl File {
+    pub fn search(&self) -> Searcher<'_> {
+        Searcher::new_at(ExactPos::default(), self)
     }
 
-    /// Returns the currently printed set of lines.
-    pub fn printed_lines(&self) -> &[(usize, bool)] {
-        &self.printed_lines
+    pub fn search_on(&self, pos: usize) -> Searcher<'_> {
+        Searcher::new_at(ExactPos::new(pos, 0), self)
+    }
+
+    /// The full path of the file.
+    ///
+    /// If there is no set path, returns `"*scratch file*#{id}"`.
+    pub fn path(&self) -> String {
+        match &self.path {
+            Path::Set(path) => path.to_string_lossy().to_string(),
+            Path::UnSet(id) => format!("*scratch file*#{id}"),
+        }
+    }
+
+    /// The full path of the file.
+    ///
+    /// Returns [`None`] if the path has not been set yet.
+    pub fn set_path(&self) -> Option<String> {
+        match &self.path {
+            Path::Set(path) => Some(path.to_string_lossy().to_string()),
+            Path::UnSet(_) => None,
+        }
     }
 
     /// The file's name.
+    ///
+    /// If there is no set path, returns `"*scratch file*#{id}"`.
     pub fn name(&self) -> String {
         match &self.path {
             Path::Set(path) => path.file_name().unwrap().to_string_lossy().to_string(),
@@ -223,6 +248,9 @@ impl File {
         }
     }
 
+    /// The file's name.
+    ///
+    /// Returns [`None`] if the path has not been set yet.
     pub fn set_name(&self) -> Option<String> {
         match &self.path {
             Path::Set(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
@@ -230,12 +258,9 @@ impl File {
         }
     }
 
-    /// The full path of the file.
-    pub fn full_path(&self) -> String {
-        match &self.path {
-            Path::Set(path) => path.to_string_lossy().to_string(),
-            Path::UnSet(id) => format!("*scratch file*#{id}"),
-        }
+    /// The number of bytes in the file.
+    pub fn len_bytes(&self) -> usize {
+        self.text.len_bytes()
     }
 
     /// The number of [`char`]s in the file.
@@ -248,28 +273,47 @@ impl File {
         self.text.len_lines()
     }
 
-    pub fn new_moment(&mut self) {
-        self.history.new_moment()
+    /// Returns the currently printed set of lines.
+    ///
+    /// These are returned as a `usize`, showing the index of the line
+    /// in the file, and a `bool`, which is `true` when the line is
+    /// wrapped.
+    pub fn printed_lines(&self) -> &[(usize, bool)] {
+        &self.printed_lines
+    }
+}
+
+/// # History related functions.
+///
+/// These functions allow for the modification of the [`File`]'s
+/// [`Text`] by navigating through a [`History`]'s changes.
+/// For now, this is a linear history (i.e. modification removes all
+/// future changes), but the plan is to change it to a tree at some
+/// point.
+impl File {
+    /// Begins a new moment in history.
+    ///
+    /// A new moment makes it so that "undoing" or "redoing" will undo
+    /// or redo all the changes in the moment. The previous moment can
+    /// be undone, undoing multiple changes at once.
+    pub fn add_moment(&mut self) {
+        self.history.add_moment()
     }
 
-    pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
-        self.history.add_change(change, assoc_index)
-    }
-
+    /// Redoes the next moment, if there is one.
     pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
         self.history.redo(&mut self.text, area, cursors, &self.cfg)
     }
 
+    /// Undoes the last moment, if there was one.
     pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
         self.history.undo(&mut self.text, area, cursors, &self.cfg)
     }
 
+    /// Returns a mutable reference to the [`Text`] and [`History`] of
+    /// the [`File`].
     pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History) {
         (&mut self.text, &mut self.history)
-    }
-
-    pub(crate) fn cfg<U: Ui>() -> FileCfg<U> {
-        FileCfg::new()
     }
 }
 
@@ -281,7 +325,7 @@ where
     where
         Self: Sized,
     {
-        let (widget, checker) = Self::cfg().build();
+        let (widget, checker) = FileCfg::new().build();
         (widget, checker, PushSpecs::above())
     }
 

@@ -1,4 +1,3 @@
-#![allow(incomplete_features, clippy::type_complexity)]
 #![feature(
     lazy_cell,
     extract_if,
@@ -29,6 +28,7 @@ pub mod commands;
 pub mod data;
 pub mod file;
 pub mod history;
+pub mod hooks;
 pub mod input;
 pub mod palette;
 pub mod position;
@@ -36,7 +36,6 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-pub mod hooks;
 
 pub struct Globals<U>
 where

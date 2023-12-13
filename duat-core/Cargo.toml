@@ -10,6 +10,13 @@ keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
+[lints.rust]
+incomplete_features = "allow"
+
+[lints.clippy]
+type_complexity = "allow"
+while_let_on_iterator = "allow"
+
 [dependencies]
 # Style handling
 crossterm = ">=0.26.0"

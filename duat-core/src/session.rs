@@ -37,7 +37,7 @@ where
 
         SessionCfg {
             ui,
-            file_cfg: File::cfg(),
+            file_cfg: FileCfg::new(),
             globals,
         }
     }

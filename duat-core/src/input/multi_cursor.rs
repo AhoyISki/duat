@@ -324,7 +324,7 @@ where
 {
     /// Begins a new [`Moment`][crate::history::Moment].
     pub fn new_moment(&mut self) {
-        self.widget.write().new_moment();
+        self.widget.write().add_moment();
     }
 
     /// Undoes the last [`Moment`][crate::history::Moment].

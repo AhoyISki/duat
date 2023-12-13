@@ -12,30 +12,6 @@ pub struct ExactPos {
     ghost: usize,
 }
 
-impl Ord for ExactPos {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self.real.cmp(&other.real) {
-            Ordering::Less => Ordering::Less,
-            Ordering::Greater => Ordering::Greater,
-            Ordering::Equal => {
-                if (self.ghost == 0 && other.ghost == usize::MAX)
-                    || (self.ghost == usize::MAX && other.ghost == 0)
-                {
-                    Ordering::Equal
-                } else {
-                    self.ghost.cmp(&other.ghost)
-                }
-            }
-        }
-    }
-}
-
-impl PartialOrd for ExactPos {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl ExactPos {
     pub fn at_cursor_char(real: usize) -> Self {
         Self {
@@ -62,6 +38,30 @@ impl ExactPos {
             real: self.real.min(text.len_chars()),
             ghost: self.ghost,
         }
+    }
+}
+
+impl Ord for ExactPos {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.real.cmp(&other.real) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => {
+                if (self.ghost == 0 && other.ghost == usize::MAX)
+                    || (self.ghost == usize::MAX && other.ghost == 0)
+                {
+                    Ordering::Equal
+                } else {
+                    self.ghost.cmp(&other.ghost)
+                }
+            }
+        }
+    }
+}
+
+impl PartialOrd for ExactPos {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -113,6 +113,10 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iter<'a> {
+    pub fn on_ghost(&self) -> bool {
+        self.backup_iter.is_some()
+    }
+
     pub(super) fn new_at(text: &'a Text, pos: usize) -> Self {
         let pos = pos.min(text.len_chars());
         let tags_start = pos.saturating_sub(text.tags.back_check_amount());

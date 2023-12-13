@@ -15,18 +15,57 @@ pub trait Reader {
 }
 
 pub struct Searcher<'a> {
+    pos: ExactPos,
     iter: Iter<'a>,
 }
 
 impl Searcher<'_> {
+    pub fn new_at(pos: ExactPos, file: &File) -> Self {
+        Self {
+            pos,
+            iter: file.text.iter_exactly_at(pos),
+        }
+    }
+
     pub fn find(&mut self, pat: impl Pattern) -> Option<(ExactPos, ExactPos)> {
+        let mut index = 0;
+        let mut end_pos = self.pos;
+        while let Some(item) = self.iter.next() {
+            if index == pat.len() {
+                return Some((self.pos, end_pos));
+            }
+
+            end_pos = item.pos;
+
+            if pat.matches(item.part, index) {
+                index += 1;
+            } else {
+                index = 0;
+                self.pos = item.pos;
+            }
+        }
+
+        match index == pat.len() {
+            true => Some(if pat.len() == 0 {
+                (self.pos, self.pos)
+            } else {
+                let end_pos = if self.iter.on_ghost() {
+                    ExactPos::new(end_pos.real(), end_pos.ghost() + 1)
+                } else {
+                    ExactPos::new(end_pos.real() + 1, 0)
+                };
+
+                (self.pos, end_pos)
+            }),
+            false => None,
+        }
     }
 }
 
 trait Pattern {
     fn len(&self) -> usize;
 
-    fn matches(&self, part: Part, index: usize) -> MatchState;
+    fn matches(&self, part: Part, index: usize) -> bool;
 }
 
 impl Pattern for Part {
@@ -34,12 +73,8 @@ impl Pattern for Part {
         1
     }
 
-    fn matches(&self, part: Part, _index: usize) -> MatchState {
-        if *self == part {
-            MatchState::Finished
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, _index: usize) -> bool {
+        *self == part
     }
 }
 
@@ -48,17 +83,8 @@ impl<const N: usize> Pattern for [Part; N] {
         N
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
-        if N == 0 {
-            MatchState::Finished
-        } else if self[index] == part {
-            match N == index + 1 {
-                true => MatchState::Finished,
-                false => MatchState::Continue,
-            }
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, index: usize) -> bool {
+        self[index] == part
     }
 }
 
@@ -67,17 +93,8 @@ impl Pattern for &[Part] {
         self.len()
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
-        if self.is_empty() {
-            MatchState::Finished
-        } else if self[index] == part {
-            match self.len() == index + 1 {
-                true => MatchState::Finished,
-                false => MatchState::Continue,
-            }
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, index: usize) -> bool {
+        self[index] == part
     }
 }
 
@@ -86,18 +103,11 @@ impl Pattern for &str {
         self.len()
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
+    fn matches(&self, part: Part, index: usize) -> bool {
         let cmp = part.as_char();
         let char = self.chars().nth(index);
 
-        if char.zip(cmp).is_some_and(|(char, cmp)| char == cmp) {
-            match self.len() == index + 1 {
-                true => MatchState::Finished,
-                false => MatchState::Continue,
-            }
-        } else {
-            MatchState::Break
-        }
+        char.zip(cmp).is_some_and(|(char, cmp)| char == cmp)
     }
 }
 
@@ -106,12 +116,8 @@ impl Pattern for char {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
-        if part.as_char().is_some_and(|cmp| *self == cmp) {
-            MatchState::Finished
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, index: usize) -> bool {
+        part.as_char().is_some_and(|cmp| *self == cmp)
     }
 }
 
@@ -120,12 +126,8 @@ impl<const N: usize> Pattern for [char; N] {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
-        if part.as_char().is_some_and(|cmp| self.contains(&cmp)) {
-            MatchState::Finished
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, index: usize) -> bool {
+        part.as_char().is_some_and(|cmp| self.contains(&cmp))
     }
 }
 
@@ -134,19 +136,9 @@ impl Pattern for &[char] {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> MatchState {
-        if part.as_char().is_some_and(|cmp| self.contains(&cmp)) {
-            MatchState::Finished
-        } else {
-            MatchState::Break
-        }
+    fn matches(&self, part: Part, index: usize) -> bool {
+        part.as_char().is_some_and(|cmp| self.contains(&cmp))
     }
-}
-
-enum MatchState {
-    Break,
-    Continue,
-    Finished,
 }
 
 impl_ranges!(
@@ -165,12 +157,8 @@ macro impl_ranges($($r:ty),+) {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> MatchState {
-                if part.as_char().is_some_and(|cmp| self.contains(&cmp)) {
-                    MatchState::Finished
-                } else {
-                    MatchState::Break
-                }
+            fn matches(&self, part: Part, index: usize) -> bool {
+                part.as_char().is_some_and(|cmp| self.contains(&cmp))
             }
         }
     )+
@@ -181,15 +169,9 @@ macro impl_ranges($($r:ty),+) {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> MatchState {
-                if part
-                    .as_char()
+            fn matches(&self, part: Part, index: usize) -> bool {
+                part.as_char()
                     .is_some_and(|cmp| self.iter().any(|range| range.contains(&cmp)))
-                {
-                    MatchState::Finished
-                } else {
-                    MatchState::Break
-                }
             }
         }
     )+
@@ -200,15 +182,9 @@ macro impl_ranges($($r:ty),+) {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> MatchState {
-                if part
-                    .as_char()
+            fn matches(&self, part: Part, index: usize) -> bool {
+                part.as_char()
                     .is_some_and(|cmp| self.iter().any(|range| range.contains(&cmp)))
-                {
-                    MatchState::Finished
-                } else {
-                    MatchState::Break
-                }
             }
         }
     )+
