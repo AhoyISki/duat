@@ -329,6 +329,10 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> RevIter<'a> {
+    pub fn on_ghost(&self) -> bool {
+        self.backup_iter.is_some()
+    }
+
     pub(super) fn new_at(text: &'a Text, pos: impl Positional) -> Self {
         let ExactPos { real, mut ghost } = pos.to_exact().clamp(text);
         let mut ghosts_to_ignore = Vec::new();
