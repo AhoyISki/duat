@@ -1,4 +1,5 @@
 mod cfg;
+mod gap_buffer;
 mod iter;
 pub mod reader;
 mod tags;
@@ -7,10 +8,11 @@ mod types;
 use std::{
     fmt::{Display, Write},
     ops::Range,
+    str::from_utf8_unchecked,
     sync::LazyLock,
 };
 
-use ropey::Rope;
+use gapbuf::GapBuffer;
 
 pub(crate) use self::iter::Positional;
 use self::tags::{Markers, RawTag, TagOrSkip, Tags};
@@ -34,26 +36,28 @@ trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
 /// The text in a given area.
 #[derive(Debug, Default, Clone, Eq)]
 pub struct Text {
-    rope: Rope,
+    buf: GapBuffer<u8>,
     pub tags: Tags,
-    cursor_marker: Marker,
+    /// This [`Marker`] is used for the addition and removal of cursor
+    /// [`Tag`]s.
+    marker: Marker,
 }
 
 impl PartialEq for Text {
     fn eq(&self, other: &Self) -> bool {
-        self.rope == other.rope && self.tags == other.tags
+        self.buf == other.buf && self.tags == other.tags
     }
 }
 
 // TODO: Properly implement _replacements.
 impl Text {
     pub fn new(string: impl ToString) -> Self {
-        let rope = Rope::from(string.to_string());
-        let tags = Tags::with_len(rope.len_chars());
+        let gap = GapBuffer::from_iter(string.to_string().bytes());
+        let tags = Tags::with_len(gap.len());
         Text {
-            rope,
+            buf: gap,
             tags,
-            cursor_marker: Marker::new(),
+            marker: Marker::new(),
         }
     }
 
@@ -62,49 +66,99 @@ impl Text {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.rope.len_chars() == 0
+        self.buf.is_empty()
     }
 
-    pub fn get_char(&self, char_index: usize) -> Option<char> {
-        self.rope.get_char(char_index)
+    pub fn get_char(&self, c: usize) -> Option<char> {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars().chain(s1.chars()).nth(c)
     }
 
     pub fn len_chars(&self) -> usize {
-        self.rope.len_chars()
+        // TODO: make this value stateful.
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars().count() + s1.chars().count()
     }
 
     pub fn len_lines(&self) -> usize {
-        self.rope.len_lines()
+        // TODO: make this value stateful.
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.bytes().chain(s1.bytes()).filter(|b| *b == b'\n').count() + 1
     }
 
     pub fn len_bytes(&self) -> usize {
-        self.rope.len_bytes()
+        self.buf.len()
     }
 
-    pub fn char_to_line(&self, char: usize) -> usize {
-        self.rope.char_to_line(char)
+    pub fn char_to_line(&self, c: usize) -> usize {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars()
+            .chain(s1.chars())
+            .take(c)
+            .filter(|c| *c == '\n')
+            .count()
     }
 
-    pub fn line_to_char(&self, line: usize) -> usize {
-        self.rope.line_to_char(line)
+    pub fn line_to_char(&self, l: usize) -> usize {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.lines()
+            .chain(s1.lines())
+            .map(|l| l.chars().count())
+            .take(l)
+            .sum()
     }
 
-    pub fn char_to_byte(&self, char: usize) -> usize {
-        self.rope.char_to_byte(char)
+    pub fn char_to_byte(&self, c: usize) -> usize {
+        self.get_char_to_byte(c).unwrap_or(self.buf.len())
     }
 
-    pub fn get_char_to_line(&self, char: usize) -> Option<usize> {
-        self.rope.try_char_to_line(char).ok()
+    pub fn get_char_to_line(&self, c: usize) -> Option<usize> {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars()
+            .chain(s1.chars())
+            .scan(0, |l, c| Some(if c == '\n' { *l + 1 } else { *l }))
+            .nth(c)
     }
 
-    pub fn get_line_to_char(&self, line: usize) -> Option<usize> {
-        self.rope.try_line_to_char(line).ok()
+    pub fn get_line_to_char(&self, l: usize) -> Option<usize> {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.lines()
+            .chain(s1.lines())
+            .scan(0, |c, l| Some(*c + l.chars().count()))
+            .nth(l)
     }
 
-    pub fn get_char_to_byte(&self, char: usize) -> Option<usize> {
-        self.rope.try_char_to_byte(char).ok()
+    pub fn get_char_to_byte(&self, c: usize) -> Option<usize> {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.char_indices()
+            .map(|(b, _)| b)
+            .chain(s1.char_indices().map(|(b, _)| b + s0.len()))
+            .nth(c)
     }
 
+    /// The visual start of the line
+    ///
+    /// This point is defined not by where the line actually begins,
+    /// but by where the last '\n' was located. For example, if
+    /// [`Tag`]s create ghost text or ommit text from multiple
+    /// different lines, this point may differ from where in the
+    /// [`Text`] the physical line actually begins.
     pub fn visual_line_start(&self, pos: impl Positional) -> ExactPos {
         let pos = pos.to_exact();
         if pos == ExactPos::default() {
@@ -156,7 +210,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(pos, tag, self.cursor_marker);
+                self.tags.insert(pos, tag, self.marker);
             }
         }
     }
@@ -168,17 +222,19 @@ impl Text {
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {
-                self.tags.remove_on(ch_index, self.cursor_marker);
+                self.tags.remove_on(ch_index, self.marker);
             }
         }
     }
 
-    pub(crate) fn write_to(&self, writer: impl std::io::Write) -> std::io::Result<usize> {
-        self.rope.write_to(writer).map(|_| self.rope.len_bytes())
+    pub(crate) fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
+        let (s0, s1) = self.buf.as_slices();
+        writer.write(s0)?;
+        writer.write(s1)
     }
 
     fn clear(&mut self) {
-        self.rope = Rope::new();
+        self.buf = GapBuffer::new();
         self.tags.clear();
     }
 
@@ -188,9 +244,10 @@ impl Text {
         let edit = edit.as_ref();
         let edit_len = edit.chars().count();
 
-        self.rope.remove(old.clone());
+        self.buf.splice(old.clone(), []);
         let (start, _) = get_ends(old.clone(), self.len_chars());
-        self.rope.insert(start, edit.as_ref());
+        self.buf
+            .splice(start..start, edit.as_bytes().iter().cloned());
 
         if edit_len != old.clone().count() {
             let new_end = old.start + edit_len;
@@ -211,15 +268,21 @@ impl Text {
     }
 
     pub fn chars(&self) -> impl Iterator<Item = char> + Clone + '_ {
-        self.rope.chars_at(0)
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars().chain(s1.chars())
     }
 
-    pub fn chars_at(&self, pos: usize) -> impl Iterator<Item = char> + Clone + '_ {
-        self.rope.chars_at(pos)
+    pub fn chars_at(&self, c: usize) -> impl Iterator<Item = char> + Clone + '_ {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars().chain(s1.chars()).skip(c)
     }
 
-    pub fn insert_tag(&mut self, pos: usize, tag: Tag, marker: Marker) {
-        self.tags.insert(pos, tag, marker);
+    pub fn insert_tag(&mut self, b: usize, tag: Tag, marker: Marker) {
+        self.tags.insert(b, tag, marker);
     }
 
     pub fn remove_on(&mut self, pos: usize, markers: impl Markers) {
@@ -250,7 +313,7 @@ impl Text {
     }
 
     pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
-        self.rope.chars_at(pos)
+        self.buf.chars_at(pos)
     }
 
     /// TO BE DEPRECATED.
@@ -353,7 +416,7 @@ impl Builder {
         self.text
             .tags
             .transform_range(end..end, end + text.len_chars());
-        self.text.rope.append(text.rope);
+        self.text.buf.append(text.buf);
         self.text.tags.toggles.extend(text.tags.toggles.drain());
         self.text.tags.texts.extend(text.tags.texts.drain());
 
