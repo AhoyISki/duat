@@ -217,7 +217,6 @@ impl Tags {
         self.process_ranges_containing(new);
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
-
     }
 
     pub fn back_check_amount(&self) -> usize {
@@ -697,18 +696,18 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
 mod ids {
     use std::{
         ops::Range,
-        sync::atomic::{AtomicU32, AtomicUsize, Ordering},
+        sync::atomic::{AtomicU16, Ordering},
     };
 
-    static TEXT_COUNT: AtomicU32 = AtomicU32::new(0);
-    static TOGGLE_COUNT: AtomicU32 = AtomicU32::new(0);
-    static MARKER_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
+    static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
+    static MARKER_COUNT: AtomicU16 = AtomicU16::new(0);
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct TextId(u32);
+    pub struct TextId(u16);
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct ToggleId(u32);
+    pub struct ToggleId(u16);
 
     impl TextId {
         pub fn new() -> Self {
@@ -735,7 +734,7 @@ mod ids {
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct Marker(usize);
+    pub struct Marker(u16);
 
     impl Marker {
         pub fn new() -> Self {
@@ -744,7 +743,7 @@ mod ids {
 
         pub fn new_many(amount: usize) -> Range<Self> {
             let start = Self(MARKER_COUNT.fetch_add(1, Ordering::Relaxed));
-            let end = Self(MARKER_COUNT.fetch_add(amount, Ordering::Relaxed));
+            let end = Self(MARKER_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
 
             start..end
         }
@@ -758,15 +757,15 @@ mod ids {
 
     impl std::iter::Step for Marker {
         fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-            end.0.checked_sub(start.0)
+            (end.0 as usize).checked_sub(start.0 as usize)
         }
 
         fn forward_checked(start: Self, count: usize) -> Option<Self> {
-            Some(Self(start.0 + count))
+            Some(Self(start.0 + count as u16))
         }
 
         fn backward_checked(start: Self, count: usize) -> Option<Self> {
-            start.0.checked_sub(count).map(Self)
+            start.0.checked_sub(count as u16).map(Self)
         }
     }
 

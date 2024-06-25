@@ -92,9 +92,6 @@ impl Tag {
 unsafe impl Send for Tag {}
 unsafe impl Sync for Tag {}
 
-// NOTE: Unlike `TextPos`, tags are line-byte indexed, not character
-// indexed. The reason is that modules like `regex` and `tree-sitter`
-// work on `u8`s, rather than `char`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
@@ -142,9 +139,10 @@ pub enum RawTag {
     /// [`ConcealEnd`]: RawTag::ConcealEnd
     ConcealEnd(Marker),
 
+	// TODO: Deal with the concequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
-    Concealed(usize),
+    Concealed(u32),
 
     GhostText(Marker, TextId),
 
