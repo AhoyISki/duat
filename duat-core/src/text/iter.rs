@@ -1,4 +1,9 @@
-use std::{cmp::Ordering, ops::ControlFlow};
+use core::slice;
+use std::{
+    cmp::Ordering,
+    iter::{Chain, Rev, Skip},
+    ops::ControlFlow,
+};
 
 use super::{
     tags::{self, RawTag, TextId},
@@ -96,14 +101,14 @@ impl Item {
 #[derive(Clone)]
 pub struct Iter<'a> {
     text: &'a Text,
-    chars: ropey::iter::Chars<'a>,
+    bytes: ForwardBytes<'a>,
     tags: tags::ForwardIter<'a>,
     pos: usize,
     line: usize,
     conceals: usize,
 
     // Things to deal with ghost text.
-    backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ForwardIter<'a>)>,
+    backup_iter: Option<(usize, ForwardBytes<'a>, tags::ForwardIter<'a>)>,
     ghosts_to_ignore: Vec<TextId>,
     ghost_shift: usize,
 
@@ -122,8 +127,8 @@ impl<'a> Iter<'a> {
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
-        let (chars, tags) = {
-            let text = text.tags.on(real).find_map(|tag| match tag {
+        let (bytes, tags) = {
+            let text = text.tags.at(real).find_map(|tag| match tag {
                 RawTag::GhostText(_, id) => {
                     ghosts_to_ignore.push(id);
                     text.tags.texts.get(&id).and_then(|text| {
@@ -142,7 +147,7 @@ impl<'a> Iter<'a> {
             text.map(|text| {
                 let tags_start = ghost.saturating_sub(text.tags.back_check_amount());
 
-                let chars = text.rope.chars_at(ghost);
+                let chars = text.buf.iter().skip(ghost);
                 let tags = text.tags.iter_at(tags_start);
 
                 (chars, tags)
@@ -151,9 +156,9 @@ impl<'a> Iter<'a> {
         };
 
         let tags_start = real.saturating_sub(text.tags.back_check_amount());
-        let pos = if chars.is_some() { ghost } else { real };
-        let backup_iter = chars.is_some().then(|| {
-            let chars = text.rope.chars_at(real);
+        let pos = if bytes.is_some() { ghost } else { real };
+        let backup_iter = bytes.is_some().then(|| {
+            let chars = text.buf.iter().skip(real);
             let tags = text.tags.iter_at(tags_start);
 
             (real, chars, tags)
@@ -161,10 +166,10 @@ impl<'a> Iter<'a> {
 
         Self {
             text,
-            chars: chars.unwrap_or_else(|| text.rope.chars_at(real)),
+            bytes: bytes.unwrap_or_else(|| text.buf.iter().skip(real)),
             tags: tags.unwrap_or_else(|| text.tags.iter_at(tags_start)),
             pos,
-            line: text.rope.char_to_line(real),
+            line: text.char_to_line(real),
             conceals: 0,
 
             backup_iter,
@@ -206,7 +211,7 @@ impl<'a> Iter<'a> {
                 }
                 self.ghost_shift = 0;
 
-                let Some(text) = self.text.tags.on(pos).find_map(|tag| match tag {
+                let Some(text) = self.text.tags.at(pos).find_map(|tag| match tag {
                     RawTag::GhostText(_, cmp) if cmp == *id => self.text.tags.texts.get(id),
                     RawTag::GhostText(_, id) => {
                         let text = self.text.tags.texts.get(&id);
@@ -220,7 +225,7 @@ impl<'a> Iter<'a> {
 
                 let iter = text.iter();
                 let pos = std::mem::replace(&mut self.pos, iter.pos);
-                let chars = std::mem::replace(&mut self.chars, iter.chars);
+                let chars = std::mem::replace(&mut self.bytes, iter.bytes);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.backup_iter = Some((pos, chars, tags));
@@ -236,14 +241,14 @@ impl<'a> Iter<'a> {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.max(pos);
-                    self.line = self.text.rope.char_to_line(pos);
-                    self.chars = self.text.rope.chars_at(self.pos);
+                    self.line = self.text.char_to_line(pos);
+                    self.bytes = self.text.buf.iter().skip(self.pos);
                 }
 
                 ControlFlow::Continue(())
             }
             RawTag::Concealed(skip) => {
-                let pos = pos.saturating_add(*skip);
+                let pos = pos.saturating_add(*skip as usize);
                 *self = Iter::new_at(self.text, pos);
                 ControlFlow::Break(())
             }
@@ -283,22 +288,22 @@ impl Iterator for Iter<'_> {
 
                     break Some(Item::new(pos, self.line, Part::from_raw(tag)));
                 }
-            } else if let Some(char) = self.chars.next() {
+            } else if let Some(&byte) = self.bytes.next() {
                 let prev_line = self.line;
                 let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
                     ExactPos::new(*real, self.ghost_shift + self.pos)
                 } else {
                     let ghost = self.ghost_shift;
                     self.ghost_shift = 0;
-                    self.line += (char == '\n') as usize;
+                    self.line += (byte == b'\n') as usize;
                     ExactPos::new(self.pos, ghost)
                 };
                 self.pos += 1;
 
-                break Some(Item::new(pos, prev_line, Part::Char(char)));
+                break Some(Item::new(pos, prev_line, Part::Byte(byte)));
             } else if let Some(backup) = self.backup_iter.take() {
                 self.ghost_shift += self.pos;
-                (self.pos, self.chars, self.tags) = backup;
+                (self.pos, self.bytes, self.tags) = backup;
             } else {
                 break None;
             }
@@ -313,13 +318,13 @@ impl Iterator for Iter<'_> {
 #[derive(Clone)]
 pub struct RevIter<'a> {
     text: &'a Text,
-    chars: ropey::iter::Chars<'a>,
+    bytes: ReverseBytes<'a>,
     tags: tags::ReverseTags<'a>,
     pos: usize,
     line: usize,
     conceals: usize,
 
-    backup_iter: Option<(usize, ropey::iter::Chars<'a>, tags::ReverseTags<'a>)>,
+    backup_iter: Option<(usize, ReverseBytes<'a>, tags::ReverseTags<'a>)>,
     ghosts_to_ignore: Vec<TextId>,
     ghost_shift: usize,
 
@@ -338,8 +343,8 @@ impl<'a> RevIter<'a> {
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
-        let (chars, tags) = {
-            let mut text_ids = text.tags.on(real).filter_map(|tag| match tag {
+        let (bytes, tags) = {
+            let mut text_ids = text.tags.at(real).filter_map(|tag| match tag {
                 RawTag::GhostText(_, id) => Some(id),
                 _ => None,
             });
@@ -363,20 +368,20 @@ impl<'a> RevIter<'a> {
                 ghost = ghost.min(text.len_chars());
                 let tags_start = ghost + text.tags.back_check_amount();
 
-                let chars = text.rope.chars_at(ghost).reversed();
+                let bytes = text.buf.iter().rev().skip(text.buf.len() - ghost);
                 let tags = text.tags.rev_iter_at(tags_start);
 
-                (chars, tags)
+                (bytes, tags)
             })
             .unzip()
         };
 
         let tags_start = real + text.tags.back_check_amount();
 
-        let pos = if chars.is_some() { ghost } else { real };
+        let pos = if bytes.is_some() { ghost } else { real };
 
-        let backup_iter = chars.is_some().then(|| {
-            let chars = text.rope.chars_at(real).reversed();
+        let backup_iter = bytes.is_some().then(|| {
+            let chars = text.buf.iter().rev().skip(text.buf.len() - real);
             let tags = text.tags.rev_iter_at(tags_start);
 
             (real, chars, tags)
@@ -384,10 +389,10 @@ impl<'a> RevIter<'a> {
 
         Self {
             text,
-            chars: chars.unwrap_or_else(|| text.rope.chars_at(real).reversed()),
+            bytes: bytes.unwrap_or_else(|| text.buf.iter().rev().skip(text.buf.len() - real)),
             tags: tags.unwrap_or_else(|| text.tags.rev_iter_at(tags_start)),
             pos,
-            line: text.rope.char_to_line(real),
+            line: text.char_to_line(real),
             conceals: 0,
 
             backup_iter,
@@ -401,7 +406,7 @@ impl<'a> RevIter<'a> {
 
     pub(super) fn new_following(text: &'a Text, pos: impl Positional) -> Self {
         let ExactPos { real, mut ghost } = pos.to_exact().clamp(text);
-        let exact_pos = if text.tags.on(real).any(|tag| {
+        let exact_pos = if text.tags.at(real).any(|tag| {
             if let RawTag::GhostText(_, id) = tag {
                 text.tags.texts.get(&id).is_some_and(|text| {
                     if ghost < text.len_chars() {
@@ -460,7 +465,7 @@ impl<'a> RevIter<'a> {
                 }
                 self.ghost_shift = 0;
 
-                let Some(text) = self.text.tags.on(pos).find_map(|tag| match tag {
+                let Some(text) = self.text.tags.at(pos).find_map(|tag| match tag {
                     RawTag::GhostText(_, cmp) if cmp == *id => self.text.tags.texts.get(id),
                     RawTag::GhostText(_, id) => {
                         let text = self.text.tags.texts.get(&id);
@@ -474,7 +479,7 @@ impl<'a> RevIter<'a> {
 
                 let iter = text.rev_iter();
                 let pos = std::mem::replace(&mut self.pos, iter.pos);
-                let chars = std::mem::replace(&mut self.chars, iter.chars);
+                let chars = std::mem::replace(&mut self.bytes, iter.bytes);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.backup_iter = Some((pos, chars, tags));
@@ -487,8 +492,9 @@ impl<'a> RevIter<'a> {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.pos = self.pos.min(pos);
-                    self.line = self.text.rope.char_to_line(self.pos);
-                    self.chars = self.text.rope.chars_at(self.pos).reversed();
+                    self.line = self.text.char_to_line(self.pos);
+                    let skip = self.text.buf.len() - self.pos;
+                    self.bytes = self.text.buf.iter().rev().skip(skip);
                 }
 
                 ControlFlow::Continue(())
@@ -499,9 +505,10 @@ impl<'a> RevIter<'a> {
                 ControlFlow::Continue(())
             }
             RawTag::Concealed(skip) => {
-                self.pos = pos.saturating_sub(*skip);
-                self.line = self.text.rope.char_to_line(self.pos);
-                self.chars = self.text.rope.chars_at(self.pos).reversed();
+                self.pos = pos.saturating_sub(*skip as usize);
+                self.line = self.text.char_to_line(self.pos);
+                let skip = self.text.buf.len() - self.pos;
+                self.bytes = self.text.buf.iter().rev().skip(skip);
                 self.tags = self.text.tags.rev_iter_at(self.pos);
                 self.conceals = 0;
 
@@ -533,20 +540,20 @@ impl Iterator for RevIter<'_> {
 
                     break Some(Item::new(pos, self.line, Part::from_raw(tag)));
                 }
-            } else if let Some(char) = self.chars.next() {
+            } else if let Some(&byte) = self.bytes.next() {
                 self.pos -= 1;
                 let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
                     ExactPos::new(*real, self.ghost_shift + self.pos)
                 } else {
                     let ghost = self.ghost_shift;
                     self.ghost_shift = usize::MAX;
-                    self.line -= (char == '\n') as usize;
+                    self.line -= (byte == b'\n') as usize;
                     ExactPos::new(self.pos, ghost)
                 };
 
-                break Some(Item::new(pos, self.line, Part::Char(char)));
+                break Some(Item::new(pos, self.line, Part::Byte(byte)));
             } else if let Some(last_iter) = self.backup_iter.take() {
-                (self.pos, self.chars, self.tags) = last_iter;
+                (self.pos, self.bytes, self.tags) = last_iter;
             } else {
                 break None;
             }
@@ -554,7 +561,16 @@ impl Iterator for RevIter<'_> {
     }
 }
 
+/// A `Positional` is a position in the file
+///
+/// In Duat, a position can be denoted in one of 2 ways:
+///
+/// * A `usize` that refers to a specific byte
+/// * An [`ExactPos`], which refers both to a specific byte, and to
+///   the byte inside of a ghost text that may exist within that
+///   specific byte.
 pub(crate) trait Positional: Clone + Copy {
+    /// Transforms position into an [`ExactPos`]
     fn to_exact(self) -> ExactPos;
 }
 
@@ -570,6 +586,7 @@ impl Positional for usize {
     }
 }
 
+// To be rethought
 #[derive(Debug, Default, Clone)]
 enum Conceal<'a> {
     #[default]
@@ -578,3 +595,6 @@ enum Conceal<'a> {
     Excluding(&'a [Cursor]),
     NotOnLineOf(&'a [Cursor]),
 }
+
+type ForwardBytes<'a> = Skip<Chain<slice::Iter<'a, u8>, slice::Iter<'a, u8>>>;
+type ReverseBytes<'a> = Skip<Rev<Chain<slice::Iter<'a, u8>, slice::Iter<'a, u8>>>>;

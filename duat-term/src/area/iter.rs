@@ -20,10 +20,10 @@ fn indents<'a>(
         if cfg.indent_wrap() {
             let old_indent = if *indent < width { *indent } else { 0 };
             (*indent, *on_indent) = match (&item.part, *on_indent) {
-                (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
-                (&Part::Char(' '), true) => (*indent + 1, true),
-                (&Part::Char('\n'), _) => (0, true),
-                (&Part::Char(_), _) => (*indent, false),
+                (&Part::Byte('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
+                (&Part::Byte(' '), true) => (*indent + 1, true),
+                (&Part::Byte('\n'), _) => (0, true),
+                (&Part::Byte(_), _) => (*indent, false),
                 (_, on_indent) => (*indent, on_indent),
             };
 
@@ -76,7 +76,7 @@ fn words<'a>(
 
         let mut word_len = 0;
         while let Some((new_indent, item)) = iter.peek() {
-            if let Part::Char(char) = item.part {
+            if let Part::Byte(char) = item.part {
                 indent = *new_indent;
                 if cfg.word_chars().contains(char) {
                     word_len += len_from(char, x + word_len, width, &cfg, prev_char)
@@ -125,7 +125,7 @@ fn attach_caret(
         *needs_to_wrap = false;
     };
 
-    if let Some(char) = item.part.as_char() {
+    if let Some(char) = item.part.as_byte() {
         if char == '\n' {
             *needs_to_wrap = true;
             *x = 0;
@@ -145,16 +145,16 @@ fn process_part(
     width: usize,
 ) -> (usize, Part) {
     match part {
-        Part::Char(char) => {
+        Part::Byte(char) => {
             let ret = if char == '\n' {
                 let char = cfg.new_line().char(*prev_char);
                 if let Some(char) = char {
-                    (len_from(char, x, width, cfg, *prev_char), Part::Char(char))
+                    (len_from(char, x, width, cfg, *prev_char), Part::Byte(char))
                 } else {
-                    (0, Part::Char('\n'))
+                    (0, Part::Byte('\n'))
                 }
             } else {
-                (len_from(char, x, width, cfg, *prev_char), Part::Char(char))
+                (len_from(char, x, width, cfg, *prev_char), Part::Byte(char))
             };
 
             *prev_char = Some(char);
@@ -229,7 +229,7 @@ pub fn rev_print_iter<'a>(
             let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
             #[allow(clippy::while_let_on_iterator)]
             while let Some(item) = iter.next() {
-                if let Part::Char('\n') = item.part {
+                if let Part::Byte('\n') = item.part {
                     if items.is_empty() {
                         items.push(item);
                     } else {

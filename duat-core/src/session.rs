@@ -368,7 +368,7 @@ where
 
             if paths.is_empty() {
                 globals.current_file.inspect(|file, _, _| {
-                    if let Some(name) = file.set_name() {
+                    if let Some(name) = file.name_set() {
                         file.write()
                             .map(|bytes| {
                                 Some(text!(
@@ -435,7 +435,7 @@ where
                     .find(|(_, (widget, ..))| {
                         widget
                             .inspect_as::<File, bool>(|file| {
-                                file.set_name().is_some_and(|cmp| cmp == name)
+                                file.name_set().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
                     })
@@ -480,7 +480,7 @@ where
                     .find(|(_, (widget, ..))| {
                         widget
                             .inspect_as::<File, bool>(|file| {
-                                file.set_name().is_some_and(|cmp| cmp == name)
+                                file.name_set().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
                     })

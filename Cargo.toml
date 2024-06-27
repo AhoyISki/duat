@@ -28,6 +28,7 @@ duat-core = { version = ">=0.1.0", path = "duat-core" }
 
 # List of UIs.
 duat-term = { version = ">=0.1.0", path = "duat-term", optional = true }
+gapbuf = "0.1.4"
 
 [features]
 default = ["term-ui"]

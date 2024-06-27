@@ -76,7 +76,7 @@ mod global {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FormId(usize);
+pub struct FormId(u16);
 
 /// A style for text.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,10 +186,10 @@ impl FormPalette {
             .find(|(_, (cmp, _))| *cmp == name)
         {
             *old_form = Kind::Form(form);
-            FormId(index)
+            FormId(index as u16)
         } else {
             inner.forms.push((name, Kind::Form(form)));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -207,10 +207,10 @@ impl FormPalette {
             if let Kind::WeakestRef(_) = *kind {
                 *kind = Kind::Form(form);
             }
-            FormId(index)
+            FormId(index as u16)
         } else {
             inner.forms.push((name, Kind::Form(form)));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -230,10 +230,10 @@ impl FormPalette {
             .find(|(_, (cmp, _))| *cmp == name)
         {
             *old_form = Kind::Ref(id);
-            FormId(index)
+            FormId(index as u16)
         } else {
             inner.forms.push((name, Kind::Ref(id)));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -254,10 +254,10 @@ impl FormPalette {
             if let Kind::WeakestRef(_) = *kind {
                 *kind = Kind::Ref(ref_id);
             }
-            FormId(index)
+            FormId(index as u16)
         } else {
             inner.forms.push((name, Kind::Ref(ref_id)));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -272,11 +272,11 @@ impl FormPalette {
         let mut inner = self.0.write();
 
         if let Some(index) = inner.forms.iter_mut().position(|(cmp, _)| *cmp == name) {
-            FormId(index)
+            FormId(index as u16)
         } else {
             let name = name.to_string().leak();
             inner.forms.push((name, Kind::Ref(FormId(0))));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -291,11 +291,11 @@ impl FormPalette {
         let mut inner = self.0.write();
 
         if let Some(index) = inner.forms.iter_mut().position(|(cmp, _)| *cmp == name) {
-            FormId(index)
+            FormId(index as u16)
         } else {
             let name = name.to_string().leak();
             inner.forms.push((name, Kind::WeakestRef(FormId(0))));
-            FormId(inner.forms.len() - 1)
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -303,7 +303,7 @@ impl FormPalette {
     fn form_of_id(&self, id: FormId) -> Form {
         let inner = self.0.read();
 
-        let nth = inner.forms.get(id.0).map(|(_, kind)| match kind {
+        let nth = inner.forms.get(id.0 as usize).map(|(_, kind)| match kind {
             Kind::Form(form) => *form,
             Kind::Ref(id) => self.form_of_id(*id),
             Kind::WeakestRef(id) => self.form_of_id(*id),
@@ -317,7 +317,7 @@ impl FormPalette {
 
     fn name_of_id(&self, id: FormId) -> &'static str {
         let inner = self.0.read();
-        let nth = inner.forms.get(id.0).map(|(name, _)| name);
+        let nth = inner.forms.get(id.0 as usize).map(|(name, _)| name);
 
         let Some(ret) = nth else {
             unreachable!("Form with id {} not found, this should never happen", id.0);
@@ -368,7 +368,7 @@ impl Painter {
     #[inline(always)]
     pub fn apply(&mut self, mut id: FormId) -> Option<Form> {
         let form = loop {
-            match self.palette.forms.get(id.0) {
+            match self.palette.forms.get(id.0 as usize) {
                 Some((_, Kind::Form(form))) => break form,
                 Some((_, Kind::Ref(referenced))) => id = *referenced,
                 Some((_, Kind::WeakestRef(referenced))) => id = *referenced,

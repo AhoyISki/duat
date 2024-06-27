@@ -106,7 +106,7 @@ impl Area {
         let pos = ExactPos::at_cursor_char(point.char());
         let mut iter = rev_print_iter(text.rev_iter_following(pos), self.width(), cfg)
             .inspect(|(_, item)| {
-                item.part.as_char().inspect(|char| str.insert(0, *char));
+                item.part.as_byte().inspect(|char| str.insert(0, *char));
             })
             .filter_map(|(caret, item)| caret.wrap.then_some(item))
             .peekable();
@@ -172,7 +172,7 @@ impl Area {
 
             let (pos, start, end) = iter
                 .find_map(|(Caret { x, len, .. }, Item { pos, part, .. })| {
-                    part.as_char().and(Some((pos, x, x + len)))
+                    part.as_byte().and(Some((pos, x, x + len)))
                 })
                 .unwrap_or((ExactPos::default(), 0, 0));
 
@@ -464,7 +464,7 @@ fn print_parts<'a>(
 
         match part {
             // Char
-            Part::Char(char) => {
+            Part::Byte(char) => {
                 if len > 0 {
                     write_char(char, coords.tl.x + x, len, coords, info.x_shift, &mut line);
                     if let Some(style) = prev_style.take() {

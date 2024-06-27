@@ -35,9 +35,7 @@ pub macro run($($tree:tt)*) {
 // Later, I'll also have an XOR checker to make sure only one Ui was
 // chosen.
 #[cfg(not(feature = "term-ui"))]
-compile_error! {
-    "No ui has been chosen to compile Parsec with."
-}
+compile_error!("No ui has been chosen to compile Duat with.");
 
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;

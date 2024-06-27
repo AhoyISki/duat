@@ -1,5 +1,4 @@
 mod cfg;
-mod gap_buffer;
 mod iter;
 pub mod reader;
 mod tags;
@@ -7,7 +6,9 @@ mod types;
 
 use std::{
     fmt::{Display, Write},
+    io::Read,
     ops::Range,
+    path::Path,
     str::from_utf8_unchecked,
     sync::LazyLock,
 };
@@ -51,11 +52,21 @@ impl PartialEq for Text {
 
 // TODO: Properly implement _replacements.
 impl Text {
-    pub fn new(string: impl ToString) -> Self {
-        let gap = GapBuffer::from_iter(string.to_string().bytes());
-        let tags = Tags::with_len(gap.len());
-        Text {
-            buf: gap,
+    pub fn new() -> Self {
+        Self {
+            buf: GapBuffer::new(),
+            tags: Tags::new(),
+            marker: Marker::new(),
+        }
+    }
+
+    pub fn from_file<'a>(path: impl AsRef<Path>) -> Self {
+        let file = std::fs::File::open(path.as_ref()).expect("File failed to open");
+        let buf = GapBuffer::from_iter(file.bytes().map_while(Result::ok));
+        let tags = Tags::with_len(buf.len());
+
+        Self {
+            buf,
             tags,
             marker: Marker::new(),
         }
@@ -171,8 +182,8 @@ impl Text {
         let mut cur_pos = pos;
         while let Some(peek) = iter.peek() {
             match peek.part {
-                Part::Char('\n') => return cur_pos,
-                Part::Char(_) => cur_pos = iter.next().unwrap().pos,
+                Part::Byte(b'\n') => return cur_pos,
+                Part::Byte(_) => cur_pos = iter.next().unwrap().pos,
                 _ => drop(iter.next()),
             }
         }
@@ -222,7 +233,7 @@ impl Text {
             let Range { start, end } = cursor.range();
             let skip = if start == end { 1 } else { 0 };
             for ch_index in [start, end].into_iter().skip(skip) {
-                self.tags.remove_on(ch_index, self.marker);
+                self.tags.remove_at(ch_index, self.marker);
             }
         }
     }
@@ -260,7 +271,7 @@ impl Text {
     }
 
     pub fn get_from_char(&self, pos: usize) -> Option<(usize, TagOrSkip)> {
-        self.tags.get_from_pos(pos)
+        self.tags.get_from_byte(pos).map(|(p, _, ts)| (p, ts))
     }
 
     pub fn tags_at(&self, ch_index: usize) -> impl Iterator<Item = (usize, RawTag)> + Clone + '_ {
@@ -274,19 +285,12 @@ impl Text {
         s0.chars().chain(s1.chars())
     }
 
-    pub fn chars_at(&self, c: usize) -> impl Iterator<Item = char> + Clone + '_ {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.chars().chain(s1.chars()).skip(c)
-    }
-
     pub fn insert_tag(&mut self, b: usize, tag: Tag, marker: Marker) {
         self.tags.insert(b, tag, marker);
     }
 
-    pub fn remove_on(&mut self, pos: usize, markers: impl Markers) {
-        self.tags.remove_on(pos, markers)
+    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
+        self.tags.remove_at(b, markers)
     }
 }
 
@@ -312,8 +316,11 @@ impl Text {
         RevIter::new_following(self, pos)
     }
 
-    pub fn iter_chars_at(&self, pos: usize) -> impl Iterator<Item = char> + '_ {
-        self.buf.chars_at(pos)
+    pub fn iter_chars_at(&self, c: usize) -> impl Iterator<Item = char> + '_ {
+        let (s0, s1) = self.buf.as_slices();
+        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+
+        s0.chars().chain(s1.chars()).skip(c)
     }
 
     /// TO BE DEPRECATED.
@@ -324,8 +331,8 @@ impl Text {
         Iter::new_at(self, start).take_while(move |item| item.real() < end)
     }
 
-    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
-        self.iter_line(line).filter_map(|item| item.part.as_char())
+    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = u8> + '_ {
+        self.iter_line(line).filter_map(|item| item.part.as_byte())
     }
 }
 
@@ -334,7 +341,14 @@ where
     S: ToString,
 {
     fn from(value: S) -> Self {
-        Self::new(value.to_string())
+        let buf = GapBuffer::from_iter(value.to_string().bytes());
+        let tags = Tags::with_len(buf.len());
+
+        Self {
+            buf,
+            tags,
+            marker: Marker::new(),
+        }
     }
 }
 
@@ -346,12 +360,10 @@ where
 /// useful:
 ///
 /// - The user cannot insert [`Tag`]s directly, only by appending and
-///   modifying
-/// existing tags.
+///   modifying existing tags.
 /// - All [`Tag`]s that are appended result in an inverse [`Tag`]
-///   being placed
-/// before the next one, or at the end of the [`Tags`] (e.g.
-/// [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
+///   being placed before the next one, or at the end of the [`Tags`]
+///   (e.g. [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
 /// - You can insert swappable text with
 ///   [`push_swappable()`][Self::push_swappable].
 ///
@@ -412,11 +424,11 @@ impl Builder {
     }
 
     pub fn push_text(&mut self, mut text: Text) {
-        let end = self.text.len_chars();
+        let end = self.text.len_bytes();
         self.text
             .tags
             .transform_range(end..end, end + text.len_chars());
-        self.text.buf.append(text.buf);
+        self.text.buf.splice(end..end, text.buf);
         self.text.tags.toggles.extend(text.tags.toggles.drain());
         self.text.tags.texts.extend(text.tags.texts.drain());
 

@@ -29,7 +29,7 @@ impl<'a> Searcher<'a> {
         let mut end_pos = self.pos;
 
         while let Some(item) = self.iter.next() {
-            if index == pat.len() {
+            if index == pat.length() {
                 return Some((self.pos, end_pos));
             }
 
@@ -43,8 +43,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        match index == pat.len() {
-            true => Some(if pat.len() == 0 {
+        match index == pat.length() {
+            true => Some(if pat.length() == 0 {
                 (self.pos, self.pos)
             } else {
                 let end_pos = if self.iter.on_ghost() {
@@ -71,7 +71,7 @@ impl<'a> RevSearcher<'a> {
     }
 
     pub fn find(&mut self, pat: impl Pattern) -> Option<(ExactPos, ExactPos)> {
-        let mut index = pat.len().saturating_sub(1);
+        let mut index = pat.length().saturating_sub(1);
         let mut start_pos = self.pos;
 
         while let Some(item) = self.iter.next() {
@@ -84,13 +84,13 @@ impl<'a> RevSearcher<'a> {
             if pat.matches(item.part, index) {
                 index -= 1;
             } else {
-                index = pat.len().saturating_sub(1);
+                index = pat.length().saturating_sub(1);
                 self.pos = item.pos;
             }
         }
 
         match index == 0 {
-            true => Some(if pat.len() == 0 {
+            true => Some(if pat.length() == 0 {
                 (self.pos, self.pos)
             } else {
                 let start_pos = if self.iter.on_ghost() {
@@ -107,13 +107,13 @@ impl<'a> RevSearcher<'a> {
 }
 
 trait Pattern {
-    fn len(&self) -> usize;
+    fn length(&self) -> usize;
 
     fn matches(&self, part: Part, index: usize) -> bool;
 }
 
 impl Pattern for Part {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         1
     }
 
@@ -123,7 +123,7 @@ impl Pattern for Part {
 }
 
 impl<const N: usize> Pattern for [Part; N] {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         N
     }
 
@@ -133,7 +133,7 @@ impl<const N: usize> Pattern for [Part; N] {
 }
 
 impl Pattern for &[Part] {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         self.len()
     }
 
@@ -143,45 +143,47 @@ impl Pattern for &[Part] {
 }
 
 impl Pattern for &str {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         self.len()
     }
 
     fn matches(&self, part: Part, index: usize) -> bool {
-        let cmp = part.as_char();
-        let char = self.chars().nth(index);
+        let cmp = part.as_byte();
+        let byte = self.bytes().nth(index);
 
-        char.zip(cmp).is_some_and(|(char, cmp)| char == cmp)
+        byte.zip(cmp).is_some_and(|(byte, cmp)| byte == cmp)
     }
 }
 
 impl Pattern for char {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> bool {
-        part.as_char().is_some_and(|cmp| *self == cmp)
+    fn matches(&self, part: Part, _index: usize) -> bool {
+        part.as_byte().is_some_and(|cmp| *self == cmp as char)
     }
 }
 
 impl<const N: usize> Pattern for [char; N] {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> bool {
-        part.as_char().is_some_and(|cmp| self.contains(&cmp))
+    fn matches(&self, part: Part, _index: usize) -> bool {
+        part.as_byte()
+            .is_some_and(|cmp| self.contains(&(cmp as char)))
     }
 }
 
 impl Pattern for &[char] {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         1
     }
 
-    fn matches(&self, part: Part, index: usize) -> bool {
-        part.as_char().is_some_and(|cmp| self.contains(&cmp))
+    fn matches(&self, part: Part, _index: usize) -> bool {
+        part.as_byte()
+            .is_some_and(|cmp| self.contains(&(cmp as char)))
     }
 }
 
@@ -197,38 +199,38 @@ impl_ranges!(
 macro impl_ranges($($r:ty),+) {
     $(
         impl Pattern for $r {
-            fn len(&self) -> usize {
+            fn length(&self) -> usize {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> bool {
-                part.as_char().is_some_and(|cmp| self.contains(&cmp))
+            fn matches(&self, part: Part, _index: usize) -> bool {
+                part.as_byte().is_some_and(|cmp| self.contains(&(cmp as char)))
             }
         }
     )+
 
     $(
         impl<const N: usize> Pattern for [$r; N] {
-            fn len(&self) -> usize {
+            fn length(&self) -> usize {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> bool {
-                part.as_char()
-                    .is_some_and(|cmp| self.iter().any(|range| range.contains(&cmp)))
+            fn matches(&self, part: Part, _index: usize) -> bool {
+                part.as_byte()
+                    .is_some_and(|cmp| self.iter().any(|range| range.contains(&(cmp as char))))
             }
         }
     )+
 
     $(
         impl Pattern for &[$r] {
-            fn len(&self) -> usize {
+            fn length(&self) -> usize {
                 1
             }
 
-            fn matches(&self, part: Part, index: usize) -> bool {
-                part.as_char()
-                    .is_some_and(|cmp| self.iter().any(|range| range.contains(&cmp)))
+            fn matches(&self, part: Part, _index: usize) -> bool {
+                part.as_byte()
+                    .is_some_and(|cmp| self.iter().any(|range| range.contains(&(cmp as char))))
             }
         }
     )+

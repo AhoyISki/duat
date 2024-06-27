@@ -19,7 +19,17 @@
 //! method. This method is notably used by the
 //! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{
+    alloc,
+    collections::VecDeque,
+    error::Error,
+    fs,
+    io::{self, BufRead, ErrorKind, Read, Write},
+    path::PathBuf,
+    sync::Arc,
+};
+
+use gapbuf::GapBuffer;
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
@@ -61,21 +71,22 @@ where
 
     pub(crate) fn build(self) -> (Widget<U>, Box<dyn Fn() -> bool>) {
         let (text, path) = match self.text_op {
-            TextOp::NewBuffer => (Text::new(String::from("\n")), Path::new_unset()),
+            TextOp::NewBuffer => (Text::new(), Path::new_unset()),
             TextOp::TakeText(text, path) => (text, path),
-            TextOp::OpenPath(path) => {
-                let text = match std::fs::read_to_string(&path) {
-                    Ok(contents) => Text::new(contents),
-                    Err(_) => Text::new(String::from("\n")),
-                };
-
-                let full_path = {
-                    let file_name = path.file_name().unwrap();
-                    std::env::current_dir().unwrap().join(file_name)
-                };
-
-                (text, Path::Set(full_path))
-            }
+            // TODO: Add an option for automatic path creation.
+            TextOp::OpenPath(path) => match path.canonicalize() {
+                Ok(path) => (Text::from_file(&path), Path::Set(path)),
+                Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
+                    if path.parent().is_some_and(std::path::Path::exists) {
+                        let parent = path.with_file_name("").canonicalize().unwrap();
+                        let path = parent.with_file_name(path.file_name().unwrap());
+                        (Text::new(), Path::Set(path))
+                    } else {
+                        (Text::new(), Path::new_unset())
+                    }
+                }
+                Err(_) => (Text::new(), Path::new_unset()),
+            },
         };
 
         #[cfg(feature = "wacky-colors")]
@@ -104,7 +115,7 @@ where
             cfg: self.cfg,
             history: History::new(),
             printed_lines: Vec::new(),
-            readers: Vec::new(),
+            _readers: Vec::new(),
         };
 
         ((self.generator)(file), Box::new(|| false))
@@ -181,7 +192,7 @@ pub struct File {
     cfg: PrintCfg,
     history: History,
     printed_lines: Vec<(usize, bool)>,
-    readers: Vec<Box<dyn Reader>>,
+    _readers: Vec<Box<dyn Reader>>,
 }
 
 impl File {
@@ -251,7 +262,7 @@ impl File {
     /// The full path of the file.
     ///
     /// Returns [`None`] if the path has not been set yet.
-    pub fn set_path(&self) -> Option<String> {
+    pub fn path_set(&self) -> Option<String> {
         match &self.path {
             Path::Set(path) => Some(path.to_string_lossy().to_string()),
             Path::UnSet(_) => None,
@@ -271,7 +282,7 @@ impl File {
     /// The file's name.
     ///
     /// Returns [`None`] if the path has not been set yet.
-    pub fn set_name(&self) -> Option<String> {
+    pub fn name_set(&self) -> Option<String> {
         match &self.path {
             Path::Set(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
             Path::UnSet(_) => None,

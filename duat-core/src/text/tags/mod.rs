@@ -1,6 +1,6 @@
-use std::{collections::HashMap, ops::Range};
+use std::{cell::RefCell, collections::HashMap, ops::Range};
 
-use any_rope::{Measurable, Rope};
+use gapbuf::{gap_buffer, GapBuffer};
 
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
@@ -36,6 +36,30 @@ impl TagOrSkip {
             TagOrSkip::Skip(_) => None,
         }
     }
+
+    /// Returns `true` if the tag or skip is [`Skip`].
+    ///
+    /// [`Skip`]: TagOrSkip::Skip
+    #[must_use]
+    pub fn is_skip(&self) -> bool {
+        matches!(self, Self::Skip(..))
+    }
+
+    /// Returns `true` if the tag or skip is [`Tag`].
+    ///
+    /// [`Tag`]: TagOrSkip::Tag
+    #[must_use]
+    pub fn is_tag(&self) -> bool {
+        matches!(self, Self::Tag(..))
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        match self {
+            TagOrSkip::Tag(_) => 0,
+            TagOrSkip::Skip(skip) => *skip,
+        }
+    }
 }
 
 impl std::fmt::Debug for TagOrSkip {
@@ -47,50 +71,47 @@ impl std::fmt::Debug for TagOrSkip {
     }
 }
 
-impl Measurable for TagOrSkip {
-    type Measure = usize;
-
-    #[inline]
-    fn measure(&self) -> usize {
-        match self {
-            TagOrSkip::Tag(_) => 0,
-            TagOrSkip::Skip(skip) => *skip,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Tags {
-    rope: Rope<TagOrSkip>,
+    buf: GapBuffer<TagOrSkip>,
     pub ranges: Vec<TagRange>,
     pub texts: HashMap<TextId, Text>,
     pub toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
+    len: usize,
+    cursor: usize,
+    last_known: RefCell<Option<(usize, usize)>>,
 }
 
 impl Tags {
     pub fn new() -> Self {
         Self {
-            rope: Rope::new(),
+            buf: GapBuffer::new(),
             ranges: Vec::new(),
             texts: HashMap::new(),
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
+            len: 0,
+            cursor: 0,
+            last_known: RefCell::new(None),
         }
     }
 
     pub fn with_len(len: usize) -> Self {
         Self {
-            rope: Rope::from_slice(&[TagOrSkip::Skip(len)]),
+            buf: gap_buffer![TagOrSkip::Skip(len)],
             ranges: Vec::new(),
             texts: HashMap::new(),
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
+            len,
+            cursor: 0,
+            last_known: RefCell::new(None),
         }
     }
 
     pub fn clear(&mut self) {
-        self.rope = Rope::new();
+        self.buf = GapBuffer::new();
         self.texts.clear();
         self.toggles.clear();
     }
@@ -103,36 +124,31 @@ impl Tags {
         toggle_id
     }
 
-    pub fn insert_raw(&mut self, pos: usize, raw_tag: RawTag) {
-        assert!(pos <= self.measure(), "Char index {} too large", pos);
+    pub fn insert_raw(&mut self, at: usize, tag: RawTag) {
+        assert!(at <= self.len, "Byte index {} too large", at);
 
-        if let Some((start, TagOrSkip::Skip(skip))) = self.get_from_pos(pos) {
+        if let Some((b, _, TagOrSkip::Skip(skip))) = self.get_from_byte(at) {
             // If inserting at any of the ends, no splitting is necessary.
-            if pos == start || pos == (start + skip) {
-                self.rope.insert(pos, TagOrSkip::Tag(raw_tag), usize::cmp)
+            if at == b || at == (b + skip) {
+                self.buf.insert(at, TagOrSkip::Tag(tag))
             } else {
-                let insertion = [
-                    TagOrSkip::Skip(pos - start),
-                    TagOrSkip::Tag(raw_tag),
-                    TagOrSkip::Skip(start + skip - pos),
-                ];
-                self.rope.insert_slice(start, &insertion, usize::cmp);
-
-                let skip_range = (start + skip)..(start + 2 * skip);
-                self.rope.remove_exclusive(skip_range, usize::cmp);
+                self.buf.splice(b..=b, [
+                    TagOrSkip::Skip(at - b),
+                    TagOrSkip::Tag(tag),
+                    TagOrSkip::Skip(b + skip - at),
+                ]);
             }
         } else {
-            self.rope.insert(pos, TagOrSkip::Tag(raw_tag), usize::cmp);
+            self.buf.insert(at, TagOrSkip::Tag(tag));
         }
 
-        add_to_ranges((pos, raw_tag), &mut self.ranges, self.range_min, true, true);
+        add_to_ranges((at, tag), &mut self.ranges, self.range_min, true, true);
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
     }
 
     pub fn append(&mut self, other: Tags) {
-        let end = self.measure();
-        self.rope.append(other.rope);
+        self.buf.extend(other.buf);
         self.texts.extend(other.texts);
         self.toggles.extend(other.toggles);
 
@@ -146,77 +162,80 @@ impl Tags {
             }
         }
 
-        self.merge_surrounding_skips(end);
+        self.merge_surrounding_skips(self.len);
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
+
+        self.len += other.len;
     }
 
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
-    pub fn remove_on(&mut self, pos: usize, markers: impl Markers) {
-        if self
-            .rope
-            .iter_at_measure(pos, usize::cmp)
-            .next()
-            .map_or(true, |(_, t_or_s)| matches!(t_or_s, TagOrSkip::Skip(_)))
-        {
+    pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
+        // If we are removing in the middle of a skip, there is
+        // nothing to do.
+        let Some((b, n, _)) = self.get_from_byte(at).filter(|&(b, ..)| b == at) else {
             return;
+        };
+
+        let removed: Vec<_> = self
+            .buf
+            .iter()
+            .rev()
+            .skip(self.buf.len() - n)
+            .enumerate()
+            .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
+            .filter(|(_, tag)| markers.clone().contains(tag.marker()))
+            .collect();
+
+        for (i, tag) in removed {
+            self.buf.remove(i);
+            remove_from_ranges((i, tag), &mut self.ranges);
         }
 
-        let removed = remove_inclusive_on(&mut self.rope, pos, markers);
-
-        self.merge_surrounding_skips(pos);
-        for entry in removed {
-            remove_from_ranges(entry, &mut self.ranges);
-        }
-
+        self.merge_surrounding_skips(at);
         rearrange_ranges(&mut self.ranges, self.range_min);
     }
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
+        let new = old.start..new_end;
         // In case we're appending to the rope, a shortcut can be made.
-        let Some((start, t_or_s)) = self.get_from_pos(old.start) else {
-            let skip = TagOrSkip::Skip(new_end - old.end);
-            self.rope.insert(self.rope.measure(), skip, usize::cmp);
+        let Some((start_p, start_n, _)) = self.get_from_byte(old.start) else {
+            let skip = TagOrSkip::Skip(new.end - old.end);
+            self.buf.push_back(skip);
             self.merge_surrounding_skips(old.start);
             return;
         };
 
-        let new = old.start..new_end;
+        let (end_p, end_n) = self
+            .get_from_byte(old.end)
+            .map(|(end_p, end_n, ts)| (old.end.max(end_p + ts.len()), end_n))
+            .unwrap_or((self.len, self.buf.len()));
 
-        let removal_start = start.min(old.start);
-        let removal_end = {
-            let (start, t_or_s) = self
-                .get_from_pos(old.end)
-                .filter(|(end_start, _)| *end_start > start)
-                .unwrap_or((start, t_or_s));
+        let range_diff = new.end as isize - old.end as isize;
+        let skip = (end_p - start_p).saturating_add_signed(range_diff);
 
-            old.end.max(start + t_or_s.measure())
-        };
-
-        let range_diff = new_end as isize - old.end as isize;
-        let skip = (removal_end - removal_start).saturating_add_signed(range_diff);
-
-        let removed: Vec<_> = self
-            .rope
-            .iter_at_measure((old.start + 1).min(self.rope.measure()), usize::cmp)
-            .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
-            .take_while(|(pos, ..)| *pos < old.end)
-            .collect();
-
-        self.rope.insert(start, TagOrSkip::Skip(skip), usize::cmp);
-
-        let removal_range = (removal_start + skip)..(removal_end + skip).min(self.rope.measure());
-        self.rope.remove_exclusive(removal_range, usize::cmp);
+        let removed = self
+            .buf
+            .splice(start_n..=end_n, [TagOrSkip::Skip(skip)])
+            .scan(start_p, |p, ts| {
+                *p += ts.len();
+                Some((*p - ts.len(), ts))
+            })
+            .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
 
         for entry in removed {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
-        self.process_ranges_containing(new);
+        self.process_ranges_containing(new.clone());
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
+
+        self.len += new.end;
+        self.len -= old.end;
+        self.last_known.take();
     }
 
     pub fn back_check_amount(&self) -> usize {
@@ -226,67 +245,101 @@ impl Tags {
     /// Returns the is empty of this [`Tags`].
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn measure(&self) -> usize {
-        self.rope.measure()
+        self.buf.len() == 0
     }
 
     pub fn len(&self) -> usize {
-        self.rope.len()
+        self.len
     }
 
-    pub fn get_from_pos(&self, pos: usize) -> Option<(usize, TagOrSkip)> {
-        self.rope.get_from_measure(pos, usize::cmp)
+    pub fn get_from_byte(&self, pos: usize) -> Option<(usize, usize, TagOrSkip)> {
+        let (p, n) = [
+            Some((0, 0)),
+            Some((self.len, self.buf.len())),
+            Some((self.cursor, self.buf.gap())),
+            self.last_known.take(),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by(|&(p0, _), &(p1, _)| p0.abs_diff(pos).cmp(&p1.abs_diff(pos)))
+        .unwrap();
+
+        let mut dist = 0;
+        let mut i = 0;
+
+        if pos > p {
+            while let Some(ts) = self.buf.get(n + i)
+                && pos > p + ts.len()
+            {
+                dist += ts.len();
+                i += 1
+            }
+
+            self.last_known.replace(Some((p + dist, n + i)));
+            self.buf.get(n + i).map(|&ts| (p + dist, n + i, ts))
+        } else {
+            while let Some(ts) = self.buf.get(n - (i + 1))
+                && p > pos + ts.len()
+            {
+                dist += p + ts.len();
+                i += 1
+            }
+
+            self.last_known.replace(Some((p - dist, n - (i + 1))));
+            self.buf
+                .get(n - (i + 1))
+                .map(|&ts| (p - dist, n - (i + 1), ts))
+        }
     }
 
-    pub fn iter_at(&self, pos: usize) -> ForwardIter {
-        let measure = pos.min(self.measure());
+    pub fn iter_at(&self, at: usize) -> ForwardIter {
+        let at = at.min(self.len);
+        let (mut b, n, _) = self.get_from_byte(at).unwrap();
 
         let ranges = self
             .ranges
             .iter()
-            .take_while(move |range| range.get_start().is_some_and(|start| start < measure))
-            .filter(move |range| range.get_end().map_or(true, |end| end > measure))
+            .take_while(move |range| range.get_start().is_some_and(|start| start < at))
+            .filter(move |range| range.get_end().map_or(true, |end| end > at))
             .flat_map(|range| range.get_start().map(|start| (start, range.tag())));
 
-        let raw_tags =
-            self.rope
-                .iter_at_measure(measure, usize::cmp)
-                .filter_map(move |(pos, t_or_s)| match t_or_s {
-                    TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
-                        if let Some(range) = self
-                            .ranges
-                            .iter()
-                            .find(|range| range.starts_with(&(pos, RawTag::ConcealStart(marker))))
-                        {
-                            let skip = range.get_end().unwrap_or(usize::MAX) - pos;
-                            Some((pos, RawTag::Concealed(skip)))
-                        } else {
-                            Some((pos, RawTag::ConcealStart(marker)))
-                        }
-                    }
-                    TagOrSkip::Tag(tag) => Some((pos, tag)),
-                    TagOrSkip::Skip(_) => None,
-                });
+        let tags = self.buf.iter().skip(n).filter_map(move |&ts| match ts {
+            TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
+                if let Some(range) = self
+                    .ranges
+                    .iter()
+                    .find(|range| range.starts_with(&(b, RawTag::ConcealStart(marker))))
+                {
+                    let skip = range.get_end().unwrap_or(usize::MAX) - b;
+                    Some((b, RawTag::Concealed(skip as u32)))
+                } else {
+                    Some((b, RawTag::ConcealStart(marker)))
+                }
+            }
+            TagOrSkip::Tag(tag) => Some((b, tag)),
+            TagOrSkip::Skip(skip) => {
+                b += skip;
+                None
+            }
+        });
 
-        ranges.chain(raw_tags).peekable()
+        ranges.chain(tags).peekable()
     }
 
-    pub fn rev_iter_at(&self, pos: usize) -> ReverseTags {
-        let measure = pos.min(self.measure());
+    pub fn rev_iter_at(&self, at: usize) -> ReverseTags {
+        let at = at.min(self.len);
+        let (mut b, n, _) = self.get_from_byte(at).unwrap();
 
-        let possible_ranges = {
+        let ranges = {
             let mut ranges: Vec<_> = self
                 .ranges
                 .iter()
-                .filter(|&range| range.get_start().map_or(true, |start| start < measure))
+                .filter(|&range| range.get_start().map_or(true, |start| start < at))
                 .map(|range| {
-                    let end = range.get_end().unwrap_or(usize::MAX);
+                    let end = range.get_end().unwrap_or(self.len);
                     (end, range.tag().inverse().unwrap())
                 })
-                .filter(|(end, _)| *end > measure)
+                .filter(|(end, _)| *end > at)
                 .collect();
 
             ranges.sort();
@@ -294,61 +347,88 @@ impl Tags {
             ranges
         };
 
-        let raw_tags = self
-            .rope
-            .iter_at_measure(measure, usize::cmp)
-            .reversed()
-            .filter_map(move |(pos, t_or_s)| match t_or_s {
-                TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
-                    if let Some(range) = self
-                        .ranges
-                        .iter()
-                        .find(|range| range.ends_with(&(pos, RawTag::ConcealStart(marker))))
-                    {
-                        let skip = pos - range.get_start().unwrap_or(0);
-                        Some((pos, RawTag::Concealed(skip)))
-                    } else {
-                        Some((pos, RawTag::ConcealStart(marker)))
+        let raw_tags =
+            self.buf
+                .iter()
+                .rev()
+                .skip(self.buf.len() - n)
+                .filter_map(move |&ts| match ts {
+                    TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
+                        if let Some(range) = self
+                            .ranges
+                            .iter()
+                            .find(|range| range.ends_with(&(b, RawTag::ConcealStart(marker))))
+                        {
+                            let skip = b - range.get_start().unwrap_or(0);
+                            Some((b, RawTag::Concealed(skip as u32)))
+                        } else {
+                            Some((b, RawTag::ConcealStart(marker)))
+                        }
                     }
-                }
-                TagOrSkip::Tag(tag) => Some((pos, tag)),
-                TagOrSkip::Skip(_) => None,
-            });
+                    TagOrSkip::Tag(tag) => Some((b, tag)),
+                    TagOrSkip::Skip(skip) => {
+                        b += skip;
+                        None
+                    }
+                });
 
-        possible_ranges.into_iter().rev().chain(raw_tags).peekable()
+        ranges.into_iter().rev().chain(raw_tags).peekable()
     }
 
-    pub fn on(&self, measure: usize) -> impl Iterator<Item = RawTag> + '_ {
-        self.rope
-            .iter_at_measure(measure, usize::cmp)
-            .take_while(move |(pos, _)| *pos == measure)
-            .filter_map(|(_, t_or_s)| t_or_s.as_tag())
+    pub fn at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
+        let b = self.get_from_byte(at).map(|(_, b, _)| b);
+
+        b.into_iter()
+            .flat_map(|b| self.buf.iter().skip(b).map_while(TagOrSkip::as_tag))
     }
 
-    fn process_ranges_containing(&mut self, new: Range<usize>) {
+    fn process_ranges_containing(&mut self, range: Range<usize>) {
+        let search = {
+            let start = range.start.saturating_sub(self.range_min);
+            // in case `range.start == range.end`, we would be double
+            // checking that position, so we shift once to the right.
+            let intersection_shift = (range.end == range.start) as usize;
+            let end = (range.end + self.range_min + intersection_shift).min(self.len);
+
+            start..end
+        };
+
         let before = {
-            let search_start = new.start.saturating_sub(self.range_min);
+            let (mut b, n, _) = self.get_from_byte(search.start).unwrap();
 
-            self.rope
-                .iter_at_measure(search_start, usize::cmp)
-                .take_while(|(pos, _)| *pos <= new.start)
-                .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
+            self.buf
+                .iter()
+                .skip(n)
+                .filter_map(move |ts| {
+                    b += ts.len();
+                    ts.as_tag().map(|t| (b - ts.len(), t))
+                })
+                .take_while(|&(b, _)| b <= range.start)
         };
 
         let after = {
-            let intersection_shift = (new.end == new.start) as usize;
-            let search_end = (new.end + self.range_min + intersection_shift).min(self.measure());
+            let (mut b, n, _) = self.get_from_byte(range.end).unwrap();
 
-            self.rope
-                .iter_at_measure(search_end, usize::cmp)
-                .take_while(move |(pos, _)| *pos <= search_end)
-                .filter_map(|(pos, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
+            self.buf
+                .iter()
+                .skip(n)
+                .filter_map(move |ts| {
+                    b += ts.len();
+                    ts.as_tag().map(|t| (b - ts.len(), t))
+                })
+                .take_while(|&(b, _)| b <= search.end)
         };
 
+        // Removing all ranges that contain the range in question.
+        // The reason why this is done is so that the `add_to_ranges`s
+        // below can judge wether or not those entries should be added
+        // or not, based on factors such as the new distance between
+        // the start and end of the ranges. Ranges that end on the left
+        // or start on the right cannot be affected by the searched range.
         for entry in before.clone().chain(after.clone()) {
-            let entry_on_both_sides = entry.0 == new.start && new.start == new.end;
-            let start_entry_on_left = entry.0 <= new.start && entry.1.is_start();
-            let end_entry_on_right = entry.0 >= new.end && entry.1.is_end();
+            let entry_on_both_sides = entry.0 == range.start && range.start == range.end;
+            let start_entry_on_left = entry.0 <= range.start && entry.1.is_start();
+            let end_entry_on_right = entry.0 >= range.end && entry.1.is_end();
 
             if entry_on_both_sides || start_entry_on_left || end_entry_on_right {
                 remove_from_ranges(entry, &mut self.ranges);
@@ -368,72 +448,55 @@ impl Tags {
     ///
     /// This is crucial to prevent the gradual deterioration of the
     /// [`Container`]'s structure.
-    fn merge_surrounding_skips(&mut self, from: usize) {
-        let tags_in_middle = self
-            .rope
-            .iter_at_measure(from, usize::cmp)
-            .next()
-            .is_some_and(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+    fn merge_surrounding_skips(&mut self, at: usize) {
+        let (b, n, _) = self.get_from_byte(at).unwrap();
 
-        let (next_skip, last_measure) = {
+        let has_tag = b == at && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
+
+        let (r_skip, r_end) = {
             let mut total_skip = 0;
-            let mut last_measure = from;
-            let mut next_tags = self
-                .rope
-                .iter_at_measure(from, usize::cmp)
-                .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+            let mut i = at;
+            let mut iter = self.buf.iter().skip(n).skip_while(|ts| ts.is_tag());
 
-            while let Some((width, TagOrSkip::Skip(skip))) = next_tags.next() {
+            while let Some(TagOrSkip::Skip(skip)) = iter.next() {
                 total_skip += skip;
-                last_measure = width;
+                i += 1;
             }
 
-            (total_skip, last_measure)
+            (total_skip, i)
         };
 
-        let (prev_skip, first_measure) = {
+        let (l_skip, l_range) = {
+            let rev_n = self.buf.len() - n;
             let mut total_skip = 0;
-            let mut first_measure = from;
+            let mut i = at;
+            let tags = self
+                .buf
+                .iter()
+                .rev()
+                .skip(rev_n)
+                .take_while(|ts| ts.is_tag())
+                .count();
 
-            let mut prev_tags = self
-                .rope
-                .iter_at_measure(from, usize::cmp)
-                .reversed()
-                .skip_while(|(_, t_or_s)| matches!(t_or_s, TagOrSkip::Tag(..)));
+            let mut iter = self.buf.iter().rev().skip(rev_n + tags);
 
-            while let Some((measure, TagOrSkip::Skip(skip))) = prev_tags.next() {
+            while let Some(TagOrSkip::Skip(skip)) = iter.next() {
                 total_skip += skip;
-                first_measure = measure;
+                i -= 1;
             }
 
-            (total_skip, first_measure)
+            (total_skip, i..(n - tags))
         };
 
-        // Merge groups of ranges around `from` into 2 groups.
-        if tags_in_middle {
-            if last_measure > from {
-                // The removal happens after the insertion in order to prevent `Tag`s
-                // which are meant to be separate from coming together.
-                self.rope
-                    .insert(from, TagOrSkip::Skip(next_skip), usize::cmp);
-                let skip_range = (from + next_skip)..(from + 2 * next_skip);
-                self.rope.remove_exclusive(skip_range, usize::cmp);
-            }
-            if first_measure < from {
-                self.rope
-                    .insert(first_measure, TagOrSkip::Skip(prev_skip), usize::cmp);
-
-                let range = (first_measure + prev_skip)..(from + prev_skip);
-                self.rope.remove_exclusive(range, usize::cmp);
-            }
+        // Merge groups of ranges around `at` into 2 groups.
+        if has_tag {
+            self.buf.splice(n..r_end, [TagOrSkip::Skip(r_skip)]);
+            self.buf.splice(l_range, [TagOrSkip::Skip(l_skip)]);
         // Merge groups of ranges around `from` into 1 group.
-        } else if first_measure < last_measure {
-            let total_skip = prev_skip + next_skip;
-
-            self.rope
-                .insert(first_measure, TagOrSkip::Skip(total_skip), usize::cmp);
-            let range = (first_measure + total_skip)..(first_measure + 2 * total_skip);
-            self.rope.remove_exclusive(range, usize::cmp);
+        } else {
+            let total_skip = l_skip + r_skip;
+            self.buf
+                .splice(l_range.start..r_end, [TagOrSkip::Skip(total_skip)]);
         }
     }
 
@@ -441,7 +504,7 @@ impl Tags {
         let mut cullable = self
             .ranges
             .iter()
-            .filter(|range| matches!(range, TagRange::Bounded(..)))
+            .filter(|range| range.is_bounded())
             .count();
 
         while cullable > LIMIT_TO_BUMP {
@@ -460,6 +523,13 @@ impl Tags {
     }
 }
 
+impl PartialEq for Tags {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf
+    }
+}
+impl Eq for Tags {}
+
 impl Default for Tags {
     fn default() -> Self {
         Self::new()
@@ -469,49 +539,11 @@ impl Default for Tags {
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tags")
-            .field("container", &self.rope)
+            .field("container", &self.buf)
             .field("ranges", &self.ranges)
             .field("texts", &self.texts)
             .field("range_min", &self.range_min)
             .finish_non_exhaustive()
-    }
-}
-
-impl Eq for Tags {}
-
-impl PartialEq for Tags {
-    fn eq(&self, other: &Self) -> bool {
-        self.rope.iter().eq_by(other.rope.iter(), |lhs, rhs| {
-            if lhs.0 != rhs.0 {
-                return false;
-            }
-
-            match (lhs, rhs) {
-                ((_, TagOrSkip::Skip(lhs)), (_, TagOrSkip::Skip(rhs))) => lhs == rhs,
-                ((_, TagOrSkip::Tag(lhs)), (_, TagOrSkip::Tag(rhs))) => match (lhs, rhs) {
-                    (RawTag::Concealed(_), _) | (_, RawTag::Concealed(_)) => unreachable!(),
-                    (RawTag::PushForm(_, lhs), RawTag::PushForm(_, rhs)) => lhs == rhs,
-                    (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
-                    (RawTag::GhostText(_, lhs), RawTag::GhostText(_, rhs)) => lhs == rhs,
-                    (RawTag::ToggleStart(_, lhs), RawTag::ToggleStart(_, rhs)) => lhs == rhs,
-                    (RawTag::ToggleEnd(_, lhs), RawTag::ToggleEnd(_, rhs)) => lhs == rhs,
-                    (RawTag::MainCursor(_), RawTag::MainCursor(_))
-                    | (RawTag::ExtraCursor(_), RawTag::ExtraCursor(_))
-                    | (RawTag::StartAlignLeft(_), RawTag::StartAlignLeft(_))
-                    | (RawTag::EndAlignLeft(_), RawTag::EndAlignLeft(_))
-                    | (RawTag::StartAlignCenter(_), RawTag::StartAlignCenter(_))
-                    | (RawTag::EndAlignCenter(_), RawTag::EndAlignCenter(_))
-                    | (RawTag::StartAlignRight(_), RawTag::StartAlignRight(_))
-                    | (RawTag::EndAlignRight(_), RawTag::EndAlignRight(_))
-                    | (RawTag::ConcealStart(_), RawTag::ConcealStart(_))
-                    | (RawTag::ConcealEnd(_), RawTag::ConcealEnd(_)) => true,
-                    _ => false,
-                },
-                _ => false,
-            }
-        }) && self.ranges == other.ranges
-            && self.texts == other.texts
-            && self.range_min == other.range_min
     }
 }
 
@@ -520,35 +552,6 @@ unsafe impl Sync for Tags {}
 
 pub type ForwardIter<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 pub type ReverseTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
-
-fn remove_inclusive_on(
-    rope: &mut Rope<TagOrSkip>,
-    pos: usize,
-    markers: impl Markers,
-) -> Vec<(usize, RawTag)> {
-    let range = markers.range();
-
-    let slice = rope.measure_slice(pos..pos, usize::cmp);
-
-    let mut kept = Vec::new();
-    let removed = slice
-        .iter()
-        .filter_map(|(_, t_or_s)| t_or_s.as_tag().map(|tag| (pos, tag)))
-        .filter(|(_, tag)| {
-            if range.contains(&tag.marker()) {
-                true
-            } else {
-                kept.push(TagOrSkip::Tag(*tag));
-                false
-            }
-        })
-        .collect();
-
-    rope.remove_inclusive(pos..pos, usize::cmp);
-    rope.insert_slice(pos, &kept, usize::cmp);
-
-    removed
-}
 
 /// Removes the given `(usize, Tag, Handle)` triples from any
 /// range in `self.ranges`.
@@ -695,7 +698,7 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
 
 mod ids {
     use std::{
-        ops::Range,
+        ops::{Range},
         sync::atomic::{AtomicU16, Ordering},
     };
 
@@ -769,8 +772,12 @@ mod ids {
         }
     }
 
-    pub trait Markers {
+    pub trait Markers: Clone + PartialEq + Eq {
         fn range(self) -> Range<Marker>;
+
+        fn contains(self, marker: Marker) -> bool {
+            self.range().contains(marker)
+        }
     }
 
     impl Markers for Marker {

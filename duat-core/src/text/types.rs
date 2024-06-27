@@ -4,7 +4,7 @@ use crate::palette::{self, FormId};
 /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Part {
-    Char(char),
+    Byte(u8),
     PushForm(FormId),
     PopForm(FormId),
     MainCursor,
@@ -45,7 +45,7 @@ impl Part {
 impl std::fmt::Debug for Part {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Part::Char(char) => f.debug_tuple("Char").field(char).finish(),
+            Part::Byte(char) => f.debug_tuple("Char").field(char).finish(),
             Part::PushForm(id) => f
                 .debug_tuple("PushForm")
                 .field(&palette::name_of_id(*id))
@@ -72,13 +72,13 @@ impl Part {
     /// [`Char`]: TextBit::Char
     #[must_use]
     #[inline]
-    pub fn is_char(&self) -> bool {
-        matches!(self, Part::Char(_))
+    pub fn is_byte(&self) -> bool {
+        matches!(self, Part::Byte(_))
     }
 
     #[inline]
-    pub fn as_char(&self) -> Option<char> {
-        if let Self::Char(v) = self {
+    pub fn as_byte(&self) -> Option<u8> {
+        if let Self::Byte(v) = self {
             Some(*v)
         } else {
             None
@@ -87,6 +87,6 @@ impl Part {
 
     #[inline]
     pub fn is_tag(&self) -> bool {
-        !self.is_char()
+        !self.is_byte()
     }
 }
