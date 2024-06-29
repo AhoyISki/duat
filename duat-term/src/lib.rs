@@ -44,8 +44,19 @@ impl ui::Ui for Ui {
     fn new(statics: Self::StaticFns) -> Self {
         FUNCTIONS.get_or_init(|| statics);
 
-		
-        
+        std::panic::set_hook(Box::new(|hook| {
+            execute!(
+                io::stdout(),
+                terminal::Clear(ClearType::All),
+                terminal::LeaveAlternateScreen,
+                terminal::EnableLineWrap,
+                cursor::Show
+            )
+            .unwrap();
+            terminal::disable_raw_mode().unwrap();
+            println!("{hook}")
+        }));
+
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),

@@ -1,4 +1,4 @@
-#![feature(decl_macro, lazy_cell, generic_const_exprs)]
+#![feature(decl_macro, generic_const_exprs)]
 #![allow(incomplete_features)]
 use std::{
     path::Path,

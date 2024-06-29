@@ -420,12 +420,8 @@ impl Builder {
 
     pub fn push_text(&mut self, mut text: Text) {
         let end = self.text.len_bytes();
-        self.text
-            .tags
-            .transform_range(end..end, end + text.len_bytes());
         self.text.buf.splice(end..end, *text.buf);
-        self.text.tags.toggles.extend(text.tags.toggles.drain());
-        self.text.tags.texts.extend(text.tags.texts.drain());
+        self.text.tags.append(*text.tags);
     }
 
     pub fn push_part<D: Display>(&mut self, part: BuilderPart<D>) {

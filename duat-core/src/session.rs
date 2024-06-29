@@ -25,26 +25,26 @@ where
 {
     ui: U,
     file_cfg: FileCfg<U>,
-    globals: Context<U>,
+    context: Context<U>,
 }
 
 impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn new(ui: U, globals: Context<U>) -> Self {
+    pub fn new(ui: U, context: Context<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
             ui,
             file_cfg: FileCfg::new(),
-            globals,
+            context,
         }
     }
 
     pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
         self.ui.open();
-        self.ui.start(Sender::new(tx.clone()), self.globals);
+        self.ui.start(Sender::new(tx.clone()), self.context);
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -62,22 +62,22 @@ where
             windows: RwData::new(vec![window]),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
-            globals: self.globals,
+            context: self.context,
             tx,
         };
 
         session.set_active_file(widget, &area);
 
-        self.globals.commands.add_windows(session.windows.clone());
-        add_session_commands(&session, self.globals, session.tx.clone());
+        self.context.commands.add_windows(session.windows.clone());
+        add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files..
-        build_file(&mut session.windows.write()[0], area, self.globals);
+        build_file(&mut session.windows.write()[0], area, self.context);
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
         // Build the window's widgets.
         session.windows.mutate(|windows| {
-            let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
+            let mut builder = WindowBuilder::new(&mut windows[0], self.context);
             hooks::trigger::<OnWindowOpen<U>>(&mut builder);
         });
 
@@ -89,7 +89,7 @@ where
         prev_files: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
-        self.ui.start(Sender::new(tx.clone()), self.globals);
+        self.ui.start(Sender::new(tx.clone()), self.context);
 
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev_files {
@@ -111,17 +111,17 @@ where
             windows: RwData::new(vec![window]),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
-            globals: self.globals,
+            context: self.context,
             tx,
         };
 
         session.set_active_file(widget, &area);
 
-        self.globals.commands.add_windows(session.windows.clone());
-        add_session_commands(&session, self.globals, session.tx.clone());
+        self.context.commands.add_windows(session.windows.clone());
+        add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files..
-        build_file(&mut session.windows.write()[0], area, self.globals);
+        build_file(&mut session.windows.write()[0], area, self.context);
 
         for (file_cfg, is_active) in inherited_cfgs {
             session.open_file_from_cfg(file_cfg, is_active);
@@ -129,7 +129,7 @@ where
 
         // Build the window's widgets.
         session.windows.mutate(|windows| {
-            let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
+            let mut builder = WindowBuilder::new(&mut windows[0], self.context);
             hooks::trigger::<OnWindowOpen<U>>(&mut builder);
         });
 
@@ -158,7 +158,7 @@ where
     windows: RwData<Vec<Window<U>>>,
     current_window: Arc<AtomicUsize>,
     file_cfg: FileCfg<U>,
-    globals: Context<U>,
+    context: Context<U>,
     tx: mpsc::Sender<Event>,
 }
 
@@ -174,7 +174,7 @@ where
 
         let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::below());
 
-        build_file(&mut windows[current_window], area, self.globals);
+        build_file(&mut windows[current_window], area, self.context);
     }
 
     pub fn push_widget<F>(
@@ -238,15 +238,15 @@ where
             match reason {
                 BreakTo::QuitDuat => {
                     self.ui.close();
-                    self.globals.end();
+                    self.context.end();
 
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
                     self.ui.end();
-                    self.globals.end();
+                    self.context.end();
 
-                    while self.globals.threads_are_running() {
+                    while self.context.threads_are_running() {
                         std::thread::sleep(Duration::from_micros(500));
                     }
 
@@ -276,7 +276,7 @@ where
             if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
                     Event::Key(key) => {
-                        active_window.send_key(key, self.globals);
+                        active_window.send_key(key, self.context);
                     }
                     Event::Resize | Event::FormChange => {
                         for node in active_window.nodes() {
@@ -311,7 +311,7 @@ where
             self.set_active_file(widget, &area);
         }
 
-        build_file(&mut windows[current_window], area, self.globals);
+        build_file(&mut windows[current_window], area, self.context);
     }
 
     fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
@@ -321,13 +321,13 @@ where
         }) else {
             return;
         };
-        self.globals.current_file.set((
+        self.context.current_file.set((
             file,
             area.clone(),
             input.clone(),
             widget.related_widgets().unwrap(),
         ));
-        self.globals.current_widget.set(widget, area.clone());
+        self.context.current_widget.set(widget, area.clone());
     }
 }
 
@@ -337,11 +337,11 @@ enum BreakTo {
     QuitDuat,
 }
 
-fn add_session_commands<U>(session: &Session<U>, globals: Context<U>, tx: mpsc::Sender<Event>)
+fn add_session_commands<U>(session: &Session<U>, context: Context<U>, tx: mpsc::Sender<Event>)
 where
     U: Ui,
 {
-    globals
+    context
         .commands
         .add(["quit", "q"], {
             let tx = tx.clone();
@@ -353,7 +353,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["write", "w"], move |_flags, mut args| {
             let paths = {
@@ -367,7 +367,7 @@ where
             };
 
             if paths.is_empty() {
-                globals.current_file.inspect(|file, _, _| {
+                context.current_file.inspect(|file, _, _| {
                     if let Some(name) = file.name_set() {
                         file.write()
                             .map(|bytes| {
@@ -382,7 +382,7 @@ where
                     }
                 })
             } else {
-                globals.current_file.inspect(|file, _, _| {
+                context.current_file.inspect(|file, _, _| {
                     let mut bytes = 0;
                     for path in &paths {
                         bytes = file.write_to(path)?;
@@ -412,7 +412,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["edit", "e"], {
             let windows = session.windows.clone();
@@ -447,7 +447,7 @@ where
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
                 Ok(Some(
@@ -457,7 +457,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["buffer", "b"], {
             let windows = session.windows.clone();
@@ -489,7 +489,7 @@ where
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
                 Ok(Some(
@@ -499,7 +499,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["switch-to"], {
             let windows = session.windows.clone();
@@ -511,7 +511,7 @@ where
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
-                let widget = globals.current_file.get_related_widget(type_name);
+                let widget = context.current_file.get_related_widget(type_name);
 
                 let (new_window, entry) = widget
                     .and_then(|(widget, _)| {
@@ -532,7 +532,7 @@ where
                 let windows = windows.clone();
                 let current_window = current_window.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                     current_window.store(new_window, Ordering::Release);
                 });
 
@@ -543,7 +543,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["next-file"], {
             let windows = session.windows.clone();
@@ -555,7 +555,7 @@ where
 
                 let widget_index = read_windows[window_index]
                     .widgets()
-                    .position(|(widget, _)| globals.current_file.file_ptr_eq(widget))
+                    .position(|(widget, _)| context.current_file.file_ptr_eq(widget))
                     .unwrap();
 
                 let (new_window, entry) = if flags.long("global") {
@@ -575,7 +575,7 @@ where
                 let windows = windows.clone();
                 let current_window = current_window.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                     current_window.store(new_window, Ordering::Release);
                 });
 
@@ -586,7 +586,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["prev-file"], {
             let windows = session.windows.clone();
@@ -598,7 +598,7 @@ where
 
                 let widget_index = read_windows[window_index]
                     .widgets()
-                    .position(|(widget, _)| globals.current_file.file_ptr_eq(widget))
+                    .position(|(widget, _)| context.current_file.file_ptr_eq(widget))
                     .unwrap();
 
                 let (new_window, entry) = if flags.long("global") {
@@ -618,7 +618,7 @@ where
                 let windows = windows.clone();
                 let current_window = current_window.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                     current_window.store(new_window, Ordering::Release);
                 });
 
@@ -629,7 +629,7 @@ where
         })
         .unwrap();
 
-    globals
+    context
         .commands
         .add(["return-to-file"], {
             let windows = session.windows.clone();
@@ -643,14 +643,14 @@ where
                     .iter()
                     .enumerate()
                     .flat_map(window_index_widget)
-                    .find(|(_, (widget, _))| globals.current_file.file_ptr_eq(widget))
+                    .find(|(_, (widget, _))| context.current_file.file_ptr_eq(widget))
                     .unwrap();
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
                 let current_window = current_window.clone();
                 std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, globals);
+                    switch_widget(&(widget, area), &windows.read(), window_index, context);
                     current_window.store(new_window, Ordering::Release);
                 });
 
@@ -727,23 +727,23 @@ fn switch_widget<U: Ui>(
     entry: &(Widget<U>, U::Area),
     windows: &[Window<U>],
     window: usize,
-    globals: Context<U>,
+    context: Context<U>,
 ) {
     let (widget, area) = entry;
 
     if let Some((widget, area)) = windows[window]
         .widgets()
-        .find(|(widget, _)| globals.current_widget.widget_ptr_eq(widget))
+        .find(|(widget, _)| context.current_widget.widget_ptr_eq(widget))
     {
         widget.on_unfocus(area);
         widget.update_and_print(area);
     }
 
-    globals.current_widget.set(widget.clone(), area.clone());
+    context.current_widget.set(widget.clone(), area.clone());
 
     let (active, input) = widget.as_active().unwrap();
     if let Some(file) = active.try_downcast::<File>() {
-        globals.current_file.set((
+        context.current_file.set((
             file,
             area.clone(),
             input.clone(),

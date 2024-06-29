@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, ops::Range};
+use std::{cell::RefCell, collections::HashMap, fmt::Write, ops::Range};
 
 use gapbuf::{gap_buffer, GapBuffer};
 
@@ -8,6 +8,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::Text;
+use crate::text::PANIC_LOG;
 
 mod ranges;
 mod types;
@@ -118,6 +119,7 @@ impl Tags {
 
     pub fn insert(&mut self, pos: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
         let (raw_tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
+        write!(PANIC_LOG.lock(), "\npush {raw_tag:?} to {pos}\n");
 
         self.insert_raw(pos, raw_tag);
 
@@ -125,21 +127,22 @@ impl Tags {
     }
 
     pub fn insert_raw(&mut self, at: usize, tag: RawTag) {
-        assert!(at <= self.len, "Byte index {} too large", at);
+        let Some((b, n, skip)) = self.get_skip_at(at) else {
+            assert_len!(at, self.len);
+            self.buf.push_back(TagOrSkip::Tag(tag));
+            write!(PANIC_LOG.lock(), "\ninsert {at}\n{:#?}", self.buf);
+            return;
+        };
 
-        if let Some((b, _, TagOrSkip::Skip(skip))) = self.get_from_byte(at) {
-            // If inserting at any of the ends, no splitting is necessary.
-            if at == b || at == (b + skip) {
-                self.buf.insert(at, TagOrSkip::Tag(tag))
-            } else {
-                self.buf.splice(b..=b, [
-                    TagOrSkip::Skip(at - b),
-                    TagOrSkip::Tag(tag),
-                    TagOrSkip::Skip(b + skip - at),
-                ]);
-            }
+        // If inserting at any of the ends, no splitting is necessary.
+        if at == b || at == (b + skip) {
+            self.buf.insert(n, TagOrSkip::Tag(tag))
         } else {
-            self.buf.insert(at, TagOrSkip::Tag(tag));
+            self.buf.splice(n..=n, [
+                TagOrSkip::Skip(at - b),
+                TagOrSkip::Tag(tag),
+                TagOrSkip::Skip(b + skip - at),
+            ]);
         }
 
         add_to_ranges((at, tag), &mut self.ranges, self.range_min, true, true);
@@ -148,6 +151,7 @@ impl Tags {
     }
 
     pub fn append(&mut self, other: Tags) {
+        write!(PANIC_LOG.lock(), "\nappend\n{:#?}", other);
         self.buf.extend(other.buf);
         self.texts.extend(other.texts);
         self.toggles.extend(other.toggles);
@@ -172,9 +176,10 @@ impl Tags {
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
     pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
+        write!(PANIC_LOG.lock(), "\nremove at {at}\n{:#?}", self.buf);
         // If we are removing in the middle of a skip, there is
         // nothing to do.
-        let Some((b, n, _)) = self.get_from_byte(at).filter(|&(b, ..)| b == at) else {
+        let Some((_, n, _)) = self.get_skip_at(at).filter(|&(b, ..)| b == at) else {
             return;
         };
 
@@ -199,17 +204,27 @@ impl Tags {
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
+        write!(PANIC_LOG.lock(), "\ntrans {}\n{:#?}", old.start, self.buf);
+
         // In case we're appending to the rope, a shortcut can be made.
-        let Some((start_p, start_n, _)) = self.get_from_byte(old.start) else {
-            let skip = TagOrSkip::Skip(new.end - old.end);
-            self.buf.push_back(skip);
-            self.merge_surrounding_skips(old.start);
+        let Some((start_p, start_n, _)) = self.get_skip_at(old.start) else {
+            assert_len!(old.start, self.len);
+            let last = self.buf.len() - 1;
+            if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
+                *skip += new.end - old.end;
+            } else {
+                self.buf.push_back(TagOrSkip::Skip(new.end - old.end));
+            }
+
+            self.len += new.end;
+            self.len -= old.end;
+
             return;
         };
 
         let (end_p, end_n) = self
-            .get_from_byte(old.end)
-            .map(|(end_p, end_n, ts)| (old.end.max(end_p + ts.len()), end_n))
+            .get_skip_at(old.end)
+            .map(|(end_p, end_n, skip)| (old.end.max(end_p + skip), end_n))
             .unwrap_or((self.len, self.buf.len()));
 
         let range_diff = new.end as isize - old.end as isize;
@@ -228,14 +243,14 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
+        self.len += new.end;
+        self.len -= old.end;
+        self.last_known.take();
+
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new.clone());
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
-
-        self.len += new.end;
-        self.len -= old.end;
-        self.last_known.take();
     }
 
     pub fn back_check_amount(&self) -> usize {
@@ -252,8 +267,13 @@ impl Tags {
         self.len
     }
 
-    pub fn get_from_byte(&self, pos: usize) -> Option<(usize, usize, TagOrSkip)> {
-        let (p, n) = [
+    /// Returns information about the skip in the byte `at`
+    ///
+    /// * The byte where it starts
+    /// * The index in the [`GapBuffer`] where it starts
+    /// * Its length
+    pub fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
+        let (mut b, n) = [
             Some((0, 0)),
             Some((self.len, self.buf.len())),
             Some((self.cursor, self.buf.gap())),
@@ -261,40 +281,43 @@ impl Tags {
         ]
         .into_iter()
         .flatten()
-        .min_by(|&(p0, _), &(p1, _)| p0.abs_diff(pos).cmp(&p1.abs_diff(pos)))
+        .min_by(|&(p0, _), &(p1, _)| p0.abs_diff(at).cmp(&p1.abs_diff(at)))
         .unwrap();
 
-        let mut dist = 0;
-        let mut i = 0;
+        let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
+        let matching_skip = if at >= b {
+            let iter = self.buf.iter().enumerate().skip(n);
+            let skips = iter.filter_map(skips).take_while(|(_, skip)| {
+                b += skip;
+                at >= b - skip
+            });
 
-        if pos > p {
-            while let Some(ts) = self.buf.get(n + i)
-                && pos > p + ts.len()
-            {
-                dist += ts.len();
-                i += 1
-            }
-
-            self.last_known.replace(Some((p + dist, n + i)));
-            self.buf.get(n + i).map(|&ts| (p + dist, n + i, ts))
+            skips.last()
         } else {
-            while let Some(ts) = self.buf.get(n - (i + 1))
-                && p > pos + ts.len()
-            {
-                dist += p + ts.len();
-                i += 1
-            }
+            let (s0, s1) = self.buf.as_slices();
+            // Damn you Chain!!!!
+            let iter_0 = s0.iter().enumerate().rev();
+            let s1_len = |(i, ts)| (i + s0.len(), ts);
+            let iter_1 = s1.iter().enumerate().rev().map(s1_len);
 
-            self.last_known.replace(Some((p - dist, n - (i + 1))));
-            self.buf
-                .get(n - (i + 1))
-                .map(|&ts| (p - dist, n - (i + 1), ts))
-        }
+            let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
+            let skips = iter.filter_map(skips).take_while(|(_, skip)| {
+                b -= skip;
+                b - skip >= at
+            });
+
+            skips.last()
+        };
+
+        matching_skip.map(|(i, skip)| {
+            self.last_known.replace(Some((b, i)));
+            (b, i, skip)
+        })
     }
 
     pub fn iter_at(&self, at: usize) -> ForwardIter {
         let at = at.min(self.len);
-        let (mut b, n, _) = self.get_from_byte(at).unwrap();
+        let (mut b, n, _) = self.get_skip_at(at).unwrap();
 
         let ranges = self
             .ranges
@@ -328,7 +351,7 @@ impl Tags {
 
     pub fn rev_iter_at(&self, at: usize) -> ReverseTags {
         let at = at.min(self.len);
-        let (mut b, n, _) = self.get_from_byte(at).unwrap();
+        let (mut b, n, _) = self.get_skip_at(at).unwrap();
 
         let ranges = {
             let mut ranges: Vec<_> = self
@@ -376,7 +399,7 @@ impl Tags {
     }
 
     pub fn at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
-        let b = self.get_from_byte(at).map(|(_, b, _)| b);
+        let b = self.get_skip_at(at).map(|(_, b, _)| b);
 
         b.into_iter()
             .flat_map(|b| self.buf.iter().skip(b).map_while(TagOrSkip::as_tag))
@@ -394,7 +417,7 @@ impl Tags {
         };
 
         let before = {
-            let (mut b, n, _) = self.get_from_byte(search.start).unwrap();
+            let (mut b, n, _) = self.get_skip_at(search.start).unwrap();
 
             self.buf
                 .iter()
@@ -407,16 +430,18 @@ impl Tags {
         };
 
         let after = {
-            let (mut b, n, _) = self.get_from_byte(range.end).unwrap();
+            let after = self.get_skip_at(range.end);
 
-            self.buf
-                .iter()
-                .skip(n)
-                .filter_map(move |ts| {
-                    b += ts.len();
-                    ts.as_tag().map(|t| (b - ts.len(), t))
-                })
-                .take_while(|&(b, _)| b <= search.end)
+            after.into_iter().flat_map(|(mut b, n, _)| {
+                self.buf
+                    .iter()
+                    .skip(n)
+                    .filter_map(move |ts| {
+                        b += ts.len();
+                        ts.as_tag().map(|t| (b - ts.len(), t))
+                    })
+                    .take_while(|&(b, _)| b <= search.end)
+            })
         };
 
         // Removing all ranges that contain the range in question.
@@ -449,13 +474,19 @@ impl Tags {
     /// This is crucial to prevent the gradual deterioration of the
     /// [`Container`]'s structure.
     fn merge_surrounding_skips(&mut self, at: usize) {
-        let (b, n, _) = self.get_from_byte(at).unwrap_or_else(|| panic!("{at}\n{:#?}", self.buf));
+        let (b, n) = match self.get_skip_at(at) {
+            Some((b, n, _)) => (b, n),
+            None => {
+                assert_len!(at, self.len);
+                (self.len, self.buf.len())
+            }
+        };
 
         let has_tag = b == at && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
 
         let (r_skip, r_end) = {
             let mut total_skip = 0;
-            let mut i = at;
+            let mut i = 0;
             let mut iter = self.buf.iter().skip(n).skip_while(|ts| ts.is_tag());
 
             while let Some(TagOrSkip::Skip(skip)) = iter.next() {
@@ -463,13 +494,14 @@ impl Tags {
                 i += 1;
             }
 
-            (total_skip, i)
+            (total_skip, n + i)
         };
 
         let (l_skip, l_range) = {
-            let rev_n = self.buf.len() - n;
             let mut total_skip = 0;
-            let mut i = at;
+            let mut i = 0;
+
+            let rev_n = self.buf.len() - n;
             let tags = self
                 .buf
                 .iter()
@@ -482,10 +514,10 @@ impl Tags {
 
             while let Some(TagOrSkip::Skip(skip)) = iter.next() {
                 total_skip += skip;
-                i -= 1;
+                i += 1;
             }
 
-            (total_skip, i..(n - tags))
+            (total_skip, (n - (tags + i))..(n - tags))
         };
 
         // Merge groups of ranges around `at` into 2 groups.
@@ -614,8 +646,8 @@ fn add_to_ranges(
     };
 
     if let Some(range) = range.filter(|range| range.count_ge(range_min)) {
-        let (Ok(index) | Err(index)) = ranges.binary_search(&range);
-        ranges.insert(index, range);
+        let (Ok(b) | Err(b)) = ranges.binary_search(&range);
+        ranges.insert(b, range);
     }
 }
 
@@ -675,8 +707,8 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
         let (tag, start) = match range {
             TagRange::Bounded(tag, bounded) => {
                 let new_until = TagRange::Until(tag.inverse().unwrap(), ..bounded.end);
-                let (Ok(index) | Err(index)) = ranges.binary_search(&new_until);
-                ranges.insert(index, new_until);
+                let (Ok(b) | Err(b)) = ranges.binary_search(&new_until);
+                ranges.insert(b, new_until);
 
                 (tag, bounded.start)
             }
@@ -698,7 +730,7 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
 
 mod ids {
     use std::{
-        ops::{Range},
+        ops::Range,
         sync::atomic::{AtomicU16, Ordering},
     };
 
@@ -791,4 +823,13 @@ mod ids {
             self
         }
     }
+}
+
+macro assert_len($at:expr, $len:expr) {
+    let (at, len) = ($at, $len);
+    assert!(
+        at == len,
+        "byte out of bounds: the len is {len} but the byte is {at}\n{}",
+        PANIC_LOG.lock()
+    )
 }
