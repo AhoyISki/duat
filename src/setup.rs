@@ -10,7 +10,7 @@ use duat_core::{
     text::PrintCfg,
     ui::{Event, Ui as TraitUi},
     widgets::File,
-    Globals,
+    Context,
 };
 use duat_term::VertRule;
 
@@ -20,14 +20,14 @@ use crate::{
     OnFileOpen, OnUiStart, OnWindowOpen, Ui,
 };
 
-// Globals's statics.
+// Context's statics.
 pub static CURRENT_FILE: CurrentFile<Ui> = CurrentFile::new();
 pub static CURRENT_WIDGET: CurrentWidget<Ui> = CurrentWidget::new();
 pub static COMMANDS: Commands<Ui> = Commands::new(&CURRENT_FILE, &CURRENT_WIDGET);
 pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
 pub static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
-pub static GLOBALS: Globals<Ui> = Globals::new(
+pub static CONTEXT: Context<Ui> = Context::new(
     &CURRENT_FILE,
     &CURRENT_WIDGET,
     &COMMANDS,
@@ -61,9 +61,9 @@ pub fn run_duat(
 ) -> Vec<(RwData<File>, bool)> {
     let mut ui = Ui::new(statics);
 
-    duat_core::hooks::activate::<OnUiStart>(&mut ui);
+    duat_core::hooks::trigger::<OnUiStart>(&mut ui);
 
-    let mut cfg = SessionCfg::new(ui, GLOBALS);
+    let mut cfg = SessionCfg::new(ui, CONTEXT);
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)

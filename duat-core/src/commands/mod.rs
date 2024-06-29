@@ -197,7 +197,6 @@
 //! [`Session`]: crate::session::Session
 //! [`commands::run`]: crate::commands::run
 //! [`Form`]: crate::forms::Form
-#[cfg(not(feature = "deadlock-detection"))]
 use std::{
     collections::HashMap,
     fmt::Display,

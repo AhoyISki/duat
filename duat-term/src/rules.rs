@@ -4,7 +4,7 @@ use duat_core::{
     text::{text, Text},
     ui::{Area as UiArea, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 use crate::{Area, Ui};
@@ -27,7 +27,7 @@ impl VertRule {
 }
 
 impl PassiveWidget<Ui> for VertRule {
-    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(globals: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         VertRuleCfg::new().build(globals, on_file)
     }
 
@@ -62,7 +62,7 @@ impl PassiveWidget<Ui> for VertRule {
         &self.text
     }
 
-    fn once(_globals: Globals<Ui>) {
+    fn once(_globals: Context<Ui>) {
         palette::set_weak_form("VertRule", Form::new().dark_grey());
         palette::set_weak_ref("UpperVertRule", "VertRule");
         palette::set_weak_ref("LowerVertRule", "VertRule");
@@ -167,10 +167,10 @@ impl WidgetCfg<Ui> for VertRuleCfg {
 
     fn build(
         self,
-        globals: Globals<Ui>,
+        context: Context<Ui>,
         on_file: bool,
     ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        let reader = on_file.then_some(globals.current_file.constant());
+        let reader = on_file.then_some(context.current_file.constant());
 
         let vert_rule = VertRule {
             reader: reader.clone(),

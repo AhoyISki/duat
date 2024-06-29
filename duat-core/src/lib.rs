@@ -1,5 +1,4 @@
 #![feature(
-    lazy_cell,
     extract_if,
     iter_intersperse,
     iter_order_by,
@@ -9,8 +8,7 @@
     decl_macro,
     generic_const_exprs,
     step_trait,
-    type_alias_impl_trait,
-    fmt_internals
+    type_alias_impl_trait
 )]
 #![doc = include_str!("../README.md")]
 
@@ -37,7 +35,17 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-pub struct Globals<U>
+pub mod prelude {
+    pub use crate::{
+        commands,
+        palette::{self, CursorShape, Form},
+        session::{Session, SessionCfg},
+        text::{text, PrintCfg},
+        widgets::File,
+    };
+}
+
+pub struct Context<U>
 where
     U: Ui,
 {
@@ -48,7 +56,7 @@ where
     has_ended: &'static AtomicBool,
 }
 
-impl<U> Clone for Globals<U>
+impl<U> Clone for Context<U>
 where
     U: Ui,
 {
@@ -56,9 +64,9 @@ where
         *self
     }
 }
-impl<U> Copy for Globals<U> where U: Ui {}
+impl<U> Copy for Context<U> where U: Ui {}
 
-impl<U> Globals<U>
+impl<U> Context<U>
 where
     U: Ui,
 {

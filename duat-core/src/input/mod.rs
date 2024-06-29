@@ -7,7 +7,7 @@ pub use self::{
     default::KeyMap,
     multi_cursor::{Cursors, MultiCursorEditor},
 };
-use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Globals};
+use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Context};
 
 pub trait InputMethod<U>: Send + Sync + 'static
 where
@@ -22,7 +22,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        globals: Globals<U>,
+        globals: Context<U>,
     ) where
         Self: Sized;
 

@@ -28,7 +28,7 @@ use duat_core::{
     text::{text, Builder, Tag, Text},
     ui::{Area, Axis, Constraint, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 use crate::Ui;
@@ -102,10 +102,10 @@ impl PassiveWidget<Ui> for LineNumbers {
     /// Returns a function that outputs a [`LineNumbers`], taking a
     /// [`LineNumbersCfg`] as argument.
     fn build(
-        globals: Globals<Ui>,
+        context: Context<Ui>,
         on_file: bool,
     ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        LineNumbersCfg::default().build(globals, on_file)
+        LineNumbersCfg::default().build(context, on_file)
     }
 
     fn update(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
@@ -120,7 +120,7 @@ impl PassiveWidget<Ui> for LineNumbers {
         &self.text
     }
 
-    fn once(_globals: Globals<Ui>) {
+    fn once(_context: Context<Ui>) {
         palette::set_weak_form("LineNum", Form::new().grey());
         palette::set_weak_form("MainLineNum", Form::new().yellow());
         palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
@@ -259,8 +259,8 @@ impl LineNumbersCfg {
 impl WidgetCfg<Ui> for LineNumbersCfg {
     type Widget = LineNumbers;
 
-    fn build(self, globals: Globals<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        let reader = globals.current_file.constant();
+    fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        let reader = context.current_file.constant();
         let specs = self.specs;
 
         let mut line_numbers = LineNumbers {

@@ -1,5 +1,5 @@
 use super::{key, Cursors, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor};
-use crate::{data::RwData, ui::Ui, widgets::File, Globals};
+use crate::{data::RwData, ui::Ui, widgets::File, Context};
 
 #[derive(Clone)]
 pub struct KeyMap {
@@ -31,7 +31,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        globals: Globals<U>,
+        globals: Context<U>,
     ) {
         let mut editor = MultiCursorEditor::<File, U>::new(widget, area, &mut self.cursors);
         match key {

@@ -15,7 +15,7 @@ use crate::{
     text::{text, PrintCfg, Text},
     ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Widget},
-    Globals,
+    Context,
 };
 
 #[doc(hidden)]
@@ -25,14 +25,14 @@ where
 {
     ui: U,
     file_cfg: FileCfg<U>,
-    globals: Globals<U>,
+    globals: Context<U>,
 }
 
 impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn new(ui: U, globals: Globals<U>) -> Self {
+    pub fn new(ui: U, globals: Context<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
@@ -78,7 +78,7 @@ where
         // Build the window's widgets.
         session.windows.mutate(|windows| {
             let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
-            hooks::activate::<OnWindowOpen<U>>(&mut builder);
+            hooks::trigger::<OnWindowOpen<U>>(&mut builder);
         });
 
         session
@@ -130,7 +130,7 @@ where
         // Build the window's widgets.
         session.windows.mutate(|windows| {
             let mut builder = WindowBuilder::new(&mut windows[0], self.globals);
-            hooks::activate::<OnWindowOpen<U>>(&mut builder);
+            hooks::trigger::<OnWindowOpen<U>>(&mut builder);
         });
 
         session
@@ -158,7 +158,7 @@ where
     windows: RwData<Vec<Window<U>>>,
     current_window: Arc<AtomicUsize>,
     file_cfg: FileCfg<U>,
-    globals: Globals<U>,
+    globals: Context<U>,
     tx: mpsc::Sender<Event>,
 }
 
@@ -337,7 +337,7 @@ enum BreakTo {
     QuitDuat,
 }
 
-fn add_session_commands<U>(session: &Session<U>, globals: Globals<U>, tx: mpsc::Sender<Event>)
+fn add_session_commands<U>(session: &Session<U>, globals: Context<U>, tx: mpsc::Sender<Event>)
 where
     U: Ui,
 {
@@ -727,7 +727,7 @@ fn switch_widget<U: Ui>(
     entry: &(Widget<U>, U::Area),
     windows: &[Window<U>],
     window: usize,
-    globals: Globals<U>,
+    globals: Context<U>,
 ) {
     let (widget, area) = entry;
 

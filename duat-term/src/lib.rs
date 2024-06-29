@@ -1,5 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(lazy_cell, iter_collect_into, let_chains, generic_const_exprs)]
+#![feature(iter_collect_into, let_chains, generic_const_exprs)]
 
 use std::{
     fmt::Debug,
@@ -16,7 +16,7 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, Globals};
+use duat_core::{data::RwData, ui, Context};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 use print::Printer;
@@ -43,6 +43,9 @@ impl ui::Ui for Ui {
 
     fn new(statics: Self::StaticFns) -> Self {
         FUNCTIONS.get_or_init(|| statics);
+
+		
+        
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
@@ -50,10 +53,10 @@ impl ui::Ui for Ui {
         }
     }
 
-    fn start(&mut self, sender: ui::Sender, globals: Globals<Self>) {
+    fn start(&mut self, sender: ui::Sender, context: Context<Self>) {
         let functions = FUNCTIONS.get().unwrap();
         let printer = self.printer.clone();
-        globals.spawn(move || {
+        context.spawn(move || {
             loop {
                 if let Ok(true) = (functions.poll)() {
                     let res = match (functions.read)().unwrap() {
@@ -75,7 +78,7 @@ impl ui::Ui for Ui {
 
                 printer.read().print();
 
-                if globals.has_ended() {
+                if context.has_ended() {
                     break;
                 }
             }

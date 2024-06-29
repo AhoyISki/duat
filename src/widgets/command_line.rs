@@ -21,7 +21,7 @@ use duat_core::{
     text::{text, Ghost, Text},
     ui::{Area, PushSpecs},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 use crate::Ui;
@@ -95,11 +95,11 @@ where
 {
     type Widget = CommandLine;
 
-    fn build(self, globals: Globals<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let command_line = CommandLine {
-            text: Text::new(" "),
+            text: Text::from(" "),
             prompt: RwData::new(self.prompt.clone()),
-            globals,
+            context,
         };
 
         let widget = Widget::active(command_line, RwData::new(self.input));
@@ -117,7 +117,7 @@ where
 pub struct CommandLine {
     text: Text,
     prompt: RwData<String>,
-    globals: Globals<Ui>,
+    context: Context<Ui>,
 }
 
 impl CommandLine {
@@ -127,8 +127,8 @@ impl CommandLine {
 }
 
 impl PassiveWidget<Ui> for CommandLine {
-    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        CommandLineCfg::new().build(globals, on_file)
+    fn build(context: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        CommandLineCfg::new().build(context, on_file)
     }
 
     fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {}
@@ -141,10 +141,10 @@ impl PassiveWidget<Ui> for CommandLine {
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(globals: Globals<Ui>) {
+    fn once(context: Context<Ui>) {
         palette::set_weak_form("Prompt", Form::new().cyan());
 
-        globals
+        context
             .commands
             .add_for_widget::<CommandLine>(["set-prompt"], move |command_line, _, _, mut args| {
                 let new_prompt: String = args.collect();
@@ -168,7 +168,7 @@ impl ActiveWidget<Ui> for CommandLine {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.iter_chars_at(0).collect::<String>();
-        std::thread::spawn(|| self.globals.commands.run(cmd));
+        std::thread::spawn(|| self.context.commands.run(cmd));
     }
 }
 
@@ -201,7 +201,7 @@ impl InputMethod<Ui> for Commander {
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &<Ui as duat_core::ui::Ui>::Area,
-        globals: Globals<Ui>,
+        context: Context<Ui>,
     ) {
         let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
 
@@ -262,11 +262,11 @@ impl InputMethod<Ui> for Commander {
                 editor.edit_on_main(|editor| editor.replace(""));
 
                 self.cursors = Cursors::default();
-                globals.commands.return_to_file().unwrap();
+                context.commands.return_to_file().unwrap();
             }
             key!(KeyCode::Enter) => {
                 self.cursors = Cursors::default();
-                globals.commands.return_to_file().unwrap();
+                context.commands.return_to_file().unwrap();
             }
             _ => {}
         }

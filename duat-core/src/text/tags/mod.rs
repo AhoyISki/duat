@@ -449,7 +449,7 @@ impl Tags {
     /// This is crucial to prevent the gradual deterioration of the
     /// [`Container`]'s structure.
     fn merge_surrounding_skips(&mut self, at: usize) {
-        let (b, n, _) = self.get_from_byte(at).unwrap();
+        let (b, n, _) = self.get_from_byte(at).unwrap_or_else(|| panic!("{at}\n{:#?}", self.buf));
 
         let has_tag = b == at && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
 

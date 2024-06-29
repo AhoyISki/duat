@@ -30,15 +30,11 @@ use crate::{
     palette::{self, FormId},
 };
 
-trait InnerTags: std::fmt::Debug + Default + Sized + Clone {
-    fn with_len(len: usize) -> Self;
-}
-
 /// The text in a given area.
 #[derive(Debug, Default, Clone, Eq)]
 pub struct Text {
-    buf: GapBuffer<u8>,
-    pub tags: Tags,
+    buf: Box<GapBuffer<u8>>,
+    pub tags: Box<Tags>,
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
@@ -54,16 +50,16 @@ impl PartialEq for Text {
 impl Text {
     pub fn new() -> Self {
         Self {
-            buf: GapBuffer::new(),
-            tags: Tags::new(),
+            buf: Box::new(GapBuffer::new()),
+            tags: Box::new(Tags::new()),
             marker: Marker::new(),
         }
     }
 
     pub fn from_file<'a>(path: impl AsRef<Path>) -> Self {
         let file = std::fs::File::open(path.as_ref()).expect("File failed to open");
-        let buf = GapBuffer::from_iter(file.bytes().map_while(Result::ok));
-        let tags = Tags::with_len(buf.len());
+        let buf = Box::new(GapBuffer::from_iter(file.bytes().map_while(Result::ok)));
+        let tags = Box::new(Tags::with_len(buf.len()));
 
         Self {
             buf,
@@ -182,8 +178,8 @@ impl Text {
         let mut cur_pos = pos;
         while let Some(peek) = iter.peek() {
             match peek.part {
-                Part::Byte(b'\n') => return cur_pos,
-                Part::Byte(_) => cur_pos = iter.next().unwrap().pos,
+                Part::Char('\n') => return cur_pos,
+                Part::Char(_) => cur_pos = iter.next().unwrap().pos,
                 _ => drop(iter.next()),
             }
         }
@@ -240,12 +236,11 @@ impl Text {
 
     pub(crate) fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         let (s0, s1) = self.buf.as_slices();
-        writer.write(s0)?;
-        writer.write(s1)
+        Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
     fn clear(&mut self) {
-        self.buf = GapBuffer::new();
+        self.buf = Box::new(GapBuffer::new());
         self.tags.clear();
     }
 
@@ -331,8 +326,8 @@ impl Text {
         Iter::new_at(self, start).take_while(move |item| item.real() < end)
     }
 
-    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = u8> + '_ {
-        self.iter_line(line).filter_map(|item| item.part.as_byte())
+    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
+        self.iter_line(line).filter_map(|item| item.part.as_char())
     }
 }
 
@@ -341,8 +336,8 @@ where
     S: ToString,
 {
     fn from(value: S) -> Self {
-        let buf = GapBuffer::from_iter(value.to_string().bytes());
-        let tags = Tags::with_len(buf.len());
+        let buf = Box::new(GapBuffer::from_iter(value.to_string().bytes()));
+        let tags = Box::new(Tags::with_len(buf.len()));
 
         Self {
             buf,
@@ -428,7 +423,7 @@ impl Builder {
         self.text
             .tags
             .transform_range(end..end, end + text.len_chars());
-        self.text.buf.splice(end..end, text.buf);
+        self.text.buf.splice(end..end, *text.buf);
         self.text.tags.toggles.extend(text.tags.toggles.drain());
         self.text.tags.texts.extend(text.tags.texts.drain());
 

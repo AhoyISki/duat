@@ -147,6 +147,15 @@ where
     }
 }
 
+impl<U> Default for CurrentFile<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct FileReader<U>
 where
     U: Ui,
@@ -365,6 +374,15 @@ where
         let (widget, input) = widget.as_active().unwrap();
 
         f(widget, area, input)
+    }
+}
+
+impl<U> Default for CurrentWidget<U>
+where
+    U: Ui,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -60,7 +60,7 @@ use duat_core::{
     text::{text, Builder, Tag, Text},
     ui::PushSpecs,
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 pub use self::state::State;
@@ -102,21 +102,21 @@ impl WidgetCfg<Ui> for StatusLineCfg {
 
     fn build(
         self,
-        globals: Globals<Ui>,
+        context: Context<Ui>,
         on_file: bool,
     ) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = if on_file {
-            let reader = globals.current_file.constant();
+            let reader = context.current_file.constant();
             let checker = move || reader.has_changed() || (self.checker)();
             (
-                globals.current_file.constant(),
+                context.current_file.constant(),
                 Box::new(checker) as Box<dyn Fn() -> bool>,
             )
         } else {
-            let reader = globals.current_file.adaptive();
+            let reader = context.current_file.adaptive();
             let checker = move || reader.has_changed() || (self.checker)();
             (
-                globals.current_file.adaptive(),
+                context.current_file.adaptive(),
                 Box::new(checker) as Box<dyn Fn() -> bool>,
             )
         };
@@ -198,8 +198,8 @@ impl StatusLine {
 }
 
 impl PassiveWidget<Ui> for StatusLine {
-    fn build(globals: Globals<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        Self::config().build(globals, on_file)
+    fn build(context: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+        Self::config().build(context, on_file)
     }
 
     fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
@@ -210,7 +210,7 @@ impl PassiveWidget<Ui> for StatusLine {
         &self.text
     }
 
-    fn once(_globals: Globals<Ui>) {
+    fn once(_context: Context<Ui>) {
         palette::set_weak_form("File", Form::new().yellow().italic());
         palette::set_weak_form("Selections", Form::new().dark_blue());
         palette::set_weak_form("Coord", Form::new().dark_red());

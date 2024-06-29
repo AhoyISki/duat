@@ -148,10 +148,10 @@ impl Pattern for &str {
     }
 
     fn matches(&self, part: Part, index: usize) -> bool {
-        let cmp = part.as_byte();
-        let byte = self.bytes().nth(index);
+        let cmp = part.as_char();
+        let byte = self.chars().nth(index);
 
-        byte.zip(cmp).is_some_and(|(byte, cmp)| byte == cmp)
+        byte.zip(cmp).is_some_and(|(c, cmp)| c == cmp)
     }
 }
 
@@ -161,7 +161,7 @@ impl Pattern for char {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_byte().is_some_and(|cmp| *self == cmp as char)
+        part.as_char().is_some_and(|cmp| *self == cmp as char)
     }
 }
 
@@ -171,7 +171,7 @@ impl<const N: usize> Pattern for [char; N] {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_byte()
+        part.as_char()
             .is_some_and(|cmp| self.contains(&(cmp as char)))
     }
 }
@@ -182,7 +182,7 @@ impl Pattern for &[char] {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_byte()
+        part.as_char()
             .is_some_and(|cmp| self.contains(&(cmp as char)))
     }
 }
@@ -204,7 +204,7 @@ macro impl_ranges($($r:ty),+) {
             }
 
             fn matches(&self, part: Part, _index: usize) -> bool {
-                part.as_byte().is_some_and(|cmp| self.contains(&(cmp as char)))
+                part.as_char().is_some_and(|cmp| self.contains(&(cmp as char)))
             }
         }
     )+
@@ -216,7 +216,7 @@ macro impl_ranges($($r:ty),+) {
             }
 
             fn matches(&self, part: Part, _index: usize) -> bool {
-                part.as_byte()
+                part.as_char()
                     .is_some_and(|cmp| self.iter().any(|range| range.contains(&(cmp as char))))
             }
         }
@@ -229,7 +229,7 @@ macro impl_ranges($($r:ty),+) {
             }
 
             fn matches(&self, part: Part, _index: usize) -> bool {
-                part.as_byte()
+                part.as_char()
                     .is_some_and(|cmp| self.iter().any(|range| range.contains(&(cmp as char))))
             }
         }

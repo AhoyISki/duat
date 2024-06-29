@@ -27,7 +27,7 @@ mod global {
         HOOKS.remove(group)
     }
 
-    pub fn activate<H: Hookable>(args: &mut H::Args<'_>) {
+    pub fn trigger<H: Hookable>(args: &mut H::Args<'_>) {
         HOOKS.activate::<H>(args)
     }
 }

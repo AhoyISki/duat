@@ -4,7 +4,7 @@ use super::{Area, Ui, Window};
 use crate::{
     data::RwData,
     widgets::{PassiveWidget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -42,7 +42,7 @@ where
 {
     window: &'a mut Window<U>,
     mod_area: U::Area,
-    globals: Globals<U>,
+    globals: Context<U>,
 }
 
 impl<'a, U> FileBuilder<'a, U>
@@ -50,7 +50,7 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>, mod_area: U::Area, globals: Globals<U>) -> Self {
+    pub fn new(window: &'a mut Window<U>, mod_area: U::Area, globals: Context<U>) -> Self {
         Self {
             window,
             mod_area,
@@ -272,7 +272,7 @@ where
 {
     window: &'a mut Window<U>,
     area: U::Area,
-    globals: Globals<U>,
+    globals: Context<U>,
 }
 
 impl<'a, U> WindowBuilder<'a, U>
@@ -280,7 +280,7 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>, globals: Globals<U>) -> Self {
+    pub fn new(window: &'a mut Window<U>, globals: Context<U>) -> Self {
         let area = window.files_region().clone();
         Self {
             window,
@@ -463,7 +463,7 @@ where
     }
 }
 
-fn run_once<W: PassiveWidget<U>, U: Ui>(globals: Globals<U>) {
+fn run_once<W: PassiveWidget<U>, U: Ui>(globals: Context<U>) {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 

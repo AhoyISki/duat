@@ -6,13 +6,14 @@ use crossterm::event::{
 };
 use duat_core::{
     data::RwData,
+    hooks::{self, Hookable},
     input::{key, Cursors, InputMethod, MultiCursorEditor},
     palette,
     prelude::Form,
     text::{text, Text},
     ui::Ui,
     widgets::File,
-    Globals,
+    Context,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -23,6 +24,17 @@ pub enum Mode {
     GoTo,
     View,
     Command,
+}
+
+/// Triggers whenever the mode changes
+///
+/// Arguments:
+/// * The previous [`Mode`]
+/// * The current [`Mode`]
+pub struct OnModeChange {}
+
+impl Hookable for OnModeChange {
+    type Args<'args> = (Mode, Mode);
 }
 
 impl Display for Mode {
@@ -77,7 +89,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        globals: Globals<U>,
+        globals: Context<U>,
     ) {
         let cursors = &mut self.cursors;
         let editor = MultiCursorEditor::new(widget, area, cursors);
@@ -88,6 +100,7 @@ where
             Mode::GoTo => {
                 match_goto(editor, key, &mut self.last_file, globals);
                 self.mode = Mode::Normal;
+                hooks::trigger::<OnModeChange>(&mut (Mode::GoTo, Mode::Normal));
             }
             Mode::View => todo!(),
             Mode::Command => {
@@ -104,7 +117,8 @@ where
     where
         Self: Sized,
     {
-        self.mode = Mode::Normal
+        self.mode = Mode::Normal;
+        hooks::trigger::<OnModeChange>(&mut (Mode::GoTo, Mode::Normal));
     }
 }
 
@@ -198,6 +212,7 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
         key!(KeyCode::Esc) => {
             editor.new_moment();
             *mode = Mode::Normal;
+            hooks::trigger::<OnModeChange>(&mut (Mode::Insert, Mode::Normal))
         }
         _ => {}
     }
@@ -208,7 +223,7 @@ fn match_normal<U: Ui>(
     mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     mode: &mut Mode,
-    globals: Globals<U>,
+    globals: Context<U>,
 ) {
     match key {
         ////////// Movement keys that retain or create selections.
@@ -243,24 +258,31 @@ fn match_normal<U: Ui>(
         key!(KeyCode::Char('i')) => {
             editor.move_each_cursor(|mover| mover.switch_ends());
             *mode = Mode::Insert;
+            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
         }
         key!(KeyCode::Char('a')) => {
             editor.move_each_cursor(|mover| mover.set_caret_on_end());
             *mode = Mode::Insert;
+            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
         }
         key!(KeyCode::Char('c')) => {
             editor.edit_on_each_cursor(|editor| editor.replace(""));
             editor.move_each_cursor(|mover| mover.unset_anchor());
             *mode = Mode::Insert;
+            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
         }
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
             if globals.commands.run("switch-to CommandLine").is_ok() {
                 *mode = Mode::Command;
+                hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Command));
             }
         }
-        key!(KeyCode::Char('g')) => *mode = Mode::GoTo,
+        key!(KeyCode::Char('g')) => {
+            *mode = Mode::GoTo;
+            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::GoTo));
+        }
 
         ////////// History manipulation.
         key!(KeyCode::Char('u')) => editor.undo(),
@@ -274,7 +296,7 @@ fn match_goto<U: Ui>(
     mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     last_file: &mut String,
-    globals: Globals<U>,
+    globals: Context<U>,
 ) {
     match key {
         key!(KeyCode::Char('a')) => {

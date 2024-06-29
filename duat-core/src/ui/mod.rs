@@ -18,7 +18,7 @@ use crate::{
     position::Point,
     text::{Item, IterCfg, PrintCfg, Text},
     widgets::{File, PassiveWidget, Widget},
-    Globals,
+    Context,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -512,7 +512,7 @@ pub trait Ui: Sized + 'static {
     ///
     /// This is different from [`Ui::open`], as this is going to run
     /// on reloads as well.
-    fn start(&mut self, sender: Sender, globals: Globals<Self>);
+    fn start(&mut self, sender: Sender, globals: Context<Self>);
 
     /// Ends the Ui.
     ///
@@ -654,7 +654,7 @@ where
             })
     }
 
-    pub fn send_key(&self, key: KeyEvent, globals: Globals<U>) {
+    pub fn send_key(&self, key: KeyEvent, globals: Context<U>) {
         if let Some(node) = self
             .nodes()
             .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
@@ -746,7 +746,7 @@ where
     }
 }
 
-pub(crate) fn build_file<U>(window: &mut Window<U>, mod_area: U::Area, globals: Globals<U>)
+pub(crate) fn build_file<U>(window: &mut Window<U>, mod_area: U::Area, globals: Context<U>)
 where
     U: Ui,
 {
@@ -768,7 +768,7 @@ where
     };
 
     let mut builder = FileBuilder::new(window, mod_area, globals);
-    hooks::activate::<OnFileOpen<U>>(&mut builder);
+    hooks::trigger::<OnFileOpen<U>>(&mut builder);
 
     if let Some(parts) = old_file {
         globals.current_file.swap(parts);

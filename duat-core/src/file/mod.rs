@@ -19,17 +19,7 @@
 //! method. This method is notably used by the
 //! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{
-    alloc,
-    collections::VecDeque,
-    error::Error,
-    fs,
-    io::{self, BufRead, ErrorKind, Read, Write},
-    path::PathBuf,
-    sync::Arc,
-};
-
-use gapbuf::GapBuffer;
+use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
@@ -40,7 +30,7 @@ use crate::{
     text::{ExactPos, IterCfg, Positional, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-    Globals,
+    Context,
 };
 
 mod read;
@@ -155,7 +145,7 @@ where
 {
     type Widget = File;
 
-    fn build(self, _globals: Globals<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _globals: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
         let (widget, checker) = self.build();
         (widget, checker, specs)
@@ -352,7 +342,7 @@ impl<U> PassiveWidget<U> for File
 where
     U: Ui,
 {
-    fn build(_globals: Globals<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
+    fn build(_globals: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
     where
         Self: Sized,
     {
@@ -370,7 +360,7 @@ where
         &self.cfg
     }
 
-    fn once(_globals: crate::Globals<U>) {}
+    fn once(_context: crate::Context<U>) {}
 
     fn print(&mut self, area: &<U as Ui>::Area) {
         let start = area.first_char();

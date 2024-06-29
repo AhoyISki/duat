@@ -1,7 +1,7 @@
 use duat_core::{
     data::RwData,
     input::{KeyCode, KeyEvent, InputMethod},
-    Globals,
+    Context,
 };
 
 use super::Ui;
@@ -149,7 +149,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &<Ui as duat_core::ui::Ui>::Area,
-        globals: Globals<Ui>,
+        globals: Context<Ui>,
     ) {
         let remaps = self
             .remaps

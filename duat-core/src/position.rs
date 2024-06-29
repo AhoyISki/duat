@@ -126,9 +126,9 @@ impl Cursor {
             text.len_chars()
         } else if by > 0 {
             area.print_iter(text.iter_at(self.caret.char).no_ghosts(), cfg)
-                .filter_map(|(caret, item)| item.part.as_byte().zip(Some((caret.x, item.real()))))
+                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.real()))))
                 .try_fold(0, |lfs, (byte, (x, pos))| {
-                    let new_lfs = lfs + (byte == b'\n') as isize;
+                    let new_lfs = lfs + (byte == '\n') as isize;
                     match (lfs == by && x >= self.desired_col) || new_lfs > by {
                         true => std::ops::ControlFlow::Break(pos),
                         false => std::ops::ControlFlow::Continue(new_lfs),
@@ -141,20 +141,20 @@ impl Cursor {
         } else {
             let start = area
                 .rev_print_iter(text.rev_iter_at(self.caret.char).no_ghosts(), cfg)
-                .filter_map(|(_, item)| item.part.as_byte().zip(Some(item.real())))
-                .try_fold(0, |lfs, (byte, pos)| {
-                    match (lfs - ((byte == b'\n') as isize)) < by {
+                .filter_map(|(_, item)| item.part.as_char().zip(Some(item.real())))
+                .try_fold(0, |lfs, (c, pos)| {
+                    match (lfs - ((c == '\n') as isize)) < by {
                         true => std::ops::ControlFlow::Break(pos + 1),
-                        false => std::ops::ControlFlow::Continue(lfs - ((byte == b'\n') as isize)),
+                        false => std::ops::ControlFlow::Continue(lfs - ((c == '\n') as isize)),
                     }
                 })
                 .break_value()
                 .unwrap_or(0);
 
             area.print_iter(text.iter_at(start).no_ghosts(), cfg)
-                .filter_map(|(caret, item)| item.part.as_byte().zip(Some((caret.x, item.real()))))
-                .try_fold((), |_, (byte, (x, pos))| {
-                    match x >= self.desired_col || byte == b'\n' {
+                .filter_map(|(caret, item)| item.part.as_char().zip(Some((caret.x, item.real()))))
+                .try_fold((), |_, (c, (x, pos))| {
+                    match x >= self.desired_col || c == '\n' {
                         true => std::ops::ControlFlow::Break(pos),
                         false => std::ops::ControlFlow::Continue(()),
                     }
@@ -198,7 +198,7 @@ impl Cursor {
         } else if by > 0 {
             text.iter_at(self.caret.char)
                 .no_ghosts()
-                .filter_map(|item| item.part.as_byte().and(Some(item.real())))
+                .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by as usize)
                 .unwrap_or(text.len_chars())
         } else if self.caret.char.checked_add_signed(by).is_none() {
@@ -206,7 +206,7 @@ impl Cursor {
         } else {
             text.rev_iter_at(self.caret.char)
                 .no_ghosts()
-                .filter_map(|item| item.part.as_byte().and(Some(item.real())))
+                .filter_map(|item| item.part.as_char().and(Some(item.real())))
                 .nth(by.unsigned_abs() - 1)
                 .unwrap_or(0)
         };

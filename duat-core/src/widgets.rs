@@ -33,7 +33,7 @@ use crate::{
     palette,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    Globals,
+    Context,
 };
 
 /// An area where text will be printed to the screen.
@@ -42,7 +42,7 @@ where
     U: Ui,
 {
     fn build(
-        globals: Globals<U>,
+        globals: Context<U>,
         on_file: bool,
     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
     where
@@ -70,7 +70,7 @@ where
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(globals: Globals<U>)
+    fn once(globals: Context<U>)
     where
         Self: Sized;
 
@@ -111,7 +111,7 @@ where
     type Widget: PassiveWidget<U>;
     fn build(
         self,
-        globals: Globals<U>,
+        context: Context<U>,
         on_file: bool,
     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
@@ -157,7 +157,7 @@ where
 
     fn input(&self) -> &RwData<dyn InputMethod<U>>;
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Globals<U>);
+    fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Context<U>);
 
     fn on_focus(&self, area: &U::Area);
 
@@ -212,7 +212,7 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, globals: Globals<U>) {
+    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, globals: Context<U>) {
         let mut input = self.input.write();
 
         if let Some(cursors) = input.cursors() {
@@ -413,7 +413,7 @@ where
         }
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Globals<U>) {
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Context<U>) {
         match self {
             Widget::Passive(..) => unreachable!("Sending keys to passive widgets is impossible"),
             Widget::Active(holder) => holder.send_key(key, area, globals),

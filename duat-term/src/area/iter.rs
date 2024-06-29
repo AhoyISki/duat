@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{any::Any, ascii::AsciiExt, marker::PhantomData};
 
 use duat_core::{
     text::{Item, IterCfg, Part, WrapMethod},
@@ -20,10 +20,10 @@ fn indents<'a>(
         if cfg.indent_wrap() {
             let old_indent = if *indent < width { *indent } else { 0 };
             (*indent, *on_indent) = match (&item.part, *on_indent) {
-                (&Part::Byte('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
-                (&Part::Byte(' '), true) => (*indent + 1, true),
-                (&Part::Byte('\n'), _) => (0, true),
-                (&Part::Byte(_), _) => (*indent, false),
+                (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
+                (&Part::Char(' '), true) => (*indent + 1, true),
+                (&Part::Char('\n'), _) => (0, true),
+                (&Part::Char(_), _) => (*indent, false),
                 (_, on_indent) => (*indent, on_indent),
             };
 
@@ -76,10 +76,11 @@ fn words<'a>(
 
         let mut word_len = 0;
         while let Some((new_indent, item)) = iter.peek() {
-            if let Part::Byte(char) = item.part {
+            if let Part::Char(c) = item.part {
                 indent = *new_indent;
-                if cfg.word_chars().contains(char) {
-                    word_len += len_from(char, x + word_len, width, &cfg, prev_char)
+
+                if cfg.word_chars().contains(c) {
+                    word_len += len_from(c, x + word_len, width, &cfg, prev_char)
                 } else {
                     word.push(iter.next().map(|(_, unit)| unit).unwrap());
                     break;
@@ -106,27 +107,27 @@ fn words<'a>(
 
 #[inline(always)]
 fn attach_caret(
-    (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>),
+    (x, needs_to_wrap, prev_c): (&mut usize, &mut bool, &mut Option<char>),
     indent: usize,
     mut item: Item,
     width: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
+    let (len, processed_part) = process_part(item.part, cfg, prev_c, *x, width);
 
     let mut old_x = *x;
     *x += len;
 
     let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
-    let nl_wrap = *needs_to_wrap && prev_char.is_some();
+    let nl_wrap = *needs_to_wrap && prev_c.is_some();
     if nl_wrap || width_wrap {
         old_x = indent;
         *x = indent + len;
         *needs_to_wrap = false;
     };
 
-    if let Some(char) = item.part.as_byte() {
-        if char == '\n' {
+    if let Some(b) = item.part.as_char() {
+        if b == '\n' {
             *needs_to_wrap = true;
             *x = 0;
         }
@@ -140,24 +141,24 @@ fn attach_caret(
 fn process_part(
     part: Part,
     cfg: &IterCfg,
-    prev_char: &mut Option<char>,
+    prev_c: &mut Option<char>,
     x: usize,
     width: usize,
 ) -> (usize, Part) {
     match part {
-        Part::Byte(char) => {
-            let ret = if char == '\n' {
-                let char = cfg.new_line().char(*prev_char);
+        Part::Char(b) => {
+            let ret = if b == '\n' {
+                let char = cfg.new_line().char(*prev_c);
                 if let Some(char) = char {
-                    (len_from(char, x, width, cfg, *prev_char), Part::Byte(char))
+                    (len_from(char, x, width, cfg, *prev_c), Part::Char(char))
                 } else {
-                    (0, Part::Byte('\n'))
+                    (0, Part::Char('\n'))
                 }
             } else {
-                (len_from(char, x, width, cfg, *prev_char), Part::Byte(char))
+                (len_from(b, x, width, cfg, *prev_c), Part::Char(b))
             };
 
-            *prev_char = Some(char);
+            *prev_c = Some(b);
             ret
         }
         _ => (0, part),
@@ -229,7 +230,7 @@ pub fn rev_print_iter<'a>(
             let mut items: Vec<Item> = prev_line_nl.take().into_iter().collect();
             #[allow(clippy::while_let_on_iterator)]
             while let Some(item) = iter.next() {
-                if let Part::Byte('\n') = item.part {
+                if let Part::Char('\n') = item.part {
                     if items.is_empty() {
                         items.push(item);
                     } else {

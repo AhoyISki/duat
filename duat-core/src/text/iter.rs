@@ -3,7 +3,10 @@ use std::{
     cmp::Ordering,
     iter::{Chain, Rev, Skip},
     ops::ControlFlow,
+    str::Chars,
 };
+
+use gapbuf::GapBuffer;
 
 use super::{
     tags::{self, RawTag, TextId},
@@ -101,14 +104,14 @@ impl Item {
 #[derive(Clone)]
 pub struct Iter<'a> {
     text: &'a Text,
-    bytes: ForwardBytes<'a>,
+    chars: FwdChars<'a>,
     tags: tags::ForwardIter<'a>,
     pos: usize,
     line: usize,
     conceals: usize,
 
     // Things to deal with ghost text.
-    backup_iter: Option<(usize, ForwardBytes<'a>, tags::ForwardIter<'a>)>,
+    backup_iter: Option<(usize, FwdChars<'a>, tags::ForwardIter<'a>)>,
     ghosts_to_ignore: Vec<TextId>,
     ghost_shift: usize,
 
@@ -127,7 +130,7 @@ impl<'a> Iter<'a> {
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
-        let (bytes, tags) = {
+        let (chars, tags) = {
             let text = text.tags.at(real).find_map(|tag| match tag {
                 RawTag::GhostText(_, id) => {
                     ghosts_to_ignore.push(id);
@@ -147,7 +150,7 @@ impl<'a> Iter<'a> {
             text.map(|text| {
                 let tags_start = ghost.saturating_sub(text.tags.back_check_amount());
 
-                let chars = text.buf.iter().skip(ghost);
+                let chars = buf_chars(&text.buf, ghost);
                 let tags = text.tags.iter_at(tags_start);
 
                 (chars, tags)
@@ -156,9 +159,9 @@ impl<'a> Iter<'a> {
         };
 
         let tags_start = real.saturating_sub(text.tags.back_check_amount());
-        let pos = if bytes.is_some() { ghost } else { real };
-        let backup_iter = bytes.is_some().then(|| {
-            let chars = text.buf.iter().skip(real);
+        let pos = if chars.is_some() { ghost } else { real };
+        let backup_iter = chars.is_some().then(|| {
+            let chars = buf_chars(&text.buf, real);
             let tags = text.tags.iter_at(tags_start);
 
             (real, chars, tags)
@@ -166,7 +169,7 @@ impl<'a> Iter<'a> {
 
         Self {
             text,
-            bytes: bytes.unwrap_or_else(|| text.buf.iter().skip(real)),
+            chars: chars.unwrap_or_else(|| buf_chars(&text.buf, real)),
             tags: tags.unwrap_or_else(|| text.tags.iter_at(tags_start)),
             pos,
             line: text.char_to_line(real),
@@ -225,7 +228,7 @@ impl<'a> Iter<'a> {
 
                 let iter = text.iter();
                 let pos = std::mem::replace(&mut self.pos, iter.pos);
-                let chars = std::mem::replace(&mut self.bytes, iter.bytes);
+                let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.backup_iter = Some((pos, chars, tags));
@@ -242,7 +245,7 @@ impl<'a> Iter<'a> {
                 if self.conceals == 0 {
                     self.pos = self.pos.max(pos);
                     self.line = self.text.char_to_line(pos);
-                    self.bytes = self.text.buf.iter().skip(self.pos);
+                    self.chars = buf_chars(&self.text.buf, self.pos);
                 }
 
                 ControlFlow::Continue(())
@@ -288,22 +291,22 @@ impl Iterator for Iter<'_> {
 
                     break Some(Item::new(pos, self.line, Part::from_raw(tag)));
                 }
-            } else if let Some(&byte) = self.bytes.next() {
+            } else if let Some(char) = self.chars.next() {
                 let prev_line = self.line;
                 let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
                     ExactPos::new(*real, self.ghost_shift + self.pos)
                 } else {
                     let ghost = self.ghost_shift;
                     self.ghost_shift = 0;
-                    self.line += (byte == b'\n') as usize;
+                    self.line += (char == '\n') as usize;
                     ExactPos::new(self.pos, ghost)
                 };
                 self.pos += 1;
 
-                break Some(Item::new(pos, prev_line, Part::Byte(byte)));
+                break Some(Item::new(pos, prev_line, Part::Char(char)));
             } else if let Some(backup) = self.backup_iter.take() {
                 self.ghost_shift += self.pos;
-                (self.pos, self.bytes, self.tags) = backup;
+                (self.pos, self.chars, self.tags) = backup;
             } else {
                 break None;
             }
@@ -318,13 +321,13 @@ impl Iterator for Iter<'_> {
 #[derive(Clone)]
 pub struct RevIter<'a> {
     text: &'a Text,
-    bytes: ReverseBytes<'a>,
+    chars: RevChars<'a>,
     tags: tags::ReverseTags<'a>,
     pos: usize,
     line: usize,
     conceals: usize,
 
-    backup_iter: Option<(usize, ReverseBytes<'a>, tags::ReverseTags<'a>)>,
+    backup_iter: Option<(usize, RevChars<'a>, tags::ReverseTags<'a>)>,
     ghosts_to_ignore: Vec<TextId>,
     ghost_shift: usize,
 
@@ -343,7 +346,7 @@ impl<'a> RevIter<'a> {
         let mut ghosts_to_ignore = Vec::new();
         let mut ghost_shift = 0;
 
-        let (bytes, tags) = {
+        let (chars, tags) = {
             let mut text_ids = text.tags.at(real).filter_map(|tag| match tag {
                 RawTag::GhostText(_, id) => Some(id),
                 _ => None,
@@ -368,20 +371,20 @@ impl<'a> RevIter<'a> {
                 ghost = ghost.min(text.len_chars());
                 let tags_start = ghost + text.tags.back_check_amount();
 
-                let bytes = text.buf.iter().rev().skip(text.buf.len() - ghost);
+                let chars = buf_chars_rev(&text.buf, ghost);
                 let tags = text.tags.rev_iter_at(tags_start);
 
-                (bytes, tags)
+                (chars, tags)
             })
             .unzip()
         };
 
         let tags_start = real + text.tags.back_check_amount();
 
-        let pos = if bytes.is_some() { ghost } else { real };
+        let pos = if chars.is_some() { ghost } else { real };
 
-        let backup_iter = bytes.is_some().then(|| {
-            let chars = text.buf.iter().rev().skip(text.buf.len() - real);
+        let backup_iter = chars.is_some().then(|| {
+            let chars = buf_chars_rev(&text.buf, real);
             let tags = text.tags.rev_iter_at(tags_start);
 
             (real, chars, tags)
@@ -389,7 +392,7 @@ impl<'a> RevIter<'a> {
 
         Self {
             text,
-            bytes: bytes.unwrap_or_else(|| text.buf.iter().rev().skip(text.buf.len() - real)),
+            chars: chars.unwrap_or_else(|| buf_chars_rev(&text.buf, real)),
             tags: tags.unwrap_or_else(|| text.tags.rev_iter_at(tags_start)),
             pos,
             line: text.char_to_line(real),
@@ -479,7 +482,7 @@ impl<'a> RevIter<'a> {
 
                 let iter = text.rev_iter();
                 let pos = std::mem::replace(&mut self.pos, iter.pos);
-                let chars = std::mem::replace(&mut self.bytes, iter.bytes);
+                let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
                 self.backup_iter = Some((pos, chars, tags));
@@ -494,7 +497,7 @@ impl<'a> RevIter<'a> {
                     self.pos = self.pos.min(pos);
                     self.line = self.text.char_to_line(self.pos);
                     let skip = self.text.buf.len() - self.pos;
-                    self.bytes = self.text.buf.iter().rev().skip(skip);
+                    self.chars = buf_chars_rev(&self.text.buf, skip);
                 }
 
                 ControlFlow::Continue(())
@@ -508,7 +511,7 @@ impl<'a> RevIter<'a> {
                 self.pos = pos.saturating_sub(*skip as usize);
                 self.line = self.text.char_to_line(self.pos);
                 let skip = self.text.buf.len() - self.pos;
-                self.bytes = self.text.buf.iter().rev().skip(skip);
+                self.chars = buf_chars_rev(&self.text.buf, skip);
                 self.tags = self.text.tags.rev_iter_at(self.pos);
                 self.conceals = 0;
 
@@ -540,24 +543,53 @@ impl Iterator for RevIter<'_> {
 
                     break Some(Item::new(pos, self.line, Part::from_raw(tag)));
                 }
-            } else if let Some(&byte) = self.bytes.next() {
+            } else if let Some(c) = self.chars.next() {
                 self.pos -= 1;
                 let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
                     ExactPos::new(*real, self.ghost_shift + self.pos)
                 } else {
                     let ghost = self.ghost_shift;
                     self.ghost_shift = usize::MAX;
-                    self.line -= (byte == b'\n') as usize;
+                    self.line -= (c == '\n') as usize;
                     ExactPos::new(self.pos, ghost)
                 };
 
-                break Some(Item::new(pos, self.line, Part::Byte(byte)));
+                break Some(Item::new(pos, self.line, Part::Char(c)));
             } else if let Some(last_iter) = self.backup_iter.take() {
-                (self.pos, self.bytes, self.tags) = last_iter;
+                (self.pos, self.chars, self.tags) = last_iter;
             } else {
                 break None;
             }
         }
+    }
+}
+
+fn buf_chars(buf: &GapBuffer<u8>, b: usize) -> FwdChars {
+    unsafe {
+        let (slice_0, slice_1) = buf.as_slices();
+        let slice_0 = std::str::from_utf8_unchecked(slice_0);
+        let slice_1 = std::str::from_utf8_unchecked(slice_1);
+
+        let skip_0 = b.min(slice_0.len());
+        let skip_1 = b - skip_0;
+
+        slice_0[skip_0..].chars().chain(slice_1[skip_1..].chars())
+    }
+}
+
+fn buf_chars_rev(buf: &GapBuffer<u8>, b: usize) -> RevChars {
+    unsafe {
+        let (slice_0, slice_1) = buf.as_slices();
+        let slice_0 = std::str::from_utf8_unchecked(slice_0);
+        let slice_1 = std::str::from_utf8_unchecked(slice_1);
+
+        let skip_0 = b.min(slice_0.len());
+        let skip_1 = b - skip_0;
+
+        slice_1[..skip_1]
+            .chars()
+            .rev()
+            .chain(slice_0[..skip_0].chars().rev())
     }
 }
 
@@ -596,5 +628,5 @@ enum Conceal<'a> {
     NotOnLineOf(&'a [Cursor]),
 }
 
-type ForwardBytes<'a> = Skip<Chain<slice::Iter<'a, u8>, slice::Iter<'a, u8>>>;
-type ReverseBytes<'a> = Skip<Rev<Chain<slice::Iter<'a, u8>, slice::Iter<'a, u8>>>>;
+type FwdChars<'a> = Chain<Chars<'a>, Chars<'a>>;
+type RevChars<'a> = Chain<Rev<Chars<'a>>, Rev<Chars<'a>>>;
