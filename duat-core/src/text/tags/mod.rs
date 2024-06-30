@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, fmt::Write, ops::Range};
+use std::{cell::RefCell, collections::HashMap, fmt::Write, ops::Range};
 
 use gapbuf::{gap_buffer, GapBuffer};
 
@@ -8,7 +8,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::Text;
-use crate::text::PANIC_LOG;
 
 mod ranges;
 mod types;
@@ -117,15 +116,16 @@ impl Tags {
         self.toggles.clear();
     }
 
-    pub fn insert(&mut self, pos: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
+    pub fn insert(&mut self, at: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
         let (raw_tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
 
-        self.insert_raw(pos, raw_tag);
+        self.insert_raw(at, raw_tag);
 
         toggle_id
     }
 
     pub fn insert_raw(&mut self, at: usize, tag: RawTag) {
+        self.last_known.take();
         let Some((b, n, skip)) = self.get_skip_at(at) else {
             assert_len!(at, self.len);
             self.buf.push_back(TagOrSkip::Tag(tag));
@@ -181,6 +181,7 @@ impl Tags {
         let Some((_, n, _)) = self.get_skip_at(at).filter(|&(b, ..)| b == at) else {
             return;
         };
+        self.last_known.take();
 
         let removed: Vec<_> = self
             .buf
@@ -271,11 +272,12 @@ impl Tags {
     /// * The index in the [`GapBuffer`] where it starts
     /// * Its length
     pub fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
+        let last_known = *self.last_known.borrow();
         let (mut b, n) = [
             Some((0, 0)),
             Some((self.len, self.buf.len())),
-            Some((self.cursor, self.buf.gap())),
-            self.last_known.take(),
+            // Some((self.cursor, self.buf.gap())),
+            // self.last_known.take(),
         ]
         .into_iter()
         .flatten()
@@ -318,10 +320,15 @@ impl Tags {
         };
 
         if matching_skip.is_none() && self.len > 100000 {
-            write!(PANIC_LOG.lock(), "fb {first_b}, fn {first_n}");
+            // write!(
+            //    PANIC_LOG.lock(),
+            //    "at {at}, fb {first_b}, fn {first_n}, lk
+            // {last_known:?}"
+            //);
         }
 
         matching_skip.map(|(i, skip)| {
+            // write!(PANIC_LOG.lock(), "wrote {:?} to lk\n", (b - skip, i));
             self.last_known.replace(Some((b - skip, i)));
             (b - skip, i, skip)
         })
@@ -363,9 +370,7 @@ impl Tags {
 
     pub fn rev_iter_at(&self, at: usize) -> ReverseTags {
         let at = at.min(self.len);
-        let (mut b, n, _) = self
-            .get_skip_at(at)
-            .unwrap_or_else(|| panic!("{at}, {}", PANIC_LOG.lock()));
+        let (mut b, n, _) = self.get_skip_at(at).unwrap_or_else(|| panic!("{at}"));
 
         let ranges = {
             let mut ranges: Vec<_> = self
@@ -842,9 +847,5 @@ mod ids {
 
 macro assert_len($at:expr, $len:expr) {
     let (at, len) = ($at, $len);
-    assert!(
-        at == len,
-        "byte out of bounds: the len is {len} but the byte is {at}\n{}",
-        PANIC_LOG.lock()
-    )
+    assert!(at == len, "byte {at} has to be length {len}, but isn't")
 }

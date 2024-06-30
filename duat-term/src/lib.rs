@@ -2,7 +2,6 @@
 #![feature(iter_collect_into, let_chains, generic_const_exprs)]
 
 use std::{
-    backtrace,
     fmt::Debug,
     io,
     sync::{
@@ -46,7 +45,6 @@ impl ui::Ui for Ui {
         FUNCTIONS.get_or_init(|| statics);
 
         std::panic::set_hook(Box::new(|hook| {
-            let backtrace = std::backtrace::Backtrace::force_capture().to_string();
             execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
@@ -56,7 +54,7 @@ impl ui::Ui for Ui {
             )
             .unwrap();
             terminal::disable_raw_mode().unwrap();
-            println!("{hook}\n\nBACKTRACE:\n\n{backtrace}")
+            println!("{hook}")
         }));
 
         Ui {

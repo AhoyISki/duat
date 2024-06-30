@@ -6,7 +6,7 @@ mod types;
 
 use std::{
     fmt::{Display, Write},
-    ops::Range,
+    ops::{Range, RangeBounds},
     path::Path,
     str::from_utf8_unchecked,
     sync::LazyLock,
@@ -30,7 +30,8 @@ use crate::{
     palette::{self, FormId},
 };
 
-static PANIC_LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
+// static PANIC_LOG: LazyLock<Mutex<String>> = LazyLock::new(||
+// Mutex::new(String::new()));
 
 /// The text in a given area.
 #[derive(Debug, Default, Clone, Eq)]
@@ -260,6 +261,18 @@ impl Text {
         }
     }
 
+    pub fn slices_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
+        let (s0, s1) = self.buf.as_slices();
+        let (start, end) = get_ends(range, self.len_bytes());
+
+        unsafe {
+            let r0 = start.min(s0.len())..end.min(s0.len());
+            let r1 = (start - s0.len()).min(s1.len())..(end - s0.len()).min(s1.len());
+
+            (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
+        }
+    }
+
     pub fn tags(&self) -> impl Iterator<Item = (usize, RawTag)> + '_ {
         self.tags.iter_at(0)
     }
@@ -304,6 +317,12 @@ impl Text {
 
     pub fn rev_iter_following(&self, pos: impl Positional) -> RevIter<'_> {
         RevIter::new_following(self, pos)
+    }
+
+    pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {
+        let (s0, s1) = self.buf.as_slices();
+
+        s0.iter().chain(s1.iter()).skip(b).cloned()
     }
 
     pub fn iter_chars_at(&self, c: usize) -> impl Iterator<Item = char> + '_ {

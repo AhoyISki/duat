@@ -19,6 +19,7 @@
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
+    str::from_utf8_unchecked,
 };
 
 use crate::{
@@ -51,14 +52,15 @@ impl Change {
             std::ops::Bound::Unbounded => 0,
         };
 
-        let taken_text = {
+        let taken_text = unsafe {
             let end = match range.end_bound() {
                 std::ops::Bound::Included(&pos) => pos + 1,
                 std::ops::Bound::Excluded(&pos) => pos,
-                std::ops::Bound::Unbounded => text.len_chars(),
+                std::ops::Bound::Unbounded => text.len_bytes(),
             };
 
-            text.iter_chars_at(start).take(end - start).collect()
+            let bytes: Box<_> = text.iter_bytes_at(start).take(end - start).collect();
+            std::str::from_boxed_utf8_unchecked(bytes).to_string()
         };
 
         Change {
@@ -76,11 +78,11 @@ impl Change {
 
             let start = self.start - older.start;
             let end = fixed_end - older.start;
-            let range = byte_range(start, end, &older.added_text);
-            older.added_text.replace_range(range, &self.added_text);
+            older.added_text.replace_range(start..end, &self.added_text);
 
-            let taken_remainder = self.taken_text.chars().skip(fixed_end - self.start);
-            older.taken_text.extend(taken_remainder);
+            older
+                .taken_text
+                .push_str(&self.taken_text[(fixed_end - self.start)..]);
 
             *self = older;
 
@@ -90,11 +92,10 @@ impl Change {
 
             let start = older.start - self.start;
             let end = fixed_end - self.start;
-            let range = byte_range(start, end, &older.taken_text);
-            self.taken_text.replace_range(range, &older.taken_text);
+            self.taken_text.replace_range(start..end, &older.taken_text);
 
-            let added_remainder = older.added_text.chars().skip(fixed_end - older.start);
-            self.added_text.extend(added_remainder);
+            self.added_text
+                .push_str(&older.added_text[fixed_end - older.start..]);
 
             Ok(())
         } else {
@@ -114,12 +115,12 @@ impl Change {
 
     /// Returns the end of the [Change], before it was applied.
     pub fn taken_end(&self) -> usize {
-        self.start + self.taken_text.chars().count()
+        self.start + self.taken_text.len()
     }
 
     /// Returns the end of the [Change], after it was applied.
     pub fn added_end(&self) -> usize {
-        self.start + self.added_text.chars().count()
+        self.start + self.added_text.len()
     }
 
     /// An ordering function that returns [Ordering::Equal] if
@@ -162,7 +163,7 @@ impl Moment {
     ///   its insertion.
     fn add_change(&mut self, mut change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let initial_len = self.changes.len();
-        let chars_diff = change.added_end() as isize - change.taken_end() as isize;
+        let diff = change.added_end() as isize - change.taken_end() as isize;
 
         let last_index = if let Some(index) = assoc_index.filter(|index| {
             self.changes
@@ -189,7 +190,7 @@ impl Moment {
             };
 
             for change in &mut self.changes[changes_after..] {
-                change.start = change.start.saturating_add_signed(chars_diff);
+                change.start = change.start.saturating_add_signed(diff);
             }
         } else {
             self.changes.insert(last_index, change);
@@ -335,15 +336,15 @@ impl History {
 
         cursors.clear();
 
-        let mut chars = 0;
+        let mut bytes = 0;
         for change in &moment.changes {
-            text.undo_change(change, chars);
+            text.undo_change(change, bytes);
 
-            let new_caret_ch = change.taken_end().saturating_add_signed(chars);
+            let new_caret_ch = change.taken_end().saturating_add_signed(bytes);
             let point = Point::new(new_caret_ch, text);
             cursors.insert(Cursor::new(point, text, area, cfg));
 
-            chars += change.taken_end() as isize - change.added_end() as isize;
+            bytes += change.taken_end() as isize - change.added_end() as isize;
         }
     }
 
@@ -408,15 +409,4 @@ impl History {
 fn intersects(old: &Change, new: &Change) -> bool {
     (old.start > new.start && new.taken_end() >= old.start)
         || (new.start > old.start && old.added_end() >= new.start)
-}
-
-fn byte_range(start: usize, end: usize, text: &str) -> Range<usize> {
-    let mut bytes = text.char_indices().map(|(pos, _)| pos);
-    let start_byte = bytes.nth(start).unwrap_or(text.len());
-
-    if end > start {
-        start_byte..bytes.nth(end - start - 1).unwrap_or(text.len())
-    } else {
-        start_byte..start_byte
-    }
 }
