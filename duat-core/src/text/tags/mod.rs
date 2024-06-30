@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Write, ops::Range};
+use std::{borrow::Borrow, cell::RefCell, collections::HashMap, fmt::Write, ops::Range};
 
 use gapbuf::{gap_buffer, GapBuffer};
 
@@ -119,7 +119,6 @@ impl Tags {
 
     pub fn insert(&mut self, pos: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
         let (raw_tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
-        write!(PANIC_LOG.lock(), "\npush {raw_tag:?} to {pos}\n");
 
         self.insert_raw(pos, raw_tag);
 
@@ -130,7 +129,6 @@ impl Tags {
         let Some((b, n, skip)) = self.get_skip_at(at) else {
             assert_len!(at, self.len);
             self.buf.push_back(TagOrSkip::Tag(tag));
-            write!(PANIC_LOG.lock(), "\ninsert {at}\n{:#?}", self.buf);
             return;
         };
 
@@ -139,7 +137,10 @@ impl Tags {
             self.buf.insert(n, TagOrSkip::Tag(tag))
         } else {
             self.buf.splice(n..=n, [
-                TagOrSkip::Skip(at - b),
+                TagOrSkip::Skip(
+                    at.checked_sub(b)
+                        .unwrap_or_else(|| panic!("{at}, {b}, {:?}", self.buf)),
+                ),
                 TagOrSkip::Tag(tag),
                 TagOrSkip::Skip(b + skip - at),
             ]);
@@ -151,7 +152,6 @@ impl Tags {
     }
 
     pub fn append(&mut self, other: Tags) {
-        write!(PANIC_LOG.lock(), "\nappend\n{:#?}", other);
         self.buf.extend(other.buf);
         self.texts.extend(other.texts);
         self.toggles.extend(other.toggles);
@@ -176,7 +176,6 @@ impl Tags {
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
     pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
-        write!(PANIC_LOG.lock(), "\nremove at {at}\n{:#?}", self.buf);
         // If we are removing in the middle of a skip, there is
         // nothing to do.
         let Some((_, n, _)) = self.get_skip_at(at).filter(|&(b, ..)| b == at) else {
@@ -204,7 +203,6 @@ impl Tags {
 
     pub fn transform_range(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
-        write!(PANIC_LOG.lock(), "\ntrans {}\n{:#?}", old.start, self.buf);
 
         // In case we're appending to the rope, a shortcut can be made.
         let Some((start_p, start_n, _)) = self.get_skip_at(old.start) else {
@@ -281,15 +279,21 @@ impl Tags {
         ]
         .into_iter()
         .flatten()
-        .min_by(|&(p0, _), &(p1, _)| p0.abs_diff(at).cmp(&p1.abs_diff(at)))
+        .min_by(|&(b0, _), &(b1, _)| b0.abs_diff(at).cmp(&b1.abs_diff(at)))
         .unwrap();
+
+        let (first_b, first_n) = (b, n);
 
         let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
         let matching_skip = if at >= b {
             let iter = self.buf.iter().enumerate().skip(n);
             let skips = iter.filter_map(skips).take_while(|(_, skip)| {
-                b += skip;
-                at >= b - skip
+                if at >= b {
+                    b += skip;
+                    true
+                } else {
+                    false
+                }
             });
 
             skips.last()
@@ -302,16 +306,24 @@ impl Tags {
 
             let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
             let skips = iter.filter_map(skips).take_while(|(_, skip)| {
-                b -= skip;
-                b - skip >= at
+                if b - skip >= at {
+                    b -= skip;
+                    true
+                } else {
+                    false
+                }
             });
 
             skips.last()
         };
 
+        if matching_skip.is_none() && self.len > 100000 {
+            write!(PANIC_LOG.lock(), "fb {first_b}, fn {first_n}");
+        }
+
         matching_skip.map(|(i, skip)| {
-            self.last_known.replace(Some((b, i)));
-            (b, i, skip)
+            self.last_known.replace(Some((b - skip, i)));
+            (b - skip, i, skip)
         })
     }
 
@@ -351,7 +363,9 @@ impl Tags {
 
     pub fn rev_iter_at(&self, at: usize) -> ReverseTags {
         let at = at.min(self.len);
-        let (mut b, n, _) = self.get_skip_at(at).unwrap();
+        let (mut b, n, _) = self
+            .get_skip_at(at)
+            .unwrap_or_else(|| panic!("{at}, {}", PANIC_LOG.lock()));
 
         let ranges = {
             let mut ranges: Vec<_> = self
@@ -482,7 +496,7 @@ impl Tags {
             }
         };
 
-        let has_tag = b == at && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
+        let has_tag = b == at && n > 0 && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
 
         let (r_skip, r_end) = {
             let mut total_skip = 0;
@@ -808,7 +822,8 @@ mod ids {
         fn range(self) -> Range<Marker>;
 
         fn contains(self, marker: Marker) -> bool {
-            self.range().contains(marker)
+            let range = self.range();
+            marker >= range.start && range.end > marker
         }
     }
 

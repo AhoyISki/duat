@@ -6,7 +6,6 @@ mod types;
 
 use std::{
     fmt::{Display, Write},
-    io::Read,
     ops::Range,
     path::Path,
     str::from_utf8_unchecked,
@@ -17,7 +16,7 @@ use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 
 pub(crate) use self::iter::Positional;
-use self::tags::{Markers, RawTag, TagOrSkip, Tags};
+use self::tags::{Markers, RawTag, Tags};
 pub use self::{
     cfg::*,
     iter::{ExactPos, Item, Iter, RevIter},
@@ -59,9 +58,9 @@ impl Text {
         }
     }
 
-    pub fn from_file<'a>(path: impl AsRef<Path>) -> Self {
-        let file = std::fs::File::open(path.as_ref()).expect("File failed to open");
-        let buf = Box::new(GapBuffer::from_iter(file.bytes().map_while(Result::ok)));
+    pub fn from_file(path: impl AsRef<Path>) -> Self {
+        let file = std::fs::read_to_string(path).expect("File failed to open");
+        let buf = Box::new(GapBuffer::from_iter(file.bytes()));
         let tags = Box::new(Tags::with_len(buf.len()));
 
         Self {
@@ -391,11 +390,6 @@ impl Builder {
     pub fn push_str(&mut self, display: impl Display) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
-        write!(
-            PANIC_LOG.lock(),
-            "\npush {}",
-            self.buffer.to_string().lines().collect::<String>()
-        );
         self.text.insert_str(self.text.len_bytes(), &self.buffer)
     }
 
