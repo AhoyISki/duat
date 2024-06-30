@@ -21,10 +21,6 @@ while_let_on_iterator = "allow"
 [dependencies]
 # Style handling
 crossterm = ">=0.26.0"
-
-# Utility
-ropey = ">=1.6.0"
-any-rope = ">=1.2.2"
 parking_lot = "0.12.1"
 gapbuf = "0.1.4"
 
