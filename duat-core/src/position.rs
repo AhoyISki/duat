@@ -6,37 +6,31 @@ use crate::{
 };
 
 // NOTE: `col` and `line` are line based, while `byte` is file based.
-/// A position in a `Vec<String>` (line and character address).
+/// A position in a [`Text`].
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
-    char: usize,
     byte: usize,
-    col: usize,
+    char: usize,
     line: usize,
+    col: usize,
 }
 
 impl Point {
-    pub fn new(char: usize, text: &Text) -> Self {
-        Point {
-            char,
-            byte: text.char_to_byte(char),
-            col: {
-                let line = text.char_to_line(char);
-                char - text.line_to_char(line)
-            },
-            line: text.char_to_line(char),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn from_coords(line: usize, col: usize, text: &Text) -> Self {
-        let char = text.get_line_to_char(line);
+    pub fn from_byte(b: usize, text: &Text) -> Self {}
+
+    pub fn from_coords(y: usize, x: usize, text: &Text) -> Self {
+        let char = text.get_line_to_char(y);
         let char = if let Some(char) = char {
-            char + col.min(text.iter_line_chars(line).count().saturating_sub(1))
+            char + x.min(text.iter_line_chars(y).count().saturating_sub(1))
         } else {
             text.len_chars()
         };
 
-        Point::new(char, text)
+        Point::new()
     }
 
     pub fn calibrate(&mut self, ch_diff: isize, text: &Text) {
@@ -50,20 +44,20 @@ impl Point {
         self.byte
     }
 
-    /// Returns the char index (relative to the beginning of the
+    /// Returns the char index (relative tow the beginning of the
     /// file). Indexed at 0.
     pub fn char(&self) -> usize {
         self.char
     }
 
-    /// Returns the column. Indexed at 0.
-    pub fn col(&self) -> usize {
-        self.col
-    }
-
     /// Returns the line. Indexed at 0.
     pub fn line(&self) -> usize {
         self.line
+    }
+
+    /// Returns the column. Indexed at 0.
+    pub fn col(&self) -> usize {
+        self.col
     }
 }
 
@@ -97,7 +91,7 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    /// Returns a new instance of `FileCursor`.
+    /// Returns a new instance of [`Cursor`].
     pub fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Cursor {
         Cursor {
             caret: point,
