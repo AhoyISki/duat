@@ -66,7 +66,7 @@ where
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each_cursor(|mover| {
                     let caret = mover.caret();
-                    anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(-1);
                 });
@@ -78,7 +78,7 @@ where
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
-                        mover.switch_ends()
+                        mover.swap_ends()
                     } else {
                         mover.unset_anchor();
                     }
@@ -88,7 +88,7 @@ where
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each_cursor(|mover| {
                     let caret = mover.caret();
-                    anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
                     mover.move_hor(1);
                 });
@@ -100,7 +100,7 @@ where
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
-                        mover.switch_ends()
+                        mover.swap_ends()
                     } else {
                         mover.unset_anchor();
                     }

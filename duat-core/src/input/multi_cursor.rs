@@ -1,10 +1,15 @@
-use std::{cmp::Ordering, ops::Range};
+use std::{
+    any::TypeId,
+    borrow::BorrowMut,
+    cmp::Ordering,
+    ops::{DerefMut, Range},
+};
 
 use crate::{
-    data::RwData,
+    data::{ReadWriteGuard, RwData},
     history::{Change, History},
-    position::{Cursor, Point},
-    text::{PrintCfg, Text},
+    position::Cursor,
+    text::{Point, PrintCfg, Text},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -103,9 +108,9 @@ where
 
     /// Edits on every cursor selection in the list.
     /// Edits on the nth cursor's selection.
-    pub fn edit_on_nth<F>(&mut self, mut f: F, index: usize)
+    pub fn edit_on_nth<F>(&mut self, mut edit: F, index: usize)
     where
-        F: FnMut(&mut Editor),
+        F: FnMut(&mut Editor<U, W>),
     {
         assert!(index < self.len_cursors(), "Index {index} out of bounds.");
         if self.clearing_needed {
@@ -116,54 +121,35 @@ where
         let mut edit_accum = EditAccum::default();
         let cursor = &mut self.cursors.list[index];
 
-        let was_file = self.widget.mutate_as::<File, ()>(|file| {
-            let (text, history) = file.mut_text_and_history();
-            let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
-            f(&mut editor);
-        });
-
         let mut widget = self.widget.write();
 
-        if was_file.is_none() {
-            let mut editor = Editor::new(cursor, widget.mut_text(), &mut edit_accum, None);
-            f(&mut editor);
-        }
+        edit(&mut Editor::<U, W>::new(
+            cursor,
+            widget.deref_mut(),
+            &self.area,
+            &mut edit_accum,
+        ));
+
+        let cfg = widget.print_cfg();
 
         for cursor in self.cursors.list.iter_mut().skip(index + 1) {
-            if let Some(assoc_index) = &mut cursor.assoc_index {
-                *assoc_index = assoc_index.saturating_add_signed(edit_accum.changes);
-            }
-
-            cursor.caret.calibrate(edit_accum.chars, widget.text());
-
-            if let Some(anchor) = cursor.anchor.as_mut() {
-                anchor.calibrate(edit_accum.chars, widget.text())
-            }
+            edit_accum.shift_cursor(cursor, widget.text(), self.area, cfg);
         }
 
         widget.update(self.area);
     }
 
-    pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor)) {
+    pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor<U, W>)) {
         self.clear_intersections();
         let mut edit_accum = EditAccum::default();
 
-        let was_file = self.widget.mutate_as::<File, ()>(|file| {
-            let (text, history) = file.mut_text_and_history();
-
-            for cursor in self.cursors.list.iter_mut() {
-                let mut editor = Editor::new(cursor, text, &mut edit_accum, Some(history));
-                f(&mut editor);
-            }
-        });
-
         let mut widget = self.widget.write();
 
-        if was_file.is_none() {
-            for cursor in self.cursors.list.iter_mut() {
-                let mut editor = Editor::new(cursor, widget.mut_text(), &mut edit_accum, None);
-                f(&mut editor);
-            }
+        for cursor in self.cursors.list.iter_mut() {
+            let cfg = widget.print_cfg();
+            edit_accum.shift_cursor(cursor, widget.text(), self.area, cfg);
+            let mut editor = Editor::new(cursor, widget.deref_mut(), &self.area, &mut edit_accum);
+            f(&mut editor);
         }
 
         widget.update(self.area);
@@ -197,11 +183,11 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor(&mut self, mut f: impl FnMut(&mut Mover<U::Area>)) {
+    pub fn move_each_cursor(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>)) {
         let mut widget = self.widget.write();
         for cursor in self.cursors.list.iter_mut() {
             let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
-            f(&mut mover);
+            mov(&mut mover);
         }
 
         // TODO: Figure out a better way to sort.
@@ -214,27 +200,27 @@ where
     }
 
     /// Edits on the main cursor's selection.
-    pub fn edit_on_main<F>(&mut self, f: F)
+    pub fn edit_on_main<F>(&mut self, edit: F)
     where
-        F: FnMut(&mut Editor),
+        F: FnMut(&mut Editor<U, W>),
     {
-        self.edit_on_nth(f, self.cursors.main);
+        self.edit_on_nth(edit, self.cursors.main);
     }
 
     /// Edits on the last cursor's selection.
-    pub fn edit_on_last<F>(&mut self, f: F)
+    pub fn edit_on_last<F>(&mut self, edit: F)
     where
-        F: FnMut(&mut Editor),
+        F: FnMut(&mut Editor<U, W>),
     {
         let len = self.len_cursors();
         if len > 0 {
-            self.edit_on_nth(f, len - 1);
+            self.edit_on_nth(edit, len - 1);
         }
     }
 
     /// Alters the main cursor's selection.
-    pub fn move_main(&mut self, f: impl FnMut(&mut Mover<U::Area>)) {
-        self.move_nth(f, self.cursors.main);
+    pub fn move_main(&mut self, mov: impl FnMut(&mut Mover<U::Area>)) {
+        self.move_nth(mov, self.cursors.main);
     }
 
     /// Alters the last cursor's selection.
@@ -300,15 +286,19 @@ where
     /// Removes all intersecting [`Cursor`]s from the list, keeping
     /// only the last from the bunch.
     fn clear_intersections(&mut self) {
-        let (mut start, mut end) = self.cursors.list[0].pos_range();
+        let widget = self.widget.read();
+        let text = widget.text();
+        let cfg = widget.print_cfg();
+
+        let (mut start, mut end) = self.cursors.list[0].point_range();
         let mut last_index = 0;
         let mut to_remove = Vec::new();
 
         for (index, cursor) in self.cursors.list.iter_mut().enumerate().skip(1) {
-            if try_merge_selections(cursor, start, end) {
+            if cursors_merged(cursor, text, self.area, cfg, start, end) {
                 to_remove.push(last_index);
             }
-            (start, end) = cursor.pos_range();
+            (start, end) = cursor.point_range();
             last_index = index;
         }
 
@@ -342,96 +332,102 @@ where
     }
 }
 
-/// An accumulator used specifically for editing with [`Editor<A>`]s.
-#[derive(Default)]
-pub struct EditAccum {
-    pub chars: isize,
-    pub changes: isize,
-}
-
 /// A cursor that can edit text in its selection, but can't move the
 /// selection in any way.
-pub struct Editor<'a, 'b, 'c, 'd> {
+pub struct Editor<'a, 'b, 'c, 'd, U, W>
+where
+    U: Ui,
+    W: ActiveWidget<U>,
+{
     cursor: &'a mut Cursor,
-    text: &'b mut Text,
-    edit_accum: &'c mut EditAccum,
-    history: Option<&'d mut History>,
+    widget: &'b mut W,
+    area: &'c U::Area,
+    edit_accum: &'d mut EditAccum,
 }
 
-impl<'a, 'b, 'c, 'd> Editor<'a, 'b, 'c, 'd> {
+impl<'a, 'b, 'c, 'd, U, W> Editor<'a, 'b, 'c, 'd, U, W>
+where
+    U: Ui,
+    W: ActiveWidget<U>,
+{
     /// Returns a new instance of `Editor`.
     fn new(
         cursor: &'a mut Cursor,
-        text: &'b mut Text,
-        edit_accum: &'c mut EditAccum,
-        history: Option<&'d mut History>,
+        widget: &'b mut W,
+        area: &'c U::Area,
+        edit_accum: &'d mut EditAccum,
     ) -> Self {
-        cursor
-            .assoc_index
-            .as_mut()
-            .map(|i| i.saturating_add_signed(edit_accum.changes));
-        cursor.caret.calibrate(edit_accum.chars, text);
-        if let Some(anchor) = cursor.anchor.as_mut() {
-            anchor.calibrate(edit_accum.chars, text)
-        }
-
         Self {
             cursor,
-            text,
+            widget,
+            area,
             edit_accum,
-            history,
         }
     }
 
-    /// Replaces the entire selection of the `TextCursor` with new
+    /// Replaces the entire selection of the [`Cursor`] with new
     /// text.
     pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(edit.to_string(), self.cursor.range(), self.text);
+        let change = Change::new(edit.to_string(), self.cursor.range(), self.widget.text());
         let (start, end) = (change.start, change.added_end());
 
         self.edit(change);
 
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor >= self.cursor.caret {
-                *anchor = Point::new(end, self.text);
-            } else {
-                self.cursor.caret = Point::new(end, self.text);
-            }
+        let text = self.widget.text();
+        let cfg = self.widget.print_cfg();
+        let end_p = text.point_at(end).unwrap();
+
+        if let Some(anchor) = self.cursor.anchor()
+            && anchor >= self.cursor.caret()
+        {
+            self.cursor.swap_ends();
+            self.cursor.move_to(end_p, text, self.area, cfg);
+            self.cursor.swap_ends();
         } else {
-            self.cursor.caret = Point::new(end, self.text);
+            self.cursor.move_to(end_p, text, self.area, cfg);
             if end != start {
-                self.cursor.anchor = Some(Point::new(start, self.text));
+                let start_p = text.point_at(start).unwrap();
+                self.cursor.set_anchor();
+                self.cursor.move_to(start_p, text, self.area, cfg);
+                self.cursor.swap_ends();
             }
         }
     }
 
     /// Inserts new text directly behind the caret.
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.caret.char()..self.cursor.caret.char();
-        let change = Change::new(edit.to_string(), range, self.text);
-        let (added_end, taken_end) = (change.added_end(), change.taken_end());
+        let range = self.cursor.byte()..self.cursor.byte();
+        let change = Change::new(edit.to_string(), range, self.widget.text());
+        let end = change.added_end();
 
         self.edit(change);
 
-        let ch_diff = added_end as isize - taken_end as isize;
+        let text = self.widget.text();
+        let cfg = self.widget.print_cfg();
+        let end_p = text.point_at(end).unwrap();
 
-        if let Some(anchor) = &mut self.cursor.anchor {
-            match (*anchor).cmp(&self.cursor.caret) {
-                Ordering::Less => self.cursor.caret.calibrate(ch_diff, self.text),
-                Ordering::Greater => anchor.calibrate(ch_diff, self.text),
-                Ordering::Equal => {}
-            }
+        if let Some(anchor) = self.cursor.anchor()
+            && anchor >= self.cursor.caret()
+        {
+            self.cursor.swap_ends();
+            self.cursor.move_to(end_p, text, self.area, cfg);
+            self.cursor.swap_ends();
+        } else {
+            self.cursor.move_to(end_p, text, self.area, cfg);
         }
     }
 
     /// Edits the file with a cursor.
     fn edit(&mut self, change: Change) {
-        self.text.apply_change(&change);
-        self.edit_accum.chars += change.added_end() as isize - change.taken_end() as isize;
+        self.widget.mut_text().apply_change(&change);
+        self.edit_accum.bytes += change.added_end() as isize - change.taken_end() as isize;
 
-        if let Some(history) = &mut self.history {
-            let (insertion_index, change_diff) =
-                history.add_change(change, self.cursor.assoc_index);
+        if TypeId::of::<W>() == TypeId::of::<File>() {
+            let file = unsafe { std::mem::transmute_copy::<&mut W, &mut File>(&self.widget) };
+
+            let (insertion_index, change_diff) = file
+                .history_mut()
+                .add_change(change, self.cursor.assoc_index);
             self.cursor.assoc_index = Some(insertion_index);
             self.edit_accum.changes += change_diff;
         }
@@ -447,7 +443,7 @@ where
     cursor: &'a mut Cursor,
     text: &'a Text,
     area: &'a A,
-    print_cfg: &'a PrintCfg,
+    cfg: &'a PrintCfg,
 }
 
 impl<'a, A> Mover<'a, A>
@@ -455,17 +451,12 @@ where
     A: Area,
 {
     /// Returns a new instance of `Mover`.
-    pub fn new(
-        cursor: &'a mut Cursor,
-        text: &'a Text,
-        area: &'a A,
-        print_cfg: &'a PrintCfg,
-    ) -> Self {
+    pub fn new(cursor: &'a mut Cursor, text: &'a Text, area: &'a A, cfg: &'a PrintCfg) -> Self {
         Self {
             cursor,
             text,
             area,
-            print_cfg,
+            cfg,
         }
     }
 
@@ -474,15 +465,13 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// horizontal movement.
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor
-            .move_ver(count, self.text, self.area, self.print_cfg);
+        self.cursor.move_ver(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor horizontally on the file. May also cause
     /// vertical movement.
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor
-            .move_hor(count, self.text, self.area, self.print_cfg);
+        self.cursor.move_hor(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a position in the file.
@@ -491,8 +480,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor
-            .move_to(point, self.text, self.area, self.print_cfg);
+        self.cursor.move_to(point, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a line and a column on the file.
@@ -501,24 +489,25 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let point = Point::from_coords(line, col, self.text);
-        self.cursor
-            .move_to(point, self.text, self.area, self.print_cfg);
+        todo!();
+        // let point = Point::from_coords(line, col, self.text);
+        // self.cursor
+        //     .move_to(point, self.text, self.area, self.print_cfg);
     }
 
     /// Returns the anchor of the `TextCursor`.
     pub fn anchor(&self) -> Option<Point> {
-        self.cursor.anchor
+        self.cursor.anchor()
     }
 
     /// Returns the anchor of the `TextCursor`.
     pub fn caret(&self) -> Point {
-        self.cursor.caret
+        self.cursor.caret()
     }
 
     /// Returns and takes the anchor of the `TextCursor`.
-    pub fn take_anchor(&mut self) -> Option<Point> {
-        self.cursor.anchor.take()
+    pub fn unset_anchor(&mut self) -> Option<Point> {
+        self.cursor.unset_anchor()
     }
 
     /// Sets the position of the anchor to be the same as the current
@@ -529,46 +518,60 @@ where
         self.cursor.set_anchor()
     }
 
-    /// Unsets the anchor.
-    ///
-    /// This is done so the cursor no longer has a valid selection.
-    pub fn unset_anchor(&mut self) {
-        self.cursor.unset_anchor()
-    }
-
     /// Wether or not the anchor is set.
     pub fn anchor_is_set(&mut self) -> bool {
-        self.cursor.anchor.is_some()
+        self.cursor.anchor().is_some()
     }
 
     /// Switches the caret and anchor of the `TextCursor`.
-    pub fn switch_ends(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            std::mem::swap(anchor, &mut self.cursor.caret);
-        }
+    pub fn swap_ends(&mut self) {
+        self.cursor.swap_ends();
     }
 
     /// Places the caret at the beginning of the selection.
     pub fn set_caret_on_start(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if *anchor < self.cursor.caret {
-                std::mem::swap(anchor, &mut self.cursor.caret);
-            }
+        if let Some(anchor) = self.cursor.anchor()
+            && self.cursor.caret() > anchor
+        {
+            self.cursor.swap_ends();
         }
     }
 
     /// Places the caret at the beginning of the selection.
     pub fn set_caret_on_end(&mut self) {
-        if let Some(anchor) = &mut self.cursor.anchor {
-            if self.cursor.caret < *anchor {
-                std::mem::swap(anchor, &mut self.cursor.caret);
-            }
+        if let Some(anchor) = self.cursor.anchor()
+            && anchor > self.cursor.caret()
+        {
+            self.cursor.swap_ends();
         }
     }
 }
 
-fn pos_intersects(left: (Point, Point), right: (Point, Point)) -> bool {
-    (left.0 > right.0 && right.1 > left.0) || (right.0 > left.0 && left.1 > right.0)
+/// An accumulator used specifically for editing with [`Editor<A>`]s.
+#[derive(Default)]
+pub struct EditAccum {
+    pub bytes: isize,
+    pub changes: isize,
+}
+
+impl EditAccum {
+    fn shift_cursor(&self, cursor: &mut Cursor, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        cursor
+            .assoc_index
+            .as_mut()
+            .map(|i| i.saturating_add_signed(self.changes));
+
+        cursor.move_hor(self.bytes, text, area, cfg);
+        if cursor.anchor().is_some() {
+            cursor.swap_ends();
+            cursor.move_hor(self.bytes, text, area, cfg);
+            cursor.swap_ends();
+        }
+    }
+}
+
+fn points_cross(lhs: (Point, Point), rhs: (Point, Point)) -> bool {
+    (lhs.0 > rhs.0 && rhs.1 > lhs.0) || (rhs.0 > lhs.0 && lhs.1 > rhs.0)
 }
 
 /// Compares the `left` and `right` [`Range`]s, returning an
@@ -583,26 +586,35 @@ fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
     }
 }
 
-fn try_merge_selections(cursor: &mut Cursor, start: Point, end: Point) -> bool {
-    if !pos_intersects(cursor.pos_range(), (start, end)) {
+fn cursors_merged(
+    cursor: &mut Cursor,
+    text: &Text,
+    area: &impl Area,
+    cfg: &PrintCfg,
+    start: Point,
+    end: Point,
+) -> bool {
+    if !points_cross(cursor.point_range(), (start, end)) {
         return false;
     }
-    let Some(anchor) = cursor.anchor.as_mut() else {
-        cursor.anchor = Some(start);
-        cursor.caret = cursor.caret.max(end);
+
+    let caret = cursor.caret();
+    let Some(anchor) = cursor.anchor() else {
+        cursor.move_to(start, text, area, cfg);
+        cursor.set_anchor();
+        cursor.move_to(caret.max(end), text, area, cfg);
         return true;
     };
 
-    if *anchor > cursor.caret {
-        *anchor = (*anchor).max(end);
-        cursor.caret = cursor.caret.min(start);
+    if anchor > caret {
+        cursor.move_to(anchor.max(end), text, area, cfg);
+        cursor.swap_ends();
+        cursor.move_to(caret.min(start), text, area, cfg);
     } else {
-        *anchor = (*anchor).min(start);
-        cursor.caret = cursor.caret.max(end);
+        cursor.move_to(anchor.min(end), text, area, cfg);
+        cursor.swap_ends();
+        cursor.move_to(caret.max(start), text, area, cfg);
     }
 
     true
 }
-
-pub struct NoHistory;
-pub struct WithHistory;
