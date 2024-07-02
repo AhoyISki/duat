@@ -10,8 +10,7 @@ use crossterm::{
 use duat_core::{
     data::RwData,
     palette::Painter,
-    position::Point,
-    text::{ExactPos, Item, IterCfg, Part, PrintCfg, Text, WrapMethod},
+    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
@@ -100,44 +99,26 @@ impl Area {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
+        let points = text.ghost_max_points_at(point.byte()).unwrap();
+        let after = text.points_after(points).unwrap();
+
         let mut info = self.print_info.borrow_mut();
 
-        let mut str = String::new();
-        let pos = ExactPos::at_cursor_char(point.char());
-        let mut iter = rev_print_iter(text.rev_iter_following(pos), self.width(), cfg)
-            .inspect(|(_, item)| {
-                item.part.as_char().inspect(|char| str.insert(0, *char));
-            })
-            .filter_map(|(caret, item)| caret.wrap.then_some(item))
-            .peekable();
-
-        let nl_on_point_was_concealed = iter
-            .peek()
-            .is_some_and(|item| item.line < point.line() && point.col() == 0);
-
-        let mut iter = iter.map(|item| item.pos);
+        let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
+            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {
-            cfg.scrolloff().y
+            cfg.scrolloff().y.saturating_sub(1)
         } else {
-            self.height().saturating_sub(cfg.scrolloff().y + 1)
+            self.height().saturating_sub(cfg.scrolloff().y + 2)
         };
 
-        let first = if nl_on_point_was_concealed {
-            let exact = ExactPos::at_cursor_char(point.char());
-            let skipped_nl = std::iter::once(exact);
-            skipped_nl
-                .chain(iter)
-                .nth(target)
-                .unwrap_or(ExactPos::default())
-        } else {
-            iter.nth(target).unwrap_or(ExactPos::default())
-        };
+        let first = iter.nth(target).unwrap_or((Point::default(), None));
 
-        if (info.last_main > point && first <= info.first)
-            || (info.last_main < point && first >= info.first)
+        if (info.last_main > point && first <= info.points)
+            || (info.last_main < point && first >= info.points)
         {
-            info.first = first;
+            info.points = first;
         }
     }
 
@@ -148,37 +129,31 @@ impl Area {
 
         let width = self.width();
         let max_x_shift = match cfg.wrap_method() {
-            WrapMethod::Width | WrapMethod::Word => return,
-            WrapMethod::Capped(cap) => {
-                if cap > width {
-                    cap - width
-                } else {
-                    return;
-                }
-            }
+            WrapMethod::Capped(cap) if cap > width => cap - width,
             WrapMethod::NoWrap => usize::MAX,
+            WrapMethod::Width | WrapMethod::Word | WrapMethod::Capped(_) => return,
         };
 
         let (line_start, start, end) = {
-            let inclusive_pos = point.char() + 1;
-            let mut iter = rev_print_iter(text.rev_iter_at(inclusive_pos), width, cfg).scan(
-                false,
-                |wrapped, (caret, item)| {
-                    let prev_wrapped = *wrapped;
-                    *wrapped = caret.wrap;
-                    (!prev_wrapped).then_some((caret, item))
-                },
-            );
+            let points = text.ghost_max_points_at(point.byte()).unwrap();
+            let after = text.points_after(points).unwrap();
 
-            let (pos, start, end) = iter
-                .find_map(|(Caret { x, len, .. }, Item { pos, part, .. })| {
-                    part.as_char().and(Some((pos, x, x + len)))
+            let mut iter = rev_print_iter(text.rev_iter_at(after), width, cfg);
+            let mut wrapped = false;
+
+            let (points, start, end) = iter
+                .find_map(|(Caret { x, len, wrap }, item)| {
+                    wrapped = wrap;
+                    item.part.as_char().and(Some((item.points(), x, x + len)))
                 })
-                .unwrap_or((ExactPos::default(), 0, 0));
+                .unwrap_or(((Point::default(), None), 0, 0));
 
-            let line_start = iter
-                .find_map(|(Caret { wrap, .. }, Item { pos, .. })| wrap.then_some(pos))
-                .unwrap_or(pos);
+            let line_start = if wrapped {
+                points
+            } else {
+                iter.find_map(|(Caret { wrap, .. }, item)| wrap.then_some(item.points()))
+                    .unwrap_or(points)
+            };
 
             (line_start, start, end)
         };
@@ -191,17 +166,16 @@ impl Area {
         } else if end < start {
             info.x_shift = info.x_shift.saturating_sub(min_dist - end);
         } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info)
-                .try_fold(
-                    (0, 0),
-                    |(right_end, some_count), (Caret { x, len, wrap }, _)| {
-                        let some_count = some_count + wrap as usize;
-                        match some_count < 2 {
-                            true => std::ops::ControlFlow::Continue((x + len, some_count)),
-                            false => std::ops::ControlFlow::Break(right_end),
-                        }
-                    },
-                );
+            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info).try_fold(
+                (0, 0),
+                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
+                    let some_count = some_count + wrap as usize;
+                    match some_count < 2 {
+                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
+                        false => std::ops::ControlFlow::Break(right_end),
+                    }
+                },
+            );
 
             if let std::ops::ControlFlow::Break(line_width) = line_width
                 && line_width <= width
@@ -236,7 +210,7 @@ impl Area {
         let mut lines = sender.lines();
 
         let (iter, cfg) = {
-            let line_start = text.visual_line_start(info.first);
+            let line_start = text.visual_line_start(info.points);
             let cfg = IterCfg::new(cfg).outsource_lfs();
             (text.iter_at(line_start), cfg)
         };
@@ -281,8 +255,8 @@ impl ui::Area for Area {
         self.print_info.borrow_mut().last_main = point;
     }
 
-    fn first_char(&self) -> usize {
-        self.print_info.borrow().first.real()
+    fn top_left(&self) -> (Point, Option<Point>) {
+        self.print_info.borrow().points
     }
 
     fn set_as_active(&self) {
@@ -394,7 +368,7 @@ impl ui::Area for Area {
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = self.print_info.borrow();
-        let line_start = text.visual_line_start(info.first);
+        let line_start = text.visual_line_start(info.points);
         let iter = text.iter_at(line_start);
 
         print_iter(iter, self.width(), cfg, *info)
@@ -419,7 +393,7 @@ unsafe impl Sync for Area {}
 pub struct PrintInfo {
     /// The index of the first [`char`] that should be printed on the
     /// screen.
-    first: ExactPos,
+    points: (Point, Option<Point>),
     /// How shifted the text is to the left.
     x_shift: usize,
     /// The last position of the main cursor.

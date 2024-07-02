@@ -1,5 +1,4 @@
 use std::{
-    borrow::Borrow,
     iter::{Chain, Rev},
     str::Chars,
 };
@@ -39,6 +38,14 @@ impl Item {
 
     pub fn line(&self) -> usize {
         self.real.line()
+    }
+
+    pub fn points(&self) -> (Point, Option<Point>) {
+        (self.real, self.ghost)
+    }
+
+    pub fn lines(&self) -> (usize, Option<usize>) {
+        (self.real.line(), self.ghost.map(|g| g.line()))
     }
 
     #[inline]
@@ -248,7 +255,12 @@ impl<'a> RevIter<'a> {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.max_point());
 
-        let ghost = ghost.map(|ghost| (ghost, text.tags.ghosts_total_point_at(real.byte()).byte()));
+        let ghost = ghost.map(|ghost| {
+            (
+                ghost,
+                text.tags.ghosts_total_point_at(real.byte()).unwrap().byte(),
+            )
+        });
 
         Self {
             text,
@@ -262,36 +274,6 @@ impl<'a> RevIter<'a> {
 
             print_ghosts: true,
             _conceals: Conceal::All,
-        }
-    }
-
-    pub(super) fn new_following(text: &'a Text, tp: impl TwoPoints) -> Self {
-        let (real, ghost) = tp.to_points();
-        let real = real.min(text.max_point());
-
-        let ghost = ghost.and_then(|ghost| {
-            let mut dist = 0;
-            text.tags.iter_only_at(real.byte()).find_map(|tag| {
-                tag.as_ghost_text().and_then(|(_, id)| {
-                    let text = text.tags.texts.get(&id).unwrap();
-                    if ghost.byte() >= dist + text.len_bytes() {
-                        dist += text.len_bytes();
-                        None
-                    } else {
-                        let local_ghost = text.point_at(ghost.byte() - dist).unwrap();
-                        let beginning = ghost - local_ghost;
-                        let once_fwd = text.point_at(local_ghost.byte() + 1).unwrap();
-                        Some(beginning + once_fwd)
-                    }
-                })
-            })
-        });
-
-        if ghost.is_some() {
-            Self::new_at(text, (real, ghost))
-        } else {
-            let real = text.point_at(real.byte() + 1).unwrap_or(text.max_point());
-            Self::new_at(text, real)
         }
     }
 
@@ -316,7 +298,7 @@ impl<'a> RevIter<'a> {
                 if b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.tags.texts.get(&id).unwrap();
+                let text = self.text.tags.texts.get(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((total, dist)) = &mut self.ghost {
                     if *dist - text.len_bytes() >= total.byte() {
@@ -328,7 +310,7 @@ impl<'a> RevIter<'a> {
                 } else {
                     let this = text.max_point();
                     let total = text.tags.ghosts_total_point_at(self.point.byte());
-                    (this, total)
+                    (this, total.unwrap())
                 };
 
                 let iter = text.rev_iter_at(this_ghost);
@@ -434,6 +416,7 @@ fn buf_chars_rev(buf: &GapBuffer<u8>, b: usize) -> RevChars {
 }
 
 // To be rethought
+#[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 enum Conceal<'a> {
     #[default]

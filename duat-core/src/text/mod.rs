@@ -82,13 +82,8 @@ impl Text {
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
 
-        let removed = unsafe {
-            String::from_utf8_unchecked(
-                self.buf
-                    .splice(old.clone(), edit.as_bytes().iter().cloned())
-                    .collect::<Vec<_>>(),
-            )
-        };
+        self.buf
+            .splice(old.clone(), edit.as_bytes().iter().cloned());
 
         if edit.len() != old.clone().count() {
             let new_end = old.start + edit.len();
@@ -131,16 +126,20 @@ impl Text {
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
 
-            let pos_list = [
+            let b_list = [
                 (start, start_tag),
                 (end, end_tag),
-                (cursor.caret().char(), caret_tag),
+                (cursor.caret().byte(), caret_tag),
             ];
 
             let no_selection = if start == end { 2 } else { 0 };
 
-            for (pos, tag) in pos_list.into_iter().skip(no_selection) {
-                self.tags.insert(pos, tag, self.marker);
+            for (b, tag) in b_list.into_iter().skip(no_selection) {
+                if let Some(point) = self.point_at(b) {
+                    let record = (point.byte(), point.char(), point.line());
+                    self.records.insert(record);
+                    self.tags.insert(b, tag, self.marker);
+                }
             }
         }
     }
@@ -164,7 +163,7 @@ impl Text {
 
     pub fn slices(&self) -> (&'_ str, &'_ str) {
         let (s0, s1) = self.buf.as_slices();
-        unsafe { (from_utf8_unchecked(&s0), from_utf8_unchecked(&s1)) }
+        unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) }
     }
 
     pub fn slices_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
@@ -228,6 +227,27 @@ impl Text {
         found.map(|(b, c, char)| Point::from_coords(b, c, l, char))
     }
 
+    #[inline(always)]
+    pub fn ghost_max_points_at(&self, at: usize) -> Option<(Point, Option<Point>)> {
+        self.point_at(at)
+            .map(|point| (point, self.tags.ghosts_total_point_at(point.byte())))
+    }
+
+    /// Points visually after the [`TwoPoints`]
+    ///
+    /// If the [`TwoPoints`] in question is concealed, treats the
+    /// next visible character as the first character, and returns
+    /// the points of the next visible character.
+    ///
+    /// This method is useful if you want to iterater reversibly
+    /// right after a certain point, thus including the character
+    /// of said point.
+    pub fn points_after(&self, tp: impl TwoPoints) -> Option<(Point, Option<Point>)> {
+        self.iter_at(tp)
+            .filter_map(|item| item.part.as_char().map(|_| item.points()))
+            .nth(1)
+    }
+
     pub fn len_bytes(&self) -> usize {
         self.buf.len()
     }
@@ -289,10 +309,6 @@ impl Text {
 
     pub fn rev_iter_at(&self, p: impl TwoPoints) -> RevIter<'_> {
         RevIter::new_at(self, p)
-    }
-
-    pub fn rev_iter_following(&self, p: impl TwoPoints) -> RevIter<'_> {
-        RevIter::new_following(self, p)
     }
 
     pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {

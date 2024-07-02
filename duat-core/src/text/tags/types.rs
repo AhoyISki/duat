@@ -6,7 +6,10 @@ use super::{
     ids::{TextId, ToggleId},
     Marker,
 };
-use crate::{palette::FormId, text::Point, text::Text};
+use crate::{
+    palette::FormId,
+    text::{Point, Text},
+};
 
 pub enum Tag {
     // Implemented:
@@ -246,13 +249,6 @@ impl RawTag {
             Self::Concealed(_) => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
-        }
-    }
-
-    pub(in crate::text) fn as_ghost_text(self) -> Option<(Marker, TextId)> {
-        match self {
-            Self::GhostText(marker, id) => Some((marker, id)),
-            _ => None,
         }
     }
 }

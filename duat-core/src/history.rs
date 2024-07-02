@@ -24,7 +24,7 @@ use std::{
 use crate::{
     input::Cursors,
     position::Cursor,
-    text::{Point, PrintCfg, Text},
+    text::{PrintCfg, Text},
     ui::Area,
 };
 

@@ -1,13 +1,12 @@
 use std::{
     any::TypeId,
-    borrow::BorrowMut,
     cmp::Ordering,
     ops::{DerefMut, Range},
 };
 
 use crate::{
-    data::{ReadWriteGuard, RwData},
-    history::{Change, History},
+    data::RwData,
+    history::Change,
     position::Cursor,
     text::{Point, PrintCfg, Text},
     ui::{Area, Ui},
@@ -126,7 +125,7 @@ where
         edit(&mut Editor::<U, W>::new(
             cursor,
             widget.deref_mut(),
-            &self.area,
+            self.area,
             &mut edit_accum,
         ));
 
@@ -148,7 +147,7 @@ where
         for cursor in self.cursors.list.iter_mut() {
             let cfg = widget.print_cfg();
             edit_accum.shift_cursor(cursor, widget.text(), self.area, cfg);
-            let mut editor = Editor::new(cursor, widget.deref_mut(), &self.area, &mut edit_accum);
+            let mut editor = Editor::new(cursor, widget.deref_mut(), self.area, &mut edit_accum);
             f(&mut editor);
         }
 
@@ -488,7 +487,7 @@ where
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to_coords(&mut self, line: usize, col: usize) {
+    pub fn move_to_coords(&mut self, _line: usize, _col: usize) {
         todo!();
         // let point = Point::from_coords(line, col, self.text);
         // self.cursor

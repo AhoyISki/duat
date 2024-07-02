@@ -19,7 +19,7 @@ pub fn main_char(input: &dyn InputMethod<Ui>) -> usize {
 
 /// The col of the main cursor in the file. Indexed at 1.
 pub fn main_col(input: &dyn InputMethod<Ui>) -> usize {
-    main_cursor(input).col()
+    main_cursor(input).vcol()
 }
 
 /// The line of the main cursor in the file. Indexed at 1.
@@ -32,7 +32,7 @@ pub fn main_line(input: &dyn InputMethod<Ui>) -> usize {
 pub fn main_fmt(file: &File, input: &dyn InputMethod<Ui>) -> Text {
     let cursor = main_cursor(input);
     text!(
-        [Coord] { cursor.col() } [Separator] ":"
+        [Coord] { cursor.vcol() } [Separator] ":"
         [Coord] { cursor.line() } [Separator] "/"
         [Coord] { file.len_lines() }
     )

@@ -126,34 +126,22 @@ where
 fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mode: &mut Mode) {
     match key {
         key!(KeyCode::Char(char)) => {
-            editor.edit_on_each_cursor(|editor| {
-                editor.insert(char);
-            });
-            editor.move_each_cursor(|mover| {
-                mover.move_hor(1);
-            });
+            editor.edit_on_each_cursor(|editor| editor.insert(char));
+            editor.move_each_cursor(|mover| mover.move_hor(1));
         }
         key!(KeyCode::Char(char), KeyModifiers::SHIFT) => {
-            editor.edit_on_each_cursor(|editor| {
-                editor.insert(char);
-            });
-            editor.move_each_cursor(|mover| {
-                mover.move_hor(1);
-            });
+            editor.edit_on_each_cursor(|editor| editor.insert(char));
+            editor.move_each_cursor(|mover| mover.move_hor(1));
         }
         key!(KeyCode::Enter) => {
-            editor.edit_on_each_cursor(|editor| {
-                editor.insert('\n');
-            });
-            editor.move_each_cursor(|mover| {
-                mover.move_hor(1);
-            });
+            editor.edit_on_each_cursor(|editor| editor.insert('\n'));
+            editor.move_each_cursor(|mover| mover.move_hor(1));
         }
         key!(KeyCode::Backspace) => {
             let mut anchors = Vec::with_capacity(editor.len_cursors());
             editor.move_each_cursor(|mover| {
                 let caret = mover.caret();
-                anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                 mover.set_anchor();
                 mover.move_hor(-1);
             });
@@ -165,7 +153,7 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
                 if let Some(Some((anchor, _))) = anchors.next() {
                     mover.set_anchor();
                     mover.move_to(anchor);
-                    mover.switch_ends()
+                    mover.swap_ends()
                 } else {
                     mover.unset_anchor();
                 }
@@ -175,7 +163,7 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
             let mut anchors = Vec::with_capacity(editor.len_cursors());
             editor.move_each_cursor(|mover| {
                 let caret = mover.caret();
-                anchors.push(mover.take_anchor().map(|anchor| (anchor, anchor >= caret)));
+                anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                 mover.set_anchor();
                 mover.move_hor(1);
             });
@@ -187,23 +175,23 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
                 if let Some(Some((anchor, _))) = anchors.next() {
                     mover.set_anchor();
                     mover.move_to(anchor);
-                    mover.switch_ends()
+                    mover.swap_ends()
                 } else {
                     mover.unset_anchor();
                 }
             });
         }
         key!(KeyCode::Left, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Left, 1);
+            select_and_move_each(editor, Side::Left, 1);
         }
         key!(KeyCode::Right, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Right, 1);
+            select_and_move_each(editor, Side::Right, 1);
         }
         key!(KeyCode::Up, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Top, 1);
+            select_and_move_each(editor, Side::Top, 1);
         }
         key!(KeyCode::Down, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Bottom, 1);
+            select_and_move_each(editor, Side::Bottom, 1);
         }
         key!(KeyCode::Left) => move_each(editor, Side::Left, 1),
         key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
@@ -228,16 +216,16 @@ fn match_normal<U: Ui>(
     match key {
         ////////// Movement keys that retain or create selections.
         key!(KeyCode::Char('H') | Left, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Left, 1);
+            select_and_move_each(editor, Side::Left, 1);
         }
         key!(KeyCode::Char('J') | Down, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Bottom, 1);
+            select_and_move_each(editor, Side::Bottom, 1);
         }
         key!(KeyCode::Char('K') | Up, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Top, 1);
+            select_and_move_each(editor, Side::Top, 1);
         }
         key!(KeyCode::Char('L') | Right, KeyModifiers::SHIFT) => {
-            move_each_and_select(editor, Side::Right, 1);
+            select_and_move_each(editor, Side::Right, 1);
         }
 
         ////////// Movement keys that get rid of selections.
@@ -256,7 +244,7 @@ fn match_normal<U: Ui>(
 
         ////////// Insertion keys.
         key!(KeyCode::Char('i')) => {
-            editor.move_each_cursor(|mover| mover.switch_ends());
+            editor.move_each_cursor(|mover| mover.swap_ends());
             *mode = Mode::Insert;
             hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
         }
@@ -336,7 +324,7 @@ fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amo
     });
 }
 
-fn move_each_and_select<U: Ui>(
+fn select_and_move_each<U: Ui>(
     mut editor: MultiCursorEditor<File, U>,
     direction: Side,
     amount: usize,

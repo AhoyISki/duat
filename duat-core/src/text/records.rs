@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, cell::RefCell, fmt::Debug};
+use std::fmt::Debug;
 
 const LEN_PER_RECORD: usize = 150;
 
@@ -39,113 +39,101 @@ impl Record for (usize, usize, usize) {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Records<T>
+pub struct Records<R>
 where
-    T: Default + Debug + Clone + Copy + Eq + Ord + Record,
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
 {
-    last: RefCell<T>,
-    max: RefCell<T>,
-    stored: RefCell<Vec<T>>,
+    last: R,
+    max: R,
+    stored: Vec<R>,
 }
 
-impl<T> Records<T>
+impl<R> Records<R>
 where
-    T: Default + Debug + Clone + Copy + Eq + Ord + Record,
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
 {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn with_max(max: T) -> Self {
+    pub fn with_max(max: R) -> Self {
         Self {
-            max: RefCell::new(max),
+            max,
             ..Self::default()
         }
     }
 
-    pub fn insert(&self, new: T) {
-        let mut stored = self.stored.borrow_mut();
-
-        let Err(i) = stored.binary_search(&new) else {
+    pub fn insert(&mut self, new: R) {
+        let Err(i) = self.stored.binary_search(&new) else {
             return;
         };
-        let prev = i.checked_sub(1).and_then(|i| stored.get(i));
-        let next = stored.get(i + 1);
+        let prev = i.checked_sub(1).and_then(|i| self.stored.get(i));
+        let next = self.stored.get(i + 1);
 
         if [prev, next]
             .iter()
             .flatten()
-            .all(|t| t.bytes().abs_diff(new.bytes()) >= LEN_PER_RECORD)
+            .all(|r| r.bytes().abs_diff(new.bytes()) >= LEN_PER_RECORD)
         {
-            stored.insert(i, new)
+            self.stored.insert(i, new)
         }
 
-        self.last.replace(new);
+        self.last = new;
     }
 
-    pub fn transform(&self, start: T, old_end: T, new_end: T) {
-        let mut stored = self.stored.borrow_mut();
+    pub fn transform(&mut self, start: R, old_end: R, new_end: R) {
+        let (Ok(start_i) | Err(start_i)) = self.stored.binary_search(&start);
+        let (Ok(old_end_i) | Err(old_end_i)) = self.stored.binary_search(&old_end);
 
-        let (Ok(start_i) | Err(start_i)) = stored.binary_search(&start);
-        let (Ok(old_end_i) | Err(old_end_i)) = stored.binary_search(&old_end);
+        self.stored.splice(start_i..old_end_i, []);
 
-        stored.splice(start_i..old_end_i, []);
-
-        for t in &mut stored[old_end_i..] {
-            *t = t.sub(old_end).add(old_end);
+        for r in &mut self.stored[old_end_i..] {
+            *r = r.sub(old_end).add(old_end);
         }
 
-        self.last.replace(new_end);
-        self.max.replace_with(|t| t.sub(old_end).add(old_end));
+        self.last = new_end;
+        self.max = self.max.sub(old_end).add(new_end);
     }
 
-    pub fn append(&self, t: T) {
-        self.transform(*self.max.borrow(), T::default(), t)
+    pub fn append(&mut self, r: R) {
+        self.transform(self.max, R::default(), r)
     }
 
-    pub fn extend(&self, other: Records<T>) {
-        let max = *self.max.borrow();
-
-        for r in other.stored.borrow_mut().iter_mut() {
-            *r = r.add(max);
+    pub fn extend(&mut self, mut other: Records<R>) {
+        for r in other.stored.iter_mut() {
+            *r = r.add(self.max);
         }
 
-        self.stored.borrow_mut().extend(other.stored.take());
-        self.max.replace(max.add(*other.max.borrow()));
+        self.stored.extend(other.stored);
+        self.max = self.max.add(other.max);
     }
 
-    pub fn clear(&self) {
-        self.last.take();
-        self.max.take();
-        self.stored.take();
+    pub fn clear(&mut self) {
+        self.last = R::default();
+        self.max = R::default();
+        self.stored = Vec::default();
     }
 
-    pub fn max(&self) -> T {
-        *self.max.borrow()
+    pub fn max(&self) -> R {
+        self.max
     }
 
-    pub fn closest_to(&self, b: usize) -> T {
-        let stored = self.stored.take();
-
-        let i = match stored.binary_search_by(|t| t.bytes().cmp(&b)) {
+    pub fn closest_to(&self, b: usize) -> R {
+        let i = match self.stored.binary_search_by(|r| r.bytes().cmp(&b)) {
             Err(i) => i,
-            Ok(i) => return stored[i],
+            Ok(i) => return self.stored[i],
         };
 
         let canditates = {
-            let prev = i.checked_sub(1).and_then(|i| stored.get(i)).cloned();
-            let next = stored.get(i + 1).cloned();
-            let max = Some(*self.max.borrow());
+            let prev = i.checked_sub(1).and_then(|i| self.stored.get(i)).cloned();
+            let next = self.stored.get(i + 1).cloned();
+            let max = Some(self.max);
 
-            [Some(T::default()), prev, next, max].into_iter().flatten()
+            [Some(R::default()), prev, next, max].into_iter().flatten()
         };
 
-        let closest = canditates
+        canditates
             .min_by(|lhs, rhs| lhs.bytes().abs_diff(b).cmp(&rhs.bytes().abs_diff(b)))
-            .unwrap();
-
-        self.stored.replace(stored);
-
-        closest
+            .unwrap()
     }
 }

@@ -1,4 +1,4 @@
-#![feature(decl_macro, lazy_cell, generic_const_exprs)]
+#![feature(decl_macro, generic_const_exprs)]
 #![allow(incomplete_features, dead_code)]
 
 use duat_core::{data::RwData, hooks::Hookable, widgets::File};

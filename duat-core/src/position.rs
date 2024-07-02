@@ -246,7 +246,8 @@ impl VPoint {
 }
 
 fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> usize {
-    let iter = text.rev_iter_following(point);
+    let after = text.points_after(point).unwrap();
+    let iter = text.rev_iter_at(after);
 
     area.rev_print_iter(iter, cfg)
         .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))

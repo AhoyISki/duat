@@ -351,12 +351,13 @@ impl Tags {
             .flat_map(|b| self.buf.iter().skip(b).map_while(TagOrSkip::as_tag))
     }
 
-    pub fn ghosts_total_point_at(&self, at: usize) -> Point {
-        self.iter_only_at(at)
-            .fold(Point::default(), |p, tag| match tag {
-                RawTag::GhostText(_, id) => p + self.texts.get(&id).unwrap().max_point(),
-                _ => p,
-            })
+    pub fn ghosts_total_point_at(&self, at: usize) -> Option<Point> {
+        self.iter_only_at(at).fold(None, |p, tag| match tag {
+            RawTag::GhostText(_, id) => Some(p.map_or(Point::default(), |p| {
+                p + self.texts.get(&id).unwrap().max_point()
+            })),
+            _ => p,
+        })
     }
 
     /// Returns information about the skip in the byte `at`
@@ -401,10 +402,7 @@ impl Tags {
             skips.last()
         };
 
-        found.map(|(i, skip)| {
-            self.records.insert((i, b - skip));
-            (i, b - skip, skip)
-        })
+        found.map(|(i, skip)| (i, b - skip, skip))
     }
 
     fn process_ranges_containing(&mut self, range: Range<usize>) {

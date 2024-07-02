@@ -1,4 +1,4 @@
-use std::{any::Any, ascii::AsciiExt, marker::PhantomData};
+use std::marker::PhantomData;
 
 use duat_core::{
     text::{Item, IterCfg, Part, WrapMethod},
@@ -118,9 +118,10 @@ fn attach_caret(
     let mut old_x = *x;
     *x += len;
 
-    let width_wrap = (*x > width || (*x == width && len == 0)) && !cfg.wrap_method().is_no_wrap();
+    let width_wrap = *x > width || (*x == width && len == 0);
     let nl_wrap = *needs_to_wrap && prev_c.is_some();
-    if nl_wrap || width_wrap {
+    let has_wrapped = nl_wrap || (width_wrap && !cfg.wrap_method().is_no_wrap());
+    if has_wrapped {
         old_x = indent;
         *x = indent + len;
         *needs_to_wrap = false;
@@ -134,7 +135,7 @@ fn attach_caret(
     }
 
     item.part = processed_part;
-    Some((Caret::new(old_x, len, nl_wrap || width_wrap), item))
+    Some((Caret::new(old_x, len, has_wrapped), item))
 }
 
 #[inline(always)]
@@ -197,14 +198,13 @@ pub fn print_iter<'a>(
     cfg: IterCfg<'a>,
     info: PrintInfo,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let width = if let WrapMethod::Capped(cap) = cfg.wrap_method() {
-        cap
-    } else {
-        width
+    let width = match cfg.wrap_method() {
+        WrapMethod::Capped(cap) => cap,
+        _ => width,
     };
 
     let indents = indents(text, width, cfg)
-        .filter(move |(_, item)| item.pos >= info.first || item.part.is_tag());
+        .filter(move |(_, item)| item.points() >= info.points || item.part.is_tag());
 
     match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {

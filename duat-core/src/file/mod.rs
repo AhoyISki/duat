@@ -145,7 +145,7 @@ where
 {
     type Widget = File;
 
-    fn build(self, _globals: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
         let (widget, checker) = self.build();
         (widget, checker, specs)
@@ -340,7 +340,7 @@ impl<U> PassiveWidget<U> for File
 where
     U: Ui,
 {
-    fn build(_globals: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
+    fn build(_context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
     where
         Self: Sized,
     {

@@ -478,9 +478,7 @@ impl Rects {
         axis: Axis,
         printer: &mut Printer,
     ) -> Option<(Constraint, Axis)> {
-        let Some((pos, parent)) = self.get_parent_mut(id) else {
-            return None;
-        };
+        let (pos, parent) = self.get_parent_mut(id)?;
 
         let parent_len = parent.len(axis);
         let Kind::Middle { children, .. } = &mut parent.kind else {

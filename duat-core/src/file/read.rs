@@ -9,9 +9,9 @@ use crate::{
 };
 
 pub trait Reader {
-    fn read_change(&mut self, file: &mut File, change: Change);
+    fn _read_change(&mut self, file: &mut File, change: Change);
 
-    fn read_click(&mut self, file: &mut File, point: Point);
+    fn _read_click(&mut self, file: &mut File, point: Point);
 }
 
 pub struct Searcher<'a> {
@@ -43,7 +43,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        (i == pat.length()).then(|| (self.point, end))
+        (i == pat.length()).then_some((self.point, end))
     }
 }
 
@@ -74,7 +74,7 @@ impl<'a> RevSearcher<'a> {
             }
         }
 
-        (i == 0).then(|| (self.point, start))
+        (i == 0).then_some((self.point, start))
     }
 }
 
@@ -133,7 +133,7 @@ impl Pattern for char {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_char().is_some_and(|cmp| *self == cmp as char)
+        part.as_char().is_some_and(|cmp| *self == cmp)
     }
 }
 
@@ -143,8 +143,7 @@ impl<const N: usize> Pattern for [char; N] {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_char()
-            .is_some_and(|cmp| self.contains(&(cmp as char)))
+        part.as_char().is_some_and(|cmp| self.contains(&cmp))
     }
 }
 
@@ -154,8 +153,7 @@ impl Pattern for &[char] {
     }
 
     fn matches(&self, part: Part, _index: usize) -> bool {
-        part.as_char()
-            .is_some_and(|cmp| self.contains(&(cmp as char)))
+        part.as_char().is_some_and(|cmp| self.contains(&cmp))
     }
 }
 
