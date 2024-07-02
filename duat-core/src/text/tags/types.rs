@@ -6,7 +6,7 @@ use super::{
     ids::{TextId, ToggleId},
     Marker,
 };
-use crate::{palette::FormId, position::Point, text::Text};
+use crate::{palette::FormId, text::Point, text::Text};
 
 pub enum Tag {
     // Implemented:
@@ -139,7 +139,7 @@ pub enum RawTag {
     /// [`ConcealEnd`]: RawTag::ConcealEnd
     ConcealEnd(Marker),
 
-	// TODO: Deal with the concequences of changing this from a usize.
+    // TODO: Deal with the concequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
     Concealed(u32),
@@ -154,36 +154,36 @@ pub enum RawTag {
 }
 
 impl RawTag {
-    pub fn inverse(&self) -> Option<RawTag> {
+    pub fn inverse(&self) -> Option<Self> {
         match self {
-            RawTag::PushForm(marker, id) => Some(RawTag::PopForm(*marker, *id)),
-            RawTag::PopForm(marker, id) => Some(RawTag::PushForm(*marker, *id)),
-            RawTag::ToggleStart(marker, id) => Some(RawTag::ToggleEnd(*marker, *id)),
-            RawTag::ToggleEnd(marker, id) => Some(RawTag::ToggleStart(*marker, *id)),
-            RawTag::ConcealStart(marker) => Some(RawTag::ConcealEnd(*marker)),
-            RawTag::ConcealEnd(marker) => Some(RawTag::ConcealStart(*marker)),
-            RawTag::StartAlignLeft(marker) => Some(RawTag::EndAlignLeft(*marker)),
-            RawTag::EndAlignLeft(marker) => Some(RawTag::StartAlignLeft(*marker)),
-            RawTag::StartAlignCenter(marker) => Some(RawTag::EndAlignCenter(*marker)),
-            RawTag::EndAlignCenter(marker) => Some(RawTag::StartAlignCenter(*marker)),
-            RawTag::StartAlignRight(marker) => Some(RawTag::EndAlignRight(*marker)),
-            RawTag::EndAlignRight(marker) => Some(RawTag::StartAlignRight(*marker)),
+            Self::PushForm(marker, id) => Some(Self::PopForm(*marker, *id)),
+            Self::PopForm(marker, id) => Some(Self::PushForm(*marker, *id)),
+            Self::ToggleStart(marker, id) => Some(Self::ToggleEnd(*marker, *id)),
+            Self::ToggleEnd(marker, id) => Some(Self::ToggleStart(*marker, *id)),
+            Self::ConcealStart(marker) => Some(Self::ConcealEnd(*marker)),
+            Self::ConcealEnd(marker) => Some(Self::ConcealStart(*marker)),
+            Self::StartAlignLeft(marker) => Some(Self::EndAlignLeft(*marker)),
+            Self::EndAlignLeft(marker) => Some(Self::StartAlignLeft(*marker)),
+            Self::StartAlignCenter(marker) => Some(Self::EndAlignCenter(*marker)),
+            Self::EndAlignCenter(marker) => Some(Self::StartAlignCenter(*marker)),
+            Self::StartAlignRight(marker) => Some(Self::EndAlignRight(*marker)),
+            Self::EndAlignRight(marker) => Some(Self::StartAlignRight(*marker)),
             _ => None,
         }
     }
 
-    pub fn ends_with(&self, other: &RawTag) -> bool {
+    pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (RawTag::PushForm(lhs_m, lhs_id), RawTag::PopForm(rhs_m, rhs_id)) => {
+            (Self::PushForm(lhs_m, lhs_id), Self::PopForm(rhs_m, rhs_id)) => {
                 lhs_m == rhs_m && lhs_id == rhs_id
             }
-            (RawTag::ToggleStart(lhs_m, lhs_id), RawTag::ToggleEnd(rhs_m, rhs_id)) => {
+            (Self::ToggleStart(lhs_m, lhs_id), Self::ToggleEnd(rhs_m, rhs_id)) => {
                 lhs_m == rhs_m && lhs_id == rhs_id
             }
-            (RawTag::StartAlignLeft(lhs), RawTag::EndAlignLeft(rhs))
-            | (RawTag::StartAlignCenter(lhs), RawTag::EndAlignCenter(rhs))
-            | (RawTag::StartAlignRight(lhs), RawTag::EndAlignRight(rhs))
-            | (RawTag::ConcealStart(rhs), RawTag::ConcealEnd(lhs)) => lhs == rhs,
+            (Self::StartAlignLeft(lhs), Self::EndAlignLeft(rhs))
+            | (Self::StartAlignCenter(lhs), Self::EndAlignCenter(rhs))
+            | (Self::StartAlignRight(lhs), Self::EndAlignRight(rhs))
+            | (Self::ConcealStart(rhs), Self::ConcealEnd(lhs)) => lhs == rhs,
             _ => false,
         }
     }
@@ -191,61 +191,68 @@ impl RawTag {
     pub fn is_start(&self) -> bool {
         matches!(
             self,
-            RawTag::PushForm(..)
-                | RawTag::StartAlignLeft(_)
-                | RawTag::StartAlignCenter(_)
-                | RawTag::StartAlignRight(_)
-                | RawTag::ToggleStart(..)
-                | RawTag::ConcealStart(_)
+            Self::PushForm(..)
+                | Self::StartAlignLeft(_)
+                | Self::StartAlignCenter(_)
+                | Self::StartAlignRight(_)
+                | Self::ToggleStart(..)
+                | Self::ConcealStart(_)
         )
     }
 
     pub fn is_end(&self) -> bool {
         matches!(
             self,
-            RawTag::PopForm(..)
-                | RawTag::EndAlignLeft(_)
-                | RawTag::EndAlignCenter(_)
-                | RawTag::EndAlignRight(_)
-                | RawTag::ToggleEnd(..)
-                | RawTag::ConcealEnd(_)
+            Self::PopForm(..)
+                | Self::EndAlignLeft(_)
+                | Self::EndAlignCenter(_)
+                | Self::EndAlignRight(_)
+                | Self::ToggleEnd(..)
+                | Self::ConcealEnd(_)
         )
     }
 
     pub fn is_start_align(&self) -> bool {
         matches!(
             self,
-            RawTag::StartAlignLeft(_) | RawTag::StartAlignCenter(_) | RawTag::StartAlignRight(_)
+            Self::StartAlignLeft(_) | Self::StartAlignCenter(_) | Self::StartAlignRight(_)
         )
     }
 
     pub fn is_end_align(&self) -> bool {
         matches!(
             self,
-            RawTag::EndAlignLeft(_) | RawTag::EndAlignCenter(_) | RawTag::EndAlignRight(_)
+            Self::EndAlignLeft(_) | Self::EndAlignCenter(_) | Self::EndAlignRight(_)
         )
     }
 
     pub(super) fn marker(&self) -> Marker {
         match self {
-            RawTag::PushForm(marker, _)
-            | RawTag::PopForm(marker, _)
-            | RawTag::MainCursor(marker)
-            | RawTag::ExtraCursor(marker)
-            | RawTag::StartAlignLeft(marker)
-            | RawTag::EndAlignLeft(marker)
-            | RawTag::StartAlignCenter(marker)
-            | RawTag::EndAlignCenter(marker)
-            | RawTag::StartAlignRight(marker)
-            | RawTag::EndAlignRight(marker)
-            | RawTag::ConcealStart(marker)
-            | RawTag::ConcealEnd(marker)
-            | RawTag::GhostText(marker, _)
-            | RawTag::ToggleStart(marker, _)
-            | RawTag::ToggleEnd(marker, _) => *marker,
-            RawTag::Concealed(_) => unreachable!(
+            Self::PushForm(marker, _)
+            | Self::PopForm(marker, _)
+            | Self::MainCursor(marker)
+            | Self::ExtraCursor(marker)
+            | Self::StartAlignLeft(marker)
+            | Self::EndAlignLeft(marker)
+            | Self::StartAlignCenter(marker)
+            | Self::EndAlignCenter(marker)
+            | Self::StartAlignRight(marker)
+            | Self::EndAlignRight(marker)
+            | Self::ConcealStart(marker)
+            | Self::ConcealEnd(marker)
+            | Self::GhostText(marker, _)
+            | Self::ToggleStart(marker, _)
+            | Self::ToggleEnd(marker, _) => *marker,
+            Self::Concealed(_) => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
+        }
+    }
+
+    pub(in crate::text) fn as_ghost_text(self) -> Option<(Marker, TextId)> {
+        match self {
+            Self::GhostText(marker, id) => Some((marker, id)),
+            _ => None,
         }
     }
 }

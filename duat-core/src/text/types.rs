@@ -72,7 +72,7 @@ impl Part {
     /// [`Char`]: TextBit::Char
     #[must_use]
     #[inline]
-    pub fn is_byte(&self) -> bool {
+    pub fn is_char(&self) -> bool {
         matches!(self, Part::Char(_))
     }
 
@@ -87,6 +87,6 @@ impl Part {
 
     #[inline]
     pub fn is_tag(&self) -> bool {
-        !self.is_byte()
+        !self.is_char()
     }
 }

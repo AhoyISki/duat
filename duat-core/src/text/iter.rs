@@ -1,6 +1,6 @@
 use std::{
+    borrow::Borrow,
     iter::{Chain, Rev},
-    ops::ControlFlow,
     str::Chars,
 };
 
@@ -9,7 +9,7 @@ use gapbuf::GapBuffer;
 use super::{
     point::TwoPoints,
     tags::{self, RawTag},
-    Ghost, Part, Point, Text,
+    Part, Point, Text,
 };
 use crate::position::Cursor;
 
@@ -21,10 +21,12 @@ pub struct Item {
 }
 
 impl Item {
-    #[inline]
-    fn new(tp: impl TwoPoints, part: Part) -> Self {
-        let (real, ghost) = tp.to_points();
-        Self { real, ghost, part }
+    pub fn as_real_char(self) -> Option<(Point, char)> {
+        if self.ghost.is_none() {
+            Some(self.real).zip(self.part.as_char())
+        } else {
+            None
+        }
     }
 
     pub fn byte(&self) -> usize {
@@ -37,6 +39,12 @@ impl Item {
 
     pub fn line(&self) -> usize {
         self.real.line()
+    }
+
+    #[inline]
+    fn new(tp: impl TwoPoints, part: Part) -> Self {
+        let (real, ghost) = tp.to_points();
+        Self { real, ghost, part }
     }
 }
 
@@ -310,17 +318,17 @@ impl<'a> RevIter<'a> {
                 }
                 let text = self.text.tags.texts.get(&id).unwrap();
 
-                let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if *dist - text.len_bytes() >= ghost.byte() {
+                let (this_ghost, total_ghost) = if let Some((total, dist)) = &mut self.ghost {
+                    if *dist - text.len_bytes() >= total.byte() {
                         *dist -= text.len_bytes();
                         return true;
                     }
-                    let start = text.point_at(ghost.byte() - *dist).unwrap();
-                    (start, *ghost)
+                    let this = text.point_at(total.byte() - *dist).unwrap();
+                    (this, *total)
                 } else {
+                    let this = text.max_point();
                     let total = text.tags.ghosts_total_point_at(self.point.byte());
-                    let start = text.max_point();
-                    (start, total)
+                    (this, total)
                 };
 
                 let iter = text.rev_iter_at(this_ghost);

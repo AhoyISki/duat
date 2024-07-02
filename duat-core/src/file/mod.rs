@@ -27,7 +27,7 @@ use crate::{
     history::History,
     input::{Cursors, InputMethod, KeyMap},
     palette,
-    text::{ExactPos, IterCfg, Positional, PrintCfg, Text},
+    text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
     Context,
@@ -204,6 +204,10 @@ impl File {
         self.text
             .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
     }
+
+    pub fn history_mut(&mut self) -> &mut History {
+        &mut self.history
+    }
 }
 
 /// # Querying functions
@@ -212,30 +216,24 @@ impl File {
 /// the [`File`].
 impl File {
     pub fn search(&self) -> Searcher<'_> {
-        Searcher::new_at(
-            ExactPos::default(),
-            self.text.iter().no_ghosts().no_conceals(),
-        )
+        Searcher::new_at(Point::default(), self.text.iter().no_ghosts().no_conceals())
     }
 
-    pub fn search_at(&self, pos: impl Positional) -> Searcher<'_> {
-        Searcher::new_at(
-            pos.to_exact(),
-            self.text.iter_at(pos).no_ghosts().no_conceals(),
-        )
+    pub fn search_at(&self, point: Point) -> Searcher<'_> {
+        Searcher::new_at(point, self.text.iter_at(point).no_ghosts().no_conceals())
     }
 
     pub fn rev_search(&self) -> RevSearcher<'_> {
         RevSearcher::new_at(
-            ExactPos::default(),
+            self.text.max_point(),
             self.text.rev_iter().no_ghosts().no_conceals(),
         )
     }
 
-    pub fn rev_search_at(&self, pos: impl Positional) -> RevSearcher<'_> {
+    pub fn rev_search_at(&self, point: Point) -> RevSearcher<'_> {
         RevSearcher::new_at(
-            pos.to_exact(),
-            self.text.rev_iter_at(pos).no_ghosts().no_conceals(),
+            point,
+            self.text.rev_iter_at(point).no_ghosts().no_conceals(),
         )
     }
 
@@ -323,12 +321,12 @@ impl File {
 
     /// Redoes the next moment, if there is one.
     pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.redo(&mut self.text, area, cursors, &self.cfg)
+        self.history.redo(&mut self.text, area, &self.cfg, cursors)
     }
 
     /// Undoes the last moment, if there was one.
     pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.undo(&mut self.text, area, cursors, &self.cfg)
+        self.history.undo(&mut self.text, area, &self.cfg, cursors)
     }
 
     /// Returns a mutable reference to the [`Text`] and [`History`] of
@@ -363,11 +361,11 @@ where
     fn once(_context: crate::Context<U>) {}
 
     fn print(&mut self, area: &<U as Ui>::Area) {
-        let start = area.first_char();
+        let (start, _) = area.top_left();
 
-        let mut last_line_num = area
+        let mut last_line = area
             .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
-            .find_map(|(caret, item)| caret.wrap.then_some(item.line));
+            .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         self.printed_lines.clear();
         let printed_lines = &mut self.printed_lines;
@@ -378,9 +376,9 @@ where
             palette::painter(),
             move |caret, item| {
                 if caret.wrap {
-                    let line = item.line;
-                    let wrapped = last_line_num.is_some_and(|last_line_num| last_line_num == line);
-                    last_line_num = Some(line);
+                    let line = item.line();
+                    let wrapped = last_line.is_some_and(|ll| ll == line);
+                    last_line = Some(line);
                     printed_lines.push((line, wrapped));
                 }
             },

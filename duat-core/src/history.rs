@@ -19,13 +19,12 @@
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
-    str::from_utf8_unchecked,
 };
 
 use crate::{
     input::Cursors,
-    position::{Cursor, Point},
-    text::{PrintCfg, Text},
+    position::Cursor,
+    text::{Point, PrintCfg, Text},
     ui::Area,
 };
 
@@ -326,8 +325,8 @@ impl History {
         &mut self,
         text: &mut Text,
         area: &impl Area,
-        cursors: &mut Cursors,
         cfg: &PrintCfg,
+        cursors: &mut Cursors,
     ) {
         let moment = match self.move_backwards() {
             Some(moment) => moment,
@@ -340,8 +339,8 @@ impl History {
         for change in &moment.changes {
             text.undo_change(change, bytes);
 
-            let new_caret_ch = change.taken_end().saturating_add_signed(bytes);
-            let point = Point::new(new_caret_ch, text);
+            let new_caret_b = change.taken_end().saturating_add_signed(bytes);
+            let point = text.point_at(new_caret_b).unwrap();
             cursors.insert(Cursor::new(point, text, area, cfg));
 
             bytes += change.taken_end() as isize - change.added_end() as isize;
@@ -354,8 +353,8 @@ impl History {
         &mut self,
         text: &mut Text,
         area: &impl Area,
-        cursors: &mut Cursors,
         cfg: &PrintCfg,
+        cursors: &mut Cursors,
     ) {
         let moment = match self.move_forward() {
             Some(moment) => moment,
@@ -367,8 +366,8 @@ impl History {
         for change in &moment.changes {
             text.apply_change(change);
 
-            let new_pos = Point::new(change.added_end(), text);
-            cursors.insert(Cursor::new(new_pos, text, area, cfg));
+            let point = text.point_at(change.added_end()).unwrap();
+            cursors.insert(Cursor::new(point, text, area, cfg));
         }
     }
 

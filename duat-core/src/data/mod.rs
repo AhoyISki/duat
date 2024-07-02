@@ -21,7 +21,7 @@
 //! [`Text`]: crate::text::Text
 pub use self::{
     ro::RoData,
-    rw::RwData,
+    rw::{ReadWriteGuard, RwData},
     statics::{CurrentFile, CurrentWidget, FileReader},
 };
 

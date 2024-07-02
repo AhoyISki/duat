@@ -15,8 +15,7 @@ use crate::{
     data::RoData,
     hooks::{self, OnFileOpen},
     palette::Painter,
-    position::Point,
-    text::{Item, IterCfg, PrintCfg, Text},
+    text::{Item, IterCfg, Point, PrintCfg, Text},
     widgets::{File, PassiveWidget, Widget},
     Context,
 };
@@ -221,9 +220,8 @@ pub trait Area: Send + Sync + Sized {
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg);
 
-    /// Returns the character index of the first character that would
-    /// be printed.
-    fn first_char(&self) -> usize;
+    // Returns the [`Point`]s that would printed first.
+    fn top_left(&self) -> (Point, Option<Point>);
 
     /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
@@ -277,7 +275,7 @@ pub trait Area: Send + Sync + Sized {
     /// Given an [`Iterator`] with an [`Item`] of type `(usize,
     /// usize, Part)`, where:
     ///
-    /// - The first `usize` is the char index from the file's start;
+    /// - The first `usize` is the byte index from the file's start;
     /// - The second `usize` is the current line;
     /// - The [`Part`] is either a `char` or a [`Text`] modifier;
     ///
@@ -295,7 +293,7 @@ pub trait Area: Send + Sync + Sized {
     ///     since they show up in the next line;
     ///
     /// * On the second tuple:
-    ///   - The `usize` is the char index from the file's start;
+    ///   - The `usize` is the byte index from the file's start;
     ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
     ///
     /// [`Item`]: Iterator::Item
@@ -322,7 +320,7 @@ pub trait Area: Send + Sync + Sized {
     /// Given an [`Iterator`] with an [`Item`] of type `(usize,
     /// usize, Part)`, where:
     ///
-    /// - The first `usize` is the char index from the file's start;
+    /// - The first `usize` is the byte index from the file's start;
     /// - The second `usize` is the current line;
     /// - The [`Part`] is either a `char` or a [`Text`] modifier;
     ///
@@ -340,7 +338,7 @@ pub trait Area: Send + Sync + Sized {
     ///     since they show up in the next line;
     ///
     /// * On the second tuple:
-    ///   - The `usize` is the char index from the file's start;
+    ///   - The `usize` is the byte index from the file's start;
     ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
     ///
     /// [`Item`]: Iterator::Item

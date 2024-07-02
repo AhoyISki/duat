@@ -1,6 +1,7 @@
 mod cfg;
 mod iter;
 pub mod reader;
+mod records;
 mod tags;
 mod types;
 
@@ -13,13 +14,14 @@ use std::{
 };
 
 use gapbuf::GapBuffer;
-use parking_lot::Mutex;
+use point::TwoPoints;
+use records::Records;
 
-pub(crate) use self::iter::Positional;
 use self::tags::{Markers, RawTag, Tags};
 pub use self::{
     cfg::*,
-    iter::{ExactPos, Item, Iter, RevIter},
+    iter::{Item, Iter, RevIter},
+    point::Point,
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -30,9 +32,6 @@ use crate::{
     palette::{self, FormId},
 };
 
-// static PANIC_LOG: LazyLock<Mutex<String>> = LazyLock::new(||
-// Mutex::new(String::new()));
-
 /// The text in a given area.
 #[derive(Debug, Default, Clone, Eq)]
 pub struct Text {
@@ -41,6 +40,7 @@ pub struct Text {
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
+    records: Records<(usize, usize, usize)>,
 }
 
 impl PartialEq for Text {
@@ -56,6 +56,7 @@ impl Text {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
             marker: Marker::new(),
+            records: Records::new(),
         }
     }
 
@@ -68,6 +69,7 @@ impl Text {
             buf,
             tags,
             marker: Marker::new(),
+            records: Records::with_max((file.len(), file.chars().count(), file.lines().count())),
         }
     }
 
@@ -75,119 +77,23 @@ impl Text {
         Builder::new()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
+    /// Merges `String`s with the body of text, given a range to
+    /// replace.
+    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
+        let edit = edit.as_ref();
 
-    pub fn get_char(&self, c: usize) -> Option<char> {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
+        let removed = unsafe {
+            String::from_utf8_unchecked(
+                self.buf
+                    .splice(old.clone(), edit.as_bytes().iter().cloned())
+                    .collect::<Vec<_>>(),
+            )
+        };
 
-        s0.chars().chain(s1.chars()).nth(c)
-    }
-
-    pub fn len_chars(&self) -> usize {
-        // TODO: make this value stateful.
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.chars().count() + s1.chars().count()
-    }
-
-    pub fn len_lines(&self) -> usize {
-        // TODO: make this value stateful.
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.bytes().chain(s1.bytes()).filter(|b| *b == b'\n').count() + 1
-    }
-
-    pub fn len_bytes(&self) -> usize {
-        self.buf.len()
-    }
-
-    pub fn char_to_line(&self, c: usize) -> usize {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.chars()
-            .chain(s1.chars())
-            .take(c)
-            .filter(|c| *c == '\n')
-            .count()
-    }
-
-    pub fn line_to_char(&self, l: usize) -> usize {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.lines()
-            .chain(s1.lines())
-            .map(|l| l.chars().count())
-            .take(l)
-            .sum()
-    }
-
-    pub fn char_to_byte(&self, c: usize) -> usize {
-        self.get_char_to_byte(c).unwrap_or(self.buf.len())
-    }
-
-    pub fn get_char_to_line(&self, c: usize) -> Option<usize> {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.chars()
-            .chain(s1.chars())
-            .scan(0, |l, c| Some(if c == '\n' { *l + 1 } else { *l }))
-            .nth(c)
-    }
-
-    pub fn get_line_to_char(&self, l: usize) -> Option<usize> {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.lines()
-            .chain(s1.lines())
-            .scan(0, |c, l| Some(*c + l.chars().count()))
-            .nth(l)
-    }
-
-    pub fn get_char_to_byte(&self, c: usize) -> Option<usize> {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
-        s0.char_indices()
-            .map(|(b, _)| b)
-            .chain(s1.char_indices().map(|(b, _)| b + s0.len()))
-            .nth(c)
-    }
-
-    /// The visual start of the line
-    ///
-    /// This point is defined not by where the line actually begins,
-    /// but by where the last '\n' was located. For example, if
-    /// [`Tag`]s create ghost text or ommit text from multiple
-    /// different lines, this point may differ from where in the
-    /// [`Text`] the physical line actually begins.
-    pub fn visual_line_start(&self, pos: impl Positional) -> ExactPos {
-        let pos = pos.to_exact();
-        if pos == ExactPos::default() {
-            return ExactPos::default();
+        if edit.len() != old.clone().count() {
+            let new_end = old.start + edit.len();
+            self.tags.transform(old, new_end);
         }
-
-        // NOTE: 20000 is a magic number, being a guess for what a reasonable
-        // limit would be.
-        let mut iter = self.rev_iter_at(pos).peekable();
-        let mut cur_pos = pos;
-        while let Some(peek) = iter.peek() {
-            match peek.part {
-                Part::Char('\n') => return cur_pos,
-                Part::Char(_) => cur_pos = iter.next().unwrap().pos,
-                _ => drop(iter.next()),
-            }
-        }
-
-        ExactPos::default()
     }
 
     pub(crate) fn insert_str(&mut self, at: usize, str: &str) {
@@ -202,6 +108,20 @@ impl Text {
         let start = change.start.saturating_add_signed(chars);
         let end = change.added_end().saturating_add_signed(chars);
         self.replace_range(start..end, &change.taken_text);
+    }
+
+    fn clear(&mut self) {
+        self.buf = Box::new(GapBuffer::new());
+        self.tags.clear();
+        self.records.clear();
+    }
+
+    pub fn insert_tag(&mut self, at: usize, tag: Tag, marker: Marker) {
+        self.tags.insert(at, tag, marker);
+    }
+
+    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
+        self.tags.remove_at(b, markers)
     }
 
     /// Removes the tags for all the cursors, used before they are
@@ -242,23 +162,9 @@ impl Text {
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
-    fn clear(&mut self) {
-        self.buf = Box::new(GapBuffer::new());
-        self.tags.clear();
-    }
-
-    /// Merges `String`s with the body of text, given a range to
-    /// replace.
-    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
-
-        self.buf
-            .splice(old.clone(), edit.as_bytes().iter().cloned());
-
-        if edit.len() != old.clone().count() {
-            let new_end = old.start + edit.len();
-            self.tags.transform_range(old, new_end);
-        }
+    pub fn slices(&self) -> (&'_ str, &'_ str) {
+        let (s0, s1) = self.buf.as_slices();
+        unsafe { (from_utf8_unchecked(&s0), from_utf8_unchecked(&s1)) }
     }
 
     pub fn slices_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
@@ -288,35 +194,105 @@ impl Text {
         s0.chars().chain(s1.chars())
     }
 
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, marker: Marker) {
-        self.tags.insert(at, tag, marker);
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
     }
 
-    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
-        self.tags.remove_at(b, markers)
+    #[inline(always)]
+    pub fn point_at(&self, at: usize) -> Option<Point> {
+        let (b, c, mut l) = self.records.closest_to(at);
+        let s0_len = self.buf.as_slices().0.len();
+
+        let found = if at >= b {
+            let (s0, s1) = self.slices_range(b..);
+
+            s0.char_indices()
+                .chain(s1.char_indices().map(|(b, c)| (b + s0_len, c)))
+                .inspect(|(_, c)| l += (*c == '\n') as usize)
+                .enumerate()
+                .map(|(i, (b, char))| (b, c + i, char))
+                .take_while(|&(b, ..)| at >= b)
+                .last()
+        } else {
+            let (s0, s1) = self.slices_range(..b);
+            let s1 = s1.char_indices().map(|(b, c)| (b + s0_len, c)).rev();
+
+            s1.chain(s0.char_indices().rev())
+                .inspect(|(_, c)| l -= (*c == '\n') as usize)
+                .enumerate()
+                .map(|(i, (b, char))| (b, c - i, char))
+                .take_while(|&(b, ..)| at < b)
+                .last()
+        };
+
+        found.map(|(b, c, char)| Point::from_coords(b, c, l, char))
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        self.buf.len()
+    }
+
+    pub fn len_chars(&self) -> usize {
+        self.records.max().1
+    }
+
+    pub fn len_lines(&self) -> usize {
+        self.records.max().2
+    }
+
+    pub fn max_point(&self) -> Point {
+        let (b, c, l) = self.records.max();
+        let (s0, s1) = self.slices_range(b..);
+
+        Point::from_coords(b, c, l, s0.chars().chain(s1.chars()).next().unwrap())
+    }
+
+    /// The visual start of the line
+    ///
+    /// This point is defined not by where the line actually begins,
+    /// but by where the last '\n' was located. For example, if
+    /// [`Tag`]s create ghost text or ommit text from multiple
+    /// different lines, this point may differ from where in the
+    /// [`Text`] the physical line actually begins.
+    pub fn visual_line_start(&self, p: impl TwoPoints) -> (Point, Option<Point>) {
+        let (real, ghost) = p.to_points();
+
+        // NOTE: 20000 is a magic number, being a guess for what a reasonable
+        // limit would be.
+        let mut iter = self.rev_iter_at(real).peekable();
+        let mut points = (real, ghost);
+        while let Some(peek) = iter.peek() {
+            match peek.part {
+                Part::Char('\n') => return points,
+                Part::Char(_) => points = iter.next().unwrap().to_points(),
+                _ => drop(iter.next()),
+            }
+        }
+
+        points
     }
 }
 
 // Iterator methods.
 impl Text {
     pub fn iter(&self) -> Iter<'_> {
-        Iter::new_at(self, 0)
+        Iter::new_at(self, Point::default())
     }
 
-    pub fn iter_at(&self, pos: impl Positional) -> Iter<'_> {
-        Iter::new_at(self, pos)
+    pub fn iter_at(&self, p: impl TwoPoints) -> Iter<'_> {
+        Iter::new_at(self, p)
     }
 
     pub fn rev_iter(&self) -> RevIter {
-        RevIter::new_at(self, self.len_chars())
+        RevIter::new_at(self, self.max_point())
     }
 
-    pub fn rev_iter_at(&self, pos: impl Positional) -> RevIter<'_> {
-        RevIter::new_at(self, pos)
+    pub fn rev_iter_at(&self, p: impl TwoPoints) -> RevIter<'_> {
+        RevIter::new_at(self, p)
     }
 
-    pub fn rev_iter_following(&self, pos: impl Positional) -> RevIter<'_> {
-        RevIter::new_following(self, pos)
+    pub fn rev_iter_following(&self, p: impl TwoPoints) -> RevIter<'_> {
+        RevIter::new_following(self, p)
     }
 
     pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {
@@ -331,18 +307,6 @@ impl Text {
 
         s0.chars().chain(s1.chars()).skip(c)
     }
-
-    /// TO BE DEPRECATED.
-    pub fn iter_line(&self, line: usize) -> impl Iterator<Item = Item> + Clone + '_ {
-        let start = self.line_to_char(line);
-        let end = self.get_line_to_char(line + 1).unwrap_or(start);
-
-        Iter::new_at(self, start).take_while(move |item| item.real() < end)
-    }
-
-    pub fn iter_line_chars(&self, line: usize) -> impl Iterator<Item = char> + '_ {
-        self.iter_line(line).filter_map(|item| item.part.as_char())
-    }
 }
 
 impl<S> From<S> for Text
@@ -350,13 +314,140 @@ where
     S: ToString,
 {
     fn from(value: S) -> Self {
-        let buf = Box::new(GapBuffer::from_iter(value.to_string().bytes()));
+        let value = value.to_string();
+        let buf = Box::new(GapBuffer::from_iter(value.bytes()));
         let tags = Box::new(Tags::with_len(buf.len()));
 
         Self {
             buf,
             tags,
             marker: Marker::new(),
+            records: Records::with_max((value.len(), value.chars().count(), value.lines().count())),
+        }
+    }
+}
+
+mod point {
+    use super::Item;
+
+    pub trait TwoPoints {
+        fn to_points(self) -> (Point, Option<Point>);
+    }
+
+    impl TwoPoints for Point {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self, None)
+        }
+    }
+
+    impl TwoPoints for (Point, Point) {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self.0, Some(self.1))
+        }
+    }
+
+    impl TwoPoints for (Point, Option<Point>) {
+        fn to_points(self) -> (Point, Option<Point>) {
+            self
+        }
+    }
+
+    impl TwoPoints for Item {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self.real, self.ghost)
+        }
+    }
+
+    /// A position in a [`Text`].
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Point {
+        b: usize,
+        c: usize,
+        l: usize,
+        char: char,
+    }
+
+    impl Point {
+        /// Returns a new [`Point`], at the first byte.
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub(super) fn from_coords(b: usize, c: usize, l: usize, char: char) -> Self {
+            Self { b, c, l, char }
+        }
+
+        pub(super) fn fwd(self, char: char) -> Self {
+            Self {
+                b: self.b + char.len_utf8(),
+                c: self.c + 1,
+                l: self.l + (self.char == '\n') as usize,
+                char,
+            }
+        }
+
+        pub(super) fn rev(self, char: char) -> Self {
+            Self {
+                b: self.b - char.len_utf8(),
+                c: self.c - 1,
+                l: self.l - (char == '\n') as usize,
+                char,
+            }
+        }
+
+        /// Returns the byte (relative to the beginning of the file)
+        /// of self. Indexed at 0.
+        pub fn byte(&self) -> usize {
+            self.b
+        }
+
+        /// Returns the char index (relative tow the beginning of the
+        /// file). Indexed at 0.
+        pub fn char(&self) -> usize {
+            self.c
+        }
+
+        /// Returns the line. Indexed at 0.
+        pub fn line(&self) -> usize {
+            self.l
+        }
+    }
+
+    impl std::ops::Add for Point {
+        type Output = Self;
+
+        fn add(self, rhs: Self) -> Self::Output {
+            Self {
+                b: self.b + rhs.b,
+                c: self.c + rhs.c,
+                l: self.l + rhs.l,
+                ..rhs
+            }
+        }
+    }
+
+    impl std::ops::AddAssign for Point {
+        fn add_assign(&mut self, rhs: Self) {
+            *self = *self + rhs;
+        }
+    }
+
+    impl std::ops::Sub for Point {
+        type Output = Self;
+
+        fn sub(self, rhs: Self) -> Self::Output {
+            Self {
+                b: self.b - rhs.b,
+                c: self.c - rhs.c,
+                l: self.l - rhs.l,
+                ..self
+            }
+        }
+    }
+
+    impl std::ops::SubAssign for Point {
+        fn sub_assign(&mut self, rhs: Self) {
+            *self = *self - rhs;
         }
     }
 }
@@ -431,10 +522,10 @@ impl Builder {
         self.text.tags.insert(len, tag, self.marker)
     }
 
-    pub fn push_text(&mut self, mut text: Text) {
+    pub fn push_text(&mut self, text: Text) {
         let end = self.text.len_bytes();
         self.text.buf.splice(end..end, *text.buf);
-        self.text.tags.append(*text.tags);
+        self.text.tags.extend(*text.tags);
     }
 
     pub fn push_part<D: Display>(&mut self, part: BuilderPart<D>) {
@@ -466,18 +557,13 @@ impl Default for Builder {
 }
 
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
+    use palette::{EXTRA_SEL, MAIN_SEL};
+    use tags::Tag::{MainCursor, PopForm, PushForm};
+
     if is_main {
-        (
-            Tag::MainCursor,
-            Tag::PushForm(palette::MAIN_SEL),
-            Tag::PopForm(palette::MAIN_SEL),
-        )
+        (MainCursor, PushForm(MAIN_SEL), PopForm(MAIN_SEL))
     } else {
-        (
-            Tag::MainCursor,
-            Tag::PushForm(palette::EXTRA_SEL),
-            Tag::PopForm(palette::EXTRA_SEL),
-        )
+        (MainCursor, PushForm(EXTRA_SEL), PopForm(EXTRA_SEL))
     }
 }
 

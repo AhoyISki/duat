@@ -6,7 +6,6 @@
     let_chains,
     control_flow_enum,
     decl_macro,
-    generic_const_exprs,
     step_trait,
     type_alias_impl_trait
 )]
@@ -23,13 +22,13 @@ use ui::Ui;
 use self::commands::Commands;
 
 pub mod commands;
+pub mod position;
 pub mod data;
 pub mod file;
 pub mod history;
 pub mod hooks;
 pub mod input;
 pub mod palette;
-pub mod position;
 pub mod session;
 pub mod text;
 pub mod ui;

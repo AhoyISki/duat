@@ -193,7 +193,7 @@ impl Clone for Cursor {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Eq, Ord)]
+#[derive(Default, Debug, Clone, Copy, Eq)]
 struct VPoint {
     point: Point,
     vcol: usize,
@@ -203,6 +203,12 @@ struct VPoint {
 impl PartialOrd for VPoint {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.point.cmp(&other.point))
+    }
+}
+
+impl Ord for VPoint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 

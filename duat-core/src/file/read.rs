@@ -5,104 +5,76 @@ use std::ops::{
 use super::File;
 use crate::{
     history::Change,
-    text::{ExactPos, Iter, Part, RevIter},
+    text::{Iter, Part, Point, RevIter},
 };
 
 pub trait Reader {
     fn read_change(&mut self, file: &mut File, change: Change);
 
-    fn read_click(&mut self, file: &mut File, pos: ExactPos);
+    fn read_click(&mut self, file: &mut File, point: Point);
 }
 
 pub struct Searcher<'a> {
-    pos: ExactPos,
+    point: Point,
     iter: Iter<'a>,
 }
 
 impl<'a> Searcher<'a> {
-    pub fn new_at(pos: ExactPos, iter: Iter<'a>) -> Self {
-        Self { pos, iter }
+    pub fn new_at(point: Point, iter: Iter<'a>) -> Self {
+        Self { point, iter }
     }
 
-    pub fn find(&mut self, pat: impl Pattern) -> Option<(ExactPos, ExactPos)> {
-        let mut index = 0;
-        let mut end_pos = self.pos;
+    pub fn find(&mut self, pat: impl Pattern) -> Option<(Point, Point)> {
+        let mut i = 0;
+        let mut end = self.point;
 
         while let Some(item) = self.iter.next() {
-            if index == pat.length() {
-                return Some((self.pos, end_pos));
+            if i == pat.length() {
+                return Some((self.point, end));
             }
 
-            end_pos = item.pos;
+            end = item.real;
 
-            if pat.matches(item.part, index) {
-                index += 1;
+            if pat.matches(item.part, i) {
+                i += 1;
             } else {
-                index = 0;
-                self.pos = item.pos;
+                i = 0;
+                self.point = item.real;
             }
         }
 
-        match index == pat.length() {
-            true => Some(if pat.length() == 0 {
-                (self.pos, self.pos)
-            } else {
-                let end_pos = if self.iter.on_ghost() {
-                    ExactPos::new(end_pos.real(), end_pos.ghost() + 1)
-                } else {
-                    ExactPos::new(end_pos.real() + 1, 0)
-                };
-
-                (self.pos, end_pos)
-            }),
-            false => None,
-        }
+        (i == pat.length()).then(|| (self.point, end))
     }
 }
 
 pub struct RevSearcher<'a> {
-    pos: ExactPos,
+    point: Point,
     iter: RevIter<'a>,
 }
 
 impl<'a> RevSearcher<'a> {
-    pub fn new_at(pos: ExactPos, iter: RevIter<'a>) -> Self {
-        Self { pos, iter }
+    pub fn new_at(point: Point, iter: RevIter<'a>) -> Self {
+        Self { point, iter }
     }
 
-    pub fn find(&mut self, pat: impl Pattern) -> Option<(ExactPos, ExactPos)> {
-        let mut index = pat.length().saturating_sub(1);
-        let mut start_pos = self.pos;
+    pub fn find(&mut self, pat: impl Pattern) -> Option<(Point, Point)> {
+        let mut i = pat.length();
+        let mut start = self.point;
 
-        while let Some(item) = self.iter.next() {
-            if index == 0 {
-                return Some((start_pos, self.pos));
-            }
+        while let Some(item) = self.iter.next()
+            && i > 0
+        {
+            start = item.real;
 
-            start_pos = item.pos;
-
-            if pat.matches(item.part, index) {
-                index -= 1;
+            if pat.matches(item.part, i - 1) {
+                i -= 1;
             } else {
-                index = pat.length().saturating_sub(1);
-                self.pos = item.pos;
+                i = pat.length();
+                self.point = item.real;
             }
         }
 
-        match index == 0 {
-            true => Some(if pat.length() == 0 {
-                (self.pos, self.pos)
-            } else {
-                let start_pos = if self.iter.on_ghost() {
-                    ExactPos::new(start_pos.real(), start_pos.ghost() - 1)
-                } else {
-                    ExactPos::new(start_pos.real().saturating_sub(1), 0)
-                };
-
-                (start_pos, self.pos)
-            }),
-            false => None,
-        }
+        (i == 0).then(|| (self.point, start))
     }
 }
 

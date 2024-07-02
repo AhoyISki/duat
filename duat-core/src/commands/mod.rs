@@ -834,7 +834,11 @@ impl std::fmt::Display for Error {
             Error::CallerNotFound(caller) => {
                 write!(f, "The caller \"{caller}\" was not found.")
             }
-            Error::CommandFailed(failure) => f.write_str(&failure.chars().collect::<String>()),
+            Error::CommandFailed(failure) => {
+                let (s0, s1) = failure.slices();
+                f.write_str(s0)?;
+                f.write_str(s1)
+            }
             Error::Empty => f.write_str("The command is empty"),
         }
     }
