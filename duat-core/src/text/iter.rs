@@ -8,8 +8,8 @@ use gapbuf::GapBuffer;
 
 use super::{
     point::TwoPoints,
-    tags::{self, RawTag, TextId},
-    Part, Point, Text,
+    tags::{self, RawTag},
+    Ghost, Part, Point, Text,
 };
 use crate::position::Cursor;
 
@@ -22,8 +22,8 @@ pub struct Item {
 
 impl Item {
     #[inline]
-    fn new(p: impl TwoPoints, part: Part) -> Self {
-        let (real, ghost) = p.to_points();
+    fn new(tp: impl TwoPoints, part: Part) -> Self {
+        let (real, ghost) = tp.to_points();
         Self { real, ghost, part }
     }
 
@@ -54,7 +54,7 @@ pub struct Iter<'a> {
 
     // Things to deal with ghost text.
     main_iter: Option<(Point, FwdChars<'a>, tags::FwdTags<'a>)>,
-    ghost: Option<Point>,
+    ghost: Option<(Point, usize)>,
 
     // Configuration on how to iterate.
     print_ghosts: bool,
@@ -62,20 +62,19 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iter<'a> {
-    pub(super) fn new_at(text: &'a Text, p: impl TwoPoints) -> Self {
-        let (real, ghost) = p.to_points();
-        let real = real.min(text.max_point());
-        let tags_start = real.byte().saturating_sub(text.tags.back_check());
+    pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
+        let (real, ghost) = tp.to_points();
+        let point = real.min(text.max_point());
 
         Self {
             text,
-            point: real,
-            chars: buf_chars(&text.buf, real),
-            tags: text.tags.iter_at(tags_start),
+            point,
+            chars: buf_chars(&text.buf, point.byte()),
+            tags: text.tags.iter_at(point.byte()),
             conceals: 0,
 
             main_iter: None,
-            ghost,
+            ghost: ghost.zip(Some(0)),
 
             print_ghosts: true,
             _conceals: Conceal::All,
@@ -104,62 +103,54 @@ impl<'a> Iter<'a> {
     }
 
     #[inline]
-    fn handle_meta_tags(&mut self, tag: &RawTag, p: Point) -> ControlFlow<(), ()> {
+    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::GhostText(_, id) if self.print_ghosts => {
-                if p < self.point || self.conceals > 0 {
-                    return ControlFlow::Continue(());
+                if b < self.point.byte() || self.conceals > 0 {
+                    return true;
                 }
+                let text = self.text.tags.texts.get(id).unwrap();
 
-                let Some(text) = self.text.tags.iter_only_at(p).find_map(|tag| {
-                    if let RawTag::GhostText(_, id) = tag {
-                        let text = self.text.tags.texts.get(*id).unwrap();
-                        if let Some(ghost) = &mut self.ghost
-                            && *ghost >= text.max_point()
-                        {
-                            *ghost -= text.max_point();
-                            None
-                        } else {
-                            Some(text)
-                        }
-                    } else {
-                        None
+                let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
+                    if ghost.byte() >= *dist + text.len_bytes() {
+                        *dist += text.len_bytes();
+                        return true;
                     }
-                }) else {
-                    return ControlFlow::Continue(());
+                    let start = text.point_at(ghost.byte() - *dist).unwrap();
+                    (start, *ghost)
+                } else {
+                    (Point::default(), Point::default())
                 };
 
-                let iter = text.iter_at(self.ghost.unwrap());
-                let point = std::mem::replace(&mut self.point, iter.point);
+                let iter = text.iter_at(this_ghost);
+                let point = std::mem::replace(&mut self.point, total_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
+                self.ghost = Some((total_ghost, total_ghost.byte()));
                 self.main_iter = Some((point, chars, tags));
-                ControlFlow::Continue(())
             }
-            RawTag::GhostText(..) => ControlFlow::Continue(()),
 
             RawTag::ConcealStart(_) => {
                 self.conceals += 1;
-                ControlFlow::Continue(())
             }
             RawTag::ConcealEnd(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.pos = self.pos.max(p);
-                    self.line = self.text.char_to_line(p);
-                    self.chars = buf_chars(&self.text.buf, self.pos);
+                    self.point = self.point.max(self.text.point_at(b).unwrap());
+                    self.chars = buf_chars(&self.text.buf, self.point.byte());
                 }
-
-                ControlFlow::Continue(())
             }
             RawTag::Concealed(skip) => {
-                let pos = p.saturating_add(*skip as usize);
-                *self = Iter::new_at(self.text, pos);
-                ControlFlow::Break(())
+                let b = b.saturating_add(*skip as usize);
+                let point = self.text.point_at(b).unwrap_or(self.text.max_point());
+                *self = Iter::new_at(self.text, point);
+                return false;
             }
-            _ => ControlFlow::Break(()),
+            _ => return false,
         }
+
+        true
     }
 
     pub fn on_ghost(&self) -> bool {
@@ -168,7 +159,7 @@ impl<'a> Iter<'a> {
 
     pub fn points(&self) -> (Point, Option<Point>) {
         if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, Some(*real + self.point))
+            (*real, Some(self.point))
         } else {
             (self.point, None)
         }
@@ -193,15 +184,22 @@ impl Iterator for Iter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(p, tag)) = tag.filter(|(p, _)| *p <= self.point || self.conceals > 0) {
+            if let Some(&(b, tag)) =
+                tag.filter(|(b, _)| *b <= self.point.byte() || self.conceals > 0)
+            {
                 self.tags.next();
 
-                if let ControlFlow::Break(_) = self.handle_meta_tags(&tag, p) {
+                if !self.handled_meta_tag(&tag, b) {
                     break Some(Item::new(self.points(), Part::from_raw(tag)));
                 }
             } else if let Some(char) = self.chars.next() {
                 let points = self.points();
-                self.point = self.point.move_fwd(char);
+                self.point = self.point.fwd(char);
+
+                self.ghost = match self.main_iter {
+                    Some(..) => self.ghost.map(|(g, d)| (g.fwd(char), d + char.len_utf8())),
+                    None => None,
+                };
 
                 break Some(Item::new(points, Part::Char(char)));
             } else if let Some(backup) = self.main_iter.take() {
@@ -222,13 +220,11 @@ pub struct RevIter<'a> {
     text: &'a Text,
     chars: RevChars<'a>,
     tags: tags::RevTags<'a>,
-    pos: usize,
-    line: usize,
+    point: Point,
     conceals: usize,
 
-    backup_iter: Option<(usize, RevChars<'a>, tags::RevTags<'a>)>,
-    ghosts_to_ignore: Vec<TextId>,
-    ghost_shift: usize,
+    main_iter: Option<(Point, RevChars<'a>, tags::RevTags<'a>)>,
+    ghost: Option<(Point, usize)>,
 
     // Iteration options:
     print_ghosts: bool,
@@ -237,97 +233,58 @@ pub struct RevIter<'a> {
 
 impl<'a> RevIter<'a> {
     pub fn on_ghost(&self) -> bool {
-        self.backup_iter.is_some()
+        self.main_iter.is_some()
     }
 
-    pub(super) fn new_at(text: &'a Text, pos: impl TwoPoints) -> Self {
-        let (real, ghost) = pos.to_points();
-        let mut ghosts_to_ignore = Vec::new();
-        let mut ghost_shift = 0;
+    pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
+        let (real, ghost) = tp.to_points();
+        let point = real.min(text.max_point());
 
-        let (chars, tags) = {
-            let mut text_ids = text.tags.iter_only_at(real).filter_map(|tag| match tag {
-                RawTag::GhostText(_, id) => Some(id),
-                _ => None,
-            });
-
-            let text = text_ids.find_map(|id| {
-                text.tags.texts.get(&id).and_then(|text| {
-                    if ghost < text.len_bytes() {
-                        ghosts_to_ignore.push(id);
-                        Some(text)
-                    } else {
-                        ghost_shift += text.len_bytes();
-                        ghost -= text.len_bytes();
-                        None
-                    }
-                })
-            });
-
-            ghosts_to_ignore.extend(text_ids);
-
-            text.map(|text| {
-                ghost = ghost.min(text.len_bytes());
-                let tags_start = ghost + text.tags.back_check();
-
-                let chars = buf_chars_rev(&text.buf, ghost);
-                let tags = text.tags.rev_iter_at(tags_start);
-
-                (chars, tags)
-            })
-            .unzip()
-        };
-
-        let tags_start = real + text.tags.back_check();
-
-        let pos = if chars.is_some() { ghost } else { real };
-
-        let backup_iter = chars.is_some().then(|| {
-            let chars = buf_chars_rev(&text.buf, real);
-            let tags = text.tags.rev_iter_at(tags_start);
-
-            (real, chars, tags)
-        });
+        let ghost = ghost.map(|ghost| (ghost, text.tags.ghosts_total_point_at(real.byte()).byte()));
 
         Self {
             text,
-            chars: chars.unwrap_or_else(|| buf_chars_rev(&text.buf, real)),
-            tags: tags.unwrap_or_else(|| text.tags.rev_iter_at(tags_start)),
-            pos,
-            line: text.char_to_line(real),
+            chars: buf_chars_rev(&text.buf, point.byte()),
+            tags: text.tags.rev_iter_at(point.byte()),
+            point,
             conceals: 0,
 
-            backup_iter,
-            ghosts_to_ignore,
-            ghost_shift,
+            main_iter: None,
+            ghost,
 
             print_ghosts: true,
             _conceals: Conceal::All,
         }
     }
 
-    pub(super) fn new_following(text: &'a Text, pos: impl Positional) -> Self {
-        let ExactPos { real, mut ghost } = pos.ghost().clamp(text);
-        let exact_pos = if text.tags.iter_only_at(real).any(|tag| {
-            if let RawTag::GhostText(_, id) = tag {
-                text.tags.texts.get(&id).is_some_and(|text| {
-                    if ghost < text.len_bytes() {
-                        true
+    pub(super) fn new_following(text: &'a Text, tp: impl TwoPoints) -> Self {
+        let (real, ghost) = tp.to_points();
+        let real = real.min(text.max_point());
+
+        let ghost = ghost.and_then(|ghost| {
+            let mut dist = 0;
+            text.tags.iter_only_at(real.byte()).find_map(|tag| {
+                tag.as_ghost_text().and_then(|(_, id)| {
+                    let text = text.tags.texts.get(&id).unwrap();
+                    if ghost.byte() >= dist + text.len_bytes() {
+                        dist += text.len_bytes();
+                        None
                     } else {
-                        ghost -= text.len_bytes();
-                        false
+                        let local_ghost = text.point_at(ghost.byte() - dist).unwrap();
+                        let beginning = ghost - local_ghost;
+                        let once_fwd = text.point_at(local_ghost.byte() + 1).unwrap();
+                        Some(beginning + once_fwd)
                     }
                 })
-            } else {
-                false
-            }
-        }) {
-            ExactPos::new(real, ghost + 1)
-        } else {
-            ExactPos::new(real + 1, 0)
-        };
+            })
+        });
 
-        Self::new_at(text, exact_pos)
+        if ghost.is_some() {
+            Self::new_at(text, (real, ghost))
+        } else {
+            let real = text.point_at(real.byte() + 1).unwrap_or(text.max_point());
+            Self::new_at(text, real)
+        }
     }
 
     pub fn no_conceals(self) -> Self {
@@ -345,64 +302,61 @@ impl<'a> RevIter<'a> {
     }
 
     #[inline]
-    fn process_meta_tags(&mut self, tag: &RawTag, pos: usize) -> ControlFlow<()> {
+    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::GhostText(_, id) if self.print_ghosts => {
-                if self.ghosts_to_ignore.contains(id) || pos > self.pos || self.conceals > 0 {
-                    return ControlFlow::Continue(());
+                if b > self.point.byte() || self.conceals > 0 {
+                    return true;
                 }
-                self.ghost_shift = 0;
+                let text = self.text.tags.texts.get(&id).unwrap();
 
-                let Some(text) = self.text.tags.iter_only_at(pos).find_map(|tag| match tag {
-                    RawTag::GhostText(_, cmp) if cmp == *id => self.text.tags.texts.get(id),
-                    RawTag::GhostText(_, id) => {
-                        let text = self.text.tags.texts.get(&id);
-                        self.ghost_shift += text.map(|t| t.len_bytes()).unwrap_or(0);
-                        None
+                let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
+                    if *dist - text.len_bytes() >= ghost.byte() {
+                        *dist -= text.len_bytes();
+                        return true;
                     }
-                    _ => None,
-                }) else {
-                    return ControlFlow::Continue(());
+                    let start = text.point_at(ghost.byte() - *dist).unwrap();
+                    (start, *ghost)
+                } else {
+                    let total = text.tags.ghosts_total_point_at(self.point.byte());
+                    let start = text.max_point();
+                    (start, total)
                 };
 
-                let iter = text.rev_iter();
-                let pos = std::mem::replace(&mut self.pos, iter.pos);
+                let iter = text.rev_iter_at(this_ghost);
+                let point = std::mem::replace(&mut self.point, total_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                self.backup_iter = Some((pos, chars, tags));
-
-                ControlFlow::Continue(())
+                self.ghost = Some((total_ghost, total_ghost.byte()));
+                self.main_iter = Some((point, chars, tags));
             }
-            RawTag::GhostText(..) => ControlFlow::Continue(()),
 
             RawTag::ConcealStart(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.pos = self.pos.min(pos);
-                    self.line = self.text.char_to_line(self.pos);
-                    let skip = self.text.buf.len() - self.pos;
-                    self.chars = buf_chars_rev(&self.text.buf, skip);
+                    self.point = self.point.min(self.text.point_at(b).unwrap());
+                    self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
                 }
-
-                ControlFlow::Continue(())
             }
-            RawTag::ConcealEnd(_) => {
-                self.conceals += 1;
-
-                ControlFlow::Continue(())
-            }
+            RawTag::ConcealEnd(_) => self.conceals += 1,
             RawTag::Concealed(skip) => {
-                self.pos = pos.saturating_sub(*skip as usize);
-                self.line = self.text.char_to_line(self.pos);
-                let skip = self.text.buf.len() - self.pos;
-                self.chars = buf_chars_rev(&self.text.buf, skip);
-                self.tags = self.text.tags.rev_iter_at(self.pos);
-                self.conceals = 0;
-
-                ControlFlow::Break(())
+                let b = b.saturating_sub(*skip as usize);
+                let point = self.text.point_at(b).unwrap_or(self.text.max_point());
+                *self = RevIter::new_at(self.text, point);
+                return false;
             }
-            _ => ControlFlow::Break(()),
+            _ => return false,
+        }
+
+        true
+    }
+
+    pub fn points(&self) -> (Point, Option<Point>) {
+        if let Some((real, ..)) = self.main_iter.as_ref() {
+            (*real, Some(self.point))
+        } else {
+            (self.point, None)
         }
     }
 }
@@ -415,33 +369,26 @@ impl Iterator for RevIter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(pos, tag)) = tag.filter(|(pos, _)| *pos >= self.pos || self.conceals > 0)
+            if let Some(&(b, tag)) =
+                tag.filter(|(b, _)| *b >= self.point.byte() || self.conceals > 0)
             {
                 self.tags.next();
 
-                if let ControlFlow::Break(_) = self.process_meta_tags(&tag, pos) {
-                    let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
-                        ExactPos::new(*real, self.ghost_shift + self.pos)
-                    } else {
-                        ExactPos::new(self.pos, self.ghost_shift)
-                    };
-
-                    break Some(Item::new(pos, self.line, Part::from_raw(tag)));
+                if !self.handled_meta_tag(&tag, b) {
+                    break Some(Item::new(self.points(), Part::from_raw(tag)));
                 }
-            } else if let Some(c) = self.chars.next() {
-                self.pos -= 1;
-                let pos = if let Some((real, ..)) = self.backup_iter.as_ref() {
-                    ExactPos::new(*real, self.ghost_shift + self.pos)
-                } else {
-                    let ghost = self.ghost_shift;
-                    self.ghost_shift = usize::MAX;
-                    self.line -= (c == '\n') as usize;
-                    ExactPos::new(self.pos, ghost)
+            } else if let Some(char) = self.chars.next() {
+                let points = self.points();
+                self.point = self.point.rev(char);
+
+                self.ghost = match self.main_iter {
+                    Some(..) => self.ghost.map(|(g, d)| (g.rev(char), d - char.len_utf8())),
+                    None => None,
                 };
 
-                break Some(Item::new(pos, self.line, Part::Char(c)));
-            } else if let Some(last_iter) = self.backup_iter.take() {
-                (self.pos, self.chars, self.tags) = last_iter;
+                break Some(Item::new(points, Part::Char(char)));
+            } else if let Some(last_iter) = self.main_iter.take() {
+                (self.point, self.chars, self.tags) = last_iter;
             } else {
                 break None;
             }
