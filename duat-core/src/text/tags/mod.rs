@@ -75,12 +75,12 @@ impl std::fmt::Debug for TagOrSkip {
 
 #[derive(Clone)]
 pub struct Tags {
-    buf: GapBuffer<TagOrSkip>,
+    pub buf: GapBuffer<TagOrSkip>,
     pub texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
     ranges: Vec<TagRange>,
-    records: Records<(usize, usize)>,
+    pub records: Records<(usize, usize)>,
 }
 
 impl Tags {
@@ -164,7 +164,7 @@ impl Tags {
             }
         }
 
-        self.merge_surrounding_skips(self.len_bytes());
+        self.fuse_skips_at(self.len_bytes());
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
     }
@@ -195,7 +195,7 @@ impl Tags {
             remove_from_ranges((i, tag), &mut self.ranges);
         }
 
-        self.merge_surrounding_skips(at);
+        self.fuse_skips_at(at);
         rearrange_ranges(&mut self.ranges, self.range_min);
     }
 
@@ -239,13 +239,11 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
-        log_info!("transforming ({start_n}, {end_n}, {old:?}) to {new:?}");
         self.records.transform(
             (start_n, old.start),
             (end_n, old.clone().count()),
             (start_n + 1, new.clone().count()),
         );
-        self.records.insert((start_n, old.start));
 
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new.clone());
@@ -378,7 +376,6 @@ impl Tags {
     /// * Its length
     fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
         let (n, mut b) = self.records.closest_to(at);
-        log_info!("closest {n}, {b}");
 
         let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
 
@@ -478,67 +475,20 @@ impl Tags {
         }
     }
 
-    /// Transforms any surrounding clusters of multiple skips into a
-    /// single one.
+    /// If there is no [`Tag`] in `at`, fuses two skips surrounding
+    /// it.
     ///
-    /// This is crucial to prevent the gradual deterioration of the
-    /// [`Container`]'s structure.
-    fn merge_surrounding_skips(&mut self, at: usize) {
-        let (n, b) = match self.get_skip_at(at) {
-            Some((n, b, _)) => (n, b),
-            None => {
-                assert_len!(at, self.len_bytes());
-                (self.buf.len(), self.len_bytes())
-            }
+    /// This method is used to get rid of sequences of 2 skips, in
+    /// order to keep the [`GapBuffer`] nice and tidy.
+    fn fuse_skips_at(&mut self, at: usize) {
+        let (n, skip) = match self.get_skip_at(at) {
+            Some((n, b, skip)) if b == at && n > 0 => (n, skip),
+            _ => return,
         };
 
-        let has_tag = b == at && n > 0 && self.buf.get(n - 1).is_some_and(|ts| ts.is_tag());
-
-        let (r_skip, r_end) = {
-            let mut total_skip = 0;
-            let mut i = 0;
-            let mut iter = self.buf.iter().skip(n).skip_while(|ts| ts.is_tag());
-
-            while let Some(TagOrSkip::Skip(skip)) = iter.next() {
-                total_skip += skip;
-                i += 1;
-            }
-
-            (total_skip, n + i)
-        };
-
-        let (l_skip, l_range) = {
-            let mut total_skip = 0;
-            let mut i = 0;
-
-            let rev_n = self.buf.len() - n;
-            let tags = self
-                .buf
-                .iter()
-                .rev()
-                .skip(rev_n)
-                .take_while(|ts| ts.is_tag())
-                .count();
-
-            let mut iter = self.buf.iter().rev().skip(rev_n + tags);
-
-            while let Some(TagOrSkip::Skip(skip)) = iter.next() {
-                total_skip += skip;
-                i += 1;
-            }
-
-            (total_skip, (n - (tags + i))..(n - tags))
-        };
-
-        // Merge groups of ranges around `at` into 2 groups.
-        if has_tag {
-            self.buf.splice(n..r_end, [TagOrSkip::Skip(r_skip)]);
-            self.buf.splice(l_range, [TagOrSkip::Skip(l_skip)]);
-        // Merge groups of ranges around `from` into 1 group.
-        } else {
-            let total_skip = l_skip + r_skip;
+        if let Some(prev_skip) = self.buf[n - 1].as_skip() {
             self.buf
-                .splice(l_range.start..r_end, [TagOrSkip::Skip(total_skip)]);
+                .splice((n - 1)..=n, [TagOrSkip::Skip(prev_skip + skip)]);
         }
     }
 
