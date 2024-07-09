@@ -239,9 +239,10 @@ impl Tags {
             remove_from_ranges(entry, &mut self.ranges);
         }
 
+        log_info!("transforming ({start_n}, {end_n}, {old:?}) to {new:?}");
         self.records.transform(
             (start_n, old.start),
-            (end_n, old.end),
+            (end_n, old.clone().count()),
             (start_n + 1, new.clone().count()),
         );
         self.records.insert((start_n, old.start));
