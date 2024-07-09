@@ -5,7 +5,7 @@ use std::{
 
 static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
 static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-static MARKER_COUNT: AtomicU16 = AtomicU16::new(0);
+static MARKER_COUNT: AtomicU16 = AtomicU16::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextId(u16);
@@ -37,7 +37,7 @@ impl Default for ToggleId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Marker(u16);
 
 impl Marker {
@@ -50,6 +50,16 @@ impl Marker {
         let end = Self(MARKER_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
 
         start..end
+    }
+
+    pub(crate) fn base() -> Self {
+        Self(0)
+    }
+}
+
+impl std::fmt::Debug for Marker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Marker({})", self.0)
     }
 }
 

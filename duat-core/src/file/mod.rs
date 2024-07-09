@@ -259,11 +259,11 @@ impl File {
 
     /// The file's name.
     ///
-    /// If there is no set path, returns `"*scratch file*#{id}"`.
+    /// If there is no set path, returns `"*scratch file #{id}*"`.
     pub fn name(&self) -> String {
         match &self.path {
             Path::Set(path) => path.file_name().unwrap().to_string_lossy().to_string(),
-            Path::UnSet(id) => format!("*scratch file {id}*"),
+            Path::UnSet(id) => format!("*scratch file #{id}*"),
         }
     }
 

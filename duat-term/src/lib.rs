@@ -44,7 +44,7 @@ impl ui::Ui for Ui {
     fn new(statics: Self::StaticFns) -> Self {
         FUNCTIONS.get_or_init(|| statics);
 
-        std::panic::set_hook(Box::new(|hook| {
+        std::panic::set_hook(Box::new(|info| {
             execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
@@ -54,7 +54,7 @@ impl ui::Ui for Ui {
             )
             .unwrap();
             terminal::disable_raw_mode().unwrap();
-            println!("{hook}")
+            println!("{info}")
         }));
 
         Ui {

@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::{
     text::{IterCfg, Point, PrintCfg, Text},
-    ui::Area,
+    ui::{Area, Caret},
 };
 
 /// A cursor in the text file. This is an editing cursor, not a
@@ -44,9 +44,20 @@ impl Cursor {
             return;
         }
 
-        let point = text
-            .point_at(self.caret.byte().saturating_add_signed(by))
-            .unwrap_or(text.max_point());
+        let point = if by > 0 {
+            text.iter_at(self.caret())
+                .no_tags()
+                .nth(by as usize)
+                .map(|item| item.real)
+                .unwrap_or(text.max_point())
+        } else {
+            text.rev_iter_at(self.caret())
+                .no_tags()
+                .nth(by.unsigned_abs() - 1)
+                .map(|item| item.real)
+                .unwrap_or_default()
+        };
+
         let cfg = IterCfg::new(cfg).dont_wrap();
         self.caret = VPoint::new(point, text, area, cfg);
     }
@@ -62,32 +73,25 @@ impl Cursor {
         let dcol = self.caret.dcol;
 
         let point = if self.caret.line().saturating_add_signed(by) > text.len_lines() {
-            text.max_point()
+            self.caret.point
         } else if by > 0 {
             area.print_iter(text.iter_at(self.caret.point), cfg)
-                .filter_map(|(caret, item)| Some(caret.x).zip(item.as_real_char()))
-                .find_map(|(x, (point, char))| {
-                    (point.line() == target && (x >= dcol || char == '\n')).then_some(point)
+                .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
+                .find_map(|(Caret { x, len, .. }, (point, char))| {
+                    (point.line() == target && (x + len > dcol || char == '\n')).then_some(point)
                 })
                 .unwrap_or(text.max_point())
         } else if self.caret.line().checked_add_signed(by).is_none() {
-            Point::default()
+            self.caret.point
         } else {
-            let mut prev_point = self.caret.point;
             area.rev_print_iter(text.rev_iter_at(self.caret.point), cfg)
                 .filter_map(|(caret, item)| Some(caret.x).zip(item.as_real_char()))
-                .find_map(|(x, (point, _))| {
-                    if point.line() == target && dcol > x {
-                        Some(prev_point)
-                    } else {
-                        prev_point = point;
-                        None
-                    }
-                })
+                .find_map(|(x, (point, _))| (point.line() == target && dcol >= x).then_some(point))
                 .unwrap_or(Point::default())
         };
 
-        self.caret = VPoint::new(point, text, area, cfg);
+        self.caret.point = point;
+        self.caret.vcol = vcol(point, text, area, cfg)
     }
 
     /// Internal vertical movement function.

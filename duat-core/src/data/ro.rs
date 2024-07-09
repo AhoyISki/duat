@@ -526,6 +526,16 @@ where
         }
     }
 }
-impl<T: ?Sized> Data<T> for RoData<T> {}
+
+impl<T: ?Sized> Data<T> for RoData<T> {
+    fn to_ro(&self) -> RoData<T> {
+        self.clone()
+    }
+
+    fn has_changed(&self) -> bool {
+        self.has_changed()
+    }
+}
+
 unsafe impl<T: ?Sized + Send> Send for RoData<T> {}
 unsafe impl<T: ?Sized + Sync> Sync for RoData<T> {}

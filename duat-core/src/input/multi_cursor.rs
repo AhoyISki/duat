@@ -182,7 +182,7 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>)) {
+    pub fn move_each_cursor<_T>(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>) -> _T) {
         let mut widget = self.widget.write();
         for cursor in self.cursors.list.iter_mut() {
             let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());

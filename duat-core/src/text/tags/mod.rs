@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range};
+use std::{self, collections::HashMap, ops::Range};
 
 use gapbuf::{gap_buffer, GapBuffer};
 
@@ -8,6 +8,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -113,9 +114,9 @@ impl Tags {
     }
 
     pub fn insert(&mut self, at: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
-        let (raw_tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
+        let (tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
 
-        self.insert_raw(at, raw_tag);
+        self.insert_raw(at, tag);
 
         toggle_id
     }
@@ -131,6 +132,7 @@ impl Tags {
         if at == b {
             self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
+            self.records.insert((n + 1, at));
         } else {
             self.buf.splice(n..=n, [
                 TagOrSkip::Skip(at - b),
@@ -138,9 +140,8 @@ impl Tags {
                 TagOrSkip::Skip(b + skip - at),
             ]);
             self.records.transform((n, at), (0, 0), (2, 0));
+            self.records.insert((n + 2, at));
         }
-
-        self.records.insert((n + 1, at));
 
         add_to_ranges((at, tag), &mut self.ranges, self.range_min, true, true);
         rearrange_ranges(&mut self.ranges, self.range_min);
@@ -173,7 +174,7 @@ impl Tags {
     pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
         // If we are removing in the middle of a skip, there is
         // nothing to do.
-        let Some((n, b, _)) = self.get_skip_at(at).filter(|&(b, ..)| b == at) else {
+        let Some((n, b, _)) = self.get_skip_at(at).filter(|&(_, b, _)| b == at) else {
             return;
         };
 
@@ -219,7 +220,7 @@ impl Tags {
 
         let (end_n, end_b) = self
             .get_skip_at(old.end)
-            .map(|(end_p, end_n, skip)| (old.end.max(end_p + skip), end_n))
+            .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
             .unwrap_or((self.buf.len(), self.len_bytes()));
 
         let range_diff = new.end as isize - old.end as isize;
@@ -262,8 +263,14 @@ impl Tags {
     }
 
     pub fn iter_at(&self, at: usize) -> FwdTags {
-        let at = at.saturating_sub(self.range_min).min(self.len_bytes());
-        let (n, mut b, _) = self.get_skip_at(at).unwrap();
+        let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
+
+        let (n, mut b) = {
+            let (n, b, _) = self.get_skip_at(at).unwrap();
+            let iter = self.buf.iter().rev().skip(self.buf.len() - n);
+
+            (n - iter.take_while(|ts| ts.is_tag()).count(), b)
+        };
 
         let ranges = self
             .ranges
@@ -297,7 +304,10 @@ impl Tags {
 
     pub fn rev_iter_at(&self, at: usize) -> RevTags {
         let at = (at + self.range_min).min(self.len_bytes());
-        let (n, mut b, _) = self.get_skip_at(at).unwrap_or_else(|| panic!("{at}"));
+        let (n, mut b) = self
+            .get_skip_at(at)
+            .map(|(n, b, _)| (n, b))
+            .unwrap_or((self.buf.len(), self.len_bytes()));
 
         let ranges = {
             let mut ranges: Vec<_> = self
@@ -351,7 +361,7 @@ impl Tags {
             .flat_map(|b| self.buf.iter().skip(b).map_while(TagOrSkip::as_tag))
     }
 
-    pub fn ghosts_total_point_at(&self, at: usize) -> Option<Point> {
+    pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => Some(p.map_or(Point::default(), |p| {
                 p + self.texts.get(&id).unwrap().max_point()
@@ -367,10 +377,11 @@ impl Tags {
     /// * Its length
     fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
         let (n, mut b) = self.records.closest_to(at);
+        log_info!("closest {n}, {b}");
 
         let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
 
-        let found = if at >= b {
+        if at >= b {
             let iter = self.buf.iter().enumerate().skip(n);
             let skips = iter.filter_map(skips).take_while(|(_, skip)| {
                 if at >= b {
@@ -381,17 +392,17 @@ impl Tags {
                 }
             });
 
-            skips.last()
+            skips.last().map(|(i, skip)| (i, b - skip, skip))
         } else {
             let (s0, s1) = self.buf.as_slices();
             // Damn you Chain!!!!
             let iter_0 = s0.iter().enumerate().rev();
-            let s1_len = |(i, ts)| (i + s0.len(), ts);
-            let iter_1 = s1.iter().enumerate().rev().map(s1_len);
+            let plus_s0_len = |(i, ts)| (i + s0.len(), ts);
+            let iter_1 = s1.iter().enumerate().rev().map(plus_s0_len);
 
             let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
             let skips = iter.filter_map(skips).take_while(|(_, skip)| {
-                if b - skip >= at {
+                if b >= at {
                     b -= skip;
                     true
                 } else {
@@ -399,10 +410,8 @@ impl Tags {
                 }
             });
 
-            skips.last()
-        };
-
-        found.map(|(i, skip)| (i, b - skip, skip))
+            skips.last().map(|(i, skip)| (i, b, skip))
+        }
     }
 
     fn process_ranges_containing(&mut self, range: Range<usize>) {
@@ -478,7 +487,7 @@ impl Tags {
             Some((n, b, _)) => (n, b),
             None => {
                 assert_len!(at, self.len_bytes());
-                (self.len_bytes(), self.len_bytes())
+                (self.buf.len(), self.len_bytes())
             }
         };
 
@@ -571,9 +580,8 @@ impl Default for Tags {
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tags")
-            .field("container", &self.buf)
+            .field("buf", &self.buf)
             .field("ranges", &self.ranges)
-            .field("texts", &self.texts)
             .field("range_min", &self.range_min)
             .finish_non_exhaustive()
     }

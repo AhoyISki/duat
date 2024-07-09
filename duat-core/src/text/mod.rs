@@ -29,11 +29,12 @@ use crate::{
     data::{RoData, RwData},
     history::Change,
     input::Cursors,
+    log_info,
     palette::{self, FormId},
 };
 
 /// The text in a given area.
-#[derive(Debug, Default, Clone, Eq)]
+#[derive(Default, Clone, Eq)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
     pub tags: Box<Tags>,
@@ -43,19 +44,13 @@ pub struct Text {
     records: Records<(usize, usize, usize)>,
 }
 
-impl PartialEq for Text {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf && self.tags == other.tags
-    }
-}
-
 // TODO: Properly implement _replacements.
 impl Text {
     pub fn new() -> Self {
         Self {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
-            marker: Marker::new(),
+            marker: Marker::base(),
             records: Records::new(),
         }
     }
@@ -68,7 +63,7 @@ impl Text {
         Self {
             buf,
             tags,
-            marker: Marker::new(),
+            marker: Marker::base(),
             records: Records::with_max((file.len(), file.chars().count(), file.lines().count())),
         }
     }
@@ -85,10 +80,8 @@ impl Text {
         self.buf
             .splice(old.clone(), edit.as_bytes().iter().cloned());
 
-        if edit.len() != old.clone().count() {
-            let new_end = old.start + edit.len();
-            self.tags.transform(old, new_end);
-        }
+        let new_end = old.start + edit.len();
+        self.tags.transform(old, new_end);
     }
 
     pub(crate) fn insert_str(&mut self, at: usize, str: &str) {
@@ -172,7 +165,14 @@ impl Text {
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
-            let r1 = (start - s0.len()).min(s1.len())..(end - s0.len()).min(s1.len());
+
+            let start = start.checked_sub(s0.len());
+            let end = end.checked_sub(s0.len());
+            let r1 = if let (Some(start), Some(end)) = (start, end) {
+                start.min(s1.len())..end.min(s1.len())
+            } else {
+                0..0
+            };
 
             (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
         }
@@ -206,31 +206,35 @@ impl Text {
             let (s0, s1) = self.slices_range(b..);
 
             s0.char_indices()
-                .chain(s1.char_indices().map(|(b, c)| (b + s0_len, c)))
-                .inspect(|(_, c)| l += (*c == '\n') as usize)
+                .chain(s1.char_indices().map(|(b, char)| (b + s0_len, char)))
+                .inspect(|(_, char)| l += (*char == '\n') as usize)
                 .enumerate()
-                .map(|(i, (b, char))| (b, c + i, char))
+                .map(|(i, (this_b, _))| (b + this_b, c + i))
                 .take_while(|&(b, ..)| at >= b)
                 .last()
         } else {
             let (s0, s1) = self.slices_range(..b);
-            let s1 = s1.char_indices().map(|(b, c)| (b + s0_len, c)).rev();
+            let s1 = s1.chars().rev();
+            let mut u_len = 0;
 
-            s1.chain(s0.char_indices().rev())
-                .inspect(|(_, c)| l -= (*c == '\n') as usize)
+            s1.chain(s0.chars().rev())
+                .inspect(|char| l -= (*char == '\n') as usize)
                 .enumerate()
-                .map(|(i, (b, char))| (b, c - i, char))
-                .take_while(|&(b, ..)| at < b)
+                .map(|(i, char)| {
+                    u_len += char.len_utf8();
+                    (b - (u_len - char.len_utf8()), c - i)
+                })
+                .take_while(|&(b, ..)| b >= at)
                 .last()
         };
 
-        found.map(|(b, c, char)| Point::from_coords(b, c, l, char))
+        found.map(|(b, c)| Point::from_coords(b, c, l))
     }
 
     #[inline(always)]
     pub fn ghost_max_points_at(&self, at: usize) -> Option<(Point, Option<Point>)> {
         self.point_at(at)
-            .map(|point| (point, self.tags.ghosts_total_point_at(point.byte())))
+            .map(|point| (point, self.tags.ghosts_total_at(point.byte())))
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -262,9 +266,7 @@ impl Text {
 
     pub fn max_point(&self) -> Point {
         let (b, c, l) = self.records.max();
-        let (s0, s1) = self.slices_range(b..);
-
-        Point::from_coords(b, c, l, s0.chars().chain(s1.chars()).next().unwrap())
+        Point::from_coords(b, c, l)
     }
 
     /// The visual start of the line
@@ -343,6 +345,22 @@ where
     }
 }
 
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("buf", &format!("{}{}", self.slices().0, self.slices().1))
+            .field("tags", &self.tags)
+            .field("records", &self.records)
+            .finish()
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf && self.tags == other.tags
+    }
+}
+
 mod point {
     use super::Item;
 
@@ -380,7 +398,6 @@ mod point {
         b: usize,
         c: usize,
         l: usize,
-        char: char,
     }
 
     impl Point {
@@ -389,16 +406,15 @@ mod point {
             Self::default()
         }
 
-        pub(super) fn from_coords(b: usize, c: usize, l: usize, char: char) -> Self {
-            Self { b, c, l, char }
+        pub(super) fn from_coords(b: usize, c: usize, l: usize) -> Self {
+            Self { b, c, l }
         }
 
         pub(super) fn fwd(self, char: char) -> Self {
             Self {
                 b: self.b + char.len_utf8(),
                 c: self.c + 1,
-                l: self.l + (self.char == '\n') as usize,
-                char,
+                l: self.l + (char == '\n') as usize,
             }
         }
 
@@ -407,7 +423,6 @@ mod point {
                 b: self.b - char.len_utf8(),
                 c: self.c - 1,
                 l: self.l - (char == '\n') as usize,
-                char,
             }
         }
 
@@ -437,7 +452,6 @@ mod point {
                 b: self.b + rhs.b,
                 c: self.c + rhs.c,
                 l: self.l + rhs.l,
-                ..rhs
             }
         }
     }
@@ -456,7 +470,6 @@ mod point {
                 b: self.b - rhs.b,
                 c: self.c - rhs.c,
                 l: self.l - rhs.l,
-                ..self
             }
         }
     }
@@ -516,6 +529,7 @@ impl Builder {
     pub fn push_str(&mut self, display: impl Display) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
+        log_info!("{display}");
         self.text.insert_str(self.text.len_bytes(), &self.buffer)
     }
 
@@ -540,6 +554,12 @@ impl Builder {
 
     pub fn push_text(&mut self, text: Text) {
         let end = self.text.len_bytes();
+
+        if let Some(tag) = self.last_form.take() {
+            //log_info!("{:#?}", self.text);
+            self.text.tags.insert(end, tag, self.marker);
+        }
+
         self.text.buf.splice(end..end, *text.buf);
         self.text.tags.extend(*text.tags);
     }
@@ -566,7 +586,7 @@ impl Default for Builder {
             text: Text::default(),
             last_form: None,
             last_align: None,
-            marker: Marker::new(),
+            marker: Marker::base(),
             buffer: String::with_capacity(50),
         }
     }

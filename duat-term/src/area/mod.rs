@@ -99,18 +99,17 @@ impl Area {
     /// Scrolls down until the gap between the main cursor and the
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
+        let mut info = self.print_info.borrow_mut();
         let points = text.ghost_max_points_at(point.byte()).unwrap();
         let after = text.points_after(points).unwrap();
-
-        let mut info = self.print_info.borrow_mut();
 
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {
-            cfg.scrolloff().y.saturating_sub(1)
+            cfg.scrolloff().y
         } else {
-            self.height().saturating_sub(cfg.scrolloff().y + 2)
+            self.height().saturating_sub(cfg.scrolloff().y + 1)
         };
 
         let first = iter.nth(target).unwrap_or((Point::default(), None));

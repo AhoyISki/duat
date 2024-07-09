@@ -12,7 +12,10 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        LazyLock, Mutex, Once,
+    },
     thread::JoinHandle,
 };
 
@@ -22,13 +25,13 @@ use ui::Ui;
 use self::commands::Commands;
 
 pub mod commands;
-pub mod position;
 pub mod data;
 pub mod file;
 pub mod history;
 pub mod hooks;
 pub mod input;
 pub mod palette;
+pub mod position;
 pub mod session;
 pub mod text;
 pub mod ui;
@@ -112,12 +115,25 @@ where
 
 // Debugging objects.
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub static HOOK: Once = Once::new();
+pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{
-    use std::{fs, io::Write, time::Instant};
-    let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+    use std::{fmt::Write, time::Instant};
+
+    use crate::{HOOK, LOG};
+
     let mut text = format!($($text)*);
+
+    HOOK.call_once(|| {
+        let old_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            old_hook(info);
+            println!("Logs:");
+            println!("{}\n", LOG.lock().unwrap());
+        }));
+    });
 
     if let Some(start) = $crate::DEBUG_TIME_START.get() {
         if text.lines().count() > 1 {
@@ -128,12 +144,16 @@ pub macro log_info($($text:tt)*) {{
             }
 
             let duration = Instant::now().duration_since(*start);
-            write!(log, "\nat {:.4?}:\n  {text}", duration).unwrap();
+            write!(LOG.lock().unwrap(), "\nat {:.4?}:\n  {text}", duration).unwrap();
         } else {
             let duration = Instant::now().duration_since(*start);
-            write!(log, "\nat {:.4?}: {text}", duration).unwrap();
+            write!(LOG.lock().unwrap(), "\nat {:.4?}: {text}", duration).unwrap();
         }
     } else {
-        write!(log, "\n{text}").unwrap();
+        write!(LOG.lock().unwrap(), "\n{text}").unwrap();
     }
+
+	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(35);
+    let trimmed = LOG.lock().unwrap().split_inclusive('\n').skip(len_lines).collect();
+    *LOG.lock().unwrap() = trimmed;
 }}

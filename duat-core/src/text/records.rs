@@ -12,7 +12,7 @@ pub trait Record {
 
 impl Record for (usize, usize) {
     fn bytes(&self) -> usize {
-        self.0
+        self.1
     }
 
     fn add(self, other: Self) -> Self {
@@ -38,14 +38,14 @@ impl Record for (usize, usize, usize) {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct Records<R>
 where
     R: Default + Debug + Clone + Copy + Eq + Ord + Record,
 {
     last: R,
     max: R,
-    stored: Vec<R>,
+    pub stored: Vec<R>,
 }
 
 impl<R> Records<R>
@@ -81,18 +81,18 @@ where
         self.last = new;
     }
 
-    pub fn transform(&mut self, start: R, old_end: R, new_end: R) {
+    pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
         let (Ok(start_i) | Err(start_i)) = self.stored.binary_search(&start);
-        let (Ok(old_end_i) | Err(old_end_i)) = self.stored.binary_search(&old_end);
+        let (Ok(old_end_i) | Err(old_end_i)) = self.stored.binary_search(&start.add(old_len));
 
         self.stored.splice(start_i..old_end_i, []);
 
-        for r in &mut self.stored[old_end_i..] {
-            *r = r.sub(old_end).add(old_end);
+        for r in self.stored.iter_mut().skip(old_end_i) {
+            *r = r.sub(old_len).add(old_len);
         }
 
-        self.last = new_end;
-        self.max = self.max.sub(old_end).add(new_end);
+        self.last = start.add(new_len);
+        self.max = self.max.sub(old_len).add(new_len);
     }
 
     pub fn append(&mut self, r: R) {
@@ -126,7 +126,7 @@ where
 
         let canditates = {
             let prev = i.checked_sub(1).and_then(|i| self.stored.get(i)).cloned();
-            let next = self.stored.get(i + 1).cloned();
+            let next = self.stored.get(i).cloned();
             let max = Some(self.max);
 
             [Some(R::default()), prev, next, max].into_iter().flatten()
@@ -135,5 +135,18 @@ where
         canditates
             .min_by(|lhs, rhs| lhs.bytes().abs_diff(b).cmp(&rhs.bytes().abs_diff(b)))
             .unwrap()
+    }
+}
+
+impl<R: Debug> Debug for Records<R>
+where
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Records")
+            .field("last", &format!("{:?}", self.last))
+            .field("max", &format!("{:?}", self.max))
+            .field("stored", &format!("{:?}", self.stored))
+            .finish()
     }
 }

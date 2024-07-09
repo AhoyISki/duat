@@ -272,6 +272,9 @@ fn match_normal<U: Ui>(
             hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::GoTo));
         }
 
+        ////////// For now
+        key!(KeyCode::Char('q')) => panic!("Quit on purpose"),
+
         ////////// History manipulation.
         key!(KeyCode::Char('u')) => editor.undo(),
         key!(KeyCode::Char('U')) => editor.redo(),

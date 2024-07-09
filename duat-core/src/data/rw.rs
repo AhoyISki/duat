@@ -8,7 +8,7 @@ use std::{
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use super::{private::InnerData, Data};
+use super::{private::InnerData, Data, RoData};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},
@@ -831,7 +831,16 @@ where
     }
 }
 
-impl<T: ?Sized> Data<T> for RwData<T> {}
+impl<T: ?Sized> Data<T> for RwData<T> {
+    fn to_ro(&self) -> super::RoData<T> {
+        RoData::from(self)
+    }
+
+    fn has_changed(&self) -> bool {
+        self.has_changed()
+    }
+}
+
 unsafe impl<T: ?Sized + Send> Send for RwData<T> {}
 unsafe impl<T: ?Sized + Sync> Sync for RwData<T> {}
 

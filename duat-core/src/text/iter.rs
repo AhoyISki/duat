@@ -117,6 +117,10 @@ impl<'a> Iter<'a> {
         }
     }
 
+    pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
+        self.filter(|item| item.part.is_char())
+    }
+
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
@@ -247,19 +251,13 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> RevIter<'a> {
-    pub fn on_ghost(&self) -> bool {
-        self.main_iter.is_some()
-    }
-
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.max_point());
 
         let ghost = ghost.map(|ghost| {
-            (
-                ghost,
-                text.tags.ghosts_total_point_at(real.byte()).unwrap().byte(),
-            )
+            let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
+            (ghost, dist)
         });
 
         Self {
@@ -291,6 +289,10 @@ impl<'a> RevIter<'a> {
         }
     }
 
+    pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
+        self.filter(|item| item.part.is_char())
+    }
+
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
@@ -309,7 +311,7 @@ impl<'a> RevIter<'a> {
                     (this, *total)
                 } else {
                     let this = text.max_point();
-                    let total = text.tags.ghosts_total_point_at(self.point.byte());
+                    let total = text.tags.ghosts_total_at(self.point.byte());
                     (this, total.unwrap())
                 };
 
@@ -349,6 +351,10 @@ impl<'a> RevIter<'a> {
             (self.point, None)
         }
     }
+
+    pub fn is_on_ghost(&self) -> bool {
+        self.main_iter.is_some()
+    }
 }
 
 impl Iterator for RevIter<'_> {
@@ -368,7 +374,6 @@ impl Iterator for RevIter<'_> {
                     break Some(Item::new(self.points(), Part::from_raw(tag)));
                 }
             } else if let Some(char) = self.chars.next() {
-                let points = self.points();
                 self.point = self.point.rev(char);
 
                 self.ghost = match self.main_iter {
@@ -376,7 +381,7 @@ impl Iterator for RevIter<'_> {
                     None => None,
                 };
 
-                break Some(Item::new(points, Part::Char(char)));
+                break Some(Item::new(self.points(), Part::Char(char)));
             } else if let Some(last_iter) = self.main_iter.take() {
                 (self.point, self.chars, self.tags) = last_iter;
             } else {

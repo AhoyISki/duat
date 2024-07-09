@@ -37,6 +37,9 @@ pub trait Data<T>: private::InnerData<T>
 where
     T: ?Sized,
 {
+    fn to_ro(&self) -> RoData<T>;
+
+    fn has_changed(&self) -> bool;
 }
 
 mod private {
