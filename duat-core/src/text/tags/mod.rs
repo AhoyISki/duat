@@ -8,6 +8,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -261,6 +262,7 @@ impl Tags {
         let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
         let (n, mut b) = {
+            log_info!("iterating at {at}");
             let (n, b, _) = self.get_skip_at(at).unwrap();
             let iter = self.buf.iter().rev().skip(self.buf.len() - n);
 
@@ -387,10 +389,11 @@ impl Tags {
 
         if at >= b {
             let iter = self.buf.iter().enumerate().skip(n).filter_map(skips);
-            iter.take_while(|(_, this_b, _)| at >= b + *this_b)
+            iter.map(|(i, this_b, skip)| (i, b + (this_b - skip), skip))
+                .take_while(|(_, b, _)| at >= *b)
                 .last()
-                .map(|(i, b, skip)| (i, b - skip, skip))
         } else {
+            log_info!("at {at}, closest is ({n}, {b}), {:#?}", self.buf);
             let (s0, s1) = self.buf.as_slices();
             // Damn you Chain!!!!
             let iter_0 = s0.iter().enumerate().rev();
@@ -399,7 +402,8 @@ impl Tags {
 
             let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
             iter.filter_map(skips)
-                .take_while(|(_, this_b, _)| b - *this_b >= at)
+                .map(|(i, this_b, skip)| (i, b - this_b, skip))
+                .take_while(|(_, b, skip)| *b + *skip > at)
                 .last()
         }
     }
