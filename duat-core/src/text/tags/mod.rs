@@ -4,11 +4,13 @@ use gapbuf::{gap_buffer, GapBuffer};
 
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
-    types::{RawTag, Tag},
+    types::{
+        RawTag::{self, *},
+        Tag,
+    },
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -238,8 +240,8 @@ impl Tags {
 
         self.records.transform(
             (start_n, old.start),
-            (end_n, old.clone().count()),
-            (start_n + 1, new.clone().count()),
+            (1 + end_n - start_n, old.clone().count()),
+            (1, new.clone().count()),
         );
 
         shift_ranges_after(new.end, &mut self.ranges, range_diff);
@@ -261,8 +263,7 @@ impl Tags {
     pub fn iter_at(&self, at: usize) -> FwdTags {
         let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
-        let (n, mut b) = {
-            log_info!("iterating at {at}");
+        let (n, b) = {
             let (n, b, _) = self.get_skip_at(at).unwrap();
             let iter = self.buf.iter().rev().skip(self.buf.len() - n);
 
@@ -276,32 +277,28 @@ impl Tags {
             .filter(move |range| range.get_end().map_or(true, |end| end > at))
             .flat_map(|range| range.get_start().map(|start| (start, range.tag())));
 
-        let tags = self.buf.iter().skip(n).filter_map(move |&ts| match ts {
-            TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
-                if let Some(range) = self
-                    .ranges
-                    .iter()
-                    .find(|range| range.starts_with(&(b, RawTag::ConcealStart(marker))))
-                {
-                    let skip = range.get_end().unwrap_or(usize::MAX) - b;
-                    Some((b, RawTag::Concealed(skip as u32)))
-                } else {
-                    Some((b, RawTag::ConcealStart(marker)))
+        let tags = {
+            let iter = self.buf.iter().skip(n).filter_map(raw_from(b));
+            iter.map(|(b, tag)| match tag {
+                ConcealStart(marker) => {
+                    match self
+                        .ranges
+                        .iter()
+                        .find(|range| range.starts_with(&(b, ConcealStart(marker))))
+                    {
+                        Some(range) => (b, Concealed(range.end() as u32)),
+                        None => (b, ConcealStart(marker)),
+                    }
                 }
-            }
-            TagOrSkip::Tag(tag) => Some((b, tag)),
-            TagOrSkip::Skip(skip) => {
-                b += skip;
-                None
-            }
-        });
+                tag => (b, tag),
+            })
+        };
 
         ranges.chain(tags).peekable()
     }
 
     pub fn rev_iter_at(&self, at: usize) -> RevTags {
-        let at = (at + self.range_min).min(self.len_bytes());
-        let (n, mut b) = self
+        let (n, b) = self
             .get_skip_at(at)
             .map(|(n, b, _)| (n, b))
             .unwrap_or((self.buf.len(), self.len_bytes()));
@@ -311,42 +308,32 @@ impl Tags {
                 .ranges
                 .iter()
                 .filter(|&range| range.get_start().map_or(true, |start| start < at))
-                .map(|range| {
-                    let end = range.get_end().unwrap_or(self.len_bytes());
-                    (end, range.tag().inverse().unwrap())
-                })
+                .map(|range| (range.end(), range.tag().inverse().unwrap()))
                 .filter(|(end, _)| *end > at)
                 .collect();
 
             ranges.sort();
-
             ranges
         };
 
-        let raw_tags =
-            self.buf
-                .iter()
-                .rev()
-                .skip(self.buf.len() - n)
-                .filter_map(move |&ts| match ts {
-                    TagOrSkip::Tag(RawTag::ConcealStart(marker)) => {
-                        if let Some(range) = self
-                            .ranges
-                            .iter()
-                            .find(|range| range.ends_with(&(b, RawTag::ConcealStart(marker))))
-                        {
-                            let skip = b - range.get_start().unwrap_or(0);
-                            Some((b, RawTag::Concealed(skip as u32)))
-                        } else {
-                            Some((b, RawTag::ConcealStart(marker)))
-                        }
+        let raw_tags = {
+            let iter = self.buf.iter().rev().skip(self.buf.len() - n);
+            iter.filter_map(raw_from_rev(b)).map(|(b, tag)| match tag {
+                ConcealEnd(marker) => {
+                    if let Some(range) = self
+                        .ranges
+                        .iter()
+                        .find(|range| range.ends_with(&(b, ConcealEnd(marker))))
+                    {
+                        let skip = b - range.get_start().unwrap_or(0);
+                        (b, Concealed(skip as u32))
+                    } else {
+                        (b, ConcealEnd(marker))
                     }
-                    TagOrSkip::Tag(tag) => Some((b, tag)),
-                    TagOrSkip::Skip(skip) => {
-                        b += skip;
-                        None
-                    }
-                });
+                }
+                tag => (b, tag),
+            })
+        };
 
         ranges.into_iter().rev().chain(raw_tags).peekable()
     }
@@ -393,7 +380,6 @@ impl Tags {
                 .take_while(|(_, b, _)| at >= *b)
                 .last()
         } else {
-            log_info!("at {at}, closest is ({n}, {b}), {:#?}", self.buf);
             let (s0, s1) = self.buf.as_slices();
             // Damn you Chain!!!!
             let iter_0 = s0.iter().enumerate().rev();
@@ -409,43 +395,27 @@ impl Tags {
     }
 
     fn process_ranges_containing(&mut self, range: Range<usize>) {
-        let search = {
+        let (before, after) = {
             let start = range.start.saturating_sub(self.range_min);
             // in case `range.start == range.end`, we would be double
             // checking that position, so we shift once to the right.
-            let intersection_shift = (range.end == range.start) as usize;
-            let end = (range.end + self.range_min + intersection_shift).min(self.len_bytes());
+            let cross_shift = (range.end == range.start) as usize;
+            let end = range.end + self.range_min + cross_shift;
 
-            start..end
+            (start..=range.start, (range.end + cross_shift)..=end)
         };
 
-        let before = {
-            let (n, mut b, _) = self.get_skip_at(search.start).unwrap();
+        let before = self
+            .get_skip_at(*before.start())
+            .into_iter()
+            .flat_map(|(n, b, _)| self.buf.iter().skip(n).filter_map(raw_from(b)))
+            .take_while(|&(b, _)| b <= *before.end());
 
-            self.buf
-                .iter()
-                .skip(n)
-                .filter_map(move |ts| {
-                    b += ts.len();
-                    ts.as_tag().map(|t| (b - ts.len(), t))
-                })
-                .take_while(|&(b, _)| b <= range.start)
-        };
-
-        let after = {
-            let after = self.get_skip_at(range.end);
-
-            after.into_iter().flat_map(|(n, mut b, _)| {
-                self.buf
-                    .iter()
-                    .skip(n)
-                    .filter_map(move |ts| {
-                        b += ts.len();
-                        ts.as_tag().map(|t| (b - ts.len(), t))
-                    })
-                    .take_while(|&(b, _)| b <= search.end)
-            })
-        };
+        let after = self
+            .get_skip_at(*after.start())
+            .into_iter()
+            .flat_map(|(n, b, _)| self.buf.iter().skip(n).filter_map(raw_from(b)))
+            .take_while(|&(b, _)| b <= *after.end());
 
         // Removing all ranges that contain the range in question.
         // The reason why this is done is so that the `add_to_ranges`s
@@ -537,6 +507,20 @@ impl Eq for Tags {}
 
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
+
+fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
+    move |ts| {
+        b += ts.len();
+        Some(b).zip(ts.as_tag())
+    }
+}
+
+fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
+    move |ts| {
+        b -= ts.len();
+        Some(b).zip(ts.as_tag())
+    }
+}
 
 /// Removes the given `(usize, Tag, Handle)` triples from any
 /// range in `self.ranges`.
