@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use crate::log_info;
-
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record {
@@ -22,7 +20,6 @@ impl Record for (usize, usize) {
     }
 
     fn sub(self, other: Self) -> Self {
-        log_info!("{self:?}. {other:?}");
         (self.0 - other.0, self.1 - other.1)
     }
 }
@@ -88,18 +85,17 @@ where
         let (Ok(start_i) | Err(start_i)) = self.stored.binary_search(&start);
         let (Ok(old_end_i) | Err(old_end_i)) = self.stored.binary_search(&start.add(old_len));
 
-        self.stored.splice(start_i..old_end_i, []);
-
         for r in self.stored.iter_mut().skip(old_end_i) {
-            *r = r.sub(old_len).add(old_len);
+            *r = r.sub(old_len).add(new_len);
         }
+
+        self.stored.splice(start_i..old_end_i, []);
 
         self.last = start.add(new_len);
         self.max = self.max.add(new_len).sub(old_len);
     }
 
     pub fn append(&mut self, r: R) {
-        log_info!("appending {r:?} to {self:?}");
         self.transform(self.max, R::default(), r)
     }
 

@@ -8,7 +8,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -123,7 +122,6 @@ impl Tags {
 
     pub fn insert_raw(&mut self, at: usize, tag: RawTag) {
         let Some((n, b, skip)) = self.get_skip_at(at) else {
-            assert_len!(at, self.len_bytes());
             self.buf.push_back(TagOrSkip::Tag(tag));
             self.records.append((1, 0));
             return;
@@ -204,9 +202,7 @@ impl Tags {
 
         // In case we're appending to the rope, a shortcut can be made.
         let Some((start_n, start_b, _)) = self.get_skip_at(old.start) else {
-            assert_len!(old.start, self.len_bytes());
-
-            let last = self.buf.len() - 1;
+            let last = self.buf.len().saturating_sub(1);
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
                 *skip += new.end - old.start;
                 self.records.append((0, new.end - old.start));
@@ -375,6 +371,12 @@ impl Tags {
     /// * The index in the [`GapBuffer`] where it starts
     /// * Its length
     fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
+        assert!(
+            at <= self.len_bytes(),
+            "byte out of bounds: the len is {}, but the byte is {at}",
+            self.len_bytes()
+        );
+
         let (n, mut b) = self.records.closest_to(at);
 
         let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
@@ -686,11 +688,3 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
 
 pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
-
-macro assert_len($at:expr, $len:expr) {
-    let (at, len) = ($at, $len);
-    assert!(
-        at == len,
-        "byte out of bounds: the len is {len}, but the byte is {at}"
-    );
-}

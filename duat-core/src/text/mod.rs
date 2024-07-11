@@ -29,7 +29,6 @@ use crate::{
     data::{RoData, RwData},
     history::Change,
     input::Cursors,
-    log_info,
     palette::{self, FormId},
 };
 
@@ -41,7 +40,7 @@ pub struct Text {
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
-    records: Records<(usize, usize, usize)>,
+    pub records: Records<(usize, usize, usize)>,
 }
 
 // TODO: Properly implement _replacements.
@@ -218,13 +217,14 @@ impl Text {
             let mut u_len = 0;
 
             s1.chain(s0.chars().rev())
-                .inspect(|char| l -= (*char == '\n') as usize)
                 .enumerate()
                 .map(|(i, char)| {
                     u_len += char.len_utf8();
-                    (b - (u_len - char.len_utf8()), c - i)
+                    (b - u_len, c - (i + 1), char)
                 })
                 .take_while(|&(b, ..)| b >= at)
+                .inspect(|(.., char)| l -= (*char == '\n') as usize)
+                .map(|(b, c, _)| (b, c))
                 .last()
         };
 
@@ -529,7 +529,6 @@ impl Builder {
     pub fn push_str(&mut self, display: impl Display) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
-        log_info!("{display}");
         self.text.insert_str(self.text.len_bytes(), &self.buffer)
     }
 
@@ -556,7 +555,7 @@ impl Builder {
         let end = self.text.len_bytes();
 
         if let Some(tag) = self.last_form.take() {
-            //log_info!("{:#?}", self.text);
+            // log_info!("{:#?}", self.text);
             self.text.tags.insert(end, tag, self.marker);
         }
 

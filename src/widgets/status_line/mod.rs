@@ -53,6 +53,8 @@
 pub mod common;
 mod state;
 
+use std::sync::LazyLock;
+
 use common::{main_col, main_line, selections_fmt};
 use duat_core::{
     data::FileReader,
@@ -92,6 +94,13 @@ impl StatusLineCfg {
     pub fn above(self) -> Self {
         Self {
             specs: PushSpecs::above().with_lenght(1.0),
+            ..self
+        }
+    }
+
+    pub fn right_with_percent(self, percent: u16) -> Self {
+        Self {
+            specs: PushSpecs::right().with_percent(percent),
             ..self
         }
     }
@@ -216,6 +225,12 @@ impl PassiveWidget<Ui> for StatusLine {
         palette::set_weak_form("Coord", Form::new().dark_red());
         palette::set_weak_form("Separator", Form::new().cyan());
     }
+
+    fn print_cfg(&self) -> &duat_core::prelude::PrintCfg {
+        static CFG: LazyLock<duat_core::text::PrintCfg> =
+            LazyLock::new(|| duat_core::text::PrintCfg::new().width_wrapped());
+        &CFG
+    }
 }
 
 unsafe impl Send for StatusLine {}
@@ -278,7 +293,7 @@ pub macro status {
 
         let text_fn = move |reader: &FileReader<Ui>| {
             let mut builder = Builder::new();
-            text!(builder, { Tag::StartAlignRight });
+            //text!(builder, { Tag::StartAlignRight });
             text_fn(&mut builder, reader);
             text!(builder, "\n");
             builder.finish()
@@ -287,7 +302,7 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_lenght(1.0)
+            PushSpecs::below().with_lenght(10.0)
         )
     }}
 }
