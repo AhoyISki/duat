@@ -5,12 +5,7 @@ use std::{
 };
 
 use crate::{
-    data::RwData,
-    history::Change,
-    position::Cursor,
-    text::{Point, PrintCfg, Text},
-    ui::{Area, Ui},
-    widgets::{ActiveWidget, File, PassiveWidget},
+    data::RwData, history::Change, log_info, position::Cursor, text::{Point, PrintCfg, Text}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
 };
 
 #[derive(Clone, Debug)]
@@ -374,7 +369,7 @@ where
 
         let text = self.widget.text();
         let cfg = self.widget.print_cfg();
-        let end_p = text.point_at(end).unwrap();
+        let end_p = text.get_point_at(end).unwrap();
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
@@ -385,7 +380,7 @@ where
         } else {
             self.cursor.move_to(end_p, text, self.area, cfg);
             if end != start {
-                let start_p = text.point_at(start).unwrap();
+                let start_p = text.get_point_at(start).unwrap();
                 self.cursor.set_anchor();
                 self.cursor.move_to(start_p, text, self.area, cfg);
                 self.cursor.swap_ends();
@@ -403,7 +398,8 @@ where
 
         let text = self.widget.text();
         let cfg = self.widget.print_cfg();
-        let end_p = text.point_at(end).unwrap();
+        log_info!("{end}");
+        let end_p = text.get_point_at(end).unwrap();
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()

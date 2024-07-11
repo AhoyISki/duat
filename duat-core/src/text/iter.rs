@@ -135,7 +135,7 @@ impl<'a> Iter<'a> {
                         *dist += text.len_bytes();
                         return true;
                     }
-                    let start = text.point_at(ghost.byte() - *dist).unwrap();
+                    let start = text.get_point_at(ghost.byte() - *dist).unwrap();
                     (start, *ghost)
                 } else {
                     (Point::default(), Point::default())
@@ -156,13 +156,13 @@ impl<'a> Iter<'a> {
             RawTag::ConcealEnd(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.point = self.point.max(self.text.point_at(b).unwrap());
+                    self.point = self.point.max(self.text.get_point_at(b).unwrap());
                     self.chars = buf_chars(&self.text.buf, self.point.byte());
                 }
             }
             RawTag::Concealed(skip) => {
                 let b = b.saturating_add(*skip as usize);
-                let point = self.text.point_at(b).unwrap_or(self.text.max_point());
+                let point = self.text.get_point_at(b).unwrap_or(self.text.max_point());
                 *self = Iter::new_at(self.text, point);
                 return false;
             }
@@ -307,7 +307,7 @@ impl<'a> RevIter<'a> {
                         *dist -= text.len_bytes();
                         return true;
                     }
-                    let this = text.point_at(total.byte() - *dist).unwrap();
+                    let this = text.get_point_at(total.byte() - *dist).unwrap();
                     (this, *total)
                 } else {
                     let this = text.max_point();
@@ -327,14 +327,14 @@ impl<'a> RevIter<'a> {
             RawTag::ConcealStart(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.point = self.point.min(self.text.point_at(b).unwrap());
+                    self.point = self.point.min(self.text.get_point_at(b).unwrap());
                     self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
                 }
             }
             RawTag::ConcealEnd(_) => self.conceals += 1,
             RawTag::Concealed(skip) => {
                 let b = b.saturating_sub(*skip as usize);
-                let point = self.text.point_at(b).unwrap_or(self.text.max_point());
+                let point = self.text.get_point_at(b).unwrap_or(self.text.max_point());
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }

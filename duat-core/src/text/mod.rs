@@ -26,10 +26,7 @@ pub use self::{
     types::Part,
 };
 use crate::{
-    data::{RoData, RwData},
-    history::Change,
-    input::Cursors,
-    palette::{self, FormId},
+    data::{RoData, RwData}, history::Change, input::Cursors, log_info, palette::{self, FormId}
 };
 
 /// The text in a given area.
@@ -76,8 +73,28 @@ impl Text {
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
 
-        self.buf
-            .splice(old.clone(), edit.as_bytes().iter().cloned());
+        let old_len = unsafe {
+            let str = String::from_utf8_unchecked(
+                self.buf
+                    .splice(old.clone(), edit.as_bytes().iter().cloned())
+                    .collect(),
+            );
+
+            let lines = str.bytes().filter(|b| *b == b'\n').count();
+            (str.len(), str.chars().count(), lines)
+        };
+
+        let old_start = {
+            let p = self.get_point_at(old.start).unwrap();
+            (p.byte(), p.char(), p.line())
+        };
+
+        let new_len = {
+            let lines = edit.bytes().filter(|b| *b == b'\n').count();
+            (edit.len(), edit.chars().count(), lines)
+        };
+
+        self.records.transform(old_start, old_len, new_len);
 
         let new_end = old.start + edit.len();
         self.tags.transform(old, new_end);
@@ -127,7 +144,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (b, tag) in b_list.into_iter().skip(no_selection) {
-                if let Some(point) = self.point_at(b) {
+                if let Some(point) = self.get_point_at(b) {
                     let record = (point.byte(), point.char(), point.line());
                     self.records.insert(record);
                     self.tags.insert(b, tag, self.marker);
@@ -197,19 +214,18 @@ impl Text {
     }
 
     #[inline(always)]
-    pub fn point_at(&self, at: usize) -> Option<Point> {
+    pub fn get_point_at(&self, at: usize) -> Option<Point> {
         let (b, c, mut l) = self.records.closest_to(at);
-        let s0_len = self.buf.as_slices().0.len();
 
         let found = if at >= b {
             let (s0, s1) = self.slices_range(b..);
 
             s0.char_indices()
-                .chain(s1.char_indices().map(|(b, char)| (b + s0_len, char)))
-                .inspect(|(_, char)| l += (*char == '\n') as usize)
+                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
-                .map(|(i, (this_b, _))| (b + this_b, c + i))
+                .map(|(i, (this_b, char))| (b + this_b, c + i, char))
                 .take_while(|&(b, ..)| at >= b)
+                .inspect(|(.., char)| l += (*char == '\n') as usize)
                 .last()
         } else {
             let (s0, s1) = self.slices_range(..b);
@@ -224,16 +240,17 @@ impl Text {
                 })
                 .take_while(|&(b, ..)| b >= at)
                 .inspect(|(.., char)| l -= (*char == '\n') as usize)
-                .map(|(b, c, _)| (b, c))
                 .last()
         };
 
-        found.map(|(b, c)| Point::from_coords(b, c, l))
+        found.map(|(b, c, _)| {
+            Point::from_coords(b, c, l)
+        })
     }
 
     #[inline(always)]
     pub fn ghost_max_points_at(&self, at: usize) -> Option<(Point, Option<Point>)> {
-        self.point_at(at)
+        self.get_point_at(at)
             .map(|point| (point, self.tags.ghosts_total_at(point.byte())))
     }
 

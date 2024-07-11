@@ -340,7 +340,7 @@ impl History {
             text.undo_change(change, bytes);
 
             let new_caret_b = change.taken_end().saturating_add_signed(bytes);
-            let point = text.point_at(new_caret_b).unwrap();
+            let point = text.get_point_at(new_caret_b).unwrap();
             cursors.insert(Cursor::new(point, text, area, cfg));
 
             bytes += change.taken_end() as isize - change.added_end() as isize;
@@ -366,7 +366,7 @@ impl History {
         for change in &moment.changes {
             text.apply_change(change);
 
-            let point = text.point_at(change.added_end()).unwrap();
+            let point = text.get_point_at(change.added_end()).unwrap();
             cursors.insert(Cursor::new(point, text, area, cfg));
         }
     }
