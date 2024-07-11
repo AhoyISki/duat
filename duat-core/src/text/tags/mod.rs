@@ -376,23 +376,20 @@ impl Tags {
             "byte out of bounds: the len is {}, but the byte is {at}",
             self.len_bytes()
         );
-
-        let (n, mut b) = self.records.closest_to(at);
-
-        let skips = |(n, s): (usize, &TagOrSkip)| Some(n).zip(s.as_skip());
+        let (n, b) = self.records.closest_to(at);
+        let skips = {
+            let mut b_len = 0;
+            move |(n, ts): (usize, &TagOrSkip)| {
+                b_len += ts.len();
+                ts.as_skip().map(|s| (n, b_len, s))
+            }
+        };
 
         if at >= b {
-            let iter = self.buf.iter().enumerate().skip(n);
-            let skips = iter.filter_map(skips).take_while(|(_, skip)| {
-                if at >= b {
-                    b += skip;
-                    true
-                } else {
-                    false
-                }
-            });
-
-            skips.last().map(|(i, skip)| (i, b - skip, skip))
+            let iter = self.buf.iter().enumerate().skip(n).filter_map(skips);
+            iter.take_while(|(_, this_b, _)| at >= b + *this_b)
+                .last()
+                .map(|(i, b, skip)| (i, b - skip, skip))
         } else {
             let (s0, s1) = self.buf.as_slices();
             // Damn you Chain!!!!
@@ -401,16 +398,9 @@ impl Tags {
             let iter_1 = s1.iter().enumerate().rev().map(plus_s0_len);
 
             let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
-            let skips = iter.filter_map(skips).take_while(|(_, skip)| {
-                if b >= at {
-                    b -= skip;
-                    true
-                } else {
-                    false
-                }
-            });
-
-            skips.last().map(|(i, skip)| (i, b, skip))
+            iter.filter_map(skips)
+                .take_while(|(_, this_b, _)| b - *this_b >= at)
+                .last()
         }
     }
 
@@ -488,9 +478,10 @@ impl Tags {
             _ => return,
         };
 
-        if let Some(prev_skip) = self.buf[n - 1].as_skip() {
+        if let Some(p_skip) = self.buf[n - 1].as_skip() {
             self.buf
-                .splice((n - 1)..=n, [TagOrSkip::Skip(prev_skip + skip)]);
+                .splice((n - 1)..=n, [TagOrSkip::Skip(p_skip + skip)]);
+            self.records.transform((n - 1, at - p_skip), (2, 0), (1, 0));
         }
     }
 
@@ -517,13 +508,6 @@ impl Tags {
     }
 }
 
-impl PartialEq for Tags {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf
-    }
-}
-impl Eq for Tags {}
-
 impl Default for Tags {
     fn default() -> Self {
         Self::new()
@@ -539,6 +523,13 @@ impl std::fmt::Debug for Tags {
             .finish_non_exhaustive()
     }
 }
+
+impl PartialEq for Tags {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf
+    }
+}
+impl Eq for Tags {}
 
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
