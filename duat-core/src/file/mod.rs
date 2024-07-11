@@ -208,6 +208,10 @@ impl File {
     pub fn history_mut(&mut self) -> &mut History {
         &mut self.history
     }
+
+    pub fn text(&self) -> &Text {
+        &self.text
+    }
 }
 
 /// # Querying functions
