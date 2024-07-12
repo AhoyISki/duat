@@ -42,7 +42,7 @@ where
 {
     window: &'a mut Window<U>,
     mod_area: U::Area,
-    globals: Context<U>,
+    context: Context<U>,
 }
 
 impl<'a, U> FileBuilder<'a, U>
@@ -50,11 +50,11 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>, mod_area: U::Area, globals: Context<U>) -> Self {
+    pub fn new(window: &'a mut Window<U>, mod_area: U::Area, context: Context<U>) -> Self {
         Self {
             window,
             mod_area,
-            globals,
+            context,
         }
     }
 
@@ -100,8 +100,8 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals, true);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = W::build(self.context, true);
 
         let related = widget.as_passive().clone();
 
@@ -110,7 +110,7 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            self.globals
+            self.context
                 .current_file
                 .add_related_widget((related, child.clone(), W::name()));
 
@@ -175,8 +175,8 @@ where
         &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals, true);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = cfg.build(self.context, true);
 
         let related = widget.as_passive().clone();
 
@@ -185,7 +185,7 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            self.globals
+            self.context
                 .current_file
                 .add_related_widget((related, child.clone(), W::name()));
 
@@ -221,13 +221,13 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals, true);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = W::build(self.context, true);
 
         let related = widget.as_passive().clone();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.globals
+        self.context
             .current_file
             .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
@@ -253,13 +253,13 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals, true);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = cfg.build(self.context, true);
 
         let related = widget.as_passive().clone();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.globals
+        self.context
             .current_file
             .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
@@ -272,7 +272,7 @@ where
 {
     window: &'a mut Window<U>,
     area: U::Area,
-    globals: Context<U>,
+    context: Context<U>,
 }
 
 impl<'a, U> WindowBuilder<'a, U>
@@ -280,12 +280,12 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(window: &'a mut Window<U>, globals: Context<U>) -> Self {
+    pub fn new(window: &'a mut Window<U>, context: Context<U>) -> Self {
         let area = window.files_region().clone();
         Self {
             window,
             area,
-            globals,
+            context,
         }
     }
 
@@ -338,8 +338,8 @@ where
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals, false);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = W::build(self.context, false);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -402,8 +402,8 @@ where
         &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = cfg.build(self.globals, false);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = cfg.build(self.context, false);
 
         let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
 
@@ -430,8 +430,8 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = W::build(self.globals, true);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = W::build(self.context, true);
 
         self.window.push(widget, &area, checker, specs, true)
     }
@@ -456,20 +456,20 @@ where
         pushable: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.globals);
-        let (widget, checker, specs) = pushable.build(self.globals, false);
+        run_once::<W, U>(self.context);
+        let (widget, checker, specs) = pushable.build(self.context, false);
 
         self.window.push(widget, &area, checker, specs, true)
     }
 }
 
-fn run_once<W: PassiveWidget<U>, U: Ui>(globals: Context<U>) {
+fn run_once<W: PassiveWidget<U>, U: Ui>(context: Context<U>) {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut once_list = ONCE_LIST.write();
     if !once_list.contains(&W::name()) {
-        W::once(globals);
+        W::once(context);
         once_list.push(W::name());
     }
 }

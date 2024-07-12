@@ -26,7 +26,10 @@ pub use self::{
     types::Part,
 };
 use crate::{
-    data::{RoData, RwData}, history::Change, input::Cursors, log_info, palette::{self, FormId}
+    data::{RoData, RwData},
+    history::Change,
+    input::Cursors,
+    palette::{self, FormId},
 };
 
 /// The text in a given area.
@@ -181,14 +184,7 @@ impl Text {
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
-
-            let start = start.checked_sub(s0.len());
-            let end = end.checked_sub(s0.len());
-            let r1 = if let (Some(start), Some(end)) = (start, end) {
-                start.min(s1.len())..end.min(s1.len())
-            } else {
-                0..0
-            };
+            let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
 
             (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
         }
@@ -230,22 +226,20 @@ impl Text {
         } else {
             let (s0, s1) = self.slices_range(..b);
             let s1 = s1.chars().rev();
-            let mut u_len = 0;
+            let mut c_len = 0;
 
             s1.chain(s0.chars().rev())
                 .enumerate()
                 .map(|(i, char)| {
-                    u_len += char.len_utf8();
-                    (b - u_len, c - (i + 1), char)
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), char)
                 })
                 .take_while(|&(b, ..)| b >= at)
                 .inspect(|(.., char)| l -= (*char == '\n') as usize)
                 .last()
         };
 
-        found.map(|(b, c, _)| {
-            Point::from_coords(b, c, l)
-        })
+        found.map(|(b, c, _)| Point::from_coords(b, c, l))
     }
 
     #[inline(always)]
@@ -380,35 +374,6 @@ impl PartialEq for Text {
 
 mod point {
     use super::Item;
-
-    pub trait TwoPoints {
-        fn to_points(self) -> (Point, Option<Point>);
-    }
-
-    impl TwoPoints for Point {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self, None)
-        }
-    }
-
-    impl TwoPoints for (Point, Point) {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self.0, Some(self.1))
-        }
-    }
-
-    impl TwoPoints for (Point, Option<Point>) {
-        fn to_points(self) -> (Point, Option<Point>) {
-            self
-        }
-    }
-
-    impl TwoPoints for Item {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self.real, self.ghost)
-        }
-    }
-
     /// A position in a [`Text`].
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Point {
@@ -458,6 +423,34 @@ mod point {
         /// Returns the line. Indexed at 0.
         pub fn line(&self) -> usize {
             self.l
+        }
+    }
+
+    pub trait TwoPoints: std::fmt::Debug + Clone + Copy {
+        fn to_points(self) -> (Point, Option<Point>);
+    }
+
+    impl TwoPoints for Point {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self, None)
+        }
+    }
+
+    impl TwoPoints for (Point, Point) {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self.0, Some(self.1))
+        }
+    }
+
+    impl TwoPoints for (Point, Option<Point>) {
+        fn to_points(self) -> (Point, Option<Point>) {
+            self
+        }
+    }
+
+    impl TwoPoints for Item {
+        fn to_points(self) -> (Point, Option<Point>) {
+            (self.real, self.ghost)
         }
     }
 
@@ -572,7 +565,6 @@ impl Builder {
         let end = self.text.len_bytes();
 
         if let Some(tag) = self.last_form.take() {
-            // log_info!("{:#?}", self.text);
             self.text.tags.insert(end, tag, self.marker);
         }
 

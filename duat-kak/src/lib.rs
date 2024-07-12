@@ -276,7 +276,10 @@ fn match_normal<U: Ui>(
         key!(KeyCode::Char('q')) => panic!("Quit on purpose"),
 
         ////////// History manipulation.
-        key!(KeyCode::Char('u')) => editor.undo(),
+        key!(KeyCode::Char('u')) => {
+            editor.undo();
+            editor.remove_extra_cursors()
+        },
         key!(KeyCode::Char('U')) => editor.redo(),
         _ => {}
     }

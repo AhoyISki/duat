@@ -407,16 +407,13 @@ fn buf_chars(buf: &GapBuffer<u8>, b: usize) -> FwdChars {
 fn buf_chars_rev(buf: &GapBuffer<u8>, b: usize) -> RevChars {
     unsafe {
         let (slice_0, slice_1) = buf.as_slices();
-        let slice_0 = std::str::from_utf8_unchecked(slice_0);
-        let slice_1 = std::str::from_utf8_unchecked(slice_1);
+        let s0 = std::str::from_utf8_unchecked(slice_0);
+        let s1 = std::str::from_utf8_unchecked(slice_1);
 
-        let skip_0 = b.min(slice_0.len());
+        let skip_0 = b.min(s0.len());
         let skip_1 = b - skip_0;
 
-        slice_1[..skip_1]
-            .chars()
-            .rev()
-            .chain(slice_0[..skip_0].chars().rev())
+        s1[..skip_1].chars().rev().chain(s0[..skip_0].chars().rev())
     }
 }
 

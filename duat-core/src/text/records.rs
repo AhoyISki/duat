@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 const LEN_PER_RECORD: usize = 150;
 
-pub trait Record {
+pub trait Record: Debug {
     fn bytes(&self) -> usize;
 
     fn add(self, other: Self) -> Self;
@@ -91,8 +91,7 @@ where
 
         self.stored.splice(start_i..old_end_i, []);
 
-        self.last = start.add(new_len);
-        self.max = self.max.add(new_len).sub(old_len);
+        self.max = self.max.sub(old_len).add(new_len);
     }
 
     pub fn append(&mut self, r: R) {

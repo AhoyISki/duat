@@ -5,7 +5,12 @@ use std::{
 };
 
 use crate::{
-    data::RwData, history::Change, log_info, position::Cursor, text::{Point, PrintCfg, Text}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
+    data::RwData,
+    history::Change,
+    position::Cursor,
+    text::{Point, PrintCfg, Text},
+    ui::{Area, Ui},
+    widgets::{ActiveWidget, File, PassiveWidget},
 };
 
 #[derive(Clone, Debug)]
@@ -225,6 +230,10 @@ where
         }
     }
 
+    pub fn remove_extra_cursors(&mut self) {
+        self.cursors.remove_extras();
+    }
+
     /// The main cursor index.
     pub fn main_cursor_index(&self) -> usize {
         self.cursors.main
@@ -398,7 +407,6 @@ where
 
         let text = self.widget.text();
         let cfg = self.widget.print_cfg();
-        log_info!("{end}");
         let end_p = text.get_point_at(end).unwrap();
 
         if let Some(anchor) = self.cursor.anchor()
@@ -407,8 +415,6 @@ where
             self.cursor.swap_ends();
             self.cursor.move_to(end_p, text, self.area, cfg);
             self.cursor.swap_ends();
-        } else {
-            self.cursor.move_to(end_p, text, self.area, cfg);
         }
     }
 

@@ -34,6 +34,14 @@ impl TagRange {
         }
     }
 
+    pub fn start(&self) -> usize {
+        self.get_start().unwrap_or(0)
+    }
+
+    pub fn end(&self) -> usize {
+        self.get_end().unwrap_or(usize::MAX)
+    }
+
     pub fn starts_with(&self, other: &(usize, RawTag)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded) => bounded.start == other.0 && *tag == other.1,

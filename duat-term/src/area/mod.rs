@@ -8,7 +8,10 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{
-    data::RwData, log_info, palette::Painter, text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod}, ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
+    data::RwData,
+    palette::Painter,
+    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
 
@@ -100,9 +103,10 @@ impl Area {
         let points = text.ghost_max_points_at(point.byte()).unwrap();
         let after = text.points_after(points).unwrap();
 
-        log_info!("started scroll_ver_around in {points:#?}");
+        let mut count = 0;
 
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
+            .inspect(|_| count += 1)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {
@@ -112,8 +116,6 @@ impl Area {
         };
 
         let first = iter.nth(target).unwrap_or((Point::default(), None));
-
-        log_info!("finished scroll_ver_around");
 
         if (info.last_main > point && first <= info.points)
             || (info.last_main < point && first >= info.points)
