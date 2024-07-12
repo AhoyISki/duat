@@ -103,10 +103,7 @@ impl Area {
         let points = text.ghost_max_points_at(point.byte()).unwrap();
         let after = text.points_after(points).unwrap();
 
-        let mut count = 0;
-
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
-            .inspect(|_| count += 1)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {

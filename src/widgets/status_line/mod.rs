@@ -286,7 +286,7 @@ pub macro status {
 
         let text_fn = move |reader: &FileReader<Ui>| {
             let mut builder = Builder::new();
-            //text!(builder, { Tag::StartAlignRight });
+            text!(builder, { Tag::StartAlignRight });
             text_fn(&mut builder, reader);
             text!(builder, "\n");
             builder.finish()

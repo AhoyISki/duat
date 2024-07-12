@@ -219,9 +219,11 @@ impl Text {
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
-                .map(|(i, (this_b, char))| (b + this_b, c + i, char))
+                .map(|(i, (this_b, char))| {
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
+                })
                 .take_while(|&(b, ..)| at >= b)
-                .inspect(|(.., char)| l += (*char == '\n') as usize)
                 .last()
         } else {
             let (s0, s1) = self.slices_range(..b);
@@ -231,15 +233,15 @@ impl Text {
             s1.chain(s0.chars().rev())
                 .enumerate()
                 .map(|(i, char)| {
+                    l -= (char == '\n') as usize;
                     c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), char)
+                    (b - c_len, c - (i + 1), l)
                 })
                 .take_while(|&(b, ..)| b >= at)
-                .inspect(|(.., char)| l -= (*char == '\n') as usize)
                 .last()
         };
 
-        found.map(|(b, c, _)| Point::from_coords(b, c, l))
+        found.map(|(b, c, l)| Point::from_coords(b, c, l))
     }
 
     #[inline(always)]
