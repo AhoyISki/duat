@@ -295,7 +295,7 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_lenght(10.0)
+            PushSpecs::below().with_lenght(1.0)
         )
     }}
 }

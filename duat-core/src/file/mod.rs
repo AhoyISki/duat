@@ -79,7 +79,7 @@ where
             },
         };
 
-        #[cfg(feature = "wack")]
+        //#[cfg(feature = "wack")]
         let text = {
             let mut text = text;
             use crate::{
@@ -90,7 +90,7 @@ where
             let marker = Marker::new();
             let form1 = palette::set_form("form1lmao", Form::new().red());
             let form2 = palette::set_form("form2lmao", Form::new().on_blue());
-            for i in (0..4096).step_by(8) {
+            for i in (0..text.len_bytes()).step_by(8) {
                 text.insert_tag(i, Tag::PushForm(form1), marker);
                 text.insert_tag(i + 4, Tag::PopForm(form1), marker);
             }
