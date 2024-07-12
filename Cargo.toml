@@ -33,6 +33,7 @@ gapbuf = "0.1.4"
 [features]
 default = ["term-ui"]
 term-ui = ["dep:duat-term"]
+wack = ["duat-core/wack"]
 
 [[bin]]
 name = "duat"

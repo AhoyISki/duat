@@ -1,4 +1,8 @@
-use std::{self, collections::HashMap, ops::Range};
+use std::{
+    self,
+    collections::HashMap,
+    ops::{Range, RangeBounds},
+};
 
 use gapbuf::{gap_buffer, GapBuffer};
 
@@ -10,7 +14,7 @@ pub use self::{
     },
 };
 use self::{ranges::TagRange, types::Toggle};
-use super::{records::Records, Point, Text};
+use super::{get_ends, records::Records, Point, Text};
 
 mod ids;
 mod ranges;
@@ -179,11 +183,7 @@ impl Tags {
             return;
         };
 
-        let removed: Vec<_> = self
-            .buf
-            .iter()
-            .rev()
-            .skip(self.buf.len() - n)
+        let removed: Vec<_> = iter_range_rev(&self.buf, ..n)
             .enumerate()
             .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
             .filter(|(_, tag)| markers.clone().contains(tag.marker()))
@@ -265,7 +265,7 @@ impl Tags {
 
         let (n, b) = {
             let (n, b, _) = self.get_skip_at(at).unwrap();
-            let iter = self.buf.iter().rev().skip(self.buf.len() - n);
+            let iter = iter_range_rev(&self.buf, ..n);
 
             (n - iter.take_while(|ts| ts.is_tag()).count(), b)
         };
@@ -278,7 +278,7 @@ impl Tags {
             .flat_map(|range| range.get_start().map(|start| (start, range.tag())));
 
         let tags = {
-            let iter = self.buf.iter().skip(n).filter_map(raw_from(b));
+            let iter = iter_range(&self.buf, n..).filter_map(raw_from(b));
             iter.map(|(b, tag)| match tag {
                 ConcealStart(marker) => {
                     match self
@@ -317,16 +317,15 @@ impl Tags {
         };
 
         let raw_tags = {
-            let iter = self.buf.iter().rev().skip(self.buf.len() - n);
-            iter.filter_map(raw_from_rev(b)).map(|(b, tag)| match tag {
+            let iter = iter_range_rev(&self.buf, ..n).filter_map(raw_from_rev(b));
+            iter.map(|(b, tag)| match tag {
                 ConcealEnd(marker) => {
                     if let Some(range) = self
                         .ranges
                         .iter()
                         .find(|range| range.ends_with(&(b, ConcealEnd(marker))))
                     {
-                        let skip = b - range.get_start().unwrap_or(0);
-                        (b, Concealed(skip as u32))
+                        (b, Concealed((b - range.get_start().unwrap_or(0)) as u32))
                     } else {
                         (b, ConcealEnd(marker))
                     }
@@ -339,10 +338,11 @@ impl Tags {
     }
 
     pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
-        let b = self.get_skip_at(at).map(|(_, b, _)| b);
+        let n = self.get_skip_at(at).map(|(n, b, _)| (n, b));
 
-        b.into_iter()
-            .flat_map(|b| self.buf.iter().skip(b).map_while(TagOrSkip::as_tag))
+        n.filter(|(_, b)| *b == at)
+            .into_iter()
+            .flat_map(|(n, _)| iter_range_rev(&self.buf, n..).map_while(TagOrSkip::as_tag))
     }
 
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
@@ -375,20 +375,13 @@ impl Tags {
         };
 
         if at >= b {
-            let iter = self.buf.iter().enumerate().skip(n).filter_map(skips);
-            iter.map(|(i, this_b, skip)| (i, b + (this_b - skip), skip))
+            let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);
+            iter.map(|(i, this_b, skip)| (n + i, b + (this_b - skip), skip))
                 .take_while(|(_, b, _)| at >= *b)
                 .last()
         } else {
-            let (s0, s1) = self.buf.as_slices();
-            // Damn you Chain!!!!
-            let iter_0 = s0.iter().enumerate().rev();
-            let plus_s0_len = |(i, ts)| (i + s0.len(), ts);
-            let iter_1 = s1.iter().enumerate().rev().map(plus_s0_len);
-
-            let iter = iter_1.chain(iter_0).skip(self.buf.len() - n);
-            iter.filter_map(skips)
-                .map(|(i, this_b, skip)| (i, b - this_b, skip))
+            let iter = iter_range_rev(&self.buf, ..n).enumerate().filter_map(skips);
+            iter.map(|(i, this_b, skip)| (n - (i + 1), b - this_b, skip))
                 .take_while(|(_, b, skip)| *b + *skip > at)
                 .last()
         }
@@ -408,13 +401,13 @@ impl Tags {
         let before = self
             .get_skip_at(*before.start())
             .into_iter()
-            .flat_map(|(n, b, _)| self.buf.iter().skip(n).filter_map(raw_from(b)))
+            .flat_map(|(n, b, _)| iter_range(&self.buf, n..).filter_map(raw_from(b)))
             .take_while(|&(b, _)| b <= *before.end());
 
         let after = self
             .get_skip_at(*after.start())
             .into_iter()
-            .flat_map(|(n, b, _)| self.buf.iter().skip(n).filter_map(raw_from(b)))
+            .flat_map(|(n, b, _)| iter_range(&self.buf, n..).filter_map(raw_from(b)))
             .take_while(|&(b, _)| b <= *after.end());
 
         // Removing all ranges that contain the range in question.
@@ -508,6 +501,32 @@ impl Eq for Tags {}
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
 
+pub fn iter_range(
+    buf: &GapBuffer<TagOrSkip>,
+    range: impl RangeBounds<usize>,
+) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
+    let (s0, s1) = buf.as_slices();
+    let (start, end) = get_ends(range, buf.len());
+
+    let r0 = start.min(s0.len())..end.min(s0.len());
+    let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
+
+    s0[r0].iter().chain(s1[r1].iter())
+}
+
+pub fn iter_range_rev(
+    buf: &GapBuffer<TagOrSkip>,
+    range: impl RangeBounds<usize>,
+) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
+    let (s0, s1) = buf.as_slices();
+    let (start, end) = get_ends(range, buf.len());
+
+    let r0 = start.min(s0.len())..end.min(s0.len());
+    let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
+
+    s1[r1].iter().rev().chain(s0[r0].iter().rev())
+}
+
 fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
     move |ts| {
         b += ts.len();
@@ -517,7 +536,9 @@ fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> +
 
 fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
     move |ts| {
-        b -= ts.len();
+        b = b
+            .checked_sub(ts.len())
+            .unwrap_or_else(|| panic!("{b} - {}", ts.len()));
         Some(b).zip(ts.as_tag())
     }
 }

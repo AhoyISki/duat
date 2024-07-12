@@ -97,13 +97,6 @@ impl StatusLineCfg {
             ..self
         }
     }
-
-    pub fn right_with_percent(self, percent: u16) -> Self {
-        Self {
-            specs: PushSpecs::right().with_percent(percent),
-            ..self
-        }
-    }
 }
 
 impl WidgetCfg<Ui> for StatusLineCfg {

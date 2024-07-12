@@ -27,4 +27,4 @@ gapbuf = "0.1.4"
 [features]
 # NOTE: Features meant for testing only by myself.
 default = []
-wacky-colors = []
+wack = []

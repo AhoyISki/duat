@@ -40,7 +40,7 @@ where
     U: Ui,
 {
     text_op: TextOp,
-    generator: Arc<dyn Fn(File) -> Widget<U> + Send + Sync + 'static>,
+    builder: Arc<dyn Fn(File) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
@@ -52,7 +52,7 @@ where
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            generator: Arc::new(|file| Widget::active(file, RwData::new(KeyMap::new()))),
+            builder: Arc::new(|file| Widget::active(file, RwData::new(KeyMap::new()))),
             cfg: PrintCfg::default_for_files(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
@@ -79,19 +79,18 @@ where
             },
         };
 
-        #[cfg(feature = "wacky-colors")]
+        #[cfg(feature = "wack")]
         let text = {
             let mut text = text;
             use crate::{
                 palette::{self, Form},
-                text::{text, Marker, Tag},
+                text::{Marker, Tag},
             };
-            let mut text = Text::new(contents.unwrap_or(String::from("\n")));
 
             let marker = Marker::new();
             let form1 = palette::set_form("form1lmao", Form::new().red());
             let form2 = palette::set_form("form2lmao", Form::new().on_blue());
-            for i in (0..4047390).step_by(8) {
+            for i in (0..4096).step_by(8) {
                 text.insert_tag(i, Tag::PushForm(form1), marker);
                 text.insert_tag(i + 4, Tag::PopForm(form1), marker);
             }
@@ -108,7 +107,7 @@ where
             _readers: Vec::new(),
         };
 
-        ((self.generator)(file), Box::new(|| false))
+        ((self.builder)(file), Box::new(|| false))
     }
 
     pub(crate) fn open_path(self, path: PathBuf) -> Self {
@@ -131,7 +130,7 @@ where
     }
 
     pub(crate) fn set_input(&mut self, input: impl InputMethod<U, Widget = File> + Clone) {
-        self.generator = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
+        self.builder = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
     }
 
     pub(crate) fn mut_print_cfg(&mut self) -> &mut PrintCfg {
@@ -168,7 +167,7 @@ where
     fn clone(&self) -> Self {
         Self {
             text_op: TextOp::NewBuffer,
-            generator: self.generator.clone(),
+            builder: self.builder.clone(),
             cfg: self.cfg.clone(),
             specs: self.specs,
         }
