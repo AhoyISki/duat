@@ -325,15 +325,12 @@ impl Text {
     }
 
     pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {
-        let (s0, s1) = self.buf.as_slices();
-
-        s0.iter().chain(s1.iter()).skip(b).cloned()
+        let (s0, s1) = self.slices_range(b..);
+        s0.bytes().chain(s1.bytes())
     }
 
     pub fn iter_chars_at(&self, c: usize) -> impl Iterator<Item = char> + '_ {
-        let (s0, s1) = self.buf.as_slices();
-        let (s0, s1) = unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) };
-
+        let (s0, s1) = self.slices_range(..);
         s0.chars().chain(s1.chars()).skip(c)
     }
 }
