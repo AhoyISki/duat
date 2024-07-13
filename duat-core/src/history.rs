@@ -328,9 +328,8 @@ impl History {
         cfg: &PrintCfg,
         cursors: &mut Cursors,
     ) {
-        let moment = match self.move_backwards() {
-            Some(moment) => moment,
-            None => return,
+        let Some(moment) = self.move_backwards() else {
+            return;
         };
 
         cursors.clear();
@@ -340,7 +339,7 @@ impl History {
             text.undo_change(change, bytes);
 
             let new_caret_b = change.taken_end().saturating_add_signed(bytes);
-            let point = text.get_point_at(new_caret_b).unwrap();
+            let point = text.point_at(new_caret_b);
             cursors.insert(Cursor::new(point, text, area, cfg));
 
             bytes += change.taken_end() as isize - change.added_end() as isize;
@@ -356,9 +355,8 @@ impl History {
         cfg: &PrintCfg,
         cursors: &mut Cursors,
     ) {
-        let moment = match self.move_forward() {
-            Some(moment) => moment,
-            None => return,
+        let Some(moment) = self.move_forward() else {
+            return;
         };
 
         cursors.clear();
@@ -366,7 +364,7 @@ impl History {
         for change in &moment.changes {
             text.apply_change(change);
 
-            let point = text.get_point_at(change.added_end()).unwrap();
+            let point = text.point_at(change.added_end());
             cursors.insert(Cursor::new(point, text, area, cfg));
         }
     }

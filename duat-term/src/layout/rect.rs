@@ -323,23 +323,13 @@ impl Rect {
             edges.push(Edge::new(self.br.clone(), self.tl.clone(), Vertical, fr));
         }
         if up == 1.0 {
-            edges.push(Edge::new(
-                self.tl.clone(),
-                self.br.clone(),
-                Horizontal,
-                fr,
-            ));
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Horizontal, fr));
         }
         if left == 1.0 {
             edges.push(Edge::new(self.tl.clone(), self.br.clone(), Vertical, fr));
         }
         if down == 1.0 {
-            edges.push(Edge::new(
-                self.br.clone(),
-                self.tl.clone(),
-                Horizontal,
-                fr,
-            ));
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Horizontal, fr));
         }
 
         (right, up, left, down)

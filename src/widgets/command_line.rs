@@ -167,8 +167,10 @@ impl ActiveWidget<Ui> for CommandLine {
     fn on_unfocus(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
         let text = std::mem::take(&mut self.text);
 
-        let cmd = text.iter_chars_at(0).collect::<String>();
-        std::thread::spawn(|| self.context.commands.run(cmd));
+        let cmd = text.to_string();
+        if !cmd.is_empty() {
+            std::thread::spawn(|| self.context.commands.run(cmd));
+        }
     }
 }
 

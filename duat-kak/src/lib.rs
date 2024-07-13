@@ -181,22 +181,16 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
                 }
             });
         }
-        key!(KeyCode::Left, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Left, 1);
-        }
-        key!(KeyCode::Right, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Right, 1);
-        }
-        key!(KeyCode::Up, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Top, 1);
-        }
-        key!(KeyCode::Down, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Bottom, 1);
-        }
+        key!(KeyCode::Left, KeyModifiers::SHIFT) => select_and_move_each(editor, Side::Left, 1),
+        key!(KeyCode::Right, KeyModifiers::SHIFT) => select_and_move_each(editor, Side::Right, 1),
+        key!(KeyCode::Up, KeyModifiers::SHIFT) => select_and_move_each(editor, Side::Top, 1),
+        key!(KeyCode::Down, KeyModifiers::SHIFT) => select_and_move_each(editor, Side::Bottom, 1),
+
         key!(KeyCode::Left) => move_each(editor, Side::Left, 1),
         key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
         key!(KeyCode::Up) => move_each(editor, Side::Top, 1),
         key!(KeyCode::Down) => move_each(editor, Side::Bottom, 1),
+
         key!(KeyCode::Esc) => {
             editor.new_moment();
             *mode = Mode::Normal;
@@ -216,31 +210,23 @@ fn match_normal<U: Ui>(
     match key {
         ////////// Movement keys that retain or create selections.
         key!(KeyCode::Char('H') | Left, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Left, 1);
+            select_and_move_each(editor, Side::Left, 1)
         }
         key!(KeyCode::Char('J') | Down, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Bottom, 1);
+            select_and_move_each(editor, Side::Bottom, 1)
         }
         key!(KeyCode::Char('K') | Up, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Top, 1);
+            select_and_move_each(editor, Side::Top, 1)
         }
         key!(KeyCode::Char('L') | Right, KeyModifiers::SHIFT) => {
-            select_and_move_each(editor, Side::Right, 1);
+            select_and_move_each(editor, Side::Right, 1)
         }
 
         ////////// Movement keys that get rid of selections.
-        key!(KeyCode::Char('h') | Left) => {
-            move_each(editor, Side::Left, 1);
-        }
-        key!(KeyCode::Char('j') | Down) => {
-            move_each(editor, Side::Bottom, 1);
-        }
-        key!(KeyCode::Char('k') | Up) => {
-            move_each(editor, Side::Top, 1);
-        }
-        key!(KeyCode::Char('l') | Right) => {
-            move_each(editor, Side::Right, 1);
-        }
+        key!(KeyCode::Char('h') | Left) => move_each(editor, Side::Left, 1),
+        key!(KeyCode::Char('j') | Down) => move_each(editor, Side::Bottom, 1),
+        key!(KeyCode::Char('k') | Up) => move_each(editor, Side::Top, 1),
+        key!(KeyCode::Char('l') | Right) => move_each(editor, Side::Right, 1),
 
         ////////// Insertion keys.
         key!(KeyCode::Char('i')) => {
@@ -276,11 +262,8 @@ fn match_normal<U: Ui>(
         key!(KeyCode::Char('q')) => panic!("Quit on purpose"),
 
         ////////// History manipulation.
-        key!(KeyCode::Char('u')) => {
-            editor.undo();
-            editor.remove_extra_cursors()
-        },
-        key!(KeyCode::Char('U')) => editor.redo(),
+        key!(KeyCode::Char('u')) => editor.undo(),
+        key!(KeyCode::Char('U'), KeyModifiers::SHIFT) => editor.redo(),
         _ => {}
     }
 }

@@ -378,7 +378,7 @@ where
 
         let text = self.widget.text();
         let cfg = self.widget.print_cfg();
-        let end_p = text.get_point_at(end).unwrap();
+        let end_p = text.point_at(end);
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
@@ -389,7 +389,7 @@ where
         } else {
             self.cursor.move_to(end_p, text, self.area, cfg);
             if end != start {
-                let start_p = text.get_point_at(start).unwrap();
+                let start_p = text.point_at(start);
                 self.cursor.set_anchor();
                 self.cursor.move_to(start_p, text, self.area, cfg);
                 self.cursor.swap_ends();
@@ -405,13 +405,12 @@ where
 
         self.edit(change);
 
-        let text = self.widget.text();
-        let cfg = self.widget.print_cfg();
-        let end_p = text.get_point_at(end).unwrap();
-
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
         {
+            let text = self.widget.text();
+            let cfg = self.widget.print_cfg();
+            let end_p = text.point_at(end);
             self.cursor.swap_ends();
             self.cursor.move_to(end_p, text, self.area, cfg);
             self.cursor.swap_ends();

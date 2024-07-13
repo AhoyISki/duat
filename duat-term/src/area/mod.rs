@@ -100,8 +100,8 @@ impl Area {
     /// bottom of the widget is equal to `config.scrolloff.y_gap`.
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
-        let points = text.ghost_max_points_at(point.byte()).unwrap();
-        let after = text.points_after(points).unwrap();
+        let points = text.ghost_max_points_at(point.byte());
+        let after = text.points_after(points).unwrap_or(text.max_points());
 
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
@@ -112,7 +112,7 @@ impl Area {
             self.height().saturating_sub(cfg.scrolloff().y + 1)
         };
 
-        let first = iter.nth(target).unwrap_or((Point::default(), None));
+        let first = iter.nth(target).unwrap_or_default();
 
         if (info.last_main > point && first <= info.points)
             || (info.last_main < point && first >= info.points)
@@ -134,8 +134,8 @@ impl Area {
         };
 
         let (line_start, start, end) = {
-            let points = text.ghost_max_points_at(point.byte()).unwrap();
-            let after = text.points_after(points).unwrap();
+            let points = text.ghost_max_points_at(point.byte());
+            let after = text.points_after(points).unwrap_or(text.max_points());
 
             let mut iter = rev_print_iter(text.rev_iter_at(after), width, cfg);
             let mut wrapped = false;

@@ -43,7 +43,6 @@ pub struct Text {
     pub records: Records<(usize, usize, usize)>,
 }
 
-// TODO: Properly implement _replacements.
 impl Text {
     pub fn new() -> Self {
         Self {
@@ -88,7 +87,7 @@ impl Text {
         };
 
         let old_start = {
-            let p = self.get_point_at(old.start).unwrap();
+            let p = self.point_at(old.start);
             (p.byte(), p.char(), p.line())
         };
 
@@ -147,11 +146,10 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             for (b, tag) in b_list.into_iter().skip(no_selection) {
-                if let Some(point) = self.get_point_at(b) {
-                    let record = (point.byte(), point.char(), point.line());
-                    self.records.insert(record);
-                    self.tags.insert(b, tag, self.marker);
-                }
+                let point = self.point_at(b);
+                let record = (point.byte(), point.char(), point.line());
+                self.records.insert(record);
+                self.tags.insert(b, tag, self.marker);
             }
         }
     }
@@ -178,7 +176,7 @@ impl Text {
         unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) }
     }
 
-    pub fn slices_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
+    pub fn strs_in_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len_bytes());
 
@@ -210,11 +208,16 @@ impl Text {
     }
 
     #[inline(always)]
-    pub fn get_point_at(&self, at: usize) -> Option<Point> {
+    pub fn point_at(&self, at: usize) -> Point {
+        assert!(
+            at <= self.len_bytes(),
+            "byte out of bounds: the len is {}, but the byte is {at}",
+            self.len_bytes()
+        );
         let (b, c, mut l) = self.records.closest_to(at);
 
         let found = if at >= b {
-            let (s0, s1) = self.slices_range(b..);
+            let (s0, s1) = self.strs_in_range(b..);
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -226,7 +229,7 @@ impl Text {
                 .take_while(|&(b, ..)| at >= b)
                 .last()
         } else {
-            let (s0, s1) = self.slices_range(..b);
+            let (s0, s1) = self.strs_in_range(..b);
             let s1 = s1.chars().rev();
             let mut c_len = 0;
 
@@ -241,13 +244,15 @@ impl Text {
                 .last()
         };
 
-        found.map(|(b, c, l)| Point::from_coords(b, c, l))
+        found
+            .map(|(b, c, l)| Point::from_coords(b, c, l))
+            .unwrap_or(self.max_point())
     }
 
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, at: usize) -> Option<(Point, Option<Point>)> {
-        self.get_point_at(at)
-            .map(|point| (point, self.tags.ghosts_total_at(point.byte())))
+    pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
+        let point = self.point_at(at);
+        (point, self.tags.ghosts_total_at(point.byte()))
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -282,6 +287,10 @@ impl Text {
         Point::from_coords(b, c, l)
     }
 
+    pub fn max_points(&self) -> (Point, Option<Point>) {
+        self.ghost_max_points_at(self.max_point().byte())
+    }
+
     /// The visual start of the line
     ///
     /// This point is defined not by where the line actually begins,
@@ -306,6 +315,14 @@ impl Text {
 
         points
     }
+
+    /// Clones the inner [`GapBuffer`] as a [`String`]
+    // NOTE: Inherent because I don't want this to implement Display
+    #[allow(clippy::inherent_to_string)]
+    pub fn to_string(&self) -> String {
+        let (s0, s1) = self.strs_in_range(..);
+        s0.to_string() + s1
+    }
 }
 
 // Iterator methods.
@@ -327,12 +344,12 @@ impl Text {
     }
 
     pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {
-        let (s0, s1) = self.slices_range(b..);
+        let (s0, s1) = self.strs_in_range(b..);
         s0.bytes().chain(s1.bytes())
     }
 
     pub fn iter_chars_at(&self, c: usize) -> impl Iterator<Item = char> + '_ {
-        let (s0, s1) = self.slices_range(..);
+        let (s0, s1) = self.strs_in_range(..);
         s0.chars().chain(s1.chars()).skip(c)
     }
 }

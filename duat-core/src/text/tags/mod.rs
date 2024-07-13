@@ -264,7 +264,7 @@ impl Tags {
         let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
         let (n, b) = {
-            let (n, b, _) = self.get_skip_at(at).unwrap();
+            let (n, b, _) = self.get_skip_at(at).unwrap_or_default();
             let iter = iter_range_rev(&self.buf, ..n);
 
             (n - iter.take_while(|ts| ts.is_tag()).count(), b)
@@ -536,9 +536,7 @@ fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> +
 
 fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
     move |ts| {
-        b = b
-            .checked_sub(ts.len())
-            .unwrap_or_else(|| panic!("{b} - {}", ts.len()));
+        b -= ts.len();
         Some(b).zip(ts.as_tag())
     }
 }
