@@ -178,10 +178,12 @@ impl Tags {
     /// Removes all [`Tag`]s associated with a given [`Handle`] in the
     /// `pos`.
     pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
-        // If we are removing in the middle of a skip, there is
-        // nothing to do.
-        let Some((n, b, _)) = self.get_skip_at(at).filter(|&(_, b, _)| b == at) else {
-            return;
+        let (n, b) = match self.get_skip_at(at) {
+            Some((n, b, _)) if b == at => (n, b),
+            None => (self.buf.len(), self.len_bytes()),
+            // If `b != n`, we're in the middle of a skip, and nothing
+            // is done.
+            _ => return,
         };
 
         let removed: Vec<_> = iter_range_rev(&self.buf, ..n)
