@@ -8,7 +8,10 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{
-    data::RwData, log_info, palette::Painter, text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod}, ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
+    data::RwData,
+    palette::Painter,
+    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
 
@@ -485,7 +488,8 @@ fn print_parts<'a>(
 
     if !line.is_empty() {
         line.write_all(b" ").unwrap();
-        print_line(old_x + 1, coords, alignment, &mut line, lines);
+        let shifted_x = (old_x + 1).saturating_sub(info.x_shift);
+        print_line(shifted_x, coords, alignment, &mut line, lines);
     }
 
     coords.br.y - y

@@ -232,9 +232,7 @@ impl InputMethod<Ui> for Commander {
                     mover.unset_anchor();
                 });
             }
-            key!(KeyCode::Char('q')) => {
-                panic!("panicked on purpose");
-            }
+
             key!(KeyCode::Char(char)) => {
                 editor.edit_on_main(|editor| editor.insert(char));
                 editor.move_main(|mover| mover.move_hor(1));
