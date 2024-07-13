@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::position::Cursor;
+use crate::{log_info, position::Cursor};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {
@@ -179,7 +179,7 @@ impl<'a> Iter<'a> {
         if let Some((real, ..)) = self.main_iter.as_ref() {
             (*real, Some(self.point))
         } else {
-            (self.point, None)
+            (self.point, self.ghost.map(|(p, _)| p))
         }
     }
 }
@@ -346,7 +346,7 @@ impl<'a> RevIter<'a> {
         if let Some((real, ..)) = self.main_iter.as_ref() {
             (*real, Some(self.point))
         } else {
-            (self.point, None)
+            (self.point, self.ghost.map(|(p, _)| p))
         }
     }
 
