@@ -221,7 +221,7 @@ impl Tags {
         let (end_n, end_b) = self
             .get_skip_at(old.end)
             .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
+            .unwrap_or((self.buf.len() - 1, self.len_bytes()));
 
         let range_diff = new.end as isize - old.end as isize;
         let skip = (end_b - start_b).saturating_add_signed(range_diff);
@@ -353,9 +353,9 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
-                let max_point  = self.texts.get(&id).unwrap().max_point();
+                let max_point = self.texts.get(&id).unwrap().max_point();
                 Some(p.map_or(max_point, |p| p + max_point))
-            },
+            }
             _ => p,
         })
     }
@@ -395,13 +395,14 @@ impl Tags {
 
     fn process_ranges_containing(&mut self, range: Range<usize>) {
         let (before, after) = {
-            let start = range.start.saturating_sub(self.range_min);
+            let before_start = range.start.saturating_sub(self.range_min);
             // in case `range.start == range.end`, we would be double
             // checking that position, so we shift once to the right.
             let cross_shift = (range.end == range.start) as usize;
-            let end = range.end + self.range_min + cross_shift;
+            let after_start = (range.end + cross_shift).min(self.len_bytes());
+            let after_end = (range.end + self.range_min).min(self.len_bytes());
 
-            (start..=range.start, (range.end + cross_shift)..=end)
+            (before_start..=range.start, after_start..=after_end)
         };
 
         let before = self

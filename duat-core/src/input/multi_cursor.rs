@@ -5,12 +5,7 @@ use std::{
 };
 
 use crate::{
-    data::RwData,
-    history::Change,
-    position::Cursor,
-    text::{Point, PrintCfg, Text},
-    ui::{Area, Ui},
-    widgets::{ActiveWidget, File, PassiveWidget},
+    data::RwData, history::Change, log_info, position::Cursor, text::{Point, PrintCfg, Text}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
 };
 
 #[derive(Clone, Debug)]
@@ -155,26 +150,22 @@ where
     }
 
     /// Alters the nth cursor's selection.
-    pub fn move_nth(&mut self, mut f: impl FnMut(&mut Mover<U::Area>), index: usize) {
+    pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>), n: usize) {
         let mut widget = self.widget.write();
-        let cursor = &mut self.cursors.list[index];
+        let cursor = &mut self.cursors.list[n];
         let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
-        f(&mut mover);
+        mov(&mut mover);
 
-        let cursor = self.cursors.list.remove(index);
+        let cursor = self.cursors.list.remove(n);
         let range = cursor.range();
-        let new_index = match self
+        let (Ok(new_n) | Err(new_n)) = self
             .cursors
             .list
-            .binary_search_by(|j| at_start_ord(&j.range(), &range))
-        {
-            Ok(index) => index,
-            Err(index) => index,
-        };
-        self.cursors.list.insert(new_index, cursor);
+            .binary_search_by(|i| at_start_ord(&i.range(), &range));
+        self.cursors.list.insert(new_n, cursor);
 
-        if self.cursors.main == index {
-            self.cursors.main = new_index;
+        if self.cursors.main == n {
+            self.cursors.main = new_n;
         }
 
         widget.update(self.area);
@@ -223,10 +214,10 @@ where
     }
 
     /// Alters the last cursor's selection.
-    pub fn move_last(&mut self, f: impl FnMut(&mut Mover<U::Area>)) {
+    pub fn move_last(&mut self, mov: impl FnMut(&mut Mover<U::Area>)) {
         let len = self.len_cursors();
         if len > 0 {
-            self.move_nth(f, len - 1);
+            self.move_nth(mov, len - 1);
         }
     }
 

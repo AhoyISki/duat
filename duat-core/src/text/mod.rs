@@ -26,11 +26,7 @@ pub use self::{
     types::Part,
 };
 use crate::{
-    data::{RoData, RwData},
-    history::Change,
-    input::Cursors,
-    log_info,
-    palette::{self, FormId},
+    data::{RoData, RwData}, history::Change, input::Cursors, log_info, palette::{self, FormId}
 };
 
 /// The text in a given area.
@@ -76,6 +72,11 @@ impl Text {
     fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
         let edit = edit.as_ref();
 
+        let old_start = {
+            let p = self.point_at(old.start);
+            (p.byte(), p.char(), p.line())
+        };
+
         let old_len = unsafe {
             let str = String::from_utf8_unchecked(
                 self.buf
@@ -85,11 +86,6 @@ impl Text {
 
             let lines = str.bytes().filter(|b| *b == b'\n').count();
             (str.len(), str.chars().count(), lines)
-        };
-
-        let old_start = {
-            let p = self.point_at(old.start);
-            (p.byte(), p.char(), p.line())
         };
 
         let new_len = {
@@ -177,7 +173,10 @@ impl Text {
         unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) }
     }
 
-    pub fn strs_in_range(&self, range: impl RangeBounds<usize>) -> (&'_ str, &'_ str) {
+    pub fn strs_in_range(
+        &self,
+        range: impl RangeBounds<usize> + std::fmt::Debug,
+    ) -> (&'_ str, &'_ str) {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len_bytes());
 
@@ -289,12 +288,7 @@ impl Text {
     }
 
     pub fn max_points(&self) -> (Point, Option<Point>) {
-        let points = self.ghost_max_points_at(self.max_point().byte());
-        if self.len_bytes() < 10 {
-            log_info!("{:#?}\n{points:?}", self.strs_in_range(..));
-        }
-
-        points
+        self.ghost_max_points_at(self.max_point().byte())
     }
 
     /// The visual start of the line
@@ -381,7 +375,7 @@ where
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
-            .field("buf", &format!("{}{}", self.slices().0, self.slices().1))
+            .field("buf", &format!("'{}', '{}'", self.slices().0, self.slices().1))
             .field("tags", &self.tags)
             .field("records", &self.records)
             .finish()

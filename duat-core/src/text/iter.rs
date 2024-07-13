@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::{log_info, position::Cursor};
+use crate::position::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {
@@ -124,8 +124,8 @@ impl<'a> Iter<'a> {
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::GhostText(_, id) if self.print_ghosts => {
-                if b < self.point.byte() || self.conceals > 0 {
+            RawTag::GhostText(_, id) => {
+                if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.tags.texts.get(id).unwrap();
@@ -295,8 +295,8 @@ impl<'a> RevIter<'a> {
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::GhostText(_, id) if self.print_ghosts => {
-                if b > self.point.byte() || self.conceals > 0 {
+            RawTag::GhostText(_, id) => {
+                if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.tags.texts.get(id).unwrap();

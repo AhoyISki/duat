@@ -119,6 +119,7 @@ pub static HOOK: Once = Once::new();
 pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 /// Internal macro used to log information.
+#[deprecated(note = "log_info has been used, remove it before publishing")]
 pub macro log_info($($text:tt)*) {{
     use std::{fmt::Write, time::Instant};
 
@@ -153,7 +154,7 @@ pub macro log_info($($text:tt)*) {{
         write!(LOG.lock().unwrap(), "\n{text}").unwrap();
     }
 
-	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(35);
+	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(60);
     let trimmed = LOG.lock().unwrap().split_inclusive('\n').skip(len_lines).collect();
     *LOG.lock().unwrap() = trimmed;
 }}

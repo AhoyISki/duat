@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use crate::{
+    log_info,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, Caret},
 };
@@ -46,12 +47,14 @@ impl Cursor {
 
         let point = if by > 0 {
             text.iter_at(self.caret())
+                .no_ghosts()
                 .no_tags()
                 .nth(by as usize)
                 .map(|item| item.real)
                 .unwrap_or(text.max_point())
         } else {
             text.rev_iter_at(self.caret())
+                .no_ghosts()
                 .no_tags()
                 .nth(by.unsigned_abs() - 1)
                 .map(|item| item.real)
