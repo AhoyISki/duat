@@ -29,6 +29,7 @@ use crate::{
     data::{RoData, RwData},
     history::Change,
     input::Cursors,
+    log_info,
     palette::{self, FormId},
 };
 
@@ -288,7 +289,12 @@ impl Text {
     }
 
     pub fn max_points(&self) -> (Point, Option<Point>) {
-        self.ghost_max_points_at(self.max_point().byte())
+        let points = self.ghost_max_points_at(self.max_point().byte());
+        if self.len_bytes() < 10 {
+            log_info!("{:#?}\n{points:?}", self.strs_in_range(..));
+        }
+
+        points
     }
 
     /// The visual start of the line

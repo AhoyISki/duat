@@ -15,6 +15,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -338,18 +339,23 @@ impl Tags {
     }
 
     pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
-        let n = self.get_skip_at(at).map(|(n, b, _)| (n, b));
+        let (n, b) = self
+            .get_skip_at(at)
+            .map(|(n, b, _)| (n, b))
+            .unwrap_or((self.buf.len(), self.len_bytes()));
 
-        n.filter(|(_, b)| *b == at)
+        (b == at)
+            .then(|| iter_range_rev(&self.buf, ..n).map_while(TagOrSkip::as_tag))
             .into_iter()
-            .flat_map(|(n, _)| iter_range_rev(&self.buf, n..).map_while(TagOrSkip::as_tag))
+            .flatten()
     }
 
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
-            RawTag::GhostText(_, id) => Some(p.map_or(Point::default(), |p| {
-                p + self.texts.get(&id).unwrap().max_point()
-            })),
+            RawTag::GhostText(_, id) => {
+                let max_point  = self.texts.get(&id).unwrap().max_point();
+                Some(p.map_or(max_point, |p| p + max_point))
+            },
             _ => p,
         })
     }

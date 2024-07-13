@@ -97,7 +97,7 @@ where
 
     fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
         let command_line = CommandLine {
-            text: Text::from(" "),
+            text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
             context,
         };
@@ -107,13 +107,13 @@ where
     }
 }
 
-/// An [`ActionableWidget<U>`] whose primary purpose is to execute
+/// An [`ActiveWidget<U>`] whose primary purpose is to execute
 /// [`Command`]s.
 ///
 /// While this is the primary purpose of the [`CommandLine<U>`], in
 /// the future, it will be able to change its functionality to, for
 /// example, search for pieces of text on a
-/// [`FileWidget<U>`][crate::widgets::FileWidget] in real time.
+/// [`File`][parsec_core::file::File] in real time.
 pub struct CommandLine {
     text: Text,
     prompt: RwData<String>,

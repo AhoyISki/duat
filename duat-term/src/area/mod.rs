@@ -8,10 +8,7 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{
-    data::RwData,
-    palette::Painter,
-    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
+    data::RwData, log_info, palette::Painter, text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod}, ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
 };
 use iter::{print_iter, rev_print_iter};
 
@@ -101,6 +98,7 @@ impl Area {
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
         let points = text.ghost_max_points_at(point.byte());
+        log_info!("len {}, {points:?}", text.len_bytes());
         let after = text.points_after(points).unwrap_or(text.max_points());
 
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)

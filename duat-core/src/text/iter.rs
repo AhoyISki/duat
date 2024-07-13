@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::position::Cursor;
+use crate::{log_info, position::Cursor};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {
@@ -309,7 +309,7 @@ impl<'a> RevIter<'a> {
                     (text.point_at(total.byte() - *dist), *total)
                 } else {
                     let this = text.max_point();
-                    let total = text.tags.ghosts_total_at(self.point.byte());
+                    let total = self.text.tags.ghosts_total_at(b);
                     (this, total.unwrap())
                 };
 
