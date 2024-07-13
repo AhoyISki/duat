@@ -5,7 +5,10 @@ use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
 };
-use duat_core::ui::{Axis, Constraint};
+use duat_core::ui::{
+    Axis::{self, *},
+    Constraint,
+};
 
 use super::{Edge, Length, VarPoint};
 use crate::{
@@ -20,23 +23,23 @@ enum Kind {
     Middle {
         children: Vec<(Rect, Length)>,
         axis: Axis,
-        clustered: bool,
+        grouped: bool,
     },
 }
 
 impl Kind {
-    fn middle(axis: Axis, clustered: bool) -> Self {
+    fn middle(axis: Axis, grouped: bool) -> Self {
         Self::Middle {
             children: Vec::new(),
             axis,
-            clustered,
+            grouped,
         }
     }
 
-    fn is_clustered(&self) -> bool {
+    fn is_grouped(&self) -> bool {
         match self {
             Kind::End(_) => false,
-            Kind::Middle { clustered, .. } => *clustered,
+            Kind::Middle { grouped, .. } => *grouped,
         }
     }
 
@@ -92,14 +95,14 @@ impl Rect {
         rect: &mut Rect,
         axis: Axis,
         printer: &mut Printer,
-        clustered: bool,
+        do_group: bool,
     ) -> Self {
         let parent = Rect {
             id: AreaId::new(),
             tl: rect.tl.clone(),
             br: rect.br.clone(),
             edge_equalities: rect.edge_equalities.clone(),
-            kind: Kind::middle(axis, clustered),
+            kind: Kind::middle(axis, do_group),
         };
 
         rect.edge_equalities.clear();
@@ -129,8 +132,8 @@ impl Rect {
     /// [`Axis`]. It will be the left or upper side of a [`Rect`].
     pub fn start(&self, axis: Axis) -> Variable {
         match axis {
-            Axis::Horizontal => self.tl.x.var,
-            Axis::Vertical => self.tl.y.var,
+            Horizontal => self.tl.x.var,
+            Vertical => self.tl.y.var,
         }
     }
 
@@ -138,8 +141,8 @@ impl Rect {
     /// [`Axis`]. It will be the right or lower side of a [`Rect`].
     pub fn end(&self, axis: Axis) -> Variable {
         match axis {
-            Axis::Horizontal => self.br.x.var,
-            Axis::Vertical => self.br.y.var,
+            Horizontal => self.br.x.var,
+            Vertical => self.br.y.var,
         }
     }
 
@@ -147,8 +150,8 @@ impl Rect {
     /// given [`Axis`].
     pub fn len(&self, axis: Axis) -> Expression {
         match axis {
-            Axis::Horizontal => self.br.x.var - self.tl.x.var,
-            Axis::Vertical => self.br.y.var - self.tl.y.var,
+            Horizontal => self.br.x.var - self.tl.x.var,
+            Vertical => self.br.y.var - self.tl.y.var,
         }
     }
 
@@ -156,10 +159,10 @@ impl Rect {
     /// [`Axis`].
     pub fn len_value(&self, axis: Axis) -> usize {
         match axis {
-            Axis::Horizontal => {
+            Horizontal => {
                 self.br.x.value.load(Ordering::Relaxed) - self.tl.x.value.load(Ordering::Relaxed)
             }
-            Axis::Vertical => {
+            Vertical => {
                 self.br.y.value.load(Ordering::Relaxed) - self.tl.y.value.load(Ordering::Relaxed)
             }
         }
@@ -204,9 +207,9 @@ impl Rect {
         self.id
     }
 
-    pub fn is_clustered(&self) -> bool {
+    pub fn is_grouped(&self) -> bool {
         match &self.kind {
-            Kind::Middle { clustered, .. } => *clustered,
+            Kind::Middle { grouped, .. } => *grouped,
             Kind::End(_) => false,
         }
     }
@@ -239,7 +242,7 @@ impl Rect {
         &mut self,
         parent: &Rect,
         axis: Axis,
-        frame: Frame,
+        fr: Frame,
         edges: &mut Vec<Edge>,
         max: &VarPoint,
     ) -> (f64, f64) {
@@ -252,14 +255,14 @@ impl Rect {
 
         edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         let (right, up, left, down) = if self.is_frameable(Some(parent)) {
-            self.form_frame(frame, edges, max.coord())
+            self.form_frame(fr, edges, max.coord())
         } else {
             (0.0, 0.0, 0.0, 0.0)
         };
 
         let (para_left, para_right, start, end) = match axis.perp() {
-            Axis::Vertical => (up, down, left, right),
-            Axis::Horizontal => (left, right, up, down),
+            Vertical => (up, down, left, right),
+            Horizontal => (left, right, up, down),
         };
 
         self.edge_equalities.extend([
@@ -273,41 +276,21 @@ impl Rect {
     /// Sets the [`Equality`]s for the main [`Rect`], which
     /// is supposed to be parentless. It takes into account a possible
     /// [`Frame`].
-    fn set_main_edges(&mut self, frame: Frame, printer: &mut Printer, edges: &mut Vec<Edge>) {
+    fn set_main_edges(&mut self, fr: Frame, printer: &mut Printer, edges: &mut Vec<Edge>) {
         let (hor_edge, ver_edge) = if self.is_frameable(None) {
-            frame.main_edges()
+            fr.main_edges()
         } else {
             (0.0, 0.0)
         };
 
         edges.retain(|edge| !edge.matches_vars(&self.br, &self.tl));
         if hor_edge == 1.0 {
-            edges.push(Edge::new(
-                self.br.clone(),
-                self.tl.clone(),
-                Axis::Vertical,
-                frame,
-            ));
-            edges.push(Edge::new(
-                self.tl.clone(),
-                self.br.clone(),
-                Axis::Vertical,
-                frame,
-            ));
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Vertical, fr));
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Vertical, fr));
         }
         if ver_edge == 1.0 {
-            edges.push(Edge::new(
-                self.tl.clone(),
-                self.br.clone(),
-                Axis::Horizontal,
-                frame,
-            ));
-            edges.push(Edge::new(
-                self.br.clone(),
-                self.tl.clone(),
-                Axis::Horizontal,
-                frame,
-            ));
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Horizontal, fr));
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Horizontal, fr));
         }
 
         self.edge_equalities = vec![
@@ -322,10 +305,10 @@ impl Rect {
 
     /// Wheter or not [`self`] can be framed.
     fn is_frameable(&self, parent: Option<&Rect>) -> bool {
-        if parent.is_some_and(|parent| parent.kind.is_clustered()) {
+        if parent.is_some_and(|parent| parent.kind.is_grouped()) {
             false
-        } else if let Kind::Middle { clustered, .. } = &self.kind {
-            *clustered
+        } else if let Kind::Middle { grouped, .. } = &self.kind {
+            *grouped
         } else {
             true
         }
@@ -333,39 +316,29 @@ impl Rect {
 
     /// Forms the frame surrounding [`self`], considering its position
     /// and a [`Frame`].
-    fn form_frame(&self, frame: Frame, edges: &mut Vec<Edge>, max: Coord) -> (f64, f64, f64, f64) {
-        let (right, up, left, down) = frame.edges(&self.br, &self.tl, max);
+    fn form_frame(&self, fr: Frame, edges: &mut Vec<Edge>, max: Coord) -> (f64, f64, f64, f64) {
+        let (right, up, left, down) = fr.edges(&self.br, &self.tl, max);
 
         if right == 1.0 {
-            edges.push(Edge::new(
-                self.br.clone(),
-                self.tl.clone(),
-                Axis::Vertical,
-                frame,
-            ));
+            edges.push(Edge::new(self.br.clone(), self.tl.clone(), Vertical, fr));
         }
         if up == 1.0 {
             edges.push(Edge::new(
                 self.tl.clone(),
                 self.br.clone(),
-                Axis::Horizontal,
-                frame,
+                Horizontal,
+                fr,
             ));
         }
         if left == 1.0 {
-            edges.push(Edge::new(
-                self.tl.clone(),
-                self.br.clone(),
-                Axis::Vertical,
-                frame,
-            ));
+            edges.push(Edge::new(self.tl.clone(), self.br.clone(), Vertical, fr));
         }
         if down == 1.0 {
             edges.push(Edge::new(
                 self.br.clone(),
                 self.tl.clone(),
-                Axis::Horizontal,
-                frame,
+                Horizontal,
+                fr,
             ));
         }
 
@@ -538,24 +511,24 @@ impl Rects {
     pub fn set_edges(
         &mut self,
         id: AreaId,
-        frame: Frame,
+        fr: Frame,
         printer: &mut Printer,
         edges: &mut Vec<Edge>,
     ) {
         if self.main.id == id {
             let rect = self.get_mut(id).unwrap();
             rect.clear_equalities(printer);
-            rect.set_main_edges(frame, printer, edges);
+            rect.set_main_edges(fr, printer, edges);
         } else {
             let (pos, parent) = self.get_parent_mut(id).unwrap();
-            prepare_child(parent, pos, printer, frame, edges)
+            prepare_child(parent, pos, printer, fr, edges)
         }
     }
 
     pub fn set_new_child_edges(
         &mut self,
         id: AreaId,
-        frame: Frame,
+        fr: Frame,
         printer: &mut Printer,
         edges: &mut Vec<Edge>,
     ) {
@@ -563,16 +536,16 @@ impl Rects {
         let (pos, parent) = self.get_parent_mut(id).unwrap();
         if child_is_main {
             parent.clear_equalities(printer);
-            parent.set_main_edges(frame, printer, edges);
+            parent.set_main_edges(fr, printer, edges);
         } else {
-            prepare_child(parent, pos, printer, frame, edges)
+            prepare_child(parent, pos, printer, fr, edges)
         }
     }
 
     pub fn set_edges_around(
         &mut self,
         id: AreaId,
-        frame: Frame,
+        fr: Frame,
         printer: &mut Printer,
         edges: &mut Vec<Edge>,
     ) {
@@ -589,7 +562,7 @@ impl Rects {
             .flatten()
         {
             if let Some(&id) = ids.get(pos) {
-                self.set_edges(id, frame, printer, edges)
+                self.set_edges(id, fr, printer, edges)
             }
         }
     }
@@ -665,25 +638,25 @@ fn prepare_child(
     parent: &mut Rect,
     pos: usize,
     printer: &mut Printer,
-    frame: Frame,
+    fr: Frame,
     edges: &mut Vec<Edge>,
 ) {
     let axis = parent.kind.axis().unwrap();
-    let clustered = parent.kind.is_clustered();
+    let grouped = parent.kind.is_grouped();
 
-    let temp = Kind::middle(axis, parent.kind.is_clustered());
+    let temp = Kind::middle(axis, parent.kind.is_grouped());
     let Kind::Middle { mut children, .. } = std::mem::replace(&mut parent.kind, temp) else {
         unreachable!();
     };
 
-    let child = &mut children[pos].0;
+    let target = &mut children[pos].0;
 
-    child.clear_equalities(printer);
-    let (start, end) = child.set_equalities(parent, axis, frame, edges, printer.max());
+    target.clear_equalities(printer);
+    let (start, end) = target.set_equalities(parent, axis, fr, edges, printer.max());
 
     if pos == 0 {
-        let constraint = child.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
-        child.edge_equalities.push(constraint);
+        let constraint = target.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
+        target.edge_equalities.push(constraint);
     }
 
     // Previous children carry the `Constraint`s for the `start` of their
@@ -694,22 +667,22 @@ fn prepare_child(
         (children[pos].0.end(axis) + end) | EQ(REQUIRED) | parent.end(axis)
     };
 
-    let child = &mut children[pos].0;
-    child.edge_equalities.push(constraint);
+    let target = &mut children[pos].0;
+    target.edge_equalities.push(constraint);
 
-    printer.add_equalities(&child.edge_equalities).unwrap();
+    printer.add_equalities(&target.edge_equalities).unwrap();
 
-    if let Kind::Middle { children, .. } = &mut child.kind {
+    if let Kind::Middle { children, .. } = &mut target.kind {
         let len = children.len();
         for pos in 0..len {
-            prepare_child(child, pos, printer, frame, edges);
+            prepare_child(target, pos, printer, fr, edges);
         }
     }
 
     parent.kind = Kind::Middle {
         children,
         axis,
-        clustered,
+        grouped,
     };
 }
 

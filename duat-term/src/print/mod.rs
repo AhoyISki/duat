@@ -23,7 +23,7 @@ macro_rules! queue {
 
 #[derive(Debug)]
 pub struct Lines {
-    pub bytes: Vec<u8>,
+    bytes: Vec<u8>,
     cutoffs: Vec<usize>,
     coords: Coords,
     real_cursor: Option<bool>,

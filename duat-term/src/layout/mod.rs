@@ -241,33 +241,34 @@ impl Layout {
     /// these cases, an aditional index associated with the parent
     /// will be returned.
     ///
-    /// If `glue_new`, and the bisected [`Rect`] was "not glued", a
+    /// If `do_group`, and the bisected [`Rect`] was "not glued", a
     /// new parent will be created, which will act as the holder for
     /// all of its successors. If this parent is moved, the children
     /// will move with it.
     ///
-    /// If `glue_new`, and the bisected [`Rect`] was already glued,
+    /// If `do_group`, and the bisected [`Rect`] was already glued,
     /// the creation of a new parent will follow regular rules, but
     /// the children will still be "glued".
     pub fn bisect(
         &mut self,
         id: AreaId,
         specs: PushSpecs,
-        cluster: bool,
+        do_group: bool,
     ) -> (AreaId, Option<AreaId>) {
         let mut printer = self.printer.write();
         let (printer, edges) = (&mut printer, &mut self.edges);
         let axis = specs.axis();
+
         let (can_be_sibling, can_be_child) = {
-            let parent_is_cluster = self
+            let parent_is_grouped = self
                 .rects
                 .get_parent(id)
-                .map(|(_, parent)| parent.is_clustered())
-                .unwrap_or(cluster);
+                .map(|(_, parent)| parent.is_grouped())
+                .unwrap_or(do_group);
 
-            let child_is_cluster = self.rects.get(id).is_some_and(Rect::is_clustered);
+            let child_is_grouped = self.rects.get(id).is_some_and(Rect::is_grouped);
 
-            (parent_is_cluster == cluster, child_is_cluster == cluster)
+            (parent_is_grouped == do_group, child_is_grouped == do_group)
         };
 
         // Check if the target's parent has the same `Axis`.
@@ -297,7 +298,7 @@ impl Layout {
         } else {
             let (new_parent_id, child) = {
                 let rect = self.rects.get_mut(id).unwrap();
-                let parent = Rect::new_parent_of(rect, axis, printer, cluster);
+                let parent = Rect::new_parent_of(rect, axis, printer, do_group);
 
                 (parent.id(), std::mem::replace(rect, parent))
             };
@@ -317,8 +318,8 @@ impl Layout {
                     .set_constraint(child_id, constraint, axis, printer);
             }
 
-            // If the child is clustered, the frame doesn't need to be redone.
-            if !cluster {
+            // If the child is grouped, the frame doesn't need to be redone.
+            if !do_group {
                 self.rects
                     .set_new_child_edges(child_id, self.frame, printer, edges)
             }
