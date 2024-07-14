@@ -291,6 +291,12 @@ where
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
         let dyn_passive = dyn_active.clone().to_passive();
 
+        if let Some(file) = dyn_active.try_downcast::<File>()
+            && let Some(cursors) = input.read().cursors()
+        {
+            ActiveWidget::<U>::mut_text(&mut *file.write()).add_cursor_tags(cursors)
+        }
+
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod<U>>>;
 
         let inner = InnerActiveWidget {

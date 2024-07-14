@@ -71,7 +71,7 @@ where
         self.context.commands.add_windows(session.windows.clone());
         add_session_commands(&session, self.context, session.tx.clone());
 
-        // Open and process files..
+        // Open and process files.
         build_file(&mut session.windows.write()[0], area, self.context);
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
@@ -149,7 +149,6 @@ where
     }
 }
 
-#[allow(clippy::type_complexity)]
 pub struct Session<U>
 where
     U: Ui,
@@ -233,9 +232,9 @@ where
                 }
             });
 
-            let reason = self.session_loop(&rx);
+            let reason_to_break = self.session_loop(&rx);
 
-            match reason {
+            match reason_to_break {
                 BreakTo::QuitDuat => {
                     self.ui.close();
                     self.context.end();
@@ -373,7 +372,7 @@ where
                             .map(|bytes| {
                                 Some(text!(
                                     "Wrote " [AccentErr] bytes
-                                    [Default] " bytes to " [AccentErr] name [Default] "."
+                                    [] " bytes to " [AccentErr] name [] "."
                                 ))
                             })
                             .map_err(Text::from)
@@ -403,10 +402,7 @@ where
                         builder.finish()
                     };
 
-                    Ok(Some(text!(
-                        "Wrote " [AccentErr] bytes
-                        [Default] " bytes to " files_text [Default] "."
-                    )))
+                    Ok(Some(text!("Wrote " [AccentErr] bytes [] " bytes to " files_text [] ".")))
                 })
             }
         })
@@ -450,9 +446,7 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [Default] "."),
-                ))
+                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
             }
         })
         .unwrap();
@@ -484,7 +478,7 @@ where
                             })
                             .unwrap_or(false)
                     })
-                    .ok_or(text!("No open files named " [AccentErr] name [Default] "."))?;
+                    .ok_or(text!("No open files named " [AccentErr] name [] "."))?;
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
@@ -492,9 +486,7 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [Default] "."),
-                ))
+                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
             }
         })
         .unwrap();
@@ -526,7 +518,7 @@ where
                             .filter(|(_, (widget, _))| widget.as_active().is_some())
                             .find(|(_, (widget, _))| widget.type_name() == type_name)
                     })
-                    .ok_or(text!("No widget of type " [AccentErr] type_name [Default] " found."))?;
+                    .ok_or(text!("No widget of type " [AccentErr] type_name [] " found."))?;
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
@@ -536,9 +528,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] type_name [Default] "."),
-                ))
+                Ok(Some(text!("Switched to " [AccentOk] type_name [] ".")))
             }
         })
         .unwrap();
@@ -579,9 +569,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [Default] "."),
-                ))
+                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
             }
         })
         .unwrap();
@@ -622,9 +610,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [Default] "."),
-                ))
+                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
             }
         })
         .unwrap();
@@ -654,9 +640,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(
-                    text!("Returned to " [AccentOk] { file_name(&entry) } [Default] "."),
-                ))
+                Ok(Some(text!("Returned to " [AccentOk] { file_name(&entry) } [] ".")))
             }
         })
         .unwrap();
