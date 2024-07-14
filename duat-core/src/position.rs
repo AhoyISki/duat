@@ -1,7 +1,6 @@
 use std::ops::Range;
 
 use crate::{
-    log_info,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, Caret},
 };

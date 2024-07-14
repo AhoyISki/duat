@@ -5,7 +5,7 @@ use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
 pub use global::*;
 use parking_lot::RwLockReadGuard;
 
-use crate::{data::RwData, log_info};
+use crate::data::RwData;
 
 mod global {
     use super::{CursorShape, Form, FormId, FormPalette, Painter};

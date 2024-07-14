@@ -5,7 +5,12 @@ use std::{
 };
 
 use crate::{
-    data::RwData, history::Change, log_info, position::Cursor, text::{Point, PrintCfg, Text}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
+    data::RwData,
+    history::Change,
+    position::Cursor,
+    text::{Point, PrintCfg, Text},
+    ui::{Area, Ui},
+    widgets::{ActiveWidget, File, PassiveWidget},
 };
 
 #[derive(Clone, Debug)]

@@ -11,7 +11,7 @@ use duat_core::{
     data::RwData,
     log_info,
     palette::Painter,
-    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
+    text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
@@ -104,7 +104,10 @@ impl Area {
         let points = text.ghost_max_points_at(point.byte());
         let after = text.points_after(points).unwrap_or(text.max_points());
 
+        let mut count = 0;
+
         let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
+            .inspect(|_| count += 1)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {
@@ -211,17 +214,12 @@ impl Area {
 
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.points);
-            let cfg = IterCfg::new(cfg).outsource_lfs();
-            (text.iter_at(line_start), cfg)
+            (text.iter_at(line_start), IterCfg::new(cfg).outsource_lfs())
         };
 
         let active = layout.active_id == self.id;
         let iter = print_iter(iter, sender.coords().width(), cfg, *info);
         let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines, f);
-
-        if text.len_bytes() > 1000 {
-            log_info!("{:#?}", text.tags);
-        }
 
         for _ in (0..y).rev() {
             lines
@@ -360,7 +358,7 @@ impl ui::Area for Area {
 
     fn print_iter<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        iter: Iter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         print_iter(iter, self.width(), cfg, PrintInfo::default())
@@ -380,7 +378,7 @@ impl ui::Area for Area {
 
     fn rev_print_iter<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        iter: RevIter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         rev_print_iter(iter, self.width(), cfg)

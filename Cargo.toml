@@ -45,3 +45,7 @@ path = "src/lib.rs"
 
 [build-dependencies]
 dirs-next = "2.0.0"
+
+[profile.profiling]
+inherits = "release"
+debug = true

@@ -121,6 +121,10 @@ impl<'a> Iter<'a> {
         self.filter(|item| item.part.is_char())
     }
 
+    pub fn skip_to(&mut self, tp: impl TwoPoints) {
+        *self = self.text.iter_at(tp.to_points().max(self.points()))
+    }
+
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {

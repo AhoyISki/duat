@@ -1,7 +1,8 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    text::{Item, IterCfg, Part, WrapMethod},
+    log_info,
+    text::{Item, Iter as TextIter, IterCfg, Part, Point, RevIter as RevTextIter, WrapMethod},
     ui::Caret,
 };
 use unicode_width::UnicodeWidthChar;
@@ -14,16 +15,17 @@ use super::PrintInfo;
 fn indents<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     width: usize,
+    initial: (usize, bool),
     cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (usize, Item)> + Clone + 'a {
-    iter.scan((0, true), move |(indent, on_indent), item| {
+    iter.scan(initial, move |(indent, on_indent), item| {
         if cfg.indent_wrap() {
             let old_indent = if *indent < width { *indent } else { 0 };
-            (*indent, *on_indent) = match (&item.part, *on_indent) {
-                (&Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
-                (&Part::Char(' '), true) => (*indent + 1, true),
-                (&Part::Char('\n'), _) => (0, true),
-                (&Part::Char(_), _) => (*indent, false),
+            (*indent, *on_indent) = match (item.part, *on_indent) {
+                (Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
+                (Part::Char(' '), true) => (*indent + 1, true),
+                (Part::Char('\n'), _) => (0, true),
+                (Part::Char(_), _) => (*indent, false),
                 (_, on_indent) => (*indent, on_indent),
             };
 
@@ -150,10 +152,9 @@ fn process_part(
         Part::Char(b) => {
             let ret = if b == '\n' {
                 let char = cfg.new_line().char(*prev_c);
-                if let Some(char) = char {
-                    (len_from(char, x, width, cfg, *prev_c), Part::Char(char))
-                } else {
-                    (0, Part::Char('\n'))
+                match char {
+                    Some(char) => (len_from(char, x, width, cfg, *prev_c), Part::Char(char)),
+                    None => (0, Part::Char('\n')),
                 }
             } else {
                 (len_from(b, x, width, cfg, *prev_c), Part::Char(b))
@@ -192,19 +193,45 @@ where
     }
 }
 
+/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
+///
+/// This function will function properly given that, elsewhere in
+/// the code, the passed [`PrintInfo`] and `width` have beend
+/// validated.
 pub fn print_iter<'a>(
-    text: impl Iterator<Item = Item> + Clone + 'a,
+    mut iter: TextIter<'a>,
     width: usize,
     cfg: IterCfg<'a>,
     info: PrintInfo,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    let (Continue(indent) | Break(indent)) = iter
+        .clone()
+        .take_while(|&Item { real, ghost, .. }| (real, ghost) < info.points)
+        .try_fold(0, |indent, item| match item.part {
+            Part::Char(_) if indent >= width => Break(0),
+            Part::Char('\t') => Continue(indent + cfg.tab_stops().spaces_at(indent)),
+            Part::Char(' ') => Continue(indent + 1),
+            Part::Char(_) => Break(indent),
+            _ => Continue(indent),
+        });
+
+    iter.skip_to(info.points);
+
+    inner_iter(iter, width, (indent, false), cfg)
+}
+
+fn inner_iter<'a>(
+    iter: impl Iterator<Item = Item> + Clone + 'a,
+    width: usize,
+    initial: (usize, bool),
+    cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let width = match cfg.wrap_method() {
         WrapMethod::Capped(cap) => cap,
         _ => width,
     };
 
-    let indents = indents(text, width, cfg)
-        .filter(move |(_, item)| item.points() >= info.points || item.part.is_tag());
+    let indents = indents(iter, width, initial, cfg);
 
     match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
@@ -215,13 +242,12 @@ pub fn print_iter<'a>(
 }
 
 pub fn rev_print_iter<'a>(
-    mut iter: impl Iterator<Item = Item> + Clone + 'a,
+    mut iter: RevTextIter<'a>,
     width: usize,
     cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
-    let info = PrintInfo::default();
 
     std::iter::from_fn(move || {
         if let Some(next) = returns.pop() {
@@ -242,7 +268,7 @@ pub fn rev_print_iter<'a>(
                 }
             }
 
-            returns.extend(print_iter(items.into_iter().rev(), width, cfg, info));
+            returns.extend(inner_iter(items.into_iter().rev(), width, (0, true), cfg));
 
             returns.pop()
         }

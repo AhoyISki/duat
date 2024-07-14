@@ -1,5 +1,4 @@
 use std::{
-    ops::ControlFlow,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},

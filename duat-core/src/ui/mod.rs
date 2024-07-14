@@ -15,7 +15,7 @@ use crate::{
     data::RoData,
     hooks::{self, OnFileOpen},
     palette::Painter,
-    text::{Item, IterCfg, Point, PrintCfg, Text},
+    text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
     Context,
 };
@@ -301,7 +301,7 @@ pub trait Area: Send + Sync + Sized {
     /// [`Some(usize)`]: Some
     fn print_iter<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        iter: Iter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where
@@ -346,7 +346,7 @@ pub trait Area: Send + Sync + Sized {
     /// [`Some(usize)`]: Some
     fn rev_print_iter<'a>(
         &self,
-        iter: impl Iterator<Item = Item> + Clone + 'a,
+        iter: RevIter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
