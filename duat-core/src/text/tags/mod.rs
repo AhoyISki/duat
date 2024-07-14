@@ -15,7 +15,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -196,7 +195,7 @@ impl Tags {
 
         for (i, tag) in removed {
             self.buf.remove(i);
-            remove_from_ranges((i, tag), &mut self.ranges);
+            remove_from_ranges((b, tag), &mut self.ranges);
         }
 
         self.fuse_skips_at(at);
