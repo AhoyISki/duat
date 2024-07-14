@@ -26,7 +26,10 @@ pub use self::{
     types::Part,
 };
 use crate::{
-    data::{RoData, RwData}, history::Change, input::Cursors, log_info, palette::{self, FormId}
+    data::{RoData, RwData},
+    history::Change,
+    input::Cursors,
+    palette::{self, FormId},
 };
 
 /// The text in a given area.
@@ -134,7 +137,7 @@ impl Text {
             let Range { start, end } = cursor.range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
 
-            let b_list = [
+            let tags = [
                 (start, start_tag),
                 (end, end_tag),
                 (cursor.caret().byte(), caret_tag),
@@ -142,7 +145,7 @@ impl Text {
 
             let no_selection = if start == end { 2 } else { 0 };
 
-            for (b, tag) in b_list.into_iter().skip(no_selection) {
+            for (b, tag) in tags.into_iter().skip(no_selection) {
                 let point = self.point_at(b);
                 let record = (point.byte(), point.char(), point.line());
                 self.records.insert(record);
@@ -375,7 +378,10 @@ where
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
-            .field("buf", &format!("'{}', '{}'", self.slices().0, self.slices().1))
+            .field(
+                "buf",
+                &format!("'{}', '{}'", self.slices().0, self.slices().1),
+            )
             .field("tags", &self.tags)
             .field("records", &self.records)
             .finish()
@@ -618,12 +624,12 @@ impl Default for Builder {
 
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use palette::{EXTRA_SEL, MAIN_SEL};
-    use tags::Tag::{MainCursor, PopForm, PushForm};
+    use tags::Tag::{MainCursor, ExtraCursor, PopForm, PushForm};
 
     if is_main {
         (MainCursor, PushForm(MAIN_SEL), PopForm(MAIN_SEL))
     } else {
-        (MainCursor, PushForm(EXTRA_SEL), PopForm(EXTRA_SEL))
+        (ExtraCursor, PushForm(EXTRA_SEL), PopForm(EXTRA_SEL))
     }
 }
 

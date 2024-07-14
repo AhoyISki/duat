@@ -5,7 +5,7 @@ use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
 pub use global::*;
 use parking_lot::RwLockReadGuard;
 
-use crate::data::RwData;
+use crate::{data::RwData, log_info};
 
 mod global {
     use super::{CursorShape, Form, FormId, FormPalette, Painter};
@@ -131,8 +131,8 @@ impl Form {
 }
 
 pub const DEFAULT: FormId = FormId(0);
-pub const MAIN_SEL: FormId = FormId(5);
-pub const EXTRA_SEL: FormId = FormId(6);
+pub const MAIN_SEL: FormId = FormId(1);
+pub const EXTRA_SEL: FormId = FormId(2);
 
 #[derive(Debug, Clone, Copy)]
 enum Kind {
@@ -366,14 +366,17 @@ impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
     #[inline(always)]
-    pub fn apply(&mut self, mut id: FormId) -> Option<Form> {
-        let form = loop {
-            match self.palette.forms.get(id.0 as usize) {
-                Some((_, Kind::Form(form))) => break form,
-                Some((_, Kind::Ref(referenced))) => id = *referenced,
-                Some((_, Kind::WeakestRef(referenced))) => id = *referenced,
-                _ => {
-                    unreachable!("This should not be possible");
+    pub fn apply(&mut self, id: FormId) -> Option<Form> {
+        let form = {
+            let mut ref_id = id;
+            loop {
+                match self.palette.forms.get(ref_id.0 as usize) {
+                    Some((_, Kind::Form(form))) => break form,
+                    Some((_, Kind::Ref(referenced))) => ref_id = *referenced,
+                    Some((_, Kind::WeakestRef(referenced))) => ref_id = *referenced,
+                    _ => {
+                        unreachable!("This should not be possible")
+                    }
                 }
             }
         };
@@ -386,68 +389,6 @@ impl Painter {
             self.cur_form = form;
             Some(form)
         }
-    }
-
-    /// Generates the form to be printed, given all the previously
-    /// pushed forms in the `Form` stack.
-    #[inline(always)]
-    pub fn make_form(&self) -> Form {
-        let style = ContentStyle {
-            foreground_color: Some(Color::Reset),
-            background_color: Some(Color::Reset),
-            underline_color: Some(Color::Reset),
-            attributes: Attributes::default(),
-        };
-
-        let mut form = Form {
-            style,
-            is_final: false,
-        };
-
-        /// Internal method used only to shorten code in
-        /// `make_form()`.
-        fn set_var<T: Clone>(
-            is_set: &mut bool,
-            var: &mut Option<T>,
-            maybe_new: &Option<T>,
-            is_final: bool,
-        ) {
-            if let (Some(new_var), false) = (maybe_new, &is_set) {
-                *var = Some(new_var.clone());
-                if is_final {
-                    *is_set = true
-                };
-            }
-        }
-
-        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
-
-        for &(Form { style, is_final }, _) in &self.forms {
-            let to_change = &mut form.style.foreground_color;
-            let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, to_change, &new_foreground, is_final);
-
-            let to_change = &mut form.style.background_color;
-            let new_background = style.background_color;
-            set_var(&mut bg_done, to_change, &new_background, is_final);
-
-            let to_change = &mut form.style.underline_color;
-            let new_underline = style.underline_color;
-            set_var(&mut ul_done, to_change, &new_underline, is_final);
-
-            if !attr_done {
-                form.style.attributes.extend(style.attributes);
-                if is_final {
-                    attr_done = true
-                }
-            }
-
-            if fg_done && bg_done && ul_done && attr_done {
-                break;
-            }
-        }
-
-        form
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
@@ -474,11 +415,69 @@ impl Painter {
         self.forms.clear();
         let form = self.make_form();
         if form == self.cur_form {
+            None
+        } else {
             self.cur_form = form;
             Some(form)
-        } else {
-            None
         }
+    }
+
+    /// Generates the form to be printed, given all the previously
+    /// pushed forms in the `Form` stack.
+    #[inline(always)]
+    pub fn make_form(&self) -> Form {
+        let style = ContentStyle {
+            foreground_color: None,
+            background_color: None,
+            underline_color: None,
+            attributes: Attributes::default(),
+        };
+
+        let mut form = Form {
+            style,
+            is_final: false,
+        };
+
+        fn set_var<T: Clone>(
+            is_done: &mut bool,
+            var: &mut Option<T>,
+            maybe_new: &Option<T>,
+            is_final: bool,
+        ) {
+            if let Some(new_var) = maybe_new
+                && (!*is_done || is_final)
+            {
+                *var = Some(new_var.clone());
+                *is_done |= is_final;
+            }
+        }
+
+        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
+
+        for &(Form { style, is_final }, _) in &self.forms {
+            let to_change = &mut form.style.foreground_color;
+            let new_foreground = style.foreground_color;
+            set_var(&mut fg_done, to_change, &new_foreground, is_final);
+
+            let to_change = &mut form.style.background_color;
+            let new_background = style.background_color;
+            set_var(&mut bg_done, to_change, &new_background, is_final);
+
+            let to_change = &mut form.style.underline_color;
+            let new_underline = style.underline_color;
+            set_var(&mut ul_done, to_change, &new_underline, is_final);
+
+            if !attr_done || is_final {
+                form.style.attributes.extend(style.attributes);
+                attr_done |= is_final;
+            }
+
+            if fg_done && bg_done && ul_done && attr_done {
+                break;
+            }
+        }
+
+        form
     }
 
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {

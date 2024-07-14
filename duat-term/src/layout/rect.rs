@@ -122,9 +122,9 @@ impl Rect {
 
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
-    pub fn clear_equalities(&mut self, vars: &mut Printer) {
+    pub fn clear_equalities(&mut self, printer: &mut Printer) {
         for eq in self.edge_equalities.drain(..) {
-            vars.remove_equality(&eq).unwrap();
+            printer.remove_equality(&eq).unwrap();
         }
     }
 

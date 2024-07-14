@@ -8,7 +8,11 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{
-    data::RwData, log_info, palette::Painter, text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod}, ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
+    data::RwData,
+    log_info,
+    palette::Painter,
+    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
 
@@ -214,6 +218,10 @@ impl Area {
         let active = layout.active_id == self.id;
         let iter = print_iter(iter, sender.coords().width(), cfg, *info);
         let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines, f);
+
+        if text.len_bytes() > 1000 {
+            log_info!("{:#?}", text.tags);
+        }
 
         for _ in (0..y).rev() {
             lines
@@ -461,7 +469,7 @@ fn print_parts<'a>(
                     queue!(line, shape, cursor::SavePosition);
                 } else {
                     lines.hide_real_cursor();
-                    queue!(line, SetStyle(form.style));
+                    queue!(line, ResetColor, SetStyle(form.style));
                     prev_style = Some(painter.make_form().style);
                 }
             }

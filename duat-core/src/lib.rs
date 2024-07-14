@@ -154,7 +154,7 @@ pub macro log_info($($text:tt)*) {{
         write!(LOG.lock().unwrap(), "\n{text}").unwrap();
     }
 
-	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(60);
+	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(200);
     let trimmed = LOG.lock().unwrap().split_inclusive('\n').skip(len_lines).collect();
     *LOG.lock().unwrap() = trimmed;
 }}
