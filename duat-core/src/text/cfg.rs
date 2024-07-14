@@ -233,7 +233,7 @@ impl PrintCfg {
     /// Same as [`default`], but with a hidden new line.
     ///
     /// [`default`]: PrintCfg::default
-    pub(crate) fn default_for_files() -> Self {
+    pub fn default_for_files() -> Self {
         Self {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
