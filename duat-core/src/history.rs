@@ -282,14 +282,15 @@ impl History {
     /// - The number of changes that were added or subtracted during
     ///   its insertion.
     pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
-        // Cut off any actions that take place after the current one. We don't
-        // really want trees.
-        unsafe { self.moments.set_len(self.current_moment) };
+        let is_last_moment = self.current_moment == self.moments.len();
 
-        let ret = if let Some(moment) = self.mut_current_moment() {
+		// Check, in order to prevent modification of earlier moments.
+        let ret = if let Some(moment) = self.mut_current_moment()
+            && is_last_moment
+        {
             moment.add_change(change, assoc_index)
         } else {
-            self.add_moment();
+            self.new_moment();
             self.moments
                 .last_mut()
                 .unwrap()
@@ -304,7 +305,7 @@ impl History {
 
     /// Declares that the current [Moment] is complete and starts a
     /// new one.
-    pub fn add_moment(&mut self) {
+    pub fn new_moment(&mut self) {
         // If the last moment in history is empty, we can keep using it.
         if self
             .mut_current_moment()

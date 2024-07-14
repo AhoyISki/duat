@@ -8,10 +8,7 @@ use crossterm::{
     style::{Print, ResetColor, SetStyle},
 };
 use duat_core::{
-    data::RwData,
-    palette::Painter,
-    text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
+    data::RwData, log_info, palette::Painter, text::{Item, IterCfg, Part, Point, PrintCfg, Text, WrapMethod}, ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs}
 };
 use iter::{print_iter, rev_print_iter};
 

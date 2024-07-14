@@ -319,7 +319,7 @@ impl File {
     /// or redo all the changes in the moment. The previous moment can
     /// be undone, undoing multiple changes at once.
     pub fn add_moment(&mut self) {
-        self.history.add_moment()
+        self.history.new_moment()
     }
 
     /// Redoes the next moment, if there is one.

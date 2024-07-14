@@ -1,9 +1,9 @@
 use std::{
+    ops::ControlFlow,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        mpsc::{self},
-        Arc,
+        mpsc, Arc,
     },
     time::Duration,
 };
@@ -14,7 +14,7 @@ use crate::{
     input::InputMethod,
     text::{text, PrintCfg, Text},
     ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
-    widgets::{File, FileCfg, Widget},
+    widgets::{ActiveWidget, File, FileCfg, Widget},
     Context,
 };
 
@@ -199,7 +199,7 @@ where
         self.windows.write()[current_window].push(widget, area, checker, specs, false)
     }
 
-    pub fn cluster_widget_with<F>(
+    pub fn group_widget_with<F>(
         &mut self,
         (widget, checker, specs): (Widget<U>, F, PushSpecs),
         area: &U::Area,
@@ -242,25 +242,40 @@ where
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
-                    self.ui.end();
-                    self.context.end();
-
-                    while self.context.threads_are_running() {
-                        std::thread::sleep(Duration::from_micros(500));
-                    }
-
-                    let windows = self.windows.read();
-                    break windows
-                        .iter()
-                        .flat_map(Window::widgets)
-                        .filter_map(|(widget, area)| {
-                            widget.downcast::<File>().zip(Some(area.is_active()))
-                        })
-                        .collect();
+                    break self.reload_config();
                 }
                 _ => {}
             }
         }
+    }
+
+    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
+        self.ui.end();
+        self.context.end();
+        while self.context.threads_are_running() {
+            std::thread::sleep(Duration::from_micros(500));
+        }
+        let windows = self.windows.read();
+        windows
+            .iter()
+            .flat_map(Window::widgets)
+            .filter_map(|(widget, area)| {
+                widget
+                    .downcast::<File>()
+                    .inspect(|file| {
+                        // Remove the cursors, so that on the next
+                        // reload, there aren't a bunch of leftover
+                        // Tags.
+                        if let Some(input) = widget.input()
+                            && let Some(cursors) = input.read().cursors()
+                        {
+                            ActiveWidget::<U>::mut_text(&mut *file.write())
+                                .remove_cursor_tags(cursors);
+                        }
+                    })
+                    .zip(Some(area.is_active()))
+            })
+            .collect()
     }
 
     /// The primary application loop, executed while no breaking
@@ -402,7 +417,9 @@ where
                         builder.finish()
                     };
 
-                    Ok(Some(text!("Wrote " [AccentErr] bytes [] " bytes to " files_text [] ".")))
+                    Ok(Some(
+                        text!("Wrote " [AccentErr] bytes [] " bytes to " files_text [] "."),
+                    ))
                 })
             }
         })
@@ -446,7 +463,9 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
+                Ok(Some(
+                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
+                ))
             }
         })
         .unwrap();
@@ -486,7 +505,9 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
+                Ok(Some(
+                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
+                ))
             }
         })
         .unwrap();
@@ -569,7 +590,9 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
+                Ok(Some(
+                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
+                ))
             }
         })
         .unwrap();
@@ -610,7 +633,9 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(text!("Switched to " [AccentOk] { file_name(&entry) } [] ".")))
+                Ok(Some(
+                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
+                ))
             }
         })
         .unwrap();
@@ -640,7 +665,9 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(text!("Returned to " [AccentOk] { file_name(&entry) } [] ".")))
+                Ok(Some(
+                    text!("Returned to " [AccentOk] { file_name(&entry) } [] "."),
+                ))
             }
         })
         .unwrap();
