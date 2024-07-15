@@ -18,6 +18,59 @@ This will install the default version of Duat, which uses a terminal user interf
 
 At the moment, the only Ui is the terminal one, but Duat is built in such a way that creating a new Ui is within the realm of possibility.
 
+For now, it has a barebones configuration, which is based on Kakoune, so if you are familiar with that text editor, many of the commands are going to be the same.
+
+## Configuration
+
+In the configuration file, there should be a `run!` macro. This macro is what will be executed in order to configure Duat. (Eventually, I would like to replace it with a proc macro, since those _seem_ to be better handled by rust-analyzer)
+
+Here's an example configuration file, which makes use of `duat-kak`
+
+```rust
+use duat::prelude::*;
+// Since duat_kak is a plugin, it must be used directly.
+use duat_kak::{KeyMap, Mode, OnModeChange};
+run! {
+    // The print module manages the printing of files.
+    print::wrap_on_width();
+    // The hooks module manages hooks.
+    hooks::remove_group("FileWidgets");
+    hooks::add::<OnFileOpen>(|builder| {
+        // This hook lets you adjust what widgets get
+        // added to the file.
+        builder.push::<VertRule>();
+        builder.push::<LineNumbers>();
+    });
+    hooks::remove_group("WindowWidgets");
+    hooks::add::<OnWindowOpen>(|builder| {
+        // Same, but for widgets that go around the
+        // files in the middle of the window.
+        // You can create your own status line.
+        // "[" "]" pairs change the style of text.
+        let status = status!(
+            [File] { File::name } " "
+            { KeyMap::mode_fmt } " "
+            selections_fmt " " main_fmt
+        );
+        // As opposed to `builder.push`, this one
+        // takes a user defined configuration.
+        let (child, _) = builder.push_cfg(status);
+        // `push_cfg_to` pushes a widget to another.
+        builder.push_cfg_to(CommandLine::cfg().left_with_percent(30), child);
+    });
+    set_input(KeyMap::new());
+    // This is a hook provided by duat-kak.
+    hooks::add::<OnModeChange>(|(_, new)| match new {
+        Mode::Insert => print::main_cursor(Form::new().reverse(), None),
+        Mode::Normal | Mode::GoTo | Mode::View | Mode::Command => {
+            print::main_cursor(Form::new().reverse(), None)
+        }
+    });
+    // This is a form also provided by duat-kak.
+    print::forms::set("Mode", Form::new().dark_magenta());
+}
+```
+
 ## Roadmap
 
 These are the goals that have been acomplished or are on their way:
@@ -39,7 +92,7 @@ These are the goals that have been acomplished or are on their way:
 - [x] Implement concealment;
 - [x] Implement hot reloading of configuration;
 - [x] Create a "normal editing" mode;
-- [ ] Add the ability to create hooks;
+- [x] Add the ability to create hooks;
 - [ ] Create a more generalized plugin system;
 - [ ] Add floating widgets, not tied to the session layout;
 - [ ] Implement autocompletion lists;
@@ -56,3 +109,7 @@ __NOTE:__ These are not set in stone, and may be done out of order.
 ## Motivation
 
 This project was mostly created as a fun side project to occupy my time, and I was also unsatified with the current offerings of open source text editors.
+
+## Why the name
+
+idk, cool sounding word that I got from Spelunky 2.
