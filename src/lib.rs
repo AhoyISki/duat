@@ -2,7 +2,7 @@
 #![allow(incomplete_features, dead_code)]
 
 use duat_core::{data::RwData, hooks::Hookable, widgets::File};
-pub use setup::{pre_hooks, run_duat};
+pub use setup::{layout_hooks, run_duat};
 mod config;
 mod remapper;
 mod setup;
@@ -20,7 +20,7 @@ pub macro run($($tree:tt)*) {
         rx: mpsc::Receiver<ui::Event>,
         statics: <Ui as ui::Ui>::StaticFns
     ) -> PrevFiles {
-		pre_hooks();
+		layout_hooks();
 
         {
             $($tree)*

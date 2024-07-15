@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use duat::{prelude::*, run_duat};
+use duat::{prelude::*, run_duat, layout_hooks};
 use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
@@ -31,9 +31,9 @@ fn main() {
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
         let crate_dir = config_dir.join("duat");
 
-        let so_path = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
-        let src_path = crate_dir.join("src");
-        let toml_path = crate_dir.join("Cargo.toml");
+        let so = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
+        let src = crate_dir.join("src");
+        let toml = crate_dir.join("Cargo.toml");
 
         let mut watcher = notify::recommended_watcher(|res| match res {
             Ok(Event {
@@ -47,16 +47,14 @@ fn main() {
         })
         .unwrap();
 
-        watcher.watch(&src_path, RecursiveMode::Recursive).ok()?;
-        watcher
-            .watch(&toml_path, RecursiveMode::NonRecursive)
-            .ok()?;
+        watcher.watch(&src, RecursiveMode::Recursive).ok()?;
+        watcher.watch(&toml, RecursiveMode::NonRecursive).ok()?;
 
-        Some((watcher, toml_path, so_path))
+        Some((watcher, toml, so))
     }) {
-        let _ = run_cargo(&toml_path);
+        run_cargo(&toml_path).unwrap();
 
-        let mut cur_lib = unsafe { Some(Library::new(&so_path).unwrap()) };
+        let mut cur_lib = unsafe { Library::new(&so_path).ok() };
         let mut run = cur_lib.as_ref().and_then(find_run_fn);
         let mut prev_files = Vec::new();
 
@@ -73,6 +71,7 @@ fn main() {
             } else {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
+                    layout_hooks();
                     let ret = run_duat(prev_files, tx, rx, statics);
                     atomic_wait::wake_all(&BREAK);
                     ret
@@ -90,7 +89,7 @@ fn main() {
                 if run_cargo(&toml_path).is_ok() {
                     let cur_lib = unsafe { Library::new(&so_path).ok() };
                     if cur_lib.as_ref().and_then(find_run_fn).is_some() {
-                        let _ = tx.send(ui::Event::ReloadConfig);
+                        tx.send(ui::Event::ReloadConfig).unwrap();
                         break;
                     }
                 }
