@@ -624,7 +624,7 @@ impl Default for Builder {
 
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use palette::{EXTRA_SEL, MAIN_SEL};
-    use tags::Tag::{MainCursor, ExtraCursor, PopForm, PushForm};
+    use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
     if is_main {
         (MainCursor, PushForm(MAIN_SEL), PopForm(MAIN_SEL))
@@ -725,11 +725,164 @@ where
     }
 }
 
+// pub macro text {
+//    ($builder:expr, $($parts:tt)+) => {
+//        inner_text!("Default", "Accent", $builder, $($parts)+)
+//    },
+//    ($($parts:tt)+) => {{
+//        inner_text!("Default", "Accent", $($parts)+)
+//    }},
+//}
+
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
             crate::palette::__weakest_id_of_name("Default")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+    (@push $builder:expr, [*a]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("Accent")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    (@push $builder:expr, [$form:ident]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            let name = stringify!($form);
+            crate::palette::__weakest_id_of_name(name)
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    // Plain text
+    (@push $builder:expr, $part:expr) => {
+        let part = BuilderPart::from($part);
+        $builder.push_part(part)
+    },
+
+    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
+        text!(@push $builder, $part);
+        text!(@parse $builder, $($parts)*);
+    }},
+    (@parse $builder:expr,) => {},
+
+    ($builder:expr, $($parts:tt)+) => {{
+        let builder: &mut Builder = &mut $builder;
+        text!(@parse builder, $($parts)+);
+    }},
+    ($($parts:tt)+) => {{
+        let mut builder = Builder::new();
+        text!(builder, $($parts)+);
+        builder.finish()
+    }},
+}
+
+pub macro ok {
+    // Forms
+    (@push $builder:expr, []) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("DefaultOk")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+    (@push $builder:expr, [*a]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("AccentOk")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    (@push $builder:expr, [$form:ident]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            let name = stringify!($form);
+            crate::palette::__weakest_id_of_name(name)
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    // Plain text
+    (@push $builder:expr, $part:expr) => {
+        let part = BuilderPart::from($part);
+        $builder.push_part(part)
+    },
+
+    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
+        text!(@push $builder, $part);
+        text!(@parse $builder, $($parts)*);
+    }},
+    (@parse $builder:expr,) => {},
+
+    ($builder:expr, $($parts:tt)+) => {{
+        let builder: &mut Builder = &mut $builder;
+        text!(@parse builder, $($parts)+);
+    }},
+    ($($parts:tt)+) => {{
+        let mut builder = Builder::new();
+        text!(builder, $($parts)+);
+        builder.finish()
+    }},
+}
+
+pub macro err {
+    // Forms
+    (@push $builder:expr, []) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("DefaultErr")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+    (@push $builder:expr, [*a]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("AccentErr")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    (@push $builder:expr, [$form:ident]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            let name = stringify!($form);
+            crate::palette::__weakest_id_of_name(name)
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+
+    // Plain text
+    (@push $builder:expr, $part:expr) => {
+        let part = BuilderPart::from($part);
+        $builder.push_part(part)
+    },
+
+    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
+        text!(@push $builder, $part);
+        text!(@parse $builder, $($parts)*);
+    }},
+    (@parse $builder:expr,) => {},
+
+    ($builder:expr, $($parts:tt)+) => {{
+        let builder: &mut Builder = &mut $builder;
+        text!(@parse builder, $($parts)+);
+    }},
+    ($($parts:tt)+) => {{
+        let mut builder = Builder::new();
+        text!(builder, $($parts)+);
+        builder.finish()
+    }},
+}
+
+pub macro hint {
+    // Forms
+    (@push $builder:expr, []) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("DefaultHint")
+        });
+        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+    },
+    (@push $builder:expr, [*a]) => {
+        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
+            crate::palette::__weakest_id_of_name("AccentHint")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
