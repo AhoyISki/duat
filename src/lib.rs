@@ -165,7 +165,7 @@ pub mod prelude {
         file::File,
         palette::{CursorShape, Form},
         position,
-        text::{text, Builder, Text},
+        text::{err, hint, ok, text, Builder, Text},
         ui::Area,
     };
     #[cfg(feature = "term-ui")]
