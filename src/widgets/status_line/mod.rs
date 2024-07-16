@@ -57,12 +57,11 @@ use std::sync::LazyLock;
 
 use common::{main_col, main_line, selections_fmt};
 use duat_core::{
-    data::FileReader,
+    data::{Context, FileReader},
     palette::{self, Form},
-    text::{text, Builder, Tag, Text},
+    text::{text, Builder, PrintCfg, Tag, Text},
     ui::PushSpecs,
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
-    Context,
 };
 
 pub use self::state::State;
@@ -107,20 +106,16 @@ impl WidgetCfg<Ui> for StatusLineCfg {
         context: Context<Ui>,
         on_file: bool,
     ) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        let (reader, checker) = if on_file {
-            let reader = context.current_file.constant();
-            let checker = move || reader.has_changed() || (self.checker)();
-            (
-                context.current_file.constant(),
-                Box::new(checker) as Box<dyn Fn() -> bool>,
-            )
-        } else {
-            let reader = context.current_file.adaptive();
-            let checker = move || reader.has_changed() || (self.checker)();
-            (
-                context.current_file.adaptive(),
-                Box::new(checker) as Box<dyn Fn() -> bool>,
-            )
+        let (reader, checker) = {
+            let reader = match on_file {
+                true => context.fixed_reader().unwrap(),
+                false => context.dyn_reader().unwrap(),
+            };
+            let checker = {
+                let reader = reader.clone();
+                move || reader.has_changed() || (self.checker)()
+            };
+            (reader, Box::new(checker) as Box<dyn Fn() -> bool>)
         };
 
         let widget = Widget::passive(StatusLine {
@@ -219,9 +214,8 @@ impl PassiveWidget<Ui> for StatusLine {
         palette::set_weak_form("Separator", Form::new().cyan());
     }
 
-    fn print_cfg(&self) -> &duat_core::prelude::PrintCfg {
-        static CFG: LazyLock<duat_core::text::PrintCfg> =
-            LazyLock::new(|| duat_core::text::PrintCfg::new().width_wrapped());
+    fn print_cfg(&self) -> &PrintCfg {
+        static CFG: LazyLock<PrintCfg> = LazyLock::new(|| PrintCfg::new().width_wrapped());
         &CFG
     }
 }

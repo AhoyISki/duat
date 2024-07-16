@@ -23,12 +23,11 @@
 use std::fmt::Alignment;
 
 use duat_core::{
-    data::FileReader,
+    data::{Context, FileReader},
     palette::{self, Form},
     text::{text, Builder, Tag, Text},
     ui::{Area, Axis, Constraint, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
-    Context,
 };
 
 use crate::Ui;
@@ -260,7 +259,7 @@ impl WidgetCfg<Ui> for LineNumbersCfg {
     type Widget = LineNumbers;
 
     fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        let reader = context.current_file.constant();
+        let reader = context.cur_file().unwrap().fixed_reader();
         let specs = self.specs;
 
         let mut line_numbers = LineNumbers {

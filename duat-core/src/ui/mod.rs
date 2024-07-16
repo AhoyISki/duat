@@ -12,12 +12,11 @@ use crossterm::event::KeyEvent;
 
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
-    data::RoData,
+    data::{Context, RoData},
     hooks::{self, OnFileOpen},
     palette::Painter,
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
-    Context,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -208,7 +207,7 @@ impl Caret {
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
 pub trait Area: Send + Sync + Sized {
-    type ConstraintChangeErr: Debug;
+    type ConstraintChangeErr: std::error::Error;
 
     /// Gets the width of the area.
     fn width(&self) -> usize;
@@ -655,7 +654,7 @@ where
     pub fn send_key(&self, key: KeyEvent, globals: Context<U>) {
         if let Some(node) = self
             .nodes()
-            .find(|node| globals.current_widget.widget_ptr_eq(&node.widget))
+            .find(|node| globals.cur_widget().unwrap().widget_ptr_eq(&node.widget))
         {
             node.widget.send_key(key, &node.area, globals);
         }
@@ -756,7 +755,7 @@ where
             .unwrap();
 
         node.widget.downcast::<File>().map(|file| {
-            globals.current_file.swap((
+            globals.cur_file().unwrap().swap((
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
@@ -769,6 +768,6 @@ where
     hooks::trigger::<OnFileOpen<U>>(&mut builder);
 
     if let Some(parts) = old_file {
-        globals.current_file.swap(parts);
+        globals.cur_file().unwrap().swap(parts);
     };
 }

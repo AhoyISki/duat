@@ -23,14 +23,13 @@ use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
-    data::RwData,
+    data::{Context, RwData},
     history::History,
     input::{Cursors, InputMethod, KeyMap},
     palette,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-    Context,
 };
 
 mod read;
@@ -361,7 +360,7 @@ where
         &self.cfg
     }
 
-    fn once(_context: crate::Context<U>) {}
+    fn once(_context: crate::data::Context<U>) {}
 
     fn print(&mut self, area: &<U as Ui>::Area) {
         let (start, _) = area.top_left();

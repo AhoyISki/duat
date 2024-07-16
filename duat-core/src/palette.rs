@@ -35,7 +35,7 @@ mod global {
     ///
     /// If a [`Form`] with the given name was not added prior, it will
     /// be added with the same form as the "Default" form.
-    pub fn id_of_name(name: impl AsRef<str>) -> FormId {
+    pub fn id_of_form(name: impl AsRef<str>) -> FormId {
         PALETTE.id_of_name(name)
     }
 
@@ -56,12 +56,20 @@ mod global {
         PALETTE.extra_cursor()
     }
 
-    pub fn set_main_cursor(form: Form, style: Option<CursorShape>) {
-        PALETTE.set_main_cursor(form, style)
+    pub fn set_main_cursor(shape: CursorShape) {
+        PALETTE.set_main_cursor(shape)
     }
 
-    pub fn set_extra_cursor(form: Form, style: Option<CursorShape>) {
-        PALETTE.set_extra_cursor(form, style)
+    pub fn set_extra_cursor(shape: CursorShape) {
+        PALETTE.set_extra_cursor(shape)
+    }
+
+    pub fn unset_main_cursor() {
+        PALETTE.unset_main_cursor()
+    }
+
+    pub fn unset_extra_cursor() {
+        PALETTE.unset_extra_cursor()
     }
 
     pub fn painter() -> Painter {
@@ -130,9 +138,11 @@ impl Form {
     }
 }
 
-pub const DEFAULT: FormId = FormId(0);
-pub const MAIN_SEL: FormId = FormId(1);
-pub const EXTRA_SEL: FormId = FormId(2);
+pub(crate) const DEFAULT: FormId = FormId(0);
+pub(crate) const MAIN_CURSOR: FormId = FormId(8);
+pub(crate) const EXTRA_CURSOR: FormId = FormId(9);
+pub(crate) const MAIN_SEL: FormId = FormId(10);
+pub(crate) const EXTRA_SEL: FormId = FormId(11);
 
 #[derive(Debug, Clone, Copy)]
 enum Kind {
@@ -142,8 +152,8 @@ enum Kind {
 }
 
 struct InnerPalette {
-    main_cursor: (Form, Option<CursorShape>),
-    extra_cursor: (Form, Option<CursorShape>),
+    main_cursor: Option<CursorShape>,
+    extra_cursor: Option<CursorShape>,
     forms: Vec<(&'static str, Kind)>,
 }
 
@@ -153,16 +163,21 @@ struct FormPalette(LazyLock<RwData<InnerPalette>>);
 impl FormPalette {
     const fn new() -> Self {
         Self(LazyLock::new(|| {
-            let main_cursor = (Form::new().reverse(), Some(CursorShape::DefaultUserShape));
+            let main_cursor = Some(CursorShape::DefaultUserShape);
 
             let forms = vec![
                 ("Default", Kind::Form(Form::new())),
-                ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
-                ("ExtraSelection", Kind::Ref(FormId(1))),
-                ("CommandOk", Kind::Form(Form::new())),
+                ("Accent", Kind::Form(Form::new().bold())),
+                ("DefaultOk", Kind::Form(Form::new())),
                 ("AccentOk", Kind::Form(Form::new().green())),
-                ("CommandErr", Kind::Form(Form::new())),
+                ("DefaultErr", Kind::Form(Form::new())),
                 ("AccentErr", Kind::Form(Form::new().red())),
+                ("DefaultHint", Kind::Form(Form::new())),
+                ("AccentHint", Kind::Form(Form::new().bold())),
+                ("MainCursor", Kind::Form(Form::new().reverse())),
+                ("ExtraCursor", Kind::Ref(MAIN_CURSOR)),
+                ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
+                ("ExtraSelection", Kind::Ref(MAIN_SEL)),
             ];
 
             RwData::new(InnerPalette {
@@ -326,19 +341,29 @@ impl FormPalette {
     }
 
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        self.0.read().main_cursor
+        let form = self.form_of_id(MAIN_CURSOR);
+        (form, self.0.read().main_cursor)
     }
 
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        self.0.read().extra_cursor
+        let form = self.form_of_id(EXTRA_CURSOR);
+        (form, self.0.read().extra_cursor)
     }
 
-    fn set_main_cursor(&self, form: Form, style: Option<CursorShape>) {
-        self.0.write().main_cursor = (form, style);
+    fn set_main_cursor(&self, style: CursorShape) {
+        self.0.write().main_cursor = Some(style);
     }
 
-    fn set_extra_cursor(&self, form: Form, style: Option<CursorShape>) {
-        self.0.write().extra_cursor = (form, style);
+    fn set_extra_cursor(&self, style: CursorShape) {
+        self.0.write().extra_cursor = Some(style);
+    }
+
+    fn unset_main_cursor(&self) {
+        self.0.write().main_cursor = None;
+    }
+
+    fn unset_extra_cursor(&self) {
+        self.0.write().extra_cursor = None;
     }
 
     fn painter(&'static self) -> Painter {
@@ -367,21 +392,9 @@ impl Painter {
     /// given previous triggers.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) -> Option<Form> {
-        let form = {
-            let mut ref_id = id;
-            loop {
-                match self.palette.forms.get(ref_id.0 as usize) {
-                    Some((_, Kind::Form(form))) => break form,
-                    Some((_, Kind::Ref(referenced))) => ref_id = *referenced,
-                    Some((_, Kind::WeakestRef(referenced))) => ref_id = *referenced,
-                    _ => {
-                        unreachable!("This should not be possible")
-                    }
-                }
-            }
-        };
+        let form = self.get_form(id);
 
-        self.forms.push((*form, id));
+        self.forms.push((form, id));
         let form = self.make_form();
         if form == self.cur_form {
             None
@@ -480,12 +493,28 @@ impl Painter {
         form
     }
 
+    /// The [`Form`] "ExtraCursor", and its shape.
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        self.palette.main_cursor
+        (self.get_form(MAIN_CURSOR), self.palette.main_cursor)
     }
 
+    /// The [`Form`] "ExtraCursor", and its shape.
     pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        self.palette.extra_cursor
+        (self.get_form(EXTRA_CURSOR), self.palette.extra_cursor)
+    }
+
+    /// Gets the [`Form`] from a [`FormId`].
+    fn get_form(&self, mut id: FormId) -> Form {
+        loop {
+            match self.palette.forms.get(id.0 as usize) {
+                Some((_, Kind::Form(form))) => break *form,
+                Some((_, Kind::Ref(referenced))) => id = *referenced,
+                Some((_, Kind::WeakestRef(referenced))) => id = *referenced,
+                _ => {
+                    unreachable!("This should not be possible")
+                }
+            }
+        }
     }
 }
 

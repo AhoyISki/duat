@@ -7,22 +7,18 @@
     control_flow_enum,
     decl_macro,
     step_trait,
-    type_alias_impl_trait
+    type_alias_impl_trait,
+    result_flattening
 )]
 #![doc = include_str!("../README.md")]
 
 use std::{
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        LazyLock, Mutex, Once,
-    },
-    thread::JoinHandle,
+    any::type_name,
+    marker::PhantomData,
+    sync::{LazyLock, Mutex, Once},
 };
 
-use data::{CurrentFile, CurrentWidget};
-use ui::Ui;
-
-use self::commands::Commands;
+use text::{err, hint, Text};
 
 pub mod commands;
 pub mod data;
@@ -37,86 +33,141 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-pub mod prelude {
-    pub use crate::{
-        commands,
-        palette::{self, CursorShape, Form},
-        session::{Session, SessionCfg},
-        text::{text, PrintCfg},
-        widgets::File,
-    };
-}
-
-pub struct Context<U>
-where
-    U: Ui,
-{
-    pub current_file: &'static CurrentFile<U>,
-    pub current_widget: &'static CurrentWidget<U>,
-    pub commands: &'static Commands<U>,
-    handles: &'static AtomicUsize,
-    has_ended: &'static AtomicBool,
-}
-
-impl<U> Clone for Context<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<U> Copy for Context<U> where U: Ui {}
-
-impl<U> Context<U>
-where
-    U: Ui,
-{
-    pub const fn new(
-        current_file: &'static CurrentFile<U>,
-        current_widget: &'static CurrentWidget<U>,
-        commands: &'static Commands<U>,
-        handles: &'static AtomicUsize,
-        has_ended: &'static AtomicBool,
-    ) -> Self {
-        Self {
-            current_file,
-            current_widget,
-            commands,
-            handles,
-            has_ended,
-        }
-    }
-
-    pub fn spawn<R: Send + 'static>(
-        &self,
-        f: impl FnOnce() -> R + Send + 'static,
-    ) -> JoinHandle<R> {
-        self.handles.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(|| {
-            let ret = f();
-            self.handles.fetch_sub(1, Ordering::Relaxed);
-            ret
-        })
-    }
-
-    pub fn has_ended(&self) -> bool {
-        self.has_ended.load(Ordering::Relaxed)
-    }
-
-    fn threads_are_running(&self) -> bool {
-        self.handles.load(Ordering::Relaxed) > 0
-    }
-
-    fn end(&self) {
-        self.has_ended.store(true, Ordering::Relaxed);
-    }
-}
-
 // Debugging objects.
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 pub static HOOK: Once = Once::new();
 pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
+
+/// Error for failures in Duat
+pub enum Error<E> {
+    /// # Command related errors:
+
+    /// An alias wasn't just a single word
+    AliasNotSingleWord(String),
+    /// The caller for a command already pertains to another
+    CallerAlreadyExists(String),
+    /// No commands have the given caller as one of their own
+    CallerNotFound(String),
+    /// The command failed internally
+    CommandFailed(Text),
+    /// There was no caller and no arguments
+    Empty,
+    /// # Context related errors:
+
+    /// The [`Ui`] still hasn't created the first file
+    NoFileYet,
+    /// Since the [`Ui`] has no file, widgets can't relate to it
+    NoFileForRelated,
+    /// The [`Ui`] still hasn't created the first widget (a file)
+    NoWidgetYet,
+    /// The checked widget is not of the type given
+    WidgetIsNot,
+    /// The checked input is not of the type given
+    InputIsNot(PhantomData<E>),
+}
+
+impl<E> Error<E> {
+    /// Turns the [`Error`] into formatted [`Text`]
+    pub fn as_text(self) -> Text {
+        let early = hint!(
+            "Try this after " [*a] "OnUiStart" []
+            ", maybe by using hooks::add::<OnUiStart>"
+        );
+
+        match self {
+            Error::AliasNotSingleWord(caller) => err!(
+                "The caller " [*a] caller [] "is not a single word."
+            ),
+            Error::CallerAlreadyExists(caller) => err!(
+                "The caller " [*a] caller [] "already exists."
+            ),
+            Error::CallerNotFound(caller) => err!("The caller " [*a] caller [] "was not found."),
+            Error::CommandFailed(failure) => failure,
+            Error::Empty => err!("The command is empty."),
+            Error::NoFileYet => err!("There is no file yet. " early),
+            Error::NoFileForRelated => err!(
+                "There is no file for a related " [*a] { type_name::<E>() } [] "to exist. " early
+            ),
+            Error::NoWidgetYet => err!("There can be no widget yet. " early),
+            Error::WidgetIsNot => err!(
+                "The widget is not " [*a] { type_name::<E>() } [] ". " early
+            ),
+            Error::InputIsNot(..) => err!(
+                "This file's input is not " [*a] { type_name::<E>() } [] ". " early
+            ),
+        }
+    }
+}
+
+impl<E> std::fmt::Debug for Error<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_tuple(match self {
+            Error::AliasNotSingleWord(_) => "Error::AliasNotSingleWord",
+            Error::CallerAlreadyExists(_) => "Error::CallerAlreadyExists",
+            Error::CallerNotFound(_) => "Error::CallerNotFound",
+            Error::CommandFailed(_) => "Error::CommandFailed",
+            Error::Empty => "Error::Empty ",
+            Error::NoFileYet => "Error::NoFileYet ",
+            Error::NoFileForRelated => "Error::NoFileForRelated ",
+            Error::NoWidgetYet => "Error::NoWidgetYet ",
+            Error::WidgetIsNot => "Error::WidgetIsNot ",
+            Error::InputIsNot(_) => "Error::InputIsNot",
+        });
+
+        match self {
+            Error::AliasNotSingleWord(str)
+            | Error::CallerAlreadyExists(str)
+            | Error::CallerNotFound(str) => debug.field(&str),
+            Error::CommandFailed(text) => debug.field(&text),
+            Error::Empty
+            | Error::NoFileYet
+            | Error::NoFileForRelated
+            | Error::NoWidgetYet
+            | Error::WidgetIsNot
+            | Error::InputIsNot(_) => &mut debug,
+        }
+        .finish()
+    }
+}
+
+impl<E> std::fmt::Display for Error<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let early = ", try this after OnUiStart, maybe by using hooks::add::<OnUiStart>";
+
+        match self {
+            Error::AliasNotSingleWord(caller) => {
+                write!(f, "The caller \"{caller}\" is not a single word")
+            }
+            Error::CallerAlreadyExists(caller) => {
+                write!(f, "The caller \"{caller}\" already exists.")
+            }
+            Error::CallerNotFound(caller) => {
+                write!(f, "The caller \"{caller}\" was not found.")
+            }
+            Error::CommandFailed(failure) => {
+                let (s0, s1) = failure.slices();
+                f.write_str(s0)?;
+                f.write_str(s1)
+            }
+            Error::Empty => f.write_str("The command is empty"),
+            Error::NoFileYet => write!(f, "There is no file yet{early}"),
+            Error::NoFileForRelated => write!(
+                f,
+                "There is no file for a related {} to exist{early}",
+                std::any::type_name::<E>()
+            ),
+            Error::NoWidgetYet => write!(f, "There can be no widget yet{early}"),
+            Error::WidgetIsNot => write!(f, "The current widget is not {}", type_name::<E>()),
+            Error::InputIsNot(..) => {
+                write!(f, "This file's input is not {}", type_name::<E>())
+            }
+        }
+    }
+}
+
+impl<E> std::error::Error for Error<E> {}
+
+pub type Result<T, E> = std::result::Result<T, Error<E>>;
 
 /// Internal macro used to log information.
 #[deprecated(note = "log_info has been used, remove it before publishing")]

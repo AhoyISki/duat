@@ -1,8 +1,7 @@
 use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    log_info,
-    text::{Item, Iter as TextIter, IterCfg, Part, Point, RevIter as RevTextIter, WrapMethod},
+    text::{Item, Iter as TextIter, IterCfg, Part, RevIter as RevTextIter, WrapMethod},
     ui::Caret,
 };
 use unicode_width::UnicodeWidthChar;

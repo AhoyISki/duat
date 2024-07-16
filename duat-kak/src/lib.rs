@@ -5,15 +5,13 @@ use crossterm::event::{
     KeyEvent, KeyModifiers,
 };
 use duat_core::{
-    data::RwData,
+    data::{Context, RwData},
     hooks::{self, Hookable},
     input::{key, Cursors, InputMethod, MultiCursorEditor},
-    palette,
-    prelude::Form,
+    palette::{self, Form},
     text::{text, Text},
     ui::Ui,
     widgets::File,
-    Context,
 };
 
 #[derive(Default, Clone, Copy, PartialEq)]
@@ -89,16 +87,16 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        globals: Context<U>,
+        context: Context<U>,
     ) {
         let cursors = &mut self.cursors;
         let editor = MultiCursorEditor::new(widget, area, cursors);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
-            Mode::Normal => match_normal(editor, key, &mut self.mode, globals),
+            Mode::Normal => match_normal(editor, key, &mut self.mode, context),
             Mode::GoTo => {
-                match_goto(editor, key, &mut self.last_file, globals);
+                match_goto(editor, key, &mut self.last_file, context);
                 self.mode = Mode::Normal;
                 hooks::trigger::<OnModeChange>(&mut (Mode::GoTo, Mode::Normal));
             }
@@ -205,7 +203,7 @@ fn match_normal<U: Ui>(
     mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     mode: &mut Mode,
-    globals: Context<U>,
+    context: Context<U>,
 ) {
     match key {
         ////////// Movement keys that retain or create selections.
@@ -248,7 +246,7 @@ fn match_normal<U: Ui>(
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
-            if globals.commands.run("switch-to CommandLine").is_ok() {
+            if context.commands.run("switch-to CommandLine").is_ok() {
                 *mode = Mode::Command;
                 hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Command));
             }
@@ -273,12 +271,12 @@ fn match_goto<U: Ui>(
     mut editor: MultiCursorEditor<File, U>,
     key: KeyEvent,
     last_file: &mut String,
-    globals: Context<U>,
+    context: Context<U>,
 ) {
     match key {
         key!(KeyCode::Char('a')) => {
-            if globals.commands.buffer(last_file.clone()).is_ok() {
-                *last_file = globals.current_file.name();
+            if context.commands.buffer(last_file.clone()).is_ok() {
+                *last_file = context.cur_file().unwrap().name();
             }
         }
         key!(KeyCode::Char('j')) => {
@@ -288,13 +286,13 @@ fn match_goto<U: Ui>(
             editor.move_main(|mover| mover.move_to_coords(0, 0));
         }
         key!(KeyCode::Char('n')) => {
-            if globals.commands.next_file().is_ok() {
-                *last_file = globals.current_file.name();
+            if context.commands.next_file().is_ok() {
+                *last_file = context.cur_file().unwrap().name();
             }
         }
         key!(KeyCode::Char('N')) => {
-            if globals.commands.prev_file().is_ok() {
-                *last_file = globals.current_file.name();
+            if context.commands.prev_file().is_ok() {
+                *last_file = context.cur_file().unwrap().name();
             }
         }
         _ => {}

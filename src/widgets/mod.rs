@@ -7,3 +7,4 @@ pub use self::{
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{common, status, State, StatusLine, StatusLineCfg},
 };
+pub use duat_core::file::File;

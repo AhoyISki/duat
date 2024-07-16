@@ -15,13 +15,12 @@
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
 use duat_core::{
-    data::RwData,
+    data::{Context, RwData},
     input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
     palette::{self, Form},
     text::{text, Ghost, Text},
     ui::{Area, PushSpecs},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-    Context,
 };
 
 use crate::Ui;

@@ -7,7 +7,11 @@ pub use self::{
     default::KeyMap,
     multi_cursor::{Cursors, MultiCursorEditor},
 };
-use crate::{data::RwData, ui::Ui, widgets::ActiveWidget, Context};
+use crate::{
+    data::{Context, RwData},
+    ui::Ui,
+    widgets::ActiveWidget,
+};
 
 pub trait InputMethod<U>: Send + Sync + 'static
 where

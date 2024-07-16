@@ -16,7 +16,7 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, Context};
+use duat_core::{data::RwData, ui, data::Context};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 use print::Printer;
@@ -158,6 +158,12 @@ pub enum ConstraintChangeErr {
     Impossible,
 }
 
+impl std::fmt::Display for ConstraintChangeErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as std::fmt::Debug>::fmt(self, f)
+    }
+}
+
 impl std::fmt::Debug for ConstraintChangeErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -179,6 +185,8 @@ pub enum Anchor {
     BottomLeft,
     BottomRight,
 }
+
+impl std::error::Error for ConstraintChangeErr {}
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct AreaId(usize);

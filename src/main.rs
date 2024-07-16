@@ -1,5 +1,5 @@
-#![feature(decl_macro, generic_const_exprs)]
-#![allow(incomplete_features)]
+#![feature(decl_macro)]
+
 use std::{
     path::Path,
     process::Command,
@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use duat::{prelude::*, run_duat, layout_hooks};
+use duat::{layout_hooks, prelude::*, run_duat};
 use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
@@ -130,6 +130,11 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
-type PrevFiles = Vec<(RwData<File>, bool)>;
-type RunFn = fn(PrevFiles, Sender<ui::Event>, Receiver<ui::Event>, Statics) -> PrevFiles;
+type RunFn = fn(
+    Vec<(RwData<File>, bool)>,
+    Sender<ui::Event>,
+    Receiver<ui::Event>,
+    Statics,
+) -> Vec<(RwData<File>, bool)>;
+
 type Statics = <duat::Ui as ui::Ui>::StaticFns;

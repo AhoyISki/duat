@@ -2,7 +2,7 @@
 
 Duat is the underworld in egyptian mythology, home to the god Osiris, where the deceased go in order to be judged, and possibly have their rights to an afterlife revoked by the weight of a feather. It is also a text editor.
 
-Duat is a text editor that is configured through the use of a Rust crate in the user's config directory. The use of a crate for such a purpose means that the extensibility potential — as well as my ability to add features — is increased dramatically.
+Duat is a text editor configured through the use of a Rust crate. The use of a crate for such a purpose means that the extensibility potential — as well as my ability to add features — is increased dramatically.
 
 Duat, when installed, will be able to automatically detect changes in the user's configuration, and change in real time — with a delay of a few seconds — in order to reflect the new configuration.
 

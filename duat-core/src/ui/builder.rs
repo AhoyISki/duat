@@ -2,9 +2,8 @@ use std::sync::LazyLock;
 
 use super::{Area, Ui, Window};
 use crate::{
-    data::RwData,
+    data::{Context, RwData},
     widgets::{PassiveWidget, WidgetCfg},
-    Context,
 };
 
 /// A constructor helper for [`Widget<U>`]s.
@@ -110,9 +109,11 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            self.context
-                .current_file
-                .add_related_widget((related, child.clone(), W::name()));
+            self.context.cur_file().unwrap().add_related_widget((
+                related,
+                child.clone(),
+                W::name(),
+            ));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -185,9 +186,11 @@ where
                 .window
                 .push(widget, &self.mod_area, checker, specs, true);
 
-            self.context
-                .current_file
-                .add_related_widget((related, child.clone(), W::name()));
+            self.context.cur_file().unwrap().add_related_widget((
+                related,
+                child.clone(),
+                W::name(),
+            ));
 
             if let Some(parent) = &parent {
                 if parent.is_senior_of(&self.window.files_region) {
@@ -228,7 +231,8 @@ where
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
         self.context
-            .current_file
+            .cur_file()
+            .unwrap()
             .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
     }
@@ -260,7 +264,7 @@ where
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
         self.context
-            .current_file
+            .cur_file().unwrap()
             .add_related_widget((related, child.clone(), W::name()));
         (child, parent)
     }

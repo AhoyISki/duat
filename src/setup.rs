@@ -5,31 +5,30 @@ use std::sync::{
 
 use duat_core::{
     commands::Commands,
-    data::{CurrentFile, CurrentWidget, RwData},
+    data::{Context, CurFile, CurWidget, RwData},
     session::SessionCfg,
     text::PrintCfg,
     ui::{Event, Ui as TraitUi},
     widgets::File,
-    Context,
 };
 use duat_term::VertRule;
 
 use crate::{
-    config::{hooks, CfgFn},
+    hooks,
     prelude::{CommandLine, LineNumbers, StatusLine},
-    OnFileOpen, OnUiStart, OnWindowOpen, Ui,
+    CfgFn, OnFileOpen, OnUiStart, OnWindowOpen, Ui,
 };
 
 // Context's statics.
-pub static CURRENT_FILE: CurrentFile<Ui> = CurrentFile::new();
-pub static CURRENT_WIDGET: CurrentWidget<Ui> = CurrentWidget::new();
-pub static COMMANDS: Commands<Ui> = Commands::new(&CURRENT_FILE, &CURRENT_WIDGET);
+pub static CUR_FILE: CurFile<Ui> = CurFile::new();
+pub static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
+pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET);
 pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
 pub static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
 pub static CONTEXT: Context<Ui> = Context::new(
-    &CURRENT_FILE,
-    &CURRENT_WIDGET,
+    &CUR_FILE,
+    &CUR_WIDGET,
     &COMMANDS,
     &HANDLES,
     &HAS_ENDED,

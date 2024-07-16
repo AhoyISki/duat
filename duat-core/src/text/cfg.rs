@@ -302,7 +302,7 @@ impl<'a> IterCfg<'a> {
     }
 
     #[inline]
-    pub fn show_lf(&self) -> bool {
+    pub fn shows_lf(&self) -> bool {
         self.iter_lfs
     }
 

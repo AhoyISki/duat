@@ -1,10 +1,9 @@
 use duat_core::{
-    data::FileReader,
+    data::{Context, FileReader},
     palette::{self, Form},
     text::{text, Text},
     ui::{Area as UiArea, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
-    Context,
 };
 
 use crate::{Area, Ui};
@@ -170,7 +169,7 @@ impl WidgetCfg<Ui> for VertRuleCfg {
         context: Context<Ui>,
         on_file: bool,
     ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        let reader = on_file.then_some(context.current_file.constant());
+        let reader = on_file.then_some(context.fixed_reader().unwrap());
 
         let vert_rule = VertRule {
             reader: reader.clone(),

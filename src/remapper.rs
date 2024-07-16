@@ -1,7 +1,7 @@
 use duat_core::{
     data::RwData,
     input::{KeyCode, KeyEvent, InputMethod},
-    Context,
+    data::Context,
 };
 
 use super::Ui;

@@ -20,14 +20,14 @@
 //! [`FileWidget]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
 pub use self::{
+    context::*,
     ro::RoData,
     rw::{ReadWriteGuard, RwData},
-    statics::{CurrentFile, CurrentWidget, FileReader},
 };
 
+mod context;
 mod ro;
 mod rw;
-mod statics;
 
 /// Private trait for the [`RwData`] and [`RoData`] structs.
 ///

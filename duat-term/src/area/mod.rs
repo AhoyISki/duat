@@ -9,7 +9,6 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::Painter,
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},

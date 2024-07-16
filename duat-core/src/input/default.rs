@@ -1,5 +1,9 @@
 use super::{key, Cursors, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor};
-use crate::{data::RwData, ui::Ui, widgets::File, Context};
+use crate::{
+    data::{Context, RwData},
+    ui::Ui,
+    widgets::File,
+};
 
 #[derive(Clone)]
 pub struct KeyMap {
@@ -31,7 +35,7 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        globals: Context<U>,
+        context: Context<U>,
     ) {
         let mut editor = MultiCursorEditor::<File, U>::new(widget, area, &mut self.cursors);
         match key {
@@ -127,7 +131,7 @@ where
 
             // Control
             key!(KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                let _ = globals.commands.run("switch-to CommandLine");
+                let _ = context.commands.run("switch-to CommandLine");
             }
 
             _ => {}

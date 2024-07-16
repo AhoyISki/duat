@@ -28,12 +28,11 @@ use parking_lot::RwLock;
 
 pub use crate::file::{File, FileCfg};
 use crate::{
-    data::{Data, RwData},
+    data::{Data, RwData, Context},
     input::InputMethod,
     palette,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    Context,
 };
 
 /// An area where text will be printed to the screen.

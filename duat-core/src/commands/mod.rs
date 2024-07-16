@@ -25,10 +25,11 @@ use parking_lot::RwLock;
 
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
-    data::{CurrentFile, CurrentWidget, Data, RwData},
+    data::{CurFile, CurWidget, Data, RwData},
     text::{text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
+    Error,
 };
 
 mod parameters;
@@ -48,8 +49,8 @@ where
 {
     inner: LazyLock<RwData<InnerCommands>>,
     windows: LazyLock<RwData<Vec<Window<U>>>>,
-    current_file: &'static CurrentFile<U>,
-    current_widget: &'static CurrentWidget<U>,
+    current_file: &'static CurFile<U>,
+    current_widget: &'static CurWidget<U>,
 }
 
 impl<U> Commands<U>
@@ -58,8 +59,8 @@ where
 {
     /// Returns a new instance of [`Commands`].
     pub const fn new(
-        current_file: &'static CurrentFile<U>,
-        current_widget: &'static CurrentWidget<U>,
+        current_file: &'static CurFile<U>,
+        current_widget: &'static CurWidget<U>,
     ) -> Self {
         Self {
             inner: LazyLock::new(|| {
@@ -81,10 +82,7 @@ where
                             let alias = args.next()?.to_string();
                             let args: String = args.collect();
 
-                            inner
-                                .write()
-                                .try_alias(alias, args)
-                                .map_err(Error::into_text)
+                            inner.write().try_alias(alias, args).map_err(Error::as_text)
                         }
                     })
                 };
@@ -566,6 +564,14 @@ where
                 })
                 .unwrap_or_else(|| {
                     let windows = windows.read();
+
+                    if windows.is_empty() {
+                        return Err(text!(
+                            "Widget command executed before the " [AccentErr] "Ui" []
+                            " was initiated, try executing after " [AccentErr] "OnUiStart" []
+                        ));
+                    }
+
                     self.current_widget.mutate_data(|widget, _, _| {
                         let widget = widget.clone().to_passive();
                         if let Some((w, a)) = get_from_name(&windows, W::name(), &widget) {
@@ -598,69 +604,6 @@ where
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
-
-/// An error relating to commands in general.
-#[derive(Debug)]
-pub enum Error {
-    /// An alias wasn't just a single word.
-    AliasNotSingleWord(String),
-    /// The caller for a command already pertains to another.
-    CallerAlreadyExists(String),
-    /// No commands have the given caller as one of their own.
-    CallerNotFound(String),
-    /// The command failed internally.
-    CommandFailed(Text),
-    /// There was no caller and no arguments.
-    Empty,
-}
-
-impl Error {
-    /// Turns the [`Error`] into formatted [`Text`]
-    fn into_text(self) -> Text {
-        match self {
-            Error::AliasNotSingleWord(caller) => text!(
-                "The caller " [AccentErr] caller [] "is not a single word."
-            ),
-            Error::CallerAlreadyExists(caller) => text!(
-                "The caller " [AccentErr] caller [] "already exists."
-            ),
-            Error::CallerNotFound(caller) => text!(
-                "The caller " [AccentErr] caller [] "was not found."
-            ),
-            Error::CommandFailed(failure) => failure,
-            Error::Empty => text!("The command is empty."),
-        }
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::AliasNotSingleWord(caller) => {
-                write!(f, "The caller \"{caller}\" is not a single word")
-            }
-            Error::CallerAlreadyExists(caller) => {
-                write!(f, "The caller \"{caller}\" already exists.")
-            }
-            Error::CallerNotFound(caller) => {
-                write!(f, "The caller \"{caller}\" was not found.")
-            }
-            Error::CommandFailed(failure) => {
-                let (s0, s1) = failure.slices();
-                f.write_str(s0)?;
-                f.write_str(s1)
-            }
-            Error::Empty => f.write_str("The command is empty"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-/// The standard result for [`commands`] operations.
-///
-/// [`commands`]: super
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// A function that can be called by name.
 #[derive(Clone)]
@@ -763,6 +706,8 @@ impl InnerCommands {
         }
     }
 }
+
+type Result<T> = crate::Result<T, ()>;
 
 fn get_from_name<'a, U: Ui>(
     windows: &'a [Window<U>],
