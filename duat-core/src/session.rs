@@ -55,10 +55,11 @@ where
         };
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
+        self.context.commands.add_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows: RwData::new(vec![window]),
+            windows: self.context.commands.get_windows(),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
             context: self.context,
@@ -67,7 +68,6 @@ where
 
         session.set_active_file(widget, &area);
 
-        self.context.commands.add_windows(session.windows.clone());
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files.
@@ -104,10 +104,11 @@ where
         let (widget, checker) = file_cfg.build();
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
+        self.context.commands.add_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows: RwData::new(vec![window]),
+            windows: self.context.commands.get_windows(),
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
             context: self.context,
@@ -116,7 +117,6 @@ where
 
         session.set_active_file(widget, &area);
 
-        self.context.commands.add_windows(session.windows.clone());
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files..

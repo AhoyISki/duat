@@ -79,7 +79,7 @@ where
             },
         };
 
-        //#[cfg(feature = "wack")]
+        #[cfg(feature = "wack")]
         let text = {
             let mut text = text;
             use crate::{

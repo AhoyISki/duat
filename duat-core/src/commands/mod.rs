@@ -1,206 +1,23 @@
-//! Creation and execution of commands.
+//! Command handling through [`Commands`]
 //!
-//! Commands in Duat work through the use of functions that don't
-//! require references (unless they're `'static`) and return results
-//! which may contain a [`Text`] to be displayed, if successful, and
-//! *must* contain an error [`Text`] to be displayed if they fail.
+//! This module defines the [`Commands`] struct, which contains
+//! all of the same facilities that makes Duat's [`commands`]
+//! module work.
 //!
-//! Commands act on two parameters. which will be provided when ran:
-//! [`Flags`] and [`Args`].
+//! This struct should be used in plugins, since those should not
+//! rely on the [duat] crate, only on duat-core. More specifically
+//! it is going to be used through the [`Context`] struct, which
+//! will in turn be provided by Duat, with a defined [`Ui`].
 //!
-//! [`Flags`] will contain a list of all flags that were passed to the
-//! command. These flags follow the UNIX conventions, that is `"-"`
-//! starts a short cluster, `"--"` starts a single, larger flag, and
-//! `"--"` followed by nothing means that the remaining arguments are
-//! not flags. Here's an example:
+//! The rules for command creation and execution are the same as
+//! the
 //!
-//! `"my-command --flag1 --flag2 -short -- --not-flag more-args"`
-//!
-//! `"--not-flag"` would not be treated as a flag, being instead
-//! treated as an argument in conjunction with `"more-args"`.
-//!
-//! [`Args`] is merely an iterator over the remaining arguments, which
-//! are given as `&str`s to be consumed.
-//!
-//! Here's a simple example of how one would add a command:
-//!
-//! ```rust
-//! # use duat_core::commands::{self, Flags, Args};
-//! # use std::sync::{
-//! #     atomic::{AtomicBool, Ordering},
-//! #     Arc
-//! # };
-//! #
-//! // Any of these callers will work for running the command.
-//! let callers = ["my-command", "mc"];
-//!
-//! // `commands::add` create a new globally avaliable command.
-//! let result = commands::add(callers, move |_flags, _args| {
-//!     unimplemented!();
-//! });
-//!
-//! // Adding a command can fail if a command with the same
-//! // name already exists.
-//! // In this case, the command is brand new, so no the
-//! // Result is `Ok`.
-//! assert!(result.is_ok());
-//! ```
-//!
-//! In this case, a command has been added that can be called with
-//! both `"my-command"` and `"mc"`.
-//!
-//! Here's a simple command that makes use of [`Flags`]:
-//!
-//! ```rust
-//! # use duat_core::commands;
-//! # use std::sync::{
-//! #     atomic::{AtomicU32, Ordering},
-//! #     Arc
-//! # };
-//! #
-//! let expression = Arc::new(AtomicU32::default());
-//! let callers = ["my-command", "mc"];
-//! let my_command = {
-//!     let expression = expression.clone();
-//!     commands::add(callers, move |flags, _args| {
-//!         // `Flags::long` checks for `--` flags
-//!         if flags.long("happy") {
-//!             expression.store('😁' as u32, Ordering::Relaxed)
-//!         // `Flags::short` checks for `-` flags
-//!         // They can check for any valid unicode character.
-//!         } else if flags.short("🤯") {
-//!             expression.store('🤯' as u32, Ordering::Relaxed)
-//!         } else if flags.long("sad") {
-//!             expression.store('😢' as u32, Ordering::Relaxed)
-//!         } else {
-//!             expression.store('😶' as u32, Ordering::Relaxed)
-//!         }
-//!         Ok(None)
-//!     })
-//! };
-//!
-//! // The order of flags doesn't matter.
-//! commands::run("mc --sad -🤯 unused-1 unused-2").unwrap();
-//!
-//! let num = expression.load(Ordering::Relaxed);
-//! assert_eq!(char::from_u32(num), Some('🤯'))
-//! ```
-//!
-//! To run commands, simply call [`commands::run`]:
-//!
-//! ```rust
-//! # use duat_core::{
-//! #     commands,
-//! #     session::SessionCfg,
-//! #     text::{PrintCfg, text},
-//! #     ui::{FileBuilder, Ui},
-//! #     widgets::{CommandLine, status},
-//! # };
-//! # fn test_fn<U: Ui>(ui: U) {
-//! let session = SessionCfg::new(ui)
-//!     .with_file_fn(|builder: &mut FileBuilder<U>, _file| {
-//!         // `commands::run` might return an `Ok(Some(Text))`,
-//!         // hence the double unwrap.
-//!         let output = commands::run("lol").unwrap().unwrap();
-//!         let status = status!("Output of \"lol\": " output);
-//!
-//!         builder.push_cfg(status);
-//!     });
-//!
-//! let callers = ["lol", "lmao"];
-//! commands::add(callers, |_flags, _args| {
-//!     Ok(Some(text!("😜")))
-//! }).unwrap();
-//! # }
-//! ```
-//!
-//! In the above example, we are creating a new [`SessionCfg`], which
-//! will be used to start Duat. in it, we're changing the
-//! "`file_fn`", a file constructor that, among other things, will
-//! attach widgets to files that are opened.
-//!
-//! In that "`file_fn`", the command `"lol"` is being ran. Notice that
-//! the command doesn't exist at the time the closure was declared.
-//! But since this closure will only be ran after the [`Session`] has
-//! started, as long as the command was added before that point,
-//! everything will work just fine.
-//!
-//! Here's an example that makes use of the arguments passed to the
-//! command.
-//!
-//! ```rust
-//! # use std::path::PathBuf;
-//! # use duat_core::{commands, text::text};
-//! commands::add(["copy", "cp"], move |flags, mut args| {
-//!     // If there is a next argument, next will return `Ok(arg)`.
-//!     // If there isn't it will return `Err(Text)`.
-//!     // If you needed an argument but got none, you should
-//!     // return the given error with the `?` operator.
-//!     let source = args.next()?;
-//!     // You can return custom error messages in order to improve
-//!     // the feedback of failures when running the command.
-//!     let target_1 = args.next_else(text!("No target given."))?;
-//!     // You can also parse the arguments of the caller to any
-//!     // type that implements `FromStr`:
-//!     let target_2 = args.next_as::<PathBuf>()?;
-//!
-//!     // This is optional, if you feel like your command shouldn't
-//!     // allow for more args than are required, you can call this.
-//!     args.ended()?;
-//!
-//!     if flags.long("link") {
-//!         unimplemented!("Logic for linking files.");
-//!     } else {
-//!         unimplemented!("Logic for copying files.");
-//!     }
-//!
-//!     // The return message (if there is one) is in the form of
-//!     // a `Text`, so it is recommended that you use the
-//!     // `duat_core::text::text` macro to facilitate the
-//!     // creation of that message.
-//!     Ok(Some(text!(
-//!         "Copied from " [AccentOk] source []
-//!         " to " [AccentOk] target_1 [] "."
-//!     )))
-//! });
-//! ```
-//! The returned result from a command should make use of 4 specific
-//! forms: `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and
-//! `"AccentErr"`. When errors are displayed, the `"Default"` [`Form`]
-//! gets mapped to `"CommandOk"` if the result is [`Ok`], and to
-//! `"CommandErr"` if the result is [`Err`]. . This formatting of
-//! result messages allows for more expressive feedback while still
-//! letting the end user configure their appearance.
-//!
-//! In the previous command, we handled a static number of arguments.
-//! But we can also easily handle arguments as an "iterator of
-//! results".
-//!
-//! ```rust
-//! # use duat_core::{commands, text::text};
-//! commands::add(["write", "w"], move |_flags, mut args| {
-//!     let mut count = 0;
-//!     while let Ok(arg) = args.next() {
-//!         count += 1;
-//!         unimplemented!("Logic for writing to the files.");
-//!     }
-//!
-//!     Ok(Some(text!(
-//!         "Wrote to " [AccentOk] count [] " files successfully."
-//!     )))
-//! });
-//! ```
-//!
-//! Do keep in mind that since args returns
-//!
-//! [`SessionCfg`]: crate::session::SessionCfg
-//! [`Session`]: crate::session::Session
-//! [`commands::run`]: crate::commands::run
-//! [`Form`]: crate::forms::Form
+//! [duat]: https://docs.rs/duat/latest/duat/index.html
+//! [`commands`]: https://docs.rs/duat/latest/duat/prelude/commands/index.html
+//! [`Context`]: crate::Context
 use std::{
     collections::HashMap,
     fmt::Display,
-    mem::MaybeUninit,
     sync::{Arc, LazyLock},
 };
 
@@ -217,12 +34,20 @@ use crate::{
 mod parameters;
 
 /// A list of [`Command`]s.
+///
+/// This list contains all of the [`Command`]s that have been
+/// added to Duat, as well as info on the current [`File`],
+/// [widget] and all of the [windows].
+///
+/// [`File`]: crate::file::File
+/// [widget]: crate::widgets::ActiveWidget
+/// [windows]: crate::ui::Window
 pub struct Commands<U>
 where
     U: Ui,
 {
     inner: LazyLock<RwData<InnerCommands>>,
-    windows: RwLock<MaybeUninit<RwData<Vec<Window<U>>>>>,
+    windows: LazyLock<RwData<Vec<Window<U>>>>,
     current_file: &'static CurrentFile<U>,
     current_widget: &'static CurrentWidget<U>,
 }
@@ -268,7 +93,7 @@ where
 
                 inner
             }),
-            windows: RwLock::new(MaybeUninit::uninit()),
+            windows: LazyLock::new(|| RwData::new(Vec::new())),
             current_file,
             current_widget,
         }
@@ -287,13 +112,9 @@ where
     ///
     /// The widget will be chosen in the following order:
     ///
-    /// 1. Any instance that is "related" to the currently active
-    ///    [`File`], that is, any widgets that were added during the
-    ///    [`Session`]'s "`file_fn`".
-    /// 2. Other widgets in the currently active window, related or
-    ///    not to any given [`File`].
-    /// 3. Any instance of the [`PassiveWidget`] that is found in
-    ///    other windows, looking first at windows ahead.
+    /// 1. The first of said widget pushed to the current [`File`].
+    /// 2. Other instances of it in the current window.
+    /// 3. Instances in other windows.
     ///
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
@@ -304,12 +125,12 @@ where
     /// Switches to/opens a [`File`] with the given name.
     ///
     /// If you wish to specifically switch to files that are already
-    /// open, use [`commands::buffer`].
+    /// open, use [`Commands::buffer`].
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::widgets::File
-    /// [`commands::buffer`]: crate::commands::buffer
+    /// [`File`]: crate::file::File
+    /// [`Commands::buffer`]: Commands::buffer
     pub fn edit(&self, file: impl Display) -> Result<Option<Text>> {
         self.run(format!("edit {}", file))
     }
@@ -317,12 +138,12 @@ where
     /// Switches to a [`File`] with the given name.
     ///
     /// If there is no file open with that name, does nothing. Use
-    /// [`commands::edit`] if you wish to open files.
+    /// [`Commands::edit`] if you wish to open files.
     ///
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    /// [`commands::edit`]: crate::commands::edit
+    /// [`Commands::edit`]: Commands::edit
     pub fn buffer(&self, file: impl Display) -> Result<Option<Text>> {
         self.run(format!("buffer {}", file))
     }
@@ -331,10 +152,10 @@ where
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`commands::next_global_file`].
+    /// search, use [`Commands::next_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`commands::next_global_file`]: crate::commands::next_global_file
+    /// [`Commands::next_global_file`]: Commands::next_global_file
     pub fn next_file(&self) -> Result<Option<Text>> {
         self.run("next-file")
     }
@@ -343,10 +164,10 @@ where
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`commands::prev_global_file`].
+    /// search, use [`Commands::prev_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`commands::prev_global_file`]: crate::commands::prev_global_file
+    /// [`Commands::prev_global_file`]: Commands::prev_global_file
     pub fn prev_file(&self) -> Result<Option<Text>> {
         self.run("prev-file")
     }
@@ -355,10 +176,10 @@ where
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
-    /// [`commands::next_file`].
+    /// [`Commands::next_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`commands::next_file`]: crate::commands::next_file
+    /// [`Commands::next_file`]: Commands::next_file
     pub fn next_global_file(&self) -> Result<Option<Text>> {
         self.run("next-file --global")
     }
@@ -367,10 +188,10 @@ where
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
-    /// [`commands::prev_file`].
+    /// [`Commands::prev_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`commands::prev_file`]: crate::commands::prev_file
+    /// [`Commands::prev_file`]: Commands::prev_file
     pub fn prev_global_file(&self) -> Result<Option<Text>> {
         self.run("prev-file --global")
     }
@@ -407,19 +228,20 @@ where
     /// ```rust
     /// # use duat_core::{
     /// #     commands::{self, Result},
-    /// #     text::Text,
+    /// #     ui::Ui,
+    /// #     Context,
     /// # };
-    /// # fn test() -> Result<Option<Text>> {
-    /// commands::run("set-prompt new-prompt")
+    /// # fn test<U: Ui>(context: Context<U>) -> Result<Option<Text>> {
+    /// context.commands.run("set-prompt new-prompt")
     /// # }
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`CommandLine`]. See [`commands::add_for_widget`] for
+    /// relevant [`CommandLine`]. See [`Commands::add_for_widget`] for
     /// more information.
     ///
     /// [`CommandLine`]: crate::widgets::CommandLine
-    /// [`commands::add_for_widget`]: crate::commands::add_for_widget
+    /// [`Commands::add_for_widget`]: Commands::add_for_widget
     pub fn run(&self, call: impl Display) -> Result<Option<Text>> {
         let call = call.to_string();
         let mut args = call.split_whitespace();
@@ -453,48 +275,34 @@ where
     /// This command cannot take any arguments beyond the [`Flags`]
     /// and [`Args`], so any mutation of state must be done
     /// through captured variables, usually in the form of
-    /// [`RwData<T>`]s.
+    /// [`RwData`]s.
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// # use duat_core::{
-    /// #     commands,
-    /// #     data::RwData,
-    /// #     text::{text, Text},
-    /// #     widgets::status
-    /// # };
+    /// ```rust,ignore
     /// // Shared state, which will be displayed in a `StatusLine`.
     /// let var = RwData::new(35);
     ///
-    /// commands::add(["set-var"], {
-    ///     // A clone is necessary, in order to have one copy of `var`
-    ///     // in the closure, while the other is in the `StatusLine`.
+    /// /* inside of a plugin, where a `Context` could be found */
+    /// context.commands.add(["set-var"], {
     ///     let var = var.clone();
     ///     move |_flags, mut args| {
-    ///         // You can easily parse arguments, and an appropriate
-    ///         // error will be returned if the parsing fails.
     ///         let value: usize = args.next_as()?;
     ///         *var.write() = value;
     ///
     ///         Ok(None)
     ///     }
     /// });
+    /// /* */
     ///
-    /// // A `StatusLineCfg` that can be used to create a `StatusLine`.
     /// let status_cfg = status!("The value is currently " var);
     /// ```
     ///
-    /// In the above example, we created a variable that can be
-    /// modified by the command `"set-var"`, and then sent it to a
-    /// [`StatusLineCfg`], so that it could be displayed in a
-    /// [`StatusLine`]. Note that the use of an [`RwData<usize>`]/
-    /// [`RoData<usize>`] means that the [`StatusLine`] will
-    /// be updated automatically, whenever the command is ran.
+    /// Since `var` is an [`RwData`], it will be updated
+    /// automatically in the [`StatusLine`]
     ///
-    /// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
-    /// [`StatusLine`]: crate::widgets::StatusLine
-    /// [`RoData<usize>`]: crate::data::RoData
+    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
+    /// [`RoData`]: crate::data::RoData
     pub fn add(
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
@@ -517,12 +325,13 @@ where
     ///
     /// ```rust
     /// # use duat_core::{
-    /// #     commands,
-    /// #     data::RwData,
-    /// #     input::{InputMethod, MultiCursorEditor},
+    /// #     commands::{self, Result},
+    /// #     file::File,
     /// #     text::text,
-    /// #     widgets::File,
+    /// #     ui::Ui,
+    /// #     Context,
     /// # };
+    /// # fn test<U: Ui>(context: Context<U>) -> Result<Option<Text>> {
     /// #[derive(Debug)]
     /// enum Mode {
     ///     Normal,
@@ -536,11 +345,10 @@ where
     /// }
     ///
     /// impl InputMethod for ModalEditor {
-    ///     // Implementation details.
+    ///     /* Implementation details. */
     /// # type Widget = File
     /// # where
     /// #     Self: Sized;
-    ///
     /// # fn send_key(
     /// #     &mut self,
     /// #     key: crossterm::event::KeyEvent,
@@ -553,7 +361,7 @@ where
     /// # }
     /// }
     ///
-    /// commands::add_for_current::<ModalEditor>(
+    /// context.commands.add_for_current::<ModalEditor>(
     ///     ["set-mode"],
     ///     |modal, flags, mut args| {
     ///         let mode = args.next_else(text!("No mode given"))?;
@@ -749,7 +557,7 @@ where
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let windows = unsafe { self.windows.read().assume_init_ref().clone() };
+        let windows = self.windows.clone();
 
         let command = Command::new(callers, move |flags, args| {
             self.current_file
@@ -775,9 +583,12 @@ where
     }
 
     /// Adds a [`WidgetGetter`] to [`self`].
-    pub(crate) fn add_windows(&self, windows: RwData<Vec<Window<U>>>) {
-        let mut lock = self.windows.write();
-        *lock = MaybeUninit::new(windows)
+    pub(crate) fn add_windows(&self, windows: Vec<Window<U>>) {
+        *self.windows.write() = windows
+    }
+
+    pub(crate) fn get_windows(&self) -> RwData<Vec<Window<U>>> {
+        self.windows.clone()
     }
 }
 
