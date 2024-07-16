@@ -58,16 +58,14 @@ run! {
         // `push_cfg_to` pushes a widget to another.
         builder.push_cfg_to(CommandLine::cfg().left_with_percent(30), child);
     });
-    set_input(KeyMap::new());
+    input::set(KeyMap::new());
     // This is a hook provided by duat-kak.
     hooks::add::<OnModeChange>(|(_, new)| match new {
-        Mode::Insert => print::main_cursor(Form::new().reverse(), None),
-        Mode::Normal | Mode::GoTo | Mode::View | Mode::Command => {
-            print::main_cursor(Form::new().reverse(), None)
-        }
+        Mode::Insert => cursor::set_main(CursorShape::SteadyBar),
+        - => cursor::set_main(CursorShape::SteadyBlock);
     });
     // This is a form also provided by duat-kak.
-    print::forms::set("Mode", Form::new().dark_magenta());
+    forms::set("Mode", Form::new().dark_magenta());
 }
 ```
 
