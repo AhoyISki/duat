@@ -47,22 +47,23 @@ run! {
         // files in the middle of the window.
         // You can create your own status line.
         // "[" "]" pairs change the style of text.
-        let status = status!(
+        let status_line = status!(
             [File] { File::name } " "
             { KeyMap::mode_fmt } " "
             selections_fmt " " main_fmt
         );
         // As opposed to `builder.push`, this one
         // takes a user defined configuration.
-        let (child, _) = builder.push_cfg(status);
+        let (child, _) = builder.push_cfg(status_line);
+        let cmd_line = CommandLine::cfg().left_with_percent(30);
         // `push_cfg_to` pushes a widget to another.
-        builder.push_cfg_to(CommandLine::cfg().left_with_percent(30), child);
+        builder.push_cfg_to(cmd_line, child);
     });
     input::set(KeyMap::new());
     // This is a hook provided by duat-kak.
     hooks::add::<OnModeChange>(|(_, new)| match new {
         Mode::Insert => cursor::set_main(CursorShape::SteadyBar),
-        - => cursor::set_main(CursorShape::SteadyBlock);
+        _ => cursor::set_main(CursorShape::SteadyBlock),
     });
     // This is a form also provided by duat-kak.
     forms::set("Mode", Form::new().dark_magenta());
