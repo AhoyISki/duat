@@ -1,73 +1,38 @@
-// These two will unfortunately be necessary until this feature
-// is eventually stabilized.
-#![feature(generic_const_exprs)]
-#![allow(incomplete_features)]
-
-// The prelude contains all of the commonly used commands.
-use duat::prelude::{ui::VertRule, *};
-// An `InputMethod` for `File`s.
-use duat_kak::KeyMap;
-
-// This macro expands to the function that Duat understands.
-// Will be replaced by a proc-macro at some point.
+use duat::prelude::*;
+// Since duat_kak is a plugin, it must be used explicitely.
+use duat_kak::{KeyMap, Mode, OnModeChange};
 run! {
-    // Resets all existant hooks related to the opening of
-    // `File`s.
-    hook::reset_file_fn();
-    // Sets new hooks for that.
-    hook::on_file_open(|builder| {
-        // Push some widgets to the edge of the file, in order,
-        // from inner to outer.
-        //
-        // By default, these two widgets go on the left, but
-        // you can override that:
-        // // *Uncomment me* //
-        // let cfg = VertRule::cfg().on_the_right();
-        // builder.push_cfg(cfg);
-        // let cfg = LineNumbers::cfg()
-        //     .on_the_right()
-        //     .align_right()
-        //     .align_main_left();
-        // builder.push_cfg(cfg);
-        // //
+    // The print module manages the printing of files.
+    print::wrap_on_width();
+
+    hooks::remove_group("FileWidgets");
+    hooks::add::<OnFileOpen>(|builder| {
+        // This hook lets you push widgets to the files.
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();
     });
-
-    // Resets all existant hooks related to the opening of
-    // windows.
-    hook::reset_window_fn();
-    // Sets new hooks for that.
-    hook::on_window_open(|builder| {
-        // A macro to format a StatusLine.
-        let status = status!(
-            // A `Form` is enclosed in `[` `]` pairs, and sets
-            // the text formatting.
-            // The "Default" form is abbreviated as `[]`.
-            [File]
-            // A function that reads from a `File`. Anything
-            // that isn't a `Form` is treated as an expression.
-            { File::name }
-            // Any type that implements `Into<Text>` works.
-            " "
-            // You can also use closures. This one reads from a
-            // `duat_kak::KeyMap`.
-            { |map: &KeyMap| KeyMap::mode_fmt(map) } " "
-            // Finally, these two functions return `Text`s.
-            // Any function that returns `Text` should be have
-            // the `_fmt` suffix, for consistency.
+    hooks::remove_group("WindowWidgets");
+    hooks::add::<OnWindowOpen>(|builder| {
+        // Same, but on the edges of the window.
+        // "[" "]" pairs change the style of text.
+        let status_line = status!(
+            [File] { File::name } " "
+            { KeyMap::mode_fmt } " "
             selections_fmt " " main_fmt
         );
-        // Push a widget to a specific are, in this case, the
-        // new area housing the `StatusLine`.
-        let (child, _) = builder.push_cfg(status);
-        builder.push_cfg_to(CommandLine::cfg().left_with_percent(30), child);
+        // As opposed to `builder.push`, this one
+        // takes a user defined configuration.
+        let (child, _) = builder.push_cfg(status_line);
+        let cmd_line = CommandLine::cfg().left_with_percent(30);
+        // `push_cfg_to` pushes a widget to another.
+        builder.push_cfg_to(cmd_line, child);
     });
-
-    // Sets a new `InputMethod for `File`s.
-    setup::input(KeyMap::new());
-
-	// Modifies the "Mode" `Form`, created by `KeyMap::new`
-	// method.
-    print::forms::set("Mode", Form::new().dark_magenta());
+    input::set(KeyMap::new());
+    // This is a hook provided by duat-kak.
+    hooks::add::<OnModeChange>(|(_, new)| match new {
+        Mode::Insert => cursor::set_main(CursorShape::SteadyBar),
+        _ => cursor::set_main(CursorShape::SteadyBlock),
+    });
+    // This is a form also provided by duat-kak.
+    forms::set("Mode", Form::new().dark_magenta());
 }
