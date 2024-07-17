@@ -117,11 +117,14 @@ fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
-        format!("--{PROFILE}").as_str(),
         "--quiet",
         "--manifest-path",
         toml_path.to_str().unwrap(),
     ]);
+
+    if !cfg!(debug_assertions) {
+        cargo.args(["--release"]);
+    }
 
     cargo.output()
 }

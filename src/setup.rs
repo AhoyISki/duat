@@ -26,13 +26,8 @@ pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET);
 pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
 pub static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
-pub static CONTEXT: Context<Ui> = Context::new(
-    &CUR_FILE,
-    &CUR_WIDGET,
-    &COMMANDS,
-    &HANDLES,
-    &HAS_ENDED,
-);
+pub static CONTEXT: Context<Ui> =
+    Context::new(&CUR_FILE, &CUR_WIDGET, &COMMANDS, &HANDLES, &HAS_ENDED);
 
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);

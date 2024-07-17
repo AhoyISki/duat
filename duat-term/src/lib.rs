@@ -16,7 +16,10 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{data::RwData, ui, data::Context};
+use duat_core::{
+    data::{Context, RwData},
+    ui,
+};
 use layout::Layout;
 pub use layout::{Brush, Frame};
 use print::Printer;
