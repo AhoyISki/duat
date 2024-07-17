@@ -31,18 +31,23 @@ use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitely.
 use duat_kak::{KeyMap, Mode, OnModeChange};
 run! {
+use duat::prelude::*;
+// Since duat_kak is a plugin, it must be used explicitely.
+use duat_kak::{KeyMap, Mode, OnModeChange};
+run! {
     // The print module manages the printing of files.
     print::wrap_on_width();
 
     hooks::remove_group("FileWidgets");
+    // This hook lets you push widgets to the files.
     hooks::add::<OnFileOpen>(|builder| {
-        // This hook lets you push widgets to the files.
+        // By default, these go on the left.
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();
     });
     hooks::remove_group("WindowWidgets");
+    // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
-        // Same, but on the edges of the window.
         // "[" "]" pairs change the style of text.
         let status_line = status!(
             [File] { File::name } " "
