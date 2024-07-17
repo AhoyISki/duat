@@ -1,6 +1,6 @@
 [package]
 name = "duat-core"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["AhoyISki"]
 description = "The core of Duat, a highly customizable text editor."
 repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"
