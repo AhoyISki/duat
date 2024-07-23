@@ -331,7 +331,7 @@ impl Layout {
                 self.rects.set_ver_constraint(child_id, cons, printer, WEAK);
             }
             if let Some(cons) = hor {
-                self.rects.set_ver_constraint(child_id, cons, printer, WEAK);
+                self.rects.set_hor_constraint(child_id, cons, printer, WEAK);
             }
 
             // If the child is grouped, the frame doesn't need to be redone.

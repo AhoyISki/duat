@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use cassowary::{
-    strength::{MEDIUM, REQUIRED, STRONG, WEAK},
+    strength::{REQUIRED, STRONG, WEAK},
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
 };
@@ -508,9 +508,9 @@ impl Rects {
                 assert!(den < div, "Constraint::Ratio must be smaller than 1.");
                 child.len(axis) | EQ(strength) | (parent_len * (den as f64 / div as f64))
             }
-            Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
-            Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
-            Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max,
+            Constraint::Length(len) => child.len(axis) | EQ(STRONG.max(strength)) | len,
+            Constraint::Min(min) => child.len(axis) | GE(strength) | min,
+            Constraint::Max(max) => child.len(axis) | LE(strength) | max,
         };
 
         let prev_cons = {

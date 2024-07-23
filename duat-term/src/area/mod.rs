@@ -300,7 +300,7 @@ impl ui::Area for Area {
         let mut printer = layout.printer.write();
         let prev_cons = layout
             .rects
-            .set_ver_constraint(self.id, cons, &mut printer, STRONG);
+            .set_ver_constraint(self.id, cons, &mut printer, STRONG * 2.0);
 
         if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
             drop(printer);
@@ -329,7 +329,7 @@ impl ui::Area for Area {
         let mut printer = layout.printer.write();
         let prev_cons = layout
             .rects
-            .set_hor_constraint(self.id, cons, &mut printer, STRONG);
+            .set_hor_constraint(self.id, cons, &mut printer, STRONG * 2.0);
 
         if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
             drop(printer);
