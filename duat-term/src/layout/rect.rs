@@ -10,7 +10,7 @@ use duat_core::ui::{
     Constraint,
 };
 
-use super::{Edge, Length, VarPoint};
+use super::{Constraints, Edge, VarPoint};
 use crate::{
     area::Coord,
     print::{Printer, Sender},
@@ -21,7 +21,7 @@ use crate::{
 enum Kind {
     End(Option<Sender>),
     Middle {
-        children: Vec<(Rect, Length)>,
+        children: Vec<(Rect, Constraints)>,
         axis: Axis,
         grouped: bool,
     },
@@ -46,6 +46,13 @@ impl Kind {
     fn axis(&self) -> Option<Axis> {
         match self {
             Kind::Middle { axis, .. } => Some(*axis),
+            Kind::End(_) => None,
+        }
+    }
+
+    fn children(&self) -> Option<&[(Rect, Constraints)]> {
+        match self {
+            Kind::Middle { children, .. } => Some(children),
             Kind::End(_) => None,
         }
     }
@@ -241,11 +248,11 @@ impl Rect {
     fn set_equalities(
         &mut self,
         parent: &Rect,
-        axis: Axis,
         fr: Frame,
         edges: &mut Vec<Edge>,
         max: &VarPoint,
     ) -> (f64, f64) {
+        let axis = parent.kind.axis().unwrap();
         self.edge_equalities.extend([
             self.tl.x.var | GE(REQUIRED) | 0.0,
             self.tl.y.var | GE(REQUIRED) | 0.0,
@@ -260,11 +267,13 @@ impl Rect {
             (0.0, 0.0, 0.0, 0.0)
         };
 
-        let (para_left, para_right, start, end) = match axis.perp() {
-            Vertical => (up, down, left, right),
-            Horizontal => (left, right, up, down),
+        // para_left and para_right are the two sides of the axis.
+        let (para_left, para_right, start, end) = match axis {
+            Horizontal => (up, down, left, right),
+            Vertical => (left, right, up, down),
         };
 
+        // Setting the equalities of the sides parallel to the axis.
         self.edge_equalities.extend([
             self.start(axis.perp()) | EQ(REQUIRED) | (parent.start(axis.perp()) + para_left),
             (self.end(axis.perp()) + para_right) | EQ(REQUIRED) | parent.end(axis.perp()),
@@ -382,8 +391,7 @@ impl Rects {
             .find_map(|rect| fetch(rect, id))
     }
 
-    /// Fetches the [`Rect`] which holds the [`Rect`]
-    /// of the given index.
+    /// Gets the parent of the `id`'s [`Rect`]
     ///
     /// Also returns the child's "position", given an [`Axis`],
     /// going top to bottom or left to right.
@@ -393,16 +401,31 @@ impl Rects {
             .find_map(|rect| fetch_parent(rect, id))
     }
 
-    pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Length)]> {
-        self.get_parent(id)
-            .and_then(|(_, parent)| match &parent.kind {
-                Kind::Middle { children, .. } => Some(children.as_slice()),
-                Kind::End(_) => None,
-            })
+    /// Gets the perpendicular ancestor of the `id`'s [`Rect`]
+    ///
+    /// E.g. if the parent has an [`Axis::Horizontal`], then it will
+    /// find the ancestor with an [`Axis::Vertical`].
+    /// It also returns the index of the node that eventually contains
+    /// the `id`'s [`Rect`]
+    pub fn get_perp_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
+        let (mut n, mut parent) = self.get_parent(id)?;
+        let axis = parent.kind.axis().unwrap();
+        let mut parent_axis = axis;
+
+        while parent_axis == axis {
+            (n, parent) = self.get_parent(parent.id)?;
+            parent_axis = parent.kind.axis().unwrap();
+        }
+
+        Some((n, parent))
     }
 
-    /// Fetches the [`RwData<Rect>`] of the given index, if there is
-    /// one.
+    /// Gets the siblings of the `id`'s [`Rect`]
+    pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
+        self.get_parent(id).and_then(|(_, p)| p.kind.children())
+    }
+
+    /// Gets a mut reference to the parent of the `id`'s [`Rect`]
     pub fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
         std::iter::once(&mut self.main)
             .chain(&mut self.floating)
@@ -415,14 +438,15 @@ impl Rects {
     /// Also returns the child's "position", going top to bottom or
     /// left to right.
     pub fn get_parent_mut(&mut self, id: AreaId) -> Option<(usize, &mut Rect)> {
-        let (pos, parent) = std::iter::once(&mut self.main)
-            .chain(&mut self.floating)
-            .find_map(|rect| fetch_parent(rect, id))?;
+        let (n, parent) = self.get_parent(id)?;
         let id = parent.id;
+        Some((n, self.get_mut(id).unwrap()))
+    }
 
-        let parent = self.get_mut(id)?;
-
-        Some((pos, parent))
+    pub fn get_perp_parent_mut(&mut self, id: AreaId) -> Option<(usize, &mut Rect)> {
+        let (n, parent) = self.get_perp_parent(id)?;
+        let id = parent.id;
+        Some((n, self.get_mut(id).unwrap()))
     }
 
     pub fn insert_child(&mut self, pos: usize, id: AreaId, child: Rect) {
@@ -430,72 +454,99 @@ impl Rects {
             unreachable!();
         };
 
-        children.insert(pos, (child, Length::default()));
+        children.insert(pos, (child, Constraints::default()));
     }
 
     /// Changes a child's constraint.
-    pub fn set_constraint(
+    pub fn set_ver_constraint(
         &mut self,
         id: AreaId,
-        constraint: Constraint,
-        axis: Axis,
+        cons: Constraint,
         printer: &mut Printer,
-    ) -> Option<(Constraint, Axis)> {
-        let (pos, parent) = self.get_parent_mut(id)?;
+        strength: f64,
+    ) -> Option<Constraint> {
+        self.set_constraint(id, cons, printer, Axis::Vertical, strength)
+    }
+
+    /// Changes a child's constraint.
+    pub fn set_hor_constraint(
+        &mut self,
+        id: AreaId,
+        cons: Constraint,
+        printer: &mut Printer,
+        strength: f64,
+    ) -> Option<Constraint> {
+        self.set_constraint(id, cons, printer, Axis::Horizontal, strength)
+    }
+
+    /// Changes a child's constraint.
+    fn set_constraint(
+        &mut self,
+        id: AreaId,
+        cons: Constraint,
+        printer: &mut Printer,
+        axis: Axis,
+        strength: f64,
+    ) -> Option<Constraint> {
+        let (n, parent) = {
+            let (n, parent) = self.get_parent_mut(id)?;
+            if parent.kind.axis().unwrap() == axis {
+                (n, parent)
+            } else {
+                self.get_perp_parent_mut(id)?
+            }
+        };
 
         let parent_len = parent.len(axis);
         let Kind::Middle { children, .. } = &mut parent.kind else {
             unreachable!();
         };
 
-        let (child, length) = &mut children[pos];
-        if let Some((equality, cmp)) = length.constraint.as_mut() {
-            if *cmp == (constraint, axis) {
-                return Some(*cmp);
-            }
-            printer.remove_equality(equality).unwrap();
-        }
-
-        let equality = match constraint {
+        let (child, conss) = &mut children[n];
+        let eq = match cons {
             Constraint::Ratio(den, div) => {
                 assert!(den < div, "Constraint::Ratio must be smaller than 1.");
-                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (den as f64 / div as f64))
-            }
-            Constraint::Percent(percent) => {
-                assert!(
-                    percent <= 100,
-                    "Constraint::Percent must be smaller than 100"
-                );
-                child.len(axis) | EQ(WEAK * 2.0) | (parent_len * (percent as f64 / 100.0))
+                child.len(axis) | EQ(strength) | (parent_len * (den as f64 / div as f64))
             }
             Constraint::Length(len) => child.len(axis) | EQ(STRONG) | len,
             Constraint::Min(min) => child.len(axis) | GE(MEDIUM) | min,
             Constraint::Max(max) => child.len(axis) | LE(MEDIUM) | max,
         };
 
-        printer.add_equality(equality.clone()).unwrap();
+        let prev_cons = {
+            let (prev_eq, prev_cons) = conss.on_mut(axis);
+            if let Some(eq) = prev_eq.replace(eq.clone()) {
+                printer.remove_equality(&eq).unwrap()
+            }
+            prev_cons.replace(cons)
+        };
 
-        length
-            .constraint
-            .replace((equality, (constraint, axis)))
-            .map(|(_, prev)| prev)
+        printer.add_equality(eq).unwrap();
+
+        prev_cons
     }
 
-    pub fn take_constraint(
+    pub fn take_constraints(
         &mut self,
         id: AreaId,
         vars: &mut Printer,
-    ) -> Option<(Constraint, Axis)> {
-        self.get_parent_mut(id).and_then(|(pos, parent)| {
-            let Kind::Middle { children, .. } = &mut parent.kind else {
-                unreachable!();
-            };
-            let length = std::mem::take(&mut children[pos].1);
-            length.constraint.map(|(equality, constraint)| {
-                vars.remove_equality(&equality).unwrap();
-                constraint
+    ) -> (Option<Constraint>, Option<Constraint>) {
+        self.get_parent_mut(id)
+            .map(|(pos, parent)| {
+                let Kind::Middle { children, .. } = &mut parent.kind else {
+                    unreachable!();
+                };
+                let conss = std::mem::take(&mut children[pos].1);
+                if let Some(equality) = conss.ver_eq {
+                    vars.remove_equality(&equality).unwrap();
+                }
+                if let Some(equality) = conss.hor_eq {
+                    vars.remove_equality(&equality).unwrap();
+                }
+
+                (conss.ver_cons, conss.hor_cons)
             })
-        })
+            .unwrap_or_default()
     }
 
     pub fn set_edges(
@@ -579,16 +630,12 @@ impl Rects {
         set_sender(&mut self.main, printer);
     }
 
-    pub fn get_constraint(&self, id: AreaId) -> Option<(Constraint, Axis)> {
+    pub fn get_constraint_on(&self, id: AreaId, axis: Axis) -> Option<Constraint> {
         self.get_parent(id).and_then(|(pos, parent)| {
             let Kind::Middle { children, .. } = &parent.kind else {
                 unreachable!();
             };
-            children[pos]
-                .1
-                .constraint
-                .clone()
-                .map(|(_, (constraint, axis))| (constraint, axis))
+            children[pos].1.on(axis)
         })
     }
 }
@@ -623,10 +670,10 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
 }
 
 /// Assigns all [`Equality`]s that are appropriate to a
-/// given child, with the exception of defined and ratio constraints.
+/// given child, with the exception of [`Extent`]'s ones
 fn prepare_child(
     parent: &mut Rect,
-    pos: usize,
+    n: usize,
     printer: &mut Printer,
     fr: Frame,
     edges: &mut Vec<Edge>,
@@ -639,25 +686,25 @@ fn prepare_child(
         unreachable!();
     };
 
-    let target = &mut children[pos].0;
+    let target = &mut children[n].0;
 
     target.clear_equalities(printer);
-    let (start, end) = target.set_equalities(parent, axis, fr, edges, printer.max());
+    let (start, end) = target.set_equalities(parent, fr, edges, printer.max());
 
-    if pos == 0 {
+    if n == 0 {
         let constraint = target.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
         target.edge_equalities.push(constraint);
     }
 
     // Previous children carry the `Constraint`s for the `start` of their
     // successors.
-    let constraint = if let Some((next, _)) = children.get(pos + 1) {
-        (children[pos].0.end(axis) + end) | EQ(REQUIRED) | next.start(axis)
+    let constraint = if let Some((next, _)) = children.get(n + 1) {
+        (children[n].0.end(axis) + end) | EQ(REQUIRED) | next.start(axis)
     } else {
-        (children[pos].0.end(axis) + end) | EQ(REQUIRED) | parent.end(axis)
+        (children[n].0.end(axis) + end) | EQ(REQUIRED) | parent.end(axis)
     };
 
-    let target = &mut children[pos].0;
+    let target = &mut children[n].0;
     target.edge_equalities.push(constraint);
 
     printer.add_equalities(&target.edge_equalities).unwrap();
@@ -690,14 +737,16 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
     let new_len_value = new.len_value(axis);
 
     let prev = children.iter().take(pos);
-    let resizable_pos = prev.filter(|(_, length)| length.is_resizable()).count();
+    let resizable_pos = prev
+        .filter(|(_, conss)| conss.is_resizable_on(axis))
+        .count();
 
     let mut iter = children
         .iter_mut()
-        .filter(|(_, length)| length.is_resizable());
+        .filter(|(_, conss)| conss.is_resizable_on(axis));
 
     if resizable_pos > 0 {
-        let (prev, length) = iter.nth(resizable_pos - 1).unwrap();
+        let (prev, conss) = iter.nth(resizable_pos - 1).unwrap();
 
         let ratio = if new_len_value == 0 {
             1.0
@@ -705,12 +754,12 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
             prev.len_value(axis) as f64 / new_len_value as f64
         };
 
-        let equality = prev.len(axis) | EQ(WEAK) | (ratio * new_len.clone());
-        length.ratio = Some((equality.clone(), ratio));
-        printer.add_equality(equality).unwrap();
+        let eq = prev.len(axis) | EQ(WEAK) | (ratio * new_len.clone());
+        *conss.on_mut(axis).0 = Some(eq.clone());
+        printer.add_equality(eq).unwrap();
     }
 
-    let ratio = iter.nth(1).map(|(next, _)| {
+    if let Some((next, _)) = iter.nth(1) {
         let ratio = if next.len_value(axis) == 0 {
             1.0
         } else {
@@ -719,9 +768,5 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
 
         let equality = new_len | EQ(WEAK) | (ratio * next.len(axis));
         printer.add_equality(equality.clone()).unwrap();
-
-        (equality, ratio)
-    });
-
-    children[pos].1.ratio = ratio;
+    }
 }

@@ -17,6 +17,7 @@ use crate::{
     palette::Painter,
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
+    DuatError,
 };
 
 /// A direction, where a [`Widget<U>`] will be placed in relation to
@@ -32,13 +33,12 @@ enum Side {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constraint {
     Ratio(u16, u16),
-    Percent(u16),
     Length(f64),
     Min(f64),
     Max(f64),
 }
 
-/// Information on how a [`Widget<U>`] should be pushed onto another.
+/// Information on how a [`Widget<U>`] should be pushed onto another
 ///
 /// The side member determines what direction to push into, in
 /// relation to the original widget.
@@ -69,43 +69,48 @@ pub enum Constraint {
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
-    constraint: Option<Constraint>,
+    ver_cons: Option<Constraint>,
+    hor_cons: Option<Constraint>,
 }
 
 impl PushSpecs {
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn left() -> Self {
         Self {
             side: Side::Left,
-            constraint: None,
+            ver_cons: None,
+            hor_cons: None,
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn right() -> Self {
         Self {
             side: Side::Right,
-            constraint: None,
+            ver_cons: None,
+            hor_cons: None,
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn above() -> Self {
         Self {
             side: Side::Above,
-            constraint: None,
+            ver_cons: None,
+            hor_cons: None,
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn below() -> Self {
         Self {
             side: Side::Below,
-            constraint: None,
+            ver_cons: None,
+            hor_cons: None,
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn to_left(self) -> Self {
         Self {
             side: Side::Left,
@@ -113,7 +118,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn to_right(self) -> Self {
         Self {
             side: Side::Right,
@@ -121,7 +126,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn to_above(self) -> Self {
         Self {
             side: Side::Above,
@@ -129,7 +134,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`].
+    /// Returns a new instance of [`PushSpecs`]
     pub fn to_below(self) -> Self {
         Self {
             side: Side::Below,
@@ -137,37 +142,58 @@ impl PushSpecs {
         }
     }
 
-    pub fn with_lenght(self, len: f64) -> Self {
+    pub fn with_ver_length(self, len: f64) -> Self {
         Self {
-            constraint: Some(Constraint::Length(len)),
+            ver_cons: Some(Constraint::Length(len)),
             ..self
         }
     }
 
-    pub fn with_minimum(self, min: f64) -> Self {
+    pub fn with_ver_minimum(self, min: f64) -> Self {
         Self {
-            constraint: Some(Constraint::Min(min)),
+            ver_cons: Some(Constraint::Min(min)),
             ..self
         }
     }
 
-    pub fn with_maximum(self, max: f64) -> Self {
+    pub fn with_ver_maximum(self, max: f64) -> Self {
         Self {
-            constraint: Some(Constraint::Max(max)),
+            ver_cons: Some(Constraint::Max(max)),
             ..self
         }
     }
 
-    pub fn with_percent(self, percent: u16) -> Self {
+    pub fn with_ver_ratio(self, den: u16, div: u16) -> Self {
         Self {
-            constraint: Some(Constraint::Percent(percent)),
+            ver_cons: Some(Constraint::Ratio(den, div)),
             ..self
         }
     }
 
-    pub fn with_ratio(self, den: u16, div: u16) -> Self {
+    pub fn with_hor_length(self, len: f64) -> Self {
         Self {
-            constraint: Some(Constraint::Ratio(den, div)),
+            hor_cons: Some(Constraint::Length(len)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_minimum(self, min: f64) -> Self {
+        Self {
+            hor_cons: Some(Constraint::Min(min)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_maximum(self, max: f64) -> Self {
+        Self {
+            hor_cons: Some(Constraint::Max(max)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_ratio(self, den: u16, div: u16) -> Self {
+        Self {
+            hor_cons: Some(Constraint::Ratio(den, div)),
             ..self
         }
     }
@@ -183,8 +209,12 @@ impl PushSpecs {
         matches!(self.side, Side::Left | Side::Above)
     }
 
-    pub fn constraint(&self) -> Option<Constraint> {
-        self.constraint
+    pub fn ver_constraint(&self) -> Option<Constraint> {
+        self.ver_cons
+    }
+
+    pub fn hor_constraint(&self) -> Option<Constraint> {
+        self.hor_cons
     }
 }
 
@@ -202,17 +232,17 @@ impl Caret {
     }
 }
 
-/// An [`Area`] that supports printing [`Text`].
+/// An [`Area`] that supports printing [`Text`]
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
 pub trait Area: Send + Sync + Sized {
-    type ConstraintChangeErr: std::error::Error;
+    type ConstraintChangeErr: std::error::Error + DuatError;
 
-    /// Gets the width of the area.
+    /// Gets the width of the area
     fn width(&self) -> usize;
 
-    /// Gets the height of the area.
+    /// Gets the height of the area
     fn height(&self) -> usize;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
@@ -229,12 +259,12 @@ pub trait Area: Send + Sync + Sized {
     /// any other active [`Area`].
     fn set_as_active(&self);
 
-    /// Returns `true` if this is the currently active [`Area`].
+    /// Returns `true` if this is the currently active [`Area`]
     ///
     /// Only one [`Area`] should be active at any given moment.
     fn is_active(&self) -> bool;
 
-    /// Prints the [`Text`][crate::text::Text] via an [`Iterator`].
+    /// Prints the [`Text`][crate::text::Text] via an [`Iterator`]
     fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter);
 
     fn print_with<'a>(
@@ -245,18 +275,21 @@ pub trait Area: Send + Sync + Sized {
         f: impl FnMut(&Caret, &Item) + 'a,
     );
 
-    fn change_constraint(
-        &self,
-        constraint: Constraint,
-        axis: Axis,
-    ) -> Result<(), Self::ConstraintChangeErr>;
+    /// Changes the horizontal constraint of the area
+    fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Changes the vertical constraint of the area
+    fn constrain_ver(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Restores the original constraints of the widget
+    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr>;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
     //////////////////// Queries
-    /// Wether or not [`self`] has changed.
+    /// Wether or not [`self`] has changed
     ///
     /// This would mean anything relevant that wouldn't be determined
     /// by [`PrintInfo`], this is most likely going to be the bounding
@@ -269,7 +302,7 @@ pub trait Area: Send + Sync + Sized {
     /// would eventually reach `other`.
     fn is_senior_of(&self, other: &Self) -> bool;
 
-    /// Returns a printing iterator.
+    /// Returns a printing iterator
     ///
     /// Given an [`Iterator`] with an [`Item`] of type `(usize,
     /// usize, Part)`, where:
@@ -289,7 +322,6 @@ pub trait Area: Send + Sync + Sized {
     ///     [`Some(usize)`], where the number is the current line,
     ///     only if the `char` wraps around. For example, any `char`
     ///     following a `'\n'` should return `Some(current_line)`,
-    ///     since they show up in the next line;
     ///
     /// * On the second tuple:
     ///   - The `usize` is the byte index from the file's start;
@@ -314,7 +346,7 @@ pub trait Area: Send + Sync + Sized {
     where
         Self: Sized;
 
-    /// Returns a reverse printing iterator.
+    /// Returns a reverse printing iterator
     ///
     /// Given an [`Iterator`] with an [`Item`] of type `(usize,
     /// usize, Part)`, where:
@@ -389,7 +421,7 @@ pub trait Area: Send + Sync + Sized {
     fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>);
 }
 
-/// Elements related to the [`Widget<U>`]s.
+/// Elements related to the [`Widget<U>`]s
 pub struct Node<U>
 where
     U: Ui,
@@ -424,7 +456,7 @@ where
     }
 }
 
-/// A dimension on screen, can either be horizontal or vertical.
+/// A dimension on screen, can either be horizontal or vertical
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
     Horizontal,
@@ -486,7 +518,7 @@ impl Sender {
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Sized + 'static {
-    /// This is the underlying type that will be handled dynamically.
+    /// This is the underlying type that will be handled dynamically
     type StaticFns: Default + Clone + Copy + Send + Sync;
     // May be removed later.
     type ConstraintChangeErr: Debug;
@@ -494,7 +526,7 @@ pub trait Ui: Sized + 'static {
 
     fn new(statics: Self::StaticFns) -> Self;
 
-    /// Initiates and returns a new "master" [`Area`].
+    /// Initiates and returns a new "master" [`Area`]
     ///
     /// This [`Area`] must not have any parents, and must be placed on
     /// a new window, that is, a plain region with nothing in it.
@@ -502,28 +534,28 @@ pub trait Ui: Sized + 'static {
     /// [`Area`]: Ui::Area
     fn new_root(&mut self) -> Self::Area;
 
-    /// Functions to trigger when the program begins.
+    /// Functions to trigger when the program begins
     fn open(&mut self);
 
-    /// Starts the Ui.
+    /// Starts the Ui
     ///
     /// This is different from [`Ui::open`], as this is going to run
     /// on reloads as well.
     fn start(&mut self, sender: Sender, globals: Context<Self>);
 
-    /// Ends the Ui.
+    /// Ends the Ui
     ///
     /// This is different from [`Ui::close`], as this is going to run
     /// on reloads as well.
     fn end(&mut self);
 
-    /// Functions to trigger when the program ends.
+    /// Functions to trigger when the program ends
     fn close(&mut self);
 
     fn finish_printing(&self);
 }
 
-/// A container for a master [`Area`] in Parsec.
+/// A container for a master [`Area`] in Parsec
 pub struct Window<U>
 where
     U: Ui,
@@ -537,7 +569,7 @@ impl<U> Window<U>
 where
     U: Ui + 'static,
 {
-    /// Returns a new instance of [`Window<U>`].
+    /// Returns a new instance of [`Window<U>`]
     pub fn new(
         ui: &mut U,
         widget: Widget<U>,
@@ -562,7 +594,7 @@ where
         (window, area)
     }
 
-    /// Pushes a [`Widget<U>`] onto an existing one.
+    /// Pushes a [`Widget<U>`] onto an existing one
     pub fn push(
         &mut self,
         widget: Widget<U>,
@@ -590,9 +622,9 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`File`] to the file's parent.
+    /// Pushes a [`File`] to the file's parent
     ///
-    /// This function will push to the edge of `self.files_parent`.
+    /// This function will push to the edge of `self.files_parent`
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget<U>`]s,
     /// with others being at the perifery of this area.
@@ -627,7 +659,7 @@ where
         self.push(widget, &master_area, checker, specs, false)
     }
 
-    /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`].
+    /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`]
     pub fn widgets(&self) -> impl DoubleEndedIterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
         self.nodes
             .iter()

@@ -149,18 +149,32 @@ impl std::fmt::Debug for VarPoint {
 ///
 /// [`Constraint`]: Equality
 #[derive(Default, Debug, Clone)]
-pub struct Length {
-    constraint: Option<(Equality, (Constraint, Axis))>,
-    ratio: Option<(Equality, f64)>,
+pub struct Constraints {
+    ver_eq: Option<Equality>,
+    hor_eq: Option<Equality>,
+    ver_cons: Option<Constraint>,
+    hor_cons: Option<Constraint>,
 }
 
-impl Length {
+impl Constraints {
     /// Wether or not [`self`] has flexibility in terms of its lenght.
-    fn is_resizable(&self) -> bool {
-        matches!(
-            self.constraint,
-            Some((_, (Constraint::Min(_) | Constraint::Max(_), _))) | None
-        )
+    fn is_resizable_on(&self, axis: Axis) -> bool {
+        let con = self.on(axis);
+        matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
+    }
+
+    fn on(&self, axis: Axis) -> Option<Constraint> {
+        match axis {
+            Axis::Vertical => self.ver_cons,
+            Axis::Horizontal => self.hor_cons,
+        }
+    }
+
+    fn on_mut(&mut self, axis: Axis) -> (&mut Option<Equality>, &mut Option<Constraint>) {
+        match axis {
+            Axis::Vertical => (&mut self.ver_eq, &mut self.ver_cons),
+            Axis::Horizontal => (&mut self.hor_eq, &mut self.hor_cons),
+        }
     }
 }
 
@@ -309,13 +323,15 @@ impl Layout {
                 false => 1,
             };
 
-            let constraint = self.rects.take_constraint(new_parent_id, printer);
+            let (ver, hor) = self.rects.take_constraints(new_parent_id, printer);
 
             self.rects.insert_child(0, new_parent_id, child);
 
-            if let Some((constraint, axis)) = constraint {
-                self.rects
-                    .set_constraint(child_id, constraint, axis, printer);
+            if let Some(cons) = ver {
+                self.rects.set_ver_constraint(child_id, cons, printer, WEAK);
+            }
+            if let Some(cons) = hor {
+                self.rects.set_ver_constraint(child_id, cons, printer, WEAK);
             }
 
             // If the child is grouped, the frame doesn't need to be redone.
@@ -337,8 +353,12 @@ impl Layout {
 
             self.rects.insert_child(pos, parent_id, new);
 
-            if let Some(constraint) = specs.constraint() {
-                self.rects.set_constraint(new_id, constraint, axis, printer);
+            if let Some(cons) = specs.ver_constraint() {
+                self.rects.set_ver_constraint(new_id, cons, printer, WEAK);
+            }
+
+            if let Some(cons) = specs.hor_constraint() {
+                self.rects.set_hor_constraint(new_id, cons, printer, WEAK);
             }
 
             // We initially set the frame to `Frame::Empty`, since that will make
@@ -354,14 +374,14 @@ impl Layout {
             // `resizable_len / resizable_children`, a self imposed rule.
             // This will be useful later, when adding new ratio constraints to the
             // new child.
-            let constraint = specs.constraint();
+            let constraint = specs.ver_constraint();
             if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
                 let children = self.rects.get_siblings(new_id).unwrap();
                 let axis = specs.axis();
 
                 let (res_count, res_len) = children
                     .iter()
-                    .filter(|(_, length)| length.is_resizable())
+                    .filter(|(_, length)| length.is_resizable_on(axis))
                     .fold((0, 0), |(count, len), (child, _)| {
                         (count + 1, len + child.len_value(axis))
                     });
@@ -382,7 +402,7 @@ impl Layout {
         printer.update(false);
 
         let parent = self.rects.get_mut(parent_id).unwrap();
-        if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.constraint() {
+        if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.ver_constraint() {
             set_ratios(parent, pos, printer);
         }
 

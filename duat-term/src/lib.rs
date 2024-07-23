@@ -1,5 +1,4 @@
-#![allow(incomplete_features)]
-#![feature(iter_collect_into, let_chains, generic_const_exprs)]
+#![feature(iter_collect_into, let_chains, control_flow_enum)]
 
 use std::{
     fmt::Debug,
@@ -18,7 +17,8 @@ use crossterm::{
 };
 use duat_core::{
     data::{Context, RwData},
-    ui,
+    text::err,
+    ui, DuatError,
 };
 use layout::Layout;
 pub use layout::{Brush, Frame};
@@ -176,6 +176,19 @@ impl std::fmt::Debug for ConstraintChangeErr {
             }
             ConstraintChangeErr::Impossible => {
                 write!(f, "The constraint change is impossible.")
+            }
+        }
+    }
+}
+
+impl DuatError for ConstraintChangeErr {
+    fn into_text(self) -> duat_core::text::Text {
+        match self {
+            ConstraintChangeErr::NoParent => {
+                err!("Since it is the master node, its constraints " [*a] "cannot" [] "change")
+            }
+            ConstraintChangeErr::Impossible => {
+                err!("The requested constraint change is impossible")
             }
         }
     }

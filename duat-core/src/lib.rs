@@ -38,6 +38,10 @@ pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync
 pub static HOOK: Once = Once::new();
 pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
+pub trait DuatError {
+    fn into_text(self) -> Text;
+}
+
 /// Error for failures in Duat
 pub enum Error<E> {
     /// # Command related errors:
@@ -52,6 +56,7 @@ pub enum Error<E> {
     CommandFailed(Text),
     /// There was no caller and no arguments
     Empty,
+
     /// # Context related errors:
 
     /// The [`Ui`] still hasn't created the first file
@@ -66,9 +71,9 @@ pub enum Error<E> {
     InputIsNot(PhantomData<E>),
 }
 
-impl<E> Error<E> {
+impl<E> DuatError for Error<E> {
     /// Turns the [`Error`] into formatted [`Text`]
-    pub fn as_text(self) -> Text {
+    fn into_text(self) -> Text {
         let early = hint!(
             "Try this after " [*a] "OnUiStart" []
             ", maybe by using hooks::add::<OnUiStart>"

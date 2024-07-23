@@ -103,13 +103,13 @@ impl VertRuleCfg {
     pub fn new() -> Self {
         Self {
             sep_char: SepChar::Uniform('│'),
-            specs: PushSpecs::left().with_lenght(1.0),
+            specs: PushSpecs::left().with_hor_length(1.0),
         }
     }
 
     pub fn on_the_right(self) -> Self {
         Self {
-            specs: PushSpecs::right().with_lenght(1.0),
+            specs:  PushSpecs::right().with_ver_length(1.0),
             ..self
         }
     }

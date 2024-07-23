@@ -109,7 +109,7 @@ impl PassiveWidget<Ui> for LineNumbers {
 
     fn update(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
         let width = self.calculate_width();
-        area.constrain_ver(Constraint::Length(width + 1.0)).unwrap();
+        area.constrain_hor(Constraint::Length(width + 1.0)).unwrap();
 
         self.update_text();
     }

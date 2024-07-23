@@ -8,13 +8,7 @@ use std::{
 };
 
 use crate::{
-    data::{Context, RwData},
-    hooks::{self, OnWindowOpen},
-    input::InputMethod,
-    text::{err, ok, text, PrintCfg, Text},
-    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
-    widgets::{ActiveWidget, File, FileCfg, Widget},
-    Error,
+    data::{Context, RwData}, hooks::{self, OnWindowOpen}, input::InputMethod, text::{err, ok, text, PrintCfg, Text}, ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder}, widgets::{ActiveWidget, File, FileCfg, Widget}, DuatError, Error
 };
 
 #[doc(hidden)]
@@ -371,7 +365,7 @@ where
     context
         .commands
         .add(["write", "w"], move |_flags, mut args| {
-            let file = context.cur_file().map_err(Error::as_text)?;
+            let file = context.cur_file().map_err(Error::into_text)?;
 
             let paths = {
                 let mut paths = Vec::new();
@@ -518,7 +512,7 @@ where
             let current_window = session.current_window.clone();
 
             move |_, mut args| {
-                let file = context.cur_file().map_err(Error::as_text)?;
+                let file = context.cur_file().map_err(Error::into_text)?;
                 let type_name = args.next_else(text!("No widget supplied."))?;
 
                 let read_windows = windows.read();
@@ -561,7 +555,7 @@ where
             let current_window = session.current_window.clone();
 
             move |flags, _| {
-                let file = context.cur_file().map_err(Error::as_text)?;
+                let file = context.cur_file().map_err(Error::into_text)?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
@@ -603,7 +597,7 @@ where
             let current_window = session.current_window.clone();
 
             move |flags, _| {
-                let file = context.cur_file().map_err(Error::as_text)?;
+                let file = context.cur_file().map_err(Error::into_text)?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
@@ -647,7 +641,7 @@ where
             let current_window = session.current_window.clone();
 
             move |_, _| {
-                let file = context.cur_file().map_err(Error::as_text)?;
+                let file = context.cur_file().map_err(Error::into_text)?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 

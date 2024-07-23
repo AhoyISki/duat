@@ -29,7 +29,7 @@ use crate::{
     text::{text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
-    Error,
+    DuatError, Error,
 };
 
 mod parameters;
@@ -82,7 +82,10 @@ where
                             let alias = args.next()?.to_string();
                             let args: String = args.collect();
 
-                            inner.write().try_alias(alias, args).map_err(Error::as_text)
+                            inner
+                                .write()
+                                .try_alias(alias, args)
+                                .map_err(Error::into_text)
                         }
                     })
                 };

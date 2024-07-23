@@ -3,6 +3,7 @@ mod line;
 
 use std::{cell::RefCell, fmt::Alignment, io::Write, sync::atomic::Ordering};
 
+use cassowary::strength::STRONG;
 use crossterm::{
     cursor,
     style::{Print, ResetColor, SetStyle},
@@ -282,17 +283,14 @@ impl ui::Area for Area {
         self.print(text, cfg, painter, f)
     }
 
-    fn change_constraint(
-        &self,
-        constraint: Constraint,
-        axis: Axis,
-    ) -> Result<(), ConstraintChangeErr> {
+    fn constrain_ver(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
+        let axis = Axis::Vertical;
         if self
             .layout
             .read()
             .rects
-            .get_constraint(self.id)
-            .is_some_and(|cmp| cmp == (constraint, axis))
+            .get_constraint_on(self.id, axis)
+            .is_some_and(|cmp| cmp == cons)
         {
             return Ok(());
         };
@@ -302,9 +300,9 @@ impl ui::Area for Area {
         let mut printer = layout.printer.write();
         let prev_cons = layout
             .rects
-            .set_constraint(self.id, constraint, axis, &mut printer);
+            .set_ver_constraint(self.id, cons, &mut printer, STRONG);
 
-        if prev_cons.map_or(true, |cmp| cmp != (constraint, axis)) && printer.update(false) {
+        if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
             drop(printer);
             layout.resize();
 
@@ -312,6 +310,39 @@ impl ui::Area for Area {
         }
 
         Ok(())
+    }
+
+    fn constrain_hor(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
+        let axis = Axis::Horizontal;
+        if self
+            .layout
+            .read()
+            .rects
+            .get_constraint_on(self.id, axis)
+            .is_some_and(|cmp| cmp == (cons))
+        {
+            return Ok(());
+        };
+
+        let mut layout = self.layout.write();
+        let layout = &mut *layout;
+        let mut printer = layout.printer.write();
+        let prev_cons = layout
+            .rects
+            .set_hor_constraint(self.id, cons, &mut printer, STRONG);
+
+        if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
+            drop(printer);
+            layout.resize();
+
+            print_edges(layout.edges());
+        }
+
+        Ok(())
+    }
+
+    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {
+        todo!();
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
