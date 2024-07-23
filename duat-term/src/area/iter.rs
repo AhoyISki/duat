@@ -216,7 +216,9 @@ pub fn print_iter<'a>(
 
     iter.skip_to(info.points);
 
-    inner_iter(iter, width, (indent, false), cfg)
+	// If indent == 0, the line has no space or
+	// info.points == iter.points()
+    inner_iter(iter, width, (indent, indent == 0), cfg)
 }
 
 fn inner_iter<'a>(
