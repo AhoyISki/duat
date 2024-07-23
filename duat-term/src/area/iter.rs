@@ -214,11 +214,11 @@ pub fn print_iter<'a>(
             _ => Continue(indent),
         });
 
-    iter.skip_to(info.points);
-
-	// If indent == 0, the line has no space or
-	// info.points == iter.points()
-    inner_iter(iter, width, (indent, indent == 0), cfg)
+    let iter_at_line_start = info.points == iter.points();
+    if !iter_at_line_start {
+        iter.skip_to(info.points);
+    }
+    inner_iter(iter, width, (indent, iter_at_line_start), cfg)
 }
 
 fn inner_iter<'a>(
