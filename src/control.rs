@@ -1,3 +1,14 @@
+//! Controls for Duat
+//!
+//! This module contains the expected commands of a
+//! text editor that don't involve particular widgets
+//! or other more specific concepts
+//!
+//! All of the functions listed in here also have a [command]
+//! equivalent, that you can call from the [`CommandLine`].
+//!
+//! [command]: duat_core::commands
+//! [`CommandLine`]: crate::prelude::CommandLine
 use std::fmt::Display;
 
 use duat_core::{text::Text, widgets::ActiveWidget};

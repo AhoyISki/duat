@@ -42,7 +42,7 @@ pub fn layout_hooks() {
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
         let (child, _) = builder.push::<StatusLine>();
-        builder.push_cfg_to(CommandLine::cfg().left_with_percent(40), child);
+        builder.push_cfg_to(CommandLine::cfg().left_ratioed(2, 5), child);
     });
 }
 

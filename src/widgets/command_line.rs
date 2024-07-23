@@ -40,7 +40,7 @@ impl CommandLineCfg<Commander> {
         CommandLineCfg {
             input: Commander::new(),
             prompt: String::from(":"),
-            specs: PushSpecs::below().with_lenght(1.0),
+            specs: PushSpecs::below().with_ver_length(1.0),
         }
     }
 }
@@ -64,14 +64,14 @@ where
 
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().with_lenght(1.0),
+            specs: PushSpecs::above().with_ver_length(1.0),
             ..self
         }
     }
 
-    pub fn left_with_percent(self, percent: u16) -> Self {
+    pub fn left_ratioed(self, den: u16, div: u16) -> Self {
         Self {
-            specs: PushSpecs::left().with_percent(percent),
+            specs: PushSpecs::left().with_hor_ratio(den, div),
             ..self
         }
     }

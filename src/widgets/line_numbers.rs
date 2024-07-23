@@ -26,7 +26,7 @@ use duat_core::{
     data::{Context, FileReader},
     palette::{self, Form},
     text::{text, Builder, Tag, Text},
-    ui::{Area, Axis, Constraint, PushSpecs},
+    ui::{Area, Constraint, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
 };
 
@@ -109,8 +109,7 @@ impl PassiveWidget<Ui> for LineNumbers {
 
     fn update(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
         let width = self.calculate_width();
-        area.change_constraint(Constraint::Length(width + 1.0), Axis::Horizontal)
-            .unwrap();
+        area.constrain_ver(Constraint::Length(width + 1.0)).unwrap();
 
         self.update_text();
     }

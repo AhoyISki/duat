@@ -106,7 +106,7 @@
 //! # use crate::prelude;
 //! let callers = ["collapse-command-line", "ccl"];
 //! commands::add_for_widget::<CommandLine>(callers, |command_line, area| {
-//!     area.change_constraintk
+//!     area.change_constraint(
 //! })
 //! ```
 //!
@@ -153,7 +153,7 @@ pub mod cursor {
     };
 }
 
-/// Hook utilities
+/// Hook utilites
 pub mod hooks {
     pub use duat_core::hooks::{add, add_grouped, remove_group};
 }
@@ -167,6 +167,7 @@ pub mod prelude {
         position,
         text::{err, hint, ok, text, Builder, Text},
         ui::Area,
+        DuatError, Error,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
