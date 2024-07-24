@@ -235,7 +235,7 @@ impl Printer {
             queue!(stdout, MoveToNextLine(1));
         }
 
-        let was_real = if let Some(was_real) = list
+        let cursor_was_real = if let Some(was_real) = list
             .iter()
             .filter_map(|lines| lines.real_cursor)
             .reduce(|prev, was_real| prev || was_real)
@@ -246,7 +246,7 @@ impl Printer {
             CURSOR_IS_REAL.load(Ordering::Relaxed)
         };
 
-        if was_real {
+        if cursor_was_real {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 

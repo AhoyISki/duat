@@ -8,7 +8,13 @@ use std::{
 };
 
 use crate::{
-    data::{Context, RwData}, hooks::{self, OnWindowOpen}, input::InputMethod, text::{err, ok, text, PrintCfg, Text}, ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder}, widgets::{ActiveWidget, File, FileCfg, Widget}, DuatError, Error
+    data::{Context, RwData},
+    hooks::{self, OnWindowOpen},
+    input::InputMethod,
+    text::{err, ok, text, PrintCfg, Text},
+    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
+    widgets::{ActiveWidget, File, FileCfg, Widget},
+    DuatError, Error,
 };
 
 #[doc(hidden)]
@@ -312,7 +318,7 @@ where
         let (widget, checker) = file_cfg.build();
 
         let (area, _) =
-            windows[current_window].push_file(widget.clone(), checker, PushSpecs::right());
+            windows[current_window].push_file(widget.clone(), checker, PushSpecs::below());
 
         if is_active {
             self.set_active_file(widget, &area);

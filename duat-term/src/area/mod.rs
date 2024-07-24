@@ -15,6 +15,7 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
+    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -226,7 +227,11 @@ impl Area {
         let iter = print_iter(iter, sender.coords().width(), cfg, *info);
         let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines, f);
 
-        for _ in (0..y).rev() {
+        static DEFAULT_FORM: LazyLock<FormId> = LazyLock::new(|| palette::id_of_form("Default"));
+        let default_form = palette::form_of_id(*DEFAULT_FORM);
+
+        for _ in 0..y {
+            queue!(lines, ResetColor, SetStyle(default_form.style));
             lines
                 .write_all(&BLANK.as_bytes()[..sender.coords().width()])
                 .unwrap();
@@ -447,7 +452,7 @@ fn print_parts<'a>(
     mut f: impl FnMut(&Caret, &Item) + 'a,
 ) -> usize {
     let mut old_x = coords.tl.x;
-    // The y here represents the bottom line of the current row of cells.
+    // The y here represents the bottom of the current row of cells.
     let mut y = coords.tl.y;
     let mut prev_style = None;
     let mut alignment = Alignment::Left;
@@ -467,8 +472,10 @@ fn print_parts<'a>(
             if y == coords.br.y {
                 break;
             }
-            indent_line(&painter, x, info.x_shift, &mut line);
-            y += 1;
+            indent_line(x, info.x_shift, &mut line, &painter);
+            if part.is_char() {
+                y += 1;
+            }
         }
 
         old_x = coords.tl.x + x + len;
@@ -568,8 +575,8 @@ fn print_line(
 }
 
 #[inline(always)]
-fn indent_line(form_former: &Painter, x: usize, x_shift: usize, line: &mut Vec<u8>) {
-    let prev_style = form_former.make_form().style;
+fn indent_line(x: usize, x_shift: usize, line: &mut Vec<u8>, painter: &Painter) {
+    let prev_style = painter.make_form().style;
     let indent_count = x.saturating_sub(x_shift);
     let mut indent = Vec::<u8>::from(&BLANK[..indent_count]);
     queue!(indent, SetStyle(prev_style));
@@ -608,10 +615,8 @@ fn write_char(
 }
 
 fn print_edges(edges: &[Edge]) {
-    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| {
-        palette::set_weak_ref("Frame", "Default");
-        palette::id_of_form("Frame")
-    });
+    static FRAME_FORM: LazyLock<FormId> =
+        LazyLock::new(|| palette::set_weak_ref("Frame", "Default"));
     let frame_form = palette::form_of_id(*FRAME_FORM);
 
     let mut stdout = std::io::stdout().lock();
