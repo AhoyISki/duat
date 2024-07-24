@@ -369,7 +369,7 @@ impl FormPalette {
     fn painter(&'static self) -> Painter {
         Painter {
             palette: self.0.read(),
-            forms: Vec::new(),
+            forms: vec![(self.form_of_id(DEFAULT), DEFAULT)],
             cur_form: self.form_of_id(DEFAULT),
         }
     }
@@ -425,7 +425,7 @@ impl Painter {
 
     #[inline(always)]
     pub fn reset(&mut self) -> Option<Form> {
-        self.forms.clear();
+        self.forms.splice(1.., []);
         let form = self.make_form();
         if form == self.cur_form {
             None
@@ -501,6 +501,10 @@ impl Painter {
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         (self.get_form(EXTRA_CURSOR), self.palette.extra_cursor)
+    }
+
+    pub fn get_default(&self) -> Form {
+        self.forms[0].0
     }
 
     /// Gets the [`Form`] from a [`FormId`].

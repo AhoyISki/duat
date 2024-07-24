@@ -16,9 +16,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    data::{Context, RwData},
-    text::err,
-    ui, DuatError,
+    data::{Context, RwData}, palette::FormId, text::err, ui, DuatError
 };
 use layout::Layout;
 pub use layout::{Brush, Frame};

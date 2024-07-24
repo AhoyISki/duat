@@ -1,7 +1,12 @@
 mod iter;
 mod line;
 
-use std::{cell::RefCell, fmt::Alignment, io::Write, sync::atomic::Ordering};
+use std::{
+    cell::RefCell,
+    fmt::Alignment,
+    io::Write,
+    sync::{atomic::Ordering, LazyLock, OnceLock},
+};
 
 use cassowary::strength::STRONG;
 use crossterm::{
@@ -10,7 +15,7 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    palette::Painter,
+    palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
@@ -457,7 +462,7 @@ fn print_parts<'a>(
         if wrap {
             if y > coords.tl.y {
                 let shifted_x = old_x.saturating_sub(info.x_shift);
-                print_line(shifted_x, coords, alignment, &mut line, lines);
+                print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
             }
             if y == coords.br.y {
                 break;
@@ -522,7 +527,7 @@ fn print_parts<'a>(
     if !line.is_empty() {
         line.write_all(b" ").unwrap();
         let shifted_x = (old_x + 1).saturating_sub(info.x_shift);
-        print_line(shifted_x, coords, alignment, &mut line, lines);
+        print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
     }
 
     coords.br.y - y
@@ -535,6 +540,7 @@ fn print_line(
     alignment: Alignment,
     line: &mut Vec<u8>,
     lines: &mut Lines,
+    painter: &Painter,
 ) {
     let remainder = coords.br.x.saturating_sub(x.max(coords.tl.x));
 
@@ -547,12 +553,12 @@ fn print_line(
         }
     };
 
-    queue!(lines, ResetColor);
+    queue!(lines, ResetColor, SetStyle(painter.get_default().style));
 
     lines.write_all(BLANK[..left].as_bytes()).unwrap();
     lines.write_all(line).unwrap();
 
-    queue!(lines, ResetColor);
+    queue!(lines, ResetColor, SetStyle(painter.get_default().style));
 
     lines.write_all(BLANK[..right].as_bytes()).unwrap();
 
@@ -602,6 +608,12 @@ fn write_char(
 }
 
 fn print_edges(edges: &[Edge]) {
+    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| {
+        palette::set_weak_ref("Frame", "Default");
+        palette::id_of_form("Frame")
+    });
+    let frame_form = palette::form_of_id(*FRAME_FORM);
+
     let mut stdout = std::io::stdout().lock();
 
     let edges = edges
@@ -627,6 +639,7 @@ fn print_edges(edges: &[Edge]) {
             queue!(
                 stdout,
                 cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
+                SetStyle(frame_form.style),
                 Print(line)
             )
         } else {
@@ -639,6 +652,7 @@ fn print_edges(edges: &[Edge]) {
                 queue!(
                     stdout,
                     cursor::MoveTo(coords.tl.x as u16, y as u16),
+                    SetStyle(frame_form.style),
                     Print(char)
                 )
             }
@@ -669,6 +683,7 @@ fn print_edges(edges: &[Edge]) {
         queue!(
             stdout,
             cursor::MoveTo(coord.x as u16, coord.y as u16),
+            SetStyle(frame_form.style),
             Print(line::crossing(right, up, left, down, true))
         )
     }
