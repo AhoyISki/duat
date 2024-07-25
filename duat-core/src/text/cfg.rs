@@ -19,7 +19,7 @@ impl WrapMethod {
         matches!(self, Self::NoWrap)
     }
 
-    pub fn wrapping_cap(&self, width: usize) -> usize {
+    pub fn cap(&self, width: usize) -> usize {
         match self {
             WrapMethod::Capped(cap) => *cap,
             _ => width,
@@ -114,20 +114,21 @@ impl WordChars {
 /// Configuration options for printing.
 #[derive(Debug, Clone)]
 pub struct PrintCfg {
-    /// How to wrap the file.
+    /// How to wrap the file
     pub wrap_method: WrapMethod,
-    /// Wether to indent wrapped lines or not.
+    /// Wether to indent wrapped lines or not
     pub indent_wrap: bool,
-    /// Which places are considered a "tab stop".
+    /// Which places are considered a "tab stop"
     pub tab_stops: TabStops,
-    /// Wether (and how) to show new lines.
+    /// Wether (and how) to show new lines
     pub new_line: NewLine,
-    /// The horizontal and vertical gaps between the main
-    /// cursor and the edges of a [`Label`][crate::ui::Label].
+    /// How much space to keep between the cursor and edges
     pub scrolloff: ScrollOff,
-    // NOTE: This is relevant for printing with `WrapMethod::Word`.
+    // NOTE: This is relevant for printing with `WrapMethod::Word`
     /// Characters that are considered to be part of a word.
     pub word_chars: WordChars,
+    /// Wether or not to print an extra space for cursors
+    pub ending_space: bool,
 }
 
 impl PrintCfg {
@@ -139,6 +140,7 @@ impl PrintCfg {
             new_line: NewLine::default(),
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
+            ending_space: false,
         }
     }
 
@@ -230,6 +232,13 @@ impl PrintCfg {
         Self { word_chars, ..self }
     }
 
+    pub fn with_ending_space(self) -> Self {
+        Self {
+            ending_space: true,
+            ..self
+        }
+    }
+
     /// Same as [`default`], but with a hidden new line.
     ///
     /// [`default`]: PrintCfg::default
@@ -241,6 +250,7 @@ impl PrintCfg {
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['a'..='z', 'A'..='Z', '0'..='9', '_'..='_']),
+            ending_space: true,
         }
     }
 }
@@ -338,5 +348,18 @@ impl<'a> IterCfg<'a> {
     #[inline]
     pub fn word_chars(&self) -> &WordChars {
         &self.cfg.word_chars
+    }
+
+    #[inline]
+    pub fn ending_space(&self) -> bool {
+        self.cfg.ending_space
+    }
+
+    pub fn wrap_width(&self, width: usize) -> usize {
+        match self.wrap_method() {
+            WrapMethod::Width | WrapMethod::Word => width,
+            WrapMethod::Capped(cap) => cap,
+            WrapMethod::NoWrap => usize::MAX,
+        }
     }
 }

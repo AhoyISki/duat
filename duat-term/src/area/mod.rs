@@ -23,11 +23,8 @@ use iter::{print_iter, rev_print_iter};
 
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
-    print::Lines,
     AreaId, ConstraintChangeErr, RESIZED,
 };
-
-const BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -215,27 +212,23 @@ impl Area {
         let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
             return;
         };
-        let mut lines = sender.lines();
 
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.points);
             (text.iter_at(line_start), IterCfg::new(cfg).outsource_lfs())
         };
 
+        let cap = cfg.wrap_width(sender.coords().width());
         let active = layout.active_id == self.id;
-        let iter = print_iter(iter, sender.coords().width(), cfg, *info);
+        let iter = print_iter(iter, cap, cfg, *info);
+
+        let mut lines = sender.lines(info.x_shift, cap);
 
         let lines_left = {
             let (mut painter, mut f) = (painter, f);
-            let coords = sender.coords();
-            let lines: &mut Lines = &mut lines;
-            let mut old_x = coords.tl.x;
-            let info = *info;
             // The y here represents the bottom of the current row of cells.
-            let mut y = coords.tl.y;
+            let mut y = sender.coords().tl.y;
             let mut prev_style = None;
-            let mut alignment = Alignment::Left;
-            let mut line = Vec::new();
 
             for (caret, item) in iter {
                 f(&caret, &item);
@@ -244,58 +237,61 @@ impl Area {
                 let Item { part, .. } = item;
 
                 if wrap {
-                    if y > coords.tl.y {
-                        let shifted_x = old_x.saturating_sub(info.x_shift);
-                        print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
+                    if y > sender.coords().tl.y {
+                        lines.flush().unwrap();
                     }
-                    if y == coords.br.y {
+                    if y == sender.coords().br.y {
                         break;
                     }
-                    indent_line(x, info.x_shift, &mut line, &painter);
+                    (0..x).for_each(|_| lines.push_char(' ', 1));
                     if part.is_char() {
-                        y += 1;
+                        y += 1
                     }
                 }
 
-                old_x = coords.tl.x + x + len;
-
                 match part {
-                    // Char
-                    Part::Char(char) if len > 0 => {
-                        write_char(char, coords.tl.x + x, len, coords, info.x_shift, &mut line);
+                    Part::Char(char) => {
+                        match char {
+                            '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
+                            '\n' => {},
+                            char => lines.push_char(char, len),
+                        }
                         if let Some(style) = prev_style.take() {
-                            queue!(&mut line, ResetColor, SetStyle(style))
+                            queue!(lines, ResetColor, SetStyle(style))
                         }
                     }
-
-                    // Tags
                     Part::PushForm(id) => {
-                        queue!(line, ResetColor, SetStyle(painter.apply(id).style));
+                        queue!(lines, ResetColor, SetStyle(painter.apply(id).style));
                     }
                     Part::PopForm(id) => {
-                        queue!(line, ResetColor, SetStyle(painter.remove(id).style))
+                        queue!(lines, ResetColor, SetStyle(painter.remove(id).style))
                     }
                     Part::MainCursor => {
                         let (form, shape) = painter.main_cursor();
                         if let (Some(shape), true) = (shape, active) {
                             lines.show_real_cursor();
-                            queue!(line, shape, cursor::SavePosition);
+                            queue!(lines, shape, cursor::SavePosition);
                         } else {
                             lines.hide_real_cursor();
-                            queue!(line, ResetColor, SetStyle(form.style));
+                            queue!(lines, ResetColor, SetStyle(form.style));
                             prev_style = Some(painter.make_form().style);
                         }
                     }
                     Part::ExtraCursor => {
-                        queue!(line, SetStyle(painter.extra_cursor().0.style));
+                        queue!(lines, SetStyle(painter.extra_cursor().0.style));
                         prev_style = Some(painter.make_form().style);
                     }
-                    Part::AlignLeft => alignment = Alignment::Left,
-                    Part::AlignCenter => alignment = Alignment::Center,
-                    Part::AlignRight => alignment = Alignment::Right,
+                    Part::AlignLeft if !cfg.wrap_method().is_no_wrap() => {
+                        lines.realign(Alignment::Left)
+                    }
+                    Part::AlignCenter if !cfg.wrap_method().is_no_wrap() => {
+                        lines.realign(Alignment::Center)
+                    }
+                    Part::AlignRight if !cfg.wrap_method().is_no_wrap() => {
+                        lines.realign(Alignment::Right)
+                    }
                     Part::Termination => {
-                        alignment = Alignment::Left;
-                        queue!(line, SetStyle(painter.reset().style));
+                        queue!(lines, SetStyle(painter.reset().style))
                     }
                     Part::ToggleStart(_) => todo!(),
                     Part::ToggleEnd(_) => todo!(),
@@ -303,26 +299,17 @@ impl Area {
                 }
             }
 
-            if !line.is_empty() {
+            if !lines.is_empty() {
                 if cfg.ending_space() {
-                    line.write_all(b" ").unwrap()
+                    lines.push_char(' ', 1)
                 }
-                let shifted_x = (old_x + 1).saturating_sub(info.x_shift);
-                print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
+                lines.flush().unwrap();
             }
 
-            coords.br.y - y
+            sender.coords().br.y - y
         };
 
-        static DEFAULT_FORM: LazyLock<FormId> = LazyLock::new(|| palette::id_of_form("Default"));
-        let default_form = palette::form_of_id(*DEFAULT_FORM);
-
         for _ in 0..lines_left {
-            queue!(lines, ResetColor, SetStyle(default_form.style));
-            lines
-                .write_all(&BLANK.as_bytes()[..sender.coords().width()])
-                .unwrap();
-
             lines.flush().unwrap();
         }
 
@@ -382,12 +369,8 @@ impl ui::Area for Area {
 
     fn constrain_ver(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
         let axis = Axis::Vertical;
-        if self
-            .layout
-            .read()
-            .rects
-            .get_constraint_on(self.id, axis)
-            .is_some_and(|cmp| cmp == cons)
+        if let Some(cmp) = self.layout.read().rects.get_constraint_on(self.id, axis)
+            && cmp == cons
         {
             return Ok(());
         };
@@ -402,7 +385,6 @@ impl ui::Area for Area {
         if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
             drop(printer);
             layout.resize();
-
             print_edges(layout.edges());
         }
 
@@ -411,12 +393,8 @@ impl ui::Area for Area {
 
     fn constrain_hor(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
         let axis = Axis::Horizontal;
-        if self
-            .layout
-            .read()
-            .rects
-            .get_constraint_on(self.id, axis)
-            .is_some_and(|cmp| cmp == (cons))
+        if let Some(cmp) = self.layout.read().rects.get_constraint_on(self.id, axis)
+            && cmp == cons
         {
             return Ok(());
         };
@@ -431,7 +409,6 @@ impl ui::Area for Area {
         if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
             drop(printer);
             layout.resize();
-
             print_edges(layout.edges());
         }
 
@@ -527,80 +504,6 @@ pub struct PrintInfo {
     x_shift: usize,
     /// The last position of the main cursor.
     last_main: Point,
-}
-
-#[inline(always)]
-fn print_line(
-    x: usize,
-    coords: Coords,
-    alignment: Alignment,
-    line: &mut Vec<u8>,
-    lines: &mut Lines,
-    painter: &Painter,
-) {
-    let remainder = coords.br.x.saturating_sub(x.max(coords.tl.x));
-
-    let (left, right) = match alignment {
-        Alignment::Left => (0, remainder),
-        Alignment::Right => (remainder, 0),
-        Alignment::Center => {
-            let left = remainder / 2;
-            (left, remainder - left)
-        }
-    };
-
-    queue!(lines, ResetColor, SetStyle(painter.get_default().style));
-
-    lines.write_all(BLANK[..left].as_bytes()).unwrap();
-    lines.write_all(line).unwrap();
-
-    queue!(lines, ResetColor, SetStyle(painter.get_default().style));
-
-    lines.write_all(BLANK[..right].as_bytes()).unwrap();
-
-    lines.flush().unwrap();
-
-    line.clear();
-}
-
-#[inline(always)]
-fn indent_line(x: usize, x_shift: usize, line: &mut Vec<u8>, painter: &Painter) {
-    let prev_style = painter.make_form().style;
-    let indent_count = x.saturating_sub(x_shift);
-    let mut indent = Vec::<u8>::from(&BLANK[..indent_count]);
-    queue!(indent, SetStyle(prev_style));
-    line.splice(0..0, indent);
-}
-
-#[inline(always)]
-fn write_char(
-    char: char,
-    x: usize,
-    len: usize,
-    coords: Coords,
-    x_shift: usize,
-    line: &mut Vec<u8>,
-) {
-    // Case where the cursor hasn't yet reached the left edge.
-    if x < coords.tl.x + x_shift {
-        let len = (x + len).saturating_sub(coords.tl.x + x_shift);
-        line.write_all(BLANK[..len].as_bytes()).unwrap();
-    // Case where the end of the cursor, after printing, would be
-    // located before the right edge.
-    } else if x + len <= coords.br.x + x_shift {
-        match char {
-            '\t' => line.write_all(BLANK[..len].as_bytes()).unwrap(),
-            char => {
-                let mut bytes = [0; 4];
-                char.encode_utf8(&mut bytes);
-                line.write_all(&bytes).unwrap();
-            }
-        };
-    // Case where it wouldn't.
-    } else if x < coords.br.x + x_shift {
-        let len = coords.br.x + x_shift - x;
-        line.write_all(BLANK[..len].as_bytes()).unwrap();
-    }
 }
 
 fn print_edges(edges: &[Edge]) {

@@ -138,11 +138,11 @@ impl Form {
     }
 }
 
-pub(crate) const DEFAULT: FormId = FormId(0);
-pub(crate) const MAIN_CURSOR: FormId = FormId(8);
-pub(crate) const EXTRA_CURSOR: FormId = FormId(9);
-pub(crate) const MAIN_SEL: FormId = FormId(10);
-pub(crate) const EXTRA_SEL: FormId = FormId(11);
+pub const DEFAULT_FORM_ID: FormId = FormId(0);
+pub const MAIN_CURSOR_FORM_ID: FormId = FormId(8);
+pub const EXTRA_CURSOR_FORM_ID: FormId = FormId(9);
+pub const MAIN_SEL_FORM_ID: FormId = FormId(10);
+pub const EXTRA_SEL_FORM_ID: FormId = FormId(11);
 
 #[derive(Debug, Clone, Copy)]
 enum Kind {
@@ -175,9 +175,9 @@ impl FormPalette {
                 ("DefaultHint", Kind::Form(Form::new())),
                 ("AccentHint", Kind::Form(Form::new().bold())),
                 ("MainCursor", Kind::Form(Form::new().reverse())),
-                ("ExtraCursor", Kind::Ref(MAIN_CURSOR)),
+                ("ExtraCursor", Kind::Ref(MAIN_CURSOR_FORM_ID)),
                 ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
-                ("ExtraSelection", Kind::Ref(MAIN_SEL)),
+                ("ExtraSelection", Kind::Ref(MAIN_SEL_FORM_ID)),
             ];
 
             RwData::new(InnerPalette {
@@ -341,12 +341,12 @@ impl FormPalette {
     }
 
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_of_id(MAIN_CURSOR);
+        let form = self.form_of_id(MAIN_CURSOR_FORM_ID);
         (form, self.0.read().main_cursor)
     }
 
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_of_id(EXTRA_CURSOR);
+        let form = self.form_of_id(EXTRA_CURSOR_FORM_ID);
         (form, self.0.read().extra_cursor)
     }
 
@@ -369,8 +369,8 @@ impl FormPalette {
     fn painter(&'static self) -> Painter {
         Painter {
             palette: self.0.read(),
-            forms: vec![(self.form_of_id(DEFAULT), DEFAULT)],
-            cur_form: self.form_of_id(DEFAULT),
+            forms: vec![(self.form_of_id(DEFAULT_FORM_ID), DEFAULT_FORM_ID)],
+            cur_form: self.form_of_id(DEFAULT_FORM_ID),
         }
     }
 }
@@ -478,12 +478,12 @@ impl Painter {
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        (self.get_form(MAIN_CURSOR), self.palette.main_cursor)
+        (self.get_form(MAIN_CURSOR_FORM_ID), self.palette.main_cursor)
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        (self.get_form(EXTRA_CURSOR), self.palette.extra_cursor)
+        (self.get_form(EXTRA_CURSOR_FORM_ID), self.palette.extra_cursor)
     }
 
     pub fn get_default(&self) -> Form {

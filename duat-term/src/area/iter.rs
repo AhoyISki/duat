@@ -63,16 +63,11 @@ fn words<'a>(
     let mut prev_char = None;
     let mut finished_word = Vec::new();
     let mut x = 0;
-    let mut needs_to_wrap = true;
+    let mut needs_wrap = true;
     std::iter::from_fn(move || {
         if let Some(unit) = finished_word.pop() {
-            return attach_caret(
-                (&mut x, &mut needs_to_wrap, &mut prev_char),
-                indent,
-                unit,
-                width,
-                &cfg,
-            );
+            let vars = (&mut x, &mut needs_wrap, &mut prev_char);
+            return attach_caret(vars, indent, unit, width, &cfg);
         }
 
         let mut word_len = 0;
@@ -90,37 +85,32 @@ fn words<'a>(
             word.push(iter.next().map(|(_, unit)| unit).unwrap());
         }
 
-        needs_to_wrap |= x + word_len > width;
+        needs_wrap |= x + word_len > width;
 
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
         finished_word.pop().and_then(|unit| {
-            attach_caret(
-                (&mut x, &mut needs_to_wrap, &mut prev_char),
-                indent,
-                unit,
-                width,
-                &cfg,
-            )
+            let vars = (&mut x, &mut needs_wrap, &mut prev_char);
+            attach_caret(vars, indent, unit, width, &cfg)
         })
     })
 }
 
 #[inline(always)]
 fn attach_caret(
-    (x, needs_to_wrap, prev_c): (&mut usize, &mut bool, &mut Option<char>),
+    (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>),
     indent: usize,
     mut item: Item,
     width: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, cfg, prev_c, *x, width);
+    let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
 
     let mut old_x = *x;
     *x += len;
 
     let width_wrap = *x > width || (*x == width && len == 0);
-    let nl_wrap = *needs_to_wrap && prev_c.is_some();
+    let nl_wrap = *needs_to_wrap && prev_char.is_some();
     let has_wrapped = nl_wrap || (width_wrap && !cfg.wrap_method().is_no_wrap());
     if has_wrapped {
         old_x = indent;
@@ -199,7 +189,7 @@ where
 /// validated.
 pub fn print_iter<'a>(
     mut iter: TextIter<'a>,
-    width: usize,
+    cap: usize,
     cfg: IterCfg<'a>,
     info: PrintInfo,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
@@ -207,7 +197,7 @@ pub fn print_iter<'a>(
         .clone()
         .take_while(|&Item { real, ghost, .. }| (real, ghost) < info.points)
         .try_fold(0, |indent, item| match item.part {
-            Part::Char(_) if indent >= width => Break(0),
+            Part::Char(_) if indent >= cap => Break(0),
             Part::Char('\t') => Continue(indent + cfg.tab_stops().spaces_at(indent)),
             Part::Char(' ') => Continue(indent + 1),
             Part::Char(_) => Break(indent),
@@ -218,28 +208,7 @@ pub fn print_iter<'a>(
     if !iter_at_line_start {
         iter.skip_to(info.points);
     }
-    inner_iter(iter, width, (indent, iter_at_line_start), cfg)
-}
-
-fn inner_iter<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
-    width: usize,
-    initial: (usize, bool),
-    cfg: IterCfg<'a>,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let width = match cfg.wrap_method() {
-        WrapMethod::Capped(cap) => cap,
-        _ => width,
-    };
-
-    let indents = indents(iter, width, initial, cfg);
-
-    match cfg.wrap_method() {
-        WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
-            Iter::Parts(parts(indents, width, cfg), PhantomData)
-        }
-        WrapMethod::Word => Iter::Words(words(indents, width, cfg)),
-    }
+    inner_iter(iter, cap, (indent, iter_at_line_start), cfg)
 }
 
 pub fn rev_print_iter<'a>(
@@ -274,6 +243,22 @@ pub fn rev_print_iter<'a>(
             returns.pop()
         }
     })
+}
+
+fn inner_iter<'a>(
+    iter: impl Iterator<Item = Item> + Clone + 'a,
+    cap: usize,
+    initial: (usize, bool),
+    cfg: IterCfg<'a>,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    let indents = indents(iter, cap, initial, cfg);
+
+    match cfg.wrap_method() {
+        WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
+            Iter::Parts(parts(indents, cap, cfg), PhantomData)
+        }
+        WrapMethod::Word => Iter::Words(words(indents, cap, cfg)),
+    }
 }
 
 #[inline(always)]

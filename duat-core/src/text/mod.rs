@@ -511,12 +511,12 @@ mod point {
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
-    use crate::palette::{EXTRA_SEL, MAIN_SEL};
+    use crate::palette::{EXTRA_SEL_FORM_ID, MAIN_SEL_FORM_ID};
 
     if is_main {
-        (MainCursor, PushForm(MAIN_SEL), PopForm(MAIN_SEL))
+        (MainCursor, PushForm(MAIN_SEL_FORM_ID), PopForm(MAIN_SEL_FORM_ID))
     } else {
-        (ExtraCursor, PushForm(EXTRA_SEL), PopForm(EXTRA_SEL))
+        (ExtraCursor, PushForm(EXTRA_SEL_FORM_ID), PopForm(EXTRA_SEL_FORM_ID))
     }
 }
 
