@@ -391,48 +391,31 @@ impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
     #[inline(always)]
-    pub fn apply(&mut self, id: FormId) -> Option<Form> {
+    pub fn apply(&mut self, id: FormId) -> Form {
         let form = self.get_form(id);
 
         self.forms.push((form, id));
-        let form = self.make_form();
-        if form == self.cur_form {
-            None
-        } else {
-            self.cur_form = form;
-            Some(form)
-        }
+        self.cur_form = self.make_form();
+        self.cur_form
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
     #[inline(always)]
-    pub fn remove(&mut self, id: FormId) -> Option<Form> {
+    pub fn remove(&mut self, id: FormId) -> Form {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
-            let form = self.make_form();
-            if form == self.cur_form {
-                None
-            } else {
-                self.cur_form = form;
-                Some(form)
-            }
-        } else {
-            None
+            self.cur_form = self.make_form();
         }
+        self.cur_form
     }
 
     #[inline(always)]
-    pub fn reset(&mut self) -> Option<Form> {
+    pub fn reset(&mut self) -> Form {
         self.forms.splice(1.., []);
-        let form = self.make_form();
-        if form == self.cur_form {
-            None
-        } else {
-            self.cur_form = form;
-            Some(form)
-        }
+        self.cur_form = self.make_form();
+        self.cur_form
     }
 
     /// Generates the form to be printed, given all the previously

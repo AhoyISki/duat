@@ -5,7 +5,7 @@ use std::{
     cell::RefCell,
     fmt::Alignment,
     io::Write,
-    sync::{atomic::Ordering, LazyLock, OnceLock},
+    sync::{atomic::Ordering, LazyLock},
 };
 
 use cassowary::strength::STRONG;
@@ -15,7 +15,6 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -28,7 +27,7 @@ use crate::{
     AreaId, ConstraintChangeErr, RESIZED,
 };
 
-static BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
+const BLANK: &str = unsafe { std::str::from_utf8_unchecked(&[b' '; 1000]) };
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -225,12 +224,100 @@ impl Area {
 
         let active = layout.active_id == self.id;
         let iter = print_iter(iter, sender.coords().width(), cfg, *info);
-        let y = print_parts(iter, sender.coords(), active, *info, painter, &mut lines, f);
+
+        let lines_left = {
+            let (mut painter, mut f) = (painter, f);
+            let coords = sender.coords();
+            let lines: &mut Lines = &mut lines;
+            let mut old_x = coords.tl.x;
+            let info = *info;
+            // The y here represents the bottom of the current row of cells.
+            let mut y = coords.tl.y;
+            let mut prev_style = None;
+            let mut alignment = Alignment::Left;
+            let mut line = Vec::new();
+
+            for (caret, item) in iter {
+                f(&caret, &item);
+
+                let Caret { x, len, wrap } = caret;
+                let Item { part, .. } = item;
+
+                if wrap {
+                    if y > coords.tl.y {
+                        let shifted_x = old_x.saturating_sub(info.x_shift);
+                        print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
+                    }
+                    if y == coords.br.y {
+                        break;
+                    }
+                    indent_line(x, info.x_shift, &mut line, &painter);
+                    if part.is_char() {
+                        y += 1;
+                    }
+                }
+
+                old_x = coords.tl.x + x + len;
+
+                match part {
+                    // Char
+                    Part::Char(char) if len > 0 => {
+                        write_char(char, coords.tl.x + x, len, coords, info.x_shift, &mut line);
+                        if let Some(style) = prev_style.take() {
+                            queue!(&mut line, ResetColor, SetStyle(style))
+                        }
+                    }
+
+                    // Tags
+                    Part::PushForm(id) => {
+                        queue!(line, ResetColor, SetStyle(painter.apply(id).style));
+                    }
+                    Part::PopForm(id) => {
+                        queue!(line, ResetColor, SetStyle(painter.remove(id).style))
+                    }
+                    Part::MainCursor => {
+                        let (form, shape) = painter.main_cursor();
+                        if let (Some(shape), true) = (shape, active) {
+                            lines.show_real_cursor();
+                            queue!(line, shape, cursor::SavePosition);
+                        } else {
+                            lines.hide_real_cursor();
+                            queue!(line, ResetColor, SetStyle(form.style));
+                            prev_style = Some(painter.make_form().style);
+                        }
+                    }
+                    Part::ExtraCursor => {
+                        queue!(line, SetStyle(painter.extra_cursor().0.style));
+                        prev_style = Some(painter.make_form().style);
+                    }
+                    Part::AlignLeft => alignment = Alignment::Left,
+                    Part::AlignCenter => alignment = Alignment::Center,
+                    Part::AlignRight => alignment = Alignment::Right,
+                    Part::Termination => {
+                        alignment = Alignment::Left;
+                        queue!(line, SetStyle(painter.reset().style));
+                    }
+                    Part::ToggleStart(_) => todo!(),
+                    Part::ToggleEnd(_) => todo!(),
+                    _ => {}
+                }
+            }
+
+            if !line.is_empty() {
+                if cfg.ending_space() {
+                    line.write_all(b" ").unwrap()
+                }
+                let shifted_x = (old_x + 1).saturating_sub(info.x_shift);
+                print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
+            }
+
+            coords.br.y - y
+        };
 
         static DEFAULT_FORM: LazyLock<FormId> = LazyLock::new(|| palette::id_of_form("Default"));
         let default_form = palette::form_of_id(*DEFAULT_FORM);
 
-        for _ in 0..y {
+        for _ in 0..lines_left {
             queue!(lines, ResetColor, SetStyle(default_form.style));
             lines
                 .write_all(&BLANK.as_bytes()[..sender.coords().width()])
@@ -440,104 +527,6 @@ pub struct PrintInfo {
     x_shift: usize,
     /// The last position of the main cursor.
     last_main: Point,
-}
-
-fn print_parts<'a>(
-    iter: impl Iterator<Item = (Caret, Item)>,
-    coords: Coords,
-    is_active: bool,
-    info: PrintInfo,
-    mut painter: Painter,
-    lines: &mut Lines,
-    mut f: impl FnMut(&Caret, &Item) + 'a,
-) -> usize {
-    let mut old_x = coords.tl.x;
-    // The y here represents the bottom of the current row of cells.
-    let mut y = coords.tl.y;
-    let mut prev_style = None;
-    let mut alignment = Alignment::Left;
-    let mut line = Vec::new();
-
-    for (caret, item) in iter {
-        f(&caret, &item);
-
-        let Caret { x, len, wrap } = caret;
-        let Item { part, .. } = item;
-
-        if wrap {
-            if y > coords.tl.y {
-                let shifted_x = old_x.saturating_sub(info.x_shift);
-                print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
-            }
-            if y == coords.br.y {
-                break;
-            }
-            indent_line(x, info.x_shift, &mut line, &painter);
-            if part.is_char() {
-                y += 1;
-            }
-        }
-
-        old_x = coords.tl.x + x + len;
-
-        match part {
-            // Char
-            Part::Char(char) => {
-                if len > 0 {
-                    write_char(char, coords.tl.x + x, len, coords, info.x_shift, &mut line);
-                    if let Some(style) = prev_style.take() {
-                        queue!(&mut line, ResetColor, SetStyle(style))
-                    }
-                }
-            }
-
-            // Tags
-            Part::PushForm(id) => {
-                if let Some(form) = painter.apply(id) {
-                    queue!(line, ResetColor, SetStyle(form.style));
-                }
-            }
-            Part::PopForm(id) => {
-                if let Some(form) = painter.remove(id) {
-                    queue!(line, ResetColor, SetStyle(form.style))
-                }
-            }
-            Part::MainCursor => {
-                let (form, shape) = painter.main_cursor();
-                if let (Some(shape), true) = (shape, is_active) {
-                    lines.show_real_cursor();
-                    queue!(line, shape, cursor::SavePosition);
-                } else {
-                    lines.hide_real_cursor();
-                    queue!(line, ResetColor, SetStyle(form.style));
-                    prev_style = Some(painter.make_form().style);
-                }
-            }
-            Part::ExtraCursor => {
-                queue!(line, SetStyle(painter.extra_cursor().0.style));
-                prev_style = Some(painter.make_form().style);
-            }
-            Part::AlignLeft => alignment = Alignment::Left,
-            Part::AlignCenter => alignment = Alignment::Center,
-            Part::AlignRight => alignment = Alignment::Right,
-            Part::Termination => {
-                alignment = Alignment::Left;
-                if let Some(form) = painter.reset() {
-                    queue!(line, SetStyle(form.style));
-                }
-            }
-            Part::ToggleStart(_) => todo!(),
-            Part::ToggleEnd(_) => todo!(),
-        }
-    }
-
-    if !line.is_empty() {
-        line.write_all(b" ").unwrap();
-        let shifted_x = (old_x + 1).saturating_sub(info.x_shift);
-        print_line(shifted_x, coords, alignment, &mut line, lines, &painter);
-    }
-
-    coords.br.y - y
 }
 
 #[inline(always)]
