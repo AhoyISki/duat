@@ -13,13 +13,13 @@ use super::PrintInfo;
 #[inline(always)]
 fn indents<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
-    width: usize,
+    cap: usize,
     initial: (usize, bool),
     cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (usize, Item)> + Clone + 'a {
     iter.scan(initial, move |(indent, on_indent), item| {
         if cfg.indent_wrap() {
-            let old_indent = if *indent < width { *indent } else { 0 };
+            let old_indent = if *indent < cap { *indent } else { 0 };
             (*indent, *on_indent) = match (item.part, *on_indent) {
                 (Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
                 (Part::Char(' '), true) => (*indent + 1, true),
@@ -38,13 +38,13 @@ fn indents<'a>(
 #[inline(always)]
 fn parts<'a>(
     iter: impl Iterator<Item = (usize, Item)> + Clone + 'a,
-    width: usize,
+    cap: usize,
     cfg: IterCfg<'a>,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     iter.scan(
         (0, true, None),
         move |(x, needs_to_wrap, prev_char), (indent, unit)| {
-            attach_caret((x, needs_to_wrap, prev_char), indent, unit, width, &cfg)
+            attach_caret((x, needs_to_wrap, prev_char), indent, unit, cap, &cfg)
         },
     )
 }
@@ -101,15 +101,15 @@ fn attach_caret(
     (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>),
     indent: usize,
     mut item: Item,
-    width: usize,
+    cap: usize,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
-    let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, width);
+    let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, cap);
 
     let mut old_x = *x;
     *x += len;
 
-    let width_wrap = *x > width || (*x == width && len == 0);
+    let width_wrap = *x > cap || (*x == cap && len == 0);
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
     let has_wrapped = nl_wrap || (width_wrap && !cfg.wrap_method().is_no_wrap());
     if has_wrapped {
@@ -133,23 +133,23 @@ fn attach_caret(
 fn process_part(
     part: Part,
     cfg: &IterCfg,
-    prev_c: &mut Option<char>,
+    prev_char: &mut Option<char>,
     x: usize,
-    width: usize,
+    cap: usize,
 ) -> (usize, Part) {
     match part {
         Part::Char(b) => {
             let ret = if b == '\n' {
-                let char = cfg.new_line().char(*prev_c);
+                let char = cfg.new_line().char(*prev_char);
                 match char {
-                    Some(char) => (len_from(char, x, width, cfg, *prev_c), Part::Char(char)),
+                    Some(char) => (len_from(char, x, cap, cfg, *prev_char), Part::Char(char)),
                     None => (0, Part::Char('\n')),
                 }
             } else {
-                (len_from(b, x, width, cfg, *prev_c), Part::Char(b))
+                (len_from(b, x, cap, cfg, *prev_char), Part::Char(b))
             };
 
-            *prev_c = Some(b);
+            *prev_char = Some(b);
             ret
         }
         _ => (0, part),

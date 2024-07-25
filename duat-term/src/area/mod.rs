@@ -108,7 +108,8 @@ impl Area {
 
         let mut count = 0;
 
-        let mut iter = rev_print_iter(text.rev_iter_at(after), self.width(), cfg)
+        let cap = cfg.wrap_width(self.width());
+        let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
             .inspect(|_| count += 1)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
@@ -253,7 +254,7 @@ impl Area {
                     Part::Char(char) => {
                         match char {
                             '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
-                            '\n' => {},
+                            '\n' => {}
                             char => lines.push_char(char, len),
                         }
                         if let Some(style) = prev_style.take() {
