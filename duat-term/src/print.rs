@@ -163,7 +163,7 @@ impl Write for Lines {
             if b == 0x1b {
                 adding_ansi = true;
                 self.bytes.push(0x1b)
-            } else if b == b'm' {
+            } else if b == b'm' && adding_ansi {
                 adding_ansi = false;
                 self.bytes.push(b'm')
             } else if adding_ansi {

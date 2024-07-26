@@ -5,6 +5,7 @@ use std::{
     cell::RefCell,
     fmt::Alignment,
     io::Write,
+    ops::ControlFlow::{Break, Continue},
     sync::{atomic::Ordering, LazyLock},
 };
 
@@ -15,6 +16,7 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
+    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -134,64 +136,60 @@ impl Area {
         let mut info = self.print_info.borrow_mut();
 
         let width = self.width();
-        let max_x_shift = match cfg.wrap_method() {
-            WrapMethod::Capped(cap) if cap > width => cap - width,
-            WrapMethod::NoWrap => usize::MAX,
-            WrapMethod::Width | WrapMethod::Word | WrapMethod::Capped(_) => return,
-        };
+        let cap = cfg.wrap_width(width);
 
-        let (line_start, start, end) = {
+        let (max_shift, start, end) = {
             let points = text.ghost_max_points_at(point.byte());
             let after = text.points_after(points).unwrap_or(text.max_points());
 
-            let mut iter = rev_print_iter(text.rev_iter_at(after), width, cfg);
-            let mut wrapped = false;
+            let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg);
 
-            let (points, start, end) = iter
+            let (points, start, end, wrap) = iter
                 .find_map(|(Caret { x, len, wrap }, item)| {
-                    wrapped = wrap;
-                    item.part.as_char().and(Some((item.points(), x, x + len)))
+                    let points = item.points();
+                    item.part.as_char().and(Some((points, x, x + len, wrap)))
                 })
-                .unwrap_or(((Point::default(), None), 0, 0));
+                .unwrap_or(((Point::default(), None), 0, 0, true));
 
-            let line_start = if wrapped {
-                points
-            } else {
-                iter.find_map(|(Caret { wrap, .. }, item)| wrap.then_some(item.points()))
-                    .unwrap_or(points)
+            let (line_len, align) = {
+                let mut align = Alignment::Left;
+                let points = if wrap {
+                    points
+                } else {
+                    iter.find_map(|(caret, item)| caret.wrap.then_some(item.points()))
+                        .unwrap()
+                };
+
+                let len = print_iter(text.iter_at(points), cap, cfg, *info)
+                    .inspect(|(_, Item { part, .. })| match part {
+                        Part::AlignLeft => align = Alignment::Left,
+                        Part::AlignCenter => align = Alignment::Center,
+                        Part::AlignRight => align = Alignment::Right,
+                        _ => {}
+                    })
+                    .take_while(|(caret, item)| !caret.wrap || item.points() == points)
+                    .last()
+                    .map(|(Caret { x, len, .. }, _)| x + len)
+                    .unwrap_or(0);
+
+                (len, align)
             };
 
-            (line_start, start, end)
+            let diff = match align {
+                Alignment::Left => 0,
+                Alignment::Right => cap - line_len,
+                Alignment::Center => (cap - line_len) / 2,
+            };
+
+            (line_len + diff, start + diff, end + diff)
         };
 
-        let max_dist = width - cfg.scrolloff().x;
-        let min_dist = info.x_shift + cfg.scrolloff().x;
-
-        if start < min_dist {
-            info.x_shift = info.x_shift.saturating_sub(min_dist - start);
-        } else if end < start {
-            info.x_shift = info.x_shift.saturating_sub(min_dist - end);
-        } else if end > info.x_shift + max_dist {
-            let line_width = print_iter(text.iter_at(line_start), width, cfg, *info).try_fold(
-                (0, 0),
-                |(right_end, some_count), (Caret { x, len, wrap }, _)| {
-                    let some_count = some_count + wrap as usize;
-                    match some_count < 2 {
-                        true => std::ops::ControlFlow::Continue((x + len, some_count)),
-                        false => std::ops::ControlFlow::Break(right_end),
-                    }
-                },
-            );
-
-            if let std::ops::ControlFlow::Break(line_width) = line_width
-                && line_width <= width
-            {
-                return;
-            }
-            info.x_shift = end - max_dist;
-        }
-
-        info.x_shift = info.x_shift.min(max_x_shift);
+        info.x_shift = info.x_shift.min(start.saturating_sub(cfg.scrolloff().x));
+        info.x_shift = info.x_shift.max(
+            (end + cfg.scrolloff().x)
+                .min(max_shift)
+                .saturating_sub(width),
+        );
     }
 
     fn print<'a>(
@@ -245,6 +243,7 @@ impl Area {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
+                    queue!(lines, SetStyle(painter.make_form().style));
                     if part.is_char() {
                         y += 1
                     }

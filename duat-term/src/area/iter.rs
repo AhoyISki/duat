@@ -111,8 +111,7 @@ fn attach_caret(
 
     let width_wrap = *x > cap || (*x == cap && len == 0);
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
-    let has_wrapped = nl_wrap || (width_wrap && !cfg.wrap_method().is_no_wrap());
-    if has_wrapped {
+    if nl_wrap || width_wrap {
         old_x = indent;
         *x = indent + len;
         *needs_to_wrap = false;
@@ -126,7 +125,7 @@ fn attach_caret(
     }
 
     item.part = processed_part;
-    Some((Caret::new(old_x, len, has_wrapped), item))
+    Some((Caret::new(old_x, len, nl_wrap || width_wrap), item))
 }
 
 #[inline(always)]
