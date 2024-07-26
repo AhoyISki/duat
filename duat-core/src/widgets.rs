@@ -61,7 +61,6 @@ where
 
     fn print_cfg(&self) -> &PrintCfg {
         static CFG: LazyLock<PrintCfg> = LazyLock::new(PrintCfg::default);
-
         &CFG
     }
 

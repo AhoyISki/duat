@@ -14,7 +14,6 @@ use crate::{
     text::{err, ok, text, PrintCfg, Text},
     ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
     widgets::{ActiveWidget, File, FileCfg, Widget},
-    DuatError, Error,
 };
 
 #[doc(hidden)]
@@ -371,7 +370,7 @@ where
     context
         .commands
         .add(["write", "w"], move |_flags, mut args| {
-            let file = context.cur_file().map_err(Error::into_text)?;
+            let file = context.cur_file()?;
 
             let paths = {
                 let mut paths = Vec::new();
@@ -386,10 +385,8 @@ where
             if paths.is_empty() {
                 file.inspect(|file, _, _| {
                     if let Some(name) = file.name_set() {
-                        let bytes = file.write().map_err(Text::from)?;
-                        Ok(Some(
-                            ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] "."),
-                        ))
+                        let bytes = file.write()?;
+                        ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
                     } else {
                         Err(err!("Give the file a name, to write it with"))
                     }
@@ -416,9 +413,7 @@ where
                         builder.finish()
                     };
 
-                    Ok(Some(
-                        ok!("Wrote " [*a] bytes [] " bytes to " files_text [] "."),
-                    ))
+                    ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
                 })
             }
         })
@@ -430,12 +425,12 @@ where
             let windows = session.windows.clone();
 
             move |_, mut args| {
-                let file = args.next_else(text!("No path supplied."))?;
+                let file = args.next_else(err!("No path supplied."))?;
 
                 let path = PathBuf::from(file);
                 let name = path
                     .file_name()
-                    .ok_or(text!("No file in path"))?
+                    .ok_or(err!("No file in path"))?
                     .to_string_lossy()
                     .to_string();
 
@@ -453,7 +448,7 @@ where
                     })
                 else {
                     tx.send(Event::OpenFiles).unwrap();
-                    return Ok(Some(text!("Created " [AccentOk] file [] ".")));
+                    return ok!("Created " [*a] file [] ".");
                 };
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
@@ -462,9 +457,7 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
-                ))
+                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
             }
         })
         .unwrap();
@@ -475,12 +468,12 @@ where
             let windows = session.windows.clone();
 
             move |_, mut args| {
-                let file = args.next_else(text!("No path supplied."))?;
+                let file = args.next_else(err!("No path supplied."))?;
 
                 let path = PathBuf::from(file);
                 let name = path
                     .file_name()
-                    .ok_or(text!("No file in path"))?
+                    .ok_or(err!("No file in path"))?
                     .to_string_lossy()
                     .to_string();
 
@@ -496,7 +489,7 @@ where
                             })
                             .unwrap_or(false)
                     })
-                    .ok_or(text!("No open files named " [AccentErr] name [] "."))?;
+                    .ok_or(err!("No open files named " [*a] name [] "."))?;
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
@@ -504,9 +497,7 @@ where
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
-                ))
+                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
             }
         })
         .unwrap();
@@ -518,8 +509,8 @@ where
             let current_window = session.current_window.clone();
 
             move |_, mut args| {
-                let file = context.cur_file().map_err(Error::into_text)?;
-                let type_name = args.next_else(text!("No widget supplied."))?;
+                let file = context.cur_file()?;
+                let type_name = args.next_else(err!("No widget supplied."))?;
 
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
@@ -539,7 +530,7 @@ where
                             .filter(|(_, (widget, _))| widget.as_active().is_some())
                             .find(|(_, (widget, _))| widget.type_name() == type_name)
                     })
-                    .ok_or(text!("No widget of type " [AccentErr] type_name [] " found."))?;
+                    .ok_or(err!("No widget of type " [*a] type_name [] " found."))?;
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
@@ -549,7 +540,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(text!("Switched to " [AccentOk] type_name [] ".")))
+                ok!("Switched to " [*a] type_name [] ".")
             }
         })
         .unwrap();
@@ -561,7 +552,7 @@ where
             let current_window = session.current_window.clone();
 
             move |flags, _| {
-                let file = context.cur_file().map_err(Error::into_text)?;
+                let file = context.cur_file()?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
@@ -591,7 +582,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(ok!("Switched to " [*a] { file_name(&entry) } [] ".")))
+                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
             }
         })
         .unwrap();
@@ -603,7 +594,7 @@ where
             let current_window = session.current_window.clone();
 
             move |flags, _| {
-                let file = context.cur_file().map_err(Error::into_text)?;
+                let file = context.cur_file()?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
@@ -633,9 +624,7 @@ where
                     current_window.store(new_window, Ordering::Release);
                 });
 
-                Ok(Some(
-                    text!("Switched to " [AccentOk] { file_name(&entry) } [] "."),
-                ))
+                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
             }
         })
         .unwrap();
@@ -647,7 +636,7 @@ where
             let current_window = session.current_window.clone();
 
             move |_, _| {
-                let file = context.cur_file().map_err(Error::into_text)?;
+                let file = context.cur_file()?;
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
@@ -667,7 +656,7 @@ where
                 });
 
                 Ok(Some(
-                    text!("Returned to " [AccentOk] { file_name(&entry) } [] "."),
+                    text!("Returned to " [*a] { file_name(&entry) } [] "."),
                 ))
             }
         })

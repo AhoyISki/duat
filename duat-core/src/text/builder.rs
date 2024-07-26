@@ -289,7 +289,7 @@ pub macro ok {
     ($($parts:tt)+) => {{
         let mut builder = Builder::new();
         text!(builder, $($parts)+);
-        builder.finish()
+        Ok(Some(builder.finish()))
     }},
 }
 

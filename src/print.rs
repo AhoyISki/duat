@@ -22,7 +22,7 @@ pub fn wrap_on_width() {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.width_wrapped(),
-        None => PrintCfg::default_for_files().width_wrapped(),
+        None => PrintCfg::default_for_input().width_wrapped(),
     })
 }
 
@@ -33,7 +33,7 @@ pub fn wrap_on_words() {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.word_wrapped(),
-        None => PrintCfg::default_for_files().word_wrapped(),
+        None => PrintCfg::default_for_input().word_wrapped(),
     })
 }
 
@@ -44,7 +44,7 @@ pub fn wrap_on_cap(cap: usize) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.wrapped_on_cap(cap),
-        None => PrintCfg::default_for_files().wrapped_on_cap(cap),
+        None => PrintCfg::default_for_input().wrapped_on_cap(cap),
     })
 }
 
@@ -55,7 +55,7 @@ pub fn indent_on_wrap() {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.indenting_wrap(),
-        None => PrintCfg::default_for_files().indenting_wrap(),
+        None => PrintCfg::default_for_input().indenting_wrap(),
     })
 }
 
@@ -66,7 +66,7 @@ pub fn tab_size(tab_size: usize) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_tabs_size(tab_size),
-        None => PrintCfg::default_for_files().with_tabs_size(tab_size),
+        None => PrintCfg::default_for_input().with_tabs_size(tab_size),
     })
 }
 
@@ -77,7 +77,7 @@ pub fn new_line(char: char) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_new_line_as(char),
-        None => PrintCfg::default_for_files().with_new_line_as(char),
+        None => PrintCfg::default_for_input().with_new_line_as(char),
     })
 }
 
@@ -88,7 +88,7 @@ pub fn trailing_new_line(char: char) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_trailing_new_line_as(char),
-        None => PrintCfg::default_for_files().with_trailing_new_line_as(char),
+        None => PrintCfg::default_for_input().with_trailing_new_line_as(char),
     })
 }
 
@@ -99,7 +99,7 @@ pub fn scrolloff(x: usize, y: usize) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_scrolloff(x, y),
-        None => PrintCfg::default_for_files().with_scrolloff(x, y),
+        None => PrintCfg::default_for_input().with_scrolloff(x, y),
     })
 }
 
@@ -110,6 +110,6 @@ pub fn word_chars(word_chars: impl Iterator<Item = RangeInclusive<char>>) {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_word_chars(word_chars),
-        None => PrintCfg::default_for_files().with_word_chars(word_chars),
+        None => PrintCfg::default_for_input().with_word_chars(word_chars),
     })
 }

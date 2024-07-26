@@ -14,11 +14,13 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
+use std::sync::LazyLock;
+
 use duat_core::{
     data::{Context, RwData},
     input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
     palette::{self, Form},
-    text::{text, Ghost, Text},
+    text::{text, Ghost, PrintCfg, Text},
     ui::{Area, PushSpecs},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
@@ -134,6 +136,12 @@ impl PassiveWidget<Ui> for CommandLine {
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn print_cfg(&self) -> &duat_core::text::PrintCfg {
+        static CFG: LazyLock<PrintCfg> =
+            LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());
+        &CFG
     }
 
     fn print(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {

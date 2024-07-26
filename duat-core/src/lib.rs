@@ -135,43 +135,6 @@ impl<E> std::fmt::Debug for Error<E> {
     }
 }
 
-impl<E> std::fmt::Display for Error<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let early = ", try this after OnUiStart, maybe by using hooks::add::<OnUiStart>";
-
-        match self {
-            Error::AliasNotSingleWord(caller) => {
-                write!(f, "The caller \"{caller}\" is not a single word")
-            }
-            Error::CallerAlreadyExists(caller) => {
-                write!(f, "The caller \"{caller}\" already exists.")
-            }
-            Error::CallerNotFound(caller) => {
-                write!(f, "The caller \"{caller}\" was not found.")
-            }
-            Error::CommandFailed(failure) => {
-                let (s0, s1) = failure.slices();
-                f.write_str(s0)?;
-                f.write_str(s1)
-            }
-            Error::Empty => f.write_str("The command is empty"),
-            Error::NoFileYet => write!(f, "There is no file yet{early}"),
-            Error::NoFileForRelated => write!(
-                f,
-                "There is no file for a related {} to exist{early}",
-                std::any::type_name::<E>()
-            ),
-            Error::NoWidgetYet => write!(f, "There can be no widget yet{early}"),
-            Error::WidgetIsNot => write!(f, "The current widget is not {}", type_name::<E>()),
-            Error::InputIsNot(..) => {
-                write!(f, "This file's input is not {}", type_name::<E>())
-            }
-        }
-    }
-}
-
-impl<E> std::error::Error for Error<E> {}
-
 pub type Result<T, E> = std::result::Result<T, Error<E>>;
 
 /// Internal macro used to log information.

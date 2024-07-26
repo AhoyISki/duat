@@ -5,7 +5,6 @@ use std::{
     cell::RefCell,
     fmt::Alignment,
     io::Write,
-    ops::ControlFlow::{Break, Continue},
     sync::{atomic::Ordering, LazyLock},
 };
 
@@ -16,9 +15,8 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::{self, FormId, Painter},
-    text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text, WrapMethod},
+    text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, rev_print_iter};
@@ -184,12 +182,16 @@ impl Area {
             (line_len + diff, start + diff, end + diff)
         };
 
-        info.x_shift = info.x_shift.min(start.saturating_sub(cfg.scrolloff().x));
-        info.x_shift = info.x_shift.max(
-            (end + cfg.scrolloff().x)
-                .min(max_shift)
-                .saturating_sub(width),
-        );
+        info.x_shift = info
+            .x_shift
+            .min(start.saturating_sub(cfg.scrolloff().x))
+            .max(if cfg.forced_scrollof() {
+                (end + cfg.scrolloff().x).saturating_sub(width)
+            } else {
+                (end + cfg.scrolloff().x)
+                    .min(max_shift)
+                    .saturating_sub(width)
+            });
     }
 
     fn print<'a>(

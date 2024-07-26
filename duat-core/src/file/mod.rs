@@ -52,7 +52,7 @@ where
         FileCfg {
             text_op: TextOp::NewBuffer,
             builder: Arc::new(|file| Widget::active(file, RwData::new(KeyMap::new()))),
-            cfg: PrintCfg::default_for_files(),
+            cfg: PrintCfg::default_for_input(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
         }
@@ -94,6 +94,8 @@ where
                 text.insert_tag(i + 4, Tag::PopForm(form1), marker);
             }
             text.insert_tag(0, Tag::StartAlignCenter, marker);
+            text.insert_tag(300, Tag::EndAlignCenter, marker);
+            text.insert_tag(600, Tag::StartAlignRight, marker);
 
             text
         };

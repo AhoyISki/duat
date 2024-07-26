@@ -129,6 +129,8 @@ pub struct PrintCfg {
     pub word_chars: WordChars,
     /// Wether or not to print an extra space for cursors
     pub ending_space: bool,
+    /// Wether or not to limit scrolloff on the end of lines
+    pub force_scrolloff: bool,
 }
 
 impl PrintCfg {
@@ -141,6 +143,7 @@ impl PrintCfg {
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
             ending_space: false,
+            force_scrolloff: false,
         }
     }
 
@@ -239,10 +242,17 @@ impl PrintCfg {
         }
     }
 
-    /// Same as [`default`], but with a hidden new line.
+    pub fn with_forced_scrolloff(self) -> Self {
+        Self {
+            force_scrolloff: true,
+            ..self
+        }
+    }
+
+    /// The default used in files and other such inputs
     ///
     /// [`default`]: PrintCfg::default
-    pub fn default_for_files() -> Self {
+    pub fn default_for_input() -> Self {
         Self {
             wrap_method: WrapMethod::default(),
             indent_wrap: true,
@@ -251,6 +261,7 @@ impl PrintCfg {
             scrolloff: ScrollOff::default(),
             word_chars: WordChars::new(vec!['a'..='z', 'A'..='Z', '0'..='9', '_'..='_']),
             ending_space: true,
+            force_scrolloff: false,
         }
     }
 }
@@ -355,6 +366,12 @@ impl<'a> IterCfg<'a> {
         self.cfg.ending_space
     }
 
+    #[inline]
+    pub fn forced_scrollof(&self) -> bool {
+        self.cfg.force_scrolloff
+    }
+
+    #[inline]
     pub fn wrap_width(&self, width: usize) -> usize {
         match self.wrap_method() {
             WrapMethod::Width | WrapMethod::Word => width,

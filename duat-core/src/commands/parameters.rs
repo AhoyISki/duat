@@ -4,7 +4,7 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
-use crate::text::{text, Text};
+use crate::text::{err, Text};
 
 /// The non flag arguments that were passed to the caller.
 ///
@@ -84,17 +84,21 @@ impl<'a> Args<'a> {
                 Ok(arg)
             }
             None => Err({
-                let expected = match self.expected {
-                    Some(expected) => text!([AccentErr] expected),
-                    None => text!("at least " [AccentErr] { self.count + 1 }),
+                let args = match self.expected.unwrap_or(self.count + 1) {
+                    1 => " argument",
+                    _ => " arguments",
                 };
-                let (args, received) = match self.count {
-                    0 => (" arguments", text!([AccentErr] "none")),
-                    1 => (" argument", text!([AccentErr] 1)),
-                    count => (" arguments", text!([AccentErr] count)),
+                let expected = match self.expected {
+                    Some(expected) => err!([*a] expected),
+                    None => err!("at least " [*a] { self.count + 1 }),
+                };
+                let received = match self.count {
+                    0 => err!([*a] "none"),
+                    1 => err!([*a] 1),
+                    count => err!([*a] count),
                 };
 
-                text!("Expected " expected [] args ", got " received [] ".")
+                err!("Expected " expected args ", received " received ".")
             }),
         }
     }
@@ -128,9 +132,9 @@ impl<'a> Args<'a> {
     pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
         let arg = self.next()?;
         arg.parse().map_err(|_| {
-            text!(
-                "Couldn't convert " [AccentErr] arg []
-                " to " [AccentErr] { std::any::type_name::<F>() } [] "."
+            err!(
+                "Couldn't convert " [*a] arg []
+                " to " [*a] { std::any::type_name::<F>() } [] "."
             )
         })
     }
@@ -161,13 +165,16 @@ impl<'a> Args<'a> {
     /// ```
     ///
     /// [`Args::next`]: Args::next
-    pub fn next_else(&mut self, text: Text) -> std::result::Result<&str, Text> {
+    pub fn next_else<T>(&mut self, to_text: T) -> std::result::Result<&str, Text>
+    where
+        T: Into<Text>,
+    {
         match self.args.next() {
             Some(arg) => {
                 self.count += 1;
                 Ok(arg)
             }
-            None => Err(text),
+            None => Err(to_text.into()),
         }
     }
 
@@ -205,9 +212,9 @@ impl<'a> Args<'a> {
                     true => " argument",
                     false => " arguments",
                 };
-                text!(
-                    "Expected " [AccentErr] { self.count } [] args
-                    ", received " [AccentErr] { self.count + count } [] " instead."
+                err!(
+                    "Expected " [*a] { self.count } [] args
+                    ", received " [*a] { self.count + count } [] " instead."
                 )
             }),
         }

@@ -9,7 +9,9 @@ mod types;
 use std::{
     ops::{Range, RangeBounds},
     path::Path,
+    rc::Rc,
     str::from_utf8_unchecked,
+    sync::Arc,
 };
 
 use gapbuf::GapBuffer;
@@ -25,7 +27,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors};
+use crate::{history::Change, input::Cursors, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -352,21 +354,12 @@ impl Text {
     }
 }
 
-impl<S> From<S> for Text
+impl<E> From<E> for Text
 where
-    S: ToString,
+    E: DuatError,
 {
-    fn from(value: S) -> Self {
-        let value = value.to_string();
-        let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-        let tags = Box::new(Tags::with_len(buf.len()));
-
-        Self {
-            buf,
-            tags,
-            marker: Marker::new(),
-            records: Records::with_max((value.len(), value.chars().count(), value.lines().count())),
-        }
+    fn from(value: E) -> Self {
+        value.into_text()
     }
 }
 
@@ -382,6 +375,17 @@ impl std::fmt::Debug for Text {
             .finish()
     }
 }
+
+impl From<std::io::Error> for Text {
+    fn from(value: std::io::Error) -> Self {
+        err!({ value.kind().to_string() })
+    }
+}
+
+impl_from_to_string!(
+    u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 usize isize f32 f64
+    char &str String Box<str> Rc<str> Arc<str>
+);
 
 impl PartialEq for Text {
     fn eq(&self, other: &Self) -> bool {
@@ -514,9 +518,17 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use crate::palette::{EXTRA_SEL_FORM_ID, MAIN_SEL_FORM_ID};
 
     if is_main {
-        (MainCursor, PushForm(MAIN_SEL_FORM_ID), PopForm(MAIN_SEL_FORM_ID))
+        (
+            MainCursor,
+            PushForm(MAIN_SEL_FORM_ID),
+            PopForm(MAIN_SEL_FORM_ID),
+        )
     } else {
-        (ExtraCursor, PushForm(EXTRA_SEL_FORM_ID), PopForm(EXTRA_SEL_FORM_ID))
+        (
+            ExtraCursor,
+            PushForm(EXTRA_SEL_FORM_ID),
+            PopForm(EXTRA_SEL_FORM_ID),
+        )
     }
 }
 
@@ -533,4 +545,27 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
     };
 
     (start, end)
+}
+
+macro impl_from_to_string($($t:ty)+) {
+    $(
+    impl From<$t> for Text {
+        fn from(value: $t) -> Self {
+            let value = <$t as ToString>::to_string(&value);
+            let buf = Box::new(GapBuffer::from_iter(value.bytes()));
+            let tags = Box::new(Tags::with_len(buf.len()));
+
+            Self {
+                buf,
+                tags,
+                marker: Marker::new(),
+                records: Records::with_max((
+                    value.len(),
+                    value.chars().count(),
+                    value.lines().count(),
+                )),
+            }
+        }
+    }
+    )+
 }

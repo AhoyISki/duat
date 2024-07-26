@@ -15,7 +15,7 @@ use crossterm::{
     style::{ResetColor, SetStyle},
     terminal,
 };
-use duat_core::{log_info, palette::DEFAULT_FORM_ID};
+use duat_core::palette::DEFAULT_FORM_ID;
 
 use crate::{layout::VarPoint, Coords, Equality};
 
