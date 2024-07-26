@@ -561,7 +561,7 @@ where
                     .position(|(widget, _)| file.file_ptr_eq(widget))
                     .unwrap();
 
-                let (new_window, entry) = if flags.long("global") {
+                let (new_window, entry) = if flags.word("global") {
                     iter_around(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap()
@@ -603,7 +603,7 @@ where
                     .position(|(widget, _)| file.file_ptr_eq(widget))
                     .unwrap();
 
-                let (new_window, entry) = if flags.long("global") {
+                let (new_window, entry) = if flags.word("global") {
                     iter_around_rev(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
                         .unwrap()

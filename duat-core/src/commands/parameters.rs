@@ -19,8 +19,8 @@ use crate::text::{err, Text};
 /// let call = "command --foo -bar notflag --foo --baz -abfgh";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
-/// assert!(flags.short("bar"));
-/// assert!(flags.long("foo"));
+/// assert!(flags.blob("bar"));
+/// assert!(flags.word("foo"));
 /// assert_eq!(args.collect::<Vec<&str>>(), vec![
 ///     "notflag", "--foo", "--baz", "-abfgh"
 /// ]);
@@ -34,8 +34,8 @@ use crate::text::{err, Text};
 /// let call = "command --foo -bar -- --foo --baz -abfgh";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
-/// assert!(flags.short("bar"));
-/// assert!(flags.long("foo"));
+/// assert!(flags.blob("bar"));
+/// assert!(flags.word("foo"));
 /// assert_eq!(args.collect::<Vec<&str>>(), vec![
 ///     "--foo", "--baz", "-abfgh"
 /// ]);
@@ -58,7 +58,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::err};
     /// let call = "run away i'll kill you 👹";
     /// let (flags, mut args) = split_flags_and_args(call);
     /// args.next();
@@ -70,9 +70,9 @@ impl<'a> Args<'a> {
     /// assert_eq!(ogre, Ok("👹"));
     ///
     /// let error = args.next();
-    /// let error_msg = text!(
-    ///     "Expected at least " [AccentErr] 6 []
-    ///     " arguments, got " [AccentErr] 5 [] "."
+    /// let error_msg = err!(
+    ///     "Expected at least " [*a] 6 []
+    ///     " arguments, received " [*a] 5 [] "."
     /// );
     /// assert_eq!(error, Err(error_msg));
     /// ```
@@ -113,7 +113,7 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
+    /// # use duat_core::{commands::{split_flags_and_args}, text::err};
     /// let call = "int-and-float 42 non-float-arg";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
@@ -121,9 +121,9 @@ impl<'a> Args<'a> {
     /// assert_eq!(int, Ok(42));
     ///
     /// let float = args.next_as::<f32>();
-    /// let error_msg = text!(
-    ///     "Couldn't convert " [AccentErr] "non-float-arg" []
-    ///     " to " [AccentErr] "f32" [] "."
+    /// let error_msg = err!(
+    ///     "Couldn't convert " [*a] "non-float-arg" []
+    ///     " to " [*a] "f32" [] "."
     /// );
     /// assert_eq!(float, Err(error_msg));
     /// ```
@@ -144,7 +144,7 @@ impl<'a> Args<'a> {
     ///
     /// This method will replace the usual "not enough arguments"
     /// error message from the [`Args::next`] method by a [`Text`]
-    /// provided by the user itself, usually with the [`text`] macro.
+    /// provided by the user itself, usually with the [`err`] macro.
     ///
     /// # Examples
     ///
@@ -159,7 +159,7 @@ impl<'a> Args<'a> {
     /// let second = args.next();
     /// assert_eq!(second, Ok("not-quite"));
     ///
-    /// let msg = text!("I expected a " [Wack] "file" [] ", damnit!");
+    /// let msg = err!("I expected a " [*a] "file" [] ", damnit!");
     /// let float = args.next_else(msg.clone());
     /// assert_eq!(float, Err(msg));
     /// ```
@@ -188,17 +188,17 @@ impl<'a> Args<'a> {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{commands::{split_flags_and_args}, text::text};
-    /// let call = "just-1-arg,man arg-1 too-many wayy tooo many";
+    /// # use duat_core::{commands::{split_flags_and_args}, text::err};
+    /// let call = "just-1-arg arg-1 too-many wayy tooo many";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
     /// let first = args.next();
     /// assert_eq!(first, Ok("arg-1"));
     ///
     /// let error = args.ended();
-    /// let msg = text!(
-    ///     "Expected " [AccentErr] 1 []
-    ///     " argument, received " [AccentErr] 5 [] " instead."
+    /// let msg = err!(
+    ///     "Expected " [*a] 1 []
+    ///     " argument, received " [*a] 5 [] " instead."
     /// );
     /// assert_eq!(error, Err(msg));
     /// ```
@@ -273,9 +273,9 @@ impl<'a> Args<'a> {
     /// args.next();
     ///
     /// let error = args.next();
-    /// let error_msg = text!(
-    ///     "Expected " [AccentErr] 5 []
-    ///     " arguments, got " [AccentErr] 2 [] "."
+    /// let error_msg = err!(
+    ///     "Expected " [*a] 5 []
+    ///     " arguments, received " [*a] 2 [] "."
     /// );
     /// assert_eq!(error, Err(error_msg));
     /// ```
@@ -287,20 +287,20 @@ impl<'a> Args<'a> {
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
 ///
-/// There are 2 types of flag, the `short` and `long` flags.
+/// There are 2 types of flag, the `blob` and `word` flags.
 ///
-/// `short` flags represent singular characters passed after a
+/// `blob` flags represent singular characters passed after a
 /// single `'-'` character, they can show up in multiple
 /// places, and should represent an incremental addition of
 /// features to a command.
 ///
-/// `long` flags are words that come after any `"--"` sequence,
+/// `word` flags are words that come after any `"--"` sequence,
 /// and should represent more verbose, but more readable
-/// versions of `short` flags.
+/// versions of `blob` flags.
 ///
 /// # Examples
 ///
-/// Both `short` and `long` flags can only be counted once, no
+/// Both `blob` and `word` flags can only be counted once, no
 /// matter how many times they show up:
 ///
 /// ```rust
@@ -308,8 +308,8 @@ impl<'a> Args<'a> {
 /// let call = "my-command --foo -abcde --foo --bar -abfgh arg1";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
-/// assert!(flags.short("abcdefgh"));
-/// assert!(flags.long("foo") && flags.long("bar"));
+/// assert!(flags.blob("abcdefgh"));
+/// assert!(flags.word("foo") && flags.word("bar"));
 /// assert_eq!(args.collect::<Vec<&str>>(), vec!["arg1"]);
 /// ```
 ///
@@ -322,8 +322,8 @@ impl<'a> Args<'a> {
 /// let call = "command --foo --bar -abcde -- --!flag -also-not";
 /// let (flags, mut args) = split_flags_and_args(call);
 ///
-/// assert!(flags.short("abcde"));
-/// assert!(flags.long("foo") && flags.long("bar"));
+/// assert!(flags.blob("abcde"));
+/// assert!(flags.word("foo") && flags.word("bar"));
 /// assert_eq!(args.collect::<String>(), "--!flag -also-not")
 /// ```
 #[derive(Clone, Copy)]
@@ -334,7 +334,7 @@ impl<'a, 'b> Flags<'a, 'b> {
         Self(inner)
     }
 
-    /// Checks if all of the [`char`]s in the `short` passed.
+    /// Checks if all of the [`char`]s in the `blob` passed.
     ///
     /// # Examples
     ///
@@ -343,15 +343,15 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// let call = "run -abcdefgh -ablk args -wz";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
-    /// assert!(flags.short("k"));
-    /// assert!(!flags.short("w"));
+    /// assert!(flags.blob("k"));
+    /// assert!(!flags.blob("w"));
     /// assert_eq!(args.collect::<Vec<&str>>(), vec!["args", "-wz"]);
     /// ```
-    pub fn short(&self, short: impl AsRef<str>) -> bool {
-        self.0.short(short)
+    pub fn blob(&self, blob: impl AsRef<str>) -> bool {
+        self.0.blob(blob)
     }
 
-    /// Returns `true` if the `long` flag was passed.
+    /// Returns `true` if the `word` flag was passed.
     ///
     /// # Examples
     ///
@@ -360,12 +360,12 @@ impl<'a, 'b> Flags<'a, 'b> {
     /// let call = "run --foo --bar args --baz";
     /// let (flags, mut args) = split_flags_and_args(call);
     ///
-    /// assert!(flags.long("foo"));
-    /// assert!(!flags.long("baz"));
+    /// assert!(flags.word("foo"));
+    /// assert!(!flags.word("baz"));
     /// assert_eq!(&args.collect::<String>(), "args --baz");
     /// ```
-    pub fn long(&self, flag: impl AsRef<str>) -> bool {
-        self.0.long(flag)
+    pub fn word(&self, flag: impl AsRef<str>) -> bool {
+        self.0.word(flag)
     }
 
     /// Returns `true` if no flags have been passed.
@@ -390,56 +390,56 @@ impl<'a, 'b> Flags<'a, 'b> {
 /// A struct representing flags passed down to [`Command`]s when
 /// running them.
 pub struct InnerFlags<'a> {
-    short: String,
-    long: Vec<&'a str>,
+    blob: String,
+    word: Vec<&'a str>,
 }
 
 impl<'a> InnerFlags<'a> {
-    /// Checks if all of the [`char`]s in the `short` passed.
-    pub fn short(&self, short: impl AsRef<str>) -> bool {
+    /// Checks if all of the [`char`]s in the `blob` passed.
+    pub fn blob(&self, blob: impl AsRef<str>) -> bool {
         let mut all_chars = true;
-        for char in short.as_ref().chars() {
-            all_chars &= self.short.contains(char);
+        for char in blob.as_ref().chars() {
+            all_chars &= self.blob.contains(char);
         }
         all_chars
     }
 
-    /// Returns `true` if the `long` flag was passed.
-    pub fn long(&self, flag: impl AsRef<str>) -> bool {
-        self.long.contains(&flag.as_ref())
+    /// Returns `true` if the `word` flag was passed.
+    pub fn word(&self, flag: impl AsRef<str>) -> bool {
+        self.word.contains(&flag.as_ref())
     }
 
     /// Returns `true` if no flags have been passed.
     pub fn is_empty(&self) -> bool {
-        self.short.is_empty() && self.long.is_empty()
+        self.blob.is_empty() && self.word.is_empty()
     }
 }
 
 /// Takes the [`Flags`] from an [`Iterator`] of `args`.
 pub fn split_flags_and_args(command: &str) -> (InnerFlags<'_>, Args<'_>) {
-    let mut short = String::new();
-    let mut long = Vec::new();
+    let mut blob = String::new();
+    let mut word = Vec::new();
 
     let mut args = command.split_whitespace().peekable();
 
     args.next();
 
     while let Some(arg) = args.peek() {
-        if let Some(long_arg) = arg.strip_prefix("--") {
-            if !long_arg.is_empty() {
+        if let Some(word_arg) = arg.strip_prefix("--") {
+            if !word_arg.is_empty() {
                 args.next();
-                if !long.contains(&long_arg) {
-                    long.push(long_arg)
+                if !word.contains(&word_arg) {
+                    word.push(word_arg)
                 }
             } else {
                 args.next();
                 break;
             }
-        } else if let Some(short_arg) = arg.strip_prefix('-') {
+        } else if let Some(blob_arg) = arg.strip_prefix('-') {
             args.next();
-            for char in short_arg.chars() {
-                if !short.contains(char) {
-                    short.push(char)
+            for char in blob_arg.chars() {
+                if !blob.contains(char) {
+                    blob.push(char)
                 }
             }
         } else {
@@ -447,7 +447,7 @@ pub fn split_flags_and_args(command: &str) -> (InnerFlags<'_>, Args<'_>) {
         }
     }
 
-    (InnerFlags { short, long }, Args {
+    (InnerFlags { blob, word }, Args {
         count: 0,
         expected: None,
         args,
