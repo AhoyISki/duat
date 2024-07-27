@@ -1,13 +1,17 @@
 use std::fmt::Debug;
 
+use crate::log_info;
+
 const LEN_PER_RECORD: usize = 150;
 
-pub trait Record: Debug {
+pub trait Record: Debug + 'static {
     fn bytes(&self) -> usize;
 
     fn add(self, other: Self) -> Self;
 
     fn sub(self, other: Self) -> Self;
+
+    fn is_zero_len(&self) -> bool;
 }
 
 impl Record for (usize, usize) {
@@ -21,6 +25,10 @@ impl Record for (usize, usize) {
 
     fn sub(self, other: Self) -> Self {
         (self.0 - other.0, self.1 - other.1)
+    }
+
+    fn is_zero_len(&self) -> bool {
+        self.0 == 0 || self.1 == 0
     }
 }
 
@@ -36,21 +44,25 @@ impl Record for (usize, usize, usize) {
     fn sub(self, other: Self) -> Self {
         (self.0 - other.0, self.1 - other.1, self.2 - other.2)
     }
+
+    fn is_zero_len(&self) -> bool {
+        false
+    }
 }
 
-#[derive(Default, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Records<R>
 where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record + 'static,
 {
-    last: R,
+    last: (usize, R),
     max: R,
     pub stored: Vec<R>,
 }
 
 impl<R> Records<R>
 where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record + 'static,
 {
     pub fn new() -> Self {
         Self::default()
@@ -59,37 +71,73 @@ where
     pub fn with_max(max: R) -> Self {
         Self {
             max,
+            stored: vec![max],
             ..Self::default()
         }
     }
 
     pub fn insert(&mut self, new: R) {
-        let Err(i) = self.stored.binary_search(&new) else {
-            return;
-        };
-        let prev = i.checked_sub(1).and_then(|i| self.stored.get(i));
-        let next = self.stored.get(i + 1);
+        // For internal functions, I assume that I'm not
+        // going over self.max.
+        let (i, prev) = self.search_from((0, R::default()), new.bytes());
+        let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
-        if [prev, next]
+        if [prev, prev.add(len)]
             .iter()
-            .flatten()
-            .all(|r| r.bytes().abs_diff(new.bytes()) >= LEN_PER_RECORD)
+            .any(|rec| rec.bytes().abs_diff(new.bytes()) < LEN_PER_RECORD)
         {
-            self.stored.insert(i, new)
+            return;
         }
 
-        self.last = new;
+        if self.max.bytes() > 400
+            && std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize)>()
+        {
+            log_info!("before insertion");
+        }
+        if let Some(rec) = self.stored.get_mut(i) {
+            *rec = new.sub(prev);
+            self.stored.insert(i + 1, len.sub(new.sub(prev)));
+            self.last = (i + 1, new);
+        }
     }
 
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
-        let (Ok(start_i) | Err(start_i)) = self.stored.binary_search(&start);
-        let (Ok(old_end_i) | Err(old_end_i)) = self.stored.binary_search(&start.add(old_len));
+        let (b_i, b_rec) = self.search_from((0, R::default()), start.bytes());
+        let (e_i, e_rec) = self.search_from((b_i, b_rec), start.bytes() + old_len.bytes());
+        let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
-        for r in self.stored.iter_mut().skip(old_end_i) {
-            *r = r.sub(old_len).add(new_len);
+        if b_i < e_i {
+            self.stored.drain((b_i + 1)..=e_i);
         }
 
-        self.stored.splice(start_i..old_end_i, []);
+        // Transformation of the beginning len.
+        let (len, b_i) = if let Some(len) = self.stored.get_mut(b_i) {
+            *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(b_rec);
+
+            (len, b_i)
+        } else {
+            let last = self.stored.last_mut().unwrap();
+
+            *last = last.add(new_len).sub(old_len);
+
+            let b_i = self.stored.len() - 1;
+            (self.stored.last_mut().unwrap(), b_i)
+        };
+
+        // Removing it if's len is zero.
+        if let Some(b_i) = b_i.checked_sub(1)
+            && len.is_zero_len()
+        {
+            let len = *len;
+            let prev = self.stored.get_mut(b_i).unwrap();
+
+            self.last = (b_i, b_rec.sub(*prev));
+
+            *prev = prev.add(len);
+            self.stored.remove(b_i + 1);
+        } else {
+            self.last = (b_i, b_rec);
+        };
 
         self.max = self.max.sub(old_len).add(new_len);
     }
@@ -98,19 +146,15 @@ where
         self.transform(self.max, R::default(), r)
     }
 
-    pub fn extend(&mut self, mut other: Records<R>) {
-        for r in other.stored.iter_mut() {
-            *r = r.add(self.max);
-        }
-
+    pub fn extend(&mut self, other: Records<R>) {
         self.stored.extend(other.stored);
         self.max = self.max.add(other.max);
     }
 
     pub fn clear(&mut self) {
-        self.last = R::default();
+        self.last = (0, R::default());
         self.max = R::default();
-        self.stored = Vec::default();
+        self.stored = vec![R::default()];
     }
 
     pub fn max(&self) -> R {
@@ -118,22 +162,59 @@ where
     }
 
     pub fn closest_to(&self, b: usize) -> R {
-        let i = match self.stored.binary_search_by(|r| r.bytes().cmp(&b)) {
-            Err(i) => i,
-            Ok(i) => return self.stored[i],
-        };
+        let (i, rec) = self.search_from((0, R::default()), b);
+        let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
-        let canditates = {
-            let prev = i.checked_sub(1).and_then(|i| self.stored.get(i)).cloned();
-            let next = self.stored.get(i).cloned();
-            let max = Some(self.max);
+        if rec.bytes().abs_diff(b) > len.add(rec).bytes().abs_diff(b) {
+            len.add(rec)
+        } else {
+            rec
+        }
+    }
 
-            [Some(R::default()), prev, next, max].into_iter().flatten()
-        };
-
-        canditates
-            .min_by(|lhs, rhs| lhs.bytes().abs_diff(b).cmp(&rhs.bytes().abs_diff(b)))
+    fn search_from(&self, from: (usize, R), b: usize) -> (usize, R) {
+        let (n, mut prev) = {
+            [
+                (0, R::default()),
+                (self.stored.len(), self.max),
+                from,
+                self.last,
+            ]
+            .iter()
+            .min_by(|(_, lhs), (_, rhs)| lhs.bytes().abs_diff(b).cmp(&rhs.bytes().abs_diff(b)))
+            .cloned()
             .unwrap()
+        };
+
+        if b >= prev.bytes() {
+            self.stored[n..].iter().enumerate().find_map(|(i, len)| {
+                prev = prev.add(*len);
+                (prev.bytes() > b).then_some((n + i, prev.sub(*len)))
+            })
+        } else {
+            self.stored[..n]
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(i, len)| {
+                    prev = prev.sub(*len);
+                    (prev.bytes() <= b).then_some((i, prev))
+                })
+        }
+        .unwrap_or((self.stored.len(), self.max))
+    }
+}
+
+impl<R: Default> Default for Records<R>
+where
+    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
+{
+    fn default() -> Self {
+        Self {
+            last: (0, R::default()),
+            max: R::default(),
+            stored: vec![R::default()],
+        }
     }
 }
 

@@ -138,8 +138,11 @@ impl<E> std::fmt::Debug for Error<E> {
 pub type Result<T, E> = std::result::Result<T, Error<E>>;
 
 /// Internal macro used to log information.
-#[deprecated(note = "log_info has been used, remove it before publishing")]
 pub macro log_info($($text:tt)*) {{
+    #[cfg(not(debug_assertions))] {
+    	compile_error!("You are not supposed to use log_info on release profiles!");
+    }
+
     use std::{fmt::Write, time::Instant};
 
     use crate::{HOOK, LOG};

@@ -15,6 +15,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -381,6 +382,13 @@ impl Tags {
             }
         };
 
+        if self.len_bytes() > 300 {
+            log_info!(
+                "getting skip at {at}, got ({n}, {b}), with recs:\n{:#?}",
+                self.records
+            );
+        }
+
         if at >= b {
             let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);
             iter.map(|(i, this_b, skip)| (n + i, b + (this_b - skip), skip))
@@ -456,7 +464,7 @@ impl Tags {
         if let Some(p_skip) = self.buf[n - 1].as_skip() {
             self.buf
                 .splice((n - 1)..=n, [TagOrSkip::Skip(p_skip + skip)]);
-            self.records.transform((n - 1, at - p_skip), (2, 0), (1, 0));
+            self.records.transform((n, at), (1, 0), (0, 0));
         }
     }
 
@@ -524,7 +532,7 @@ pub fn iter_range(
 
 pub fn iter_range_rev(
     buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize>,
+    range: impl RangeBounds<usize> + std::fmt::Debug,
 ) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
     let (start, end) = get_ends(range, buf.len());
