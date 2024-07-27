@@ -15,11 +15,12 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
+    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
-use iter::{print_iter, rev_print_iter};
+use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
@@ -151,14 +152,14 @@ impl Area {
 
             let (line_len, align) = {
                 let mut align = Alignment::Left;
-                let points = if wrap {
-                    points
+                let (indent, points) = if wrap {
+                    (start, points)
                 } else {
-                    iter.find_map(|(caret, item)| caret.wrap.then_some(item.points()))
+                    iter.find_map(|(caret, item)| caret.wrap.then_some((caret.x, item.points())))
                         .unwrap()
                 };
 
-                let len = print_iter(text.iter_at(points), cap, cfg, *info)
+                let len = print_iter_indented(text.iter_at(points), cap, cfg, indent)
                     .inspect(|(_, Item { part, .. })| match part {
                         Part::AlignLeft => align = Alignment::Left,
                         Part::AlignCenter => align = Alignment::Center,
@@ -169,6 +170,8 @@ impl Area {
                     .last()
                     .map(|(Caret { x, len, .. }, _)| x + len)
                     .unwrap_or(0);
+
+                log_info!("{len}");
 
                 (len, align)
             };

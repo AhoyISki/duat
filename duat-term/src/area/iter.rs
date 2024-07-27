@@ -210,6 +210,20 @@ pub fn print_iter<'a>(
     inner_iter(iter, cap, (indent, iter_at_line_start), cfg)
 }
 
+/// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
+///
+/// This function will function properly given that, elsewhere in
+/// the code, the passed [`PrintInfo`] and `width` have beend
+/// validated.
+pub(super) fn print_iter_indented<'a>(
+    iter: TextIter<'a>,
+    cap: usize,
+    cfg: IterCfg<'a>,
+    indent: usize,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    inner_iter(iter, cap, (indent, false), cfg)
+}
+
 pub fn rev_print_iter<'a>(
     mut iter: RevTextIter<'a>,
     width: usize,

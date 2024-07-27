@@ -15,7 +15,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -381,13 +380,6 @@ impl Tags {
                 ts.as_skip().map(|s| (n, b_len, s))
             }
         };
-
-        if self.len_bytes() > 300 {
-            log_info!(
-                "getting skip at {at}, got ({n}, {b}), with recs:\n{:#?}",
-                self.records
-            );
-        }
 
         if at >= b {
             let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);

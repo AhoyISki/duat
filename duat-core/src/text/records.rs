@@ -82,6 +82,7 @@ where
         let (i, prev) = self.search_from((0, R::default()), new.bytes());
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
+		// If the recrds would be too close, don't add any
         if [prev, prev.add(len)]
             .iter()
             .any(|rec| rec.bytes().abs_diff(new.bytes()) < LEN_PER_RECORD)
@@ -89,11 +90,6 @@ where
             return;
         }
 
-        if self.max.bytes() > 400
-            && std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize)>()
-        {
-            log_info!("before insertion");
-        }
         if let Some(rec) = self.stored.get_mut(i) {
             *rec = new.sub(prev);
             self.stored.insert(i + 1, len.sub(new.sub(prev)));
