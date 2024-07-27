@@ -77,7 +77,7 @@ where
     pub fn insert(&mut self, new: R) {
         // For internal functions, I assume that I'm not
         // going over self.max.
-        let (i, prev) = self.search_from((0, R::default()), new.bytes());
+        let (i, prev) = self.search_from((0, R::default()), new.bytes(), Record::bytes);
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
         // If the recrds would be too close, don't add any
@@ -96,8 +96,9 @@ where
     }
 
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
-        let (b_i, b_rec) = self.search_from((0, R::default()), start.bytes());
-        let (e_i, e_rec) = self.search_from((b_i, b_rec), start.bytes() + old_len.bytes());
+        let (b_i, b_rec) = self.search_from((0, R::default()), start.bytes(), Record::bytes);
+        let (e_i, e_rec) =
+            self.search_from((b_i, b_rec), start.bytes() + old_len.bytes(), Record::bytes);
         let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
         if b_i < e_i {
@@ -157,7 +158,7 @@ where
     }
 
     pub fn closest_to(&self, b: usize) -> R {
-        let (i, rec) = self.search_from((0, R::default()), b);
+        let (i, rec) = self.search_from((0, R::default()), b, Record::bytes);
         let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
         if rec.bytes().abs_diff(b) > len.add(rec).bytes().abs_diff(b) {
@@ -167,7 +168,23 @@ where
         }
     }
 
-    fn search_from(&self, from: (usize, R), b: usize) -> (usize, R) {
+    pub fn closest_to_by(&self, at: usize, by: impl Fn(&R) -> usize + Copy) -> R {
+        let (i, rec) = self.search_from((0, R::default()), at, by);
+        let len = self.stored.get(i).cloned().unwrap_or(R::default());
+
+        if by(&rec).abs_diff(at) > by(&len.add(rec)).abs_diff(at) {
+            len.add(rec)
+        } else {
+            rec
+        }
+    }
+
+    fn search_from(
+        &self,
+        from: (usize, R),
+        at: usize,
+        by: impl Fn(&R) -> usize + Copy,
+    ) -> (usize, R) {
         let (n, mut prev) = {
             [
                 (0, R::default()),
@@ -176,15 +193,15 @@ where
                 self.last,
             ]
             .iter()
-            .min_by(|(_, lhs), (_, rhs)| lhs.bytes().abs_diff(b).cmp(&rhs.bytes().abs_diff(b)))
+            .min_by(|(_, lhs), (_, rhs)| by(lhs).abs_diff(at).cmp(&by(rhs).abs_diff(at)))
             .cloned()
             .unwrap()
         };
 
-        if b >= prev.bytes() {
+        if at >= by(&prev) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 prev = prev.add(*len);
-                (prev.bytes() > b).then_some((n + i, prev.sub(*len)))
+                (by(&prev) > at).then_some((n + i, prev.sub(*len)))
             })
         } else {
             self.stored[..n]
@@ -193,7 +210,7 @@ where
                 .rev()
                 .find_map(|(i, len)| {
                     prev = prev.sub(*len);
-                    (prev.bytes() <= b).then_some((i, prev))
+                    (by(&prev) <= at).then_some((i, prev))
                 })
         }
         .unwrap_or((self.stored.len(), self.max))

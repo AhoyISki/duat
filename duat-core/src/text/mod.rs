@@ -93,9 +93,9 @@ impl Text {
             (edit.len(), edit.chars().count(), lines)
         };
 
-		log_info!("before records transform");
+        log_info!("before records transform");
         self.records.transform(old_start, old_len, new_len);
-		log_info!("after records transform");
+        log_info!("after records transform");
 
         let new_end = old.start + edit.len();
         self.tags.transform(old, new_end);
@@ -243,6 +243,90 @@ impl Text {
                     (b - c_len, c - (i + 1), l)
                 })
                 .take_while(|&(b, ..)| b >= at)
+                .last()
+        };
+
+        found
+            .map(|(b, c, l)| Point::from_coords(b, c, l))
+            .unwrap_or(self.max_point())
+    }
+
+    #[inline(always)]
+    pub fn point_at_char(&self, at: usize) -> Point {
+        assert!(
+            at <= self.len_bytes(),
+            "byte out of bounds: the len is {}, but the byte is {at}",
+            self.len_bytes()
+        );
+        let (b, c, mut l) = self.records.closest_to_by(at, |(_, c, _)| *c);
+
+        let found = if at >= c {
+            let (s0, s1) = self.strs_in_range(b..);
+
+            s0.char_indices()
+                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
+                .enumerate()
+                .map(|(i, (this_b, char))| {
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
+                })
+                .take_while(|&(_, c, _)| at >= c)
+                .last()
+        } else {
+            let (s0, s1) = self.strs_in_range(..b);
+            let s1 = s1.chars().rev();
+            let mut c_len = 0;
+
+            s1.chain(s0.chars().rev())
+                .enumerate()
+                .map(|(i, char)| {
+                    l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), l)
+                })
+                .take_while(|&(_, c, _)| c >= at)
+                .last()
+        };
+
+        found
+            .map(|(b, c, l)| Point::from_coords(b, c, l))
+            .unwrap_or(self.max_point())
+    }
+
+    #[inline(always)]
+    pub fn point_at_line(&self, at: usize) -> Point {
+        assert!(
+            at <= self.len_bytes(),
+            "byte out of bounds: the len is {}, but the byte is {at}",
+            self.len_bytes()
+        );
+        let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
+
+        let found = if at > l {
+            let (s0, s1) = self.strs_in_range(b..);
+
+            s0.char_indices()
+                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
+                .enumerate()
+                .map(|(i, (this_b, char))| {
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
+                })
+                .take_while(|&(.., l)| at >= l)
+                .last()
+        } else {
+            let (s0, s1) = self.strs_in_range(..b);
+            let s1 = s1.chars().rev();
+            let mut c_len = 0;
+
+            s1.chain(s0.chars().rev())
+                .enumerate()
+                .map(|(i, char)| {
+                    l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), l)
+                })
+                .take_while(|&(.., l)| l >= at)
                 .last()
         };
 
