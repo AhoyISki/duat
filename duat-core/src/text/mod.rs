@@ -27,7 +27,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, DuatError};
+use crate::{history::Change, input::Cursors, log_info, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -93,7 +93,9 @@ impl Text {
             (edit.len(), edit.chars().count(), lines)
         };
 
+		log_info!("before records transform");
         self.records.transform(old_start, old_len, new_len);
+		log_info!("after records transform");
 
         let new_end = old.start + edit.len();
         self.tags.transform(old, new_end);
@@ -107,9 +109,9 @@ impl Text {
         self.replace_range(change.taken_range(), &change.added_text);
     }
 
-    pub(crate) fn undo_change(&mut self, change: &Change, chars: isize) {
-        let start = change.start.saturating_add_signed(chars);
-        let end = change.added_end().saturating_add_signed(chars);
+    pub(crate) fn undo_change(&mut self, change: &Change, bytes: isize) {
+        let start = change.start.saturating_add_signed(bytes);
+        let end = change.added_end().saturating_add_signed(bytes);
         self.replace_range(start..end, &change.taken_text);
     }
 

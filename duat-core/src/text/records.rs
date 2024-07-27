@@ -80,7 +80,7 @@ where
         let (i, prev) = self.search_from((0, R::default()), new.bytes());
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
-		// If the recrds would be too close, don't add any
+        // If the recrds would be too close, don't add any
         if [prev, prev.add(len)]
             .iter()
             .any(|rec| rec.bytes().abs_diff(new.bytes()) < LEN_PER_RECORD)
@@ -101,7 +101,8 @@ where
         let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
         if b_i < e_i {
-            self.stored.drain((b_i + 1)..=e_i);
+            self.stored
+                .drain((b_i + 1)..(e_i + 1).min(self.stored.len()));
         }
 
         // Transformation of the beginning len.

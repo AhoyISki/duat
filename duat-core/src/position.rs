@@ -1,7 +1,6 @@
 use std::ops::Range;
 
-use crate::{
-    log_info, text::{IterCfg, Point, PrintCfg, Text}, ui::{Area, Caret}
+use crate::{text::{IterCfg, Point, PrintCfg, Text}, ui::{Area, Caret}
 };
 
 /// A cursor in the text file. This is an editing cursor, not a

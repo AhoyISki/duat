@@ -22,10 +22,7 @@ use std::{
 };
 
 use crate::{
-    input::Cursors,
-    position::Cursor,
-    text::{PrintCfg, Text},
-    ui::Area,
+    input::Cursors, log_info, position::Cursor, text::{PrintCfg, Text}, ui::Area
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or
@@ -339,6 +336,7 @@ impl History {
         for change in &moment.changes {
             text.undo_change(change, bytes);
 
+            log_info!("before undo");
             let new_caret_b = change.taken_end().saturating_add_signed(bytes);
             let point = text.point_at(new_caret_b);
             cursors.insert(Cursor::new(point, text, area, cfg));
