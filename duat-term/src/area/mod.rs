@@ -15,7 +15,6 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -170,8 +169,6 @@ impl Area {
                     .last()
                     .map(|(Caret { x, len, .. }, _)| x + len)
                     .unwrap_or(0);
-
-                log_info!("{len}");
 
                 (len, align)
             };
@@ -470,7 +467,7 @@ impl ui::Area for Area {
         iter: Iter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        print_iter(iter, self.width(), cfg, PrintInfo::default())
+        print_iter(iter, cfg.wrap_width(self.width()), cfg, PrintInfo::default())
     }
 
     fn print_iter_from_top<'a>(
@@ -482,7 +479,7 @@ impl ui::Area for Area {
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_at(line_start);
 
-        print_iter(iter, self.width(), cfg, *info)
+        print_iter(iter, cfg.wrap_width(self.width()), cfg, *info)
     }
 
     fn rev_print_iter<'a>(
@@ -490,7 +487,7 @@ impl ui::Area for Area {
         iter: RevIter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        rev_print_iter(iter, self.width(), cfg)
+        rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
 }
 
