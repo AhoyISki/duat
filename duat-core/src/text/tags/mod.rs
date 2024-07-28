@@ -373,6 +373,7 @@ impl Tags {
             self.len_bytes()
         );
         let (n, b) = self.records.closest_to(at);
+
         let skips = {
             let mut b_len = 0;
             move |(n, ts): (usize, &TagOrSkip)| {

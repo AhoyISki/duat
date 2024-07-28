@@ -93,9 +93,7 @@ impl Text {
             (edit.len(), edit.chars().count(), lines)
         };
 
-        log_info!("before records transform");
         self.records.transform(old_start, old_len, new_len);
-        log_info!("after records transform");
 
         let new_end = old.start + edit.len();
         self.tags.transform(old, new_end);
@@ -254,7 +252,7 @@ impl Text {
     #[inline(always)]
     pub fn point_at_char(&self, at: usize) -> Point {
         assert!(
-            at <= self.len_bytes(),
+            at <= self.len_chars(),
             "byte out of bounds: the len is {}, but the byte is {at}",
             self.len_bytes()
         );
@@ -296,11 +294,24 @@ impl Text {
     #[inline(always)]
     pub fn point_at_line(&self, at: usize) -> Point {
         assert!(
-            at <= self.len_bytes(),
+            at <= self.len_lines(),
             "byte out of bounds: the len is {}, but the byte is {at}",
             self.len_bytes()
         );
         let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
+        log_info!("({b}, {c}, {l}), at {at}");
+
+        if {
+            let (s0, s1) = self.strs_in_range(..b);
+            s1.bytes()
+                .rev()
+                .chain(s0.bytes().rev())
+                .next()
+                .is_none_or(|b| b == b'\n')
+        } && at == l
+        {
+            return Point::from_coords(b, c, l);
+        };
 
         let found = if at > l {
             let (s0, s1) = self.strs_in_range(b..);
@@ -312,8 +323,7 @@ impl Text {
                     l += (char == '\n') as usize;
                     (b + this_b, c + i, l - (char == '\n') as usize)
                 })
-                .take_while(|&(.., l)| at >= l)
-                .last()
+                .find(|&(.., l)| at == l)
         } else {
             let (s0, s1) = self.strs_in_range(..b);
             let s1 = s1.chars().rev();

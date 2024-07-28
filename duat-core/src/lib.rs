@@ -8,7 +8,8 @@
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    result_flattening
+    result_flattening,
+    is_none_or
 )]
 #![doc = include_str!("../README.md")]
 

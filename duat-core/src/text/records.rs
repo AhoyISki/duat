@@ -122,7 +122,7 @@ where
 
         // Removing it if's len is zero.
         if let Some(b_i) = b_i.checked_sub(1)
-            && len.is_zero_len()
+            && new_len.is_zero_len()
         {
             let len = *len;
             let prev = self.stored.get_mut(b_i).unwrap();

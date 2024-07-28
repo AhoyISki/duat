@@ -1,6 +1,8 @@
 use std::ops::Range;
 
-use crate::{text::{IterCfg, Point, PrintCfg, Text}, ui::{Area, Caret}
+use crate::{
+    text::{IterCfg, Point, PrintCfg, Text},
+    ui::{Area, Caret},
 };
 
 /// A cursor in the text file. This is an editing cursor, not a
@@ -21,7 +23,6 @@ pub struct Cursor {
 impl Cursor {
     /// Returns a new instance of [`Cursor`].
     pub fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Cursor {
-        let cfg = IterCfg::new(cfg).dont_wrap();
         Cursor {
             caret: VPoint::new(point, text, area, cfg),
             // This should be fine.
@@ -32,7 +33,6 @@ impl Cursor {
 
     /// Moves to specific, pre calculated [`Point`].
     pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        let cfg = IterCfg::new(cfg).dont_wrap();
         self.caret = VPoint::new(point, text, area, cfg);
     }
 
@@ -42,52 +42,39 @@ impl Cursor {
             return;
         }
 
-        let point = if by > 0 {
-            text.iter_at(self.caret())
-                .no_ghosts()
-                .no_tags()
-                .nth(by as usize)
-                .map(|item| item.real)
-                .unwrap_or(text.max_point())
+        let target = self.caret.point.char().saturating_add_signed(by);
+        let point = if target >= text.len_chars() {
+            text.max_point()
         } else {
-            text.rev_iter_at(self.caret())
-                .no_ghosts()
-                .no_tags()
-                .nth(by.unsigned_abs() - 1)
-                .map(|item| item.real)
-                .unwrap_or_default()
+            text.point_at_char(target)
         };
 
-        let cfg = IterCfg::new(cfg).dont_wrap();
         self.caret = VPoint::new(point, text, area, cfg);
     }
 
     /// Internal vertical movement function.
     pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        let cfg = IterCfg::new(cfg).dont_wrap();
-
         if by == 0 {
             return;
         }
-        let target = self.caret.line().saturating_add_signed(by);
+
+        let cfg = IterCfg::new(cfg).dont_wrap();
         let dcol = self.caret.dcol;
 
-        let point = if self.caret.line().saturating_add_signed(by) > text.len_lines() {
-            self.caret.point
-        } else if by > 0 {
-            area.print_iter(text.iter_at(self.caret.point), cfg)
+        let point = {
+            let target = self.caret.line().saturating_add_signed(by);
+            let point = if target > text.len_lines() {
+                text.point_at_line(text.len_lines() - 1)
+            } else {
+                text.point_at_line(target)
+            };
+
+            area.print_iter(text.iter_at(point), cfg)
                 .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
                 .find_map(|(Caret { x, len, .. }, (point, char))| {
                     (point.line() == target && (x + len > dcol || char == '\n')).then_some(point)
                 })
                 .unwrap_or(text.max_point())
-        } else if self.caret.line().checked_add_signed(by).is_none() {
-            self.caret.point
-        } else {
-            area.rev_print_iter(text.rev_iter_at(self.caret.point), cfg)
-                .filter_map(|(caret, item)| Some(caret.x).zip(item.as_real_char()))
-                .find_map(|(x, (point, _))| (point.line() == target && dcol >= x).then_some(point))
-                .unwrap_or(Point::default())
         };
 
         self.caret.point = point;
@@ -95,15 +82,35 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    pub fn move_ver_wrapped(
-        &mut self,
-        _by: isize,
-        _text: &Text,
-        _area: &impl Area,
-        _cfg: &PrintCfg,
-    ) {
-        todo!()
-    }
+    // pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg)
+    // {     if by == 0 {
+    //         return;
+    //     }
+
+    //     let cfg = IterCfg::new(cfg);
+    //     let dwcol = self.caret.dwcol;
+
+    //     let mut wraps = 0;
+
+    //     let point = if by > 0 {
+    //         area.print_iter(text.iter_at(self.caret.point), cfg)
+    //             .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
+    //             .find_map(|(Caret { x, len, .. }, (point, char))| {
+    //                 (point.line() == target && (x + len > dwcol || char ==
+    // '\n')).then_some(point)             })
+    //             .unwrap_or(text.max_point())
+    //     } else if self.caret.line().checked_add_signed(by).is_none() {
+    //         self.caret.point
+    //     } else {
+    //         area.rev_print_iter(text.rev_iter_at(self.caret.point), cfg)
+    //             .filter_map(|(caret, item)| Some(caret.x).zip(item.as_real_char()))
+    //             .find_map(|(x, (point, _))| (point.line() == target && dwcol >=
+    // x).then_some(point))             .unwrap_or(Point::default())
+    //     };
+
+    //     self.caret.point = point;
+    //     self.caret.vcol = vcol(point, text, area, cfg.dont_wrap())
+    // }
 
     /// Sets the position of the anchor to be the same as the current
     /// cursor position in the file.
@@ -202,6 +209,7 @@ struct VPoint {
     point: Point,
     vcol: usize,
     dcol: usize,
+    dwcol: usize,
 }
 
 impl PartialOrd for VPoint {
@@ -223,12 +231,15 @@ impl PartialEq for VPoint {
 }
 
 impl VPoint {
-    fn new(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> Self {
-        let vcol = vcol(point, text, area, cfg);
+    fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Self {
+        let cfg = IterCfg::new(cfg);
+        let dwcol = vcol(point, text, area, cfg);
+        let vcol = vcol(point, text, area, cfg.dont_wrap());
         Self {
             point,
             vcol,
             dcol: vcol,
+            dwcol,
         }
     }
 
