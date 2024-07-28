@@ -23,6 +23,7 @@ while_let_on_iterator = "allow"
 crossterm = ">=0.26.0"
 parking_lot = "0.12.1"
 gapbuf = "0.1.4"
+nested_intervals = "0.6.0"
 
 [features]
 # NOTE: Features meant for testing only by myself.

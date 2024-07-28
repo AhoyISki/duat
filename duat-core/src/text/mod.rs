@@ -27,7 +27,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, log_info, DuatError};
+use crate::{history::Change, input::Cursors, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -299,7 +299,6 @@ impl Text {
             self.len_bytes()
         );
         let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
-        log_info!("({b}, {c}, {l}), at {at}");
 
         if {
             let (s0, s1) = self.strs_in_range(..b);

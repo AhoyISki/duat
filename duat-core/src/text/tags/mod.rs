@@ -85,7 +85,7 @@ pub struct Tags {
     pub texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    ranges: Vec<TagRange>,
+    pub ranges: Vec<TagRange>,
     pub records: Records<(usize, usize)>,
 }
 
@@ -246,7 +246,7 @@ impl Tags {
             (1, new.clone().count()),
         );
 
-        shift_ranges_after(new.end, &mut self.ranges, range_diff);
+        shift_ranges_after(old.end, &mut self.ranges, range_diff);
         self.process_ranges_containing(new.clone());
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
@@ -269,7 +269,12 @@ impl Tags {
             let (n, b, _) = self.get_skip_at(at).unwrap_or_default();
             let iter = iter_range_rev(&self.buf, ..n);
 
-            (n - iter.take_while(|ts| ts.is_tag()).count(), b)
+            // If b == at, include the tags before the skip.
+            if b == at {
+                (n - iter.take_while(|ts| ts.is_tag()).count(), b)
+            } else {
+                (n, b)
+            }
         };
 
         let ranges = self
@@ -410,14 +415,19 @@ impl Tags {
         let before = self
             .get_skip_at(*before.start())
             .into_iter()
-            .flat_map(|(n, b, _)| iter_range(&self.buf, n..).filter_map(raw_from(b)))
+            .flat_map(|(n, b, _)| {
+                let n = n - iter_range_rev(&self.buf, ..n)
+                    .take_while(|ts| ts.is_tag())
+                    .count();
+                iter_range(&self.buf, n..).filter_map(raw_from(b))
+            })
             .take_while(|&(b, _)| b <= *before.end());
 
         let after = self
-            .get_skip_at(*after.start())
+            .get_skip_at(*after.end())
             .into_iter()
-            .flat_map(|(n, b, _)| iter_range(&self.buf, n..).filter_map(raw_from(b)))
-            .take_while(|&(b, _)| b <= *after.end());
+            .flat_map(|(n, b, _)| iter_range_rev(&self.buf, ..n).filter_map(raw_from_rev(b)))
+            .take_while(|&(b, _)| b >= *after.start());
 
         // Removing all ranges that contain the range in question.
         // The reason why this is done is so that the `add_to_ranges`s
@@ -435,11 +445,34 @@ impl Tags {
             }
         }
 
-        for entry in before {
-            add_to_ranges(entry, &mut self.ranges, self.range_min, true, false);
-        }
+        let before_froms = {
+            let mut added = Vec::new();
+
+            for entry in before {
+                let n = add_to_ranges(entry, &mut self.ranges, self.range_min, true, false);
+                if let Some(n) = n {
+                    added.push(n);
+                }
+            }
+
+            let mut before_froms = Vec::new();
+
+            for i in added {
+                if let Some(TagRange::From(..)) = self.ranges.get(i) {
+                    let t_range = self.ranges.remove(i);
+                    before_froms.push((t_range.start(), t_range.tag()));
+                }
+            }
+
+            before_froms
+        };
+
         for entry in after {
             add_to_ranges(entry, &mut self.ranges, self.range_min, false, true);
+        }
+
+        for entry in before_froms {
+            add_to_ranges(entry, &mut self.ranges, self.range_min, true, true);
         }
     }
 
@@ -581,7 +614,7 @@ fn add_to_ranges(
     range_min: usize,
     allow_from: bool,
     allow_until: bool,
-) {
+) -> Option<usize> {
     let range = if entry.1.is_start() {
         let (start, tag) = entry;
         if let Some(range) = ranges
@@ -607,12 +640,17 @@ fn add_to_ranges(
             allow_until.then_some(TagRange::Until(tag, ..end))
         }
     } else {
-        return;
+        return None;
     };
 
-    if let Some(range) = range.filter(|range| range.count_ge(range_min)) {
-        let (Ok(b) | Err(b)) = ranges.binary_search(&range);
-        ranges.insert(b, range);
+    if let Some(range) = range
+        && range.count_ge(range_min)
+    {
+        let (Ok(n) | Err(n)) = ranges.binary_search(&range);
+        ranges.insert(n, range);
+        Some(n)
+    } else {
+        None
     }
 }
 
@@ -644,7 +682,7 @@ fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
 
 fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
     let mut mergers = Vec::new();
-    for (index, range) in ranges.iter().enumerate() {
+    for (i, range) in ranges.iter().enumerate() {
         let (start, tag) = match range {
             TagRange::Bounded(tag, bounded) => (bounded.start, *tag),
             TagRange::From(tag, from) => (from.start, *tag),
@@ -661,7 +699,7 @@ fn rearrange_ranges(ranges: &mut Vec<TagRange>, min_to_keep: usize) {
             .last();
 
         if let Some((other, _)) = other {
-            mergers.push((index, other));
+            mergers.push((i, other));
         }
     }
 

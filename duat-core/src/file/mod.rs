@@ -93,8 +93,6 @@ where
                 text.insert_tag(i - 4, Tag::PushForm(form1), marker);
                 text.insert_tag(i, Tag::PopForm(form1), marker);
             }
-            text.insert_tag(0, Tag::StartAlignCenter, marker);
-            text.insert_tag(300, Tag::EndAlignCenter, marker);
 
             text
         };

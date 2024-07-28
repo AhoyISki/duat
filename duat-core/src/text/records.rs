@@ -26,7 +26,7 @@ impl Record for (usize, usize) {
     }
 
     fn is_zero_len(&self) -> bool {
-        self.0 == 0 || self.1 == 0
+        self.0 == 0
     }
 }
 

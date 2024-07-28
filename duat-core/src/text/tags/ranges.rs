@@ -1,4 +1,7 @@
-use std::{cmp::Ordering::*, ops::{Range, RangeFrom, RangeTo}};
+use std::{
+    cmp::Ordering::*,
+    ops::{Range, RangeFrom, RangeTo},
+};
 
 use super::RawTag;
 
@@ -42,32 +45,32 @@ impl TagRange {
         self.get_end().unwrap_or(usize::MAX)
     }
 
-    pub fn starts_with(&self, other: &(usize, RawTag)) -> bool {
+    pub fn starts_with(&self, (at, b_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Bounded(tag, bounded) => bounded.start == other.0 && *tag == other.1,
-            TagRange::From(tag, from) => from.start == other.0 && *tag == other.1,
+            TagRange::Bounded(tag, bounded) => bounded.start == *at && *tag == *b_tag,
+            TagRange::From(tag, from) => from.start == *at && *tag == *b_tag,
             TagRange::Until(..) => false,
         }
     }
 
-    pub fn ends_with(&self, other: &(usize, RawTag)) -> bool {
+    pub fn ends_with(&self, (at, e_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Bounded(tag, bounded) => bounded.end == other.0 && tag.ends_with(&other.1),
-            TagRange::Until(tag, until) => until.end == other.0 && *tag == other.1,
+            TagRange::Bounded(b_tag, bounded) => bounded.end == *at && b_tag.ends_with(e_tag),
+            TagRange::Until(b_tag, until) => until.end == *at && *b_tag == *e_tag,
             TagRange::From(..) => false,
         }
     }
 
-    pub fn can_start_with(&self, other: &(usize, RawTag)) -> bool {
+    pub fn can_start_with(&self, (at, b_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Until(tag, until) => other.0 <= until.end && other.1.ends_with(tag),
+            TagRange::Until(e_tag, until) => *at <= until.end && b_tag.ends_with(e_tag),
             TagRange::Bounded(..) | TagRange::From(..) => false,
         }
     }
 
-    pub fn can_end_with(&self, other: &(usize, RawTag)) -> bool {
+    pub fn can_end_with(&self, (at, e_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::From(tag, from) => from.start <= other.0 && tag.ends_with(&other.1),
+            TagRange::From(b_tag, from) => from.start <= *at && b_tag.ends_with(e_tag),
             TagRange::Bounded(..) | TagRange::Until(..) => false,
         }
     }
@@ -107,13 +110,15 @@ impl TagRange {
 impl Ord for TagRange {
     /// Entries will be ordered in the following order:
     ///
-    /// - First, a mix of `TagRange::Bounded` and `TagRange::From`, sorted by:
+    /// - First, a mix of `TagRange::Bounded` and `TagRange::From`,
+    ///   sorted by:
     ///   - Their starts;
     ///   - Their ends (if `TagRange::From`, always `Greater`);
     ///   - Their `Tag`s;
     ///   - Their `Handle`s.
     ///
-    /// - After this, all of the `TagRange::Until` are placed, sorted by:
+    /// - After this, all of the `TagRange::Until` are placed, sorted
+    ///   by:
     ///   - Their ends;
     ///   - Their `Tag`s;
     ///   - Their `Handle`s.
