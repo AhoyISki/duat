@@ -467,7 +467,12 @@ impl ui::Area for Area {
         iter: Iter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        print_iter(iter, cfg.wrap_width(self.width()), cfg, PrintInfo::default())
+        print_iter(
+            iter,
+            cfg.wrap_width(self.width()),
+            cfg,
+            PrintInfo::default(),
+        )
     }
 
     fn print_iter_from_top<'a>(
@@ -538,6 +543,7 @@ fn print_edges(edges: &[Edge]) {
             queue!(
                 stdout,
                 cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
+                ResetColor,
                 SetStyle(frame_form.style),
                 Print(line)
             )
@@ -551,6 +557,7 @@ fn print_edges(edges: &[Edge]) {
                 queue!(
                     stdout,
                     cursor::MoveTo(coords.tl.x as u16, y as u16),
+                ResetColor,
                     SetStyle(frame_form.style),
                     Print(char)
                 )

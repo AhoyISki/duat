@@ -108,7 +108,7 @@ impl Write for Lines {
                 dist += len;
                 dist > self.shift
             }) else {
-                queue!(self.bytes, SetStyle(default_form.style));
+                queue!(self.bytes, ResetColor, SetStyle(default_form.style));
                 self.bytes.extend_from_slice(&BLANK[..self.coords.width()]);
                 self.cutoffs.push(self.bytes.len());
 
@@ -135,7 +135,7 @@ impl Write for Lines {
                 dist -= len;
                 dist < self.shift + self.coords.width()
             }) else {
-                queue!(self.bytes, SetStyle(default_form.style));
+                queue!(self.bytes, ResetColor, SetStyle(default_form.style));
                 self.bytes.extend_from_slice(&BLANK[..self.coords.width()]);
                 self.cutoffs.push(self.bytes.len());
 
