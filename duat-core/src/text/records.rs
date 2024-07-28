@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use crate::log_info;
-
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record: Debug + 'static {
@@ -108,28 +106,15 @@ where
                 .drain((s_i + 1)..(e_i + 1).min(self.stored.len()));
         }
 
-        if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
-            log_info!("{self:#?}");
-        }
         // Transformation of the beginning len.
         let (len, trans_i) = if let Some(len) = self.stored.get_mut(s_i) {
-            if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
-                log_info!(
-                    "before *len reassignment {len:?} {old_len:?} {new_len:?} {e_len:?} {s_rec:?} \
-                     {e_rec:?}"
-                );
-            }
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
 
             (*len, s_i)
         } else {
             let last = self.stored.last_mut().unwrap();
             *last = last.add(new_len).sub(old_len);
-
-            if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
-                log_info!("after {last:?}");
-            }
-
+            
             let trans_i = self.stored.len() - 1;
             (*self.stored.last_mut().unwrap(), trans_i)
         };

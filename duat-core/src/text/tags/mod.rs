@@ -213,7 +213,7 @@ impl Tags {
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
                 *skip += new.end - old.start;
                 self.records.append((0, new.end - old.start));
-            } else {
+            } else if new.end > old.start {
                 self.buf.push_back(TagOrSkip::Skip(new.end - old.start));
                 self.records.append((1, new.end - old.start));
             }
@@ -227,16 +227,23 @@ impl Tags {
             .unwrap_or((self.buf.len() - 1, self.len_bytes()));
 
         let range_diff = new.end as isize - old.end as isize;
-        let skip = (end_b - start_b).saturating_add_signed(range_diff);
 
-        let removed = self
-            .buf
-            .splice(start_n..=end_n, [TagOrSkip::Skip(skip)])
-            .scan(start_b, |p, ts| {
-                *p += ts.len();
-                Some((*p - ts.len(), ts))
-            })
-            .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
+        let (removed, added) = {
+            let skip = (end_b - start_b).saturating_add_signed(range_diff);
+
+            let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
+
+            let removed = self
+                .buf
+                .splice(start_n..=end_n, replacement)
+                .scan(start_b, |p, ts| {
+                    *p += ts.len();
+                    Some((*p - ts.len(), ts))
+                })
+                .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
+
+            (removed, replacement.is_some() as usize)
+        };
 
         for entry in removed {
             remove_from_ranges(entry, &mut self.ranges);
@@ -245,7 +252,7 @@ impl Tags {
         self.records.transform(
             (start_n, old.start),
             (1 + end_n - start_n, old.clone().count()),
-            (1, new.clone().count()),
+            (added, new.clone().count()),
         );
 
         shift_ranges_after(old.end, &mut self.ranges, range_diff);
@@ -352,6 +359,8 @@ impl Tags {
             .map(|(n, b, _)| (n, b))
             .unwrap_or((self.buf.len(), self.len_bytes()));
 
+        log_info!("{n}, {b}, {at}, {:#?}", self.buf);
+
         (b == at)
             .then(|| iter_range_rev(&self.buf, ..n).map_while(TagOrSkip::as_tag))
             .into_iter()
@@ -361,7 +370,6 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
-                log_info!("matched ghost");
                 let max_point = self.texts.get(&id).unwrap().max_point();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
