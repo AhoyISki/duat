@@ -77,6 +77,11 @@ impl Text {
             (p.byte(), p.char(), p.line())
         };
 
+        let new_len = {
+            let lines = edit.bytes().filter(|b| *b == b'\n').count() + self.is_empty() as usize;
+            (edit.len(), edit.chars().count(), lines)
+        };
+
         let old_len = unsafe {
             let str = String::from_utf8_unchecked(
                 self.buf
@@ -84,13 +89,8 @@ impl Text {
                     .collect(),
             );
 
-            let lines = str.bytes().filter(|b| *b == b'\n').count();
+            let lines = str.bytes().filter(|b| *b == b'\n').count() + self.is_empty() as usize;
             (str.len(), str.chars().count(), lines)
-        };
-
-        let new_len = {
-            let lines = edit.bytes().filter(|b| *b == b'\n').count();
-            (edit.len(), edit.chars().count(), lines)
         };
 
         self.records.transform(old_start, old_len, new_len);

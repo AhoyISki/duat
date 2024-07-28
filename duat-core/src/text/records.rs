@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use crate::log_info;
+
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record: Debug + 'static {
@@ -96,46 +98,59 @@ where
     }
 
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
-        let (b_i, b_rec) = self.search_from((0, R::default()), start.bytes(), Record::bytes);
+        let (s_i, s_rec) = self.search_from((0, R::default()), start.bytes(), Record::bytes);
         let (e_i, e_rec) =
-            self.search_from((b_i, b_rec), start.bytes() + old_len.bytes(), Record::bytes);
+            self.search_from((s_i, s_rec), start.bytes() + old_len.bytes(), Record::bytes);
         let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
-        if b_i < e_i {
+        if s_i < e_i {
             self.stored
-                .drain((b_i + 1)..(e_i + 1).min(self.stored.len()));
+                .drain((s_i + 1)..(e_i + 1).min(self.stored.len()));
         }
 
+        if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
+            log_info!("{self:#?}");
+        }
         // Transformation of the beginning len.
-        let (len, b_i) = if let Some(len) = self.stored.get_mut(b_i) {
-            *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(b_rec);
+        let (len, trans_i) = if let Some(len) = self.stored.get_mut(s_i) {
+            if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
+                log_info!(
+                    "before *len reassignment {len:?} {old_len:?} {new_len:?} {e_len:?} {s_rec:?} \
+                     {e_rec:?}"
+                );
+            }
+            *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
 
-            (len, b_i)
+            (*len, s_i)
         } else {
             let last = self.stored.last_mut().unwrap();
-
             *last = last.add(new_len).sub(old_len);
 
-            let b_i = self.stored.len() - 1;
-            (self.stored.last_mut().unwrap(), b_i)
+            if std::any::TypeId::of::<R>() == std::any::TypeId::of::<(usize, usize, usize)>() {
+                log_info!("after {last:?}");
+            }
+
+            let trans_i = self.stored.len() - 1;
+            (*self.stored.last_mut().unwrap(), trans_i)
         };
 
         // Removing it if's len is zero.
-        if let Some(b_i) = b_i.checked_sub(1)
+        if let Some(s_i) = trans_i.checked_sub(1)
             && new_len.is_zero_len()
         {
-            let len = *len;
-            let prev = self.stored.get_mut(b_i).unwrap();
+            let prev = self.stored.get_mut(s_i).unwrap();
 
-            self.last = (b_i, b_rec.sub(*prev));
+            self.last = (s_i, s_rec.sub(*prev));
 
             *prev = prev.add(len);
-            self.stored.remove(b_i + 1);
+            self.stored.remove(s_i + 1);
+        } else if trans_i == s_i {
+            self.last = (trans_i + 1, s_rec.add(len));
         } else {
-            self.last = (b_i, b_rec);
-        };
+            self.last = (trans_i, s_rec.add(len));
+        }
 
-        self.max = self.max.sub(old_len).add(new_len);
+        self.max = self.max.add(new_len).sub(old_len);
     }
 
     pub fn append(&mut self, r: R) {

@@ -6,6 +6,8 @@ use std::{
 
 use gapbuf::{gap_buffer, GapBuffer};
 
+use crate::log_info;
+
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{
@@ -359,6 +361,7 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
+                log_info!("matched ghost");
                 let max_point = self.texts.get(&id).unwrap().max_point();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
