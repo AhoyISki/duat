@@ -182,7 +182,8 @@ impl Text {
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
-            let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
+            let r1 = start.saturating_sub(s0.len()).min(s1.len())
+                ..end.saturating_sub(s0.len()).min(s1.len());
 
             (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
         }
