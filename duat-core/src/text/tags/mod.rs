@@ -6,6 +6,8 @@ use std::{
 
 use gapbuf::{gap_buffer, GapBuffer};
 
+use crate::log_info;
+
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{
@@ -15,7 +17,6 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -429,7 +430,6 @@ impl Tags {
             let n = n - iter_range_rev(&self.buf, ..n)
                 .take_while(|ts| ts.is_tag())
                 .count();
-            log_info!("started at {n}");
             iter_range(&self.buf, n..)
                 .filter_map(raw_from(b))
                 .take_while(|&(b, _)| b <= *before.end())
@@ -440,7 +440,6 @@ impl Tags {
                 .get_skip_at(*after.end())
                 .map(|(n, b, _)| (n, b))
                 .unwrap_or((self.buf.len(), self.len_bytes()));
-            log_info!("ended at {n}");
             iter_range_rev(&self.buf, ..n)
                 .filter_map(raw_from_rev(b))
                 .take_while(|&(b, _)| b >= *after.start())
@@ -453,7 +452,6 @@ impl Tags {
         // the start and end of the ranges. Ranges that end on the left
         // or start on the right cannot be affected by the searched range.
         for entry in before.clone().chain(after.clone()) {
-            log_info!("iterated over {entry:?}");
             let entry_on_both_sides = entry.0 == range.start && range.start == range.end;
             let start_entry_on_left = entry.0 <= range.start && entry.1.is_start();
             let end_entry_on_right = entry.0 >= range.end && entry.1.is_end();

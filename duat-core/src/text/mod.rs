@@ -27,7 +27,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, DuatError};
+use crate::{history::Change, input::Cursors, log_info, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -59,7 +59,7 @@ impl Text {
             buf,
             tags,
             marker: Marker::base(),
-            records: Records::with_max((file.len(), file.chars().count(), file.lines().count())),
+            records: Records::with_max((file.len(), file.chars().count(), file.split('\n').count())),
         }
     }
 

@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use crate::log_info;
+
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record: Debug + 'static {
@@ -129,8 +131,6 @@ where
 
             *prev = prev.add(len);
             self.stored.remove(s_i + 1);
-        } else if trans_i == s_i {
-            self.last = (trans_i + 1, s_rec.add(len));
         } else {
             self.last = (trans_i, s_rec.add(len));
         }
