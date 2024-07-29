@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use crate::{
+    log_info,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, Caret},
 };
@@ -261,10 +262,11 @@ impl VPoint {
 }
 
 fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> usize {
-    let after = text.points_after(point).unwrap_or(text.max_points());
-    let iter = text.rev_iter_at(after);
-
-    area.rev_print_iter(iter, cfg)
-        .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
-        .unwrap_or(0)
+    if let Some(after) = text.points_after(point) {
+        area.rev_print_iter(text.rev_iter_at(after), cfg)
+            .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
+            .unwrap_or(0)
+    } else {
+        area.rev_print_iter(text.rev_iter_at(text.max_point()), cfg).find_map(|(caret, item)| item.part.is_char().then_some(caret.x + caret.len)).unwrap_or(0)
+    }
 }

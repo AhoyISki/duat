@@ -6,8 +6,6 @@ use std::{
 
 use gapbuf::{gap_buffer, GapBuffer};
 
-use crate::log_info;
-
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{
@@ -83,12 +81,12 @@ impl std::fmt::Debug for TagOrSkip {
 
 #[derive(Clone)]
 pub struct Tags {
-    pub buf: GapBuffer<TagOrSkip>,
-    pub texts: HashMap<TextId, Text>,
+    buf: GapBuffer<TagOrSkip>,
+    texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    pub ranges: Vec<TagRange>,
-    pub records: Records<(usize, usize)>,
+    ranges: Vec<TagRange>,
+    records: Records<(usize, usize)>,
 }
 
 impl Tags {
@@ -530,33 +528,11 @@ impl Tags {
                 .count()
         }
     }
-}
 
-impl Default for Tags {
-    fn default() -> Self {
-        Self::new()
+    pub fn get_text(&self, k: &TextId) -> Option<&Text> {
+        self.texts.get(&k)
     }
 }
-
-impl std::fmt::Debug for Tags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tags")
-            .field("buf", &self.buf)
-            .field("ranges", &self.ranges)
-            .field("range_min", &self.range_min)
-            .finish_non_exhaustive()
-    }
-}
-
-impl PartialEq for Tags {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf
-    }
-}
-impl Eq for Tags {}
-
-unsafe impl Send for Tags {}
-unsafe impl Sync for Tags {}
 
 pub fn iter_range(
     buf: &GapBuffer<TagOrSkip>,
@@ -694,6 +670,32 @@ fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
         }
     }
 }
+
+impl Default for Tags {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for Tags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tags")
+            .field("buf", &self.buf)
+            .field("ranges", &self.ranges)
+            .field("range_min", &self.range_min)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for Tags {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf
+    }
+}
+impl Eq for Tags {}
+
+unsafe impl Send for Tags {}
+unsafe impl Sync for Tags {}
 
 pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;

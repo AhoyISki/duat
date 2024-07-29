@@ -132,7 +132,7 @@ impl<'a> Iter<'a> {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.tags.texts.get(id).unwrap();
+                let text = self.text.tags.get_text(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
                     if ghost.byte() >= *dist + text.len_bytes() {
@@ -303,7 +303,7 @@ impl<'a> RevIter<'a> {
                 if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.tags.texts.get(id).unwrap();
+                let text = self.text.tags.get_text(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((total, dist)) = &mut self.ghost {
                     if *dist - text.len_bytes() >= total.byte() {

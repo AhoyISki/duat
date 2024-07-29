@@ -384,7 +384,7 @@ impl Text {
 
     pub fn max_point(&self) -> Point {
         let (b, c, l) = self.records.max();
-        Point::from_coords(b, c, l)
+        Point::from_coords(b, c, l.saturating_sub(1))
     }
 
     pub fn max_points(&self) -> (Point, Option<Point>) {
