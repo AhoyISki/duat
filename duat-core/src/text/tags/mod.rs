@@ -6,8 +6,6 @@ use std::{
 
 use gapbuf::{gap_buffer, GapBuffer};
 
-use crate::log_info;
-
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{
@@ -17,6 +15,7 @@ pub use self::{
 };
 use self::{ranges::TagRange, types::Toggle};
 use super::{get_ends, records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -255,7 +254,7 @@ impl Tags {
         );
 
         shift_ranges_after(old.end, &mut self.ranges, range_diff);
-        self.process_ranges_containing(new.clone());
+        self.process_ranges_around(new.clone());
         rearrange_ranges(&mut self.ranges, self.range_min);
         self.cull_small_ranges();
     }
@@ -408,8 +407,8 @@ impl Tags {
         }
     }
 
-    fn process_ranges_containing(&mut self, range: Range<usize>) {
-        let (before, after) = {
+    fn process_ranges_around(&mut self, range: Range<usize>) {
+        let (b_range, a_range) = {
             let before_start = range.start.saturating_sub(self.range_min);
             // in case `range.start == range.end`, we would be double
             // checking that position, so we shift once to the right.
@@ -420,28 +419,34 @@ impl Tags {
             (before_start..=range.start, after_start..=after_end)
         };
 
-        let before = {
+        let b_tags = {
             let (n, b) = self
-                .get_skip_at(*before.start())
+                .get_skip_at(*b_range.end())
                 .map(|(n, b, _)| (n, b))
                 .unwrap_or((self.buf.len(), self.len_bytes()));
 
-            let n = n - iter_range_rev(&self.buf, ..n)
-                .take_while(|ts| ts.is_tag())
-                .count();
-            iter_range(&self.buf, n..)
-                .filter_map(raw_from(b))
-                .take_while(|&(b, _)| b <= *before.end())
-        };
-
-        let after = {
-            let (n, b) = self
-                .get_skip_at(*after.end())
-                .map(|(n, b, _)| (n, b))
-                .unwrap_or((self.buf.len(), self.len_bytes()));
             iter_range_rev(&self.buf, ..n)
                 .filter_map(raw_from_rev(b))
-                .take_while(|&(b, _)| b >= *after.start())
+                .take_while(|&(b, _)| b >= *b_range.start())
+        };
+
+        let a_tags = {
+            let (n, b) = self
+                .get_skip_at(*a_range.start())
+                .map(|(n, b, _)| (n, b))
+                .unwrap_or((self.buf.len(), self.len_bytes()));
+
+            let n = if b == *a_range.start() {
+                n - iter_range_rev(&self.buf, ..n)
+                    .take_while(|ts| ts.is_tag())
+                    .count()
+            } else {
+                n
+            };
+
+            iter_range(&self.buf, n..)
+                .filter_map(raw_from(b))
+                .take_while(|&(b, _)| b <= *a_range.end())
         };
 
         // Removing all ranges that contain the range in question.
@@ -450,44 +455,43 @@ impl Tags {
         // or not, based on factors such as the new distance between
         // the start and end of the ranges. Ranges that end on the left
         // or start on the right cannot be affected by the searched range.
-        for entry in before.clone().chain(after.clone()) {
+        for entry in b_tags.clone().chain(a_tags.clone()) {
+            log_info!("iterated {entry:?}");
             let entry_on_both_sides = entry.0 == range.start && range.start == range.end;
             let start_entry_on_left = entry.0 <= range.start && entry.1.is_start();
             let end_entry_on_right = entry.0 >= range.end && entry.1.is_end();
 
             if entry_on_both_sides || start_entry_on_left || end_entry_on_right {
-                remove_from_ranges(entry, &mut self.ranges);
+                remove_from_ranges(entry, &mut self.ranges)
             }
         }
 
-        let before_froms = {
-            let mut added = Vec::new();
+        let mut impossible_adds = Vec::new();
 
-            for entry in before {
-                let n = add_to_ranges(entry, &mut self.ranges, self.range_min, true, false);
-                if let Some(n) = n {
-                    added.push(n);
-                }
+        for entry in b_tags {
+            let t_range = add_to_ranges(entry, &mut self.ranges, self.range_min, true, true);
+            if let Some(TagRange::Until(..)) = t_range {
+                impossible_adds.extend(t_range);
             }
-
-            let mut before_froms = Vec::new();
-
-            for i in added.into_iter().rev() {
-                if let Some(TagRange::From(..)) = self.ranges.get(i) {
-                    let t_range = self.ranges.remove(i);
-                    before_froms.push((t_range.start(), t_range.tag()));
-                }
-            }
-
-            before_froms
-        };
-
-        for entry in after {
-            add_to_ranges(entry, &mut self.ranges, self.range_min, false, true);
         }
 
-        for entry in before_froms {
-            add_to_ranges(entry, &mut self.ranges, self.range_min, true, true);
+        for t_range in impossible_adds.drain(..) {
+            if let Some(n) = self.ranges.iter().rposition(|tr| *tr == t_range) {
+                self.ranges.remove(n);
+            }
+        }
+
+        for entry in a_tags {
+            let t_range = add_to_ranges(entry, &mut self.ranges, self.range_min, true, true);
+            if let Some(TagRange::From(..)) = t_range {
+                impossible_adds.extend(t_range);
+            }
+        }
+
+        for t_range in impossible_adds.drain(..) {
+            if let Some(n) = self.ranges.iter().position(|tr| *tr == t_range) {
+                self.ranges.remove(n);
+            }
         }
     }
 
@@ -604,8 +608,8 @@ fn add_to_ranges(
     range_min: usize,
     allow_from: bool,
     allow_until: bool,
-) -> Option<usize> {
-    let range = if entry.1.is_start() {
+) -> Option<TagRange> {
+    let t_range = if entry.1.is_start() {
         let (start, tag) = entry;
         if let Some(range) = ranges
             .extract_if(|range| range.can_start_with(&entry))
@@ -633,12 +637,12 @@ fn add_to_ranges(
         return None;
     };
 
-    if let Some(range) = range
-        && range.count_ge(range_min)
+    if let Some(t_range) = t_range
+        && t_range.count_ge(range_min)
     {
-        let (Ok(n) | Err(n)) = ranges.binary_search(&range);
-        ranges.insert(n, range);
-        Some(n)
+        let (Ok(n) | Err(n)) = ranges.binary_search(&t_range);
+        ranges.insert(n, t_range.clone());
+        Some(t_range)
     } else {
         None
     }
@@ -653,15 +657,15 @@ fn add_to_ranges(
 /// Will return the range as it was, before the removal.
 fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
     if entry.1.is_start() {
-        let range = ranges.extract_if(|range| range.starts_with(&entry)).next();
-        if let Some(TagRange::Bounded(tag, bounded)) = range {
+        let t_range = ranges.extract_if(|range| range.starts_with(&entry)).next();
+        if let Some(TagRange::Bounded(tag, bounded)) = t_range {
             let range = TagRange::Until(tag.inverse().unwrap(), ..bounded.end);
             let (Ok(n) | Err(n)) = ranges.binary_search(&range);
             ranges.insert(n, range);
         }
     } else if entry.1.is_end() {
-        let range = ranges.extract_if(|range| range.ends_with(&entry)).next();
-        if let Some(TagRange::Bounded(tag, bounded)) = range {
+        let t_range = ranges.extract_if(|range| range.ends_with(&entry)).next();
+        if let Some(TagRange::Bounded(tag, bounded)) = t_range {
             let range = TagRange::From(tag, bounded.start..);
             let (Ok(n) | Err(n)) = ranges.binary_search(&range);
             ranges.insert(n, range);
@@ -673,21 +677,21 @@ fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
     for range in ranges.iter_mut() {
         match range {
             TagRange::Bounded(_, bounded) => {
-                if bounded.start >= after {
+                if bounded.start > after || (amount < 0 && bounded.start >= after) {
                     let start = bounded.start.saturating_add_signed(amount);
                     let end = bounded.end.saturating_add_signed(amount);
                     *bounded = start..end
-                } else if bounded.end >= after {
+                } else if bounded.end > after || (amount < 0 && bounded.end >= after) {
                     bounded.end = bounded.end.saturating_add_signed(amount)
                 }
             }
             TagRange::From(_, from) => {
-                if from.start >= after {
+                if from.start > after || (amount < 0 && from.start >= after) {
                     *from = from.start.saturating_add_signed(amount)..
                 }
             }
             TagRange::Until(_, until) => {
-                if until.end >= after {
+                if until.end > after || (amount < 0 && until.end >= after) {
                     *until = ..until.end.saturating_add_signed(amount)
                 }
             }

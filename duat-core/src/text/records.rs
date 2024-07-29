@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use crate::log_info;
-
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record: Debug + 'static {
