@@ -230,7 +230,6 @@ impl Tags {
 
         let (removed, added) = {
             let skip = (end_b - start_b).saturating_add_signed(range_diff);
-
             let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
 
             let removed = self
@@ -473,7 +472,7 @@ impl Tags {
 
             let mut before_froms = Vec::new();
 
-            for i in added {
+            for i in added.into_iter().rev() {
                 if let Some(TagRange::From(..)) = self.ranges.get(i) {
                     let t_range = self.ranges.remove(i);
                     before_froms.push((t_range.start(), t_range.tag()));

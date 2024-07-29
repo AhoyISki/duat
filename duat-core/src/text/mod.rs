@@ -59,7 +59,11 @@ impl Text {
             buf,
             tags,
             marker: Marker::base(),
-            records: Records::with_max((file.len(), file.chars().count(), file.split('\n').count())),
+            records: Records::with_max((
+                file.len(),
+                file.chars().count(),
+                file.split('\n').count(),
+            )),
         }
     }
 
