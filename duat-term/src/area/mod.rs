@@ -557,7 +557,7 @@ fn print_edges(edges: &[Edge]) {
                 queue!(
                     stdout,
                     cursor::MoveTo(coords.tl.x as u16, y as u16),
-                ResetColor,
+                    ResetColor,
                     SetStyle(frame_form.style),
                     Print(char)
                 )
