@@ -192,15 +192,6 @@ where
     }
 }
 
-// pub macro text {
-//    ($builder:expr, $($parts:tt)+) => {
-//        inner_text!("Default", "Accent", $builder, $($parts)+)
-//    },
-//    ($($parts:tt)+) => {{
-//        inner_text!("Default", "Accent", $($parts)+)
-//    }},
-//}
-
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {

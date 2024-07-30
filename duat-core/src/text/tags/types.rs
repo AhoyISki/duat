@@ -44,8 +44,8 @@ pub enum Tag {
     EndAlignRight,
 
     GhostText(Text),
-    ConcealStart,
-    ConcealEnd,
+    StartConceal,
+    EndConceal,
 
     // Not yet implemented:
     /// Begins a hoverable section in the file.
@@ -80,8 +80,8 @@ impl Tag {
                 texts.insert(id, text);
                 (RawTag::GhostText(marker, id), None)
             }
-            Self::ConcealStart => (RawTag::ConcealStart(marker), None),
-            Self::ConcealEnd => (RawTag::ConcealEnd(marker), None),
+            Self::StartConceal => (RawTag::ConcealStart(marker), None),
+            Self::EndConceal => (RawTag::ConcealEnd(marker), None),
             Self::ToggleStart(toggle) => {
                 let id = ToggleId::new();
                 toggles.insert(id, toggle);

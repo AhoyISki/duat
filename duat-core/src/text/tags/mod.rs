@@ -289,14 +289,14 @@ impl Tags {
         let tags = {
             let iter = iter_range(&self.buf, n..).filter_map(raw_from(b));
             iter.map(|(b, tag)| match tag {
-                ConcealStart(marker) => {
+                StartConceal(marker) => {
                     match self
                         .ranges
                         .iter()
-                        .find(|range| range.starts_with(&(b, ConcealStart(marker))))
+                        .find(|range| range.starts_with(&(b, StartConceal(marker))))
                     {
                         Some(range) => (b, Concealed(range.end() as u32)),
-                        None => (b, ConcealStart(marker)),
+                        None => (b, StartConceal(marker)),
                     }
                 }
                 tag => (b, tag),
@@ -328,15 +328,15 @@ impl Tags {
         let raw_tags = {
             let iter = iter_range_rev(&self.buf, ..n).filter_map(raw_from_rev(b));
             iter.map(|(b, tag)| match tag {
-                ConcealEnd(marker) => {
+                EndConceal(marker) => {
                     if let Some(range) = self
                         .ranges
                         .iter()
-                        .find(|range| range.ends_with(&(b, ConcealEnd(marker))))
+                        .find(|range| range.ends_with(&(b, EndConceal(marker))))
                     {
                         (b, Concealed((b - range.get_start().unwrap_or(0)) as u32))
                     } else {
-                        (b, ConcealEnd(marker))
+                        (b, EndConceal(marker))
                     }
                 }
                 tag => (b, tag),

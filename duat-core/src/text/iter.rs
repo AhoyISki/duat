@@ -153,10 +153,10 @@ impl<'a> Iter<'a> {
                 self.main_iter = Some((point, chars, tags));
             }
 
-            RawTag::ConcealStart(_) => {
+            RawTag::StartConceal(_) => {
                 self.conceals += 1;
             }
-            RawTag::ConcealEnd(_) => {
+            RawTag::EndConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.point = self.point.max(self.text.point_at(b));
@@ -326,14 +326,14 @@ impl<'a> RevIter<'a> {
                 self.main_iter = Some((point, chars, tags));
             }
 
-            RawTag::ConcealStart(_) => {
+            RawTag::StartConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
                     self.point = self.point.min(self.text.point_at(b));
                     self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
                 }
             }
-            RawTag::ConcealEnd(_) => self.conceals += 1,
+            RawTag::EndConceal(_) => self.conceals += 1,
             RawTag::Concealed(skip) => {
                 let b = b.saturating_sub(*skip as usize);
                 let point = self.text.point_at(b);

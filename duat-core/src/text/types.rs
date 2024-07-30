@@ -35,7 +35,7 @@ impl Part {
             RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
             RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
             RawTag::Concealed(_) => Part::Termination,
-            RawTag::ConcealStart(_) | RawTag::ConcealEnd(_) | RawTag::GhostText(..) => {
+            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::GhostText(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
         }

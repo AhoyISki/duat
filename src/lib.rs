@@ -115,7 +115,7 @@
 
 use std::sync::RwLock;
 
-use duat_core::{session::SessionCfg};
+use duat_core::session::SessionCfg;
 pub use setup::{layout_hooks, run_duat};
 
 /// Utilities for addition and execution of commands
