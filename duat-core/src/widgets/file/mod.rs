@@ -92,7 +92,7 @@ where
             for i in (4..text.len_bytes()).step_by(8) {}
             text.insert_tag(
                 300,
-                Tag::GhostText(text!([File] "my text lol\nhellow world")),
+                Tag::GhostText(text!([File] "my text\n\n\n\n\n\n\n\n lol\nhellow world")),
                 marker,
             );
 

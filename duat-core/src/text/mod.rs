@@ -149,8 +149,8 @@ impl Text {
             for (b, tag) in tags.into_iter().skip(no_selection) {
                 let point = self.point_at(b);
                 let record = (point.byte(), point.char(), point.line());
-                self.tags.insert(b, tag, self.marker);
                 self.records.insert(record);
+                self.tags.insert(b, tag, self.marker);
             }
         }
     }
@@ -403,11 +403,13 @@ impl Text {
 
         // NOTE: 20000 is a magic number, being a guess for what a reasonable
         // limit would be.
-        let mut iter = self.rev_iter_at(real).peekable();
+        let mut iter = self.rev_iter_at((real, ghost)).peekable();
         let mut points = (real, ghost);
         while let Some(peek) = iter.peek() {
             match peek.part {
-                Part::Char('\n') => return points,
+                Part::Char('\n') => {
+                    return points;
+                }
                 Part::Char(_) => points = iter.next().unwrap().to_points(),
                 _ => drop(iter.next()),
             }
