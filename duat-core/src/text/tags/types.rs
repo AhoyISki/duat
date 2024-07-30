@@ -80,8 +80,8 @@ impl Tag {
                 texts.insert(id, text);
                 (RawTag::GhostText(marker, id), None)
             }
-            Self::StartConceal => (RawTag::ConcealStart(marker), None),
-            Self::EndConceal => (RawTag::ConcealEnd(marker), None),
+            Self::StartConceal => (RawTag::StartConceal(marker), None),
+            Self::EndConceal => (RawTag::EndConceal(marker), None),
             Self::ToggleStart(toggle) => {
                 let id = ToggleId::new();
                 toggles.insert(id, toggle);
@@ -134,13 +134,13 @@ pub enum RawTag {
     ///
     /// [`Text`]: super::Text
     /// [`ConcealEnd`]: RawTag::ConcealEnd
-    ConcealStart(Marker),
+    StartConceal(Marker),
     /// Stops concealing the [`Text`], returning the iteration process
     /// back to the regular [`Text`] iterator.
     ///
     /// [`Text`]: super::Text
     /// [`ConcealEnd`]: RawTag::ConcealEnd
-    ConcealEnd(Marker),
+    EndConceal(Marker),
 
     // TODO: Deal with the concequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
@@ -163,8 +163,8 @@ impl RawTag {
             Self::PopForm(marker, id) => Some(Self::PushForm(*marker, *id)),
             Self::ToggleStart(marker, id) => Some(Self::ToggleEnd(*marker, *id)),
             Self::ToggleEnd(marker, id) => Some(Self::ToggleStart(*marker, *id)),
-            Self::ConcealStart(marker) => Some(Self::ConcealEnd(*marker)),
-            Self::ConcealEnd(marker) => Some(Self::ConcealStart(*marker)),
+            Self::StartConceal(marker) => Some(Self::EndConceal(*marker)),
+            Self::EndConceal(marker) => Some(Self::StartConceal(*marker)),
             Self::StartAlignLeft(marker) => Some(Self::EndAlignLeft(*marker)),
             Self::EndAlignLeft(marker) => Some(Self::StartAlignLeft(*marker)),
             Self::StartAlignCenter(marker) => Some(Self::EndAlignCenter(*marker)),
@@ -186,7 +186,7 @@ impl RawTag {
             (Self::StartAlignLeft(lhs), Self::EndAlignLeft(rhs))
             | (Self::StartAlignCenter(lhs), Self::EndAlignCenter(rhs))
             | (Self::StartAlignRight(lhs), Self::EndAlignRight(rhs))
-            | (Self::ConcealStart(rhs), Self::ConcealEnd(lhs)) => lhs == rhs,
+            | (Self::StartConceal(rhs), Self::EndConceal(lhs)) => lhs == rhs,
             _ => false,
         }
     }
@@ -199,7 +199,7 @@ impl RawTag {
                 | Self::StartAlignCenter(_)
                 | Self::StartAlignRight(_)
                 | Self::ToggleStart(..)
-                | Self::ConcealStart(_)
+                | Self::StartConceal(_)
         )
     }
 
@@ -211,7 +211,7 @@ impl RawTag {
                 | Self::EndAlignCenter(_)
                 | Self::EndAlignRight(_)
                 | Self::ToggleEnd(..)
-                | Self::ConcealEnd(_)
+                | Self::EndConceal(_)
         )
     }
 
@@ -241,8 +241,8 @@ impl RawTag {
             | Self::EndAlignCenter(marker)
             | Self::StartAlignRight(marker)
             | Self::EndAlignRight(marker)
-            | Self::ConcealStart(marker)
-            | Self::ConcealEnd(marker)
+            | Self::StartConceal(marker)
+            | Self::EndConceal(marker)
             | Self::GhostText(marker, _)
             | Self::ToggleStart(marker, _)
             | Self::ToggleEnd(marker, _) => *marker,

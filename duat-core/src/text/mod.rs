@@ -27,7 +27,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, DuatError};
+use crate::{history::Change, input::Cursors, log_info, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -149,8 +149,8 @@ impl Text {
             for (b, tag) in tags.into_iter().skip(no_selection) {
                 let point = self.point_at(b);
                 let record = (point.byte(), point.char(), point.line());
-                self.records.insert(record);
                 self.tags.insert(b, tag, self.marker);
+                self.records.insert(record);
             }
         }
     }

@@ -122,16 +122,10 @@ impl Tags {
     pub fn insert(&mut self, at: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
         let (tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
 
-        self.insert_raw(at, tag);
-
-        toggle_id
-    }
-
-    pub fn insert_raw(&mut self, at: usize, tag: RawTag) {
         let Some((n, b, skip)) = self.get_skip_at(at) else {
             self.buf.push_back(TagOrSkip::Tag(tag));
             self.records.append((1, 0));
-            return;
+            return None;
         };
 
         if at == b {
@@ -150,6 +144,8 @@ impl Tags {
 
         add_to_ranges((at, tag), &mut self.ranges, self.range_min);
         self.cull_small_ranges();
+
+        toggle_id
     }
 
     pub fn extend(&mut self, other: Tags) {
@@ -683,6 +679,7 @@ impl std::fmt::Debug for Tags {
             .field("buf", &self.buf)
             .field("ranges", &self.ranges)
             .field("range_min", &self.range_min)
+            .field("records", &self.records)
             .finish_non_exhaustive()
     }
 }

@@ -226,7 +226,8 @@ pub mod prelude {
     pub use duat_term::{self as ui, VertRule};
 
     pub use crate::{
-        commands, control, cursor, forms,
+        commands, control, cursor,
+        forms::{self, CursorShape, Form},
         hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
         input, print, run,
         state::*,

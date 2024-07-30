@@ -246,7 +246,7 @@ fn match_normal<U: Ui>(
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
-            if context.commands.run("switch-to CommandLine").is_ok() {
+            if context.commands.run("switch-to CommandLine<Ui>").is_ok() {
                 *mode = Mode::Command;
                 hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Command));
             }

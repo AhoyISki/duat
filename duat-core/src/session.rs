@@ -510,37 +510,35 @@ where
 
             move |_, mut args| {
                 let file = context.cur_file()?;
-                let type_name = args.next_else(err!("No widget supplied."))?;
+                let ty = args.next_else(err!("No widget supplied."))?;
 
                 let read_windows = windows.read();
                 let window_index = current_window.load(Ordering::Acquire);
 
-                let widget = file.get_related_widget(type_name);
-
-                let (new_window, entry) = widget
-                    .and_then(|(widget, _)| {
-                        read_windows
-                            .iter()
-                            .enumerate()
-                            .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
-                            .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
-                    })
-                    .or_else(|| {
-                        iter_around(&read_windows, window_index, 0)
-                            .filter(|(_, (widget, _))| widget.as_active().is_some())
-                            .find(|(_, (widget, _))| widget.type_name() == type_name)
-                    })
-                    .ok_or(err!("No widget of type " [*a] type_name [] " found."))?;
+                let (window, entry) = if let Some((widget, _)) = file.get_related_widget(ty) {
+                    read_windows
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
+                        .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
+                } else {
+                    iter_around(&read_windows, window_index, 0)
+                        .filter(|(_, (widget, _))| widget.as_active().is_some())
+                        .find(|(_, (widget, _))| {
+                            widget.type_name() == ty
+                        })
+                }
+                .ok_or(err!("No widget of type " [*a] ty [] " found."))?;
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
                 let current_window = current_window.clone();
                 std::thread::spawn(move || {
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    current_window.store(new_window, Ordering::Release);
+                    current_window.store(window, Ordering::Release);
                 });
 
-                ok!("Switched to " [*a] type_name [] ".")
+                ok!("Switched to " [*a] ty [] ".")
             }
         })
         .unwrap();

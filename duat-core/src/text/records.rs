@@ -130,7 +130,7 @@ where
             *prev = prev.add(len);
             self.stored.remove(s_i + 1);
         } else {
-            self.last = (trans_i, s_rec.add(len));
+            self.last = (trans_i + 1, s_rec.add(len));
         }
 
         self.max = self.max.add(new_len).sub(old_len);
