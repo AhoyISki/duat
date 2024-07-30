@@ -135,7 +135,6 @@ impl<'a> Iter<'a> {
                 let text = self.text.tags.get_text(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    log_info!("{ghost:?}, {dist}");
                     if ghost.byte() >= *dist + text.len_bytes() {
                         *dist += text.len_bytes();
                         return true;
@@ -258,11 +257,9 @@ impl<'a> RevIter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.max_point());
-        log_info!("{tp:?}");
 
         let ghost = ghost.map(|ghost| {
             let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
-            log_info!("started rev at {ghost:?}, {dist}");
             (ghost, dist)
         });
 
@@ -313,8 +310,10 @@ impl<'a> RevIter<'a> {
                         *dist -= text.len_bytes();
                         return true;
                     }
-                    log_info!("{dist}, {}", text.len_bytes());
-                    (text.point_at(*dist - text.len_bytes()), *total)
+                    (
+                        text.point_at(total.byte() + text.len_bytes() - *dist),
+                        *total,
+                    )
                 } else {
                     let this = text.max_point();
                     let total = self.text.tags.ghosts_total_at(b);
