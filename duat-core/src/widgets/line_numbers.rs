@@ -22,25 +22,29 @@
 //! all other lines. Its [`Right`][Alignment::Right] by default.
 use std::fmt::Alignment;
 
-use duat_core::{
+use crate::{
     data::{Context, FileReader},
     palette::{self, Form},
     text::{text, Builder, Tag, Text},
-    ui::{Area, Constraint, PushSpecs},
+    ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget, WidgetCfg},
 };
 
-use crate::Ui;
-
 /// A simple [`Widget`] that shows what lines of a
 /// [`FileWidget`] are shown on screen.
-pub struct LineNumbers {
-    reader: FileReader<Ui>,
+pub struct LineNumbers<U>
+where
+    U: Ui,
+{
+    reader: FileReader<U>,
     text: Text,
     cfg: LineNumbersCfg,
 }
 
-impl LineNumbers {
+impl<U> LineNumbers<U>
+where
+    U: Ui,
+{
     pub fn cfg() -> LineNumbersCfg {
         LineNumbersCfg::new()
     }
@@ -97,17 +101,20 @@ impl LineNumbers {
     }
 }
 
-impl PassiveWidget<Ui> for LineNumbers {
+impl<U> PassiveWidget<U> for LineNumbers<U>
+where
+    U: Ui,
+{
     /// Returns a function that outputs a [`LineNumbers`], taking a
     /// [`LineNumbersCfg`] as argument.
     fn build(
-        context: Context<Ui>,
+        context: Context<U>,
         on_file: bool,
-    ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
         LineNumbersCfg::default().build(context, on_file)
     }
 
-    fn update(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
+    fn update(&mut self, area: &U::Area) {
         let width = self.calculate_width();
         area.constrain_hor(Constraint::Length(width + 1.0)).unwrap();
 
@@ -118,7 +125,7 @@ impl PassiveWidget<Ui> for LineNumbers {
         &self.text
     }
 
-    fn once(_context: Context<Ui>) {
+    fn once(_context: Context<U>) {
         palette::set_weak_form("LineNum", Form::new().grey());
         palette::set_weak_form("MainLineNum", Form::new().yellow());
         palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
@@ -254,10 +261,13 @@ impl LineNumbersCfg {
     }
 }
 
-impl WidgetCfg<Ui> for LineNumbersCfg {
-    type Widget = LineNumbers;
+impl<U> WidgetCfg<U> for LineNumbersCfg
+where
+    U: Ui,
+{
+    type Widget = LineNumbers<U>;
 
-    fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let reader = context.cur_file().unwrap().fixed_reader();
         let specs = self.specs;
 
@@ -272,9 +282,6 @@ impl WidgetCfg<Ui> for LineNumbersCfg {
         (widget, move || reader.has_changed(), specs)
     }
 }
-
-unsafe impl Send for LineNumbers {}
-unsafe impl Sync for LineNumbers {}
 
 /// Writes the text of the line number to a given [`String`].
 fn push_text(

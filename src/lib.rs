@@ -115,7 +115,7 @@
 
 use std::sync::RwLock;
 
-use duat_core::{hooks::Hookable, session::SessionCfg};
+use duat_core::{session::SessionCfg};
 pub use setup::{layout_hooks, run_duat};
 
 /// Utilities for addition and execution of commands
@@ -132,8 +132,6 @@ pub mod print;
 mod remapper;
 /// Internal handling of [`Context`]
 mod setup;
-/// The widgets defined by Duat, [`StatusLine`] and [`CommandLine`]
-pub mod widgets;
 
 /// Functions to alter the [`Form`]s of Duat
 ///
@@ -141,6 +139,7 @@ pub mod widgets;
 pub mod forms {
     pub use duat_core::palette::{
         form_of_id as from_id, id_of_form as to_id, set_form as set, set_source as source,
+        CursorShape, Form,
     };
 }
 
@@ -155,16 +154,70 @@ pub mod cursor {
 
 /// Hook utilites
 pub mod hooks {
+    use duat_core::hooks::Hookable;
     pub use duat_core::hooks::{add, add_grouped, remove_group};
+
+    /// Triggers hooks when Duat's [`Ui`] is created
+    ///
+    /// # Args
+    /// - The [`Ui`] itself
+    pub struct OnUiStart;
+
+    impl Hookable for OnUiStart {
+        type Args<'args> = Ui;
+    }
+
+    use crate::Ui;
+    /// Triggers hooks whenever a [`File`] is created
+    ///
+    /// # Arguments
+    ///
+    /// - The file [builder], which can be used to push widgets to the
+    ///   file, and to eachother.
+    ///
+    /// [`File`]: duat_core::file::File
+    /// [builder]: duat_core::ui::FileBuilder
+    pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
+
+    /// Triggers hooks whenever a new window is opened
+    ///
+    /// # Arguments
+    ///
+    /// - The window [builder], which can be used to push widgets to
+    ///   the edges of the window, surrounding the inner file region.
+    ///
+    /// [`File`]: duat_core::file::File
+    /// [builder]: duat_core::ui::WindowBuilder
+    pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
+}
+
+// Native widgets to Duat
+pub mod widgets {
+    pub use duat_core::widgets::File;
+
+    use crate::Ui;
+
+    pub macro status($($tree:tt)*) {{
+        use $crate::prelude::duat_core::widgets::status;
+        status!(Ui, $($tree)*)
+    }}
+
+    pub type CommandLine = duat_core::widgets::CommandLine<Ui>;
+    pub type CommandLineCfg<I> = duat_core::widgets::CommandLineCfg<I, Ui>;
+    pub type StatusLine = duat_core::widgets::StatusLine<Ui>;
+    pub type StatusLineCfg = duat_core::widgets::StatusLineCfg<Ui>;
+    pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
+}
+
+// Native widgets to Duat
+pub mod state {
+    pub use duat_core::widgets::common::*;
 }
 
 /// The prelude of Duat, imports most of what a configuration needs
 pub mod prelude {
     pub use duat_core::{
-        self, data,
-        file::File,
-        palette::{CursorShape, Form},
-        position,
+        self, data, position,
         text::{err, hint, ok, text, Builder, Text},
         ui::Area,
         DuatError, Error,
@@ -172,10 +225,13 @@ pub mod prelude {
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
 
-    pub use super::{OnFileOpen, OnWindowOpen};
     pub use crate::{
-        commands, control, cursor, forms, hooks, input, print, run,
-        widgets::{common::*, status, CommandLine, LineNumbers, StatusLine},
+        commands, control, cursor, forms,
+        hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
+        input, print, run,
+        state::*,
+        widgets::*,
+        Ui,
     };
 }
 
@@ -215,38 +271,6 @@ compile_error!("No ui has been chosen to compile Duat with.");
 
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;
-
-/// Triggers hooks when Duat's [`Ui`] is created
-///
-/// # Args
-/// - The [`Ui`] itself
-struct OnUiStart;
-
-impl Hookable for OnUiStart {
-    type Args<'args> = Ui;
-}
-
-/// Triggers hooks whenever a [`File`] is created
-///
-/// # Arguments
-///
-/// - The file [builder], which can be used to push widgets to the
-///   file, and to eachother.
-///
-/// [`File`]: duat_core::file::File
-/// [builder]: duat_core::ui::FileBuilder
-pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
-
-/// Triggers hooks whenever a new window is opened
-///
-/// # Arguments
-///
-/// - The window [builder], which can be used to push widgets to the
-///   edges of the window, surrounding the inner file region.
-///
-/// [`File`]: duat_core::file::File
-/// [builder]: duat_core::ui::WindowBuilder
-pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
 
 /// A function that sets the [`SessionCfg`].
 type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;

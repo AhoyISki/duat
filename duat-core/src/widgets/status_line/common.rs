@@ -1,35 +1,49 @@
-use duat_core::{
+use crate::{
     input::{Cursors, InputMethod},
     position::Cursor,
     text::{text, Text},
+    ui::Ui,
     widgets::File,
 };
 
-use crate::Ui;
-
 /// The byte of the main cursor in the file. Indexed at 1.
-pub fn main_byte(input: &dyn InputMethod<Ui>) -> usize {
+pub fn main_byte<U>(input: &dyn InputMethod<U>) -> usize
+where
+    U: Ui,
+{
     main_cursor(input).byte()
 }
 
 /// The char of the main cursor in the file. Indexed at 1.
-pub fn main_char(input: &dyn InputMethod<Ui>) -> usize {
+pub fn main_char<U>(input: &dyn InputMethod<U>) -> usize
+where
+    U: Ui,
+{
     main_cursor(input).char()
 }
 
 /// The col of the main cursor in the file. Indexed at 1.
-pub fn main_col(input: &dyn InputMethod<Ui>) -> usize {
+pub fn main_col<U>(input: &dyn InputMethod<U>) -> usize
+where
+    U: Ui,
+{
     main_cursor(input).vcol()
 }
 
 /// The line of the main cursor in the file. Indexed at 1.
-pub fn main_line(input: &dyn InputMethod<Ui>) -> usize {
+pub fn main_line<U>(input: &dyn InputMethod<U>) -> usize
+where
+    U: Ui,
+{
     main_cursor(input).line()
 }
 
 /// A convenience function that prints the main cursor alongside the
 /// lenght of the file, in lines.
-pub fn main_fmt(file: &File, input: &dyn InputMethod<Ui>) -> Text {
+pub fn main_fmt<U>(file: &File, input: &dyn InputMethod<U>) -> Text
+where
+    U: Ui,
+{
     let cursor = main_cursor(input);
     text!(
         [Coord] { cursor.vcol() } [Separator] ":"
@@ -38,12 +52,18 @@ pub fn main_fmt(file: &File, input: &dyn InputMethod<Ui>) -> Text {
     )
 }
 
-pub fn selections(input: &dyn InputMethod<Ui>) -> usize {
+pub fn selections<U>(input: &dyn InputMethod<U>) -> usize
+where
+    U: Ui,
+{
     input.cursors().map(|cursors| cursors.len()).unwrap_or(0)
 }
 
 /// Returns a [`String`] with the number of selections in the file.
-pub fn selections_fmt(input: &dyn InputMethod<Ui>) -> Text {
+pub fn selections_fmt<U>(input: &dyn InputMethod<U>) -> Text
+where
+    U: Ui,
+{
     let len = input.cursors().map(|cursors| cursors.len()).unwrap_or(0);
     if len == 1 {
         text!([Selections] "1 sel")
@@ -52,7 +72,10 @@ pub fn selections_fmt(input: &dyn InputMethod<Ui>) -> Text {
     }
 }
 
-fn main_cursor(input: &dyn InputMethod<Ui>) -> Cursor {
+fn main_cursor<U>(input: &dyn InputMethod<U>) -> Cursor
+where
+    U: Ui,
+{
     input
         .cursors()
         .map(Cursors::main)

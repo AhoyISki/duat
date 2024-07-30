@@ -23,7 +23,6 @@ use text::{err, hint, Text};
 
 pub mod commands;
 pub mod data;
-pub mod file;
 pub mod history;
 pub mod hooks;
 pub mod input;

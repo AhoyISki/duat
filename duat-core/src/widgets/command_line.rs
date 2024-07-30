@@ -14,48 +14,56 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use std::sync::LazyLock;
+use std::{marker::PhantomData, sync::LazyLock};
 
-use duat_core::{
+use crate::{
     data::{Context, RwData},
     input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
     palette::{self, Form},
     text::{text, Ghost, PrintCfg, Text},
-    ui::{Area, PushSpecs},
+    ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
 
-use crate::Ui;
-
 #[derive(Clone)]
-pub struct CommandLineCfg<I>
+pub struct CommandLineCfg<I, U>
 where
-    I: InputMethod<Ui, Widget = CommandLine> + Clone + 'static,
+    I: InputMethod<U, Widget = CommandLine<U>> + Clone + 'static,
+    U: Ui,
 {
     input: I,
     prompt: String,
     specs: PushSpecs,
+    ghost: PhantomData<U>,
 }
 
-impl CommandLineCfg<Commander> {
-    pub fn new() -> CommandLineCfg<Commander> {
+impl<U> CommandLineCfg<Commander, U>
+where
+    U: Ui,
+{
+    pub fn new() -> Self {
         CommandLineCfg {
             input: Commander::new(),
             prompt: String::from(":"),
             specs: PushSpecs::below().with_ver_length(1.0),
+            ghost: PhantomData,
         }
     }
 }
 
-impl Default for CommandLineCfg<Commander> {
+impl<U> Default for CommandLineCfg<Commander, U>
+where
+    U: Ui,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I> CommandLineCfg<I>
+impl<I, U> CommandLineCfg<I, U>
 where
-    I: InputMethod<Ui, Widget = CommandLine> + Clone,
+    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
+    U: Ui,
 {
     pub fn with_prompt(self, prompt: impl ToString) -> Self {
         Self {
@@ -78,25 +86,27 @@ where
         }
     }
 
-    pub fn with_input<NewI>(self, input: NewI) -> CommandLineCfg<NewI>
+    pub fn with_input<NewI>(self, input: NewI) -> CommandLineCfg<NewI, U>
     where
-        NewI: InputMethod<Ui, Widget = CommandLine> + Clone,
+        NewI: InputMethod<U, Widget = CommandLine<U>> + Clone,
     {
         CommandLineCfg {
             input,
             prompt: self.prompt,
             specs: self.specs,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<I> WidgetCfg<Ui> for CommandLineCfg<I>
+impl<I, U> WidgetCfg<U> for CommandLineCfg<I, U>
 where
-    I: InputMethod<Ui, Widget = CommandLine> + Clone,
+    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
+    U: Ui,
 {
-    type Widget = CommandLine;
+    type Widget = CommandLine<U>;
 
-    fn build(self, context: Context<Ui>, _: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let command_line = CommandLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
@@ -115,45 +125,54 @@ where
 /// the future, it will be able to change its functionality to, for
 /// example, search for pieces of text on a
 /// [`File`][parsec_core::file::File] in real time.
-pub struct CommandLine {
+pub struct CommandLine<U>
+where
+    U: Ui,
+{
     text: Text,
     prompt: RwData<String>,
-    context: Context<Ui>,
+    context: Context<U>,
 }
 
-impl CommandLine {
-    pub fn cfg() -> CommandLineCfg<Commander> {
+impl<U> CommandLine<U>
+where
+    U: Ui,
+{
+    pub fn cfg() -> CommandLineCfg<Commander, U> {
         CommandLineCfg::new()
     }
 }
 
-impl PassiveWidget<Ui> for CommandLine {
-    fn build(context: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+impl<U> PassiveWidget<U> for CommandLine<U>
+where
+    U: Ui,
+{
+    fn build(context: Context<U>, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         CommandLineCfg::new().build(context, on_file)
     }
 
-    fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {}
+    fn update(&mut self, _area: &U::Area) {}
 
     fn text(&self) -> &Text {
         &self.text
     }
 
-    fn print_cfg(&self) -> &duat_core::text::PrintCfg {
+    fn print_cfg(&self) -> &crate::text::PrintCfg {
         static CFG: LazyLock<PrintCfg> =
             LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());
         &CFG
     }
 
-    fn print(&mut self, area: &<Ui as duat_core::ui::Ui>::Area) {
+    fn print(&mut self, area: &U::Area) {
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(context: Context<Ui>) {
+    fn once(context: Context<U>) {
         palette::set_weak_form("Prompt", Form::new().cyan());
 
         context
             .commands
-            .add_for_widget::<CommandLine>(["set-prompt"], move |command_line, _, _, mut args| {
+            .add_for_widget::<CommandLine<U>>(["set-prompt"], move |command_line, _, _, mut args| {
                 let new_prompt: String = args.collect();
                 *command_line.prompt.write() = new_prompt;
                 Ok(None)
@@ -162,16 +181,19 @@ impl PassiveWidget<Ui> for CommandLine {
     }
 }
 
-impl ActiveWidget<Ui> for CommandLine {
+impl<U> ActiveWidget<U> for CommandLine<U>
+where
+    U: Ui,
+{
     fn mut_text(&mut self) -> &mut Text {
         &mut self.text
     }
 
-    fn on_focus(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
+    fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
     }
 
-    fn on_unfocus(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
+    fn on_unfocus(&mut self, _area: &U::Area) {
         let text = std::mem::take(&mut self.text);
 
         let cmd = text.to_string();
@@ -181,7 +203,7 @@ impl ActiveWidget<Ui> for CommandLine {
     }
 }
 
-unsafe impl Send for CommandLine {}
+unsafe impl<U> Send for CommandLine<U> where U: Ui {}
 
 #[derive(Clone)]
 pub struct Commander {
@@ -202,15 +224,18 @@ impl Default for Commander {
     }
 }
 
-impl InputMethod<Ui> for Commander {
-    type Widget = CommandLine;
+impl<U> InputMethod<U> for Commander
+where
+    U: Ui,
+{
+    type Widget = CommandLine<U>;
 
     fn send_key(
         &mut self,
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
-        area: &<Ui as duat_core::ui::Ui>::Area,
-        context: Context<Ui>,
+        area: &U::Area,
+        context: Context<U>,
     ) {
         let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
 

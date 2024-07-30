@@ -56,33 +56,39 @@ mod state;
 use std::sync::LazyLock;
 
 use common::{main_col, main_line, selections_fmt};
-use duat_core::{
+
+pub use self::state::State;
+use crate::{
     data::{Context, FileReader},
     palette::{self, Form},
     text::{text, Builder, PrintCfg, Tag, Text},
-    ui::PushSpecs,
+    ui::{PushSpecs, Ui},
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
 };
 
-pub use self::state::State;
-use crate::Ui;
-
-pub struct StatusLineCfg {
-    text_fn: TextFn,
+pub struct StatusLineCfg<U>
+where
+    U: Ui,
+{
+    text_fn: TextFn<U>,
     checker: Box<dyn Fn() -> bool>,
     specs: PushSpecs,
 }
 
-impl StatusLineCfg {
+impl<U> StatusLineCfg<U>
+where
+    U: Ui,
+{
     pub fn new() -> Self {
         status!(
+            U,
             [File] { File::name } " " [Selections] selections_fmt " "
             [Coords] main_col [Separator] ":" [Coords] main_line
             [Separator] "/" [Coords] { File::len_lines }
         )
     }
 
-    pub fn new_with(text_fn: TextFn, checker: Box<dyn Fn() -> bool>, specs: PushSpecs) -> Self {
+    pub fn new_with(text_fn: TextFn<U>, checker: Box<dyn Fn() -> bool>, specs: PushSpecs) -> Self {
         Self {
             text_fn,
             checker,
@@ -91,20 +97,24 @@ impl StatusLineCfg {
     }
 
     pub fn above(self) -> Self {
-        Self { specs: PushSpecs::above().with_ver_length(1.0),
+        Self {
+            specs: PushSpecs::above().with_ver_length(1.0),
             ..self
         }
     }
 }
 
-impl WidgetCfg<Ui> for StatusLineCfg {
-    type Widget = StatusLine;
+impl<U> WidgetCfg<U> for StatusLineCfg<U>
+where
+    U: Ui,
+{
+    type Widget = StatusLine<U>;
 
     fn build(
         self,
-        context: Context<Ui>,
+        context: Context<U>,
         on_file: bool,
-    ) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+    ) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = {
             let reader = match on_file {
                 true => context.fixed_reader().unwrap(),
@@ -127,7 +137,10 @@ impl WidgetCfg<Ui> for StatusLineCfg {
     }
 }
 
-impl Default for StatusLineCfg {
+impl<U> Default for StatusLineCfg<U>
+where
+    U: Ui,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -181,24 +194,33 @@ impl Default for StatusLineCfg {
 /// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve
 /// to change the active [`Form`][crate::tags::form::Form] to print
 /// the next characters.
-pub struct StatusLine {
-    reader: FileReader<Ui>,
-    text_fn: TextFn,
+pub struct StatusLine<U>
+where
+    U: Ui,
+{
+    reader: FileReader<U>,
+    text_fn: TextFn<U>,
     text: Text,
 }
 
-impl StatusLine {
-    pub fn config() -> StatusLineCfg {
+impl<U> StatusLine<U>
+where
+    U: Ui,
+{
+    pub fn config() -> StatusLineCfg<U> {
         StatusLineCfg::new()
     }
 }
 
-impl PassiveWidget<Ui> for StatusLine {
-    fn build(context: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
+impl<U> PassiveWidget<U> for StatusLine<U>
+where
+    U: Ui,
+{
+    fn build(context: Context<U>, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         Self::config().build(context, on_file)
     }
 
-    fn update(&mut self, _area: &<Ui as duat_core::ui::Ui>::Area) {
+    fn update(&mut self, _area: &U::Area) {
         self.text = (self.text_fn)(&self.reader);
     }
 
@@ -206,7 +228,7 @@ impl PassiveWidget<Ui> for StatusLine {
         &self.text
     }
 
-    fn once(_context: Context<Ui>) {
+    fn once(_context: Context<U>) {
         palette::set_weak_form("File", Form::new().yellow().italic());
         palette::set_weak_form("Selections", Form::new().dark_blue());
         palette::set_weak_form("Coord", Form::new().dark_red());
@@ -219,14 +241,14 @@ impl PassiveWidget<Ui> for StatusLine {
     }
 }
 
-unsafe impl Send for StatusLine {}
-unsafe impl Sync for StatusLine {}
+unsafe impl<U> Send for StatusLine<U> where U: Ui {}
+unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
-    (@append $text_fn:expr, $checker:expr, []) => {{
+    (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
         let form_id = palette::__weakest_id_of_name("Default");
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
             builder.push_tag(Tag::PushForm(form_id));
         };
@@ -235,10 +257,10 @@ pub macro status {
     }},
 
     // Insertion of directly named forms.
-    (@append $text_fn:expr, $checker:expr, [$form:ident]) => {{
+    (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
         let form_id = palette::__weakest_id_of_name(stringify!($form));
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
             builder.push_tag(Tag::PushForm(form_id));
         };
@@ -247,12 +269,12 @@ pub macro status {
     }},
 
 	// Insertion of text, reading functions, or tags.
-    (@append $text_fn:expr, $checker:expr, $text:expr) => {{
+    (@append $ui:ty, $text_fn:expr, $checker:expr, $text:expr) => {{
         let (mut appender, checker) = State::from($text).fns();
 
         let checker = move || { $checker() || checker() };
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<Ui>| {
+        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
             appender(builder, reader);
         };
@@ -260,24 +282,24 @@ pub macro status {
         (text_fn, checker)
     }},
 
-    (@parse $text_fn:expr, $checker:expr,) => { ($text_fn, $checker) },
+    (@parse $ui:ty, $text_fn:expr, $checker:expr,) => { ($text_fn, $checker) },
 
-    (@parse $text_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
-        let (mut text_fn, checker) = status!(@append $text_fn, $checker, $part);
-        status!(@parse text_fn, checker, $($parts)*)
+    (@parse $ui:ty, $text_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
+        let (mut text_fn, checker) = status!(@append $ui, $text_fn, $checker, $part);
+        status!(@parse $ui, text_fn, checker, $($parts)*)
     }},
 
-    (@parse $($parts:tt)*) => {{
-        let text_fn = |_: &mut Builder, _: &FileReader<Ui>| {};
+    (@parse $ui:ty, $($parts:tt)*) => {{
+        let text_fn = |_: &mut Builder, _: &FileReader<$ui>| {};
         let checker = || { false };
-        status!(@parse text_fn, checker, $($parts)*)
+        status!(@parse $ui, text_fn, checker, $($parts)*)
     }},
 
-    ($($parts:tt)*) => {{
+    ($ui:ty, $($parts:tt)*) => {{
 		#[allow(unused_mut)]
-        let (mut text_fn, checker) = status!(@parse $($parts)*);
+        let (mut text_fn, checker) = status!(@parse $ui, $($parts)*);
 
-        let text_fn = move |reader: &FileReader<Ui>| {
+        let text_fn = move |reader: &FileReader<$ui>| {
             let mut builder = Builder::new();
             text!(builder, { Tag::StartAlignRight });
             text_fn(&mut builder, reader);
@@ -288,9 +310,9 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_ver_length(10.0)
+            PushSpecs::below().with_ver_length(1.0)
         )
     }}
 }
 
-type TextFn = Box<dyn FnMut(&FileReader<Ui>) -> Text>;
+type TextFn<U> = Box<dyn FnMut(&FileReader<U>) -> Text>;

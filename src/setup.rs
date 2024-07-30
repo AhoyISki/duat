@@ -14,9 +14,9 @@ use duat_core::{
 use duat_term::VertRule;
 
 use crate::{
-    hooks,
+    hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
     prelude::{CommandLine, LineNumbers, StatusLine},
-    CfgFn, OnFileOpen, OnUiStart, OnWindowOpen, Ui,
+    CfgFn, Ui,
 };
 
 // Context's statics.

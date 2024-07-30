@@ -26,13 +26,24 @@ use std::{
 use crossterm::event::KeyEvent;
 use parking_lot::RwLock;
 
-pub use crate::file::{File, FileCfg};
 use crate::{
-    data::{Data, RwData, Context},
+    data::{Context, Data, RwData},
     input::InputMethod,
     palette,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
+};
+
+mod command_line;
+mod file;
+mod line_numbers;
+mod status_line;
+
+pub use self::{
+    command_line::{CommandLine, CommandLineCfg},
+    file::{File, FileCfg},
+    line_numbers::{LineNumbers, LineNumbersCfg},
+    status_line::{common, status, State, StatusLine, StatusLineCfg},
 };
 
 /// An area where text will be printed to the screen.

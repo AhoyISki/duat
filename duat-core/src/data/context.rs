@@ -9,7 +9,7 @@ use std::{
 use super::{private::InnerData, RoData, RwData};
 use crate::{
     commands::Commands,
-    file::File,
+    widgets::File,
     input::InputMethod,
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget, RelatedWidgets, Widget},

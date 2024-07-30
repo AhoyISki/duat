@@ -530,7 +530,7 @@ impl Tags {
     }
 
     pub fn get_text(&self, k: &TextId) -> Option<&Text> {
-        self.texts.get(&k)
+        self.texts.get(k)
     }
 }
 
