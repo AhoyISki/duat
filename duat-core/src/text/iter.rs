@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::{log_info, position::Cursor};
+use crate::position::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {
@@ -145,7 +145,7 @@ impl<'a> Iter<'a> {
                 };
 
                 let iter = text.iter_at(this_ghost);
-                let point = std::mem::replace(&mut self.point, total_ghost);
+                let point = std::mem::replace(&mut self.point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
@@ -181,7 +181,7 @@ impl<'a> Iter<'a> {
 
     pub fn points(&self) -> (Point, Option<Point>) {
         if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, Some(self.point))
+            (*real, self.ghost.map(|(tg, _)| tg))
         } else {
             (self.point, self.ghost.map(|(p, _)| p))
         }
@@ -206,8 +206,8 @@ impl Iterator for Iter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(b, tag)) =
-                tag.filter(|(b, _)| *b <= self.point.byte() || self.conceals > 0)
+            if let Some(&(b, tag)) = tag
+                && (b <= self.point.byte() || self.conceals > 0)
             {
                 self.tags.next();
 

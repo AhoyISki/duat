@@ -15,7 +15,6 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    log_info,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
@@ -112,8 +111,7 @@ impl Area {
         let cap = cfg.wrap_width(self.width());
         let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
             .inspect(|_| count += 1)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-;
+            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
         let target = if info.last_main > point {
             cfg.scrolloff().y

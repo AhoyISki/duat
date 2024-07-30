@@ -8,7 +8,7 @@ use std::{
 
 use super::{private::InnerData, RoData, RwData};
 use crate::{
-    commands::Commands, input::InputMethod, log_info, ui::Ui, widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget}, Error, Result
+    commands::Commands, input::InputMethod, ui::Ui, widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget}, Error, Result
 };
 
 pub struct Context<U>
