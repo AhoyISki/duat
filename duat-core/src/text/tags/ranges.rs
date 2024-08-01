@@ -83,6 +83,17 @@ impl TagRange {
         }
     }
 
+    pub fn entries(&self) -> [Option<(usize, RawTag)>; 2] {
+        match self {
+            TagRange::Bounded(tag, bounded) => [
+                Some((bounded.start, *tag)),
+                Some((bounded.end, tag.inverse().unwrap())),
+            ],
+            TagRange::From(tag, from) => [Some((*from, *tag)), None],
+            TagRange::Until(tag, until) => [None, Some((*until, *tag))],
+        }
+    }
+
     /// Returns `true` if the tag range is [`Bounded`].
     ///
     /// [`Bounded`]: TagRange::Bounded
@@ -112,8 +123,8 @@ impl std::fmt::Debug for TagRange {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TagRange::Bounded(tag, bounded) => write!(f, "Bounded({tag:?}, {bounded:?})"),
-            TagRange::From(tag, from) => write!(f, "Bounded({tag:?}, {from:?})"),
-            TagRange::Until(tag, until) => write!(f, "Bounded({tag:?}, {until:?})"),
+            TagRange::From(tag, from) => write!(f, "From({tag:?}, {from:?})"),
+            TagRange::Until(tag, until) => write!(f, "Until({tag:?}, {until:?})"),
         }
     }
 }

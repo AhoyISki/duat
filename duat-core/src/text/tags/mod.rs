@@ -18,6 +18,7 @@ use self::{
     types::Toggle,
 };
 use super::{get_ends, records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -261,6 +262,7 @@ impl Tags {
         shift_ranges_after(&mut self.ranges, old.end, range_diff, self.range_min);
         self.process_ranges_around(new.clone());
         self.cull_small_ranges();
+        deintersect(&mut self.ranges, self.range_min);
     }
 
     /// Returns the is empty of this [`Tags`].
@@ -377,40 +379,6 @@ impl Tags {
         })
     }
 
-    /// Returns information about the skip in the byte `at`
-    ///
-    /// * The byte where it starts
-    /// * The index in the [`GapBuffer`] where it starts
-    /// * Its length
-    fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
-        assert!(
-            at <= self.len_bytes(),
-            "byte out of bounds: the len is {}, but the byte is {at}",
-            self.len_bytes()
-        );
-        let (n, b) = self.records.closest_to(at);
-
-        let skips = {
-            let mut b_len = 0;
-            move |(n, ts): (usize, &TagOrSkip)| {
-                b_len += ts.len();
-                ts.as_skip().map(|s| (n, b_len, s))
-            }
-        };
-
-        if at >= b {
-            let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);
-            iter.map(|(i, this_b, skip)| (n + i, b + (this_b - skip), skip))
-                .take_while(|(_, b, _)| at >= *b)
-                .last()
-        } else {
-            let iter = iter_range_rev(&self.buf, ..n).enumerate().filter_map(skips);
-            iter.map(|(i, this_b, skip)| (n - (i + 1), b - this_b, skip))
-                .take_while(|(_, b, skip)| *b + *skip > at)
-                .last()
-        }
-    }
-
     fn process_ranges_around(&mut self, range: Range<usize>) {
         let (b_range, a_range) = {
             let before_start = range.start.saturating_sub(self.range_min);
@@ -440,17 +408,32 @@ impl Tags {
                 .map(|(n, b, _)| (n, b))
                 .unwrap_or((self.buf.len(), self.len_bytes()));
 
-            n -= iter_range_rev(&self.buf, ..n)
-                .take_while(|ts| ts.is_tag())
-                .count();
+            if b == *a_range.start() {
+                n -= iter_range_rev(&self.buf, ..n)
+                    .take_while(|ts| ts.is_tag())
+                    .count();
+            }
 
             iter_range(&self.buf, n..)
                 .filter_map(raw_from(b))
                 .take_while(|&(b, _)| b <= *a_range.end())
         };
 
-        for entry in b_tags.chain(a_tags) {
-            add_to_ranges(entry, &mut self.ranges, self.range_min);
+        let mut ranges = Vec::new();
+        for entry in b_tags {
+            add_to_ranges(entry, &mut ranges, 0);
+        }
+        ranges.extract_if(|r| matches!(r, Until(..))).for_each(drop);
+
+        for entry in a_tags {
+            add_to_ranges(entry, &mut ranges, 0);
+        }
+        ranges
+            .extract_if(|r| matches!(r, From(_, b) if *b >= *a_range.start()))
+            .for_each(drop);
+
+        for entry in ranges.iter().flat_map(TagRange::entries).flatten() {
+            add_to_ranges(entry, &mut self.ranges, self.range_min)
         }
     }
 
@@ -491,6 +474,40 @@ impl Tags {
                     }
                 })
                 .count()
+        }
+    }
+
+    /// Returns information about the skip in the byte `at`
+    ///
+    /// * The byte where it starts
+    /// * The index in the [`GapBuffer`] where it starts
+    /// * Its length
+    fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
+        assert!(
+            at <= self.len_bytes(),
+            "byte out of bounds: the len is {}, but the byte is {at}",
+            self.len_bytes()
+        );
+        let (n, b) = self.records.closest_to(at);
+
+        let skips = {
+            let mut b_len = 0;
+            move |(n, ts): (usize, &TagOrSkip)| {
+                b_len += ts.len();
+                ts.as_skip().map(|s| (n, b_len, s))
+            }
+        };
+
+        if at >= b {
+            let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);
+            iter.map(|(i, this_b, skip)| (n + i, b + (this_b - skip), skip))
+                .take_while(|(_, b, _)| at >= *b)
+                .last()
+        } else {
+            let iter = iter_range_rev(&self.buf, ..n).enumerate().filter_map(skips);
+            iter.map(|(i, this_b, skip)| (n - (i + 1), b - this_b, skip))
+                .take_while(|(_, b, skip)| *b + *skip > at)
+                .last()
         }
     }
 
@@ -568,8 +585,9 @@ fn add_to_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: 
         return;
     };
 
-    if t_range.count_ge(range_min) {
-        let (Ok(n) | Err(n)) = ranges.binary_search(&t_range);
+    if t_range.count_ge(range_min)
+        && let Err(n) = ranges.binary_search(&t_range)
+    {
         ranges.insert(n, t_range.clone());
     }
 }
@@ -633,16 +651,7 @@ fn deintersect(ranges: &mut Vec<TagRange>, range_min: usize) {
     let mut entries: Vec<(usize, RawTag)> = Vec::new();
 
     for t_range in ranges.drain(..) {
-        let bounds = match t_range {
-            Bounded(tag, bounded) => [
-                Some((tag, bounded.start)),
-                Some((tag.inverse().unwrap(), bounded.end)),
-            ],
-            From(tag, from) => [Some((tag, from)), None],
-            Until(tag, until) => [None, Some((tag, until))],
-        };
-
-        for (tag, b) in bounds.into_iter().flatten() {
+        for (b, tag) in t_range.entries().into_iter().flatten() {
             let (Ok(n) | Err(n)) =
                 entries.binary_search_by_key(&(b, tag.is_end()), |&(b, tag)| (b, tag.is_end()));
             entries.insert(n, (b, tag));
