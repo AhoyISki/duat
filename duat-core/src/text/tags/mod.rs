@@ -125,12 +125,16 @@ impl Tags {
     pub fn insert(&mut self, at: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
         let (tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
 
-        let Some((n, b, skip)) = self.get_skip_at(at) else {
-            self.buf.push_back(TagOrSkip::Tag(tag));
-            add_to_ranges((at, tag), &mut self.ranges, self.range_min);
-            self.records.append((1, 0));
+        let (n, b, skip) = self
+            .get_skip_at(at)
+            .unwrap_or((self.buf.len(), self.len_bytes(), 0));
+
+        if iter_range_rev(&self.buf, ..n)
+            .map_while(|ts| ts.as_tag())
+            .any(|t| t == tag)
+        {
             return None;
-        };
+        }
 
         if at == b {
             self.buf.insert(n, TagOrSkip::Tag(tag));
@@ -146,7 +150,9 @@ impl Tags {
             self.records.insert((n + 2, at));
         }
 
-        if tag.is_start() || tag.is_end() {
+        if let Some(entry) = find_match_too_close(&self.buf, (n, b, tag), self.range_min) {
+            remove_from_ranges(entry, &mut self.ranges);
+        } else if tag.is_start() || tag.is_end() {
             add_to_ranges((at, tag), &mut self.ranges, self.range_min);
             deintersect(&mut self.ranges, self.range_min);
         }
@@ -200,7 +206,7 @@ impl Tags {
 
         self.fuse_skips_at(at);
         deintersect(&mut self.ranges, self.range_min);
-   }
+    }
 
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
@@ -252,7 +258,7 @@ impl Tags {
             (added, new.clone().count()),
         );
 
-        shift_ranges_after(old.end, &mut self.ranges, range_diff, self.range_min);
+        shift_ranges_after(&mut self.ranges, old.end, range_diff, self.range_min);
         self.process_ranges_around(new.clone());
         self.cull_small_ranges();
     }
@@ -417,12 +423,6 @@ impl Tags {
             (before_start..=range.start, after_start..=after_end)
         };
 
-        self.ranges
-            .extract_if(|t_range| {
-                b_range.contains(&t_range.start()) && a_range.contains(&t_range.end())
-            })
-            .for_each(drop);
-
         let b_tags = {
             let (n, b) = self
                 .get_skip_at(*b_range.end())
@@ -440,30 +440,17 @@ impl Tags {
                 .map(|(n, b, _)| (n, b))
                 .unwrap_or((self.buf.len(), self.len_bytes()));
 
-            if b == *a_range.start() {
-                n -= iter_range_rev(&self.buf, ..n)
-                    .take_while(|ts| ts.is_tag())
-                    .count();
-            }
+            n -= iter_range_rev(&self.buf, ..n)
+                .take_while(|ts| ts.is_tag())
+                .count();
 
             iter_range(&self.buf, n..)
                 .filter_map(raw_from(b))
                 .take_while(|&(b, _)| b <= *a_range.end())
         };
 
-        let mut ranges = Vec::new();
-
-        for (b, tag) in b_tags.chain(a_tags) {
-            add_to_ranges((b, tag), &mut ranges, self.range_min);
-        }
-
-        ranges
-            .extract_if(|t_range| matches!(t_range, From(..) | Until(..)))
-            .for_each(drop);
-
-        for t_range in ranges {
-            let (Ok(n) | Err(n)) = self.ranges.binary_search(&t_range);
-            self.ranges.insert(n, t_range);
+        for entry in b_tags.chain(a_tags) {
+            add_to_ranges(entry, &mut self.ranges, self.range_min);
         }
     }
 
@@ -555,20 +542,25 @@ fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag
 fn add_to_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: usize) {
     let t_range = if entry.1.is_start() {
         let (start, s_tag) = entry;
-        match ranges
-            .extract_if(|range| range.can_start_with(&entry))
-            .next()
-        {
-            Some(Until(_, until)) => Bounded(s_tag, start..until),
+        let n = ranges.iter().position(|r| r.can_or_does_start_with(&entry));
+        match n.and_then(|n| ranges.get(n)) {
+            Some(&Until(_, until)) => {
+                ranges.remove(n.unwrap());
+                Bounded(s_tag, start..until)
+            }
+            Some(Bounded(..)) => return,
             None => From(s_tag, start),
             _ => unreachable!(),
         }
     } else if entry.1.is_end() {
         let (end, e_tag) = entry;
-        let n = ranges.iter().rposition(|range| range.can_end_with(&entry));
-
-        match n.map(|n| ranges.remove(n)) {
-            Some(From(s_tag, from)) => Bounded(s_tag, from..end),
+        let n = ranges.iter().rposition(|r| r.can_or_does_end_with(&entry));
+        match n.and_then(|n| ranges.get(n)) {
+            Some(&From(s_tag, from)) => {
+                ranges.remove(n.unwrap());
+                Bounded(s_tag, from..end)
+            }
+            Some(Bounded(..)) => return,
             None => Until(e_tag, end),
             _ => unreachable!(),
         }
@@ -607,7 +599,7 @@ fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
     }
 }
 
-fn shift_ranges_after(after: usize, ranges: &mut Vec<TagRange>, amount: isize, range_min: usize) {
+fn shift_ranges_after(ranges: &mut Vec<TagRange>, after: usize, amount: isize, range_min: usize) {
     ranges
         .extract_if(|t_range| {
             match t_range {
@@ -659,6 +651,27 @@ fn deintersect(ranges: &mut Vec<TagRange>, range_min: usize) {
 
     for entry in entries {
         add_to_ranges(entry, ranges, range_min);
+    }
+}
+
+fn find_match_too_close(
+    buf: &GapBuffer<TagOrSkip>,
+    (n, b, tag): (usize, usize, RawTag),
+    range_min: usize,
+) -> Option<(usize, RawTag)> {
+    if tag.is_start() {
+        let n = n - iter_range_rev(buf, ..n).take_while(|t| t.is_tag()).count();
+        iter_range(buf, n..)
+            .filter_map(raw_from(b))
+            .take_while(|(cmp, _)| *cmp < b + range_min)
+            .find(|(_, t)| *t == tag.inverse().unwrap())
+    } else if tag.is_end() {
+        iter_range_rev(buf, ..n)
+            .filter_map(raw_from_rev(b))
+            .take_while(|(cmp, _)| *cmp > b.saturating_sub(range_min))
+            .find(|(_, t)| *t == tag.inverse().unwrap())
+    } else {
+        None
     }
 }
 

@@ -42,33 +42,37 @@ impl TagRange {
         self.get_end().unwrap_or(usize::MAX)
     }
 
-    pub fn starts_with(&self, (at, s_tag): &(usize, RawTag)) -> bool {
+    pub fn starts_with(&self, (b, s_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Bounded(tag, bounded) => bounded.start == *at && *tag == *s_tag,
-            TagRange::From(tag, from) => from == at && *tag == *s_tag,
+            TagRange::Bounded(tag, bounded) => bounded.start == *b && *tag == *s_tag,
+            TagRange::From(tag, from) => from == b && *tag == *s_tag,
             TagRange::Until(..) => false,
         }
     }
 
-    pub fn ends_with(&self, (at, e_tag): &(usize, RawTag)) -> bool {
+    pub fn ends_with(&self, (b, e_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Bounded(s_tag, bounded) => bounded.end == *at && s_tag.ends_with(e_tag),
-            TagRange::Until(s_tag, until) => until == at && *s_tag == *e_tag,
+            TagRange::Bounded(s_tag, bounded) => bounded.end == *b && s_tag.ends_with(e_tag),
+            TagRange::Until(s_tag, until) => until == b && *s_tag == *e_tag,
             TagRange::From(..) => false,
         }
     }
 
-    pub fn can_start_with(&self, (at, s_tag): &(usize, RawTag)) -> bool {
+    pub fn can_or_does_start_with(&self, (b, s_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::Until(e_tag, until) => at <= until && s_tag.ends_with(e_tag),
-            TagRange::Bounded(..) | TagRange::From(..) => false,
+            TagRange::Until(e_tag, until) => b <= until && s_tag.ends_with(e_tag),
+            TagRange::Bounded(tag, bounded) => tag == s_tag && bounded.start == *b,
+            TagRange::From(..) => false,
         }
     }
 
-    pub fn can_end_with(&self, (at, e_tag): &(usize, RawTag)) -> bool {
+    pub fn can_or_does_end_with(&self, (b, e_tag): &(usize, RawTag)) -> bool {
         match self {
-            TagRange::From(s_tag, from) => from <= at && s_tag.ends_with(e_tag),
-            TagRange::Bounded(..) | TagRange::Until(..) => false,
+            TagRange::From(s_tag, from) => from <= b && s_tag.ends_with(e_tag),
+            TagRange::Bounded(tag, bounded) => {
+                tag.inverse().unwrap() == *e_tag && bounded.end == *b
+            }
+            TagRange::Until(..) => false,
         }
     }
 
