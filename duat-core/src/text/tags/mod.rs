@@ -13,7 +13,10 @@ pub use self::{
         Tag,
     },
 };
-use self::{ranges::TagRange, types::Toggle};
+use self::{
+    ranges::TagRange::{self, *},
+    types::Toggle,
+};
 use super::{get_ends, records::Records, Point, Text};
 
 mod ids;
@@ -85,7 +88,7 @@ pub struct Tags {
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    ranges: Vec<TagRange>,
+    pub ranges: Vec<TagRange>,
     records: Records<(usize, usize)>,
 }
 
@@ -124,6 +127,7 @@ impl Tags {
 
         let Some((n, b, skip)) = self.get_skip_at(at) else {
             self.buf.push_back(TagOrSkip::Tag(tag));
+            add_to_ranges((at, tag), &mut self.ranges, self.range_min);
             self.records.append((1, 0));
             return None;
         };
@@ -142,8 +146,10 @@ impl Tags {
             self.records.insert((n + 2, at));
         }
 
-        add_to_ranges((at, tag), &mut self.ranges, self.range_min);
-        self.cull_small_ranges();
+        if tag.is_start() || tag.is_end() {
+            add_to_ranges((at, tag), &mut self.ranges, self.range_min);
+            deintersect(&mut self.ranges, self.range_min);
+        }
 
         toggle_id
     }
@@ -193,7 +199,8 @@ impl Tags {
         }
 
         self.fuse_skips_at(at);
-    }
+        deintersect(&mut self.ranges, self.range_min);
+   }
 
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
@@ -245,7 +252,7 @@ impl Tags {
             (added, new.clone().count()),
         );
 
-        shift_ranges_after(old.end, &mut self.ranges, range_diff);
+        shift_ranges_after(old.end, &mut self.ranges, range_diff, self.range_min);
         self.process_ranges_around(new.clone());
         self.cull_small_ranges();
     }
@@ -291,7 +298,7 @@ impl Tags {
                         .iter()
                         .find(|range| range.starts_with(&(b, StartConceal(marker))))
                     {
-                        Some(range) => (b, Concealed(range.end() as u32)),
+                        Some(t_range) => (b, ConcealUntil(t_range.end() as u32)),
                         None => (b, StartConceal(marker)),
                     }
                 }
@@ -330,7 +337,7 @@ impl Tags {
                         .iter()
                         .find(|range| range.ends_with(&(b, EndConceal(marker))))
                     {
-                        (b, Concealed((b - range.get_start().unwrap_or(0)) as u32))
+                        (b, ConcealUntil(range.start() as u32))
                     } else {
                         (b, EndConceal(marker))
                     }
@@ -410,6 +417,12 @@ impl Tags {
             (before_start..=range.start, after_start..=after_end)
         };
 
+        self.ranges
+            .extract_if(|t_range| {
+                b_range.contains(&t_range.start()) && a_range.contains(&t_range.end())
+            })
+            .for_each(drop);
+
         let b_tags = {
             let (n, b) = self
                 .get_skip_at(*b_range.end())
@@ -422,66 +435,35 @@ impl Tags {
         };
 
         let a_tags = {
-            let (n, b) = self
+            let (mut n, b) = self
                 .get_skip_at(*a_range.start())
                 .map(|(n, b, _)| (n, b))
                 .unwrap_or((self.buf.len(), self.len_bytes()));
 
-            let n = if b == *a_range.start() {
-                n - iter_range_rev(&self.buf, ..n)
+            if b == *a_range.start() {
+                n -= iter_range_rev(&self.buf, ..n)
                     .take_while(|ts| ts.is_tag())
-                    .count()
-            } else {
-                n
-            };
+                    .count();
+            }
 
             iter_range(&self.buf, n..)
                 .filter_map(raw_from(b))
                 .take_while(|&(b, _)| b <= *a_range.end())
         };
 
-        // Removing all ranges that contain the range in question.
-        // The reason why this is done is so that the `add_to_ranges`s
-        // below can judge wether or not those entries should be added
-        // or not, based on factors such as the new distance between
-        // the start and end of the ranges. Ranges that end on the left
-        // or start on the right cannot be affected by the searched range.
-        for entry in b_tags.clone().chain(a_tags.clone()) {
-            let entry_on_both_sides = entry.0 == range.start && range.start == range.end;
-            let start_entry_on_left = entry.0 <= range.start && entry.1.is_start();
-            let end_entry_on_right = entry.0 >= range.end && entry.1.is_end();
+        let mut ranges = Vec::new();
 
-            if entry_on_both_sides || start_entry_on_left || end_entry_on_right {
-                remove_from_ranges(entry, &mut self.ranges)
-            }
+        for (b, tag) in b_tags.chain(a_tags) {
+            add_to_ranges((b, tag), &mut ranges, self.range_min);
         }
 
-        let mut impossible_adds = Vec::new();
+        ranges
+            .extract_if(|t_range| matches!(t_range, From(..) | Until(..)))
+            .for_each(drop);
 
-        for entry in b_tags {
-            let t_range = add_to_ranges(entry, &mut self.ranges, self.range_min);
-            if let Some(TagRange::Until(..)) = t_range {
-                impossible_adds.extend(t_range);
-            }
-        }
-
-        for t_range in impossible_adds.drain(..) {
-            if let Some(n) = self.ranges.iter().rposition(|tr| *tr == t_range) {
-                self.ranges.remove(n);
-            }
-        }
-
-        for entry in a_tags {
-            let t_range = add_to_ranges(entry, &mut self.ranges, self.range_min);
-            if let Some(TagRange::From(..)) = t_range {
-                impossible_adds.extend(t_range);
-            }
-        }
-
-        for t_range in impossible_adds.drain(..) {
-            if let Some(n) = self.ranges.iter().position(|tr| *tr == t_range) {
-                self.ranges.remove(n);
-            }
+        for t_range in ranges {
+            let (Ok(n) | Err(n)) = self.ranges.binary_search(&t_range);
+            self.ranges.insert(n, t_range);
         }
     }
 
@@ -515,7 +497,7 @@ impl Tags {
             cullable -= self
                 .ranges
                 .extract_if(|range| {
-                    if let TagRange::Bounded(_, bounded) = range {
+                    if let Bounded(_, bounded) = range {
                         bounded.clone().count() < self.range_min
                     } else {
                         false
@@ -570,24 +552,15 @@ fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag
     }
 }
 
-fn add_to_ranges(
-    entry: (usize, RawTag),
-    ranges: &mut Vec<TagRange>,
-    range_min: usize,
-) -> Option<TagRange> {
+fn add_to_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: usize) {
     let t_range = if entry.1.is_start() {
         let (start, s_tag) = entry;
-        let t_range = ranges
+        match ranges
             .extract_if(|range| range.can_start_with(&entry))
-            .next();
-
-        match t_range {
-            Some(TagRange::Until(_, until)) => TagRange::Bounded(s_tag, start..until),
-            Some(TagRange::Bounded(tag, bounded)) => {
-                add_to_ranges((bounded.start, tag), ranges, range_min);
-                TagRange::Bounded(tag, start..bounded.end)
-            }
-            None => TagRange::From(s_tag, start),
+            .next()
+        {
+            Some(Until(_, until)) => Bounded(s_tag, start..until),
+            None => From(s_tag, start),
             _ => unreachable!(),
         }
     } else if entry.1.is_end() {
@@ -595,24 +568,17 @@ fn add_to_ranges(
         let n = ranges.iter().rposition(|range| range.can_end_with(&entry));
 
         match n.map(|n| ranges.remove(n)) {
-            Some(TagRange::From(s_tag, from)) => TagRange::Bounded(s_tag, from..end),
-            Some(TagRange::Bounded(s_tag, bounded)) => {
-                add_to_ranges((bounded.end, e_tag), ranges, range_min);
-                TagRange::Bounded(s_tag, bounded.start..end)
-            }
-            None => TagRange::Until(e_tag, end),
+            Some(From(s_tag, from)) => Bounded(s_tag, from..end),
+            None => Until(e_tag, end),
             _ => unreachable!(),
         }
     } else {
-        return None;
+        return;
     };
 
     if t_range.count_ge(range_min) {
         let (Ok(n) | Err(n)) = ranges.binary_search(&t_range);
         ranges.insert(n, t_range.clone());
-        Some(t_range)
-    } else {
-        None
     }
 }
 
@@ -626,44 +592,73 @@ fn add_to_ranges(
 fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
     if entry.1.is_start() {
         let t_range = ranges.extract_if(|range| range.starts_with(&entry)).next();
-        if let Some(TagRange::Bounded(tag, bounded)) = t_range {
-            let range = TagRange::Until(tag.inverse().unwrap(), bounded.end);
+        if let Some(Bounded(tag, bounded)) = t_range {
+            let range = Until(tag.inverse().unwrap(), bounded.end);
             let (Ok(n) | Err(n)) = ranges.binary_search(&range);
             ranges.insert(n, range);
         }
     } else if entry.1.is_end() {
         let t_range = ranges.extract_if(|range| range.ends_with(&entry)).next();
-        if let Some(TagRange::Bounded(tag, bounded)) = t_range {
-            let range = TagRange::From(tag, bounded.start);
+        if let Some(Bounded(tag, bounded)) = t_range {
+            let range = From(tag, bounded.start);
             let (Ok(n) | Err(n)) = ranges.binary_search(&range);
             ranges.insert(n, range);
         }
     }
 }
 
-fn shift_ranges_after(after: usize, ranges: &mut [TagRange], amount: isize) {
-    for range in ranges.iter_mut() {
-        match range {
-            TagRange::Bounded(_, bounded) => {
-                if bounded.start > after || (amount < 0 && bounded.start >= after) {
-                    let start = bounded.start.saturating_add_signed(amount);
-                    let end = bounded.end.saturating_add_signed(amount);
-                    *bounded = start..end
-                } else if bounded.end > after || (amount < 0 && bounded.end >= after) {
-                    bounded.end = bounded.end.saturating_add_signed(amount)
+fn shift_ranges_after(after: usize, ranges: &mut Vec<TagRange>, amount: isize, range_min: usize) {
+    ranges
+        .extract_if(|t_range| {
+            match t_range {
+                Bounded(_, bounded) => {
+                    if bounded.start > after || (amount < 0 && bounded.start >= after) {
+                        let start = bounded.start.saturating_add_signed(amount);
+                        let end = bounded.end.saturating_add_signed(amount);
+                        *bounded = start..end
+                    } else if bounded.end > after || (amount < 0 && bounded.end >= after) {
+                        bounded.end = bounded.end.saturating_add_signed(amount)
+                    }
+                }
+                From(_, from) => {
+                    if *from > after || (amount < 0 && *from >= after) {
+                        *from = from.saturating_add_signed(amount)
+                    }
+                }
+                Until(_, until) => {
+                    if *until > after || (amount < 0 && *until >= after) {
+                        *until = until.saturating_add_signed(amount)
+                    }
                 }
             }
-            TagRange::From(_, from) => {
-                if *from > after || (amount < 0 && *from >= after) {
-                    *from = from.saturating_add_signed(amount)
-                }
-            }
-            TagRange::Until(_, until) => {
-                if *until > after || (amount < 0 && *until >= after) {
-                    *until = until.saturating_add_signed(amount)
-                }
-            }
+
+            !t_range.count_ge(range_min)
+        })
+        .for_each(drop);
+}
+
+fn deintersect(ranges: &mut Vec<TagRange>, range_min: usize) {
+    let mut entries: Vec<(usize, RawTag)> = Vec::new();
+
+    for t_range in ranges.drain(..) {
+        let bounds = match t_range {
+            Bounded(tag, bounded) => [
+                Some((tag, bounded.start)),
+                Some((tag.inverse().unwrap(), bounded.end)),
+            ],
+            From(tag, from) => [Some((tag, from)), None],
+            Until(tag, until) => [None, Some((tag, until))],
+        };
+
+        for (tag, b) in bounds.into_iter().flatten() {
+            let (Ok(n) | Err(n)) =
+                entries.binary_search_by_key(&(b, tag.is_end()), |&(b, tag)| (b, tag.is_end()));
+            entries.insert(n, (b, tag));
         }
+    }
+
+    for entry in entries {
+        add_to_ranges(entry, ranges, range_min);
     }
 }
 

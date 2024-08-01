@@ -95,7 +95,7 @@ impl Tag {
 unsafe impl Send for Tag {}
 unsafe impl Sync for Tag {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -145,7 +145,7 @@ pub enum RawTag {
     // TODO: Deal with the concequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
-    Concealed(u32),
+    ConcealUntil(u32),
 
     GhostText(Marker, TextId),
 
@@ -246,9 +246,32 @@ impl RawTag {
             | Self::GhostText(marker, _)
             | Self::ToggleStart(marker, _)
             | Self::ToggleEnd(marker, _) => *marker,
-            Self::Concealed(_) => unreachable!(
+            Self::ConcealUntil(_) => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
             ),
+        }
+    }
+}
+
+impl std::fmt::Debug for RawTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RawTag::PushForm(id, marker) => write!(f, "PushForm({id:?}, {marker:?})"),
+            RawTag::PopForm(id, marker) => write!(f, "PopForm({id:?}, {marker:?})"),
+            RawTag::MainCursor(marker) => write!(f, "MainCursor({marker:?})"),
+            RawTag::ExtraCursor(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::StartAlignLeft(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::EndAlignLeft(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::StartAlignCenter(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::EndAlignCenter(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::StartAlignRight(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::EndAlignRight(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::StartConceal(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::EndConceal(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::ConcealUntil(marker) => write!(f, "PushForm({marker:?})"),
+            RawTag::GhostText(id, marker) => write!(f, "PushForm({id:?}, {marker:?})"),
+            RawTag::ToggleStart(id, marker) => write!(f, "PushForm({id:?}, {marker:?})"),
+            RawTag::ToggleEnd(id, marker) => write!(f, "PushForm({id:?}, {marker:?})"),
         }
     }
 }

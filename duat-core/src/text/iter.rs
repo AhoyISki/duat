@@ -163,9 +163,8 @@ impl<'a> Iter<'a> {
                     self.chars = buf_chars(&self.text.buf, self.point.byte());
                 }
             }
-            RawTag::Concealed(skip) => {
-                let b = b.saturating_add(*skip as usize);
-                let point = self.text.point_at(b);
+            RawTag::ConcealUntil(b) => {
+                let point = self.text.point_at(*b as usize);
                 *self = Iter::new_at(self.text, point);
                 return false;
             }
@@ -337,9 +336,8 @@ impl<'a> RevIter<'a> {
                 }
             }
             RawTag::EndConceal(_) => self.conceals += 1,
-            RawTag::Concealed(skip) => {
-                let b = b.saturating_sub(*skip as usize);
-                let point = self.text.point_at(b);
+            RawTag::ConcealUntil(b) => {
+                let point = self.text.point_at(*b as usize);
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
@@ -370,8 +368,8 @@ impl Iterator for RevIter<'_> {
         loop {
             let tag = self.tags.peek();
 
-            if let Some(&(b, tag)) =
-                tag.filter(|(b, _)| *b >= self.point.byte() || self.conceals > 0)
+            if let Some(&(b, tag)) = tag
+                && (b >= self.point.byte() || self.conceals > 0)
             {
                 self.tags.next();
 

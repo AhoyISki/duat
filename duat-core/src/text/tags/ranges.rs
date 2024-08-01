@@ -2,7 +2,7 @@ use std::{cmp::Ordering::*, ops::Range};
 
 use super::RawTag;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum TagRange {
     Bounded(RawTag, Range<usize>),
     From(RawTag, usize),
@@ -61,20 +61,14 @@ impl TagRange {
     pub fn can_start_with(&self, (at, s_tag): &(usize, RawTag)) -> bool {
         match self {
             TagRange::Until(e_tag, until) => at <= until && s_tag.ends_with(e_tag),
-            TagRange::Bounded(tag, bounded) => {
-                *at <= bounded.end && bounded.start < *at && s_tag == tag
-            }
-            TagRange::From(..) => false,
+            TagRange::Bounded(..) | TagRange::From(..) => false,
         }
     }
 
     pub fn can_end_with(&self, (at, e_tag): &(usize, RawTag)) -> bool {
         match self {
             TagRange::From(s_tag, from) => from <= at && s_tag.ends_with(e_tag),
-            TagRange::Bounded(s_tag, bounded) => {
-                *at < bounded.end && bounded.start <= *at && *e_tag == s_tag.inverse().unwrap()
-            }
-            TagRange::Until(..) => false,
+            TagRange::Bounded(..) | TagRange::Until(..) => false,
         }
     }
 
@@ -107,6 +101,16 @@ impl TagRange {
     #[must_use]
     pub fn is_until(&self) -> bool {
         matches!(self, Self::Until(..))
+    }
+}
+
+impl std::fmt::Debug for TagRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TagRange::Bounded(tag, bounded) => write!(f, "Bounded({tag:?}, {bounded:?})"),
+            TagRange::From(tag, from) => write!(f, "Bounded({tag:?}, {from:?})"),
+            TagRange::Until(tag, until) => write!(f, "Bounded({tag:?}, {until:?})"),
+        }
     }
 }
 

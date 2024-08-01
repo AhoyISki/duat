@@ -104,6 +104,9 @@ impl Form {
     mimic_method!(reset);
     mimic_method!(bold);
     mimic_method!(underlined);
+    mimic_method!(double_underlined);
+    mimic_method!(undercurled);
+    mimic_method!(underdashed);
     mimic_method!(reverse);
     mimic_method!(dim);
     mimic_method!(italic);

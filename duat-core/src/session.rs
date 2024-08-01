@@ -524,9 +524,7 @@ where
                 } else {
                     iter_around(&read_windows, window_index, 0)
                         .filter(|(_, (widget, _))| widget.as_active().is_some())
-                        .find(|(_, (widget, _))| {
-                            widget.type_name() == ty
-                        })
+                        .find(|(_, (widget, _))| widget.type_name() == ty)
                 }
                 .ok_or(err!("No widget of type " [*a] ty [] " found."))?;
 
