@@ -14,11 +14,13 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    any::type_name,
+    any::{type_name, TypeId},
+    collections::HashMap,
     marker::PhantomData,
     sync::{LazyLock, Mutex, Once},
 };
 
+use parking_lot::RwLock;
 use text::{err, hint, Text};
 
 pub mod commands;
@@ -136,6 +138,39 @@ impl<E> std::fmt::Debug for Error<E> {
 }
 
 pub type Result<T, E> = std::result::Result<T, Error<E>>;
+
+/// Takes a type and generates an appropriate name for it
+///
+/// Use this function if you need a name of a type to be
+/// referrable by string, such as by commands or by the
+/// user.
+pub fn duat_name<T>() -> &'static str
+where
+    T: Sized + 'static,
+{
+    static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
+        LazyLock::new(|| RwLock::new(HashMap::new()));
+    let mut names = NAMES.write();
+    let type_id = TypeId::of::<T>();
+
+    if let Some(name) = names.get(&type_id) {
+        name
+    } else {
+        let verbose = std::any::type_name::<T>();
+        let mut name = String::new();
+
+        for path in verbose.split_inclusive(['<', '>']) {
+            for segment in path.split("::") {
+                if segment.chars().any(|char| char.is_ascii_uppercase()) {
+                    name.push_str(segment);
+                }
+            }
+        }
+
+        names.insert(type_id, name.leak());
+        names.get(&type_id).unwrap()
+    }
+}
 
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{

@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use super::{Area, Ui, Window};
 use crate::{
     data::{Context, RwData},
+    duat_name,
     widgets::{PassiveWidget, WidgetCfg},
 };
 
@@ -112,7 +113,7 @@ where
             self.context.cur_file().unwrap().add_related_widget((
                 related,
                 child.clone(),
-                W::name(),
+                duat_name::<W>(),
             ));
 
             if let Some(parent) = &parent {
@@ -189,7 +190,7 @@ where
             self.context.cur_file().unwrap().add_related_widget((
                 related,
                 child.clone(),
-                W::name(),
+                duat_name::<W>(),
             ));
 
             if let Some(parent) = &parent {
@@ -230,10 +231,11 @@ where
         let related = widget.as_passive().clone();
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.context
-            .cur_file()
-            .unwrap()
-            .add_related_widget((related, child.clone(), W::name()));
+        self.context.cur_file().unwrap().add_related_widget((
+            related,
+            child.clone(),
+            duat_name::<W>(),
+        ));
         (child, parent)
     }
 
@@ -264,8 +266,9 @@ where
 
         let (child, parent) = self.window.push(widget, &area, checker, specs, true);
         self.context
-            .cur_file().unwrap()
-            .add_related_widget((related, child.clone(), W::name()));
+            .cur_file()
+            .unwrap()
+            .add_related_widget((related, child.clone(), duat_name::<W>()));
         (child, parent)
     }
 }
@@ -472,8 +475,8 @@ fn run_once<W: PassiveWidget<U>, U: Ui>(context: Context<U>) {
         LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut once_list = ONCE_LIST.write();
-    if !once_list.contains(&W::name()) {
+    if !once_list.contains(&duat_name::<W>()) {
         W::once(context);
-        once_list.push(W::name());
+        once_list.push(duat_name::<W>());
     }
 }

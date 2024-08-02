@@ -19,7 +19,6 @@
 //! terminal.
 use std::{
     any::TypeId,
-    collections::HashMap,
     sync::{Arc, LazyLock},
 };
 
@@ -28,6 +27,7 @@ use parking_lot::RwLock;
 
 use crate::{
     data::{Context, Data, RwData},
+    duat_name,
     input::InputMethod,
     palette,
     text::{PrintCfg, Text},
@@ -40,7 +40,7 @@ mod line_numbers;
 mod status_line;
 
 pub use self::{
-    command_line::{CommandLine, CommandLineCfg},
+    command_line::{CommandLine, CommandLineCfg, CommandLineMode},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{common, status, State, StatusLine, StatusLineCfg},
@@ -65,7 +65,7 @@ where
     /// [`WidgetNode`]
     ///
     /// [`Session`]: crate::session::Session
-    fn update(&mut self, area: &U::Area);
+    fn update(&mut self, _area: &U::Area) {}
 
     /// The text that this widget prints out.
     fn text(&self) -> &Text;
@@ -82,34 +82,6 @@ where
     fn once(globals: Context<U>)
     where
         Self: Sized;
-
-    fn name() -> &'static str
-    where
-        Self: Sized,
-    {
-        static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
-            LazyLock::new(|| RwLock::new(HashMap::new()));
-        let mut names = NAMES.write();
-        let type_id = TypeId::of::<Self>();
-
-        if let Some(name) = names.get(&type_id) {
-            name
-        } else {
-            let verbose = std::any::type_name::<Self>();
-            let mut name = String::new();
-
-            for path in verbose.split_inclusive(['<', '>']) {
-                for segment in path.split("::") {
-                    if segment.chars().any(|char| char.is_ascii_uppercase()) {
-                        name.push_str(segment);
-                    }
-                }
-            }
-
-            names.insert(type_id, name.leak());
-            names.get(&type_id).unwrap()
-        }
-    }
 }
 
 #[allow(refining_impl_trait)]
@@ -131,13 +103,13 @@ where
     U: Ui,
 {
     /// A mutable reference to the [`Text`] printed by this cursor.
-    fn mut_text(&mut self) -> &mut Text;
+    fn text_mut(&mut self) -> &mut Text;
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
-    fn on_focus(&mut self, _area: &U::Area);
+    fn on_focus(&mut self, _area: &U::Area) {}
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
-    fn on_unfocus(&mut self, _area: &U::Area);
+    fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 
 #[allow(private_interfaces)]
@@ -210,7 +182,7 @@ where
     }
 
     fn type_name(&self) -> &'static str {
-        W::name()
+        duat_name::<W>()
     }
 
     fn active_widget(&self) -> &RwData<dyn ActiveWidget<U>> {
@@ -225,14 +197,14 @@ where
         let mut input = self.input.write();
 
         if let Some(cursors) = input.cursors() {
-            self.widget.write().mut_text().remove_cursor_tags(cursors);
+            self.widget.write().text_mut().remove_cursor_tags(cursors);
         }
 
         input.send_key(key, &self.widget, area, globals);
 
         if let Some(cursors) = input.cursors() {
             let mut widget = self.widget.write();
-            widget.mut_text().add_cursor_tags(cursors);
+            widget.text_mut().add_cursor_tags(cursors);
 
             area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
 
@@ -287,7 +259,7 @@ where
     {
         Widget::Passive(
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))),
-            W::name(),
+            duat_name::<W>(),
         )
     }
 
@@ -303,7 +275,7 @@ where
         if let Some(file) = dyn_active.try_downcast::<File>()
             && let Some(cursors) = input.read().cursors()
         {
-            ActiveWidget::<U>::mut_text(&mut *file.write()).add_cursor_tags(cursors)
+            ActiveWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
         }
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod<U>>>;

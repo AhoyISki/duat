@@ -396,13 +396,9 @@ impl<U> ActiveWidget<U> for File
 where
     U: Ui,
 {
-    fn mut_text(&mut self) -> &mut Text {
+    fn text_mut(&mut self) -> &mut Text {
         &mut self.text
     }
-
-    fn on_focus(&mut self, _area: &<U as Ui>::Area) {}
-
-    fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {}
 }
 
 unsafe impl Send for File {}
