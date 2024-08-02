@@ -1,4 +1,4 @@
-use super::{key, Cursors, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor};
+use super::{key, Cursors, KeyCode, KeyEvent, KeyModifiers, EditHelper};
 use crate::{
     data::{Context, RwData},
     ui::Ui,
@@ -37,7 +37,7 @@ where
         area: &U::Area,
         context: Context<U>,
     ) {
-        let mut editor = MultiCursorEditor::<File, U>::new(widget, area, &mut self.cursors);
+        let mut editor = EditHelper::<File, U>::new(widget, area, &mut self.cursors);
         match key {
             // Characters
             key!(KeyCode::Char(ch)) => {
@@ -143,7 +143,7 @@ where
     }
 }
 
-fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amount: usize) {
+fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
@@ -156,7 +156,7 @@ fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amo
 }
 
 fn move_each_and_select<U: Ui>(
-    mut editor: MultiCursorEditor<File, U>,
+    mut editor: EditHelper<File, U>,
     direction: Side,
     amount: usize,
 ) {

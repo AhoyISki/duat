@@ -18,7 +18,6 @@ use self::{
     types::Toggle,
 };
 use super::{get_ends, records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;

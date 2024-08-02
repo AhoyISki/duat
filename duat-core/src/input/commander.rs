@@ -1,3 +1,11 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use super::{key, Cursors, EditHelper, InputMethod};
+use crate::{
+    data::{Context, RwData},
+    ui::Ui,
+    widgets::CommandLine,
+};
 
 #[derive(Clone)]
 pub struct Commander {
@@ -31,7 +39,7 @@ where
         area: &U::Area,
         context: Context<U>,
     ) {
-        let mut editor = MultiCursorEditor::new(widget, area, &mut self.cursors);
+        let mut editor = EditHelper::new(widget, area, &mut self.cursors);
 
         match key {
             key!(KeyCode::Backspace) => {

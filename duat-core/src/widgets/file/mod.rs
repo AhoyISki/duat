@@ -27,7 +27,7 @@ use crate::{
     history::History,
     input::{Cursors, InputMethod, KeyMap},
     palette,
-    text::{text, IterCfg, Point, PrintCfg, Text},
+    text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };

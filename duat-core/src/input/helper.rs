@@ -4,6 +4,7 @@ use std::{
     ops::{DerefMut, Range},
 };
 
+use super::Cursors;
 use crate::{
     data::RwData,
     history::Change,
@@ -13,74 +14,9 @@ use crate::{
     widgets::{ActiveWidget, File, PassiveWidget},
 };
 
-#[derive(Clone, Debug)]
-pub struct Cursors {
-    list: Vec<Cursor>,
-    main: usize,
-}
-
-impl Cursors {
-    pub fn new() -> Self {
-        Self {
-            list: vec![Cursor::default()],
-            main: 0,
-        }
-    }
-
-    pub fn remove_extras(&mut self) {
-        let cursor = self.list[self.main].clone();
-        self.list = vec![cursor];
-        self.main = 0;
-    }
-
-    pub fn insert(&mut self, cursor: Cursor) {
-        self.list.push(cursor)
-    }
-
-    pub fn insert_and_switch(&mut self, _cursor: Cursor) {}
-
-    pub fn main(&self) -> &Cursor {
-        &self.list[self.main]
-    }
-
-    pub fn nth(&self, index: usize) -> Option<Cursor> {
-        self.list.get(index).cloned()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        self.list
-            .iter()
-            .enumerate()
-            .map(move |(index, cursor)| (cursor, index == self.main))
-    }
-
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn reset(&mut self) {
-        self.list = vec![Cursor::default()]
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.list.clear()
-    }
-}
-
-impl Default for Cursors {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
-pub struct MultiCursorEditor<'a, W, U>
+pub struct EditHelper<'a, W, U>
 where
     W: ActiveWidget<U> + 'static,
     U: Ui,
@@ -91,13 +27,13 @@ where
     area: &'a U::Area,
 }
 
-impl<'a, W, U> MultiCursorEditor<'a, W, U>
+impl<'a, W, U> EditHelper<'a, W, U>
 where
     W: ActiveWidget<U> + 'static,
     U: Ui,
 {
     pub fn new(widget: &'a RwData<W>, area: &'a U::Area, cursors: &'a mut Cursors) -> Self {
-        MultiCursorEditor {
+        EditHelper {
             clearing_needed: false,
             widget,
             cursors,
@@ -307,7 +243,7 @@ where
     }
 }
 
-impl<'a, U> MultiCursorEditor<'a, File, U>
+impl<'a, U> EditHelper<'a, File, U>
 where
     U: Ui,
 {

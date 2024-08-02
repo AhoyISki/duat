@@ -18,7 +18,7 @@ use std::{marker::PhantomData, sync::LazyLock};
 
 use crate::{
     data::{Context, RwData},
-    input::{key, Cursors, InputMethod, KeyCode, KeyEvent, KeyModifiers, MultiCursorEditor},
+    input::{Commander, InputMethod},
     palette::{self, Form},
     text::{text, Ghost, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -172,11 +172,14 @@ where
 
         context
             .commands
-            .add_for_widget::<CommandLine<U>>(["set-prompt"], move |command_line, _, _, mut args| {
-                let new_prompt: String = args.collect();
-                *command_line.prompt.write() = new_prompt;
-                Ok(None)
-            })
+            .add_for_widget::<CommandLine<U>>(
+                ["set-prompt"],
+                move |command_line, _, _, mut args| {
+                    let new_prompt: String = args.collect();
+                    *command_line.prompt.write() = new_prompt;
+                    Ok(None)
+                },
+            )
             .unwrap();
     }
 }

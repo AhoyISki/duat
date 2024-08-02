@@ -7,7 +7,7 @@ use crossterm::event::{
 use duat_core::{
     data::{Context, RwData},
     hooks::{self, Hookable},
-    input::{key, Cursors, InputMethod, MultiCursorEditor},
+    input::{key, Cursors, InputMethod, EditHelper},
     palette::{self, Form},
     text::{text, Text},
     ui::Ui,
@@ -90,7 +90,7 @@ where
         context: Context<U>,
     ) {
         let cursors = &mut self.cursors;
-        let editor = MultiCursorEditor::new(widget, area, cursors);
+        let editor = EditHelper::new(widget, area, cursors);
 
         match self.mode {
             Mode::Insert => match_insert(editor, key, &mut self.mode),
@@ -121,7 +121,7 @@ where
 }
 
 /// Commands that are available in `Mode::Insert`.
-fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mode: &mut Mode) {
+fn match_insert<U: Ui>(mut editor: EditHelper<File, U>, key: KeyEvent, mode: &mut Mode) {
     match key {
         key!(KeyCode::Char(char)) => {
             editor.edit_on_each_cursor(|editor| editor.insert(char));
@@ -200,7 +200,7 @@ fn match_insert<U: Ui>(mut editor: MultiCursorEditor<File, U>, key: KeyEvent, mo
 
 /// Commands that are available in `Mode::Normal`.
 fn match_normal<U: Ui>(
-    mut editor: MultiCursorEditor<File, U>,
+    mut editor: EditHelper<File, U>,
     key: KeyEvent,
     mode: &mut Mode,
     context: Context<U>,
@@ -268,7 +268,7 @@ fn match_normal<U: Ui>(
 
 /// Commands that are available in `Mode::GoTo`.
 fn match_goto<U: Ui>(
-    mut editor: MultiCursorEditor<File, U>,
+    mut editor: EditHelper<File, U>,
     key: KeyEvent,
     last_file: &mut String,
     context: Context<U>,
@@ -299,7 +299,7 @@ fn match_goto<U: Ui>(
     }
 }
 
-fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amount: usize) {
+fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         mover.unset_anchor();
         match direction {
@@ -312,7 +312,7 @@ fn move_each<U: Ui>(mut editor: MultiCursorEditor<File, U>, direction: Side, amo
 }
 
 fn select_and_move_each<U: Ui>(
-    mut editor: MultiCursorEditor<File, U>,
+    mut editor: EditHelper<File, U>,
     direction: Side,
     amount: usize,
 ) {
