@@ -1,9 +1,11 @@
+mod commander;
 mod default;
 mod multi_cursor;
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub use self::{
+    commander::Commander,
     default::KeyMap,
     multi_cursor::{Cursors, MultiCursorEditor},
 };
