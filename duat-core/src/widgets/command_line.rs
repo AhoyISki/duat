@@ -14,14 +14,17 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use std::{marker::PhantomData, sync::LazyLock};
+use std::{
+    marker::PhantomData,
+    sync::{atomic::AtomicUsize, LazyLock},
+};
 
 use crate::{
-    data::{Context, RwData},
+    data::{Context, RoData, RwData},
     input::{Commander, InputMethod},
     palette::{self, Form},
     text::{text, Ghost, PrintCfg, Text},
-    ui::{Area, PushSpecs, Ui},
+    ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
 
@@ -107,14 +110,19 @@ where
     type Widget = CommandLine<U>;
 
     fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let command_line = CommandLine {
+        let cmd_line = CommandLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
             context,
+            mode: RwData::new(context.get_cmd_mode("RunCommands").unwrap()),
         };
 
-        let widget = Widget::active(command_line, RwData::new(self.input));
-        (widget, || false, self.specs)
+        let checker = {
+            let mode = RoData::from(&cmd_line.mode);
+            move || mode.read().read().has_changed()
+        };
+        let widget = Widget::active(cmd_line, RwData::new(self.input));
+        (widget, checker, self.specs)
     }
 }
 
@@ -132,6 +140,7 @@ where
     text: Text,
     prompt: RwData<String>,
     context: Context<U>,
+    mode: RwData<RwData<dyn CommandLineMode<U>>>,
 }
 
 impl<U> CommandLine<U>
@@ -151,7 +160,12 @@ where
         CommandLineCfg::new().build(context, on_file)
     }
 
-    fn update(&mut self, _area: &U::Area) {}
+    fn update(&mut self, _area: &<U as Ui>::Area) {
+        self.mode
+            .read()
+            .write()
+            .update(&mut self.text, self.context);
+    }
 
     fn text(&self) -> &Text {
         &self.text
@@ -161,10 +175,6 @@ where
         static CFG: LazyLock<PrintCfg> =
             LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());
         &CFG
-    }
-
-    fn print(&mut self, area: &U::Area) {
-        area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
     fn once(context: Context<U>) {
@@ -188,22 +198,66 @@ impl<U> ActiveWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn mut_text(&mut self) -> &mut Text {
+    fn text_mut(&mut self) -> &mut Text {
         &mut self.text
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
+        self.mode
+            .read()
+            .write()
+            .on_focus(&mut self.text, self.context);
     }
 
-    fn on_unfocus(&mut self, _area: &U::Area) {
-        let text = std::mem::take(&mut self.text);
-
-        let cmd = text.to_string();
-        if !cmd.is_empty() {
-            std::thread::spawn(|| self.context.commands.run(cmd));
-        }
+    fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
+        self.mode
+            .read()
+            .write()
+            .on_unfocus(&mut self.text, self.context);
     }
 }
 
 unsafe impl<U> Send for CommandLine<U> where U: Ui {}
+
+pub trait CommandLineMode<U>: Sync + Send
+where
+    U: Ui,
+{
+    fn new() -> Self
+    where
+        Self: Sized;
+
+    fn on_focus(&mut self, _text: &mut Text, _context: Context<U>) {}
+
+    fn on_unfocus(&mut self, _text: &mut Text, _context: Context<U>) {}
+
+    fn update(&mut self, _text: &mut Text, _context: Context<U>) {}
+
+    fn has_changed(&self) -> bool {
+        false
+    }
+}
+
+pub struct RunCommands;
+
+impl<U> CommandLineMode<U> for RunCommands
+where
+    U: Ui,
+{
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self
+    }
+
+    fn on_unfocus(&mut self, text: &mut Text, context: Context<U>) {
+        let text = std::mem::take(text);
+
+        let cmd = text.to_string();
+        if !cmd.is_empty() {
+            context.spawn(|| context.commands.run(cmd));
+        }
+    }
+}

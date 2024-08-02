@@ -88,7 +88,7 @@ pub struct Tags {
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    pub ranges: Vec<TagRange>,
+    ranges: Vec<TagRange>,
     records: Records<(usize, usize)>,
 }
 

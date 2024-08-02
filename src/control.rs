@@ -11,7 +11,7 @@
 //! [`CommandLine`]: crate::prelude::CommandLine
 use std::fmt::Display;
 
-use duat_core::{text::Text, widgets::ActiveWidget};
+use duat_core::{duat_name, text::Text, widgets::ActiveWidget};
 
 use crate::{setup::COMMANDS, Ui};
 
@@ -37,7 +37,7 @@ pub fn quit() {
 /// [`Session`]: crate::sessSession
 #[inline(never)]
 pub fn switch_to<W: ActiveWidget<Ui>>() -> Result<Option<Text>> {
-    COMMANDS.run(format!("switch-to {}", W::name()))
+    COMMANDS.run(format!("switch-to {}", duat_name::<W>()))
 }
 
 /// Switches to/opens a [`File`] with the given name.

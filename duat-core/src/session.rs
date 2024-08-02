@@ -235,7 +235,7 @@ where
             match reason_to_break {
                 BreakTo::QuitDuat => {
                     self.ui.close();
-                    self.context.end();
+                    self.context.end_duat();
 
                     break Vec::new();
                 }
@@ -249,7 +249,7 @@ where
 
     fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
         self.ui.end();
-        self.context.end();
+        self.context.end_duat();
         while self.context.threads_are_running() {
             std::thread::sleep(Duration::from_micros(500));
         }
@@ -267,7 +267,7 @@ where
                         if let Some(input) = widget.input()
                             && let Some(cursors) = input.read().cursors()
                         {
-                            ActiveWidget::<U>::mut_text(&mut *file.write())
+                            ActiveWidget::<U>::text_mut(&mut *file.write())
                                 .remove_cursor_tags(cursors);
                         }
                     })
@@ -333,7 +333,7 @@ where
         }) else {
             return;
         };
-        self.context.set(
+        self.context.set_cur(
             (
                 file,
                 area.clone(),

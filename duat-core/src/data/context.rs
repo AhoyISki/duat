@@ -1,17 +1,24 @@
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        LazyLock,
+        Arc, LazyLock,
     },
     thread::JoinHandle,
 };
 
+use parking_lot::RwLock;
+
 use super::{private::InnerData, RoData, RwData};
 use crate::{
     commands::Commands,
+    duat_name,
     input::InputMethod,
+    text::Text,
     ui::Ui,
-    widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget},
+    widgets::{
+        ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, RunCommands, Widget,
+    },
     Error, Result,
 };
 
@@ -20,10 +27,12 @@ where
     U: Ui,
 {
     pub commands: &'static Commands<U>,
+    pub message: &'static LazyLock<RwData<Text>>,
     cur_file: &'static CurFile<U>,
     cur_widget: &'static CurWidget<U>,
     handles: &'static AtomicUsize,
     has_ended: &'static AtomicBool,
+    cmd_modes: &'static CommandLineModes<U>,
 }
 
 impl<U> Clone for Context<U>
@@ -40,12 +49,15 @@ impl<U> Context<U>
 where
     U: Ui,
 {
+    #[doc(hidden)]
     pub const fn new(
+        commands: &'static Commands<U>,
+        message: &'static LazyLock<RwData<Text>>,
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
-        commands: &'static Commands<U>,
         handles: &'static AtomicUsize,
         has_ended: &'static AtomicBool,
+        cmd_modes: &'static CommandLineModes<U>,
     ) -> Self {
         Self {
             cur_file: current_file,
@@ -53,6 +65,8 @@ where
             commands,
             handles,
             has_ended,
+            message,
+            cmd_modes,
         }
     }
 
@@ -97,14 +111,18 @@ where
         self.handles.load(Ordering::Relaxed) > 0
     }
 
-    pub(crate) fn end(&self) {
+    pub(crate) fn end_duat(&self) {
         self.has_ended.store(true, Ordering::Relaxed);
     }
 
-    pub(crate) fn set(&self, parts: FileParts<U>, widget: Widget<U>) {
+    pub(crate) fn set_cur(&self, parts: FileParts<U>, widget: Widget<U>) {
         let area = parts.1.clone();
         *self.cur_file.0.write() = Some(parts);
         *self.cur_widget.0.write() = Some((widget, area));
+    }
+
+    pub(crate) fn get_cmd_mode(&self, name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
+        self.cmd_modes.get(name)
     }
 }
 
@@ -459,6 +477,43 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+pub struct CommandLineModes<U>(
+    LazyLock<RwData<HashMap<&'static str, RwData<dyn CommandLineMode<U>>>>>,
+)
+where
+    U: Ui;
+
+impl<U> CommandLineModes<U>
+where
+    U: Ui,
+{
+    #[doc(hidden)]
+    pub const fn new() -> Self {
+        Self(LazyLock::new(|| {
+            let mut map: HashMap<&str, RwData<dyn CommandLineMode<U>>> = HashMap::new();
+            map.insert(
+                duat_name::<RunCommands>(),
+                RwData::new_unsized::<RunCommands>(Arc::new(RwLock::new(RunCommands))),
+            );
+            RwData::new(map)
+        }))
+    }
+
+    pub fn add<M>(&self)
+    where
+        M: CommandLineMode<U> + 'static,
+    {
+        self.0.write().insert(
+            duat_name::<M>(),
+            RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new()))),
+        );
+    }
+
+    fn get(&self, mode_name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
+        self.0.read().get(mode_name).cloned()
     }
 }
 

@@ -351,7 +351,7 @@ where
 
     /// Edits the file with a cursor.
     fn edit(&mut self, change: Change) {
-        self.widget.mut_text().apply_change(&change);
+        self.widget.text_mut().apply_change(&change);
         self.edit_accum.bytes += change.added_end() as isize - change.taken_end() as isize;
 
         if TypeId::of::<W>() == TypeId::of::<File>() {

@@ -40,7 +40,7 @@ mod line_numbers;
 mod status_line;
 
 pub use self::{
-    command_line::{CommandLine, CommandLineCfg, CommandLineMode},
+    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{common, status, State, StatusLine, StatusLineCfg},

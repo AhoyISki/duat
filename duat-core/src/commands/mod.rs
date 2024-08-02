@@ -26,6 +26,7 @@ use parking_lot::RwLock;
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
     data::{CurFile, CurWidget, Data, RwData},
+    duat_name,
     text::{text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
@@ -58,6 +59,7 @@ where
     U: Ui,
 {
     /// Returns a new instance of [`Commands`].
+    #[doc(hidden)]
     pub const fn new(
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
@@ -120,7 +122,7 @@ where
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
     pub fn switch_to<W: ActiveWidget<U>>(&self) -> Result<Option<Text>> {
-        self.run(format!("switch-to {}", W::name()))
+        self.run(format!("switch-to {}", duat_name::<W>()))
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -448,7 +450,6 @@ where
     ///
     /// ```rust
     /// // Required feature for widgets.
-    /// #![feature(return_position_impl_trait_in_trait)]
     /// # use std::{
     /// #    sync::{
     /// #        atomic::{AtomicBool, Ordering},
@@ -577,11 +578,11 @@ where
 
                     self.current_widget.mutate_data(|widget, _, _| {
                         let widget = widget.clone().to_passive();
-                        if let Some((w, a)) = get_from_name(&windows, W::name(), &widget) {
+                        if let Some((w, a)) = get_from_name(&windows, duat_name::<W>(), &widget) {
                             w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
                                 .unwrap()
                         } else {
-                            let name = W::name();
+                            let name = duat_name::<W>();
                             Err(text!("No widget of type " [AccentErr] name [] " found"))
                         }
                     })

@@ -1,13 +1,13 @@
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
-    mpsc, RwLock,
+    mpsc, LazyLock, RwLock,
 };
 
 use duat_core::{
     commands::Commands,
-    data::{Context, CurFile, CurWidget, RwData},
+    data::{CommandLineModes, Context, CurFile, CurWidget, RwData},
     session::SessionCfg,
-    text::PrintCfg,
+    text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi},
     widgets::File,
 };
@@ -20,14 +20,23 @@ use crate::{
 };
 
 // Context's statics.
-pub static CUR_FILE: CurFile<Ui> = CurFile::new();
-pub static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
 pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET);
-pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
-pub static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+static CUR_FILE: CurFile<Ui> = CurFile::new();
+static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
+static HANDLES: AtomicUsize = AtomicUsize::new(0);
+static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+static MESSAGE: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
+static CMD_MODES: CommandLineModes<Ui> = CommandLineModes::new();
 
-pub static CONTEXT: Context<Ui> =
-    Context::new(&CUR_FILE, &CUR_WIDGET, &COMMANDS, &HANDLES, &HAS_ENDED);
+static CONTEXT: Context<Ui> = Context::new(
+    &COMMANDS,
+    &MESSAGE,
+    &CUR_FILE,
+    &CUR_WIDGET,
+    &HANDLES,
+    &HAS_ENDED,
+    &CMD_MODES,
+);
 
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);
