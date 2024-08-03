@@ -14,11 +14,10 @@ use crate::{
     commands::Commands,
     duat_name,
     input::InputMethod,
+    log_info,
     text::Text,
     ui::Ui,
-    widgets::{
-        ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, RunCommands, Widget,
-    },
+    widgets::{ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget},
     Error, Result,
 };
 
@@ -27,7 +26,7 @@ where
     U: Ui,
 {
     pub commands: &'static Commands<U>,
-    pub message: &'static LazyLock<RwData<Text>>,
+    notifications: &'static LazyLock<RwData<Text>>,
     cur_file: &'static CurFile<U>,
     cur_widget: &'static CurWidget<U>,
     handles: &'static AtomicUsize,
@@ -52,7 +51,7 @@ where
     #[doc(hidden)]
     pub const fn new(
         commands: &'static Commands<U>,
-        message: &'static LazyLock<RwData<Text>>,
+        notifications: &'static LazyLock<RwData<Text>>,
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
         handles: &'static AtomicUsize,
@@ -65,7 +64,7 @@ where
             commands,
             handles,
             has_ended,
-            message,
+            notifications,
             cmd_modes,
         }
     }
@@ -96,15 +95,23 @@ where
         Ok(self.cur_file.dyn_reader())
     }
 
-    pub fn cur_file(self) -> Result<&'static CurFile<U>, File> {
+    pub fn cur_file(&self) -> Result<&'static CurFile<U>, File> {
         self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
         Ok(self.cur_file)
     }
 
-    pub fn cur_widget(self) -> Result<&'static CurWidget<U>, File> {
+    pub fn cur_widget(&self) -> Result<&'static CurWidget<U>, File> {
         // `cur_widget doesn't exist iff cur_file doesn't exist`.
         self.cur_file.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
         Ok(self.cur_widget)
+    }
+
+    pub fn add_cmd_mode(&self, mode: impl CommandLineMode<U> + 'static) {
+        self.cmd_modes.add(mode);
+    }
+
+    pub fn notifications(&self) -> &RwData<Text> {
+        self.notifications
     }
 
     pub(crate) fn threads_are_running(&self) -> bool {
@@ -189,35 +196,33 @@ where
         other.ptr_eq(&self.0.read().as_ref().unwrap().0)
     }
 
-    pub(crate) fn mutate_related<T: 'static, R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+    pub(crate) fn mutate_related<T: 'static, R>(
+        &self,
+        f: impl FnOnce(&RwData<T>) -> R,
+    ) -> Option<R> {
         let data = self.0.raw_read();
-        let (file, _, input, related) = data.as_ref().unwrap();
+        let (file, _, input, rel) = data.as_ref().unwrap();
 
-        if file.data_is::<T>() {
-            file.mutate_as(f)
-        } else if input.data_is::<T>() {
-            input.mutate_as(f)
-        } else {
-            let related = related.read();
-            related
-                .iter()
-                .find(|(widget, ..)| widget.data_is::<T>())
-                .and_then(|(widget, ..)| widget.mutate_as(f))
-        }
+        file.try_downcast()
+            .or_else(|| input.try_downcast())
+            .or_else(|| {
+                let rel = rel.read();
+                rel.iter().find_map(|(widget, ..)| widget.try_downcast())
+            })
+            .map(|rel| f(&rel))
     }
 
     pub(crate) fn mutate_related_widget<W: 'static, R>(
         &self,
-        f: impl FnOnce(&mut W, &mut U::Area) -> R,
+        f: impl FnOnce(&RwData<W>, &U::Area) -> R,
     ) -> Option<R> {
         let data = self.0.raw_read();
-        let (.., related) = data.as_ref().unwrap();
-        let mut related = related.write();
+        let (.., rel) = data.as_ref().unwrap();
+        let rel = rel.read();
 
-        related
-            .iter_mut()
-            .find(|(widget, ..)| widget.data_is::<W>())
-            .and_then(|(widget, area, _)| widget.mutate_as::<W, R>(|widget| f(widget, area)))
+        rel.iter()
+            .find_map(|(widget, area, _)| widget.try_downcast().zip(Some(area)))
+            .map(|(widget, area)| f(&widget, area))
     }
 
     pub(crate) fn swap(&self, parts: FileParts<U>) -> FileParts<U> {
@@ -445,14 +450,15 @@ where
         other.ptr_eq(widget)
     }
 
-    pub(crate) fn mutate_as<T: 'static, R>(&self, mut f: impl FnMut(&mut T) -> R) -> Option<R> {
+    pub(crate) fn mutate_as<T: 'static, R>(&self, mut f: impl FnMut(&RwData<T>) -> R) -> Option<R> {
         let data = self.0.read();
         let (widget, _) = data.as_ref().unwrap();
         let (widget, input) = widget.as_active().unwrap();
 
         widget
-            .mutate_as::<T, R>(&mut f)
-            .or_else(|| input.mutate_as::<T, R>(f))
+            .try_downcast()
+            .or_else(|| input.try_downcast())
+            .map(|t| f(&t))
     }
 
     pub(crate) fn set(&self, widget: Widget<U>, area: U::Area) {
@@ -492,27 +498,21 @@ where
 {
     #[doc(hidden)]
     pub const fn new() -> Self {
-        Self(LazyLock::new(|| {
-            let mut map: HashMap<&str, RwData<dyn CommandLineMode<U>>> = HashMap::new();
-            map.insert(
-                duat_name::<RunCommands>(),
-                RwData::new_unsized::<RunCommands>(Arc::new(RwLock::new(RunCommands))),
-            );
-            RwData::new(map)
-        }))
+        Self(LazyLock::new(|| RwData::new(HashMap::new())))
     }
 
-    pub fn add<M>(&self)
+    pub fn add<M>(&self, mode: M)
     where
         M: CommandLineMode<U> + 'static,
     {
         self.0.write().insert(
             duat_name::<M>(),
-            RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new()))),
+            RwData::new_unsized::<M>(Arc::new(RwLock::new(mode))),
         );
     }
 
     fn get(&self, mode_name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
+        log_info!("{:#?}", self.0.read().keys().collect::<Vec<_>>());
         self.0.read().get(mode_name).cloned()
     }
 }

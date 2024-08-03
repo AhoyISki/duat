@@ -116,7 +116,7 @@
 use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
-pub use setup::{layout_hooks, run_duat};
+pub use setup::{pre_startup, run_duat};
 
 /// Utilities for addition and execution of commands
 pub mod commands;
@@ -155,40 +155,65 @@ pub mod cursor {
 /// Hook utilites
 pub mod hooks {
     use duat_core::hooks::Hookable;
-    pub use duat_core::hooks::{add, add_grouped, remove_group};
+    pub use duat_core::hooks::{add, add_grouped, group_exists, remove_group};
 
     /// Triggers hooks when Duat's [`Ui`] is created
     ///
     /// # Args
     /// - The [`Ui`] itself
+    ///
+    /// # Notes
+    ///
+    /// The majority of [commands] won't work here, since this is the
+    /// very beginning of Duat, there are no widgets open, no inputs
+    /// created, the only thing that can be affected is the [`Ui`].
+    ///
+    /// [commands]: crate::commands
     pub struct OnUiStart;
 
     impl Hookable for OnUiStart {
-        type Args<'args> = Ui;
+        type Args<'args> = &'args mut Ui;
     }
 
     use crate::Ui;
-    /// Triggers hooks whenever a [`File`] is created
+    /// Triggers whenever a [`File`] is created
     ///
     /// # Arguments
     ///
     /// - The file [builder], which can be used to push widgets to the
     ///   file, and to eachother.
     ///
-    /// [`File`]: duat_core::file::File
+    /// [`File`]: duat_core::widgets::File
     /// [builder]: duat_core::ui::FileBuilder
     pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
 
-    /// Triggers hooks whenever a new window is opened
+    /// Triggers whenever a new window is opened
     ///
     /// # Arguments
     ///
     /// - The window [builder], which can be used to push widgets to
     ///   the edges of the window, surrounding the inner file region.
     ///
-    /// [`File`]: duat_core::file::File
     /// [builder]: duat_core::ui::WindowBuilder
     pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
+
+    /// Triggers whenever the given [`widget`] is focused
+    ///
+    /// # Arguments
+    ///
+    /// - The widget itself.
+    ///
+    /// [`widget`]: duat_core::widgets::ActiveWidget
+    pub type FocusedOn<W> = duat_core::hooks::FocusedOn<W, Ui>;
+
+    /// Triggers whenever the given [`widget`] is focused
+    ///
+    /// # Arguments
+    ///
+    /// - The widget itself.
+    ///
+    /// [`widget`]: duat_core::widgets::ActiveWidget
+    pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
 
 // Native widgets to Duat
@@ -253,7 +278,7 @@ pub macro run($($tree:tt)*) {
         rx: mpsc::Receiver<ui::Event>,
         statics: <Ui as ui::Ui>::StaticFns
     ) -> Vec<(RwData<File>, bool)> {
-		layout_hooks();
+		pre_startup();
 
         {
             $($tree)*

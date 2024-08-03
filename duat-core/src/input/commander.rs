@@ -90,6 +90,12 @@ where
             }
 
             key!(KeyCode::Esc) => {
+                editor.move_main(|mover| {
+                    mover.move_hor(isize::MIN);
+                    mover.set_anchor();
+                    mover.move_hor(isize::MAX);
+                });
+                editor.edit_on_main(|editor| editor.replace(""));
                 self.cursors = Cursors::default();
                 context.commands.return_to_file().unwrap();
             }

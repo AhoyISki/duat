@@ -75,8 +75,8 @@ where
 
         // Build the window's widgets.
         session.windows.mutate(|windows| {
-            let mut builder = WindowBuilder::new(&mut windows[0], self.context);
-            hooks::trigger::<OnWindowOpen<U>>(&mut builder);
+            let builder = WindowBuilder::new(&mut windows[0], self.context);
+            hooks::trigger::<OnWindowOpen<U>>(builder);
         });
 
         session
@@ -127,8 +127,8 @@ where
 
         // Build the window's widgets.
         session.windows.mutate(|windows| {
-            let mut builder = WindowBuilder::new(&mut windows[0], self.context);
-            hooks::trigger::<OnWindowOpen<U>>(&mut builder);
+            let builder = WindowBuilder::new(&mut windows[0], self.context);
+            hooks::trigger::<OnWindowOpen<U>>(builder);
         });
 
         session

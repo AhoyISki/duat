@@ -1,4 +1,6 @@
-use std::sync::LazyLock;
+use std::{ops::DerefMut, sync::LazyLock};
+
+use parking_lot::RwLock;
 
 use super::{Area, Ui, Window};
 use crate::{
@@ -6,6 +8,14 @@ use crate::{
     duat_name,
     widgets::{PassiveWidget, WidgetCfg},
 };
+
+struct InnerBuilder<'a, U>
+where
+    U: Ui,
+{
+    window: &'a mut Window<U>,
+    mod_area: U::Area,
+}
 
 /// A constructor helper for [`Widget<U>`]s.
 ///
@@ -40,8 +50,7 @@ pub struct FileBuilder<'a, U>
 where
     U: Ui,
 {
-    window: &'a mut Window<U>,
-    mod_area: U::Area,
+    inner: RwLock<InnerBuilder<'a, U>>,
     context: Context<U>,
 }
 
@@ -52,8 +61,7 @@ where
     /// Creates a new [`FileBuilder<U>`].
     pub fn new(window: &'a mut Window<U>, mod_area: U::Area, context: Context<U>) -> Self {
         Self {
-            window,
-            mod_area,
+            inner: RwLock::new(InnerBuilder { window, mod_area }),
             context,
         }
     }
@@ -99,16 +107,20 @@ where
     /// │╰──────╯╰───────╯│     │╰───────────────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
-    pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
+    pub fn push<W: PassiveWidget<U>>(&self) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder {
+            ref mut window,
+            ref mut mod_area,
+        } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = W::build(self.context, true);
 
         let related = widget.as_passive().clone();
 
         let (child, parent) = {
-            let (child, parent) = self
-                .window
-                .push(widget, &self.mod_area, checker, specs, true);
+            let (child, parent) = window.push(widget, mod_area, checker, specs, true);
 
             self.context.cur_file().unwrap().add_related_widget((
                 related,
@@ -117,8 +129,8 @@ where
             ));
 
             if let Some(parent) = &parent {
-                if parent.is_senior_of(&self.window.files_region) {
-                    self.window.files_region = parent.clone();
+                if parent.is_senior_of(&window.files_region) {
+                    window.files_region = parent.clone();
                 }
             }
 
@@ -126,7 +138,7 @@ where
         };
 
         if let Some(parent) = &parent {
-            self.mod_area = parent.clone();
+            *mod_area = parent.clone();
         }
 
         (child, parent)
@@ -174,18 +186,22 @@ where
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     pub fn push_cfg<W: PassiveWidget<U>>(
-        &mut self,
+        &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder {
+            ref mut window,
+            ref mut mod_area,
+        } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = cfg.build(self.context, true);
 
         let related = widget.as_passive().clone();
 
         let (child, parent) = {
-            let (child, parent) = self
-                .window
-                .push(widget, &self.mod_area, checker, specs, true);
+            let (child, parent) = window.push(widget, mod_area, checker, specs, true);
 
             self.context.cur_file().unwrap().add_related_widget((
                 related,
@@ -194,8 +210,8 @@ where
             ));
 
             if let Some(parent) = &parent {
-                if parent.is_senior_of(&self.window.files_region) {
-                    self.window.files_region = parent.clone();
+                if parent.is_senior_of(&window.files_region) {
+                    window.files_region = parent.clone();
                 }
             }
 
@@ -203,7 +219,7 @@ where
         };
 
         if let Some(parent) = &parent {
-            self.mod_area = parent.clone();
+            *mod_area = parent.clone();
         }
 
         (child, parent)
@@ -224,13 +240,16 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
+    pub fn push_to<W: PassiveWidget<U>>(&self, area: U::Area) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder { ref mut window, .. } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = W::build(self.context, true);
 
         let related = widget.as_passive().clone();
 
-        let (child, parent) = self.window.push(widget, &area, checker, specs, true);
+        let (child, parent) = window.push(widget, &area, checker, specs, true);
         self.context.cur_file().unwrap().add_related_widget((
             related,
             child.clone(),
@@ -255,20 +274,24 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_cfg_to<W: PassiveWidget<U>>(
-        &mut self,
+        &self,
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder { ref mut window, .. } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = cfg.build(self.context, true);
 
         let related = widget.as_passive().clone();
 
-        let (child, parent) = self.window.push(widget, &area, checker, specs, true);
-        self.context
-            .cur_file()
-            .unwrap()
-            .add_related_widget((related, child.clone(), duat_name::<W>()));
+        let (child, parent) = window.push(widget, &area, checker, specs, true);
+        self.context.cur_file().unwrap().add_related_widget((
+            related,
+            child.clone(),
+            duat_name::<W>(),
+        ));
         (child, parent)
     }
 }
@@ -277,8 +300,7 @@ pub struct WindowBuilder<'a, U>
 where
     U: Ui,
 {
-    window: &'a mut Window<U>,
-    area: U::Area,
+    inner: RwLock<InnerBuilder<'a, U>>,
     context: Context<U>,
 }
 
@@ -288,10 +310,9 @@ where
 {
     /// Creates a new [`FileBuilder<U>`].
     pub fn new(window: &'a mut Window<U>, context: Context<U>) -> Self {
-        let area = window.files_region().clone();
+        let mod_area = window.files_region().clone();
         Self {
-            window,
-            area,
+            inner: RwLock::new(InnerBuilder { window, mod_area }),
             context,
         }
     }
@@ -344,14 +365,20 @@ where
     /// [`StatusLine<U>`]: crate::widgets::StatusLine
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
-    pub fn push<W: PassiveWidget<U>>(&mut self) -> (U::Area, Option<U::Area>) {
+    pub fn push<W: PassiveWidget<U>>(&self) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder {
+            ref mut window,
+            ref mut mod_area,
+        } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = W::build(self.context, false);
 
-        let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
+        let (child, parent) = window.push(widget, mod_area, checker, specs, false);
 
         if let Some(parent) = &parent {
-            self.area = parent.clone();
+            *mod_area = parent.clone();
         }
 
         (child, parent)
@@ -406,16 +433,22 @@ where
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     pub fn push_cfg<W: PassiveWidget<U>>(
-        &mut self,
+        &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder {
+            ref mut window,
+            ref mut mod_area,
+        } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = cfg.build(self.context, false);
 
-        let (child, parent) = self.window.push(widget, &self.area, checker, specs, false);
+        let (child, parent) = window.push(widget, mod_area, checker, specs, false);
 
         if let Some(parent) = &parent {
-            self.area = parent.clone();
+            *mod_area = parent.clone();
         }
 
         (child, parent)
@@ -436,11 +469,14 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
-    pub fn push_to<W: PassiveWidget<U>>(&mut self, area: U::Area) -> (U::Area, Option<U::Area>) {
+    pub fn push_to<W: PassiveWidget<U>>(&self, area: U::Area) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder { ref mut window, .. } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = W::build(self.context, true);
 
-        self.window.push(widget, &area, checker, specs, true)
+        window.push(widget, &area, checker, specs, true)
     }
 
     /// Pushes a [`Widget<U>`] to a specific `area`, given
@@ -459,14 +495,17 @@ where
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     pub fn push_cfg_to<W: PassiveWidget<U>>(
-        &mut self,
+        &self,
         pushable: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
+        let mut inner = self.inner.write();
+        let InnerBuilder { ref mut window, .. } = inner.deref_mut();
+
         run_once::<W, U>(self.context);
         let (widget, checker, specs) = pushable.build(self.context, false);
 
-        self.window.push(widget, &area, checker, specs, true)
+        window.push(widget, &area, checker, specs, true)
     }
 }
 

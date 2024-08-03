@@ -27,7 +27,7 @@ pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
     data::{CurFile, CurWidget, Data, RwData},
     duat_name,
-    text::{text, Text},
+    text::{err, text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
     DuatError, Error,
@@ -270,7 +270,7 @@ where
 
         let (flags, args) = split_flags_and_args(&call);
 
-        Ok(command.try_exec(Flags::new(&flags), args).unwrap())
+        command.try_exec(Flags::new(&flags), args)
     }
 
     /// Adds a command to the global list of commands.
@@ -395,7 +395,7 @@ where
     pub fn add_for_current<T: 'static>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
+        mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let command = Command::new(callers, move |flags, args| {
             let result = self
@@ -557,7 +557,7 @@ where
     pub fn add_for_widget<W: PassiveWidget<U>>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
+        mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let windows = self.windows.clone();
 
@@ -570,20 +570,19 @@ where
                     let windows = windows.read();
 
                     if windows.is_empty() {
-                        return Err(text!(
-                            "Widget command executed before the " [AccentErr] "Ui" []
-                            " was initiated, try executing after " [AccentErr] "OnUiStart" []
+                        return Err(err!(
+                            "Widget command executed before the " [*a] "Ui" []
+                            " was initiated, try executing after " [*a] "OnUiStart" []
                         ));
                     }
 
                     self.current_widget.mutate_data(|widget, _, _| {
                         let widget = widget.clone().to_passive();
                         if let Some((w, a)) = get_from_name(&windows, duat_name::<W>(), &widget) {
-                            w.mutate_as::<W, CmdResult>(|w| f(w, a, flags, args))
-                                .unwrap()
+                            f(&w.try_downcast().unwrap(), a, flags, args)
                         } else {
                             let name = duat_name::<W>();
-                            Err(text!("No widget of type " [AccentErr] name [] " found"))
+                            Err(err!("No widget of type " [*a] name [] " found"))
                         }
                     })
                 })

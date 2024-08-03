@@ -28,6 +28,7 @@ use parking_lot::RwLock;
 use crate::{
     data::{Context, Data, RwData},
     duat_name,
+    hooks::{self, FocusedOn, UnfocusedFrom},
     input::InputMethod,
     palette,
     text::{PrintCfg, Text},
@@ -40,7 +41,7 @@ mod line_numbers;
 mod status_line;
 
 pub use self::{
-    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands},
+    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands, ShowNotifications},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{common, status, State, StatusLine, StatusLineCfg},
@@ -215,12 +216,18 @@ where
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
         self.input.mutate(|input| input.on_focus(area));
-        self.widget.mutate(|widget| widget.on_focus(area));
+        self.widget.mutate(|widget| {
+            widget.on_focus(area);
+        });
+        hooks::trigger::<FocusedOn<W, U>>(&self.widget);
     }
 
     fn on_unfocus(&self, area: &<U as Ui>::Area) {
         self.input.mutate(|input| input.on_unfocus(area));
-        self.widget.mutate(|widget| widget.on_unfocus(area));
+        self.widget.mutate(|widget| {
+            widget.on_unfocus(area);
+        });
+        hooks::trigger::<UnfocusedFrom<W, U>>(&self.widget);
     }
 
     fn related_widgets(&self) -> Option<RelatedWidgets<U>> {

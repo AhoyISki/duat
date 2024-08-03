@@ -14,16 +14,14 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use std::{
-    marker::PhantomData,
-    sync::{atomic::AtomicUsize, LazyLock},
-};
+use std::{marker::PhantomData, sync::LazyLock};
 
 use crate::{
     data::{Context, RoData, RwData},
+    hooks,
     input::{Commander, InputMethod},
     palette::{self, Form},
-    text::{text, Ghost, PrintCfg, Text},
+    text::{err, text, Ghost, PrintCfg, Text},
     ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
@@ -110,11 +108,16 @@ where
     type Widget = CommandLine<U>;
 
     fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let mode = if hooks::group_exists("CmdLineNotifications") {
+            RwData::new(context.get_cmd_mode("ShowNotifications").unwrap())
+        } else {
+            RwData::new(context.get_cmd_mode("RunCommands<Ui>").unwrap())
+        };
+
         let cmd_line = CommandLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
-            context,
-            mode: RwData::new(context.get_cmd_mode("RunCommands").unwrap()),
+            mode,
         };
 
         let checker = {
@@ -139,7 +142,6 @@ where
 {
     text: Text,
     prompt: RwData<String>,
-    context: Context<U>,
     mode: RwData<RwData<dyn CommandLineMode<U>>>,
 }
 
@@ -161,10 +163,7 @@ where
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
-        self.mode
-            .read()
-            .write()
-            .update(&mut self.text, self.context);
+        self.mode.read().write().update(&mut self.text);
     }
 
     fn text(&self) -> &Text {
@@ -186,11 +185,23 @@ where
                 ["set-prompt"],
                 move |command_line, _, _, mut args| {
                     let new_prompt: String = args.collect();
-                    *command_line.prompt.write() = new_prompt;
+                    *command_line.read().prompt.write() = new_prompt;
                     Ok(None)
                 },
             )
             .unwrap();
+
+        context
+            .commands
+            .add_for_widget::<CommandLine<U>>(["set-cmd-mode"], move |cmd_line, _, _, mut args| {
+                let new_mode = args.next()?;
+                *cmd_line.read().mode.write() = context
+                    .get_cmd_mode(new_mode)
+                    .ok_or(err!("There is no " [*a] new_mode [] " mode."))?;
+
+                Ok(None)
+            })
+            .unwrap()
     }
 }
 
@@ -204,17 +215,11 @@ where
 
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
-        self.mode
-            .read()
-            .write()
-            .on_focus(&mut self.text, self.context);
+        self.mode.read().write().on_focus(&mut self.text);
     }
 
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
-        self.mode
-            .read()
-            .write()
-            .on_unfocus(&mut self.text, self.context);
+        self.mode.read().write().on_unfocus(&mut self.text);
     }
 }
 
@@ -224,40 +229,66 @@ pub trait CommandLineMode<U>: Sync + Send
 where
     U: Ui,
 {
-    fn new() -> Self
-    where
-        Self: Sized;
+    fn on_focus(&mut self, _text: &mut Text) {}
 
-    fn on_focus(&mut self, _text: &mut Text, _context: Context<U>) {}
+    fn on_unfocus(&mut self, _text: &mut Text) {}
 
-    fn on_unfocus(&mut self, _text: &mut Text, _context: Context<U>) {}
-
-    fn update(&mut self, _text: &mut Text, _context: Context<U>) {}
+    fn update(&mut self, _text: &mut Text) {}
 
     fn has_changed(&self) -> bool {
         false
     }
 }
 
-pub struct RunCommands;
+pub struct RunCommands<U>(Context<U>)
+where
+    U: Ui;
 
-impl<U> CommandLineMode<U> for RunCommands
+impl<U> RunCommands<U>
 where
     U: Ui,
 {
-    fn new() -> Self
-    where
-        Self: Sized,
-    {
-        Self
+    #[doc(hidden)]
+    pub fn new(context: Context<U>) -> Self {
+        Self(context)
     }
+}
 
-    fn on_unfocus(&mut self, text: &mut Text, context: Context<U>) {
+impl<U> CommandLineMode<U> for RunCommands<U>
+where
+    U: Ui,
+{
+    fn on_unfocus(&mut self, text: &mut Text) {
         let text = std::mem::take(text);
 
         let cmd = text.to_string();
         if !cmd.is_empty() {
-            context.spawn(|| context.commands.run(cmd));
+            self.0.spawn(|| self.0.commands.run(cmd));
         }
+    }
+}
+
+pub struct ShowNotifications(RwData<Text>);
+
+impl ShowNotifications {
+    #[doc(hidden)]
+    pub fn new<U>(context: Context<U>) -> Self
+    where
+        U: Ui,
+    {
+        Self(context.notifications().clone())
+    }
+}
+
+impl<U> CommandLineMode<U> for ShowNotifications
+where
+    U: Ui,
+{
+    fn has_changed(&self) -> bool {
+        self.0.has_changed()
+    }
+
+    fn update(&mut self, text: &mut Text) {
+        *text = self.0.read().clone();
     }
 }

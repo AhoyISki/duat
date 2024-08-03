@@ -9,12 +9,13 @@ use duat_core::{
     session::SessionCfg,
     text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi},
-    widgets::File,
+    widgets::{File, RunCommands, ShowNotifications},
 };
 use duat_term::VertRule;
 
 use crate::{
-    hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
+    commands,
+    hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen, UnfocusedFrom},
     prelude::{CommandLine, LineNumbers, StatusLine},
     CfgFn, Ui,
 };
@@ -43,7 +44,7 @@ pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
 #[doc(hidden)]
-pub fn layout_hooks() {
+pub fn pre_startup() {
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();
@@ -53,6 +54,12 @@ pub fn layout_hooks() {
         let (child, _) = builder.push::<StatusLine>();
         builder.push_cfg_to(CommandLine::cfg().left_ratioed(2, 5), child);
     });
+
+    hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
+        commands::run("set-cmd-mode ShowNotifications").unwrap();
+    });
+
+    CONTEXT.add_cmd_mode(RunCommands::new(CONTEXT));
 }
 
 #[doc(hidden)]
@@ -63,6 +70,10 @@ pub fn run_duat(
     statics: <Ui as TraitUi>::StaticFns,
 ) -> Vec<(RwData<File>, bool)> {
     let mut ui = Ui::new(statics);
+
+    if hooks::group_exists("CmdLineNotifications") {
+        CONTEXT.add_cmd_mode(ShowNotifications::new(CONTEXT));
+    }
 
     duat_core::hooks::trigger::<OnUiStart>(&mut ui);
 

@@ -3,32 +3,38 @@ use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock
 pub use global::*;
 use parking_lot::RwLock;
 
-use crate::ui::{FileBuilder, Ui, WindowBuilder};
+use crate::{
+    data::RwData,
+    ui::{FileBuilder, Ui, WindowBuilder},
+    widgets::ActiveWidget,
+};
 
 mod global {
     use super::{Hookable, Hooks};
 
     static HOOKS: Hooks = Hooks::new();
 
-    pub fn add<H: Hookable>(
-        f: impl for<'a, 'b> FnMut(&'b mut H::Args<'a>) + Send + Sync + 'static,
-    ) {
-        HOOKS.add_hook::<H>("", f)
+    pub fn add<H: Hookable>(f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static) {
+        HOOKS.add::<H>("", f)
     }
 
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl for<'a, 'b> FnMut(&'b mut H::Args<'a>) + Send + Sync + 'static,
+        f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static,
     ) {
-        HOOKS.add_hook::<H>(group, f)
+        HOOKS.add::<H>(group, f)
     }
 
     pub fn remove_group(group: &'static str) {
         HOOKS.remove(group)
     }
 
-    pub fn trigger<H: Hookable>(args: &mut H::Args<'_>) {
-        HOOKS.activate::<H>(args)
+    pub fn trigger<H: Hookable>(args: H::Args<'_>) {
+        HOOKS.trigger::<H>(args)
+    }
+
+    pub fn group_exists(group: &'static str) -> bool {
+        HOOKS.group_exists(group)
     }
 }
 
@@ -38,6 +44,8 @@ pub trait Hookable: Sized + 'static {
 
 trait HookHolder: Send + Sync {
     fn remove_group(&mut self, group: &'static str);
+
+    fn group_exists(&self, group: &'static str) -> bool;
 }
 
 struct HooksOf<H>(RwLock<Vec<Hook<H>>>)
@@ -46,7 +54,11 @@ where
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
     fn remove_group(&mut self, group: &'static str) {
-        self.0.write().extract_if(|(cmp, _)| *cmp == group).last();
+        self.0.write().extract_if(|(g, _)| *g == group).last();
+    }
+
+    fn group_exists(&self, group: &'static str) -> bool {
+        self.0.read().iter().any(|(g, _)| *g == group)
     }
 }
 
@@ -57,10 +69,10 @@ impl Hooks {
         Hooks(LazyLock::new(|| RwLock::new(HashMap::new())))
     }
 
-    fn add_hook<H: Hookable>(
+    fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl for<'a, 'b> FnMut(&'b mut H::Args<'a>) + Send + Sync + 'static,
+        f: impl for<'a> FnMut(&H::Args<'a>) + Send + Sync + 'static,
     ) {
         let mut map = self.0.write();
 
@@ -80,13 +92,12 @@ impl Hooks {
 
     fn remove(&self, group: &'static str) {
         let mut map = self.0.write();
-
         for holder in map.iter_mut() {
             holder.1.remove_group(group)
         }
     }
 
-    fn activate<H: Hookable>(&self, args: &mut H::Args<'_>) {
+    fn trigger<H: Hookable>(&self, args: H::Args<'_>) {
         let map = self.0.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
@@ -96,9 +107,14 @@ impl Hooks {
             };
 
             for (_, f) in &mut *hooks_of.0.write() {
-                f(args)
+                f(&args)
             }
         }
+    }
+
+    fn group_exists(&self, group: &'static str) -> bool {
+        let map = self.0.read();
+        map.iter().any(|(_, holder)| holder.group_exists(group))
     }
 }
 
@@ -110,7 +126,7 @@ impl<U> Hookable for OnFileOpen<U>
 where
     U: Ui,
 {
-    type Args<'a> = FileBuilder<'a, U>;
+    type Args<'a> = &'a mut FileBuilder<'a, U>;
 }
 
 pub struct OnWindowOpen<U>(PhantomData<U>)
@@ -124,7 +140,33 @@ where
     type Args<'a> = WindowBuilder<'a, U>;
 }
 
+pub struct FocusedOn<W, U>(PhantomData<(W, U)>)
+where
+    W: ActiveWidget<U>,
+    U: Ui;
+
+impl<W, U> Hookable for FocusedOn<W, U>
+where
+    W: ActiveWidget<U>,
+    U: Ui,
+{
+    type Args<'args> = &'args RwData<W>;
+}
+
+pub struct UnfocusedFrom<W, U>(PhantomData<(W, U)>)
+where
+    W: ActiveWidget<U>,
+    U: Ui;
+
+impl<W, U> Hookable for UnfocusedFrom<W, U>
+where
+    W: ActiveWidget<U>,
+    U: Ui,
+{
+    type Args<'args> = &'args RwData<W>;
+}
+
 type Hook<H> = (
     &'static str,
-    Box<dyn for<'a, 'b> FnMut(&'b mut <H as Hookable>::Args<'a>) + Send + Sync>,
+    Box<dyn for<'a, 'b> FnMut(&<H as Hookable>::Args<'a>) + Send + Sync>,
 );

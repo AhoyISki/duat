@@ -144,7 +144,7 @@
 //! ```
 
 pub use duat_core::commands::{Args, Flags};
-use duat_core::{commands::CmdResult, text::Text, ui, widgets::PassiveWidget};
+use duat_core::{commands::CmdResult, data::RwData, text::Text, ui, widgets::PassiveWidget};
 
 use crate::{setup::COMMANDS, Ui};
 
@@ -312,7 +312,7 @@ pub fn add(
 #[inline(never)]
 pub fn add_for_current<T: 'static>(
     callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
+    f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     COMMANDS.add_for_current(callers, f)
 }
@@ -445,7 +445,7 @@ pub fn add_for_current<T: 'static>(
 #[inline(never)]
 pub fn add_for_widget<W: PassiveWidget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut W, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
+    f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     COMMANDS.add_for_widget::<W>(callers, f)
 }

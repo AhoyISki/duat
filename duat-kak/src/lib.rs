@@ -7,7 +7,7 @@ use crossterm::event::{
 use duat_core::{
     data::{Context, RwData},
     hooks::{self, Hookable},
-    input::{key, Cursors, InputMethod, EditHelper},
+    input::{key, Cursors, EditHelper, InputMethod},
     palette::{self, Form},
     text::{text, Text},
     ui::Ui,
@@ -98,7 +98,7 @@ where
             Mode::GoTo => {
                 match_goto(editor, key, &mut self.last_file, context);
                 self.mode = Mode::Normal;
-                hooks::trigger::<OnModeChange>(&mut (Mode::GoTo, Mode::Normal));
+                hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
             }
             Mode::View => todo!(),
             Mode::Command => {
@@ -116,7 +116,7 @@ where
         Self: Sized,
     {
         self.mode = Mode::Normal;
-        hooks::trigger::<OnModeChange>(&mut (Mode::GoTo, Mode::Normal));
+        hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
     }
 }
 
@@ -192,7 +192,7 @@ fn match_insert<U: Ui>(mut editor: EditHelper<File, U>, key: KeyEvent, mode: &mu
         key!(KeyCode::Esc) => {
             editor.new_moment();
             *mode = Mode::Normal;
-            hooks::trigger::<OnModeChange>(&mut (Mode::Insert, Mode::Normal))
+            hooks::trigger::<OnModeChange>((Mode::Insert, Mode::Normal))
         }
         _ => {}
     }
@@ -230,30 +230,34 @@ fn match_normal<U: Ui>(
         key!(KeyCode::Char('i')) => {
             editor.move_each_cursor(|mover| mover.swap_ends());
             *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
+            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
         key!(KeyCode::Char('a')) => {
             editor.move_each_cursor(|mover| mover.set_caret_on_end());
             *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
+            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
         key!(KeyCode::Char('c')) => {
             editor.edit_on_each_cursor(|editor| editor.replace(""));
             editor.move_each_cursor(|mover| mover.unset_anchor());
             *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Insert));
+            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
 
         ////////// Other mode changing keys.
         key!(KeyCode::Char(':')) => {
             if context.commands.run("switch-to CommandLine<Ui>").is_ok() {
+                context
+                    .commands
+                    .run("set-cmd-mode RunCommands<Ui>")
+                    .unwrap();
                 *mode = Mode::Command;
-                hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::Command));
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Command));
             }
         }
         key!(KeyCode::Char('g')) => {
             *mode = Mode::GoTo;
-            hooks::trigger::<OnModeChange>(&mut (Mode::Normal, Mode::GoTo));
+            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::GoTo));
         }
 
         ////////// For now
@@ -311,11 +315,7 @@ fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: us
     });
 }
 
-fn select_and_move_each<U: Ui>(
-    mut editor: EditHelper<File, U>,
-    direction: Side,
-    amount: usize,
-) {
+fn select_and_move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         if !mover.anchor_is_set() {
             mover.set_anchor();
