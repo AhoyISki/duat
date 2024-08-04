@@ -70,7 +70,7 @@ impl ui::Ui for Ui {
     fn start(&mut self, sender: ui::Sender, context: Context<Self>) {
         let functions = FUNCTIONS.get().unwrap();
         let printer = self.printer.clone();
-        context.spawn(move || {
+        duat_core::thread::spawn(move || {
             loop {
                 if let Ok(true) = (functions.poll)() {
                     let res = match (functions.read)().unwrap() {
@@ -146,7 +146,7 @@ pub struct StaticFns {
 impl Default for StaticFns {
     fn default() -> Self {
         fn poll() -> Result<bool, io::Error> {
-            crossterm::event::poll(Duration::from_millis(50))
+            crossterm::event::poll(Duration::from_millis(10))
         }
 
         Self {

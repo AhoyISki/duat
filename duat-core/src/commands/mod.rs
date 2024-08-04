@@ -21,16 +21,14 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use parking_lot::RwLock;
-
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
-    data::{CurFile, CurWidget, Data, RwData},
+    data::{CurFile, CurWidget, Data, RwData, RwLock},
     duat_name,
     text::{err, text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
-    DuatError, Error,
+    Error,
 };
 
 mod parameters;
@@ -52,6 +50,7 @@ where
     windows: LazyLock<RwData<Vec<Window<U>>>>,
     current_file: &'static CurFile<U>,
     current_widget: &'static CurWidget<U>,
+    notifications: &'static LazyLock<RwData<Text>>,
 }
 
 impl<U> Commands<U>
@@ -63,6 +62,7 @@ where
     pub const fn new(
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
+        notifications: &'static LazyLock<RwData<Text>>,
     ) -> Self {
         Self {
             inner: LazyLock::new(|| {
@@ -75,7 +75,7 @@ where
                     let inner = inner.clone();
                     Command::new(["alias"], move |flags, mut args| {
                         if !flags.is_empty() {
-                            Err(text!(
+                            Err(err!(
                                 "An alias cannot take any flags, try moving them after the \
                                  command, like \"alias my-alias my-caller --foo --bar\", instead \
                                  of \"alias --foo --bar my-alias my-caller\""
@@ -84,10 +84,7 @@ where
                             let alias = args.next()?.to_string();
                             let args: String = args.collect();
 
-                            inner
-                                .write()
-                                .try_alias(alias, args)
-                                .map_err(Error::into_text)
+                            Ok(inner.write().try_alias(alias, args)?)
                         }
                     })
                 };
@@ -99,6 +96,7 @@ where
             windows: LazyLock::new(|| RwData::new(Vec::new())),
             current_file,
             current_widget,
+            notifications,
         }
     }
 
@@ -271,6 +269,19 @@ where
         let (flags, args) = split_flags_and_args(&call);
 
         command.try_exec(Flags::new(&flags), args)
+    }
+
+    /// Like [`run`], but notifies the result, not returning it
+    ///
+    /// [`run`]: Commands::run
+    pub fn run_notify(&self, call: impl Display) {
+        let ret = self.run(call);
+        let mut notifs = self.notifications.write();
+        match ret {
+            Ok(Some(ok)) => *notifs = ok,
+            Err(err) => *notifs = err.into(),
+            _ => {}
+        }
     }
 
     /// Adds a command to the global list of commands.

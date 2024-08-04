@@ -23,10 +23,9 @@ use std::{
 };
 
 use crossterm::event::KeyEvent;
-use parking_lot::RwLock;
 
 use crate::{
-    data::{Context, Data, RwData},
+    data::{Context, Data, RwData, RwLock},
     duat_name,
     hooks::{self, FocusedOn, UnfocusedFrom},
     input::InputMethod,
@@ -216,17 +215,13 @@ where
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
         self.input.mutate(|input| input.on_focus(area));
-        self.widget.mutate(|widget| {
-            widget.on_focus(area);
-        });
+        self.widget.mutate(|widget| widget.on_focus(area));
         hooks::trigger::<FocusedOn<W, U>>(&self.widget);
     }
 
     fn on_unfocus(&self, area: &<U as Ui>::Area) {
         self.input.mutate(|input| input.on_unfocus(area));
-        self.widget.mutate(|widget| {
-            widget.on_unfocus(area);
-        });
+        self.widget.mutate(|widget| widget.on_unfocus(area));
         hooks::trigger::<UnfocusedFrom<W, U>>(&self.widget);
     }
 

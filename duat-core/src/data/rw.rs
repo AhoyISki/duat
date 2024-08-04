@@ -6,9 +6,7 @@ use std::{
     },
 };
 
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-
-use super::{private::InnerData, Data, RoData};
+use super::{private::InnerData, Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},
@@ -419,9 +417,9 @@ where
     ///
     /// [`has_changed`]: ReadableData::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
-        let data = self.data.write();
+        let guard = self.data.write();
         ReadWriteGuard {
-            guard: data,
+            guard,
             cur_state: &self.cur_state,
         }
     }

@@ -19,6 +19,8 @@
 //!
 //! [`FileWidget]: crate::FileWidget<U>
 //! [`Text`]: crate::text::Text
+pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 pub use self::{
     context::*,
     ro::RoData,
@@ -45,7 +47,7 @@ where
 mod private {
     use std::sync::{atomic::AtomicUsize, Arc};
 
-    use parking_lot::RwLockReadGuard;
+    use super::RwLockReadGuard;
 
     pub trait InnerData<T: ?Sized> {
         /// The data, usually an [`Arc`]

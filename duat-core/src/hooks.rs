@@ -1,4 +1,9 @@
-use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    marker::PhantomData,
+    sync::{atomic::AtomicUsize, LazyLock},
+};
 
 pub use global::*;
 use parking_lot::RwLock;
@@ -9,8 +14,10 @@ use crate::{
     widgets::ActiveWidget,
 };
 
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 mod global {
-    use super::{Hookable, Hooks};
+    use super::{Hookable, Hooks, COUNTER};
 
     static HOOKS: Hooks = Hooks::new();
 
@@ -34,6 +41,7 @@ mod global {
     }
 
     pub fn group_exists(group: &'static str) -> bool {
+        COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         HOOKS.group_exists(group)
     }
 }
@@ -43,9 +51,7 @@ pub trait Hookable: Sized + 'static {
 }
 
 trait HookHolder: Send + Sync {
-    fn remove_group(&mut self, group: &'static str);
-
-    fn group_exists(&self, group: &'static str) -> bool;
+    fn remove_group(&mut self, group: &str);
 }
 
 struct HooksOf<H>(RwLock<Vec<Hook<H>>>)
@@ -53,20 +59,26 @@ where
     H: Hookable;
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove_group(&mut self, group: &'static str) {
-        self.0.write().extract_if(|(g, _)| *g == group).last();
-    }
-
-    fn group_exists(&self, group: &'static str) -> bool {
-        self.0.read().iter().any(|(g, _)| *g == group)
+    fn remove_group(&mut self, group: &str) {
+        let mut hooks = None;
+        while hooks.is_none() {
+            hooks = self.0.try_write();
+        }
+        hooks.unwrap().extract_if(|(g, _)| *g == group).last();
     }
 }
 
-struct Hooks(LazyLock<RwLock<HashMap<TypeId, Box<dyn HookHolder>>>>);
+struct Hooks {
+    types: LazyLock<RwLock<HashMap<TypeId, Box<dyn HookHolder>>>>,
+    groups: LazyLock<RwLock<Vec<&'static str>>>,
+}
 
 impl Hooks {
     const fn new() -> Self {
-        Hooks(LazyLock::new(|| RwLock::new(HashMap::new())))
+        Hooks {
+            types: LazyLock::new(RwLock::default),
+            groups: LazyLock::new(RwLock::default),
+        }
     }
 
     fn add<H: Hookable>(
@@ -74,7 +86,14 @@ impl Hooks {
         group: &'static str,
         f: impl for<'a> FnMut(&H::Args<'a>) + Send + Sync + 'static,
     ) {
-        let mut map = self.0.write();
+        let mut map = self.types.write();
+
+        if !group.is_empty() {
+            let mut groups = self.groups.write();
+            if !groups.contains(&group) {
+                groups.push(group)
+            }
+        }
 
         if let Some(holder) = map.get_mut(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
@@ -90,15 +109,18 @@ impl Hooks {
         }
     }
 
-    fn remove(&self, group: &'static str) {
-        let mut map = self.0.write();
-        for holder in map.iter_mut() {
-            holder.1.remove_group(group)
-        }
+    fn remove(&'static self, group: &'static str) {
+        crate::thread::spawn(move || {
+            self.groups.write().extract_if(|g| *g == group).next();
+            let mut map = self.types.write();
+            for holder in map.iter_mut() {
+                holder.1.remove_group(group)
+            }
+        });
     }
 
     fn trigger<H: Hookable>(&self, args: H::Args<'_>) {
-        let map = self.0.read();
+        let map = self.types.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
@@ -112,9 +134,8 @@ impl Hooks {
         }
     }
 
-    fn group_exists(&self, group: &'static str) -> bool {
-        let map = self.0.read();
-        map.iter().any(|(_, holder)| holder.group_exists(group))
+    fn group_exists(&self, group: &str) -> bool {
+        self.groups.read().contains(&group)
     }
 }
 

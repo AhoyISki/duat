@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicBool, AtomicUsize},
-    mpsc, LazyLock, RwLock,
-};
+use std::sync::{atomic::AtomicBool, mpsc, LazyLock, RwLock};
 
 use duat_core::{
     commands::Commands,
@@ -21,20 +18,18 @@ use crate::{
 };
 
 // Context's statics.
-pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET);
 static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
-static HANDLES: AtomicUsize = AtomicUsize::new(0);
+static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 static HAS_ENDED: AtomicBool = AtomicBool::new(false);
-static MESSAGE: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 static CMD_MODES: CommandLineModes<Ui> = CommandLineModes::new();
+pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET, &NOTIFICATIONS);
 
 static CONTEXT: Context<Ui> = Context::new(
     &COMMANDS,
-    &MESSAGE,
+    &NOTIFICATIONS,
     &CUR_FILE,
     &CUR_WIDGET,
-    &HANDLES,
     &HAS_ENDED,
     &CMD_MODES,
 );

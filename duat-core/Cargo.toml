@@ -21,7 +21,7 @@ while_let_on_iterator = "allow"
 [dependencies]
 # Style handling
 crossterm = ">=0.26.0"
-parking_lot = "0.12.1"
+parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
 gapbuf = "0.1.4"
 nested_intervals = "0.6.0"
 

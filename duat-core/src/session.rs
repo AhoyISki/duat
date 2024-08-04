@@ -1,7 +1,8 @@
 use std::{
+    io::Write,
     path::PathBuf,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc, Arc,
     },
     time::Duration,
@@ -70,14 +71,12 @@ where
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files.
-        build_file(&mut session.windows.write()[0], area, self.context);
+        build_file(&session.windows, area, self.context);
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
         // Build the window's widgets.
-        session.windows.mutate(|windows| {
-            let builder = WindowBuilder::new(&mut windows[0], self.context);
-            hooks::trigger::<OnWindowOpen<U>>(builder);
-        });
+        let builder = WindowBuilder::new(&session.windows, 0, self.context);
+        hooks::trigger::<OnWindowOpen<U>>(builder);
 
         session
     }
@@ -119,17 +118,15 @@ where
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files..
-        build_file(&mut session.windows.write()[0], area, self.context);
+        build_file(&session.windows, area, self.context);
 
         for (file_cfg, is_active) in inherited_cfgs {
             session.open_file_from_cfg(file_cfg, is_active);
         }
 
         // Build the window's widgets.
-        session.windows.mutate(|windows| {
-            let builder = WindowBuilder::new(&mut windows[0], self.context);
-            hooks::trigger::<OnWindowOpen<U>>(builder);
-        });
+        let builder = WindowBuilder::new(&session.windows, 0, self.context);
+        hooks::trigger::<OnWindowOpen<U>>(builder);
 
         session
     }
@@ -164,14 +161,15 @@ where
     U: Ui + 'static,
 {
     pub fn open_file(&mut self, path: PathBuf) {
-        let mut windows = self.windows.write();
-        let current_window = self.current_window.load(Ordering::Relaxed);
+        let (area, _) = self.windows.mutate(|windows| {
+            let current_window = self.current_window.load(Ordering::Relaxed);
 
-        let (file, checker) = self.file_cfg.clone().open_path(path).build();
+            let (file, checker) = self.file_cfg.clone().open_path(path).build();
 
-        let (area, _) = windows[current_window].push_file(file, checker, PushSpecs::below());
+            windows[current_window].push_file(file, checker, PushSpecs::below())
+        });
 
-        build_file(&mut windows[current_window], area, self.context);
+        build_file(&self.windows, area, self.context);
     }
 
     pub fn push_widget<F>(
@@ -211,6 +209,28 @@ where
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+        crate::thread::spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let mut file = std::io::BufWriter::new(
+                    std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open("log.txt")
+                        .unwrap(),
+                );
+
+                let deadlocks = parking_lot::deadlock::check_deadlock();
+                writeln!(file, "{} deadlocks detected", deadlocks.len()).unwrap();
+                for (i, threads) in deadlocks.iter().enumerate() {
+                    writeln!(file, "Deadlock #{}", i).unwrap();
+                    for t in threads {
+                        writeln!(file, "Thread Id {:#?}", t.thread_id()).unwrap();
+                        writeln!(file, "{:#?}", t.backtrace()).unwrap();
+                    }
+                }
+            }
+        });
         // The main loop.
         loop {
             let current_window = self.current_window.load(Ordering::Relaxed);
@@ -250,7 +270,7 @@ where
     fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
         self.ui.end();
         self.context.end_duat();
-        while self.context.threads_are_running() {
+        while crate::thread::still_running() {
             std::thread::sleep(Duration::from_micros(500));
         }
         let windows = self.windows.read();
@@ -285,7 +305,7 @@ where
         loop {
             let active_window = &windows[current_window];
 
-            if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
+            if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                 match event {
                     Event::Key(key) => {
                         active_window.send_key(key, self.context);
@@ -311,19 +331,22 @@ where
     }
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
-        let mut windows = self.windows.write();
-        let current_window = self.current_window.load(Ordering::Relaxed);
+        let area = self.windows.mutate(|windows| {
+            let current_window = self.current_window.load(Ordering::Relaxed);
 
-        let (widget, checker) = file_cfg.build();
+            let (widget, checker) = file_cfg.build();
 
-        let (area, _) =
-            windows[current_window].push_file(widget.clone(), checker, PushSpecs::below());
+            let (area, _) =
+                windows[current_window].push_file(widget.clone(), checker, PushSpecs::below());
 
-        if is_active {
-            self.set_active_file(widget, &area);
-        }
+            if is_active {
+                self.set_active_file(widget, &area);
+            }
 
-        build_file(&mut windows[current_window], area, self.context);
+            area
+        });
+
+        build_file(&self.windows, area, self.context);
     }
 
     fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
@@ -634,7 +657,7 @@ where
             move |_, _| {
                 let file = context.cur_file()?;
                 let read_windows = windows.read();
-                let window_index = current_window.load(Ordering::Acquire);
+                let window_i = current_window.load(Ordering::Acquire);
 
                 let (new_window, entry) = read_windows
                     .iter()
@@ -643,12 +666,14 @@ where
                     .find(|(_, (widget, _))| file.file_ptr_eq(widget))
                     .unwrap();
 
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                let current_window = current_window.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    current_window.store(new_window, Ordering::Release);
+                std::thread::spawn({
+                    let (widget, area) = (entry.0.clone(), entry.1.clone());
+                    let windows = windows.clone();
+                    let current_window = current_window.clone();
+                    move || {
+                        switch_widget(&(widget, area), &windows.read(), window_i, context);
+                        current_window.store(new_window, Ordering::Release);
+                    }
                 });
 
                 Ok(Some(
@@ -726,8 +751,6 @@ fn switch_widget<U: Ui>(
     window: usize,
     context: Context<U>,
 ) {
-    let (widget, area) = entry;
-
     if let Some((widget, area)) = windows[window]
         .widgets()
         .find(|(widget, _)| context.cur_widget().unwrap().widget_ptr_eq(widget))
@@ -735,6 +758,8 @@ fn switch_widget<U: Ui>(
         widget.on_unfocus(area);
         widget.update_and_print(area);
     }
+
+    let (widget, area) = entry;
 
     context
         .cur_widget()
@@ -753,8 +778,13 @@ fn switch_widget<U: Ui>(
 
     area.set_as_active();
     widget.on_focus(area);
+    if entry.0.as_active().unwrap().0.data_is::<File>() {
+        BACK_TO_FILE.store(true, Ordering::Relaxed)
+    };
     widget.update_and_print(area);
 }
+
+pub static BACK_TO_FILE: AtomicBool = AtomicBool::new(false);
 
 fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {
     widget.inspect_as::<File, String>(File::name).unwrap()

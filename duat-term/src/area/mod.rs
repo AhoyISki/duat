@@ -516,7 +516,7 @@ pub struct PrintInfo {
 fn print_edges(edges: &[Edge]) {
     static FRAME_FORM: LazyLock<FormId> =
         LazyLock::new(|| palette::set_weak_ref("Frame", "Default"));
-    let frame_form = palette::form_of_id(*FRAME_FORM);
+    let frame_form = palette::form_from_id(*FRAME_FORM);
 
     let mut stdout = std::io::stdout().lock();
 

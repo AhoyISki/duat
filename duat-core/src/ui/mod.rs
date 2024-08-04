@@ -12,7 +12,7 @@ use crossterm::event::KeyEvent;
 
 pub use self::builder::{FileBuilder, WindowBuilder};
 use crate::{
-    data::{Context, RoData},
+    data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
     palette::Painter,
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
@@ -775,28 +775,35 @@ where
     }
 }
 
-pub(crate) fn build_file<U>(window: &mut Window<U>, mod_area: U::Area, globals: Context<U>)
-where
+pub(crate) fn build_file<U>(
+    windows: &RwData<Vec<Window<U>>>,
+    mod_area: U::Area,
+    globals: Context<U>,
+) where
     U: Ui,
 {
-    let old_file = {
-        let node = window
-            .nodes
+    let (window_i, old_file) = {
+        let windows = windows.read();
+        let (window_i, node) = windows
             .iter()
-            .find(|Node { area, .. }| *area == mod_area)
+            .enumerate()
+            .flat_map(|(i, w)| w.nodes().map(move |n| (i, n)))
+            .find(|(_, Node { area, .. })| *area == mod_area)
             .unwrap();
 
-        node.widget.downcast::<File>().map(|file| {
+        let old_file = node.widget.downcast::<File>().map(|file| {
             globals.cur_file().unwrap().swap((
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
                 node.widget.related_widgets().unwrap(),
             ))
-        })
+        });
+
+        (window_i, old_file)
     };
 
-    let mut builder = FileBuilder::new(window, mod_area, globals);
+    let mut builder = FileBuilder::new(windows, mod_area, window_i, globals);
     hooks::trigger::<OnFileOpen<U>>(&mut builder);
 
     if let Some(parts) = old_file {

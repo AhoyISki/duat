@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use parking_lot::{RwLock, RwLockReadGuard};
-
 use super::{private::InnerData, Data, RwData};
+// use parking_lot::{RwLock, RwLockReadGuard};
+use super::{RwLock, RwLockReadGuard};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},

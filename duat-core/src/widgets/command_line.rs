@@ -14,7 +14,13 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use std::{marker::PhantomData, sync::LazyLock};
+use std::{
+    marker::PhantomData,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock,
+    },
+};
 
 use crate::{
     data::{Context, RoData, RwData},
@@ -163,7 +169,7 @@ where
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
-        self.mode.read().write().update(&mut self.text);
+        self.mode.read().read().update(&mut self.text);
     }
 
     fn text(&self) -> &Text {
@@ -215,11 +221,11 @@ where
 
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) });
-        self.mode.read().write().on_focus(&mut self.text);
+        self.mode.read().read().on_focus(&mut self.text);
     }
 
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
-        self.mode.read().write().on_unfocus(&mut self.text);
+        self.mode.read().read().on_unfocus(&mut self.text);
     }
 }
 
@@ -229,11 +235,11 @@ pub trait CommandLineMode<U>: Sync + Send
 where
     U: Ui,
 {
-    fn on_focus(&mut self, _text: &mut Text) {}
+    fn on_focus(&self, _text: &mut Text) {}
 
-    fn on_unfocus(&mut self, _text: &mut Text) {}
+    fn on_unfocus(&self, _text: &mut Text) {}
 
-    fn update(&mut self, _text: &mut Text) {}
+    fn update(&self, _text: &mut Text) {}
 
     fn has_changed(&self) -> bool {
         false
@@ -258,17 +264,20 @@ impl<U> CommandLineMode<U> for RunCommands<U>
 where
     U: Ui,
 {
-    fn on_unfocus(&mut self, text: &mut Text) {
+    fn on_unfocus(&self, text: &mut Text) {
         let text = std::mem::take(text);
 
         let cmd = text.to_string();
         if !cmd.is_empty() {
-            self.0.spawn(|| self.0.commands.run(cmd));
+            crate::thread::spawn(|| self.0.commands.run_notify(cmd));
         }
     }
 }
 
-pub struct ShowNotifications(RwData<Text>);
+pub struct ShowNotifications {
+    notifications: RwData<Text>,
+    has_changed: AtomicBool,
+}
 
 impl ShowNotifications {
     #[doc(hidden)]
@@ -276,7 +285,10 @@ impl ShowNotifications {
     where
         U: Ui,
     {
-        Self(context.notifications().clone())
+        Self {
+            notifications: context.notifications().clone(),
+            has_changed: AtomicBool::new(false),
+        }
     }
 }
 
@@ -285,10 +297,16 @@ where
     U: Ui,
 {
     fn has_changed(&self) -> bool {
-        self.0.has_changed()
+        let has_changed = self.notifications.has_changed();
+        if has_changed {
+            self.has_changed.store(true, Ordering::Release);
+        }
+        has_changed
     }
 
-    fn update(&mut self, text: &mut Text) {
-        *text = self.0.read().clone();
+    fn update(&self, text: &mut Text) {
+        if self.has_changed.fetch_and(false, Ordering::Acquire) {
+            *text = self.notifications.read().clone();
+        }
     }
 }

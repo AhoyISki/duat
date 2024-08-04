@@ -1,3 +1,4 @@
+#![allow(internal_features)]
 #![feature(
     extract_if,
     iter_intersperse,
@@ -9,7 +10,8 @@
     step_trait,
     type_alias_impl_trait,
     result_flattening,
-    is_none_or
+    is_none_or,
+    unsized_fn_params
 )]
 #![doc = include_str!("../README.md")]
 
@@ -34,11 +36,6 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-
-// Debugging objects.
-pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-pub static HOOK: Once = Once::new();
-pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 pub trait DuatError {
     fn into_text(self) -> Text;
@@ -83,17 +80,17 @@ impl<E> DuatError for Error<E> {
 
         match self {
             Error::AliasNotSingleWord(caller) => err!(
-                "The caller " [*a] caller [] "is not a single word."
+                "The caller " [*a] caller [] " is not a single word."
             ),
             Error::CallerAlreadyExists(caller) => err!(
-                "The caller " [*a] caller [] "already exists."
+                "The caller " [*a] caller [] " already exists."
             ),
-            Error::CallerNotFound(caller) => err!("The caller " [*a] caller [] "was not found."),
+            Error::CallerNotFound(caller) => err!("The caller " [*a] caller [] " was not found."),
             Error::CommandFailed(failure) => failure,
             Error::Empty => err!("The command is empty."),
             Error::NoFileYet => err!("There is no file yet. " early),
             Error::NoFileForRelated => err!(
-                "There is no file for a related " [*a] { type_name::<E>() } [] "to exist. " early
+                "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
             ),
             Error::NoWidgetYet => err!("There can be no widget yet. " early),
             Error::WidgetIsNot => err!(
@@ -146,7 +143,7 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 /// user.
 pub fn duat_name<T>() -> &'static str
 where
-    T: Sized + 'static,
+    T: ?Sized + 'static,
 {
     static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
         LazyLock::new(|| RwLock::new(HashMap::new()));
@@ -159,9 +156,12 @@ where
         let verbose = std::any::type_name::<T>();
         let mut name = String::new();
 
-        for path in verbose.split_inclusive(['<', '>']) {
+        for path in verbose.split_inclusive(['<', '>', ',', ' ']) {
             for segment in path.split("::") {
-                if segment.chars().any(|char| char.is_ascii_uppercase()) {
+                let is_type = segment.chars().any(|c| c.is_uppercase());
+                let is_punct = segment.chars().all(|c| !c.is_alphanumeric());
+                let is_dyn = segment.starts_with("dyn");
+                if is_type || is_punct || is_dyn {
                     name.push_str(segment);
                 }
             }
@@ -172,13 +172,49 @@ where
     }
 }
 
+pub mod thread {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        thread::JoinHandle,
+    };
+
+    static HANDLES: AtomicUsize = AtomicUsize::new(0);
+
+    /// Spawns a new thread, returning a [`JoinHandle`] for it.
+    ///
+    /// Use this function instead of [`std::thread::spawn`].
+    ///
+    /// The threads from this function workin the same way that
+    /// threads from [`std::thread::spawn`] work, but it has
+    /// synchronicity with Duat, and makes sure that the
+    /// application won't exit or reload the configuration before
+    /// all spawned threads have stopped.
+    pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
+        HANDLES.fetch_add(1, Ordering::Relaxed);
+        std::thread::spawn(|| {
+            let ret = f();
+            HANDLES.fetch_sub(1, Ordering::Relaxed);
+            ret
+        })
+    }
+
+    pub(crate) fn still_running() -> bool {
+        HANDLES.load(Ordering::Relaxed) > 0
+    }
+}
+
+// Debugging objects.
+pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub static HOOK: Once = Once::new();
+pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
+
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
     	compile_error!("You are not supposed to use log_info on release profiles!");
     }
 
-    use std::{fmt::Write, time::Instant};
+    use std::{fmt::Write, time::Instant, io::Write as IoWrite};
 
     use crate::{HOOK, LOG};
 
@@ -211,7 +247,6 @@ pub macro log_info($($text:tt)*) {{
         write!(LOG.lock().unwrap(), "\n{text}").unwrap();
     }
 
-	let len_lines = LOG.lock().unwrap().lines().count().saturating_sub(200);
-    let trimmed = LOG.lock().unwrap().split_inclusive('\n').skip(len_lines).collect();
-    *LOG.lock().unwrap() = trimmed;
+	let mut writer =  std::io::BufWriter::new(std::fs::File::create("LOG").unwrap());
+	writer.write_all(LOG.lock().unwrap().as_bytes()).unwrap();
 }}

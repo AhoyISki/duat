@@ -116,6 +116,7 @@
 use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
+pub use duat_core::thread;
 pub use setup::{pre_startup, run_duat};
 
 /// Utilities for addition and execution of commands
@@ -138,8 +139,7 @@ mod setup;
 /// [`Form`]: duat_core::palette::Form
 pub mod forms {
     pub use duat_core::palette::{
-        form_of_id as from_id, id_of_form as to_id, set_form as set, set_source as source,
-        CursorShape, Form,
+        form_from_id as from_id, id_from_name as to_id, set_form as set, set_ref, CursorShape, Form,
     };
 }
 

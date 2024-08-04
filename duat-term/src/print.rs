@@ -94,7 +94,7 @@ impl Write for Lines {
 
     fn flush(&mut self) -> std::io::Result<()> {
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let default_form = duat_core::palette::form_of_id(DEFAULT_FORM_ID);
+        let default_form = duat_core::palette::form_from_id(DEFAULT_FORM_ID);
 
         let align_start = match self.align {
             Alignment::Left => 0,

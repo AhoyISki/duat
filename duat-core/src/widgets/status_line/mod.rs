@@ -61,7 +61,7 @@ pub use self::state::State;
 use crate::{
     data::{Context, FileReader},
     palette::{self, Form},
-    text::{text, Builder, PrintCfg, Tag, Text},
+    text::{text, AlignRight, Builder, PrintCfg, Tag, Text},
     ui::{PushSpecs, Ui},
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
 };
@@ -246,7 +246,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
     (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
-        let form_id = palette::__weakest_id_of_name("Default");
+        let form_id = palette::id_from_name("Default");
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
@@ -258,11 +258,11 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let form_id = palette::__weakest_id_of_name(stringify!($form));
+        let id = palette::id_from_name(stringify!($form));
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
-            builder.push_tag(Tag::PushForm(form_id));
+            builder.push_tag(Tag::PushForm(id));
         };
 
         (text_fn, $checker)
@@ -301,7 +301,7 @@ pub macro status {
 
         let text_fn = move |reader: &FileReader<$ui>| {
             let mut builder = Builder::new();
-            text!(builder, { "" });
+            text!(builder, { AlignRight });
             text_fn(&mut builder, reader);
             text!(builder, "\n");
             builder.finish()
@@ -310,7 +310,7 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_ver_length(10.0)
+            PushSpecs::below().with_ver_length(1.0)
         )
     }}
 }

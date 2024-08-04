@@ -4,17 +4,13 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, LazyLock,
     },
-    thread::JoinHandle,
 };
 
-use parking_lot::RwLock;
-
-use super::{private::InnerData, RoData, RwData};
+use super::{private::InnerData, RoData, RwData, RwLock};
 use crate::{
     commands::Commands,
     duat_name,
     input::InputMethod,
-    log_info,
     text::Text,
     ui::Ui,
     widgets::{ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget},
@@ -29,7 +25,6 @@ where
     notifications: &'static LazyLock<RwData<Text>>,
     cur_file: &'static CurFile<U>,
     cur_widget: &'static CurWidget<U>,
-    handles: &'static AtomicUsize,
     has_ended: &'static AtomicBool,
     cmd_modes: &'static CommandLineModes<U>,
 }
@@ -54,7 +49,6 @@ where
         notifications: &'static LazyLock<RwData<Text>>,
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
-        handles: &'static AtomicUsize,
         has_ended: &'static AtomicBool,
         cmd_modes: &'static CommandLineModes<U>,
     ) -> Self {
@@ -62,23 +56,10 @@ where
             cur_file: current_file,
             cur_widget: current_widget,
             commands,
-            handles,
             has_ended,
             notifications,
             cmd_modes,
         }
-    }
-
-    pub fn spawn<R: Send + 'static>(
-        &self,
-        f: impl FnOnce() -> R + Send + 'static,
-    ) -> JoinHandle<R> {
-        self.handles.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(|| {
-            let ret = f();
-            self.handles.fetch_sub(1, Ordering::Relaxed);
-            ret
-        })
     }
 
     pub fn has_ended(&self) -> bool {
@@ -112,10 +93,6 @@ where
 
     pub fn notifications(&self) -> &RwData<Text> {
         self.notifications
-    }
-
-    pub(crate) fn threads_are_running(&self) -> bool {
-        self.handles.load(Ordering::Relaxed) > 0
     }
 
     pub(crate) fn end_duat(&self) {
@@ -512,7 +489,6 @@ where
     }
 
     fn get(&self, mode_name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
-        log_info!("{:#?}", self.0.read().keys().collect::<Vec<_>>());
         self.0.read().get(mode_name).cloned()
     }
 }
