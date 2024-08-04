@@ -1,5 +1,4 @@
 use std::{
-    io::Write,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -209,7 +208,11 @@ where
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+        // This loop is very useful when trying to find deadlocks.
+        #[cfg(feature = "deadlocks")]
         crate::thread::spawn(|| {
+            use std::io::Write;
+
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 let mut file = std::io::BufWriter::new(
@@ -231,6 +234,7 @@ where
                 }
             }
         });
+
         // The main loop.
         loop {
             let current_window = self.current_window.load(Ordering::Relaxed);

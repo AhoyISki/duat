@@ -21,7 +21,7 @@ while_let_on_iterator = "allow"
 [dependencies]
 # Style handling
 crossterm = ">=0.26.0"
-parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
+parking_lot = "0.12.1"
 gapbuf = "0.1.4"
 nested_intervals = "0.6.0"
 
@@ -29,3 +29,4 @@ nested_intervals = "0.6.0"
 # NOTE: Features meant for testing only by myself.
 default = []
 wack = []
+deadlocks = ["parking_lot/deadlock_detection"]
