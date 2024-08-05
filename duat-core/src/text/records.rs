@@ -1,4 +1,6 @@
-use std::fmt::Debug;
+use std::{any::TypeId, fmt::Debug};
+
+use crate::log_info;
 
 const LEN_PER_RECORD: usize = 150;
 
@@ -93,6 +95,10 @@ where
             self.stored.insert(i + 1, len.sub(new.sub(prev)));
             self.last = (i + 1, new);
         }
+
+        if self.max().bytes() < 10 && TypeId::of::<R>() == TypeId::of::<(usize, usize)>() {
+            log_info!("after insert of {new:?}, {self:#?}");
+        }
     }
 
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
@@ -110,16 +116,18 @@ where
         let (len, trans_i) = if let Some(len) = self.stored.get_mut(s_i) {
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
 
+            self.last = (s_i + 1, s_rec.add(*len));
             (*len, s_i)
         } else {
             let last = self.stored.last_mut().unwrap();
             *last = last.add(new_len).sub(old_len);
-            
+
             let trans_i = self.stored.len() - 1;
+            self.last = (s_i, s_rec.add(new_len).sub(old_len));
             (*self.stored.last_mut().unwrap(), trans_i)
         };
 
-        // Removing it if's len is zero.
+        // Removing if its len is zero.
         if let Some(s_i) = trans_i.checked_sub(1)
             && new_len.is_zero_len()
         {
@@ -129,11 +137,16 @@ where
 
             *prev = prev.add(len);
             self.stored.remove(s_i + 1);
-        } else {
-            self.last = (trans_i + 1, s_rec.add(len));
         }
 
         self.max = self.max.add(new_len).sub(old_len);
+
+        if self.max().bytes() < 10 && TypeId::of::<R>() == TypeId::of::<(usize, usize)>() {
+            log_info!(
+                "after transform from {start:?}, from {old_len:?} to \
+                 {new_len:?}\n{self:#?}\n{s_rec:?}"
+            );
+        }
     }
 
     pub fn append(&mut self, r: R) {
@@ -183,20 +196,22 @@ where
         at: usize,
         by: impl Fn(&R) -> usize + Copy,
     ) -> (usize, R) {
-        let (n, mut prev) = {
-            [
-                (0, R::default()),
-                (self.stored.len(), self.max),
-                from,
-                self.last,
-            ]
-            .iter()
-            .min_by(|(_, lhs), (_, rhs)| by(lhs).abs_diff(at).cmp(&by(rhs).abs_diff(at)))
-            .cloned()
-            .unwrap()
-        };
+        // let (n, mut prev) = {
+        //     [
+        //         (0, R::default()),
+        //         (self.stored.len(), self.max),
+        //         from,
+        //         self.last,
+        //     ]
+        //     .iter()
+        //     .min_by(|(_, lhs), (_, rhs)|
+        // by(lhs).abs_diff(at).cmp(&by(rhs).abs_diff(at)))
+        //     .cloned()
+        //     .unwrap()
+        // };
+        let (n, mut prev) = self.last;
 
-        if at >= by(&prev) {
+        let ret = if at >= by(&prev) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 prev = prev.add(*len);
                 (by(&prev) > at).then_some((n + i, prev.sub(*len)))
@@ -211,7 +226,9 @@ where
                     (by(&prev) <= at).then_some((i, prev))
                 })
         }
-        .unwrap_or((self.stored.len(), self.max))
+        .unwrap_or((self.stored.len(), self.max));
+
+        ret
     }
 }
 
