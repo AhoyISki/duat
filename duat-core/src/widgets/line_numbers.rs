@@ -129,7 +129,7 @@ where
         palette::set_weak_form("LineNum", Form::new().grey());
         palette::set_weak_form("MainLineNum", Form::new().yellow());
         palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
-        palette::set_weak_ref("WrappedMainLineNum", "WrappedLineNumbers");
+        palette::set_weak_ref("WrappedMainLineNum", "WrappedLineNum");
     }
 }
 

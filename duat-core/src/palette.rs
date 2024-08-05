@@ -4,7 +4,7 @@ pub use crossterm::cursor::SetCursorStyle as CursorShape;
 use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
 pub use global::*;
 
-use crate::data::{RwData,  RwLockReadGuard};
+use crate::data::{RwData, RwLockReadGuard};
 
 mod global {
     use super::{CursorShape, Form, FormId, FormPalette, Painter};
@@ -156,7 +156,7 @@ impl InnerPalette {
     fn form_of_id(&self, id: FormId) -> Form {
         let nth = self.forms.get(id.0 as usize).map(|(_, kind)| match kind {
             Kind::Form(form) => *form,
-            Kind::Ref(id) => self.form_of_id(*id),
+            Kind::Ref(new) => self.form_of_id(*new),
         });
 
         let Some(ret) = nth else {
@@ -265,7 +265,7 @@ impl FormPalette {
     fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
-        let ref_id = self.id_from_name(referenced);
+        let ref_id = self.create_id_from_name(referenced);
 
         let mut inner = self.inner.write();
 
@@ -292,12 +292,10 @@ impl FormPalette {
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    ///
-    /// Returns `None` if the referenced form doesn't exist.
     fn set_weak_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
         let referenced: &'static str = referenced.as_ref().to_string().leak();
-        let ref_id = self.id_from_name(referenced);
+        let ref_id = self.create_id_from_name(referenced);
 
         let mut inner = self.inner.write();
 
@@ -322,7 +320,9 @@ impl FormPalette {
         }
     }
 
-    /// Returns the [`FormId`] from a give `name`
+    /// Returns the [`FormId`] from a given `name`
+    ///
+    /// If the named form doesn't exist, create a temporary one.
     fn id_from_name(&self, name: impl AsRef<str>) -> FormId {
         let name = name.as_ref().to_string().leak();
 
@@ -335,6 +335,22 @@ impl FormPalette {
             let id = inner.forms.len() + weak_refs.len();
             weak_refs.push((name, id as u16));
             FormId(id as u16)
+        }
+    }
+
+    /// Returns the [`FormId`] from a given `name`
+    ///
+    /// If the named form doesn't exist, create it.
+    fn create_id_from_name(&self, name: impl AsRef<str>) -> FormId {
+        let name = name.as_ref().to_string().leak();
+
+        let mut inner = self.inner.write();
+
+        if let Some(id) = inner.forms.iter().position(|(cmp, _)| *cmp == name) {
+            FormId(id as u16)
+        } else {
+            inner.forms.push((name, Kind::Ref(FormId(0))));
+            FormId((inner.forms.len() - 1) as u16)
         }
     }
 
@@ -523,9 +539,7 @@ impl Painter {
             match self.palette.forms.get(id.0 as usize) {
                 Some((_, Kind::Form(form))) => break *form,
                 Some((_, Kind::Ref(referenced))) => id = *referenced,
-                _ => {
-                    unreachable!("This should not be possible")
-                }
+                None => break self.get_default(),
             }
         }
     }
