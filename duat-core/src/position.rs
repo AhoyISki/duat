@@ -1,8 +1,7 @@
 use std::ops::Range;
 
 use crate::{
-    text::{IterCfg, Point, PrintCfg, Text},
-    ui::{Area, Caret},
+    log_info, text::{IterCfg, Point, PrintCfg, Text}, ui::{Area, Caret}
 };
 
 /// A cursor in the text file. This is an editing cursor, not a
@@ -93,9 +92,12 @@ impl Cursor {
         let mut wraps = 0;
 
         let point = if by > 0 {
-            let line_start = text.point_at_line(self.line());
+            let line_start = text.visual_line_start(self.caret.point);
+            log_info!("{:?}", line_start);
 
             area.print_iter(text.iter_at(line_start), cfg)
+                .inspect(|(caret, item)| 
+                    log_info!("{caret:?}, {:?}", item.part))
                 .skip_while(|(_, item)| item.byte() <= self.byte())
                 .filter_map(|(caret, item)| {
                     wraps += caret.wrap as isize;

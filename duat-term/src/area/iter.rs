@@ -1,12 +1,10 @@
 use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    text::{Item, Iter as TextIter, IterCfg, Part, RevIter as RevTextIter, WrapMethod},
+    text::{Item, Iter as TextIter, IterCfg, Part, Point, RevIter as RevTextIter, WrapMethod},
     ui::Caret,
 };
 use unicode_width::UnicodeWidthChar;
-
-use super::PrintInfo;
 
 /// Returns an [`Iterator`] that also shows the current level of
 /// indentation.
@@ -190,11 +188,11 @@ pub fn print_iter<'a>(
     mut iter: TextIter<'a>,
     cap: usize,
     cfg: IterCfg<'a>,
-    info: PrintInfo,
+    points: (Point, Option<Point>),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let (Continue(indent) | Break(indent)) = iter
         .clone()
-        .take_while(|&Item { real, ghost, .. }| (real, ghost) < info.points)
+        .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
         .try_fold(0, |indent, item| match item.part {
             Part::Char(_) if indent >= cap => Break(0),
             Part::Char('\t') => Continue(indent + cfg.tab_stops().spaces_at(indent)),
@@ -203,9 +201,9 @@ pub fn print_iter<'a>(
             _ => Continue(indent),
         });
 
-    let iter_at_line_start = info.points == iter.points();
+    let iter_at_line_start = points == iter.points();
     if !iter_at_line_start {
-        iter.skip_to(info.points);
+        iter.skip_to(points);
     }
     inner_iter(iter, cap, (indent, iter_at_line_start), cfg)
 }

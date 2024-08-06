@@ -18,7 +18,6 @@ use self::{
     types::Toggle,
 };
 use super::{get_ends, records::Records, Point, Text};
-use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -89,7 +88,7 @@ pub struct Tags {
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    pub ranges: Vec<TagRange>,
+    ranges: Vec<TagRange>,
     records: Records<(usize, usize)>,
 }
 
@@ -158,10 +157,7 @@ impl Tags {
         } else if tag.is_start() || tag.is_end() {
             add_to_ranges((at, tag), &mut self.ranges, self.range_min);
             deintersect(&mut self.ranges, self.range_min);
-        }
-
-        if self.len_bytes() > 3000 {
-            log_info!("{:#?}", self.ranges);
+            self.cull_small_ranges();
         }
 
         toggle_id

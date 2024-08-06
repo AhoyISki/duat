@@ -207,10 +207,6 @@ where
 
         ret
     }
-
-    pub fn len(&self) -> usize {
-        self.stored.len()
-    }
 }
 
 impl<R: Default> Default for Records<R>

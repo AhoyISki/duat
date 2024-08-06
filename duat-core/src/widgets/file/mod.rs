@@ -89,7 +89,7 @@ where
             let marker = Marker::new();
             let form1 = palette::set_form("form1lmao", Form::new().red());
             let form2 = palette::set_form("form2lmao", Form::new().undercurled().underline_blue());
-            for i in (500..1000).step_by(500) {
+            for i in (500..text.len_bytes()).step_by(500) {
                 text.insert_tag(i - 490, Tag::PushForm(form1), marker);
                 text.insert_tag(i - 380, Tag::PopForm(form1), marker);
                 text.insert_tag(i - 310, Tag::PushForm(form2), marker);

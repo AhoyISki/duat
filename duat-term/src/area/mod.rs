@@ -221,7 +221,7 @@ impl Area {
 
         let cap = cfg.wrap_width(sender.coords().width());
         let active = layout.active_id == self.id;
-        let iter = print_iter(iter, cap, cfg, *info);
+        let iter = print_iter(iter, cap, cfg, info.points);
 
         let mut lines = sender.lines(info.x_shift, cap);
 
@@ -467,12 +467,8 @@ impl ui::Area for Area {
         iter: Iter<'a>,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        print_iter(
-            iter,
-            cfg.wrap_width(self.width()),
-            cfg,
-            PrintInfo::default(),
-        )
+        let points = iter.points();
+        print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
     }
 
     fn print_iter_from_top<'a>(
@@ -484,7 +480,7 @@ impl ui::Area for Area {
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_at(line_start);
 
-        print_iter(iter, cfg.wrap_width(self.width()), cfg, *info)
+        print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points)
     }
 
     fn rev_print_iter<'a>(
