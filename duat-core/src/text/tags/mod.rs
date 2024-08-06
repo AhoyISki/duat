@@ -89,8 +89,8 @@ pub struct Tags {
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
-    ranges: Vec<TagRange>,
-    pub records: Records<(usize, usize)>,
+    pub ranges: Vec<TagRange>,
+    records: Records<(usize, usize)>,
 }
 
 impl Tags {
@@ -137,10 +137,11 @@ impl Tags {
             return None;
         }
 
-        if at == b {
+        let n = if at == b {
             self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
             self.records.insert((n + 1, at));
+            n
         } else {
             self.buf.splice(n..=n, [
                 TagOrSkip::Skip(at - b),
@@ -149,13 +150,18 @@ impl Tags {
             ]);
             self.records.transform((n, at), (0, 0), (2, 0));
             self.records.insert((n + 2, at));
-        }
+            n + 1
+        };
 
-        if let Some(entry) = find_match_too_close(&self.buf, (n, b, tag), self.range_min) {
+        if let Some(entry) = find_match_too_close(&self.buf, (n, at, tag), self.range_min) {
             remove_from_ranges(entry, &mut self.ranges);
         } else if tag.is_start() || tag.is_end() {
             add_to_ranges((at, tag), &mut self.ranges, self.range_min);
             deintersect(&mut self.ranges, self.range_min);
+        }
+
+        if self.len_bytes() > 3000 {
+            log_info!("{:#?}", self.ranges);
         }
 
         toggle_id
@@ -204,7 +210,8 @@ impl Tags {
             (removed, total)
         };
 
-        self.records.transform((n, b), (total, 0), (total - removed.len(), 0));
+        self.records
+            .transform((n, b), (total, 0), (total - removed.len(), 0));
 
         for (i, tag) in removed {
             self.buf.remove(i);
@@ -324,6 +331,8 @@ impl Tags {
     }
 
     pub fn rev_iter_at(&self, at: usize) -> RevTags {
+        let at = (at + self.range_min).min(self.len_bytes());
+
         let (n, b) = self
             .get_skip_at(at)
             .map(|(n, b, _)| (n, b))
@@ -333,9 +342,9 @@ impl Tags {
             let mut ranges: Vec<_> = self
                 .ranges
                 .iter()
-                .filter(|&range| range.get_start().map_or(true, |start| start < at))
+                .filter(|&range| range.get_start().map_or(true, |start| start < b))
                 .map(|range| (range.end(), range.tag().inverse().unwrap()))
-                .filter(|(end, _)| *end > at)
+                .filter(|(end, _)| *end > b)
                 .collect();
 
             ranges.sort();
