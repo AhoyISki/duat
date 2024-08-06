@@ -8,7 +8,7 @@ use duat_core::{
         Cursors, EditHelper, InputMethod,
     },
     palette::{self, Form},
-    text::{text, Text},
+    text::{text, CharSet, Text},
     ui::Ui,
     widgets::File,
 };
@@ -227,17 +227,30 @@ fn match_normal<U: Ui>(
         key!(Up) => move_each_wrapped(editor, Side::Top, 1),
         key!(Right) => move_each_wrapped(editor, Side::Right, 1),
 
-        ////////// Advanced movement keys.
+        ////////// Parsing movement keys.
         key!(Char('w')) => {
             editor.move_each_cursor(|mover| {
-                let nth = if mover.char() == ' ' { 1 } else { 0 };
-                let point = mover
-                    .search(" ")
-                    .nth(nth)
-                    .map(|(p, ..)| p)
-                    .unwrap_or(mover.max_point());
+                let (s, _) = mover.search('\n'.not()).next().unzip();
+                mover.move_to(s.unzip().1.unwrap_or(mover.max_point()));
+                mover.move_hor(1);
 
-                mover.move_to(point);
+                let initial = mover.char();
+                mover.move_hor(-1);
+                if initial == ' ' {
+                    let (e, _) = mover.search(' '.not()).next().unzip();
+                    mover.set_anchor();
+                    mover.move_to(e.unzip().0.unwrap_or(mover.max_point()));
+                } else if mover.w_chars().matches(initial) {
+                    let w_chars = mover.w_chars();
+                    let (e, _) = mover.search(w_chars.not()).next().unzip();
+                    mover.set_anchor();
+                    mover.move_to(e.unzip().0.unwrap_or(mover.max_point()));
+                } else {
+                    let w_chars = mover.w_chars();
+                    let (e, _) = mover.search(w_chars).next().unzip();
+                    mover.set_anchor();
+                    mover.move_to(e.unzip().0.unwrap_or(mover.max_point()));
+                }
             });
         }
 
@@ -253,6 +266,12 @@ fn match_normal<U: Ui>(
             hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
         key!(Char('c')) => {
+            editor.move_each_cursor(|mover| {
+                if !mover.anchor_is_set() {
+                mover.set_anchor();
+                }
+                mover.move_hor(1);
+            });
             editor.edit_on_each_cursor(|editor| editor.replace(""));
             editor.move_each_cursor(|mover| mover.unset_anchor());
             *mode = Mode::Insert;
