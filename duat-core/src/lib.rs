@@ -211,7 +211,7 @@ pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::ne
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
-    	//compile_error!("You are not supposed to use log_info on release profiles!");
+    	compile_error!("You are not supposed to use log_info on release profiles!");
     }
 
     use std::{fmt::Write, time::Instant};

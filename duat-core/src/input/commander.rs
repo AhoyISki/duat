@@ -1,6 +1,7 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-use super::{key, Cursors, EditHelper, InputMethod};
+use super::{
+    key::{key, Code, Event, Mod},
+    Cursors, EditHelper, InputMethod,
+};
 use crate::{
     data::{Context, RwData},
     ui::Ui,
@@ -34,7 +35,7 @@ where
 
     fn send_key(
         &mut self,
-        key: KeyEvent,
+        key: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         context: Context<U>,
@@ -42,7 +43,7 @@ where
         let mut editor = EditHelper::new(widget, area, &mut self.cursors);
 
         match key {
-            key!(KeyCode::Backspace) => {
+            key!(Code::Backspace) => {
                 editor.move_main(|mover| {
                     mover.set_anchor();
                     mover.move_hor(-1);
@@ -54,7 +55,7 @@ where
                     mover.unset_anchor();
                 });
             }
-            key!(KeyCode::Delete) => {
+            key!(Code::Delete) => {
                 editor.move_main(|mover| {
                     mover.set_anchor();
                     mover.move_hor(1);
@@ -67,29 +68,29 @@ where
                 });
             }
 
-            key!(KeyCode::Char(char)) => {
+            key!(Code::Char(char)) => {
                 editor.edit_on_main(|editor| editor.insert(char));
                 editor.move_main(|mover| mover.move_hor(1));
             }
-            key!(KeyCode::Char(char), KeyModifiers::SHIFT) => {
+            key!(Code::Char(char), Mod::SHIFT) => {
                 editor.edit_on_main(|editor| editor.insert(char));
                 editor.move_main(|mover| mover.move_hor(1));
             }
 
-            key!(KeyCode::Left) => {
+            key!(Code::Left) => {
                 editor.move_main(|mover| {
                     mover.unset_anchor();
                     mover.move_hor(-1)
                 });
             }
-            key!(KeyCode::Right) => {
+            key!(Code::Right) => {
                 editor.move_main(|mover| {
                     mover.unset_anchor();
                     mover.move_hor(1)
                 });
             }
 
-            key!(KeyCode::Esc) => {
+            key!(Code::Esc) => {
                 editor.move_main(|mover| {
                     mover.move_hor(isize::MIN);
                     mover.set_anchor();
@@ -99,7 +100,7 @@ where
                 self.cursors = Cursors::default();
                 context.commands.return_to_file().unwrap();
             }
-            key!(KeyCode::Enter) => {
+            key!(Code::Enter) => {
                 self.cursors = Cursors::default();
                 context.commands.return_to_file().unwrap();
             }

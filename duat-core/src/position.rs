@@ -1,7 +1,8 @@
 use std::ops::Range;
 
 use crate::{
-    log_info, text::{IterCfg, Point, PrintCfg, Text}, ui::{Area, Caret}
+    text::{IterCfg, Point, PrintCfg, Text},
+    ui::{Area, Caret},
 };
 
 /// A cursor in the text file. This is an editing cursor, not a
@@ -93,11 +94,8 @@ impl Cursor {
 
         let point = if by > 0 {
             let line_start = text.visual_line_start(self.caret.point);
-            log_info!("{:?}", line_start);
 
             area.print_iter(text.iter_at(line_start), cfg)
-                .inspect(|(caret, item)| 
-                    log_info!("{caret:?}, {:?}", item.part))
                 .skip_while(|(_, item)| item.byte() <= self.byte())
                 .filter_map(|(caret, item)| {
                     wraps += caret.wrap as isize;
@@ -120,9 +118,11 @@ impl Cursor {
                     let old_wraps = wraps;
                     wraps -= (caret.wrap || !went_through_end) as isize;
                     went_through_end = true;
-                    Some((caret.x, old_wraps)).zip(item.as_real_char())
+                    Some((caret.x, old_wraps, caret.wrap)).zip(item.as_real_char())
                 })
-                .find_map(|((x, wraps), (p, _))| (wraps == by && dwcol >= x).then_some(p))
+                .find_map(|((x, wraps, wrap), (p, _))| {
+                    (wraps == by && (dwcol >= x || wrap)).then_some(p)
+                })
                 .unwrap_or(Point::default())
         };
 

@@ -2,7 +2,21 @@ mod commander;
 mod default;
 mod helper;
 
-pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+pub mod key {
+    pub use crossterm::event::{KeyCode as Code, KeyEvent as Event, KeyModifiers as Mod};
+
+    pub macro key {
+        ($code:pat) => {
+            Event { code: $code, modifiers: Mod::NONE, .. }
+        },
+
+        ($code:pat, $modifiers:pat) => {
+            Event { code: $code, modifiers: $modifiers, .. }
+        }
+    }
+}
+
+use key::Event;
 
 pub use self::{commander::Commander, default::KeyMap, helper::EditHelper};
 use crate::{
@@ -22,7 +36,7 @@ where
 
     fn send_key(
         &mut self,
-        key: KeyEvent,
+        key: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         globals: Context<U>,
@@ -43,16 +57,6 @@ where
     where
         Self: Sized,
     {
-    }
-}
-
-pub macro key {
-    ($code:pat) => {
-        KeyEvent { code: $code, modifiers: KeyModifiers::NONE, .. }
-    },
-
-    ($code:pat, $modifiers:pat) => {
-        KeyEvent { code: $code, modifiers: $modifiers, .. }
     }
 }
 

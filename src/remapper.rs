@@ -1,6 +1,9 @@
 use duat_core::{
     data::{Context, RwData},
-    input::{InputMethod, KeyCode, KeyEvent},
+    input::{
+        key::{Code::*, Event},
+        InputMethod,
+    },
 };
 
 use super::Ui;
@@ -11,10 +14,10 @@ pub struct Remap<I>
 where
     I: InputMethod<Ui> + Clone,
 {
-    /// Takes this sequence of [`KeyEvent`]s.
-    takes: Vec<KeyEvent>,
-    /// And turns it into this new sequence of [`KeyEvent`]s.
-    gives: Vec<KeyEvent>,
+    /// Takes this sequence of [`Event`]s.
+    takes: Vec<Event>,
+    /// And turns it into this new sequence of [`Event`]s.
+    gives: Vec<Event>,
     /// Wether or not to also send the keys in `self.takes`.
     send_taken: bool,
     /// A condition to ask the `InputScheme`, if it returns `true`,
@@ -27,8 +30,8 @@ where
     I: InputMethod<Ui> + Clone,
 {
     pub fn new(
-        takes: impl Into<Vec<KeyEvent>>,
-        gives: impl Into<Vec<KeyEvent>>,
+        takes: impl Into<Vec<Event>>,
+        gives: impl Into<Vec<Event>>,
         send_taken: bool,
         condition: impl Fn(&I) -> bool + 'static,
     ) -> Self {
@@ -71,7 +74,7 @@ where
     remaps: Vec<Remap<I>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
-    current_sequence: Vec<KeyEvent>,
+    current_sequence: Vec<Event>,
     /// A list of sequences that have been at least partially matched
     /// with `current_sequence`.
     to_check: Vec<usize>,
@@ -91,46 +94,42 @@ where
     }
 
     /// Maps a sequence of characters to another.
-    pub fn remap(&mut self, takes: impl Into<Vec<KeyEvent>>, gives: impl Into<Vec<KeyEvent>>) {
+    pub fn remap(&mut self, takes: impl Into<Vec<Event>>, gives: impl Into<Vec<Event>>) {
         self.remaps.push(Remap::new(takes, gives, false, |_| true))
     }
 
     pub fn remap_on(
         &mut self,
         check: impl Fn(&I) -> bool + 'static,
-        takes: impl Into<Vec<KeyEvent>>,
-        gives: impl Into<Vec<KeyEvent>>,
+        takes: impl Into<Vec<Event>>,
+        gives: impl Into<Vec<Event>>,
     ) {
         self.remaps.push(Remap::new(takes, gives, false, check));
     }
 
-    pub fn unmap(&mut self, takes: impl Into<Vec<KeyEvent>>) {
+    pub fn unmap(&mut self, takes: impl Into<Vec<Event>>) {
         self.unmap_on(takes, |_| true)
     }
 
-    pub fn unmap_on(
-        &mut self,
-        takes: impl Into<Vec<KeyEvent>>,
-        check: impl Fn(&I) -> bool + 'static,
-    ) {
+    pub fn unmap_on(&mut self, takes: impl Into<Vec<Event>>, check: impl Fn(&I) -> bool + 'static) {
         self.remaps.insert(0, Remap::new(takes, [], false, check))
     }
 
-    pub fn alias(&mut self, takes: impl Into<Vec<KeyEvent>>, gives: impl Into<Vec<KeyEvent>>) {
+    pub fn alias(&mut self, takes: impl Into<Vec<Event>>, gives: impl Into<Vec<Event>>) {
         self.alias_on(takes, gives, |_| true)
     }
 
     pub fn alias_on(
         &mut self,
-        takes: impl Into<Vec<KeyEvent>>,
-        gives: impl Into<Vec<KeyEvent>>,
+        takes: impl Into<Vec<Event>>,
+        gives: impl Into<Vec<Event>>,
         checker: impl Fn(&I) -> bool + 'static,
     ) {
-        let takes: Vec<KeyEvent> = takes.into();
-        let mut gives: Vec<KeyEvent> = gives.into();
+        let takes: Vec<Event> = takes.into();
+        let mut gives: Vec<Event> = gives.into();
         gives.splice(
             0..0,
-            std::iter::repeat(KeyEvent::from(KeyCode::Backspace)).take(takes.len()),
+            std::iter::repeat(Event::from(Backspace)).take(takes.len()),
         );
 
         self.remaps.push(Remap::new(takes, gives, true, checker))
@@ -145,7 +144,7 @@ where
 
     fn send_key(
         &mut self,
-        key: KeyEvent,
+        key: Event,
         widget: &RwData<Self::Widget>,
         area: &<Ui as duat_core::ui::Ui>::Area,
         globals: Context<Ui>,

@@ -1,4 +1,7 @@
-use super::{key, Cursors, KeyCode, KeyEvent, KeyModifiers, EditHelper};
+use super::{
+    key::{key, Code, Event, Mod},
+    Cursors, EditHelper,
+};
 use crate::{
     data::{Context, RwData},
     ui::Ui,
@@ -32,7 +35,7 @@ where
 
     fn send_key(
         &mut self,
-        key: KeyEvent,
+        key: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         context: Context<U>,
@@ -40,7 +43,7 @@ where
         let mut editor = EditHelper::<File, U>::new(widget, area, &mut self.cursors);
         match key {
             // Characters
-            key!(KeyCode::Char(ch)) => {
+            key!(Code::Char(ch)) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
@@ -48,7 +51,7 @@ where
                     mover.move_hor(1);
                 });
             }
-            key!(KeyCode::Char(ch), KeyModifiers::SHIFT) => {
+            key!(Code::Char(ch), Mod::SHIFT) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
@@ -56,7 +59,7 @@ where
                     mover.move_hor(1);
                 });
             }
-            key!(KeyCode::Enter) => {
+            key!(Code::Enter) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert('\n');
                 });
@@ -66,7 +69,7 @@ where
             }
 
             // Text Removal
-            key!(KeyCode::Backspace) => {
+            key!(Code::Backspace) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each_cursor(|mover| {
                     let caret = mover.caret();
@@ -88,7 +91,7 @@ where
                     }
                 });
             }
-            key!(KeyCode::Delete) => {
+            key!(Code::Delete) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each_cursor(|mover| {
                     let caret = mover.caret();
@@ -112,25 +115,25 @@ where
             }
 
             // Movement
-            key!(KeyCode::Left, KeyModifiers::SHIFT) => {
+            key!(Code::Left, Mod::SHIFT) => {
                 move_each_and_select(editor, Side::Left, 1);
             }
-            key!(KeyCode::Right, KeyModifiers::SHIFT) => {
+            key!(Code::Right, Mod::SHIFT) => {
                 move_each_and_select(editor, Side::Right, 1);
             }
-            key!(KeyCode::Up, KeyModifiers::SHIFT) => {
+            key!(Code::Up, Mod::SHIFT) => {
                 move_each_and_select(editor, Side::Top, 1);
             }
-            key!(KeyCode::Down, KeyModifiers::SHIFT) => {
+            key!(Code::Down, Mod::SHIFT) => {
                 move_each_and_select(editor, Side::Bottom, 1);
             }
-            key!(KeyCode::Left) => move_each(editor, Side::Left, 1),
-            key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
-            key!(KeyCode::Up) => move_each(editor, Side::Top, 1),
-            key!(KeyCode::Down) => move_each(editor, Side::Bottom, 1),
+            key!(Code::Left) => move_each(editor, Side::Left, 1),
+            key!(Code::Right) => move_each(editor, Side::Right, 1),
+            key!(Code::Up) => move_each(editor, Side::Top, 1),
+            key!(Code::Down) => move_each(editor, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+            key!(Code::Char('p'), Mod::CONTROL) => {
                 let _ = context.commands.run("switch-to CommandLine");
             }
 
@@ -155,11 +158,7 @@ fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: us
     });
 }
 
-fn move_each_and_select<U: Ui>(
-    mut editor: EditHelper<File, U>,
-    direction: Side,
-    amount: usize,
-) {
+fn move_each_and_select<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
         if !mover.anchor_is_set() {
             mover.set_anchor();

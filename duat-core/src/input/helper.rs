@@ -9,7 +9,7 @@ use crate::{
     data::RwData,
     history::Change,
     position::Cursor,
-    text::{Point, PrintCfg, Text},
+    text::{Pattern, Point, PrintCfg, Searcher, Text},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -392,6 +392,23 @@ where
         }
     }
 
+    ////////// Lookup functions
+    pub fn search(&self, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+        self.text.search_from(self.cursor.caret(), pat)
+    }
+
+    pub fn search_rev(&self, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+        self.text.search_from_rev(self.cursor.caret(), pat)
+    }
+
+    pub fn char(&self) -> char {
+        self.text.char_at(self.cursor.caret()).unwrap()
+    }
+
+    pub fn max_point(&self) -> Point {
+        self.text.max_point()
+    }
+
     ////////// Public movement functions
 
     /// Moves the cursor horizontally on the file. May also cause
@@ -409,7 +426,8 @@ where
     /// Moves the cursor vertically on the file. May also cause
     /// horizontal movement.
     pub fn move_ver_wrapped(&mut self, count: isize) {
-        self.cursor.move_ver_wrapped(count, self.text, self.area, self.cfg);
+        self.cursor
+            .move_ver_wrapped(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a position in the file.

@@ -1,13 +1,12 @@
 use std::fmt::Display;
 
-use crossterm::event::{
-    KeyCode::{*},
-    KeyEvent, KeyModifiers as Mod,
-};
 use duat_core::{
     data::{Context, RwData},
     hooks::{self, Hookable},
-    input::{key, Cursors, EditHelper, InputMethod},
+    input::{
+        key::{key, Code::*, Event, Mod},
+        Cursors, EditHelper, InputMethod,
+    },
     palette::{self, Form},
     text::{text, Text},
     ui::Ui,
@@ -84,7 +83,7 @@ where
 
     fn send_key(
         &mut self,
-        key: KeyEvent,
+        key: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         context: Context<U>,
@@ -121,7 +120,7 @@ where
 }
 
 /// Commands that are available in `Mode::Insert`.
-fn match_insert<U: Ui>(mut editor: EditHelper<File, U>, key: KeyEvent, mode: &mut Mode) {
+fn match_insert<U: Ui>(mut editor: EditHelper<File, U>, key: Event, mode: &mut Mode) {
     match key {
         key!(Char(char)) => {
             editor.edit_on_each_cursor(|editor| editor.insert(char));
@@ -201,7 +200,7 @@ fn match_insert<U: Ui>(mut editor: EditHelper<File, U>, key: KeyEvent, mode: &mu
 /// Commands that are available in `Mode::Normal`.
 fn match_normal<U: Ui>(
     mut editor: EditHelper<File, U>,
-    key: KeyEvent,
+    key: Event,
     mode: &mut Mode,
     context: Context<U>,
 ) {
@@ -212,23 +211,35 @@ fn match_normal<U: Ui>(
         key!(Char('K'), Mod::SHIFT) => select_and_move_each(editor, Side::Top, 1),
         key!(Char('L'), Mod::SHIFT) => select_and_move_each(editor, Side::Right, 1),
 
-        ////////// Movement keys that get rid of selections.
-        key!(Char('h')) => move_each(editor, Side::Left, 1),
-        key!(Char('j')) => move_each(editor, Side::Bottom, 1),
-        key!(Char('k')) => move_each(editor, Side::Top, 1),
-        key!(Char('l')) => move_each(editor, Side::Right, 1),
-
-        ////////// Movement keys that retain or create selections.
         key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(editor, Side::Left, 1),
         key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(editor, Side::Bottom, 1),
         key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(editor, Side::Top, 1),
         key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(editor, Side::Right, 1),
 
         ////////// Movement keys that get rid of selections.
+        key!(Char('h')) => move_each(editor, Side::Left, 1),
+        key!(Char('j')) => move_each(editor, Side::Bottom, 1),
+        key!(Char('k')) => move_each(editor, Side::Top, 1),
+        key!(Char('l')) => move_each(editor, Side::Right, 1),
+
         key!(Left) => move_each_wrapped(editor, Side::Left, 1),
         key!(Down) => move_each_wrapped(editor, Side::Bottom, 1),
         key!(Up) => move_each_wrapped(editor, Side::Top, 1),
         key!(Right) => move_each_wrapped(editor, Side::Right, 1),
+
+        ////////// Advanced movement keys.
+        key!(Char('w')) => {
+            editor.move_each_cursor(|mover| {
+                let nth = if mover.char() == ' ' { 1 } else { 0 };
+                let point = mover
+                    .search(" ")
+                    .nth(nth)
+                    .map(|(p, ..)| p)
+                    .unwrap_or(mover.max_point());
+
+                mover.move_to(point);
+            });
+        }
 
         ////////// Insertion keys.
         key!(Char('i')) => {
@@ -277,7 +288,7 @@ fn match_normal<U: Ui>(
 /// Commands that are available in `Mode::GoTo`.
 fn match_goto<U: Ui>(
     mut editor: EditHelper<File, U>,
-    key: KeyEvent,
+    key: Event,
     last_file: &mut String,
     context: Context<U>,
 ) {

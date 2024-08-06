@@ -3,6 +3,7 @@ mod cfg;
 mod iter;
 pub mod reader;
 mod records;
+mod search;
 mod tags;
 mod types;
 
@@ -24,6 +25,7 @@ pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::Point,
+    search::{Pattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -33,7 +35,7 @@ use crate::{history::Change, input::Cursors, DuatError};
 #[derive(Default, Clone, Eq)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
-    pub tags: Box<Tags>,
+    tags: Box<Tags>,
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
@@ -370,6 +372,15 @@ impl Text {
             .nth(1)
     }
 
+    pub fn char_at(&self, point: Point ) -> Option<char> {
+        let (s0, s1) = self.slices();
+        if point.byte() < s0.len() {
+            s0[point.byte()..].chars().next()
+        } else {
+            s1[(point.byte() - s0.len())..].chars().next()
+        }
+    }
+
     pub fn len_bytes(&self) -> usize {
         self.buf.len()
     }
@@ -523,11 +534,33 @@ mod point {
             }
         }
 
+        pub(super) fn fwd_byte(&self, b: u8) -> Self {
+            Self {
+                b: self.b + 1,
+                c: self.c + utf8_char_width(b),
+                l: self.l + (b == b'\n') as usize,
+            }
+        }
+
         pub(super) fn rev(self, char: char) -> Self {
             Self {
                 b: self.b - char.len_utf8(),
                 c: self.c - 1,
                 l: self.l - (char == '\n') as usize,
+            }
+        }
+
+        pub(super) fn rev_byte(&self, b: u8) -> Self {
+            Self {
+                b: self.b - 1,
+                // Theoretically, this is incongruent with fwd_byte,
+                // since it will say that the bytes 1-3 of a char
+                // belong to the next one.
+                // However, this doesn't really matter, since I am
+                // not allowing the user to search for [u8]s, only
+                // through valid utf8.
+                c: self.c - utf8_char_width(b),
+                l: self.l - (b == b'\n') as usize,
             }
         }
 
@@ -611,6 +644,34 @@ mod point {
         fn sub_assign(&mut self, rhs: Self) {
             *self = *self - rhs;
         }
+    }
+
+    // https://tools.ietf.org/html/rfc3629
+    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
+        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
+        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+    ];
+
+    /// Given a first byte, determines how many bytes are in this
+    /// UTF-8 character.
+    #[inline]
+    pub const fn utf8_char_width(b: u8) -> usize {
+        UTF8_CHAR_WIDTH[b as usize] as usize
     }
 }
 
