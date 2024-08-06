@@ -18,6 +18,7 @@ use self::{
     types::Toggle,
 };
 use super::{get_ends, records::Records, Point, Text};
+use crate::log_info;
 
 mod ids;
 mod ranges;
@@ -89,7 +90,7 @@ pub struct Tags {
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
     ranges: Vec<TagRange>,
-    records: Records<(usize, usize)>,
+    pub records: Records<(usize, usize)>,
 }
 
 impl Tags {
@@ -191,13 +192,19 @@ impl Tags {
             _ => return,
         };
 
-        let removed: Vec<_> = iter_range_rev(&self.buf, ..n)
-            .enumerate()
-            .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
-            .filter(|(_, tag)| markers.clone().contains(tag.marker()))
-            .collect();
+        let (removed, total): (Vec<(usize, RawTag)>, usize) = {
+            let mut total = 0;
+            let removed = iter_range_rev(&self.buf, ..n)
+                .enumerate()
+                .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
+                .inspect(|_| total += 1)
+                .filter(|(_, tag)| markers.clone().contains(tag.marker()))
+                .collect();
 
-        self.records.transform((n, b), (removed.len(), 0), (0, 0));
+            (removed, total)
+        };
+
+        self.records.transform((n, b), (total, 0), (total - removed.len(), 0));
 
         for (i, tag) in removed {
             self.buf.remove(i);
@@ -488,7 +495,6 @@ impl Tags {
             self.len_bytes()
         );
         let (n, b) = self.records.closest_to(at);
-
         let skips = {
             let mut b_len = 0;
             move |(n, ts): (usize, &TagOrSkip)| {
@@ -530,15 +536,19 @@ pub fn iter_range(
 
 pub fn iter_range_rev(
     buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize> + std::fmt::Debug,
+    range: impl RangeBounds<usize> + std::fmt::Debug + Clone,
 ) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
-    let (start, end) = get_ends(range, buf.len());
+    let (start, end) = get_ends(range.clone(), buf.len());
 
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
 
-    s1[r1].iter().rev().chain(s0[r0].iter().rev())
+    if let (Some(s0), Some(s1)) = (s0.get(r0), s1.get(r1)) {
+        s1.iter().rev().chain(s0.iter().rev())
+    } else {
+        panic!("{buf:#?}, {range:?}");
+    }
 }
 
 fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {

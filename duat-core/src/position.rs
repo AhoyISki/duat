@@ -71,8 +71,8 @@ impl Cursor {
 
             area.print_iter(text.iter_at(point), cfg)
                 .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
-                .find_map(|(Caret { x, len, .. }, (point, char))| {
-                    (point.line() == target && (x + len > dcol || char == '\n')).then_some(point)
+                .find_map(|(Caret { x, len, .. }, (p, char))| {
+                    (p.line() == target && (x + len > dcol || char == '\n')).then_some(p)
                 })
                 .unwrap_or(text.max_point())
         };
@@ -82,35 +82,51 @@ impl Cursor {
     }
 
     /// Internal vertical movement function.
-    // pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg)
-    // {     if by == 0 {
-    //         return;
-    //     }
+    pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        if by == 0 {
+            return;
+        }
 
-    //     let cfg = IterCfg::new(cfg);
-    //     let dwcol = self.caret.dwcol;
+        let cfg = IterCfg::new(cfg);
+        let dwcol = self.caret.dwcol;
 
-    //     let mut wraps = 0;
+        let mut wraps = 0;
 
-    //     let point = if by > 0 {
-    //         area.print_iter(text.iter_at(self.caret.point), cfg)
-    //             .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
-    //             .find_map(|(Caret { x, len, .. }, (point, char))| {
-    //                 (point.line() == target && (x + len > dwcol || char ==
-    // '\n')).then_some(point)             })
-    //             .unwrap_or(text.max_point())
-    //     } else if self.caret.line().checked_add_signed(by).is_none() {
-    //         self.caret.point
-    //     } else {
-    //         area.rev_print_iter(text.rev_iter_at(self.caret.point), cfg)
-    //             .filter_map(|(caret, item)| Some(caret.x).zip(item.as_real_char()))
-    //             .find_map(|(x, (point, _))| (point.line() == target && dwcol >=
-    // x).then_some(point))             .unwrap_or(Point::default())
-    //     };
+        let point = if by > 0 {
+            let line_start = text.point_at_line(self.line());
 
-    //     self.caret.point = point;
-    //     self.caret.vcol = vcol(point, text, area, cfg.dont_wrap())
-    // }
+            area.print_iter(text.iter_at(line_start), cfg)
+                .skip_while(|(_, item)| item.byte() <= self.byte())
+                .filter_map(|(caret, item)| {
+                    wraps += caret.wrap as isize;
+                    Some((caret, wraps)).zip(item.as_real_char())
+                })
+                .find_map(|((Caret { x, len, .. }, wraps), (p, char))| {
+                    (wraps == by && (x + len > dwcol || char == '\n')).then_some(p)
+                })
+                .unwrap_or(text.max_point())
+        } else {
+            let end = text
+                .points_after(self.caret.point)
+                .unwrap_or(text.max_points());
+
+            let mut went_through_end = end != text.max_points();
+
+            area.rev_print_iter(text.rev_iter_at(end), cfg)
+                .filter_map(|(caret, item)| {
+                    went_through_end |= item.real == text.max_point();
+                    let old_wraps = wraps;
+                    wraps -= (caret.wrap || !went_through_end) as isize;
+                    went_through_end = true;
+                    Some((caret.x, old_wraps)).zip(item.as_real_char())
+                })
+                .find_map(|((x, wraps), (p, _))| (wraps == by && dwcol >= x).then_some(p))
+                .unwrap_or(Point::default())
+        };
+
+        self.caret.point = point;
+        self.caret.vcol = vcol(point, text, area, cfg.dont_wrap())
+    }
 
     /// Sets the position of the anchor to be the same as the current
     /// cursor position in the file.

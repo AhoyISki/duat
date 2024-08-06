@@ -301,7 +301,7 @@ pub macro status {
 
         let text_fn = move |reader: &FileReader<$ui>| {
             let mut builder = Builder::new();
-            text!(builder, { AlignRight });
+            text!(builder, { "" });
             text_fn(&mut builder, reader);
             text!(builder, "\n");
             builder.finish()
@@ -310,7 +310,7 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_ver_length(1.0)
+            PushSpecs::below().with_ver_length(10.0)
         )
     }}
 }

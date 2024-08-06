@@ -394,16 +394,22 @@ where
 
     ////////// Public movement functions
 
+    /// Moves the cursor horizontally on the file. May also cause
+    /// vertical movement.
+    pub fn move_hor(&mut self, count: isize) {
+        self.cursor.move_hor(count, self.text, self.area, self.cfg);
+    }
+
     /// Moves the cursor vertically on the file. May also cause
     /// horizontal movement.
     pub fn move_ver(&mut self, count: isize) {
         self.cursor.move_ver(count, self.text, self.area, self.cfg);
     }
 
-    /// Moves the cursor horizontally on the file. May also cause
-    /// vertical movement.
-    pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text, self.area, self.cfg);
+    /// Moves the cursor vertically on the file. May also cause
+    /// horizontal movement.
+    pub fn move_ver_wrapped(&mut self, count: isize) {
+        self.cursor.move_ver_wrapped(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a position in the file.

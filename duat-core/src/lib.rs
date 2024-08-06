@@ -211,10 +211,10 @@ pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::ne
 /// Internal macro used to log information.
 pub macro log_info($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
-    	compile_error!("You are not supposed to use log_info on release profiles!");
+    	//compile_error!("You are not supposed to use log_info on release profiles!");
     }
 
-    use std::{fmt::Write, time::Instant, io::Write as IoWrite};
+    use std::{fmt::Write, time::Instant};
 
     use crate::{HOOK, LOG};
 
@@ -246,7 +246,4 @@ pub macro log_info($($text:tt)*) {{
     } else {
         write!(LOG.lock().unwrap(), "\n{text}").unwrap();
     }
-
-	let mut writer =  std::io::BufWriter::new(std::fs::File::create("LOG").unwrap());
-	writer.write_all(LOG.lock().unwrap().as_bytes()).unwrap();
 }}

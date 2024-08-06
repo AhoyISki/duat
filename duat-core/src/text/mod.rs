@@ -33,7 +33,7 @@ use crate::{history::Change, input::Cursors, DuatError};
 #[derive(Default, Clone, Eq)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
-    tags: Box<Tags>,
+    pub tags: Box<Tags>,
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,

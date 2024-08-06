@@ -1,6 +1,4 @@
-use std::{any::TypeId, fmt::Debug};
-
-use crate::log_info;
+use std::fmt::Debug;
 
 const LEN_PER_RECORD: usize = 150;
 
@@ -79,7 +77,7 @@ where
     pub fn insert(&mut self, new: R) {
         // For internal functions, I assume that I'm not
         // going over self.max.
-        let (i, prev) = self.search_from((0, R::default()), new.bytes(), Record::bytes);
+        let (i, prev) = self.search(new.bytes(), Record::bytes);
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
         // If the recrds would be too close, don't add any
@@ -95,16 +93,11 @@ where
             self.stored.insert(i + 1, len.sub(new.sub(prev)));
             self.last = (i + 1, new);
         }
-
-        if self.max().bytes() < 10 && TypeId::of::<R>() == TypeId::of::<(usize, usize)>() {
-            log_info!("after insert of {new:?}, {self:#?}");
-        }
     }
 
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
-        let (s_i, s_rec) = self.search_from((0, R::default()), start.bytes(), Record::bytes);
-        let (e_i, e_rec) =
-            self.search_from((s_i, s_rec), start.bytes() + old_len.bytes(), Record::bytes);
+        let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
+        let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
         let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
         if s_i < e_i {
@@ -128,32 +121,34 @@ where
         };
 
         // Removing if its len is zero.
-        if let Some(s_i) = trans_i.checked_sub(1)
+        if let Some(prev_i) = trans_i.checked_sub(1)
+            && start == s_rec
             && new_len.is_zero_len()
         {
-            let prev = self.stored.get_mut(s_i).unwrap();
+            let prev = self.stored.get_mut(prev_i).unwrap();
 
-            self.last = (s_i, s_rec.sub(*prev));
+            self.last = (s_i, s_rec.add(len));
 
             *prev = prev.add(len);
-            self.stored.remove(s_i + 1);
+            self.stored.remove(prev_i + 1);
         }
 
         self.max = self.max.add(new_len).sub(old_len);
-
-        if self.max().bytes() < 10 && TypeId::of::<R>() == TypeId::of::<(usize, usize)>() {
-            log_info!(
-                "after transform from {start:?}, from {old_len:?} to \
-                 {new_len:?}\n{self:#?}\n{s_rec:?}"
-            );
-        }
     }
 
     pub fn append(&mut self, r: R) {
         self.transform(self.max, R::default(), r)
     }
 
-    pub fn extend(&mut self, other: Records<R>) {
+    pub fn extend(&mut self, mut other: Records<R>) {
+        let self_last = self.stored.last().unwrap();
+        let other_first = other.stored.last_mut().unwrap();
+
+        if self_last.bytes() + other_first.bytes() < LEN_PER_RECORD {
+            *other_first = self_last.add(*other_first);
+            self.stored.pop();
+        }
+
         self.stored.extend(other.stored);
         self.max = self.max.add(other.max);
     }
@@ -169,7 +164,7 @@ where
     }
 
     pub fn closest_to(&self, b: usize) -> R {
-        let (i, rec) = self.search_from((0, R::default()), b, Record::bytes);
+        let (i, rec) = self.search(b, Record::bytes);
         let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
         if rec.bytes().abs_diff(b) > len.add(rec).bytes().abs_diff(b) {
@@ -180,7 +175,7 @@ where
     }
 
     pub fn closest_to_by(&self, at: usize, by: impl Fn(&R) -> usize + Copy) -> R {
-        let (i, rec) = self.search_from((0, R::default()), at, by);
+        let (i, rec) = self.search(at, by);
         let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
         if by(&rec).abs_diff(at) > by(&len.add(rec)).abs_diff(at) {
@@ -190,25 +185,7 @@ where
         }
     }
 
-    fn search_from(
-        &self,
-        from: (usize, R),
-        at: usize,
-        by: impl Fn(&R) -> usize + Copy,
-    ) -> (usize, R) {
-        // let (n, mut prev) = {
-        //     [
-        //         (0, R::default()),
-        //         (self.stored.len(), self.max),
-        //         from,
-        //         self.last,
-        //     ]
-        //     .iter()
-        //     .min_by(|(_, lhs), (_, rhs)|
-        // by(lhs).abs_diff(at).cmp(&by(rhs).abs_diff(at)))
-        //     .cloned()
-        //     .unwrap()
-        // };
+    fn search(&self, at: usize, by: impl Fn(&R) -> usize + Copy) -> (usize, R) {
         let (n, mut prev) = self.last;
 
         let ret = if at >= by(&prev) {
@@ -229,6 +206,10 @@ where
         .unwrap_or((self.stored.len(), self.max));
 
         ret
+    }
+
+    pub fn len(&self) -> usize {
+        self.stored.len()
     }
 }
 
