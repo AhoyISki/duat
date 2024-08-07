@@ -140,11 +140,12 @@ where
     }
 
     pub fn extend(&mut self, mut other: Records<R>) {
-        let self_last = self.stored.last().unwrap();
-        let other_first = other.stored.last_mut().unwrap();
+        let self_e_len = self.stored.last().unwrap();
+        let other_s_len = other.stored.first_mut().unwrap();
 
-        if self_last.bytes() + other_first.bytes() < LEN_PER_RECORD {
-            *other_first = self_last.add(*other_first);
+        if self_e_len.bytes() + other_s_len.bytes() < LEN_PER_RECORD {
+            self.last = (self.stored.len(), self.max.add(*other_s_len));
+            *other_s_len = self_e_len.add(*other_s_len);
             self.stored.pop();
         }
 

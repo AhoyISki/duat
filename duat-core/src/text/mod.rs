@@ -39,7 +39,7 @@ pub struct Text {
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
-    records: Records<(usize, usize, usize)>,
+    pub records: Records<(usize, usize, usize)>,
 }
 
 impl Text {
@@ -64,7 +64,7 @@ impl Text {
             records: Records::with_max((
                 file.len(),
                 file.chars().count(),
-                file.split('\n').count(),
+                file.bytes().filter(|b| *b == b'\n').count(),
             )),
         }
     }
@@ -84,7 +84,7 @@ impl Text {
         };
 
         let new_len = {
-            let lines = edit.bytes().filter(|b| *b == b'\n').count() + self.is_empty() as usize;
+            let lines = edit.bytes().filter(|b| *b == b'\n').count();
             (edit.len(), edit.chars().count(), lines)
         };
 
@@ -95,7 +95,7 @@ impl Text {
                     .collect(),
             );
 
-            let lines = str.bytes().filter(|b| *b == b'\n').count() + self.is_empty() as usize;
+            let lines = str.bytes().filter(|b| *b == b'\n').count();
             (str.len(), str.chars().count(), lines)
         };
 
@@ -291,16 +291,7 @@ impl Text {
         );
         let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
 
-        if {
-            let (s0, s1) = self.strs_in_range(..b);
-            let b0 = s0.bytes().rev();
-            s1.bytes().rev().chain(b0).next().is_none_or(|b| b == b'\n')
-        } && at == l
-        {
-            return Point::from_coords(b, c, l);
-        };
-
-        let found = if at > l {
+        let found = if at >= l {
             let (s0, s1) = self.strs_in_range(b..);
 
             s0.char_indices()
