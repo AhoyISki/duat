@@ -258,18 +258,18 @@ pub macro ok {
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        text!(@push $builder, $part);
-        text!(@parse $builder, $($parts)*);
+        ok!(@push $builder, $part);
+        ok!(@parse $builder, $($parts)*);
     }},
     (@parse $builder:expr,) => {},
 
     ($builder:expr, $($parts:tt)+) => {{
         let builder: &mut Builder = &mut $builder;
-        text!(@parse builder, $($parts)+);
+        ok!(@parse builder, $($parts)+);
     }},
     ($($parts:tt)+) => {{
         let mut builder = Builder::new();
-        text!(builder, $($parts)+);
+        ok!(builder, [DefaultOk] $($parts)+);
         Ok(Some(builder.finish()))
     }},
 }
@@ -303,18 +303,18 @@ pub macro err {
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        text!(@push $builder, $part);
-        text!(@parse $builder, $($parts)*);
+        err!(@push $builder, $part);
+        err!(@parse $builder, $($parts)*);
     }},
     (@parse $builder:expr,) => {},
 
     ($builder:expr, $($parts:tt)+) => {{
         let builder: &mut Builder = &mut $builder;
-        text!(@parse builder, $($parts)+);
+        err!(@parse builder, $($parts)+);
     }},
     ($($parts:tt)+) => {{
         let mut builder = Builder::new();
-        text!(builder, $($parts)+);
+        err!(builder, [DefaultErr] $($parts)+);
         builder.finish()
     }},
 }
@@ -348,18 +348,18 @@ pub macro hint {
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        text!(@push $builder, $part);
-        text!(@parse $builder, $($parts)*);
+        hint!(@push $builder, $part);
+        hint!(@parse $builder, $($parts)*);
     }},
     (@parse $builder:expr,) => {},
 
     ($builder:expr, $($parts:tt)+) => {{
         let builder: &mut Builder = &mut $builder;
-        text!(@parse builder, $($parts)+);
+        hint!(@parse builder, $($parts)+);
     }},
     ($($parts:tt)+) => {{
         let mut builder = Builder::new();
-        text!(builder, $($parts)+);
+        hint!(builder, [DefaultHint] $($parts)+);
         builder.finish()
     }},
 }
