@@ -25,7 +25,7 @@ pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::Point,
-    search::{Pattern, Searcher},
+    search::{CharSet, Pattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -177,22 +177,6 @@ impl Text {
     pub fn slices(&self) -> (&'_ str, &'_ str) {
         let (s0, s1) = self.buf.as_slices();
         unsafe { (from_utf8_unchecked(s0), from_utf8_unchecked(s1)) }
-    }
-
-    pub fn strs_in_range(
-        &self,
-        range: impl RangeBounds<usize> + std::fmt::Debug,
-    ) -> (&'_ str, &'_ str) {
-        let (s0, s1) = self.buf.as_slices();
-        let (start, end) = get_ends(range, self.len_bytes());
-
-        unsafe {
-            let r0 = start.min(s0.len())..end.min(s0.len());
-            let r1 = start.saturating_sub(s0.len()).min(s1.len())
-                ..end.saturating_sub(s0.len()).min(s1.len());
-
-            (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
-        }
     }
 
     pub fn tags(&self) -> impl Iterator<Item = (usize, RawTag)> + '_ {
@@ -372,7 +356,7 @@ impl Text {
             .nth(1)
     }
 
-    pub fn char_at(&self, point: Point ) -> Option<char> {
+    pub fn char_at(&self, point: Point) -> Option<char> {
         let (s0, s1) = self.slices();
         if point.byte() < s0.len() {
             s0[point.byte()..].chars().next()
@@ -436,6 +420,22 @@ impl Text {
         let (s0, s1) = self.strs_in_range(..);
         s0.to_string() + s1
     }
+
+    fn strs_in_range(
+        &self,
+        range: impl RangeBounds<usize> + std::fmt::Debug,
+    ) -> (&'_ str, &'_ str) {
+        let (s0, s1) = self.buf.as_slices();
+        let (start, end) = get_ends(range, self.len_bytes());
+
+        unsafe {
+            let r0 = start.min(s0.len())..end.min(s0.len());
+            let r1 = start.saturating_sub(s0.len()).min(s1.len())
+                ..end.saturating_sub(s0.len()).min(s1.len());
+
+            (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
+        }
+    }
 }
 
 // Iterator methods.
@@ -461,9 +461,13 @@ impl Text {
         s0.bytes().chain(s1.bytes())
     }
 
-    pub fn iter_chars_at(&self, c: usize) -> impl Iterator<Item = char> + '_ {
-        let (s0, s1) = self.strs_in_range(..);
-        s0.chars().chain(s1.chars()).skip(c)
+    pub fn iter_chars_at(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
+        let (s0, s1) = self.strs_in_range(p.byte()..);
+        s0.chars().chain(s1.chars()).scan(p, |p, char| {
+            let old_p = *p;
+            *p = p.fwd(char);
+            Some((old_p, char))
+        })
     }
 }
 

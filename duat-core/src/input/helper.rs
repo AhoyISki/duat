@@ -9,7 +9,7 @@ use crate::{
     data::RwData,
     history::Change,
     position::Cursor,
-    text::{Pattern, Point, PrintCfg, Searcher, Text},
+    text::{Pattern, Point, PrintCfg, Searcher, Text, WordChars},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -401,12 +401,40 @@ where
         self.text.search_from_rev(self.cursor.caret(), pat)
     }
 
+    pub fn find_ends(&self, pat: impl Pattern<'a>) -> Option<(Point, Point)> {
+        self.text
+            .search_from(self.cursor.caret(), pat)
+            .next()
+            .unzip()
+            .0
+    }
+
+    pub fn find_ends_rev(&self, pat: impl Pattern<'a>) -> Option<(Point, Point)> {
+        self.text
+            .search_from_rev(self.cursor.caret(), pat)
+            .next()
+            .unzip()
+            .0
+    }
+
     pub fn char(&self) -> char {
         self.text.char_at(self.cursor.caret()).unwrap()
     }
 
     pub fn max_point(&self) -> Point {
         self.text.max_point()
+    }
+
+    pub fn cfg(&self) -> &PrintCfg {
+        self.cfg
+    }
+
+    pub fn w_chars(&self) -> &WordChars {
+        &self.cfg.word_chars
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.text.iter_chars_at(self.caret())
     }
 
     ////////// Public movement functions
@@ -472,11 +500,6 @@ where
     /// The `anchor` and `current` act as a range of text on the file.
     pub fn set_anchor(&mut self) {
         self.cursor.set_anchor()
-    }
-
-    /// Wether or not the anchor is set.
-    pub fn anchor_is_set(&mut self) -> bool {
-        self.cursor.anchor().is_some()
     }
 
     /// Switches the caret and anchor of the `TextCursor`.

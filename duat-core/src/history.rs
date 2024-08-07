@@ -55,8 +55,8 @@ impl Change {
                 std::ops::Bound::Unbounded => text.len_bytes(),
             };
 
-            let bytes: Box<_> = text.iter_bytes_at(start).take(end - start).collect();
-            std::str::from_boxed_utf8_unchecked(bytes).to_string()
+            let bytes: Vec<_> = text.iter_bytes_at(start).take(end - start).collect();
+            String::from_utf8_unchecked(bytes)
         };
 
         Change {

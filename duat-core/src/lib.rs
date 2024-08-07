@@ -1,4 +1,3 @@
-#![allow(internal_features)]
 #![feature(
     extract_if,
     iter_intersperse,
@@ -11,7 +10,6 @@
     type_alias_impl_trait,
     result_flattening,
     is_none_or,
-    unsized_fn_params
 )]
 #![doc = include_str!("../README.md")]
 

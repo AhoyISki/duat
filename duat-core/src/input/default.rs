@@ -160,7 +160,7 @@ fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: us
 
 fn move_each_and_select<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
     editor.move_each_cursor(|mover| {
-        if !mover.anchor_is_set() {
+        if mover.anchor().is_none() {
             mover.set_anchor();
         }
         match direction {

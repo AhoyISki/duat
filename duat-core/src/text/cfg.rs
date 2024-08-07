@@ -89,10 +89,11 @@ impl Default for ScrollOff {
 }
 
 #[derive(Debug, Clone)]
-pub struct WordChars(Vec<std::ops::RangeInclusive<char>>);
+pub struct WordChars(Vec<RangeInclusive<char>>);
 
 impl WordChars {
-    pub fn new(ranges: Vec<std::ops::RangeInclusive<char>>) -> Self {
+    /// Returns a new instance of [`WordChars`]
+    pub fn new(ranges: Vec<RangeInclusive<char>>) -> Self {
         let word_chars = WordChars(ranges);
 
         assert!(
@@ -105,6 +106,7 @@ impl WordChars {
         word_chars
     }
 
+    /// Checks if a `char` is a word char
     #[inline]
     pub fn contains(&self, char: char) -> bool {
         self.0.iter().any(|chars| chars.contains(&char))
