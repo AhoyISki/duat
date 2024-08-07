@@ -1,6 +1,6 @@
 use crate::{
-    input::{Cursors, InputMethod},
     cursor::Cursor,
+    input::{Cursors, InputMethod},
     text::{text, Text},
     ui::Ui,
     widgets::File,
@@ -46,8 +46,8 @@ where
 {
     let cursor = main_cursor(input);
     text!(
-        [Coord] { cursor.vcol() } [Separator] ":"
-        [Coord] { cursor.line() } [Separator] "/"
+        [Coord] { cursor.vcol() + 1 } [Separator] ":"
+        [Coord] { cursor.line() + 1 } [Separator] "/"
         [Coord] { file.len_lines() }
     )
 }
