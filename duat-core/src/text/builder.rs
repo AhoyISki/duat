@@ -27,7 +27,6 @@ use crate::{
 pub struct Builder {
     text: Text,
     last_form: Option<Tag>,
-    last_align: Option<Tag>,
     marker: Marker,
     buffer: String,
 }
@@ -44,10 +43,6 @@ impl Builder {
             self.text.tags.insert(len, tag, self.marker);
         }
 
-        if let Some(tag) = self.last_align {
-            self.text.tags.insert(len, tag, self.marker);
-        }
-
         self.text
     }
 
@@ -61,15 +56,13 @@ impl Builder {
     /// as its inverse at the end of the [`Text`].
     pub fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
         let len = self.text.len_bytes();
-        let last_inverted = match tag {
-            Tag::PushForm(id) => self.last_form.replace(Tag::PopForm(id)),
-            Tag::StartAlignLeft => self.last_align.replace(Tag::EndAlignLeft),
-            Tag::StartAlignCenter => self.last_align.replace(Tag::EndAlignCenter),
-            Tag::StartAlignRight => self.last_align.replace(Tag::EndAlignRight),
-            _ => None,
+        let last_form = if let Tag::PushForm(id) = tag {
+            self.last_form.replace(Tag::PopForm(id))
+        } else {
+            None
         };
 
-        if let Some(tag) = last_inverted {
+        if let Some(tag) = last_form {
             self.text.tags.insert(len, tag, self.marker);
         }
 
@@ -108,7 +101,6 @@ impl Default for Builder {
         Builder {
             text: Text::default(),
             last_form: None,
-            last_align: None,
             marker: Marker::base(),
             buffer: String::with_capacity(50),
         }
