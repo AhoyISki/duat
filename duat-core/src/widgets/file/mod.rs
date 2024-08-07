@@ -92,10 +92,10 @@ where
             for i in (500..text.len_bytes()).step_by(500) {
                 text.insert_tag(i - 490, Tag::PushForm(form1), marker);
                 text.insert_tag(i - 380, Tag::PopForm(form1), marker);
-                text.insert_tag(i - 310, Tag::PushForm(form2), marker);
-                text.insert_tag(i - 230, Tag::PushForm(form1), marker);
-                text.insert_tag(i - 160, Tag::PopForm(form2), marker);
-                text.insert_tag(i - 80, Tag::PopForm(form1), marker);
+                // text.insert_tag(i - 310, Tag::PushForm(form2), marker);
+                // text.insert_tag(i - 230, Tag::PushForm(form1), marker);
+                // text.insert_tag(i - 160, Tag::PopForm(form2), marker);
+                // text.insert_tag(i - 80, Tag::PopForm(form1), marker);
             }
 
             text

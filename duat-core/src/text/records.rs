@@ -102,36 +102,33 @@ where
 
         if s_i < e_i {
             self.stored
-                .drain((s_i + 1)..(e_i + 1).min(self.stored.len()));
+                .splice((s_i + 1)..=e_i.min(self.stored.len() - 1), []);
         }
 
         // Transformation of the beginning len.
-        let (len, trans_i) = if let Some(len) = self.stored.get_mut(s_i) {
+        self.last = if let Some(len) = self.stored.get_mut(s_i) {
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
+            let len = *len;
 
-            self.last = (s_i + 1, s_rec.add(*len));
-            (*len, s_i)
+            // Removing if its len is zero.
+            if let Some(prev_i) = s_i.checked_sub(1)
+                && start == s_rec
+                && new_len.is_zero_len()
+            {
+                let prev_len = self.stored.get_mut(prev_i).unwrap();
+                *prev_len = prev_len.add(len);
+                self.stored.remove(prev_i + 1);
+
+                (s_i, s_rec.add(len))
+            } else {
+                (s_i + 1, s_rec.add(len))
+            }
         } else {
             let last = self.stored.last_mut().unwrap();
             *last = last.add(new_len).sub(old_len);
 
-            let trans_i = self.stored.len() - 1;
-            self.last = (s_i, s_rec.add(new_len).sub(old_len));
-            (*self.stored.last_mut().unwrap(), trans_i)
+            (s_i, s_rec.add(new_len).sub(old_len))
         };
-
-        // Removing if its len is zero.
-        if let Some(prev_i) = trans_i.checked_sub(1)
-            && start == s_rec
-            && new_len.is_zero_len()
-        {
-            let prev = self.stored.get_mut(prev_i).unwrap();
-
-            self.last = (s_i, s_rec.add(len));
-
-            *prev = prev.add(len);
-            self.stored.remove(prev_i + 1);
-        }
 
         self.max = self.max.add(new_len).sub(old_len);
     }
@@ -186,12 +183,12 @@ where
     }
 
     fn search(&self, at: usize, by: impl Fn(&R) -> usize + Copy) -> (usize, R) {
-        let (n, mut prev) = self.last;
+        let (n, mut rec) = self.last;
 
-        let ret = if at >= by(&prev) {
+        let ret = if at >= by(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
-                prev = prev.add(*len);
-                (by(&prev) > at).then_some((n + i, prev.sub(*len)))
+                rec = rec.add(*len);
+                (by(&rec) > at).then_some((n + i, rec.sub(*len)))
             })
         } else {
             self.stored[..n]
@@ -199,8 +196,8 @@ where
                 .enumerate()
                 .rev()
                 .find_map(|(i, len)| {
-                    prev = prev.sub(*len);
-                    (by(&prev) <= at).then_some((i, prev))
+                    rec = rec.sub(*len);
+                    (by(&rec) <= at).then_some((i, rec))
                 })
         }
         .unwrap_or((self.stored.len(), self.max));

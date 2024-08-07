@@ -252,7 +252,7 @@ fn match_normal<U: Ui>(
             });
         }
 
-        ////////// Selection mvement that parses text.
+        ////////// Selection movement that parses text.
         key!(Char('W'), Mod::SHIFT) => {
             helper.move_each_cursor(|m| {
                 if m.anchor().is_none() {
