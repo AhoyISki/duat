@@ -38,26 +38,22 @@ impl Cursor {
 
     /// Internal horizontal movement function.
     pub fn move_hor(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        if by == 0 {
+        let (Some(last), false) = (text.last_point(), by == 0) else {
             return;
-        }
-
-        let target = self.caret.point.char().saturating_add_signed(by);
-        let point = if target >= text.len_chars() {
-            text.max_point()
-        } else {
-            text.point_at_char(target)
         };
+        let target = self.caret.point.char().saturating_add_signed(by);
 
-        self.caret = VPoint::new(point, text, area, cfg);
+        if target <= last.char() {
+            let point = text.point_at_char(target);
+            self.caret = VPoint::new(point, text, area, cfg);
+        }
     }
 
     /// Internal vertical movement function.
     pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        if by == 0 {
+        let (Some(last), false) = (text.last_point(), by == 0) else {
             return;
-        }
-
+        };
         let cfg = IterCfg::new(cfg).dont_wrap();
         let dcol = self.caret.dcol;
 
@@ -74,7 +70,7 @@ impl Cursor {
                 .find_map(|(Caret { x, len, .. }, (p, char))| {
                     (p.line() == target && (x + len > dcol || char == '\n')).then_some(p)
                 })
-                .unwrap_or(text.max_point())
+                .unwrap_or(last)
         };
 
         self.caret.point = point;
@@ -83,10 +79,9 @@ impl Cursor {
 
     /// Internal vertical movement function.
     pub fn move_ver_wrapped(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        if by == 0 {
+        let (Some(last), false) = (text.last_point(), by == 0) else {
             return;
-        }
-
+        };
         let cfg = IterCfg::new(cfg);
         let dwcol = self.caret.dwcol;
 
@@ -104,21 +99,15 @@ impl Cursor {
                 .find_map(|((Caret { x, len, .. }, wraps), (p, char))| {
                     (wraps == by && (x + len > dwcol || char == '\n')).then_some(p)
                 })
-                .unwrap_or(text.max_point())
+                .unwrap_or(last)
         } else {
-            let end = text
-                .points_after(self.caret.point)
-                .unwrap_or(text.max_points());
-
-            let mut went_through_end = end != text.max_points();
+            let end = text.points_after(self.caret.point).unwrap();
 
             area.rev_print_iter(text.rev_iter_at(end), cfg)
-                .filter_map(|(caret, item)| {
-                    went_through_end |= item.real == text.max_point();
+                .filter_map(|(Caret { x, wrap, .. }, item)| {
                     let old_wraps = wraps;
-                    wraps -= (caret.wrap || !went_through_end) as isize;
-                    went_through_end = true;
-                    Some((caret.x, old_wraps, caret.wrap)).zip(item.as_real_char())
+                    wraps -= wrap as isize;
+                    Some((x, old_wraps, wrap)).zip(item.as_real_char())
                 })
                 .find_map(|((x, wraps, wrap), (p, _))| {
                     (wraps == by && (dwcol >= x || wrap)).then_some(p)
@@ -284,7 +273,7 @@ fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> usize {
             .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
             .unwrap_or(0)
     } else {
-        area.rev_print_iter(text.rev_iter_at(text.max_point()), cfg)
+        area.rev_print_iter(text.rev_iter_at(text.len_point()), cfg)
             .find_map(|(caret, item)| item.part.is_char().then_some(caret.x + caret.len))
             .unwrap_or(0)
     }

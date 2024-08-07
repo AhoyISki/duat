@@ -242,7 +242,7 @@ pub mod state {
 /// The prelude of Duat, imports most of what a configuration needs
 pub mod prelude {
     pub use duat_core::{
-        self, data, position,
+        self, data,
         text::{err, hint, ok, text, Builder, Text},
         ui::Area,
         DuatError, Error,

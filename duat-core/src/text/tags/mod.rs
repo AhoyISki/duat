@@ -383,7 +383,7 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
-                let max_point = self.texts.get(&id).unwrap().max_point();
+                let max_point = self.texts.get(&id).unwrap().len_point();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
             _ => p,

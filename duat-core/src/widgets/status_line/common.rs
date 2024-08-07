@@ -1,6 +1,6 @@
 use crate::{
     input::{Cursors, InputMethod},
-    position::Cursor,
+    cursor::Cursor,
     text::{text, Text},
     ui::Ui,
     widgets::File,

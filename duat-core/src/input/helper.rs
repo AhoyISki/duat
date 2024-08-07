@@ -8,7 +8,7 @@ use super::Cursors;
 use crate::{
     data::RwData,
     history::Change,
-    position::Cursor,
+    cursor::Cursor,
     text::{Pattern, Point, PrintCfg, Searcher, Text, WordChars},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
@@ -422,7 +422,7 @@ where
     }
 
     pub fn max_point(&self) -> Point {
-        self.text.max_point()
+        self.text.len_point()
     }
 
     pub fn cfg(&self) -> &PrintCfg {

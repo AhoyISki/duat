@@ -220,7 +220,7 @@ where
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
-        self.text = text!({ Ghost(text!({ &self.prompt })) });
+        self.text = text!({ Ghost(text!({ &self.prompt })) } '\n');
         self.mode.read().read().on_focus(&mut self.text);
     }
 

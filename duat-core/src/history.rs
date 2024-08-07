@@ -22,7 +22,7 @@ use std::{
 };
 
 use crate::{
-    input::Cursors, position::Cursor, text::{PrintCfg, Text}, ui::Area
+    input::Cursors, cursor::Cursor, text::{PrintCfg, Text}, ui::Area
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or

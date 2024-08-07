@@ -110,7 +110,9 @@ where
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
             let len = *len;
 
-            // Removing if its len is zero.
+            // Removing if new_len has size 0 (no tags or skips).
+            // If there are no tags or skips, no skip will start
+            // exactly on this record, making it invalid.
             if let Some(prev_i) = s_i.checked_sub(1)
                 && start == s_rec
                 && new_len.is_zero_len()

@@ -9,7 +9,7 @@
     step_trait,
     type_alias_impl_trait,
     result_flattening,
-    is_none_or,
+    is_none_or
 )]
 #![doc = include_str!("../README.md")]
 
@@ -29,7 +29,7 @@ pub mod history;
 pub mod hooks;
 pub mod input;
 pub mod palette;
-pub mod position;
+pub mod cursor;
 pub mod session;
 pub mod text;
 pub mod ui;

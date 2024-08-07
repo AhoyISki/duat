@@ -399,9 +399,9 @@ fn select_and_move_each_wrapped<U: Ui>(
     });
 }
 
-fn end_of_cat_and_space<'a>(
+fn end_of_cat_and_space(
     mut chars: impl Iterator<Item = (Point, char)>,
-    cat: CharCategory<'a>,
+    cat: CharCategory<'_>,
     mut point: Point,
 ) -> Point {
     let mut on_cat = true;
@@ -451,11 +451,11 @@ impl CharSet for CharCategory<'_> {
 
 impl<'a> PartialEq for CharCategory<'a> {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
+        matches!(
+            (self, other),
             (CharCategory::Word(_), CharCategory::Word(_))
-            | (CharCategory::Space, CharCategory::Space)
-            | (CharCategory::Other(_), CharCategory::Other(_)) => true,
-            _ => false,
-        }
+                | (CharCategory::Space, CharCategory::Space)
+                | (CharCategory::Other(_), CharCategory::Other(_))
+        )
     }
 }

@@ -21,7 +21,7 @@ use key::Event;
 pub use self::{commander::Commander, default::KeyMap, helper::EditHelper};
 use crate::{
     data::{Context, RwData},
-    position::Cursor,
+    cursor::Cursor,
     ui::Ui,
     widgets::ActiveWidget,
 };

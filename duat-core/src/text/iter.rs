@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::position::Cursor;
+use crate::cursor::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {
@@ -79,7 +79,7 @@ pub struct Iter<'a> {
 impl<'a> Iter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
-        let point = real.min(text.max_point());
+        let point = real.min(text.len_point());
 
         Self {
             text,
@@ -255,7 +255,7 @@ pub struct RevIter<'a> {
 impl<'a> RevIter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
-        let point = real.min(text.max_point());
+        let point = real.min(text.len_point());
 
         let ghost = ghost.map(|ghost| {
             let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
@@ -314,7 +314,7 @@ impl<'a> RevIter<'a> {
                         *total,
                     )
                 } else {
-                    let this = text.max_point();
+                    let this = text.len_point();
                     let total = self.text.tags.ghosts_total_at(b);
                     (this, total.unwrap())
                 };

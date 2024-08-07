@@ -104,7 +104,7 @@ impl Area {
     fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
         let mut info = self.print_info.borrow_mut();
         let points = text.ghost_max_points_at(point.byte());
-        let after = text.points_after(points).unwrap_or(text.max_points());
+        let after = text.points_after(points).unwrap_or(text.len_points());
 
         let mut count = 0;
 
@@ -138,7 +138,7 @@ impl Area {
 
         let (max_shift, start, end) = {
             let points = text.ghost_max_points_at(point.byte());
-            let after = text.points_after(points).unwrap_or(text.max_points());
+            let after = text.points_after(points).unwrap_or(text.len_points());
 
             let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg);
 

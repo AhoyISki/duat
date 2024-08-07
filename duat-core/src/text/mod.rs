@@ -237,7 +237,7 @@ impl Text {
 
         found
             .map(|(b, c, l)| Point::from_coords(b, c, l))
-            .unwrap_or(self.max_point())
+            .unwrap_or(self.len_point())
     }
 
     #[inline(always)]
@@ -279,7 +279,7 @@ impl Text {
 
         found
             .map(|(b, c, l)| Point::from_coords(b, c, l))
-            .unwrap_or(self.max_point())
+            .unwrap_or(self.len_point())
     }
 
     #[inline(always)]
@@ -293,11 +293,8 @@ impl Text {
 
         if {
             let (s0, s1) = self.strs_in_range(..b);
-            s1.bytes()
-                .rev()
-                .chain(s0.bytes().rev())
-                .next()
-                .is_none_or(|b| b == b'\n')
+            let b0 = s0.bytes().rev();
+            s1.bytes().rev().chain(b0).next().is_none_or(|b| b == b'\n')
         } && at == l
         {
             return Point::from_coords(b, c, l);
@@ -332,7 +329,7 @@ impl Text {
 
         found
             .map(|(b, c, l)| Point::from_coords(b, c, l))
-            .unwrap_or(self.max_point())
+            .unwrap_or(self.len_point())
     }
 
     #[inline(always)]
@@ -353,6 +350,7 @@ impl Text {
     pub fn points_after(&self, tp: impl TwoPoints) -> Option<(Point, Option<Point>)> {
         self.iter_at(tp)
             .filter_map(|item| item.part.as_char().map(|_| item.points()))
+            .chain([self.len_points()])
             .nth(1)
     }
 
@@ -377,13 +375,22 @@ impl Text {
         self.records.max().2
     }
 
-    pub fn max_point(&self) -> Point {
+    pub fn len_point(&self) -> Point {
         let (b, c, l) = self.records.max();
-        Point::from_coords(b, c, l.saturating_sub(1))
+        Point::from_coords(b, c, l)
     }
 
-    pub fn max_points(&self) -> (Point, Option<Point>) {
-        self.ghost_max_points_at(self.max_point().byte())
+    pub fn len_points(&self) -> (Point, Option<Point>) {
+        self.ghost_max_points_at(self.len_point().byte())
+    }
+
+    pub fn last_point(&self) -> Option<Point> {
+        let (s0, s1) = self.strs_in_range(..);
+        s1.chars()
+            .rev()
+            .chain(s0.chars().rev())
+            .next()
+            .map(|char| self.len_point().rev(char))
     }
 
     /// The visual start of the line
@@ -449,7 +456,7 @@ impl Text {
     }
 
     pub fn rev_iter(&self) -> RevIter {
-        RevIter::new_at(self, self.max_point())
+        RevIter::new_at(self, self.len_point())
     }
 
     pub fn rev_iter_at(&self, p: impl TwoPoints) -> RevIter<'_> {
