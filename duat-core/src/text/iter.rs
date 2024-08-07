@@ -10,7 +10,7 @@ use super::{
     tags::{self, RawTag},
     Part, Point, Text,
 };
-use crate::{cursor::Cursor};
+use crate::cursor::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Item {

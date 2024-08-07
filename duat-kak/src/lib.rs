@@ -1,6 +1,6 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait)]
 
-use std::fmt::Display;
+use std::{fmt::Display, iter::Peekable};
 
 use duat_core::{
     data::{Context, RwData},
@@ -207,7 +207,7 @@ fn match_normal<U: Ui>(
     context: Context<U>,
 ) {
     match key {
-        ////////// Movement keys that retain or create selections.
+        ////////// Keys that extend the selection.
         key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
         key!(Char('J'), Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
         key!(Char('K'), Mod::SHIFT) => select_and_move_each(helper, Side::Top, 1),
@@ -218,7 +218,7 @@ fn match_normal<U: Ui>(
         key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
         key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
 
-        ////////// Movement keys that get rid of selections.
+        ////////// Keys that move the selection.
         key!(Char('h')) => move_each(helper, Side::Left, 1),
         key!(Char('j')) => move_each(helper, Side::Bottom, 1),
         key!(Char('k')) => move_each(helper, Side::Top, 1),
@@ -229,7 +229,7 @@ fn match_normal<U: Ui>(
         key!(Up) => move_each_wrapped(helper, Side::Top, 1),
         key!(Right) => move_each_wrapped(helper, Side::Right, 1),
 
-        ////////// Movement that parses text.
+        ////////// Keys that parse and move the selection.
         key!(Char('w')) => {
             helper.move_each_cursor(|m| {
                 let mut chars = m
@@ -238,12 +238,15 @@ fn match_normal<U: Ui>(
                     .skip_while(|(_, (_, c1))| *c1 == '\n');
 
                 if let Some(((p0, c0), (p1, c1))) = chars.next() {
-                    let cat0 = CharCategory::of(c0, m.w_chars());
-                    let cat1 = CharCategory::of(c1, m.w_chars());
+                    let cat0 = CharCat::of(c0, m.w_chars());
+                    let cat1 = CharCat::of(c1, m.w_chars());
                     let p0 = if cat0 == cat1 { p0 } else { p1 };
 
-                    let chars = chars.map(|(_, second)| second);
-                    let p1 = end_of_cat_and_space(chars, cat1, p1);
+                    let (p1, ..) = {
+                        let mut chars = chars.map(|(_, second)| second).peekable();
+                        let (p1, c1, ..) = end_of_cat(&mut chars, cat1, (p1, c1));
+                        end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
+                    };
 
                     m.move_to(p0);
                     m.set_anchor();
@@ -252,7 +255,40 @@ fn match_normal<U: Ui>(
             });
         }
 
-        ////////// Selection movement that parses text.
+        key!(Char('e')) => {
+            helper.move_each_cursor(|m| {
+                let mut chars = m
+                    .iter()
+                    .map_windows(|[first, second]| (*first, *second))
+                    .skip_while(|(_, (_, c1))| *c1 == '\n')
+                    .peekable();
+
+                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
+                    let cat0 = CharCat::of(c0, m.w_chars());
+                    let cat1 = CharCat::of(c1, m.w_chars());
+                    let p0 = if cat0 == cat1 { p0 } else { p1 };
+
+                    let p1 = {
+                        let mut chars = chars.map(|(_, second)| second).peekable();
+                        let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
+                        match miss {
+                            Some(char) => {
+                                let cat = CharCat::of(char, m.w_chars());
+                                let (p1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
+                                p1
+                            }
+                            None => p1,
+                        }
+                    };
+
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                };
+            });
+        }
+
+        ////////// Keys that parse and extend the selection.
         key!(Char('W'), Mod::SHIFT) => {
             helper.move_each_cursor(|m| {
                 if m.anchor().is_none() {
@@ -260,10 +296,14 @@ fn match_normal<U: Ui>(
                 }
                 let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
 
-                if let Some((point, char)) = chars.next() {
-                    let cat = CharCategory::of(char, m.w_chars());
-                    let point = end_of_cat_and_space(chars, cat, point);
-                    m.move_to(point);
+                if let Some((p, char)) = chars.next() {
+                    let cat = CharCat::of(char, m.w_chars());
+                    let (p, ..) = {
+                        let mut chars = chars.peekable();
+                        end_of_cat(&mut chars, cat, (p, char))
+                    };
+
+                    m.move_to(p);
                 };
             });
         }
@@ -399,35 +439,34 @@ fn select_and_move_each_wrapped<U: Ui>(
     });
 }
 
-fn end_of_cat_and_space(
-    mut chars: impl Iterator<Item = (Point, char)>,
-    cat: CharCategory<'_>,
-    mut point: Point,
-) -> Point {
-    let mut on_cat = true;
-    while let Some((p, char)) = chars.next()
+fn end_of_cat(
+    chars: &mut Peekable<impl Iterator<Item = (Point, char)>>,
+    char_set: impl CharSet,
+    mut last: (Point, char),
+) -> (Point, char, Option<char>) {
+    let mut mismatch = None;
+    let mut entry = chars.peek();
+    while let Some(&(p, char)) = entry.take()
         && char != '\n'
     {
-        if cat.matches(char) && on_cat {
-            point = p;
-        } else if [' ', '\t'].matches(char) {
-            point = p;
-            on_cat = false;
+        if char_set.matches(char) {
+            chars.next();
+            entry = chars.peek();
+            last = (p, char);
         } else {
-            break;
+            mismatch = Some(char)
         }
     }
-
-    point
+    (last.0, last.1, mismatch)
 }
 
-enum CharCategory<'a> {
+enum CharCat<'a> {
     Word(&'a WordChars),
     Space,
     Other(&'a WordChars),
 }
 
-impl<'a> CharCategory<'a> {
+impl<'a> CharCat<'a> {
     fn of(char: char, w_chars: &'a WordChars) -> Self {
         if w_chars.matches(char) {
             Self::Word(w_chars)
@@ -439,23 +478,23 @@ impl<'a> CharCategory<'a> {
     }
 }
 
-impl CharSet for CharCategory<'_> {
+impl CharSet for CharCat<'_> {
     fn matches(&self, char: char) -> bool {
         match self {
-            CharCategory::Word(w_chars) => w_chars.matches(char),
-            CharCategory::Space => [' ', '\t', '\n'].matches(char),
-            CharCategory::Other(w_chars) => w_chars.or([' ', '\t', '\n']).not().matches(char),
+            CharCat::Word(w_chars) => w_chars.matches(char),
+            CharCat::Space => [' ', '\t', '\n'].matches(char),
+            CharCat::Other(w_chars) => w_chars.or([' ', '\t', '\n']).not().matches(char),
         }
     }
 }
 
-impl<'a> PartialEq for CharCategory<'a> {
+impl<'a> PartialEq for CharCat<'a> {
     fn eq(&self, other: &Self) -> bool {
         matches!(
             (self, other),
-            (CharCategory::Word(_), CharCategory::Word(_))
-                | (CharCategory::Space, CharCategory::Space)
-                | (CharCategory::Other(_), CharCategory::Other(_))
+            (CharCat::Word(_), CharCat::Word(_))
+                | (CharCat::Space, CharCat::Space)
+                | (CharCat::Other(_), CharCat::Other(_))
         )
     }
 }
