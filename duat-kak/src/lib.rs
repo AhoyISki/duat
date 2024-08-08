@@ -19,7 +19,7 @@ const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
 #[derive(Clone)]
 pub struct KeyMap {
-    cursors: Cursors,
+    cursors: Option<Cursors>,
     mode: Mode,
     last_file: String,
 }
@@ -28,7 +28,7 @@ impl KeyMap {
     pub fn new() -> Self {
         palette::set_weak_form("Mode", Form::new().green());
         KeyMap {
-            cursors: Cursors::new_inclusive(),
+            cursors: Some(Cursors::new_inclusive()),
             mode: Mode::Normal,
             last_file: String::from(""),
         }
@@ -40,6 +40,300 @@ impl KeyMap {
 
     pub fn mode_fmt(&self) -> Text {
         text!([Mode] { self.mode.to_string() })
+    }
+
+    /// Commands that are available in `Mode::Insert`.
+    fn match_insert<U: Ui>(&mut self, mut helper: EditHelper<File, U>, key: Event) {
+        match key {
+            key!(Char(char)) => {
+                helper.edit_on_each_cursor(|editor| editor.insert(char));
+                helper.move_each_cursor(|m| m.move_hor(1));
+            }
+            key!(Char(char), Mod::SHIFT) => {
+                helper.edit_on_each_cursor(|editor| editor.insert(char));
+                helper.move_each_cursor(|m| m.move_hor(1));
+            }
+            key!(Enter) => {
+                helper.edit_on_each_cursor(|editor| editor.insert('\n'));
+                helper.move_each_cursor(|m| m.move_hor(1));
+            }
+            key!(Backspace) => {
+                let mut anchors = Vec::with_capacity(helper.len_cursors());
+                helper.move_each_cursor(|m| {
+                    anchors.push({
+                        let c = m.caret();
+                        m.unset_anchor().map(|a| match a > c {
+                            true => a.char() as isize - c.char() as isize,
+                            false => a.char() as isize - (c.char() as isize - 1),
+                        })
+                    });
+                    m.move_hor(-1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.move_each_cursor(|m| {
+                    if let Some(Some(diff)) = anchors.next() {
+                        m.set_anchor();
+                        m.move_hor(diff);
+                        m.swap_ends()
+                    }
+                });
+            }
+            key!(Delete) => {
+                let mut anchors = Vec::with_capacity(helper.len_cursors());
+                helper.move_each_cursor(|m| {
+                    let caret = m.caret();
+                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    m.set_anchor();
+                    m.move_hor(1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                helper.edit_on_each_cursor(|editor| {
+                    editor.replace("");
+                });
+                helper.move_each_cursor(|m| {
+                    if let Some(Some((anchor, _))) = anchors.next() {
+                        m.set_anchor();
+                        m.move_to(anchor);
+                        m.swap_ends()
+                    } else {
+                        m.unset_anchor();
+                    }
+                });
+            }
+            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
+            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
+            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
+            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
+
+            key!(Left) => move_each_wrapped(helper, Side::Left, 1),
+            key!(Right) => move_each_wrapped(helper, Side::Right, 1),
+            key!(Up) => move_each_wrapped(helper, Side::Top, 1),
+            key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
+
+            key!(Esc) => {
+                helper.new_moment();
+                self.mode = Mode::Normal;
+                hooks::trigger::<OnModeChange>((Mode::Insert, Mode::Normal))
+            }
+            _ => {}
+        }
+    }
+
+    /// Commands that are available in `Mode::Normal`.
+    fn match_normal<U: Ui>(
+        &mut self,
+        mut helper: EditHelper<File, U>,
+        key: Event,
+        context: Context<U>,
+    ) {
+        match key {
+            ////////// hjkl and arrow selection keys.
+            key!(Char('h')) => move_each(helper, Side::Left, 1),
+            key!(Char('j')) => move_each(helper, Side::Bottom, 1),
+            key!(Char('k')) => move_each(helper, Side::Top, 1),
+            key!(Char('l')) => move_each(helper, Side::Right, 1),
+            key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
+            key!(Char('J'), Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
+            key!(Char('K'), Mod::SHIFT) => select_and_move_each(helper, Side::Top, 1),
+            key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
+
+            key!(Left) => move_each_wrapped(helper, Side::Left, 1),
+            key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
+            key!(Up) => move_each_wrapped(helper, Side::Top, 1),
+            key!(Right) => move_each_wrapped(helper, Side::Right, 1),
+            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
+            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
+            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
+            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
+
+            ////////// Word and WORD selection keys.
+            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+                let mut chars = peekable_no_nl_windows(m.iter());
+
+                if let Some(((p0, c0), (p1, c1))) = chars.next() {
+                    let (p0, cat) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
+                    let (p1, ..) = {
+                        let mut chars = chars.map(|(_, second)| second).peekable();
+                        let (p1, c1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
+                        end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
+                    };
+
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                };
+            }),
+            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+                let mut chars = peekable_no_nl_windows(m.iter());
+
+                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
+                    let (p0, _) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
+                    let p1 = {
+                        let mut chars = chars.map(|(_, second)| second).peekable();
+                        let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
+                        miss.map(|char| {
+                            end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p1, c1)).0
+                        })
+                        .unwrap_or(p1)
+                    };
+
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                };
+            }),
+            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+                let mut chars = {
+                    let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
+                    peekable_no_nl_windows(iter)
+                };
+
+                if let Some(&((p1, c1), (p0, c0))) = chars.peek() {
+                    let (p1, _) = word_point_and_cat(c1, c0, p1, p0, m.w_chars(), mf);
+                    let p0 = {
+                        let mut chars = chars.map(|(_, first)| first).peekable();
+                        let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
+                        miss.map(|char| {
+                            end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p0, c0)).0
+                        })
+                        .unwrap_or(p0)
+                    };
+
+                    m.move_to(p1);
+                    m.set_anchor();
+                    m.move_to(p0);
+                };
+            }),
+
+            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor();
+                }
+                let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
+
+                if let Some((p, char)) = chars.next() {
+                    let cat = CharCat::of(char, m.w_chars(), mf);
+                    let (p, ..) = {
+                        let mut chars = chars.peekable();
+                        let (p, char, _) = end_of_cat(&mut chars, cat, (p, char));
+                        end_of_cat(&mut chars, [' ', '\t'], (p, char))
+                    };
+
+                    m.move_to(p);
+                };
+            }),
+            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor();
+                }
+                let mut chars = m
+                    .iter()
+                    .skip(1)
+                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
+
+                if let Some((point, char)) = chars.next() {
+                    let cat = CharCat::of(char, m.w_chars(), mf);
+                    let (point, ..) = {
+                        let mut chars = chars.peekable();
+                        end_of_cat(&mut chars, cat, (point, char))
+                    };
+
+                    m.move_to(point);
+                };
+            }),
+            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor();
+                }
+                let mut chars = m
+                    .iter_rev()
+                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
+
+                if let Some((point, char)) = chars.next() {
+                    let cat = CharCat::of(char, m.w_chars(), mf);
+                    let (point, ..) = {
+                        let mut chars = chars.peekable();
+                        end_of_cat(&mut chars, cat, (point, char))
+                    };
+
+                    m.move_to(point);
+                };
+            }),
+
+            ////////// Text modifying keys.
+            key!(Char('i')) => {
+                helper.move_each_cursor(|m| m.swap_ends());
+                self.mode = Mode::Insert;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
+            }
+            key!(Char('a')) => {
+                helper.move_each_cursor(|m| m.set_caret_on_end());
+                self.mode = Mode::Insert;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
+            }
+            key!(Char('c')) => {
+                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.move_each_cursor(|m| m.unset_anchor());
+                self.mode = Mode::Insert;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
+            }
+            key!(Char('d')) => {
+                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.move_each_cursor(|m| m.unset_anchor());
+                self.mode = Mode::Insert;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
+            }
+
+            ////////// Other mode changing keys.
+            key!(Char(':')) => {
+                if context.commands.run("switch-to CommandLine<Ui>").is_ok() {
+                    context
+                        .commands
+                        .run("set-cmd-mode RunCommands<Ui>")
+                        .unwrap();
+                    self.mode = Mode::Command;
+                    hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Command));
+                }
+            }
+            key!(Char('g')) => {
+                self.mode = Mode::GoTo;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::GoTo));
+            }
+
+            ////////// For now
+            key!(Char('q')) => panic!("Quit on purpose"),
+
+            ////////// History manipulation.
+            key!(Char('u')) => helper.undo(),
+            key!(Char('U'), Mod::SHIFT) => helper.redo(),
+            _ => {}
+        }
+    }
+
+    /// Commands that are available in `Mode::GoTo`.
+    fn match_goto<U: Ui>(
+        &mut self,
+        mut helper: EditHelper<File, U>,
+        key: Event,
+        context: Context<U>,
+    ) {
+        match key {
+            key!(Char('a')) if context.commands.buffer(&self.last_file).is_ok() => {
+                self.last_file = context.cur_file().unwrap().name();
+            }
+            key!(Char('a')) => {}
+            key!(Char('j')) => helper.move_main(|m| m.move_ver(isize::MAX)),
+            key!(Char('k')) => helper.move_main(|m| m.move_to_coords(0, 0)),
+            key!(Char('n')) if context.commands.next_file().is_ok() => {
+                self.last_file = context.cur_file().unwrap().name()
+            }
+            key!(Char('n')) => {}
+            key!(Char('N')) if context.commands.prev_file().is_ok() => {
+                self.last_file = context.cur_file().unwrap().name()
+            }
+            _ => {}
+        }
     }
 }
 
@@ -62,14 +356,14 @@ where
         area: &U::Area,
         context: Context<U>,
     ) {
-        let cursors = &mut self.cursors;
-        let helper = EditHelper::new(widget, area, cursors);
+        let mut cursors = self.cursors.take().unwrap();
+        let helper = EditHelper::new(widget, area, &mut cursors);
 
         match self.mode {
-            Mode::Insert => match_insert(helper, key, &mut self.mode),
-            Mode::Normal => match_normal(helper, key, &mut self.mode, context),
+            Mode::Insert => self.match_insert(helper, key),
+            Mode::Normal => self.match_normal(helper, key, context),
             Mode::GoTo => {
-                match_goto(helper, key, &mut self.last_file, context);
+                self.match_goto(helper, key, context);
                 self.mode = Mode::Normal;
                 hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
             }
@@ -78,10 +372,12 @@ where
                 unreachable!("The editor is not supposed to be focused if this is the current mode")
             }
         }
+
+        self.cursors = Some(cursors);
     }
 
     fn cursors(&self) -> Option<&Cursors> {
-        Some(&self.cursors)
+        self.cursors.as_ref()
     }
 
     fn on_focus(&mut self, _area: &U::Area)
@@ -90,273 +386,6 @@ where
     {
         self.mode = Mode::Normal;
         hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
-    }
-}
-
-/// Commands that are available in `Mode::Insert`.
-fn match_insert<U: Ui>(mut helper: EditHelper<File, U>, key: Event, mode: &mut Mode) {
-    match key {
-        key!(Char(char)) => {
-            helper.edit_on_each_cursor(|editor| editor.insert(char));
-            helper.move_each_cursor(|m| m.move_hor(1));
-        }
-        key!(Char(char), Mod::SHIFT) => {
-            helper.edit_on_each_cursor(|editor| editor.insert(char));
-            helper.move_each_cursor(|m| m.move_hor(1));
-        }
-        key!(Enter) => {
-            helper.edit_on_each_cursor(|editor| editor.insert('\n'));
-            helper.move_each_cursor(|m| m.move_hor(1));
-        }
-        key!(Backspace) => {
-            let mut anchors = Vec::with_capacity(helper.len_cursors());
-            helper.move_each_cursor(|m| {
-                anchors.push({
-                    let c = m.caret();
-                    m.unset_anchor().map(|a| match a > c {
-                        true => a.char() as isize - c.char() as isize,
-                        false => a.char() as isize - (c.char() as isize - 1),
-                    })
-                });
-                m.move_hor(-1);
-            });
-            let mut anchors = anchors.into_iter().cycle();
-            helper.edit_on_each_cursor(|editor| editor.replace(""));
-            helper.move_each_cursor(|m| {
-                if let Some(Some(diff)) = anchors.next() {
-                    m.set_anchor();
-                    m.move_hor(diff);
-                    m.swap_ends()
-                }
-            });
-        }
-        key!(Delete) => {
-            let mut anchors = Vec::with_capacity(helper.len_cursors());
-            helper.move_each_cursor(|m| {
-                let caret = m.caret();
-                anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                m.set_anchor();
-                m.move_hor(1);
-            });
-            let mut anchors = anchors.into_iter().cycle();
-            helper.edit_on_each_cursor(|editor| {
-                editor.replace("");
-            });
-            helper.move_each_cursor(|m| {
-                if let Some(Some((anchor, _))) = anchors.next() {
-                    m.set_anchor();
-                    m.move_to(anchor);
-                    m.swap_ends()
-                } else {
-                    m.unset_anchor();
-                }
-            });
-        }
-        key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
-        key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
-        key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
-        key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
-
-        key!(Left) => move_each_wrapped(helper, Side::Left, 1),
-        key!(Right) => move_each_wrapped(helper, Side::Right, 1),
-        key!(Up) => move_each_wrapped(helper, Side::Top, 1),
-        key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
-
-        key!(Esc) => {
-            helper.new_moment();
-            *mode = Mode::Normal;
-            hooks::trigger::<OnModeChange>((Mode::Insert, Mode::Normal))
-        }
-        _ => {}
-    }
-}
-
-/// Commands that are available in `Mode::Normal`.
-fn match_normal<U: Ui>(
-    mut helper: EditHelper<File, U>,
-    key: Event,
-    mode: &mut Mode,
-    context: Context<U>,
-) {
-    match key {
-        ////////// Keys that extend the selection.
-        key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
-        key!(Char('J'), Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
-        key!(Char('K'), Mod::SHIFT) => select_and_move_each(helper, Side::Top, 1),
-        key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
-
-        key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
-        key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
-        key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
-        key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
-
-        ////////// Keys that move the selection.
-        key!(Char('h')) => move_each(helper, Side::Left, 1),
-        key!(Char('j')) => move_each(helper, Side::Bottom, 1),
-        key!(Char('k')) => move_each(helper, Side::Top, 1),
-        key!(Char('l')) => move_each(helper, Side::Right, 1),
-
-        key!(Left) => move_each_wrapped(helper, Side::Left, 1),
-        key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
-        key!(Up) => move_each_wrapped(helper, Side::Top, 1),
-        key!(Right) => move_each_wrapped(helper, Side::Right, 1),
-
-        ////////// Keys that parse and move the selection.
-        key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
-            let mut chars = peekable_no_nl_windows(m.iter());
-
-            if let Some(((p0, c0), (p1, c1))) = chars.next() {
-                let (p0, cat) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
-                let (p1, ..) = {
-                    let mut chars = chars.map(|(_, second)| second).peekable();
-                    let (p1, c1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
-                    end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
-                };
-
-                m.move_to(p0);
-                m.set_anchor();
-                m.move_to(p1);
-            };
-        }),
-        key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
-            let mut chars = peekable_no_nl_windows(m.iter());
-
-            if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
-                let (p0, _) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
-                let p1 = {
-                    let mut chars = chars.map(|(_, second)| second).peekable();
-                    let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
-                    miss.map(|char| {
-                        end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p1, c1)).0
-                    })
-                    .unwrap_or(p1)
-                };
-
-                m.move_to(p0);
-                m.set_anchor();
-                m.move_to(p1);
-            };
-        }),
-        key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
-            let mut chars = {
-                let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
-                peekable_no_nl_windows(iter)
-            };
-
-            if let Some(&((p1, c1), (p0, c0))) = chars.peek() {
-                let (p1, _) = word_point_and_cat(c1, c0, p1, p0, m.w_chars(), mf);
-                let p0 = {
-                    let mut chars = chars.map(|(_, first)| first).peekable();
-                    let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
-                    miss.map(|char| {
-                        end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p0, c0)).0
-                    })
-                    .unwrap_or(p0)
-                };
-
-                m.move_to(p1);
-                m.set_anchor();
-                m.move_to(p0);
-            };
-        }),
-
-        ////////// Keys that parse and extend the selection.
-        key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
-            if m.anchor().is_none() {
-                m.set_anchor();
-            }
-            let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
-
-            if let Some((p, char)) = chars.next() {
-                let cat = CharCat::of(char, m.w_chars(), mf);
-                let (p, ..) = {
-                    let mut chars = chars.peekable();
-                    let (p, char, _) = end_of_cat(&mut chars, cat, (p, char));
-                    end_of_cat(&mut chars, [' ', '\t'], (p, char))
-                };
-
-                m.move_to(p);
-            };
-        }),
-        key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
-            if m.anchor().is_none() {
-                m.set_anchor();
-            }
-            let mut chars = m
-                .iter()
-                .skip(1)
-                .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
-
-            if let Some((point, char)) = chars.next() {
-                let cat = CharCat::of(char, m.w_chars(), mf);
-                let (point, ..) = {
-                    let mut chars = chars.peekable();
-                    end_of_cat(&mut chars, cat, (point, char))
-                };
-
-                m.move_to(point);
-            };
-        }),
-        key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
-            if m.anchor().is_none() {
-                m.set_anchor();
-            }
-            let mut chars = m
-                .iter_rev()
-                .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
-
-            if let Some((point, char)) = chars.next() {
-                let cat = CharCat::of(char, m.w_chars(), mf);
-                let (point, ..) = {
-                    let mut chars = chars.peekable();
-                    end_of_cat(&mut chars, cat, (point, char))
-                };
-
-                m.move_to(point);
-            };
-        }),
-
-        ////////// Insertion keys.
-        key!(Char('i')) => {
-            helper.move_each_cursor(|m| m.swap_ends());
-            *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
-        }
-        key!(Char('a')) => {
-            helper.move_each_cursor(|m| m.set_caret_on_end());
-            *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
-        }
-        key!(Char('c')) => {
-            helper.edit_on_each_cursor(|editor| editor.replace(""));
-            helper.move_each_cursor(|m| m.unset_anchor());
-            *mode = Mode::Insert;
-            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
-        }
-
-        ////////// Other mode changing keys.
-        key!(Char(':')) => {
-            if context.commands.run("switch-to CommandLine<Ui>").is_ok() {
-                context
-                    .commands
-                    .run("set-cmd-mode RunCommands<Ui>")
-                    .unwrap();
-                *mode = Mode::Command;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Command));
-            }
-        }
-        key!(Char('g')) => {
-            *mode = Mode::GoTo;
-            hooks::trigger::<OnModeChange>((Mode::Normal, Mode::GoTo));
-        }
-
-        ////////// For now
-        key!(Char('q')) => panic!("Quit on purpose"),
-
-        ////////// History manipulation.
-        key!(Char('u')) => helper.undo(),
-        key!(Char('U'), Mod::SHIFT) => helper.redo(),
-        _ => {}
     }
 }
 
@@ -390,31 +419,6 @@ impl Display for Mode {
             Mode::View => f.write_str("view"),
             Mode::Command => f.write_str("command"),
         }
-    }
-}
-
-/// Commands that are available in `Mode::GoTo`.
-fn match_goto<U: Ui>(
-    mut helper: EditHelper<File, U>,
-    key: Event,
-    last_file: &mut String,
-    context: Context<U>,
-) {
-    match key {
-        key!(Char('a')) if context.commands.buffer(last_file.clone()).is_ok() => {
-            *last_file = context.cur_file().unwrap().name();
-        }
-        key!(Char('a')) => {}
-        key!(Char('j')) => helper.move_main(|m| m.move_ver(isize::MAX)),
-        key!(Char('k')) => helper.move_main(|m| m.move_to_coords(0, 0)),
-        key!(Char('n')) if context.commands.next_file().is_ok() => {
-            *last_file = context.cur_file().unwrap().name()
-        }
-        key!(Char('n')) => {}
-        key!(Char('N')) if context.commands.prev_file().is_ok() => {
-            *last_file = context.cur_file().unwrap().name()
-        }
-        _ => {}
     }
 }
 
