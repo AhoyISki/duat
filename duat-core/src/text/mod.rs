@@ -137,16 +137,25 @@ impl Text {
     /// expected to move.
     pub(crate) fn add_cursor_tags(&mut self, cursors: &Cursors) {
         for (cursor, is_main) in cursors.iter() {
-            let Range { start, end } = cursor.range();
+            let (start, end) = cursor.point_range();
             let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
 
+            let no_selection = if start == end { 2 } else { 0 };
+
+            let end_byte = if let Some(anchor) = cursor.anchor()
+                && anchor == end
+                && cursor.is_inclusive()
+            {
+                end.byte() + 1
+            } else {
+                end.byte()
+            };
+
             let tags = [
-                (start, start_tag),
-                (end, end_tag),
+                (start.byte(), start_tag),
+                (end_byte, end_tag),
                 (cursor.caret().byte(), caret_tag),
             ];
-
-            let no_selection = if start == end { 2 } else { 0 };
 
             for (b, tag) in tags.into_iter().skip(no_selection) {
                 let point = self.point_at(b);
@@ -161,9 +170,19 @@ impl Text {
     /// expected to have moved.
     pub(crate) fn remove_cursor_tags(&mut self, cursors: &Cursors) {
         for (cursor, _) in cursors.iter() {
-            let Range { start, end } = cursor.range();
+            let (start, end) = cursor.point_range();
             let skip = if start == end { 1 } else { 0 };
-            for ch_index in [start, end].into_iter().skip(skip) {
+
+            let end_byte = if let Some(anchor) = cursor.anchor()
+                && anchor == end
+                && cursor.is_inclusive()
+            {
+                end.byte() + 1
+            } else {
+                end.byte()
+            };
+
+            for ch_index in [start.byte(), end_byte].into_iter().skip(skip) {
                 self.tags.remove_at(ch_index, self.marker);
             }
         }
@@ -465,6 +484,14 @@ impl Text {
             let old_p = *p;
             *p = p.fwd(char);
             Some((old_p, char))
+        })
+    }
+
+    pub fn iter_chars_at_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
+        let (s0, s1) = self.strs_in_range(..p.byte());
+        s0.chars().rev().chain(s1.chars().rev()).scan(p, |p, char| {
+            *p = p.rev(char);
+            Some((*p, char))
         })
     }
 }

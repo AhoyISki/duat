@@ -18,10 +18,13 @@ pub mod key {
 
 use key::Event;
 
-pub use self::{commander::Commander, default::KeyMap, helper::EditHelper};
+pub use self::{
+    commander::Commander,
+    default::KeyMap,
+    helper::{Cursor, Cursors, EditHelper},
+};
 use crate::{
     data::{Context, RwData},
-    cursor::Cursor,
     ui::Ui,
     widgets::ActiveWidget,
 };
@@ -57,70 +60,5 @@ where
     where
         Self: Sized,
     {
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Cursors {
-    list: Vec<Cursor>,
-    main: usize,
-}
-
-impl Cursors {
-    pub fn new() -> Self {
-        Self {
-            list: vec![Cursor::default()],
-            main: 0,
-        }
-    }
-
-    pub fn remove_extras(&mut self) {
-        let cursor = self.list[self.main].clone();
-        self.list = vec![cursor];
-        self.main = 0;
-    }
-
-    pub fn insert(&mut self, cursor: Cursor) {
-        self.list.push(cursor)
-    }
-
-    pub fn insert_and_switch(&mut self, _cursor: Cursor) {}
-
-    pub fn main(&self) -> &Cursor {
-        &self.list[self.main]
-    }
-
-    pub fn nth(&self, index: usize) -> Option<Cursor> {
-        self.list.get(index).cloned()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        self.list
-            .iter()
-            .enumerate()
-            .map(move |(index, cursor)| (cursor, index == self.main))
-    }
-
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn reset(&mut self) {
-        self.list = vec![Cursor::default()]
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.list.clear()
-    }
-}
-
-impl Default for Cursors {
-    fn default() -> Self {
-        Self::new()
     }
 }

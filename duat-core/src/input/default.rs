@@ -16,7 +16,7 @@ pub struct KeyMap {
 impl KeyMap {
     pub fn new() -> Self {
         Self {
-            cursors: Cursors::new(),
+            cursors: Cursors::new_exclusive(),
         }
     }
 }

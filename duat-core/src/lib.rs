@@ -29,7 +29,6 @@ pub mod history;
 pub mod hooks;
 pub mod input;
 pub mod palette;
-pub mod cursor;
 pub mod session;
 pub mod text;
 pub mod ui;

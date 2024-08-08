@@ -25,7 +25,7 @@ use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     data::{Context, RwData},
     history::History,
-    input::{Cursors, InputMethod, KeyMap},
+    input::{InputMethod, KeyMap, Cursors},
     palette,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},

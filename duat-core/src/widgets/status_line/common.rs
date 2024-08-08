@@ -1,41 +1,40 @@
 use crate::{
-    cursor::Cursor,
-    input::{Cursors, InputMethod},
+    input::{Cursor, Cursors, InputMethod},
     text::{text, Text},
     ui::Ui,
     widgets::File,
 };
 
 /// The byte of the main cursor in the file. Indexed at 1.
-pub fn main_byte<U>(input: &dyn InputMethod<U>) -> usize
+pub fn main_byte<U>(input: &dyn InputMethod<U>) -> Option<usize>
 where
     U: Ui,
 {
-    main_cursor(input).byte()
+    main_cursor(input).map(|c| c.byte() + 1)
 }
 
 /// The char of the main cursor in the file. Indexed at 1.
-pub fn main_char<U>(input: &dyn InputMethod<U>) -> usize
+pub fn main_char<U>(input: &dyn InputMethod<U>) -> Option<usize>
 where
     U: Ui,
 {
-    main_cursor(input).char()
+    main_cursor(input).map(|c| c.char() + 1)
 }
 
 /// The col of the main cursor in the file. Indexed at 1.
-pub fn main_col<U>(input: &dyn InputMethod<U>) -> usize
+pub fn main_col<U>(input: &dyn InputMethod<U>) -> Option<usize>
 where
     U: Ui,
 {
-    main_cursor(input).vcol()
+    main_cursor(input).map(|c| c.vcol() + 1)
 }
 
 /// The line of the main cursor in the file. Indexed at 1.
-pub fn main_line<U>(input: &dyn InputMethod<U>) -> usize
+pub fn main_line<U>(input: &dyn InputMethod<U>) -> Option<usize>
 where
     U: Ui,
 {
-    main_cursor(input).line()
+    main_cursor(input).map(|c| c.line() + 1)
 }
 
 /// A convenience function that prints the main cursor alongside the
@@ -44,10 +43,9 @@ pub fn main_fmt<U>(file: &File, input: &dyn InputMethod<U>) -> Text
 where
     U: Ui,
 {
-    let cursor = main_cursor(input);
     text!(
-        [Coord] { cursor.vcol() + 1 } [Separator] ":"
-        [Coord] { cursor.line() + 1 } [Separator] "/"
+        [Coord] { main_col(input) } [Separator] ":"
+        [Coord] { main_line(input) } [Separator] "/"
         [Coord] { file.len_lines() }
     )
 }
@@ -72,13 +70,9 @@ where
     }
 }
 
-fn main_cursor<U>(input: &dyn InputMethod<U>) -> Cursor
+fn main_cursor<U>(input: &dyn InputMethod<U>) -> Option<&Cursor>
 where
     U: Ui,
 {
-    input
-        .cursors()
-        .map(Cursors::main)
-        .cloned()
-        .unwrap_or(Cursor::default())
+    input.cursors().map(Cursors::main)
 }

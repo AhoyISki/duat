@@ -16,7 +16,7 @@ pub struct Commander {
 impl Commander {
     pub fn new() -> Self {
         Self {
-            cursors: Cursors::new(),
+            cursors: Cursors::new_exclusive(),
         }
     }
 }
@@ -97,11 +97,11 @@ where
                     mover.move_hor(isize::MAX);
                 });
                 editor.edit_on_main(|editor| editor.replace(""));
-                self.cursors = Cursors::default();
+                self.cursors = Cursors::new_exclusive();
                 context.commands.return_to_file().unwrap();
             }
             key!(Code::Enter) => {
-                self.cursors = Cursors::default();
+                self.cursors = Cursors::new_exclusive();
                 context.commands.return_to_file().unwrap();
             }
             _ => {}

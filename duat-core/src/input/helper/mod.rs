@@ -1,18 +1,15 @@
-use std::{
-    any::TypeId,
-    cmp::Ordering,
-    ops::{DerefMut, Range},
-};
+use std::any::TypeId;
 
-use super::Cursors;
+pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    cursor::Cursor,
     text::{Pattern, Point, PrintCfg, Searcher, Text, WordChars},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
+
+mod cursors;
 
 /// A struct used by [`InputMethod`][crate::input::InputScheme]s to
 /// edit [`Text`].
@@ -21,7 +18,6 @@ where
     W: ActiveWidget<U> + 'static,
     U: Ui,
 {
-    clearing_needed: bool,
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
     area: &'a U::Area,
@@ -34,7 +30,6 @@ where
 {
     pub fn new(widget: &'a RwData<W>, area: &'a U::Area, cursors: &'a mut Cursors) -> Self {
         EditHelper {
-            clearing_needed: false,
             widget,
             cursors,
             area,
@@ -43,48 +38,50 @@ where
 
     /// Edits on every cursor selection in the list.
     /// Edits on the nth cursor's selection.
-    pub fn edit_on_nth<F>(&mut self, mut edit: F, index: usize)
+    pub fn edit_on_nth<F>(&mut self, mut edit: F, n: usize)
     where
         F: FnMut(&mut Editor<U, W>),
     {
-        assert!(index < self.len_cursors(), "Index {index} out of bounds.");
-        if self.clearing_needed {
-            self.clear_intersections();
-            self.clearing_needed = false;
-        }
-
-        let mut edit_accum = EditAccum::default();
-        let cursor = &mut self.cursors.list[index];
+        let Some(mut cursor) = self.cursors.get(n) else {
+            panic!("Cursor index {n} out of bounds.");
+        };
 
         let mut widget = self.widget.write();
+        let mut diff = Diff::default();
 
         edit(&mut Editor::<U, W>::new(
-            cursor,
-            widget.deref_mut(),
+            &mut cursor,
+            &mut widget,
             self.area,
-            &mut edit_accum,
+            &mut diff,
         ));
 
         let cfg = widget.print_cfg();
 
-        for cursor in self.cursors.list.iter_mut().skip(index + 1) {
-            edit_accum.shift_cursor(cursor, widget.text(), self.area, cfg);
-        }
+        self.cursors.replace(n, cursor);
+        self.cursors.shift(n, diff, widget.text(), self.area, cfg);
 
         widget.update(self.area);
     }
 
     pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor<U, W>)) {
-        self.clear_intersections();
-        let mut edit_accum = EditAccum::default();
+        let removed_cursors: Vec<Cursor> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
+        let mut diff = Diff::default();
 
-        for cursor in self.cursors.list.iter_mut() {
+        for (i, mut cursor) in removed_cursors.into_iter().enumerate() {
             let cfg = widget.print_cfg();
-            edit_accum.shift_cursor(cursor, widget.text(), self.area, cfg);
-            let mut editor = Editor::new(cursor, widget.deref_mut(), self.area, &mut edit_accum);
-            f(&mut editor);
+            diff.shift_cursor(&mut cursor, widget.text(), self.area, cfg);
+
+            f(&mut Editor::new(
+                &mut cursor,
+                &mut widget,
+                self.area,
+                &mut diff,
+            ));
+
+            self.cursors.insert_removed(i, cursor);
         }
 
         widget.update(self.area);
@@ -92,42 +89,39 @@ where
 
     /// Alters the nth cursor's selection.
     pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>), n: usize) {
+        let Some(mut cursor) = self.cursors.get(n) else {
+            panic!("Cursor index {n} out of bounds.");
+        };
         let mut widget = self.widget.write();
-        let cursor = &mut self.cursors.list[n];
-        let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
-        mov(&mut mover);
 
-        let cursor = self.cursors.list.remove(n);
-        let range = cursor.range();
-        let (Ok(new_n) | Err(new_n)) = self
-            .cursors
-            .list
-            .binary_search_by(|i| at_start_ord(&i.range(), &range));
-        self.cursors.list.insert(new_n, cursor);
-
-        if self.cursors.main == n {
-            self.cursors.main = new_n;
-        }
+        mov(&mut Mover::new(
+            &mut cursor,
+            widget.text(),
+            self.area,
+            widget.print_cfg(),
+        ));
 
         widget.update(self.area);
-        self.clearing_needed = self.cursors.list.len() > 1;
     }
 
     /// Alters every selection on the list.
     pub fn move_each_cursor<_T>(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>) -> _T) {
+        let removed_cursors: Vec<Cursor> = self.cursors.drain().collect();
+
         let mut widget = self.widget.write();
-        for cursor in self.cursors.list.iter_mut() {
-            let mut mover = Mover::new(cursor, widget.text(), self.area, widget.print_cfg());
-            mov(&mut mover);
+
+        for (i, mut cursor) in removed_cursors.into_iter().enumerate() {
+            mov(&mut Mover::new(
+                &mut cursor,
+                widget.text(),
+                self.area,
+                widget.print_cfg(),
+            ));
+
+            self.cursors.insert_removed(i, cursor);
         }
 
-        // TODO: Figure out a better way to sort.
-        self.cursors
-            .list
-            .sort_unstable_by(|j, k| at_start_ord(&j.range(), &k.range()));
-
         widget.update(self.area);
-        self.clearing_needed = self.cursors.list.len() > 1;
     }
 
     /// Edits on the main cursor's selection.
@@ -135,7 +129,7 @@ where
     where
         F: FnMut(&mut Editor<U, W>),
     {
-        self.edit_on_nth(edit, self.cursors.main);
+        self.edit_on_nth(edit, self.cursors.main_index());
     }
 
     /// Edits on the last cursor's selection.
@@ -151,7 +145,7 @@ where
 
     /// Alters the main cursor's selection.
     pub fn move_main(&mut self, mov: impl FnMut(&mut Mover<U::Area>)) {
-        self.move_nth(mov, self.cursors.main);
+        self.move_nth(mov, self.cursors.main_index());
     }
 
     /// Alters the last cursor's selection.
@@ -166,80 +160,32 @@ where
         self.cursors.remove_extras();
     }
 
-    /// The main cursor index.
-    pub fn main_cursor_index(&self) -> usize {
-        self.cursors.main
-    }
-
     /// Rotates the main cursor index forward.
-    pub fn rotate_main_forward(&mut self) {
-        let mut widget = self.widget.write();
-        if self.cursors.list.len() <= 1 {
-            return;
-        }
-
-        let main = &mut self.cursors.main;
-        *main = if *main == self.cursors.list.len() - 1 {
-            0
-        } else {
-            *main + 1
-        };
-
-        widget.update(self.area)
+    pub fn rotate_main_fwd(&mut self) {
+        self.cursors.rotate_main_fwd()
     }
 
     /// Rotates the main cursor index backwards.
-    pub fn rotate_main_backwards(&mut self) {
-        let mut widget = self.widget.write();
-        if self.cursors.list.len() <= 1 {
-            return;
-        }
-
-        let main = &mut self.cursors.main;
-        *main = if *main == 0 {
-            self.cursors.list.len() - 1
-        } else {
-            *main - 1
-        };
-
-        widget.update(self.area)
-    }
-
-    /// The amount of active [`Cursor`]s in the [`Text`].
-    pub fn len_cursors(&self) -> usize {
-        self.cursors.list.len()
+    pub fn rotate_main_rev(&mut self) {
+        self.cursors.rotate_main_rev()
     }
 
     pub fn main_cursor(&self) -> &Cursor {
         self.cursors.main()
     }
 
-    pub fn nth_cursor(&self, index: usize) -> Option<Cursor> {
-        self.cursors.list.get(index).cloned()
+    pub fn get_cursor(&self, n: usize) -> Option<Cursor> {
+        self.cursors.get(n)
     }
 
-    /// Removes all intersecting [`Cursor`]s from the list, keeping
-    /// only the last from the bunch.
-    fn clear_intersections(&mut self) {
-        let widget = self.widget.read();
-        let text = widget.text();
-        let cfg = widget.print_cfg();
+    /// The main cursor index.
+    pub fn main_cursor_index(&self) -> usize {
+        self.cursors.main_index()
+    }
 
-        let (mut start, mut end) = self.cursors.list[0].point_range();
-        let mut last_index = 0;
-        let mut to_remove = Vec::new();
-
-        for (index, cursor) in self.cursors.list.iter_mut().enumerate().skip(1) {
-            if cursors_merged(cursor, text, self.area, cfg, start, end) {
-                to_remove.push(last_index);
-            }
-            (start, end) = cursor.point_range();
-            last_index = index;
-        }
-
-        for index in to_remove.iter().rev() {
-            self.cursors.list.remove(*index);
-        }
+    /// The amount of active [`Cursor`]s in the [`Text`].
+    pub fn len_cursors(&self) -> usize {
+        self.cursors.len()
     }
 }
 
@@ -277,7 +223,7 @@ where
     cursor: &'a mut Cursor,
     widget: &'b mut W,
     area: &'c U::Area,
-    edit_accum: &'d mut EditAccum,
+    edit_accum: &'d mut Diff,
 }
 
 impl<'a, 'b, 'c, 'd, U, W> Editor<'a, 'b, 'c, 'd, U, W>
@@ -290,7 +236,7 @@ where
         cursor: &'a mut Cursor,
         widget: &'b mut W,
         area: &'c U::Area,
-        edit_accum: &'d mut EditAccum,
+        edit_accum: &'d mut Diff,
     ) -> Self {
         Self {
             cursor,
@@ -437,6 +383,10 @@ where
         self.text.iter_chars_at(self.caret())
     }
 
+    pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.text.iter_chars_at_rev(self.caret())
+    }
+
     ////////// Public movement functions
 
     /// Moves the cursor horizontally on the file. May also cause
@@ -528,12 +478,12 @@ where
 
 /// An accumulator used specifically for editing with [`Editor<A>`]s.
 #[derive(Default)]
-pub struct EditAccum {
+pub struct Diff {
     pub bytes: isize,
     pub changes: isize,
 }
 
-impl EditAccum {
+impl Diff {
     fn shift_cursor(&self, cursor: &mut Cursor, text: &Text, area: &impl Area, cfg: &PrintCfg) {
         cursor
             .assoc_index
@@ -547,53 +497,8 @@ impl EditAccum {
             cursor.swap_ends();
         }
     }
-}
 
-fn points_cross(lhs: (Point, Point), rhs: (Point, Point)) -> bool {
-    (lhs.0 > rhs.0 && rhs.1 > lhs.0) || (rhs.0 > lhs.0 && lhs.1 > rhs.0)
-}
-
-/// Compares the `left` and `right` [`Range`]s, returning an
-/// [`Ordering`], based on the intersection at the start.
-fn at_start_ord(left: &Range<usize>, right: &Range<usize>) -> Ordering {
-    if left.end > right.start && right.start > left.start {
-        std::cmp::Ordering::Equal
-    } else if left.start > right.end {
-        std::cmp::Ordering::Greater
-    } else {
-        std::cmp::Ordering::Less
+    fn no_change(&self) -> bool {
+        self.bytes == 0 && self.changes == 0
     }
-}
-
-fn cursors_merged(
-    cursor: &mut Cursor,
-    text: &Text,
-    area: &impl Area,
-    cfg: &PrintCfg,
-    start: Point,
-    end: Point,
-) -> bool {
-    if !points_cross(cursor.point_range(), (start, end)) {
-        return false;
-    }
-
-    let caret = cursor.caret();
-    let Some(anchor) = cursor.anchor() else {
-        cursor.move_to(start, text, area, cfg);
-        cursor.set_anchor();
-        cursor.move_to(caret.max(end), text, area, cfg);
-        return true;
-    };
-
-    if anchor > caret {
-        cursor.move_to(anchor.max(end), text, area, cfg);
-        cursor.swap_ends();
-        cursor.move_to(caret.min(start), text, area, cfg);
-    } else {
-        cursor.move_to(anchor.min(end), text, area, cfg);
-        cursor.swap_ends();
-        cursor.move_to(caret.max(start), text, area, cfg);
-    }
-
-    true
 }

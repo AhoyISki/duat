@@ -133,7 +133,7 @@ where
 {
     fn from(value: Option<D>) -> Self {
         Self {
-            appender: Appender::Str::<(), U>(value.map(|d| d.to_string()).unwrap_or(String::new())),
+            appender: Appender::Str::<(), U>(value.map(|d| d.to_string()).unwrap_or_default()),
             checker: None,
             _u: PhantomData,
         }

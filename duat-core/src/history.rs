@@ -22,7 +22,9 @@ use std::{
 };
 
 use crate::{
-    input::Cursors, cursor::Cursor, text::{PrintCfg, Text}, ui::Area
+    input::Cursors,
+    text::{PrintCfg, Text},
+    ui::Area,
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or
@@ -161,11 +163,10 @@ impl Moment {
         let initial_len = self.changes.len();
         let diff = change.added_end() as isize - change.taken_end() as isize;
 
-        let last_index = if let Some(index) = assoc_index.filter(|index| {
-            self.changes
-                .get(*index)
-                .is_some_and(|cmp| intersects(cmp, &change))
-        }) {
+        let last_index = if let Some(index) = assoc_index
+            && let Some(c) = self.changes.get(index)
+            && intersects(c, &change)
+        {
             index
         } else {
             self.find_last_merger(&change)
@@ -281,8 +282,8 @@ impl History {
     pub fn add_change(&mut self, change: Change, assoc_index: Option<usize>) -> (usize, isize) {
         let is_last_moment = self.current_moment == self.moments.len();
 
-		// Check, in order to prevent modification of earlier moments.
-        let ret = if let Some(moment) = self.mut_current_moment()
+        // Check, in order to prevent modification of earlier moments.
+        if let Some(moment) = self.mut_current_moment()
             && is_last_moment
         {
             moment.add_change(change, assoc_index)
@@ -295,9 +296,7 @@ impl History {
                 .push(change.clone());
 
             (0, 1)
-        };
-
-        ret
+        }
     }
 
     /// Declares that the current [Moment] is complete and starts a
@@ -306,7 +305,7 @@ impl History {
         // If the last moment in history is empty, we can keep using it.
         if self
             .mut_current_moment()
-            .map_or(true, |m| !m.changes.is_empty())
+            .is_none_or(|m| !m.changes.is_empty())
         {
             unsafe {
                 self.moments.set_len(self.current_moment);
@@ -338,7 +337,7 @@ impl History {
 
             let new_caret_b = change.taken_end().saturating_add_signed(bytes);
             let point = text.point_at(new_caret_b);
-            cursors.insert(Cursor::new(point, text, area, cfg));
+            cursors.insert_from_parts(point, text, area, cfg);
 
             bytes += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -363,7 +362,7 @@ impl History {
             text.apply_change(change);
 
             let point = text.point_at(change.added_end());
-            cursors.insert(Cursor::new(point, text, area, cfg));
+            cursors.insert_from_parts(point, text, area, cfg);
         }
     }
 

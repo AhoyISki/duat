@@ -87,6 +87,8 @@ impl Builder {
                 self.push_tag(tag);
             }
             BuilderPart::ToString(display) => self.push_str(display),
+            BuilderPart::OptToString(Some(display)) => self.push_str(display),
+            _ => {}
         }
     }
 
@@ -119,6 +121,7 @@ where
     Text(Text),
     Tag(Tag),
     ToString(D),
+    OptToString(Option<D>)
 }
 
 impl From<AlignCenter> for BuilderPart<String> {
@@ -181,6 +184,15 @@ where
 {
     fn from(value: D) -> Self {
         BuilderPart::ToString(value)
+    }
+}
+
+impl<D> From<Option<D>> for BuilderPart<D>
+where
+    D: std::fmt::Display,
+{
+    fn from(value: Option<D>) -> Self {
+        BuilderPart::OptToString(value)
     }
 }
 

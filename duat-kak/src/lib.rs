@@ -55,7 +55,7 @@ enum Side {
     Bottom,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct KeyMap {
     cursors: Cursors,
     mode: Mode,
@@ -65,7 +65,11 @@ pub struct KeyMap {
 impl KeyMap {
     pub fn new() -> Self {
         palette::set_weak_form("Mode", Form::new().green());
-        Self::default()
+        KeyMap {
+            cursors: Cursors::new_inclusive(),
+            mode: Mode::Normal,
+            last_file: String::from(""),
+        }
     }
 
     pub fn mode(&self) -> String {
@@ -74,6 +78,12 @@ impl KeyMap {
 
     pub fn mode_fmt(&self) -> Text {
         text!([Mode] { self.mode.to_string() })
+    }
+}
+
+impl Default for KeyMap {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -126,57 +136,57 @@ fn match_insert<U: Ui>(mut helper: EditHelper<File, U>, key: Event, mode: &mut M
     match key {
         key!(Char(char)) => {
             helper.edit_on_each_cursor(|editor| editor.insert(char));
-            helper.move_each_cursor(|mover| mover.move_hor(1));
+            helper.move_each_cursor(|m| m.move_hor(1));
         }
         key!(Char(char), Mod::SHIFT) => {
             helper.edit_on_each_cursor(|editor| editor.insert(char));
-            helper.move_each_cursor(|mover| mover.move_hor(1));
+            helper.move_each_cursor(|m| m.move_hor(1));
         }
         key!(Enter) => {
             helper.edit_on_each_cursor(|editor| editor.insert('\n'));
-            helper.move_each_cursor(|mover| mover.move_hor(1));
+            helper.move_each_cursor(|m| m.move_hor(1));
         }
         key!(Backspace) => {
             let mut anchors = Vec::with_capacity(helper.len_cursors());
-            helper.move_each_cursor(|mover| {
-                let caret = mover.caret();
-                anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                mover.set_anchor();
-                mover.move_hor(-1);
+            helper.move_each_cursor(|m| {
+                anchors.push({
+                    let c = m.caret();
+                    m.unset_anchor().map(|a| match a > c {
+                        true => a.char() as isize - c.char() as isize,
+                        false => a.char() as isize - (c.char() as isize - 1),
+                    })
+                });
+                m.move_hor(-1);
             });
             let mut anchors = anchors.into_iter().cycle();
-            helper.edit_on_each_cursor(|editor| {
-                editor.replace("");
-            });
-            helper.move_each_cursor(|mover| {
-                if let Some(Some((anchor, _))) = anchors.next() {
-                    mover.set_anchor();
-                    mover.move_to(anchor);
-                    mover.swap_ends()
-                } else {
-                    mover.unset_anchor();
+            helper.edit_on_each_cursor(|editor| editor.replace(""));
+            helper.move_each_cursor(|m| {
+                if let Some(Some(diff)) = anchors.next() {
+                    m.set_anchor();
+                    m.move_hor(diff);
+                    m.swap_ends()
                 }
             });
         }
         key!(Delete) => {
             let mut anchors = Vec::with_capacity(helper.len_cursors());
-            helper.move_each_cursor(|mover| {
-                let caret = mover.caret();
-                anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                mover.set_anchor();
-                mover.move_hor(1);
+            helper.move_each_cursor(|m| {
+                let caret = m.caret();
+                anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
+                m.set_anchor();
+                m.move_hor(1);
             });
             let mut anchors = anchors.into_iter().cycle();
             helper.edit_on_each_cursor(|editor| {
                 editor.replace("");
             });
-            helper.move_each_cursor(|mover| {
+            helper.move_each_cursor(|m| {
                 if let Some(Some((anchor, _))) = anchors.next() {
-                    mover.set_anchor();
-                    mover.move_to(anchor);
-                    mover.swap_ends()
+                    m.set_anchor();
+                    m.move_to(anchor);
+                    m.swap_ends()
                 } else {
-                    mover.unset_anchor();
+                    m.unset_anchor();
                 }
             });
         }
@@ -288,6 +298,41 @@ fn match_normal<U: Ui>(
             });
         }
 
+        key!(Char('b')) => {
+            helper.move_each_cursor(|m| {
+                let mut chars = [(m.caret(), m.char())]
+                    .into_iter()
+                    .chain(m.iter_rev())
+                    .map_windows(|[second, first]| (*first, *second))
+                    .skip_while(|((_, c0), _)| *c0 == '\n')
+                    .peekable();
+
+                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
+                    let cat0 = CharCat::of(c0, m.w_chars());
+                    let cat1 = CharCat::of(c1, m.w_chars());
+                    let p1 = if cat0 == cat1 { p1 } else { p0 };
+
+                    let p0 = {
+                        let mut chars = chars.map(|(first, _)| first).peekable();
+                        let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
+                        match miss {
+                            Some(char) => {
+                                let cat = CharCat::of(char, m.w_chars());
+                                let (p0, ..) = end_of_cat(&mut chars, cat, (p0, c0));
+                                p0
+                            }
+                            None => p0,
+                        }
+                    };
+
+                    m.move_to(p1);
+                    m.move_hor(1);
+                    m.set_anchor();
+                    m.move_to(p0);
+                };
+            });
+        }
+
         ////////// Keys that parse and extend the selection.
         key!(Char('W'), Mod::SHIFT) => {
             helper.move_each_cursor(|m| {
@@ -300,7 +345,8 @@ fn match_normal<U: Ui>(
                     let cat = CharCat::of(char, m.w_chars());
                     let (p, ..) = {
                         let mut chars = chars.peekable();
-                        end_of_cat(&mut chars, cat, (p, char))
+                        end_of_cat(&mut chars, cat, (p, char));
+                        end_of_cat(&mut chars, [' ', '\t'], (p, char))
                     };
 
                     m.move_to(p);
@@ -308,26 +354,42 @@ fn match_normal<U: Ui>(
             });
         }
 
+        key!(Char('E'), Mod::SHIFT) => {
+            helper.move_each_cursor(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor();
+                }
+                let mut chars = m
+                    .iter()
+                    .skip(1)
+                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
+
+                if let Some((point, char)) = chars.next() {
+                    let cat = CharCat::of(char, m.w_chars());
+                    let (point, ..) = {
+                        let mut chars = chars.peekable();
+                        end_of_cat(&mut chars, cat, (point, char))
+                    };
+
+                    m.move_to(point);
+                };
+            });
+        }
+
         ////////// Insertion keys.
         key!(Char('i')) => {
-            helper.move_each_cursor(|mover| mover.swap_ends());
+            helper.move_each_cursor(|m| m.swap_ends());
             *mode = Mode::Insert;
             hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
         key!(Char('a')) => {
-            helper.move_each_cursor(|mover| mover.set_caret_on_end());
+            helper.move_each_cursor(|m| m.set_caret_on_end());
             *mode = Mode::Insert;
             hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
         key!(Char('c')) => {
-            helper.move_each_cursor(|mover| {
-                if mover.anchor().is_none() {
-                    mover.set_anchor();
-                }
-                mover.move_hor(1);
-            });
             helper.edit_on_each_cursor(|editor| editor.replace(""));
-            helper.move_each_cursor(|mover| mover.unset_anchor());
+            helper.move_each_cursor(|m| m.unset_anchor());
             *mode = Mode::Insert;
             hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
         }
@@ -370,8 +432,8 @@ fn match_goto<U: Ui>(
             *last_file = context.cur_file().unwrap().name();
         }
         key!(Char('a')) => {}
-        key!(Char('j')) => helper.move_main(|mover| mover.move_ver(isize::MAX)),
-        key!(Char('k')) => helper.move_main(|mover| mover.move_to_coords(0, 0)),
+        key!(Char('j')) => helper.move_main(|m| m.move_ver(isize::MAX)),
+        key!(Char('k')) => helper.move_main(|m| m.move_to_coords(0, 0)),
         key!(Char('n')) if context.commands.next_file().is_ok() => {
             *last_file = context.cur_file().unwrap().name()
         }
@@ -384,39 +446,39 @@ fn match_goto<U: Ui>(
 }
 
 fn move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|mover| {
-        mover.unset_anchor();
+    helper.move_each_cursor(|m| {
+        m.unset_anchor();
         match direction {
-            Side::Top => mover.move_ver(-(amount as isize)),
-            Side::Bottom => mover.move_ver(amount as isize),
-            Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Top => m.move_ver(-(amount as isize)),
+            Side::Bottom => m.move_ver(amount as isize),
+            Side::Left => m.move_hor(-(amount as isize)),
+            Side::Right => m.move_hor(amount as isize),
         }
     });
 }
 
 fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|mover| {
-        if mover.anchor().is_none() {
-            mover.set_anchor();
+    helper.move_each_cursor(|m| {
+        if m.anchor().is_none() {
+            m.set_anchor()
         }
         match direction {
-            Side::Top => mover.move_ver(-(amount as isize)),
-            Side::Bottom => mover.move_ver(amount as isize),
-            Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Top => m.move_ver(-(amount as isize)),
+            Side::Bottom => m.move_ver(amount as isize),
+            Side::Left => m.move_hor(-(amount as isize)),
+            Side::Right => m.move_hor(amount as isize),
         }
     });
 }
 
 fn move_each_wrapped<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|mover| {
-        mover.unset_anchor();
+    helper.move_each_cursor(|m| {
+        m.unset_anchor();
         match direction {
-            Side::Top => mover.move_ver_wrapped(-(amount as isize)),
-            Side::Bottom => mover.move_ver_wrapped(amount as isize),
-            Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Top => m.move_ver_wrapped(-(amount as isize)),
+            Side::Bottom => m.move_ver_wrapped(amount as isize),
+            Side::Left => m.move_hor(-(amount as isize)),
+            Side::Right => m.move_hor(amount as isize),
         }
     });
 }
@@ -426,15 +488,15 @@ fn select_and_move_each_wrapped<U: Ui>(
     direction: Side,
     amount: usize,
 ) {
-    helper.move_each_cursor(|mover| {
-        if mover.anchor().is_none() {
-            mover.set_anchor();
+    helper.move_each_cursor(|m| {
+        if m.anchor().is_none() {
+            m.set_anchor();
         }
         match direction {
-            Side::Top => mover.move_ver_wrapped(-(amount as isize)),
-            Side::Bottom => mover.move_ver_wrapped(amount as isize),
-            Side::Left => mover.move_hor(-(amount as isize)),
-            Side::Right => mover.move_hor(amount as isize),
+            Side::Top => m.move_ver_wrapped(-(amount as isize)),
+            Side::Bottom => m.move_ver_wrapped(amount as isize),
+            Side::Left => m.move_hor(-(amount as isize)),
+            Side::Right => m.move_hor(amount as isize),
         }
     });
 }
