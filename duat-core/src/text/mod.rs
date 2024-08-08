@@ -143,7 +143,7 @@ impl Text {
             let no_selection = if start == end { 2 } else { 0 };
 
             let end_byte = if let Some(anchor) = cursor.anchor()
-                && anchor == end
+                && anchor > start
                 && cursor.is_inclusive()
             {
                 end.byte() + 1
@@ -174,7 +174,7 @@ impl Text {
             let skip = if start == end { 1 } else { 0 };
 
             let end_byte = if let Some(anchor) = cursor.anchor()
-                && anchor == end
+                && anchor > start
                 && cursor.is_inclusive()
             {
                 end.byte() + 1
@@ -489,7 +489,7 @@ impl Text {
 
     pub fn iter_chars_at_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
         let (s0, s1) = self.strs_in_range(..p.byte());
-        s0.chars().rev().chain(s1.chars().rev()).scan(p, |p, char| {
+        s1.chars().rev().chain(s0.chars().rev()).scan(p, |p, char| {
             *p = p.rev(char);
             Some((*p, char))
         })

@@ -1,4 +1,4 @@
-#![feature(let_chains, iter_map_windows, type_alias_impl_trait)]
+#![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
 use std::{fmt::Display, iter::Peekable};
 
@@ -15,45 +15,7 @@ use duat_core::{
     widgets::File,
 };
 
-#[derive(Default, Clone, Copy, PartialEq)]
-pub enum Mode {
-    Insert,
-    #[default]
-    Normal,
-    GoTo,
-    View,
-    Command,
-}
-
-/// Triggers whenever the mode changes
-///
-/// Arguments:
-/// * The previous [`Mode`]
-/// * The current [`Mode`]
-pub struct OnModeChange {}
-
-impl Hookable for OnModeChange {
-    type Args<'args> = (Mode, Mode);
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Mode::Insert => f.write_str("insert"),
-            Mode::Normal => f.write_str("normal"),
-            Mode::GoTo => f.write_str("goto"),
-            Mode::View => f.write_str("view"),
-            Mode::Command => f.write_str("command"),
-        }
-    }
-}
-
-enum Side {
-    Left,
-    Right,
-    Top,
-    Bottom,
-}
+const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
 #[derive(Clone)]
 pub struct KeyMap {
@@ -240,141 +202,119 @@ fn match_normal<U: Ui>(
         key!(Right) => move_each_wrapped(helper, Side::Right, 1),
 
         ////////// Keys that parse and move the selection.
-        key!(Char('w')) => {
-            helper.move_each_cursor(|m| {
-                let mut chars = m
-                    .iter()
-                    .map_windows(|[first, second]| (*first, *second))
-                    .skip_while(|(_, (_, c1))| *c1 == '\n');
+        key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            let mut chars = peekable_no_nl_windows(m.iter());
 
-                if let Some(((p0, c0), (p1, c1))) = chars.next() {
-                    let cat0 = CharCat::of(c0, m.w_chars());
-                    let cat1 = CharCat::of(c1, m.w_chars());
-                    let p0 = if cat0 == cat1 { p0 } else { p1 };
-
-                    let (p1, ..) = {
-                        let mut chars = chars.map(|(_, second)| second).peekable();
-                        let (p1, c1, ..) = end_of_cat(&mut chars, cat1, (p1, c1));
-                        end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
-                    };
-
-                    m.move_to(p0);
-                    m.set_anchor();
-                    m.move_to(p1);
+            if let Some(((p0, c0), (p1, c1))) = chars.next() {
+                let (p0, cat) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
+                let (p1, ..) = {
+                    let mut chars = chars.map(|(_, second)| second).peekable();
+                    let (p1, c1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
+                    end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
                 };
-            });
-        }
 
-        key!(Char('e')) => {
-            helper.move_each_cursor(|m| {
-                let mut chars = m
-                    .iter()
-                    .map_windows(|[first, second]| (*first, *second))
-                    .skip_while(|(_, (_, c1))| *c1 == '\n')
-                    .peekable();
+                m.move_to(p0);
+                m.set_anchor();
+                m.move_to(p1);
+            };
+        }),
+        key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            let mut chars = peekable_no_nl_windows(m.iter());
 
-                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
-                    let cat0 = CharCat::of(c0, m.w_chars());
-                    let cat1 = CharCat::of(c1, m.w_chars());
-                    let p0 = if cat0 == cat1 { p0 } else { p1 };
-
-                    let p1 = {
-                        let mut chars = chars.map(|(_, second)| second).peekable();
-                        let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
-                        match miss {
-                            Some(char) => {
-                                let cat = CharCat::of(char, m.w_chars());
-                                let (p1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
-                                p1
-                            }
-                            None => p1,
-                        }
-                    };
-
-                    m.move_to(p0);
-                    m.set_anchor();
-                    m.move_to(p1);
+            if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
+                let (p0, _) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
+                let p1 = {
+                    let mut chars = chars.map(|(_, second)| second).peekable();
+                    let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
+                    miss.map(|char| {
+                        end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p1, c1)).0
+                    })
+                    .unwrap_or(p1)
                 };
-            });
-        }
 
-        key!(Char('b')) => {
-            helper.move_each_cursor(|m| {
-                let mut chars = [(m.caret(), m.char())]
-                    .into_iter()
-                    .chain(m.iter_rev())
-                    .map_windows(|[second, first]| (*first, *second))
-                    .skip_while(|((_, c0), _)| *c0 == '\n')
-                    .peekable();
+                m.move_to(p0);
+                m.set_anchor();
+                m.move_to(p1);
+            };
+        }),
+        key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            let mut chars = {
+                let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
+                peekable_no_nl_windows(iter)
+            };
 
-                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
-                    let cat0 = CharCat::of(c0, m.w_chars());
-                    let cat1 = CharCat::of(c1, m.w_chars());
-                    let p1 = if cat0 == cat1 { p1 } else { p0 };
-
-                    let p0 = {
-                        let mut chars = chars.map(|(first, _)| first).peekable();
-                        let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
-                        match miss {
-                            Some(char) => {
-                                let cat = CharCat::of(char, m.w_chars());
-                                let (p0, ..) = end_of_cat(&mut chars, cat, (p0, c0));
-                                p0
-                            }
-                            None => p0,
-                        }
-                    };
-
-                    m.move_to(p1);
-                    m.move_hor(1);
-                    m.set_anchor();
-                    m.move_to(p0);
+            if let Some(&((p1, c1), (p0, c0))) = chars.peek() {
+                let (p1, _) = word_point_and_cat(c1, c0, p1, p0, m.w_chars(), mf);
+                let p0 = {
+                    let mut chars = chars.map(|(_, first)| first).peekable();
+                    let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
+                    miss.map(|char| {
+                        end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p0, c0)).0
+                    })
+                    .unwrap_or(p0)
                 };
-            });
-        }
+
+                m.move_to(p1);
+                m.set_anchor();
+                m.move_to(p0);
+            };
+        }),
 
         ////////// Keys that parse and extend the selection.
-        key!(Char('W'), Mod::SHIFT) => {
-            helper.move_each_cursor(|m| {
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
-                let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
+        key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            if m.anchor().is_none() {
+                m.set_anchor();
+            }
+            let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
 
-                if let Some((p, char)) = chars.next() {
-                    let cat = CharCat::of(char, m.w_chars());
-                    let (p, ..) = {
-                        let mut chars = chars.peekable();
-                        end_of_cat(&mut chars, cat, (p, char));
-                        end_of_cat(&mut chars, [' ', '\t'], (p, char))
-                    };
-
-                    m.move_to(p);
+            if let Some((p, char)) = chars.next() {
+                let cat = CharCat::of(char, m.w_chars(), mf);
+                let (p, ..) = {
+                    let mut chars = chars.peekable();
+                    let (p, char, _) = end_of_cat(&mut chars, cat, (p, char));
+                    end_of_cat(&mut chars, [' ', '\t'], (p, char))
                 };
-            });
-        }
 
-        key!(Char('E'), Mod::SHIFT) => {
-            helper.move_each_cursor(|m| {
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
-                let mut chars = m
-                    .iter()
-                    .skip(1)
-                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
+                m.move_to(p);
+            };
+        }),
+        key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            if m.anchor().is_none() {
+                m.set_anchor();
+            }
+            let mut chars = m
+                .iter()
+                .skip(1)
+                .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
 
-                if let Some((point, char)) = chars.next() {
-                    let cat = CharCat::of(char, m.w_chars());
-                    let (point, ..) = {
-                        let mut chars = chars.peekable();
-                        end_of_cat(&mut chars, cat, (point, char))
-                    };
-
-                    m.move_to(point);
+            if let Some((point, char)) = chars.next() {
+                let cat = CharCat::of(char, m.w_chars(), mf);
+                let (point, ..) = {
+                    let mut chars = chars.peekable();
+                    end_of_cat(&mut chars, cat, (point, char))
                 };
-            });
-        }
+
+                m.move_to(point);
+            };
+        }),
+        key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            if m.anchor().is_none() {
+                m.set_anchor();
+            }
+            let mut chars = m
+                .iter_rev()
+                .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
+
+            if let Some((point, char)) = chars.next() {
+                let cat = CharCat::of(char, m.w_chars(), mf);
+                let (point, ..) = {
+                    let mut chars = chars.peekable();
+                    end_of_cat(&mut chars, cat, (point, char))
+                };
+
+                m.move_to(point);
+            };
+        }),
 
         ////////// Insertion keys.
         key!(Char('i')) => {
@@ -417,6 +357,39 @@ fn match_normal<U: Ui>(
         key!(Char('u')) => helper.undo(),
         key!(Char('U'), Mod::SHIFT) => helper.redo(),
         _ => {}
+    }
+}
+
+#[derive(Default, Clone, Copy, PartialEq)]
+pub enum Mode {
+    Insert,
+    #[default]
+    Normal,
+    GoTo,
+    View,
+    Command,
+}
+
+/// Triggers whenever the mode changes
+///
+/// Arguments:
+/// * The previous [`Mode`]
+/// * The current [`Mode`]
+pub struct OnModeChange {}
+
+impl Hookable for OnModeChange {
+    type Args<'args> = (Mode, Mode);
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Insert => f.write_str("insert"),
+            Mode::Normal => f.write_str("normal"),
+            Mode::GoTo => f.write_str("goto"),
+            Mode::View => f.write_str("view"),
+            Mode::Command => f.write_str("command"),
+        }
     }
 }
 
@@ -522,18 +495,47 @@ fn end_of_cat(
     (last.0, last.1, mismatch)
 }
 
+fn peekable_no_nl_windows<'a>(
+    iter: impl Iterator<Item = (Point, char)> + 'a,
+) -> Peekable<impl Iterator<Item = ((Point, char), (Point, char))> + 'a> {
+    iter.map_windows(|[first, second]| (*first, *second))
+        .skip_while(|(_, (_, c1))| *c1 == '\n')
+        .peekable()
+}
+
+/// Returns an appropriate [`Point`] and [`CharCat`] for a "word" like
+/// command
+///
+/// If the categories of the two characters differ, the first point
+/// must be shifted forwards once.
+fn word_point_and_cat(
+    c0: char,
+    c1: char,
+    p0: Point,
+    p1: Point,
+    w_chars: &WordChars,
+    mf: Mod,
+) -> (Point, CharCat) {
+    let cat0 = CharCat::of(c0, w_chars, mf);
+    let cat1 = CharCat::of(c1, w_chars, mf);
+    (if cat0 == cat1 { p0 } else { p1 }, cat1)
+}
+
 enum CharCat<'a> {
     Word(&'a WordChars),
     Space,
     Other(&'a WordChars),
+    NotSpace,
 }
 
 impl<'a> CharCat<'a> {
-    fn of(char: char, w_chars: &'a WordChars) -> Self {
-        if w_chars.matches(char) {
-            Self::Word(w_chars)
-        } else if [' ', '\t', '\n'].matches(char) {
+    fn of(char: char, w_chars: &'a WordChars, mf: Mod) -> Self {
+        if [' ', '\t', '\n'].matches(char) {
             Self::Space
+        } else if mf.contains(Mod::ALT) {
+            Self::NotSpace
+        } else if w_chars.matches(char) {
+            Self::Word(w_chars)
         } else {
             Self::Other(w_chars)
         }
@@ -546,6 +548,7 @@ impl CharSet for CharCat<'_> {
             CharCat::Word(w_chars) => w_chars.matches(char),
             CharCat::Space => [' ', '\t', '\n'].matches(char),
             CharCat::Other(w_chars) => w_chars.or([' ', '\t', '\n']).not().matches(char),
+            CharCat::NotSpace => [' ', '\t', '\n'].not().matches(char),
         }
     }
 }
@@ -559,4 +562,11 @@ impl<'a> PartialEq for CharCat<'a> {
                 | (CharCat::Other(_), CharCat::Other(_))
         )
     }
+}
+
+enum Side {
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
