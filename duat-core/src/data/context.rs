@@ -95,6 +95,10 @@ where
         self.notifications
     }
 
+    pub fn notify(&self, text: Text) {
+        *self.notifications.write() = text;
+    }
+
     pub(crate) fn end_duat(&self) {
         self.has_ended.store(true, Ordering::Relaxed);
     }
@@ -165,6 +169,11 @@ where
     /// The name of the active [`FileWidget`]'s file.
     pub fn name(&self) -> String {
         self.0.raw_read().as_ref().unwrap().0.read().name()
+    }
+
+    /// The name of the active [`FileWidget`]'s file.
+    pub fn path(&self) -> String {
+        self.0.raw_read().as_ref().unwrap().0.read().path()
     }
 
     // NOTE: Doesn't return result, since it is expected that widgets can

@@ -101,6 +101,7 @@ where
             widget.print_cfg(),
         ));
 
+        self.cursors.replace(n, cursor);
         widget.update(self.area);
     }
 

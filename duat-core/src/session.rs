@@ -8,12 +8,7 @@ use std::{
 };
 
 use crate::{
-    data::{Context, RwData},
-    hooks::{self, OnWindowOpen},
-    input::InputMethod,
-    text::{err, ok, text, PrintCfg, Text},
-    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
-    widgets::{ActiveWidget, File, FileCfg, Widget},
+    data::{Context, RwData}, hooks::{self, OnWindowOpen}, input::InputMethod, log_info, text::{err, ok, text, PrintCfg, Text}, ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder}, widgets::{ActiveWidget, File, FileCfg, Widget}
 };
 
 #[doc(hidden)]
@@ -495,14 +490,13 @@ where
             let windows = session.windows.clone();
 
             move |_, mut args| {
-                let file = args.next_else(err!("No path supplied."))?;
-
-                let path = PathBuf::from(file);
+                let path: PathBuf = args.next_as()?;
                 let name = path
                     .file_name()
                     .ok_or(err!("No file in path"))?
                     .to_string_lossy()
                     .to_string();
+
 
                 let read_windows = windows.read();
                 let (window_index, entry) = read_windows
@@ -517,6 +511,7 @@ where
                             .unwrap_or(false)
                     })
                     .ok_or(err!("No open files named " [*a] name [] "."))?;
+
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
@@ -587,12 +582,12 @@ where
                 let (new_window, entry) = if flags.word("global") {
                     iter_around(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .unwrap()
+                        .ok_or_else(|| err!("There are no other open files."))?
                 } else {
                     let slice = &read_windows[window_index..=window_index];
                     let (_, entry) = iter_around(slice, 0, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .unwrap();
+                        .ok_or_else(|| err!("There are no other files open in this window."))?;
 
                     (window_index, entry)
                 };
@@ -629,12 +624,12 @@ where
                 let (new_window, entry) = if flags.word("global") {
                     iter_around_rev(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .unwrap()
+                        .ok_or_else(|| err!("There are no other open files."))?
                 } else {
                     let slice = &read_windows[window_index..=window_index];
                     let (_, entry) = iter_around_rev(slice, 0, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .unwrap();
+                        .ok_or_else(|| err!("There are no other files open in this window."))?;
 
                     (window_index, entry)
                 };
@@ -699,11 +694,7 @@ fn iter_around<U: Ui>(
     window: usize,
     widget: usize,
 ) -> impl Iterator<Item = (usize, (&Widget<U>, &U::Area))> {
-    let prev_len: usize = windows
-        .iter()
-        .take(window + 1)
-        .map(Window::<U>::len_widgets)
-        .sum();
+    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
 
     windows
         .iter()
@@ -717,7 +708,7 @@ fn iter_around<U: Ui>(
                 .enumerate()
                 .take(window + 1)
                 .flat_map(window_index_widget)
-                .take(prev_len + widget + 1),
+                .take(prev_len + widget),
         )
 }
 
@@ -732,11 +723,11 @@ fn iter_around_rev<U: Ui>(
         .iter()
         .enumerate()
         .rev()
-        .skip(windows.len() - 1 - window)
-        .flat_map(move |(index, window)| {
-            window_index_widget((index, window))
+        .skip(windows.len() - window)
+        .flat_map(move |(i, win)| {
+            window_index_widget((i, win))
                 .rev()
-                .skip(window.len_widgets() - widget)
+                .skip(win.len_widgets() - widget)
         })
         .chain(
             windows
@@ -744,8 +735,8 @@ fn iter_around_rev<U: Ui>(
                 .enumerate()
                 .rev()
                 .take(windows.len() - window)
-                .flat_map(move |(index, window)| window_index_widget((index, window)).rev())
-                .take(next_len - widget),
+                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
+                .take(next_len - (widget + 1)),
         )
 }
 

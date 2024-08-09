@@ -128,14 +128,17 @@ impl Cursors {
         let start = cursor.range().start;
         let (Ok(i) | Err(i)) = self.list.binary_search_by_key(&start, |c| c.range().start);
 
-        if self.try_merge_on(i, &cursor) {
+        let i = if self.try_merge_on(i, &cursor) {
             self.list.remove(orig_i);
+            i - 1
         } else if orig_i == i {
             self.list[i] = cursor;
+            i
         } else {
             self.list.insert(i, cursor);
             self.list.remove(orig_i);
-        }
+            i - (orig_i < i) as usize
+        };
 
         if self.main == orig_i {
             self.main = i;
@@ -167,7 +170,8 @@ impl Cursors {
 
     fn try_merge_on(&mut self, i: usize, cursor: &Cursor) -> bool {
         let start = cursor.range().start;
-        if let Some(prev) = self.list.get_mut(i)
+        if let Some(prev_i) = i.checked_sub(1)
+            && let Some(prev) = self.list.get_mut(prev_i)
             && prev.range().end > start
         {
             prev.merge_ahead(cursor.clone());

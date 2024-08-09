@@ -1,6 +1,6 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{fmt::Display, iter::Peekable};
+use std::{fmt::Display, iter::Peekable, sync::LazyLock};
 
 use duat_core::{
     data::{Context, RwData},
@@ -10,7 +10,7 @@ use duat_core::{
         Cursors, EditHelper, InputMethod,
     },
     palette::{self, Form},
-    text::{text, CharSet, Point, Text, WordChars},
+    text::{err, text, CharSet, Point, Text, WordChars},
     ui::Ui,
     widgets::File,
 };
@@ -21,7 +21,6 @@ const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 pub struct KeyMap {
     cursors: Option<Cursors>,
     mode: Mode,
-    last_file: String,
 }
 
 impl KeyMap {
@@ -30,7 +29,6 @@ impl KeyMap {
         KeyMap {
             cursors: Some(Cursors::new_inclusive()),
             mode: Mode::Normal,
-            last_file: String::from(""),
         }
     }
 
@@ -318,19 +316,32 @@ impl KeyMap {
         key: Event,
         context: Context<U>,
     ) {
+        static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
+        let last_file = LAST_FILE.read().clone();
+        let cur_name = context.cur_file().unwrap().name();
+
         match key {
-            key!(Char('a')) if context.commands.buffer(&self.last_file).is_ok() => {
-                self.last_file = context.cur_file().unwrap().name();
+            key!(Char('a')) => {
+                if let Some(last) = last_file
+                    && context.commands.run_notify(format!("b {last}")).is_ok()
+                {
+                    *LAST_FILE.write() = Some(cur_name);
+                } else {
+                    context.notify(err!("There is no previous file."))
+                }
             }
-            key!(Char('a')) => {}
             key!(Char('j')) => helper.move_main(|m| m.move_ver(isize::MAX)),
             key!(Char('k')) => helper.move_main(|m| m.move_to_coords(0, 0)),
-            key!(Char('n')) if context.commands.next_file().is_ok() => {
-                self.last_file = context.cur_file().unwrap().name()
+            key!(Char('n')) => {
+                if context.commands.run_notify("next-file").is_ok() {
+                    *LAST_FILE.write() = Some(cur_name);
+                }
             }
             key!(Char('n')) => {}
-            key!(Char('N')) if context.commands.prev_file().is_ok() => {
-                self.last_file = context.cur_file().unwrap().name()
+            key!(Char('N'), Mod::SHIFT) => {
+                if context.commands.run_notify("prev-file").is_ok() {
+                    *LAST_FILE.write() = Some(cur_name);
+                }
             }
             _ => {}
         }

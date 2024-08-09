@@ -39,6 +39,7 @@ pub trait DuatError {
 }
 
 /// Error for failures in Duat
+#[derive(Clone)]
 pub enum Error<E> {
     /// # Command related errors:
 

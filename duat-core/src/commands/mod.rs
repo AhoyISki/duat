@@ -24,7 +24,7 @@ use std::{
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
     data::{CurFile, CurWidget, Data, RwData, RwLock},
-    duat_name,
+    duat_name, log_info,
     text::{err, text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
@@ -133,7 +133,7 @@ where
     /// [`File`]: crate::file::File
     /// [`Commands::buffer`]: Commands::buffer
     pub fn edit(&self, file: impl Display) -> Result<Option<Text>> {
-        self.run(format!("edit {}", file))
+        self.run(format!("edit {file}"))
     }
 
     /// Switches to a [`File`] with the given name.
@@ -146,7 +146,7 @@ where
     /// [`File`]: crate::widgets::File
     /// [`Commands::edit`]: Commands::edit
     pub fn buffer(&self, file: impl Display) -> Result<Option<Text>> {
-        self.run(format!("buffer {}", file))
+        self.run(format!("buffer {file}"))
     }
 
     /// Switches to the next [`File`].
@@ -274,14 +274,14 @@ where
     /// Like [`run`], but notifies the result, not returning it
     ///
     /// [`run`]: Commands::run
-    pub fn run_notify(&self, call: impl Display) {
+    pub fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
         let ret = self.run(call);
-        let mut notifs = self.notifications.write();
-        match ret {
-            Ok(Some(ok)) => *notifs = ok,
-            Err(err) => *notifs = err.into(),
+        match ret.as_ref() {
+            Ok(Some(ok)) => *self.notifications.write() = ok.clone(),
+            Err(err) => *self.notifications.write() = err.clone().into(),
             _ => {}
         }
+        ret
     }
 
     /// Adds a command to the global list of commands.

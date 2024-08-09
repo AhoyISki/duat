@@ -275,7 +275,7 @@ where
 }
 
 pub struct ShowNotifications {
-    notifications: RwData<Text>,
+    notifications: RoData<Text>,
     has_changed: AtomicBool,
 }
 
@@ -286,7 +286,7 @@ impl ShowNotifications {
         U: Ui,
     {
         Self {
-            notifications: context.notifications().clone(),
+            notifications: RoData::from(context.notifications()),
             has_changed: AtomicBool::new(false),
         }
     }
