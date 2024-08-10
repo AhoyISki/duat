@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::{any::TypeId, ops::Range};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
@@ -339,6 +339,83 @@ where
         }
     }
 
+    ////////// Public movement functions
+
+    /// Moves the cursor horizontally on the file. May also cause
+    /// vertical movement.
+    pub fn move_hor(&mut self, count: isize) {
+        self.cursor.move_hor(count, self.text, self.area, self.cfg);
+    }
+
+    /// Moves the cursor vertically on the file. May also cause
+    /// horizontal movement.
+    pub fn move_ver(&mut self, count: isize) {
+        self.cursor.move_ver(count, self.text, self.area, self.cfg);
+    }
+
+    /// Moves the cursor vertically on the file. May also cause
+    /// horizontal movement.
+    pub fn move_ver_wrapped(&mut self, count: isize) {
+        self.cursor
+            .move_ver_wrapped(count, self.text, self.area, self.cfg);
+    }
+
+    /// Moves the cursor to a [`Point`] in the file.
+    ///
+    /// - If the position isn't valid, it will move to the "maximum"
+    ///   position allowed.
+    /// - This command sets `desired_x`.
+    pub fn move_to(&mut self, point: Point) {
+        self.cursor.move_to(point, self.text, self.area, self.cfg);
+    }
+
+    /// Moves the cursor to a line and a column on the file.
+    ///
+    /// - If the coords isn't valid, it will move to the "maximum"
+    ///   position allowed.
+    /// - This command sets `desired_x`.
+    pub fn move_to_coords(&mut self, line: usize, col: usize) {
+        let point = self.text.point_at_line(line.min(self.text.len_lines()));
+        let (point, _) = self.text.iter_chars_at(point).take(col).last().unwrap();
+        self.move_to(point);
+    }
+
+    /// Returns and takes the anchor of the `TextCursor`.
+    pub fn unset_anchor(&mut self) -> Option<Point> {
+        self.cursor.unset_anchor()
+    }
+
+    /// Sets the position of the anchor to be the same as the current
+    /// cursor position in the file.
+    ///
+    /// The `anchor` and `current` act as a range of text on the file.
+    pub fn set_anchor(&mut self) {
+        self.cursor.set_anchor()
+    }
+
+    /// Switches the caret and anchor of the `TextCursor`.
+    pub fn swap_ends(&mut self) {
+        self.cursor.swap_ends();
+    }
+
+    /// Places the caret at the beginning of the selection.
+    pub fn set_caret_on_start(&mut self) {
+        if let Some(anchor) = self.cursor.anchor()
+            && self.cursor.caret() > anchor
+        {
+            self.cursor.swap_ends();
+        }
+    }
+
+    /// Places the caret at the beginning of the selection.
+    pub fn set_caret_on_end(&mut self) {
+        if let Some(anchor) = self.cursor.anchor()
+            && anchor > self.cursor.caret()
+        {
+            self.cursor.swap_ends();
+        }
+    }
+
     ////////// Lookup functions
     pub fn search(&self, pat: impl Pattern<'a>) -> impl Searcher<'a> {
         self.text.search_from(self.cursor.caret(), pat)
@@ -392,45 +469,14 @@ where
         self.text.iter_chars_at_rev(self.caret())
     }
 
-    ////////// Public movement functions
-
-    /// Moves the cursor horizontally on the file. May also cause
-    /// vertical movement.
-    pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text, self.area, self.cfg);
-    }
-
-    /// Moves the cursor vertically on the file. May also cause
-    /// horizontal movement.
-    pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text, self.area, self.cfg);
-    }
-
-    /// Moves the cursor vertically on the file. May also cause
-    /// horizontal movement.
-    pub fn move_ver_wrapped(&mut self, count: isize) {
-        self.cursor
-            .move_ver_wrapped(count, self.text, self.area, self.cfg);
-    }
-
-    /// Moves the cursor to a [`Point`] in the file.
-    ///
-    /// - If the position isn't valid, it will move to the "maximum"
-    ///   position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, self.cfg);
-    }
-
-    /// Moves the cursor to a line and a column on the file.
-    ///
-    /// - If the coords isn't valid, it will move to the "maximum"
-    ///   position allowed.
-    /// - This command sets `desired_x`.
-    pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let point = self.text.point_at_line(line.min(self.text.len_lines()));
-        let (point, _) = self.text.iter_chars_at(point).take(col).last().unwrap();
-        self.move_to(point);
+    pub fn selection(&self) -> [&str; 2] {
+        let anchor = self.anchor().unwrap_or(self.caret());
+        let range = if anchor < self.caret() {
+            (anchor, self.caret())
+        } else {
+            (self.caret(), anchor)
+        };
+        self.text.strs_in_point_range(range)
     }
 
     /// Returns the anchor of the `TextCursor`.
@@ -443,39 +489,12 @@ where
         self.cursor.caret()
     }
 
-    /// Returns and takes the anchor of the `TextCursor`.
-    pub fn unset_anchor(&mut self) -> Option<Point> {
-        self.cursor.unset_anchor()
-    }
-
-    /// Sets the position of the anchor to be the same as the current
-    /// cursor position in the file.
-    ///
-    /// The `anchor` and `current` act as a range of text on the file.
-    pub fn set_anchor(&mut self) {
-        self.cursor.set_anchor()
-    }
-
-    /// Switches the caret and anchor of the `TextCursor`.
-    pub fn swap_ends(&mut self) {
-        self.cursor.swap_ends();
-    }
-
-    /// Places the caret at the beginning of the selection.
-    pub fn set_caret_on_start(&mut self) {
-        if let Some(anchor) = self.cursor.anchor()
-            && self.cursor.caret() > anchor
-        {
-            self.cursor.swap_ends();
-        }
-    }
-
-    /// Places the caret at the beginning of the selection.
-    pub fn set_caret_on_end(&mut self) {
-        if let Some(anchor) = self.cursor.anchor()
-            && anchor > self.cursor.caret()
-        {
-            self.cursor.swap_ends();
+    pub fn byte_range(&self) -> Range<usize> {
+        let anchor = self.anchor().unwrap_or(self.caret());
+        if anchor < self.caret() {
+            anchor.byte()..self.caret().byte()
+        } else {
+            self.caret().byte()..anchor.byte()
         }
     }
 }

@@ -39,18 +39,14 @@ pub trait Searcher<'a>: Iterator<Item = ((Point, Point), Self::Match)> {
 }
 
 mod str {
-    use std::{
-        iter::{Chain, Rev},
-        str::Bytes,
-    };
-
     use crate::text::{Point, Text};
 
     pub struct Searcher<'a> {
-        iter: Chain<Bytes<'a>, Bytes<'a>>,
+        iter: SearchIter<'a>,
         pat: &'a str,
         point: Point,
     }
+
     impl<'a> Iterator for Searcher<'a> {
         type Item = ((Point, Point), &'a str);
 
@@ -79,15 +75,19 @@ mod str {
         type Pattern = &'a str;
 
         fn new(text: &'a Text, point: Point, pat: &'a str) -> Self {
-            let (s0, s1) = text.strs_in_range(point.byte()..);
-            let iter = s0.bytes().chain(s1.bytes());
-
+            // This might be a limitation of the current version of rust.
+            fn iter(text: &Text, point: Point) -> SearchIter<'_> {
+                text.strs_in_range(point.byte()..)
+                    .into_iter()
+                    .flat_map(str::bytes)
+            }
+            let iter = iter(text, point);
             Self { iter, pat, point }
         }
     }
 
     pub struct SearcherRev<'a> {
-        iter: Chain<Rev<Bytes<'a>>, Rev<Bytes<'a>>>,
+        iter: SearchIterRev<'a>,
         pat: &'a str,
         point: Point,
     }
@@ -120,9 +120,14 @@ mod str {
         type Pattern = &'a str;
 
         fn new(text: &'a Text, point: Point, pat: &'a str) -> Self {
-            let (s0, s1) = text.strs_in_range(..point.byte());
-            let iter = s1.bytes().rev().chain(s0.bytes().rev());
-
+            // This might be a limitation of the current version of rust.
+            fn iter(text: &Text, point: Point) -> SearchIterRev<'_> {
+                text.strs_in_range(point.byte()..)
+                    .into_iter()
+                    .flat_map(str::bytes)
+                    .rev()
+            }
+            let iter = iter(text, point);
             Self { iter, pat, point }
         }
     }
@@ -131,14 +136,12 @@ mod str {
         type Searcher = Searcher<'a>;
         type SearcherRev = SearcherRev<'a>;
     }
+
+    type SearchIter<'a> = impl Iterator<Item = u8> + 'a;
+    type SearchIterRev<'a> = impl Iterator<Item = u8> + 'a;
 }
 
 mod chars {
-    use std::{
-        iter::{Chain, Rev},
-        str::Chars,
-    };
-
     use crate::text::{Point, Text, WordChars};
 
     pub struct Or<C1, C2>(C1, C2)
@@ -159,7 +162,7 @@ mod chars {
     where
         C: CharSet,
     {
-        iter: Chain<Chars<'a>, Chars<'a>>,
+        iter: SearchIter<'a>,
         pat: C,
         point: Point,
     }
@@ -192,9 +195,13 @@ mod chars {
         type Pattern = C;
 
         fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self {
-            let (s0, s1) = text.strs_in_range(point.byte()..);
-            let iter = s0.chars().chain(s1.chars());
-
+            // This might be a limitation of the current version of rust.
+            fn iter(text: &Text, point: Point) -> SearchIter<'_> {
+                text.strs_in_range(point.byte()..)
+                    .into_iter()
+                    .flat_map(str::chars)
+            }
+            let iter = iter(text, point);
             Self { iter, pat, point }
         }
     }
@@ -203,7 +210,7 @@ mod chars {
     where
         C: CharSet,
     {
-        iter: Chain<Rev<Chars<'a>>, Rev<Chars<'a>>>,
+        iter: SearchIterRev<'a>,
         pat: C,
         point: Point,
     }
@@ -236,9 +243,13 @@ mod chars {
         type Pattern = C;
 
         fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self {
-            let (s0, s1) = text.strs_in_range(..point.byte());
-            let iter = s1.chars().rev().chain(s0.chars().rev());
-
+            // This might be a limitation of the current version of rust.
+            fn iter(text: &Text, point: Point) -> SearchIterRev<'_> {
+                text.strs_in_range(point.byte()..)
+                    .into_iter()
+                    .flat_map(str::chars)
+            }
+            let iter = iter(text, point);
             Self { iter, pat, point }
         }
     }
@@ -328,4 +339,7 @@ mod chars {
             !self.0.matches(char)
         }
     }
+
+    type SearchIter<'a> = impl Iterator<Item = char> + 'a;
+    type SearchIterRev<'a> = impl Iterator<Item = char> + 'a;
 }

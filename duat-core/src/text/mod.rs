@@ -227,7 +227,7 @@ impl Text {
         let (b, c, mut l) = self.records.closest_to(at);
 
         let found = if at >= b {
-            let (s0, s1) = self.strs_in_range(b..);
+            let [s0, s1] = self.strs_in_range(b..);
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -239,11 +239,11 @@ impl Text {
                 .take_while(|&(b, ..)| at >= b)
                 .last()
         } else {
-            let (s0, s1) = self.strs_in_range(..b);
-            let s1 = s1.chars().rev();
             let mut c_len = 0;
-
-            s1.chain(s0.chars().rev())
+            self.strs_in_range(..b)
+                .into_iter()
+                .flat_map(str::chars)
+                .rev()
                 .enumerate()
                 .map(|(i, char)| {
                     l -= (char == '\n') as usize;
@@ -269,7 +269,7 @@ impl Text {
         let (b, c, mut l) = self.records.closest_to_by(at, |(_, c, _)| *c);
 
         let found = if at >= c {
-            let (s0, s1) = self.strs_in_range(b..);
+            let [s0, s1] = self.strs_in_range(b..);
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -281,11 +281,11 @@ impl Text {
                 .take_while(|&(_, c, _)| at >= c)
                 .last()
         } else {
-            let (s0, s1) = self.strs_in_range(..b);
-            let s1 = s1.chars().rev();
             let mut c_len = 0;
-
-            s1.chain(s0.chars().rev())
+            self.strs_in_range(..b)
+                .into_iter()
+                .flat_map(str::chars)
+                .rev()
                 .enumerate()
                 .map(|(i, char)| {
                     l -= (char == '\n') as usize;
@@ -311,7 +311,7 @@ impl Text {
         let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
 
         let found = if at >= l {
-            let (s0, s1) = self.strs_in_range(b..);
+            let [s0, s1] = self.strs_in_range(b..);
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -322,11 +322,11 @@ impl Text {
                 })
                 .find(|&(.., l)| at == l)
         } else {
-            let (s0, s1) = self.strs_in_range(..b);
-            let s1 = s1.chars().rev();
             let mut c_len = 0;
-
-            s1.chain(s0.chars().rev())
+            self.strs_in_range(..b)
+                .into_iter()
+                .flat_map(str::chars)
+                .rev()
                 .enumerate()
                 .map(|(i, char)| {
                     l -= (char == '\n') as usize;
@@ -395,11 +395,10 @@ impl Text {
     }
 
     pub fn last_point(&self) -> Option<Point> {
-        let (s0, s1) = self.strs_in_range(..);
-        s1.chars()
-            .rev()
-            .chain(s0.chars().rev())
-            .next()
+        self.strs_in_range(..)
+            .into_iter()
+            .flat_map(str::chars)
+            .next_back()
             .map(|char| self.len_point().rev(char))
     }
 
@@ -434,14 +433,15 @@ impl Text {
     // NOTE: Inherent because I don't want this to implement Display
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let (s0, s1) = self.strs_in_range(..);
+        let [s0, s1] = self.strs_in_range(..);
         s0.to_string() + s1
     }
 
-    fn strs_in_range(
-        &self,
-        range: impl RangeBounds<usize> + std::fmt::Debug,
-    ) -> (&'_ str, &'_ str) {
+    pub fn strs_in_point_range(&self, (p1, p2): (Point, Point)) -> [&str; 2] {
+        self.strs_in_range(p1.byte()..p2.byte())
+    }
+
+    fn strs_in_range(&self, range: impl RangeBounds<usize> + std::fmt::Debug) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len_bytes());
 
@@ -450,7 +450,7 @@ impl Text {
             let r1 = start.saturating_sub(s0.len()).min(s1.len())
                 ..end.saturating_sub(s0.len()).min(s1.len());
 
-            (from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1]))
+            [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
         }
     }
 }
@@ -474,25 +474,28 @@ impl Text {
     }
 
     pub fn iter_bytes_at(&self, b: usize) -> impl Iterator<Item = u8> + '_ {
-        let (s0, s1) = self.strs_in_range(b..);
-        s0.bytes().chain(s1.bytes())
+        self.strs_in_range(b..).into_iter().flat_map(str::bytes)
     }
 
     pub fn iter_chars_at(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        let (s0, s1) = self.strs_in_range(p.byte()..);
-        s0.chars().chain(s1.chars()).scan(p, |p, char| {
-            let old_p = *p;
-            *p = p.fwd(char);
-            Some((old_p, char))
-        })
+        self.strs_in_range(p.byte()..)
+            .into_iter()
+            .flat_map(str::chars)
+            .scan(p, |p, char| {
+                let old_p = *p;
+                *p = p.fwd(char);
+                Some((old_p, char))
+            })
     }
 
     pub fn iter_chars_at_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        let (s0, s1) = self.strs_in_range(..p.byte());
-        s1.chars().rev().chain(s0.chars().rev()).scan(p, |p, char| {
-            *p = p.rev(char);
-            Some((*p, char))
-        })
+        self.strs_in_range(..p.byte())
+            .into_iter()
+            .flat_map(str::chars)
+            .scan(p, |p, char| {
+                *p = p.rev(char);
+                Some((*p, char))
+            })
     }
 }
 

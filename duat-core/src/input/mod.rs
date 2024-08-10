@@ -3,7 +3,6 @@ mod default;
 mod helper;
 
 pub mod key {
-    use crossterm::event::{KeyEventKind, KeyEventState};
     pub use crossterm::event::{KeyCode as Code, KeyEvent as Event, KeyModifiers as Mod};
 
     pub macro key {
@@ -12,12 +11,7 @@ pub mod key {
         },
 
         ($code:pat, $modifiers:pat) => {
-            Event {
-                code: $code,
-                modifiers: $modifiers,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE
-            }
+            Event { code: $code, modifiers: $modifiers, .. }
         }
     }
 }
