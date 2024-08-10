@@ -102,7 +102,7 @@ mod str {
             while let Some(b) = self.iter.next() {
                 if i == 0 {
                     return Some(((self.point, p1), self.pat));
-                } else if b == self.pat.as_bytes()[i] {
+                } else if b == self.pat.as_bytes()[i - 1] {
                     i -= 1;
                 } else {
                     p1 = self.point;
@@ -236,8 +236,8 @@ mod chars {
         type Pattern = C;
 
         fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self {
-            let (s0, s1) = text.strs_in_range(point.byte()..);
-            let iter = s0.chars().rev().chain(s1.chars().rev());
+            let (s0, s1) = text.strs_in_range(..point.byte());
+            let iter = s1.chars().rev().chain(s0.chars().rev());
 
             Self { iter, pat, point }
         }
@@ -248,7 +248,7 @@ mod chars {
         C: CharSet,
     {
         type Searcher = Searcher<'a, Self>;
-        type SearcherRev = Searcher<'a, Self>;
+        type SearcherRev = SearcherRev<'a, Self>;
     }
 
     pub trait CharSet {

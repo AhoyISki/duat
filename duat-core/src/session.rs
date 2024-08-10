@@ -8,7 +8,12 @@ use std::{
 };
 
 use crate::{
-    data::{Context, RwData}, hooks::{self, OnWindowOpen}, input::InputMethod, log_info, text::{err, ok, text, PrintCfg, Text}, ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder}, widgets::{ActiveWidget, File, FileCfg, Widget}
+    data::{Context, RwData},
+    hooks::{self, OnWindowOpen},
+    input::InputMethod,
+    text::{err, ok, text, PrintCfg, Text},
+    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
+    widgets::{ActiveWidget, File, FileCfg, Widget},
 };
 
 #[doc(hidden)]
@@ -497,7 +502,6 @@ where
                     .to_string_lossy()
                     .to_string();
 
-
                 let read_windows = windows.read();
                 let (window_index, entry) = read_windows
                     .iter()
@@ -511,7 +515,6 @@ where
                             .unwrap_or(false)
                     })
                     .ok_or(err!("No open files named " [*a] name [] "."))?;
-
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();

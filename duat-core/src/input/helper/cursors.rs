@@ -238,7 +238,10 @@ mod cursor {
 
         /// Moves to specific, pre calculated [`Point`].
         pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-            self.caret = VPoint::new(point, text, area, cfg);
+            let Some(last) = text.last_point() else {
+                return;
+            };
+            self.caret = VPoint::new(point.min(last), text, area, cfg);
         }
 
         /// Internal horizontal movement function.

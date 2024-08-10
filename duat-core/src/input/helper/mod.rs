@@ -368,8 +368,12 @@ where
         self.text.char_at(self.cursor.caret()).unwrap()
     }
 
-    pub fn max_point(&self) -> Point {
+    pub fn len_point(&self) -> Point {
         self.text.len_point()
+    }
+
+    pub fn last_point(&self) -> Option<Point> {
+        self.text.last_point()
     }
 
     pub fn cfg(&self) -> &PrintCfg {
@@ -409,7 +413,7 @@ where
             .move_ver_wrapped(count, self.text, self.area, self.cfg);
     }
 
-    /// Moves the cursor to a position in the file.
+    /// Moves the cursor to a [`Point`] in the file.
     ///
     /// - If the position isn't valid, it will move to the "maximum"
     ///   position allowed.
@@ -423,11 +427,10 @@ where
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     /// - This command sets `desired_x`.
-    pub fn move_to_coords(&mut self, _line: usize, _col: usize) {
-        todo!();
-        // let point = Point::from_coords(line, col, self.text);
-        // self.cursor
-        //     .move_to(point, self.text, self.area, self.print_cfg);
+    pub fn move_to_coords(&mut self, line: usize, col: usize) {
+        let point = self.text.point_at_line(line.min(self.text.len_lines()));
+        let (point, _) = self.text.iter_chars_at(point).take(col).last().unwrap();
+        self.move_to(point);
     }
 
     /// Returns the anchor of the `TextCursor`.

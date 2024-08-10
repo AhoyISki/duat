@@ -24,7 +24,7 @@ use std::{
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
     data::{CurFile, CurWidget, Data, RwData, RwLock},
-    duat_name, log_info,
+    duat_name,
     text::{err, text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},

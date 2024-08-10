@@ -163,7 +163,16 @@ impl Tags {
         toggle_id
     }
 
-    pub fn extend(&mut self, other: Tags) {
+    pub fn extend(&mut self, mut other: Tags) {
+        let last = self.buf.len() - 1;
+        if let Some(TagOrSkip::Skip(first)) = other.buf.get(0)
+            && let Some(TagOrSkip::Skip(last)) = self.buf.get_mut(last)
+        {
+            *last += first;
+            other.buf.remove(0);
+            other.records.transform((0, 0), (1, 0), (0, 0));
+        }
+
         self.buf.extend(other.buf);
         self.texts.extend(other.texts);
         self.toggles.extend(other.toggles);
@@ -179,16 +188,15 @@ impl Tags {
             }
         }
 
-        self.fuse_skips_at(self.len_bytes());
         self.cull_small_ranges();
     }
 
     /// Removes all [`Tag`]s associated with a given [`Marker`] in the
     /// `pos`.
     pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
-        let (n, b) = match self.get_skip_at(at) {
-            Some((n, b, _)) if b == at => (n, b),
-            None => (self.buf.len(), self.len_bytes()),
+        let (n, b, skip) = match self.get_skip_at(at) {
+            Some((n, b, skip)) if b == at => (n, b, skip),
+            None => (self.buf.len(), self.len_bytes(), 0),
             // If `b != n`, we're in the middle of a skip, and nothing
             // is done.
             _ => return,
@@ -206,15 +214,22 @@ impl Tags {
             (removed, total)
         };
 
-        self.records
-            .transform((n, b), (total, 0), (total - removed.len(), 0));
-
-        for (i, tag) in removed {
+        for &(i, tag) in removed.iter() {
             self.buf.remove(i);
             remove_from_ranges((b, tag), &mut self.ranges);
         }
 
-        self.fuse_skips_at(at);
+        self.records
+            .transform((n, b), (total, 0), (total - removed.len(), 0));
+
+        if let Some(i) = n.checked_sub(removed.len() + 1)
+            && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i)
+        {
+            self.buf.splice(i..=(i + 1), [TagOrSkip::Skip(prev + skip)]);
+            self.records
+                .transform((n - removed.len(), b), (1, 0), (0, 0));
+        }
+
         deintersect(&mut self.ranges, self.range_min);
     }
 
@@ -445,24 +460,6 @@ impl Tags {
 
         for entry in ranges.iter().flat_map(TagRange::entries).flatten() {
             add_to_ranges(entry, &mut self.ranges, self.range_min)
-        }
-    }
-
-    /// If there is no [`Tag`] in `at`, fuses two skips surrounding
-    /// it.
-    ///
-    /// This method is used to get rid of sequences of 2 skips, in
-    /// order to keep the [`GapBuffer`] nice and tidy.
-    fn fuse_skips_at(&mut self, at: usize) {
-        let (n, skip) = match self.get_skip_at(at) {
-            Some((n, b, skip)) if b == at && n > 0 => (n, skip),
-            _ => return,
-        };
-
-        if let Some(p_skip) = self.buf[n - 1].as_skip() {
-            self.buf
-                .splice((n - 1)..=n, [TagOrSkip::Skip(p_skip + skip)]);
-            self.records.transform((n, at), (1, 0), (0, 0));
         }
     }
 

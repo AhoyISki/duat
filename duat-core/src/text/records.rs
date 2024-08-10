@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use crate::log_info;
+
 const LEN_PER_RECORD: usize = 150;
 
 pub trait Record: Debug + 'static {
@@ -104,18 +106,22 @@ where
             self.stored
                 .splice((s_i + 1)..=e_i.min(self.stored.len() - 1), []);
         }
+        log_info!("{start:?}, {old_len:?}, {new_len:?}");
+        log_info!("{s_i:?}, {s_rec:?}, {e_i:?}, {e_rec:?}");
 
         // Transformation of the beginning len.
         self.last = if let Some(len) = self.stored.get_mut(s_i) {
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
             let len = *len;
 
+            log_info!("{len:?}");
+
             // Removing if new_len has size 0 (no tags or skips).
             // If there are no tags or skips, no skip will start
             // exactly on this record, making it invalid.
             if let Some(prev_i) = s_i.checked_sub(1)
-                && start == s_rec
-                && new_len.is_zero_len()
+                && start.bytes() == s_rec.bytes()
+                && (new_len.is_zero_len() || len.is_zero_len())
             {
                 let prev_len = self.stored.get_mut(prev_i).unwrap();
                 *prev_len = prev_len.add(len);
@@ -133,6 +139,8 @@ where
         };
 
         self.max = self.max.add(new_len).sub(old_len);
+
+        log_info!("{self:#?}");
     }
 
     pub fn append(&mut self, r: R) {
