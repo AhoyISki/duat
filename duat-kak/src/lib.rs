@@ -55,19 +55,19 @@ impl KeyMap {
         match key {
             key!(Char(char)) => {
                 helper.edit_on_each_cursor(|editor| editor.insert(char));
-                helper.move_each_cursor(|m| m.move_hor(1));
+                helper.move_each(|m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
                 helper.edit_on_each_cursor(|editor| editor.insert(char));
-                helper.move_each_cursor(|m| m.move_hor(1));
+                helper.move_each(|m| m.move_hor(1));
             }
             key!(Enter) => {
                 helper.edit_on_each_cursor(|editor| editor.insert('\n'));
-                helper.move_each_cursor(|m| m.move_hor(1));
+                helper.move_each(|m| m.move_hor(1));
             }
             key!(Backspace) => {
                 let mut anchors = Vec::with_capacity(helper.len_cursors());
-                helper.move_each_cursor(|m| {
+                helper.move_each(|m| {
                     anchors.push({
                         let c = m.caret();
                         m.unset_anchor().map(|a| match a > c {
@@ -79,7 +79,7 @@ impl KeyMap {
                 });
                 let mut anchors = anchors.into_iter().cycle();
                 helper.edit_on_each_cursor(|editor| editor.replace(""));
-                helper.move_each_cursor(|m| {
+                helper.move_each(|m| {
                     if let Some(Some(diff)) = anchors.next() {
                         m.set_anchor();
                         m.move_hor(diff);
@@ -89,7 +89,7 @@ impl KeyMap {
             }
             key!(Delete) => {
                 let mut anchors = Vec::with_capacity(helper.len_cursors());
-                helper.move_each_cursor(|m| {
+                helper.move_each(|m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     m.set_anchor();
@@ -99,7 +99,7 @@ impl KeyMap {
                 helper.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                helper.move_each_cursor(|m| {
+                helper.move_each(|m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();
                         m.move_to(anchor);
@@ -143,7 +143,7 @@ impl KeyMap {
             key!(Char('l')) => move_each(helper, Side::Right, 1),
             key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
             key!(Char('J'), Mod::SHIFT) => match self.sel_type {
-                SelType::EndOfNl => helper.move_each_cursor(|m| {
+                SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
                     if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
                         m.move_to(point);
@@ -154,7 +154,7 @@ impl KeyMap {
                 _ => unreachable!(),
             },
             key!(Char('K'), Mod::SHIFT) => match self.sel_type {
-                SelType::EndOfNl => helper.move_each_cursor(|m| {
+                SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
                     if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
                         m.move_to(point);
@@ -177,7 +177,7 @@ impl KeyMap {
             key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
 
             ////////// Word and WORD selection keys.
-            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
                 let mut chars = peekable_no_nl_windows(m.iter());
 
                 if let Some(((p0, c0), (p1, c1))) = chars.next() {
@@ -193,7 +193,7 @@ impl KeyMap {
                     m.move_to(p1);
                 };
             }),
-            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
                 let mut chars = peekable_no_nl_windows(m.iter());
 
                 if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
@@ -212,7 +212,7 @@ impl KeyMap {
                     m.move_to(p1);
                 };
             }),
-            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each_cursor(|m| {
+            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
                 let mut chars = {
                     let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
                     peekable_no_nl_windows(iter)
@@ -235,7 +235,7 @@ impl KeyMap {
                 };
             }),
 
-            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -252,7 +252,7 @@ impl KeyMap {
                     m.move_to(p);
                 };
             }),
-            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -271,7 +271,7 @@ impl KeyMap {
                     m.move_to(point);
                 };
             }),
-            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each_cursor(|m| {
+            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -293,7 +293,7 @@ impl KeyMap {
             ////////// Other selection keys.
             key!(Char('x')) => {
                 self.sel_type = SelType::EndOfNl;
-                helper.move_each_cursor(|m| {
+                helper.move_each(|m| {
                     m.set_caret_on_start();
                     let p0 = m.find_ends_rev('\n').unzip().1.unwrap_or_default();
                     m.set_caret_on_end();
@@ -303,49 +303,46 @@ impl KeyMap {
                     m.move_to(p1);
                 })
             }
-            key!(Char('f' | 'F'), mf) if mf.intersects(ALTSHIFT) || mf == Mod::NONE => {
+            key!(Char(char), mf)
+                if let 'f' | 'F' | 't' | 'T' = char
+                    && (mf.intersects(ALTSHIFT) || mf == Mod::NONE) =>
+            {
                 self.sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
                     (true, true) => SelType::ExtendRev,
                     (true, false) => SelType::Extend,
                     (false, true) => SelType::Reverse,
                     (false, false) => SelType::Normal,
                 };
-                self.mode = Mode::OneKey("find");
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("find")));
+                self.mode = Mode::OneKey(if let 'f' | 'F' = char {
+                    "find"
+                } else {
+                    "until"
+                });
+                hooks::trigger::<OnModeChange>((Mode::Normal, self.mode));
             }
-            key!(Char('t' | 'T'), mf) if mf.intersects(ALTSHIFT) || mf == Mod::NONE => {
-                self.sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
-                    (true, true) => SelType::ExtendRev,
-                    (true, false) => SelType::Extend,
-                    (false, true) => SelType::Reverse,
-                    (false, false) => SelType::Normal,
-                };
-                self.mode = Mode::OneKey("until");
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("until")));
-            }
-            key!(Char(';'), Mod::ALT) => helper.move_each_cursor(|m| m.swap_ends()),
-            key!(Char(';')) => helper.move_each_cursor(|m| m.unset_anchor()),
+            key!(Char(';'), Mod::ALT) => helper.move_each(|m| m.swap_ends()),
+            key!(Char(';')) => helper.move_each(|m| m.unset_anchor()),
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
-                helper.move_each_cursor(|m| m.swap_ends());
+                helper.move_each(|m| m.swap_ends());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('a')) => {
-                helper.move_each_cursor(|m| m.set_caret_on_end());
+                helper.move_each(|m| m.set_caret_on_end());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('c')) => {
                 helper.edit_on_each_cursor(|editor| editor.replace(""));
-                helper.move_each_cursor(|m| m.unset_anchor());
+                helper.move_each(|m| m.unset_anchor());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('d')) => {
                 helper.edit_on_each_cursor(|editor| editor.replace(""));
-                helper.move_each_cursor(|m| m.unset_anchor());
+                helper.move_each(|m| m.unset_anchor());
             }
 
             ////////// Other mode changing keys.
@@ -358,6 +355,11 @@ impl KeyMap {
                     self.mode = Mode::Other("command");
                     hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
                 }
+            }
+            key!(Char('G'), Mod::SHIFT) => {
+                self.mode = Mode::OneKey("go to");
+                self.sel_type = SelType::Extend;
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
             }
             key!(Char('g')) => {
                 self.mode = Mode::OneKey("go to");
@@ -375,14 +377,58 @@ impl KeyMap {
     fn match_goto<U: Ui>(
         &mut self,
         mut helper: EditHelper<File, U>,
-        key: Event,
+        event: Event,
         context: Context<U>,
     ) {
         static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
         let last_file = LAST_FILE.read().clone();
         let cur_name = context.cur_file().unwrap().name();
 
-        match key {
+        if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = event
+            && let SelType::Normal = self.sel_type
+        {
+            helper.move_each(|m| m.unset_anchor())
+        } else {
+            helper.move_each(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor()
+                }
+            })
+        }
+
+        match event {
+            key!(Char('h')) => helper.move_each(|m| {
+                let (_, point) = m.find_ends_rev('\n').unwrap_or_default();
+                m.move_to(point);
+            }),
+            key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
+            key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
+            key!(Char('l')) => helper.move_each(|m| {
+                if let Some((point, _)) = m.find_ends('\n') {
+                    m.move_to(point);
+                    m.move_hor(-1);
+                } else if let Some(last) = m.last_point() {
+                    m.move_to(last);
+                }
+            }),
+            key!(Char('i')) => helper.move_each(|m| {
+                let mut first_char = None;
+                m.iter_rev()
+                    .inspect(|(p, char)| {
+                        if CharCat::Space.not().matches(*char) {
+                            first_char = Some(*p)
+                        }
+                    })
+                    .find(|(_, char)| *char == '\n');
+
+                if let Some(point) = first_char {
+                    m.move_to(point);
+                } else if let Some((point, _)) = m.find_ends(CharCat::Space.not().or('\n')) {
+                    m.move_to(point);
+                }
+            }),
+
+            ////////// File change keys.
             key!(Char('a')) => {
                 if let Some(file) = last_file
                     && context.commands.run_notify(format!("b {file}")).is_ok()
@@ -392,20 +438,20 @@ impl KeyMap {
                     context.notify(err!("There is no previous file."))
                 }
             }
-            key!(Char('j')) => helper.move_main(|m| m.move_ver(isize::MAX)),
-            key!(Char('k')) => helper.move_main(|m| m.move_to_coords(0, 0)),
             key!(Char('n')) => {
                 if context.commands.run_notify("next-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
-            key!(Char('n')) => {}
             key!(Char('N'), Mod::SHIFT) => {
                 if context.commands.run_notify("prev-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
-            _ => {}
+            Event { code, .. } => {
+                let code = format!("{code:?}");
+                context.notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
+            }
         }
     }
 }
@@ -446,7 +492,7 @@ where
                     "go to" => self.match_goto(helper, event, context),
                     "find" | "until" if let key!(Char(char), Mod::SHIFT | Mod::NONE) = event => {
                         use SelType::*;
-                        helper.move_each_cursor(|m| {
+                        helper.move_each(|m| {
                             let cur = m.caret();
                             let (points, back) = match self.sel_type {
                                 Reverse | ExtendRev => {
@@ -477,6 +523,7 @@ where
                     _ => {}
                 }
                 self.mode = Mode::Normal;
+                self.sel_type = SelType::Normal;
                 hooks::trigger::<OnModeChange>((Mode::OneKey(one_key), Mode::Normal));
             }
             Mode::Other(_) => {
@@ -502,7 +549,7 @@ where
 }
 
 fn move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|m| {
+    helper.move_each(|m| {
         m.unset_anchor();
         match direction {
             Side::Top => m.move_ver(-(amount as isize)),
@@ -514,7 +561,7 @@ fn move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: us
 }
 
 fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|m| {
+    helper.move_each(|m| {
         if m.anchor().is_none() {
             m.set_anchor()
         }
@@ -528,7 +575,7 @@ fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side,
 }
 
 fn move_each_wrapped<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each_cursor(|m| {
+    helper.move_each(|m| {
         m.unset_anchor();
         match direction {
             Side::Top => m.move_ver_wrapped(-(amount as isize)),
@@ -544,7 +591,7 @@ fn select_and_move_each_wrapped<U: Ui>(
     direction: Side,
     amount: usize,
 ) {
-    helper.move_each_cursor(|m| {
+    helper.move_each(|m| {
         if m.anchor().is_none() {
             m.set_anchor();
         }

@@ -106,7 +106,7 @@ where
     }
 
     /// Alters every selection on the list.
-    pub fn move_each_cursor<_T>(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>) -> _T) {
+    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>) -> _T) {
         let removed_cursors: Vec<Cursor> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
@@ -376,7 +376,7 @@ where
     /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let point = self.text.point_at_line(line.min(self.text.len_lines()));
-        let (point, _) = self.text.iter_chars_at(point).take(col).last().unwrap();
+        let (point, _) = self.text.iter_chars_at(point).take(col + 1).last().unwrap();
         self.move_to(point);
     }
 

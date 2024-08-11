@@ -47,7 +47,7 @@ where
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     mover.move_hor(1);
                 });
             }
@@ -55,7 +55,7 @@ where
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     mover.move_hor(1);
                 });
             }
@@ -63,7 +63,7 @@ where
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert('\n');
                 });
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     mover.move_hor(1);
                 });
             }
@@ -71,7 +71,7 @@ where
             // Text Removal
             key!(Code::Backspace) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
@@ -81,7 +81,7 @@ where
                 editor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -93,7 +93,7 @@ where
             }
             key!(Code::Delete) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     mover.set_anchor();
@@ -103,7 +103,7 @@ where
                 editor.edit_on_each_cursor(|editor| {
                     editor.replace("");
                 });
-                editor.move_each_cursor(|mover| {
+                editor.move_each(|mover| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         mover.set_anchor();
                         mover.move_to(anchor);
@@ -147,7 +147,7 @@ where
 }
 
 fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
-    editor.move_each_cursor(|mover| {
+    editor.move_each(|mover| {
         mover.unset_anchor();
         match direction {
             Side::Top => mover.move_ver(-(amount as isize)),
@@ -159,7 +159,7 @@ fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: us
 }
 
 fn move_each_and_select<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
-    editor.move_each_cursor(|mover| {
+    editor.move_each(|mover| {
         if mover.anchor().is_none() {
             mover.set_anchor();
         }
