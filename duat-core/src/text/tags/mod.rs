@@ -225,6 +225,7 @@ impl Tags {
             .transform((n, b), (total, 0), (total - removed.len(), 0));
 
         if let Some(i) = n.checked_sub(removed.len() + 1)
+            && skip > 0
             && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i)
         {
             self.buf.splice(i..=(i + 1), [TagOrSkip::Skip(prev + skip)]);
