@@ -4,7 +4,7 @@ pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    text::{Pattern, Point, PrintCfg, Searcher, Text, WordChars},
+    text::{Pattern, Point, PrintCfg, Text, WordChars},
     ui::{Area, Ui},
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -417,15 +417,21 @@ where
     }
 
     ////////// Lookup functions
-    pub fn search(&self, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+    pub fn search<P>(&self, pat: P) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
+    where
+        P: Pattern<'a> + 'a,
+    {
         self.text.search_from(self.cursor.caret(), pat)
     }
 
-    pub fn search_rev(&self, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+    pub fn search_rev<P>(&self, pat: P) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
+    where
+        P: Pattern<'a> + 'a,
+    {
         self.text.search_from_rev(self.cursor.caret(), pat)
     }
 
-    pub fn find_ends(&self, pat: impl Pattern<'a>) -> Option<(Point, Point)> {
+    pub fn find_ends(&self, pat: impl Pattern<'a> + 'a) -> Option<(Point, Point)> {
         self.text
             .search_from(self.cursor.caret(), pat)
             .next()
@@ -433,7 +439,7 @@ where
             .0
     }
 
-    pub fn find_ends_rev(&self, pat: impl Pattern<'a>) -> Option<(Point, Point)> {
+    pub fn find_ends_rev(&self, pat: impl Pattern<'a> + 'a) -> Option<(Point, Point)> {
         self.text
             .search_from_rev(self.cursor.caret(), pat)
             .next()
@@ -469,16 +475,6 @@ where
         self.text.iter_chars_at_rev(self.caret())
     }
 
-    pub fn selection(&self) -> [&str; 2] {
-        let anchor = self.anchor().unwrap_or(self.caret());
-        let range = if anchor < self.caret() {
-            (anchor, self.caret())
-        } else {
-            (self.caret(), anchor)
-        };
-        self.text.strs_in_point_range(range)
-    }
-
     /// Returns the anchor of the `TextCursor`.
     pub fn anchor(&self) -> Option<Point> {
         self.cursor.anchor()
@@ -487,6 +483,20 @@ where
     /// Returns the anchor of the `TextCursor`.
     pub fn caret(&self) -> Point {
         self.cursor.caret()
+    }
+
+    pub fn anchor_is_start(&self) -> bool {
+        self.anchor().is_none_or(|anchor| anchor < self.caret())
+    }
+
+    pub fn selection(&self) -> [&str; 2] {
+        let anchor = self.anchor().unwrap_or(self.caret());
+        let range = if anchor < self.caret() {
+            (anchor, self.caret())
+        } else {
+            (self.caret(), anchor)
+        };
+        self.text.strs_in_point_range(range)
     }
 
     pub fn byte_range(&self) -> Range<usize> {

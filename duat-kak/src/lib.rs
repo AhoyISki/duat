@@ -1,6 +1,6 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{fmt::Display, iter::Peekable, sync::LazyLock};
+use std::{iter::Peekable, sync::LazyLock};
 
 use duat_core::{
     data::{Context, RwData},
@@ -21,6 +21,7 @@ const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 pub struct KeyMap {
     cursors: Option<Cursors>,
     mode: Mode,
+    sel_type: SelType,
 }
 
 impl KeyMap {
@@ -29,15 +30,24 @@ impl KeyMap {
         KeyMap {
             cursors: Some(Cursors::new_inclusive()),
             mode: Mode::Normal,
+            sel_type: SelType::Normal,
         }
     }
 
-    pub fn mode(&self) -> String {
-        self.mode.to_string()
+    pub fn mode(&self) -> &'static str {
+        self.mode.generic_name()
+    }
+
+    pub fn precise_mode(&self) -> &'static str {
+        self.mode.specific_name()
     }
 
     pub fn mode_fmt(&self) -> Text {
-        text!([Mode] { self.mode.to_string() })
+        text!([Mode] { self.mode.generic_name() })
+    }
+
+    pub fn precise_mode_fmt(&self) -> Text {
+        text!([Mode] { self.mode.specific_name() })
     }
 
     /// Commands that are available in `Mode::Insert`.
@@ -122,18 +132,39 @@ impl KeyMap {
     fn match_normal<U: Ui>(
         &mut self,
         mut helper: EditHelper<File, U>,
-        key: Event,
+        event: Event,
         context: Context<U>,
     ) {
-        match key {
+        match event {
             ////////// hjkl and arrow selection keys.
             key!(Char('h')) => move_each(helper, Side::Left, 1),
             key!(Char('j')) => move_each(helper, Side::Bottom, 1),
             key!(Char('k')) => move_each(helper, Side::Top, 1),
             key!(Char('l')) => move_each(helper, Side::Right, 1),
             key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
-            key!(Char('J'), Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
-            key!(Char('K'), Mod::SHIFT) => select_and_move_each(helper, Side::Top, 1),
+            key!(Char('J'), Mod::SHIFT) => match self.sel_type {
+                SelType::EndOfNl => helper.move_each_cursor(|m| {
+                    m.move_ver(1);
+                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                        m.move_to(point);
+                    }
+                }),
+                SelType::UntilNL => todo!(),
+                SelType::Normal => select_and_move_each(helper, Side::Bottom, 1),
+                _ => unreachable!(),
+            },
+            key!(Char('K'), Mod::SHIFT) => match self.sel_type {
+                SelType::EndOfNl => helper.move_each_cursor(|m| {
+                    m.move_ver(-1);
+                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                        m.move_to(point);
+                    }
+                }),
+                SelType::UntilNL => todo!(),
+                SelType::Normal => select_and_move_each(helper, Side::Top, 1),
+                _ => unreachable!(),
+            },
+
             key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
 
             key!(Left) => move_each_wrapped(helper, Side::Left, 1),
@@ -259,6 +290,42 @@ impl KeyMap {
                 };
             }),
 
+            ////////// Other selection keys.
+            key!(Char('x')) => {
+                self.sel_type = SelType::EndOfNl;
+                helper.move_each_cursor(|m| {
+                    m.set_caret_on_start();
+                    let p0 = m.find_ends_rev('\n').unzip().1.unwrap_or_default();
+                    m.set_caret_on_end();
+                    let p1 = m.find_ends('\n').unzip().0.or(m.last_point()).unwrap();
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                })
+            }
+            key!(Char('f' | 'F'), mf) if mf.intersects(ALTSHIFT) || mf == Mod::NONE => {
+                self.sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
+                    (true, true) => SelType::ExtendRev,
+                    (true, false) => SelType::Extend,
+                    (false, true) => SelType::Reverse,
+                    (false, false) => SelType::Normal,
+                };
+                self.mode = Mode::OneKey("find");
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("find")));
+            }
+            key!(Char('t' | 'T'), mf) if mf.intersects(ALTSHIFT) || mf == Mod::NONE => {
+                self.sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
+                    (true, true) => SelType::ExtendRev,
+                    (true, false) => SelType::Extend,
+                    (false, true) => SelType::Reverse,
+                    (false, false) => SelType::Normal,
+                };
+                self.mode = Mode::OneKey("until");
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("until")));
+            }
+            key!(Char(';'), Mod::ALT) => helper.move_each_cursor(|m| m.swap_ends()),
+            key!(Char(';')) => helper.move_each_cursor(|m| m.unset_anchor()),
+
             ////////// Text modifying keys.
             key!(Char('i')) => {
                 helper.move_each_cursor(|m| m.swap_ends());
@@ -279,8 +346,6 @@ impl KeyMap {
             key!(Char('d')) => {
                 helper.edit_on_each_cursor(|editor| editor.replace(""));
                 helper.move_each_cursor(|m| m.unset_anchor());
-                self.mode = Mode::Insert;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
 
             ////////// Other mode changing keys.
@@ -290,17 +355,14 @@ impl KeyMap {
                         .commands
                         .run("set-cmd-mode RunCommands<Ui>")
                         .unwrap();
-                    self.mode = Mode::Command;
-                    hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Command));
+                    self.mode = Mode::Other("command");
+                    hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
                 }
             }
             key!(Char('g')) => {
-                self.mode = Mode::GoTo;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::GoTo));
+                self.mode = Mode::OneKey("go to");
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
             }
-
-            ////////// For now
-            key!(Char('q')) => panic!("Quit on purpose"),
 
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
@@ -322,8 +384,8 @@ impl KeyMap {
 
         match key {
             key!(Char('a')) => {
-                if let Some(last) = last_file
-                    && context.commands.run_notify(format!("b {last}")).is_ok()
+                if let Some(file) = last_file
+                    && context.commands.run_notify(format!("b {file}")).is_ok()
                 {
                     *LAST_FILE.write() = Some(cur_name);
                 } else {
@@ -362,24 +424,62 @@ where
 
     fn send_key(
         &mut self,
-        key: Event,
+        event: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         context: Context<U>,
     ) {
         let mut cursors = self.cursors.take().unwrap();
-        let helper = EditHelper::new(widget, area, &mut cursors);
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
 
         match self.mode {
-            Mode::Insert => self.match_insert(helper, key),
-            Mode::Normal => self.match_normal(helper, key, context),
-            Mode::GoTo => {
-                self.match_goto(helper, key, context);
-                self.mode = Mode::Normal;
-                hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
+            Mode::Insert => self.match_insert(helper, event),
+            Mode::Normal => {
+                let (code, mf) = (&event.code, &event.modifiers);
+                if ![Char('J'), Char('K'), Down, Up].contains(code) || !mf.contains(Mod::SHIFT) {
+                    self.sel_type = SelType::Normal;
+                }
+                self.match_normal(helper, event, context);
             }
-            Mode::View => todo!(),
-            Mode::Command => {
+            Mode::OneKey(one_key) => {
+                match one_key {
+                    "go to" => self.match_goto(helper, event, context),
+                    "find" | "until" if let key!(Char(char), Mod::SHIFT | Mod::NONE) = event => {
+                        use SelType::*;
+                        helper.move_each_cursor(|m| {
+                            let cur = m.caret();
+                            let (points, back) = match self.sel_type {
+                                Reverse | ExtendRev => {
+                                    (m.search_rev(char).skip_while(|(p, _)| p.0 == cur).next(), 1)
+                                }
+                                Normal | Extend => {
+                                    (m.search(char).skip_while(|(p, _)| p.0 == cur).next(), -1)
+                                }
+                                _ => unreachable!(),
+                            };
+
+                            if let Some(((point, _), _)) = points
+                                && point != m.caret()
+                            {
+                                let is_extension = !matches!(self.sel_type, Extend | ExtendRev);
+                                if is_extension || m.anchor().is_none() {
+                                    m.set_anchor();
+                                }
+                                m.move_to(point);
+                                if one_key == "until" {
+                                    m.move_hor(back);
+                                }
+                            } else {
+                                context.notify(err!("Char " [*a] {char} [] " not found."))
+                            }
+                        })
+                    }
+                    _ => {}
+                }
+                self.mode = Mode::Normal;
+                hooks::trigger::<OnModeChange>((Mode::OneKey(one_key), Mode::Normal));
+            }
+            Mode::Other(_) => {
                 unreachable!("The editor is not supposed to be focused if this is the current mode")
             }
         }
@@ -395,41 +495,9 @@ where
     where
         Self: Sized,
     {
+        let prev = self.mode;
         self.mode = Mode::Normal;
-        hooks::trigger::<OnModeChange>((Mode::GoTo, Mode::Normal));
-    }
-}
-
-#[derive(Default, Clone, Copy, PartialEq)]
-pub enum Mode {
-    Insert,
-    #[default]
-    Normal,
-    GoTo,
-    View,
-    Command,
-}
-
-/// Triggers whenever the mode changes
-///
-/// Arguments:
-/// * The previous [`Mode`]
-/// * The current [`Mode`]
-pub struct OnModeChange {}
-
-impl Hookable for OnModeChange {
-    type Args<'args> = (Mode, Mode);
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Mode::Insert => f.write_str("insert"),
-            Mode::Normal => f.write_str("normal"),
-            Mode::GoTo => f.write_str("goto"),
-            Mode::View => f.write_str("view"),
-            Mode::Command => f.write_str("command"),
-        }
+        hooks::trigger::<OnModeChange>((prev, Mode::Normal));
     }
 }
 
@@ -584,4 +652,54 @@ enum Side {
     Right,
     Top,
     Bottom,
+}
+
+#[derive(Default, Clone, Copy, PartialEq)]
+pub enum Mode {
+    Insert,
+    #[default]
+    Normal,
+    OneKey(&'static str),
+    Other(&'static str),
+}
+
+impl Mode {
+    fn generic_name(&self) -> &'static str {
+        match self {
+            Mode::Insert => "insert",
+            Mode::Normal => "normal",
+            Mode::Other(other) => other,
+            Mode::OneKey(_) => "one key",
+        }
+    }
+
+    fn specific_name(&self) -> &'static str {
+        match self {
+            Mode::Insert => "insert",
+            Mode::Normal => "normal",
+            Mode::Other(widget) => widget,
+            Mode::OneKey(one_key) => one_key,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SelType {
+    UntilNL,
+    EndOfNl,
+    Reverse,
+    Extend,
+    ExtendRev,
+    Normal,
+}
+
+/// Triggers whenever the mode changes
+///
+/// Arguments:
+/// * The previous [`Mode`]
+/// * The current [`Mode`]
+pub struct OnModeChange {}
+
+impl Hookable for OnModeChange {
+    type Args<'args> = (Mode, Mode);
 }

@@ -11,7 +11,7 @@ pub fn no_wrapping() {
 
     *print_cfg = Some(match prev {
         Some(prev) => prev.with_no_wrapping(),
-        None => PrintCfg::default().with_no_wrapping(),
+        None => PrintCfg::default_for_input().with_no_wrapping(),
     })
 }
 

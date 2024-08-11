@@ -492,6 +492,7 @@ impl Text {
         self.strs_in_range(..p.byte())
             .into_iter()
             .flat_map(str::chars)
+            .rev()
             .scan(p, |p, char| {
                 *p = p.rev(char);
                 Some((*p, char))

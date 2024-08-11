@@ -3,16 +3,31 @@ use super::Text;
 use crate::text::Point;
 
 impl Text {
-    pub fn search_from<'a>(&'a self, point: Point, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+    pub fn search_from<'a, P>(
+        &'a self,
+        point: Point,
+        pat: P,
+    ) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
+    where
+        P: Pattern<'a> + 'a,
+    {
         pat.searcher(self, point)
     }
 
-    pub fn search_from_rev<'a>(&'a self, point: Point, pat: impl Pattern<'a>) -> impl Searcher<'a> {
+    pub fn search_from_rev<'a, P>(
+        &'a self,
+        point: Point,
+        pat: P,
+    ) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
+    where
+        P: Pattern<'a> + 'a,
+    {
         pat.searcher_rev(self, point)
     }
 }
 
 pub trait Pattern<'a> {
+    type Match;
     type Searcher: Searcher<'a, Pattern = Self>;
     type SearcherRev: Searcher<'a, Pattern = Self>;
 
@@ -31,9 +46,10 @@ pub trait Pattern<'a> {
     }
 }
 
-pub trait Searcher<'a>: Iterator<Item = ((Point, Point), Self::Match)> {
-    type Pattern;
-    type Match;
+pub trait Searcher<'a>:
+    Iterator<Item = ((Point, Point), <Self::Pattern as Pattern<'a>>::Match)>
+{
+    type Pattern: Pattern<'a>;
 
     fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self;
 }
@@ -71,7 +87,6 @@ mod str {
     }
 
     impl<'a> super::Searcher<'a> for Searcher<'a> {
-        type Match = &'a str;
         type Pattern = &'a str;
 
         fn new(text: &'a Text, point: Point, pat: &'a str) -> Self {
@@ -116,13 +131,12 @@ mod str {
     }
 
     impl<'a> super::Searcher<'a> for SearcherRev<'a> {
-        type Match = &'a str;
         type Pattern = &'a str;
 
         fn new(text: &'a Text, point: Point, pat: &'a str) -> Self {
             // This might be a limitation of the current version of rust.
             fn iter(text: &Text, point: Point) -> SearchIterRev<'_> {
-                text.strs_in_range(point.byte()..)
+                text.strs_in_range(..point.byte())
                     .into_iter()
                     .flat_map(str::bytes)
                     .rev()
@@ -133,6 +147,7 @@ mod str {
     }
 
     impl<'a> super::Pattern<'a> for &'a str {
+        type Match = &'a str;
         type Searcher = Searcher<'a>;
         type SearcherRev = SearcherRev<'a>;
     }
@@ -191,7 +206,6 @@ mod chars {
     where
         C: CharSet,
     {
-        type Match = char;
         type Pattern = C;
 
         fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self {
@@ -239,15 +253,15 @@ mod chars {
     where
         C: CharSet,
     {
-        type Match = char;
         type Pattern = C;
 
         fn new(text: &'a Text, point: Point, pat: Self::Pattern) -> Self {
             // This might be a limitation of the current version of rust.
             fn iter(text: &Text, point: Point) -> SearchIterRev<'_> {
-                text.strs_in_range(point.byte()..)
+                text.strs_in_range(..point.byte())
                     .into_iter()
                     .flat_map(str::chars)
+                    .rev()
             }
             let iter = iter(text, point);
             Self { iter, pat, point }
@@ -258,6 +272,7 @@ mod chars {
     where
         C: CharSet,
     {
+        type Match = char;
         type Searcher = Searcher<'a, Self>;
         type SearcherRev = SearcherRev<'a, Self>;
     }

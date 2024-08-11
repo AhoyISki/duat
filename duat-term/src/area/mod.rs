@@ -106,19 +106,14 @@ impl Area {
         let points = text.ghost_max_points_at(point.byte());
         let after = text.points_after(points).unwrap_or(text.len_points());
 
-        let mut count = 0;
-
         let cap = cfg.wrap_width(self.width());
         let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
-            .inspect(|_| count += 1)
             .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
-        let target = if info.last_main > point {
-            cfg.scrolloff().y
-        } else {
-            self.height().saturating_sub(cfg.scrolloff().y + 1)
+        let target = match info.last_main > point {
+            true => cfg.scrolloff().y,
+            false => self.height().saturating_sub(cfg.scrolloff().y + 1),
         };
-
         let first = iter.nth(target).unwrap_or_default();
 
         if (info.last_main > point && first <= info.points)
