@@ -121,6 +121,10 @@ impl Change {
         self.start + self.added_text.len()
     }
 
+    pub fn chars_diff(&self) -> isize {
+        self.added_text.chars().count() as isize - self.taken_text.chars().count() as isize
+    }
+
     /// An ordering function that returns [Ordering::Equal] if
     /// [cmp][Change] has its end within [self]'s `added_range`.
     fn contains_ord(&self, cmp: &Change) -> Ordering {

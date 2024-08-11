@@ -280,7 +280,7 @@ where
     pub fn insert(&mut self, edit: impl ToString) {
         let range = self.cursor.byte()..self.cursor.byte();
         let change = Change::new(edit.to_string(), range, self.widget.text());
-        let end = change.added_end();
+        let diff = change.chars_diff();
 
         self.edit(change);
 
@@ -289,9 +289,8 @@ where
         {
             let text = self.widget.text();
             let cfg = self.widget.print_cfg();
-            let end_p = text.point_at(end);
             self.cursor.swap_ends();
-            self.cursor.move_to(end_p, text, self.area, cfg);
+            self.cursor.move_hor(diff, text, self.area, cfg);
             self.cursor.swap_ends();
         }
     }

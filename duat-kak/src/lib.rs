@@ -325,7 +325,7 @@ impl KeyMap {
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
-                helper.move_each(|m| m.swap_ends());
+                helper.move_each(|m| m.set_caret_on_start());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }

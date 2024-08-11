@@ -132,6 +132,10 @@ impl Form {
     pub fn new_final() -> Self {
         Self { style: ContentStyle::default(), is_final: true }
     }
+
+    pub fn as_final(self) -> Self {
+        Self { is_final: true, ..self }
+    }
 }
 
 pub const DEFAULT_FORM_ID: FormId = FormId(0);
@@ -206,7 +210,11 @@ impl FormPalette {
 
     /// Sets a [`Form`]
     fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
-        let name = name.as_ref().to_string().leak();
+        let name: &str = name.as_ref().to_string().leak();
+        let form = match name {
+            "MainCursor" | "ExtraCursor" => form.as_final(),
+            _ => form,
+        };
 
         let mut inner = self.inner.write();
 
@@ -234,7 +242,11 @@ impl FormPalette {
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
-        let name = name.as_ref().to_string().leak();
+        let name: &str = name.as_ref().to_string().leak();
+        let form = match name {
+            "MainCursor" | "ExtraCursor" => form.as_final(),
+            _ => form,
+        };
 
         let mut inner = self.inner.write();
 
@@ -462,54 +474,35 @@ impl Painter {
     /// pushed forms in the `Form` stack.
     #[inline(always)]
     pub fn make_form(&self) -> Form {
-        let style = ContentStyle {
-            foreground_color: None,
-            background_color: None,
-            underline_color: None,
-            attributes: Attributes::default(),
-        };
-
         let mut form = Form {
-            style,
+            style: ContentStyle::default(),
             is_final: false,
         };
-
-        fn set_var<T: Clone>(
-            is_done: &mut bool,
-            var: &mut Option<T>,
-            maybe_new: &Option<T>,
-            is_final: bool,
-        ) {
-            if let Some(new_var) = maybe_new
-                && (!*is_done || is_final)
-            {
-                *var = Some(new_var.clone());
-                *is_done |= is_final;
-            }
-        }
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
         for &(Form { style, is_final }, _) in &self.forms {
-            let to_change = &mut form.style.foreground_color;
-            let new_foreground = style.foreground_color;
-            set_var(&mut fg_done, to_change, &new_foreground, is_final);
-
-            let to_change = &mut form.style.background_color;
-            let new_background = style.background_color;
-            set_var(&mut bg_done, to_change, &new_background, is_final);
-
-            let to_change = &mut form.style.underline_color;
-            let new_underline = style.underline_color;
-            set_var(&mut ul_done, to_change, &new_underline, is_final);
-
+            if let Some(new_fg) = style.foreground_color
+                && (!fg_done || is_final)
+            {
+                form.style.foreground_color = Some(new_fg);
+                fg_done |= is_final;
+            }
+            if let Some(new_bg) = style.background_color
+                && (!bg_done || is_final)
+            {
+                form.style.background_color = Some(new_bg);
+                bg_done |= is_final;
+            }
+            if let Some(new_ul) = style.underline_color
+                && (!ul_done || is_final)
+            {
+                form.style.underline_color = Some(new_ul);
+                ul_done |= is_final;
+            }
             if !attr_done || is_final {
                 form.style.attributes.extend(style.attributes);
                 attr_done |= is_final;
-            }
-
-            if fg_done && bg_done && ul_done && attr_done {
-                break;
             }
         }
 
