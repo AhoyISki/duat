@@ -2,11 +2,7 @@ use std::{any::TypeId, ops::Range};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
-    data::RwData,
-    history::Change,
-    text::{Pattern, Point, PrintCfg, Text, WordChars},
-    ui::{Area, Ui},
-    widgets::{ActiveWidget, File, PassiveWidget},
+    data::RwData, history::Change, log_info, text::{Pattern, Point, PrintCfg, Text, WordChars}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
 };
 
 mod cursors;
@@ -251,7 +247,8 @@ where
     /// text.
     pub fn replace(&mut self, edit: impl ToString) {
         let change = Change::new(edit.to_string(), self.cursor.range(), self.widget.text());
-        let (start, end) = (change.start, change.added_end());
+        let edit_len = change.added_text.len();
+        let end = change.added_end();
 
         self.edit(change);
 
@@ -261,19 +258,17 @@ where
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
+            && edit_len > 0
         {
             self.cursor.swap_ends();
             self.cursor.move_to(end_p, text, self.area, cfg);
             self.cursor.swap_ends();
         } else {
+            self.cursor.unset_anchor();
             self.cursor.move_to(end_p, text, self.area, cfg);
-            if end != start {
-                let start_p = text.point_at(start);
-                self.cursor.set_anchor();
-                self.cursor.move_to(start_p, text, self.area, cfg);
-                self.cursor.swap_ends();
-            }
         }
+
+        log_info!("{:?}", self.cursor);
     }
 
     /// Inserts new text directly behind the caret.

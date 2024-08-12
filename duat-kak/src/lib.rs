@@ -320,6 +320,11 @@ impl KeyMap {
                 });
                 hooks::trigger::<OnModeChange>((Mode::Normal, self.mode));
             }
+            key!(Char('%')) => helper.move_main(|m| {
+                m.move_to(Point::default());
+                m.set_anchor();
+                m.move_to(m.last_point().unwrap())
+            }),
             key!(Char(';'), Mod::ALT) => helper.move_each(|m| m.swap_ends()),
             key!(Char(';')) => helper.move_each(|m| m.unset_anchor()),
 
