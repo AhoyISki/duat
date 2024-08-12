@@ -267,8 +267,6 @@ where
             self.cursor.unset_anchor();
             self.cursor.move_to(end_p, text, self.area, cfg);
         }
-
-        log_info!("{:?}", self.cursor);
     }
 
     /// Inserts new text directly behind the caret.

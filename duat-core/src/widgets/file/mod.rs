@@ -25,7 +25,7 @@ use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     data::{Context, RwData},
     history::History,
-    input::{InputMethod, KeyMap, Cursors},
+    input::{Cursors, InputMethod, KeyMap},
     palette,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -376,12 +376,16 @@ where
         self.printed_lines.clear();
         let printed_lines = &mut self.printed_lines;
 
+        let mut has_wrapped = false;
+
         area.print_with(
             &self.text,
             &self.cfg,
             palette::painter(),
             move |caret, item| {
-                if caret.wrap {
+                has_wrapped |= caret.wrap;
+                if has_wrapped && item.part.is_char() {
+                    has_wrapped = false;
                     let line = item.line();
                     let wrapped = last_line.is_some_and(|ll| ll == line);
                     last_line = Some(line);
