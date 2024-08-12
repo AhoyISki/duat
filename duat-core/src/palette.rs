@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 pub use crossterm::cursor::SetCursorStyle as CursorShape;
-use crossterm::style::{Attribute, Attributes, Color, ContentStyle, Stylize};
+use crossterm::style::{Attribute, Color, ContentStyle, Stylize};
 pub use global::*;
 
 use crate::data::{RwData, RwLockReadGuard};

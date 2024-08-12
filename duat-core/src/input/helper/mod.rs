@@ -2,7 +2,11 @@ use std::{any::TypeId, ops::Range};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
-    data::RwData, history::Change, log_info, text::{Pattern, Point, PrintCfg, Text, WordChars}, ui::{Area, Ui}, widgets::{ActiveWidget, File, PassiveWidget}
+    data::RwData,
+    history::Change,
+    text::{Pattern, Point, PrintCfg, Text, WordChars},
+    ui::{Area, Ui},
+    widgets::{ActiveWidget, File, PassiveWidget},
 };
 
 mod cursors;
@@ -38,7 +42,7 @@ where
     where
         F: FnMut(&mut Editor<U, W>),
     {
-        let Some(mut cursor) = self.cursors.get(n) else {
+        let Some(mut cursor) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
 
@@ -54,7 +58,7 @@ where
 
         let cfg = widget.print_cfg();
 
-        self.cursors.replace(n, cursor);
+        self.cursors.insert_removed(n, cursor);
         self.cursors.shift(n, diff, widget.text(), self.area, cfg);
 
         widget.update(self.area);
@@ -85,7 +89,7 @@ where
 
     /// Alters the nth cursor's selection.
     pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>), n: usize) {
-        let Some(mut cursor) = self.cursors.get(n) else {
+        let Some(mut cursor) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
         let mut widget = self.widget.write();
@@ -97,7 +101,7 @@ where
             widget.print_cfg(),
         ));
 
-        self.cursors.replace(n, cursor);
+        self.cursors.insert_removed(n, cursor);
         widget.update(self.area);
     }
 

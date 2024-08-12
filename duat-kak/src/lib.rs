@@ -371,6 +371,9 @@ impl KeyMap {
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
             }
 
+            ////////// Temporary.
+            key!(Char('q')) => panic!("Panicked on purpose"),
+
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
             key!(Char('U'), Mod::SHIFT) => helper.redo(),

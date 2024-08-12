@@ -6,8 +6,6 @@ use std::{
 
 use gapbuf::{gap_buffer, GapBuffer};
 
-use crate::log_info;
-
 pub use self::{
     ids::{Marker, Markers, TextId, ToggleId},
     types::{

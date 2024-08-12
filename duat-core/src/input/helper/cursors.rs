@@ -1,13 +1,16 @@
+use gapbuf::{gap_buffer, GapBuffer};
+
 pub use self::cursor::Cursor;
 use super::Diff;
 use crate::{
+    log_info,
     text::{Point, PrintCfg, Text},
     ui::Area,
 };
 
 #[derive(Clone, Debug)]
 pub struct Cursors {
-    list: Vec<Cursor>,
+    buf: GapBuffer<Cursor>,
     main: usize,
     inclusive_ranges: bool,
 }
@@ -15,7 +18,7 @@ pub struct Cursors {
 impl Cursors {
     pub fn new_exclusive() -> Self {
         Self {
-            list: vec![Cursor::new_at_0(false)],
+            buf: gap_buffer![Cursor::new_at_0(false)],
             main: 0,
             inclusive_ranges: false,
         }
@@ -23,7 +26,7 @@ impl Cursors {
 
     pub fn new_inclusive() -> Self {
         Self {
-            list: vec![Cursor::new_at_0(true)],
+            buf: gap_buffer![Cursor::new_at_0(true)],
             main: 0,
             inclusive_ranges: true,
         }
@@ -36,19 +39,19 @@ impl Cursors {
         area: &impl Area,
         cfg: &PrintCfg,
     ) -> usize {
-        let cursor = Cursor::new(point, text, area, cfg, self.inclusive_ranges);
+        let mut cursor = Cursor::new(point, text, area, cfg, self.inclusive_ranges);
         let start = cursor.range().start;
-        let (Ok(i) | Err(i)) = self.list.binary_search_by_key(&start, |c| c.range().start);
+        let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
 
-        if !self.try_merge_on(i, &cursor) {
-            self.list.insert(i, cursor);
+        if !self.try_merge_on(i, &mut cursor) {
+            self.buf.insert(i, cursor);
         }
 
         i
     }
 
     pub fn rotate_main_fwd(&mut self) {
-        match self.main == self.list.len() - 1 {
+        match self.main == self.buf.len() - 1 {
             true => self.main = 0,
             false => self.main += 1,
         }
@@ -56,27 +59,27 @@ impl Cursors {
 
     pub fn rotate_main_rev(&mut self) {
         match self.main == 0 {
-            true => self.main = self.list.len() - 1,
+            true => self.main = self.buf.len() - 1,
             false => self.main -= 1,
         }
     }
 
     pub fn remove_extras(&mut self) {
-        let cursor = self.list[self.main].clone();
-        self.list = vec![cursor];
+        let cursor = self.buf[self.main].clone();
+        self.buf = gap_buffer![cursor];
         self.main = 0;
     }
 
     pub fn main(&self) -> &Cursor {
-        &self.list[self.main]
+        &self.buf[self.main]
     }
 
     pub fn get(&self, i: usize) -> Option<Cursor> {
-        self.list.get(i).cloned()
+        self.buf.get(i).cloned()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        self.list
+        self.buf
             .iter()
             .enumerate()
             .map(move |(index, cursor)| (cursor, index == self.main))
@@ -87,7 +90,7 @@ impl Cursors {
     }
 
     pub fn len(&self) -> usize {
-        self.list.len()
+        self.buf.len()
     }
 
     #[must_use]
@@ -100,53 +103,34 @@ impl Cursors {
     }
 
     pub fn reset(&mut self) {
-        self.list = vec![Cursor::new_at_0(self.inclusive_ranges)]
+        self.buf = gap_buffer![Cursor::new_at_0(self.inclusive_ranges)]
     }
 
     pub(crate) fn clear(&mut self) {
-        self.list.clear()
+        self.buf.clear()
     }
 
-    pub(super) fn insert_removed(&mut self, orig_i: usize, cursor: Cursor) -> usize {
-        let start = cursor.range().start;
-        let (Ok(i) | Err(i)) = self.list.binary_search_by_key(&start, |c| c.range().start);
+    pub(super) fn remove(&mut self, i: usize) -> Option<Cursor> {
+        (i < self.buf.len()).then(|| self.buf.remove(i))
+    }
 
-        if !self.try_merge_on(i, &cursor) {
-            self.list.insert(i, cursor)
+    pub(super) fn insert_removed(&mut self, orig_i: usize, mut cursor: Cursor) -> usize {
+        let start = cursor.range().start;
+        let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
+
+        if self.main == orig_i {
+            self.main = i;
         }
 
-        if self.main == orig_i {
-            self.main = i;
-        } else if self.main == i {
-            self.main += 1;
-        };
-
-        i
-    }
-
-    pub(super) fn replace(&mut self, orig_i: usize, cursor: Cursor) -> usize {
-        let start = cursor.range().start;
-        let (Ok(i) | Err(i)) = self.list.binary_search_by_key(&start, |c| c.range().start);
-
-        let i = if self.try_merge_on(i, &cursor) {
-            self.list.remove(orig_i);
+        if self.try_merge_on(i, &mut cursor) {
             i - 1
-        } else if orig_i == i {
-            self.list[i] = cursor;
-            i
         } else {
-            self.list.insert(i, cursor);
-            self.list.remove(orig_i);
-            i - (orig_i < i) as usize
-        };
-
-        if self.main == orig_i {
-            self.main = i;
-        } else if self.main == i {
-            self.main += 1;
-        };
-
-        i
+            self.buf.insert(i, cursor);
+            if self.main > i {
+                self.main += 1;
+            }
+            i
+        }
     }
 
     pub(super) fn shift(
@@ -158,23 +142,38 @@ impl Cursors {
         cfg: &PrintCfg,
     ) {
         if !diff.no_change() {
-            for cursor in self.list.iter_mut().skip(after + 1) {
+            for cursor in self.buf.iter_mut().skip(after + 1) {
                 diff.shift_cursor(cursor, text, area, cfg);
             }
         }
     }
 
     pub(super) fn drain(&mut self) -> impl Iterator<Item = Cursor> + '_ {
-        self.list.drain(..)
+        self.buf.drain(..)
     }
 
-    fn try_merge_on(&mut self, i: usize, cursor: &Cursor) -> bool {
-        let start = cursor.range().start;
+    /// Tries to merge this cursor with a cursor behind and cursors
+    /// ahead
+    ///
+    /// Returns `true` if the cursor behind got merged.
+    fn try_merge_on(&mut self, i: usize, cursor: &mut Cursor) -> bool {
+        while let Some(ahead) = self.buf.get(i)
+            && cursor.range().end > ahead.range().start
+        {
+            log_info!("{self:#?}, {cursor:#?}");
+            cursor.merge_ahead(self.buf.remove(i));
+            if self.main > i {
+                self.main -= 1;
+            }
+        }
         if let Some(prev_i) = i.checked_sub(1)
-            && let Some(prev) = self.list.get_mut(prev_i)
-            && prev.range().end > start
+            && let Some(prev) = self.buf.get_mut(prev_i)
+            && prev.range().end > cursor.range().start
         {
             prev.merge_ahead(cursor.clone());
+            if self.main > prev_i {
+                self.main -= 1;
+            }
             true
         } else {
             false
@@ -455,13 +454,14 @@ mod cursor {
                 other.caret
             };
 
-            if let Some(anchor) = self.anchor()
-                && anchor > self.caret()
-            {
-                self.anchor = Some(other_end);
+            if let Some(anchor) = self.anchor {
+                if anchor.point > self.caret() {
+                    self.anchor = Some(other_end.max(anchor));
+                } else {
+                    self.caret = other_end.max(self.caret)
+                }
             } else {
-                self.anchor = Some(self.caret);
-                self.caret = other_end;
+                self.anchor = Some(other_end);
             }
         }
     }
@@ -548,4 +548,34 @@ mod cursor {
                 .unwrap_or(0)
         }
     }
+}
+
+/// Binary searching by keys for [`GapBuffer`]s
+fn binary_search_by_key<K>(
+    buf: &GapBuffer<Cursor>,
+    key: K,
+    f: impl Fn(&Cursor) -> K,
+) -> Result<usize, usize>
+where
+    K: PartialEq + Eq + PartialOrd + Ord,
+{
+    let mut size = buf.len();
+    let mut left = 0;
+    let mut right = size;
+
+    while left < right {
+        let mid = left + size / 2;
+
+        let k = f(&buf[mid]);
+
+        match k.cmp(&key) {
+            std::cmp::Ordering::Less => left = mid + 1,
+            std::cmp::Ordering::Equal => return Ok(mid),
+            std::cmp::Ordering::Greater => right = mid,
+        }
+
+        size = right - left;
+    }
+
+    Err(left)
 }
