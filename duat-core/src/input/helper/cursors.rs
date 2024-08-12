@@ -120,15 +120,21 @@ impl Cursors {
         self.buf.clear()
     }
 
-    pub(super) fn remove(&mut self, i: usize) -> Option<Cursor> {
-        (i < self.buf.len()).then(|| self.buf.remove(i))
+    pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
+        (i < self.buf.len()).then(|| {
+            let was_main = self.main == i;
+            if self.main > i {
+                self.main -= 1;
+            }
+            (self.buf.remove(i), was_main)
+        })
     }
 
-    pub(super) fn insert_removed(&mut self, orig_i: usize, mut cursor: Cursor) -> usize {
+    pub(super) fn insert_removed(&mut self, was_main: bool, mut cursor: Cursor) -> usize {
         let start = cursor.range().start;
         let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
 
-        if self.main == orig_i {
+        if was_main {
             self.main = i;
         }
 
@@ -158,8 +164,16 @@ impl Cursors {
         }
     }
 
-    pub(super) fn drain(&mut self) -> impl Iterator<Item = Cursor> + '_ {
-        self.buf.drain(..)
+    pub(super) fn drain(&mut self) -> impl Iterator<Item = (Cursor, bool)> + '_ {
+        let orig_main = self.main;
+        self.main = 0;
+        self.buf
+            .drain(..)
+            .enumerate()
+            .map(move |(i, c)| match i == orig_main {
+                true => (c, true),
+                false => (c, false),
+            })
     }
 
     /// Tries to merge this cursor with a cursor behind and cursors

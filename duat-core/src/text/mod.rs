@@ -29,7 +29,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, log_info, DuatError};
+use crate::{history::Change, input::Cursors, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]

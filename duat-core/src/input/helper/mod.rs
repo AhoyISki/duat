@@ -42,7 +42,7 @@ where
     where
         F: FnMut(&mut Editor<U, W>),
     {
-        let Some(mut cursor) = self.cursors.remove(n) else {
+        let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
 
@@ -58,19 +58,19 @@ where
 
         let cfg = widget.print_cfg();
 
-        self.cursors.insert_removed(n, cursor);
+        self.cursors.insert_removed(was_main, cursor);
         self.cursors.shift(n, diff, widget.text(), self.area, cfg);
 
         widget.update(self.area);
     }
 
     pub fn edit_on_each_cursor(&mut self, mut f: impl FnMut(&mut Editor<U, W>)) {
-        let removed_cursors: Vec<Cursor> = self.cursors.drain().collect();
+        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
         let mut diff = Diff::default();
 
-        for (i, mut cursor) in removed_cursors.into_iter().enumerate() {
+        for (mut cursor, was_main) in removed_cursors.into_iter() {
             let cfg = widget.print_cfg();
             diff.shift_cursor(&mut cursor, widget.text(), self.area, cfg);
 
@@ -81,7 +81,7 @@ where
                 &mut diff,
             ));
 
-            self.cursors.insert_removed(i, cursor);
+            self.cursors.insert_removed(was_main, cursor);
         }
 
         widget.update(self.area);
@@ -89,7 +89,7 @@ where
 
     /// Alters the nth cursor's selection.
     pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>), n: usize) {
-        let Some(mut cursor) = self.cursors.remove(n) else {
+        let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
         let mut widget = self.widget.write();
@@ -101,17 +101,17 @@ where
             widget.print_cfg(),
         ));
 
-        self.cursors.insert_removed(n, cursor);
+        self.cursors.insert_removed(was_main, cursor);
         widget.update(self.area);
     }
 
     /// Alters every selection on the list.
     pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<U::Area>) -> _T) {
-        let removed_cursors: Vec<Cursor> = self.cursors.drain().collect();
+        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
 
-        for (i, mut cursor) in removed_cursors.into_iter().enumerate() {
+        for (mut cursor, was_main) in removed_cursors.into_iter() {
             mov(&mut Mover::new(
                 &mut cursor,
                 widget.text(),
@@ -119,7 +119,7 @@ where
                 widget.print_cfg(),
             ));
 
-            self.cursors.insert_removed(i, cursor);
+            self.cursors.insert_removed(was_main, cursor);
         }
 
         widget.update(self.area);
