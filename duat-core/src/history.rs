@@ -339,9 +339,9 @@ impl History {
         for change in &moment.changes {
             text.undo_change(change, bytes);
 
-            let new_caret_b = change.taken_end().saturating_add_signed(bytes);
+            let new_caret_b = change.start.saturating_add_signed(bytes);
             let point = text.point_at(new_caret_b);
-            cursors.insert_from_parts(point, text, area, cfg);
+            cursors.insert_from_parts(point, change.taken_text.len(), text, area, cfg);
 
             bytes += change.taken_end() as isize - change.added_end() as isize;
         }
@@ -365,8 +365,8 @@ impl History {
         for change in &moment.changes {
             text.apply_change(change);
 
-            let point = text.point_at(change.added_end());
-            cursors.insert_from_parts(point, text, area, cfg);
+            let point = text.point_at(change.start);
+            cursors.insert_from_parts(point, change.added_text.len(), text, area, cfg);
         }
     }
 

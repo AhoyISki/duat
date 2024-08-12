@@ -34,11 +34,22 @@ impl Cursors {
     pub fn insert_from_parts(
         &mut self,
         point: Point,
+        range: usize,
         text: &Text,
         area: &impl Area,
         cfg: &PrintCfg,
     ) -> usize {
         let mut cursor = Cursor::new(point, text, area, cfg, self.inclusive_ranges);
+
+        let range = match self.inclusive_ranges {
+            true => range.saturating_sub(1),
+            false => range,
+        };
+
+        if range > 0 {
+            cursor.set_anchor();
+            cursor.move_hor(range as isize, text, area, cfg);
+        }
         let start = cursor.range().start;
         let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
 

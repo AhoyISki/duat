@@ -164,8 +164,6 @@ impl Text {
                 self.tags.insert(b, tag, self.marker);
             }
         }
-
-        log_info!("{:#?}", self.tags);
     }
 
     /// Adds the tags for all the cursors, used after they are

@@ -327,6 +327,8 @@ impl KeyMap {
             }),
             key!(Char(';'), Mod::ALT) => helper.move_each(|m| m.swap_ends()),
             key!(Char(';')) => helper.move_each(|m| m.unset_anchor()),
+            key!(Char(')')) => helper.rotate_main_fwd(),
+            key!(Char('(')) => helper.rotate_main_rev(),
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
