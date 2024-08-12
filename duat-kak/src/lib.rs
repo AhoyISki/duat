@@ -504,11 +504,9 @@ where
                             let cur = m.caret();
                             let (points, back) = match self.sel_type {
                                 Reverse | ExtendRev => {
-                                    (m.search_rev(char).skip_while(|(p, _)| p.0 == cur).next(), 1)
+                                    (m.search_rev(char).find(|(p, _)| p.0 != cur), 1)
                                 }
-                                Normal | Extend => {
-                                    (m.search(char).skip_while(|(p, _)| p.0 == cur).next(), -1)
-                                }
+                                Normal | Extend => (m.search(char).find(|(p, _)| p.0 != cur), -1),
                                 _ => unreachable!(),
                             };
 

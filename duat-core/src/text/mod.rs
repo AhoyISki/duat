@@ -29,7 +29,7 @@ pub use self::{
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, DuatError};
+use crate::{history::Change, input::Cursors, log_info, DuatError};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -164,6 +164,8 @@ impl Text {
                 self.tags.insert(b, tag, self.marker);
             }
         }
+
+        log_info!("{:#?}", self.tags);
     }
 
     /// Adds the tags for all the cursors, used after they are

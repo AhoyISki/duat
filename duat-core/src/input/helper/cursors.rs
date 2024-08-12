@@ -3,7 +3,6 @@ use gapbuf::{gap_buffer, GapBuffer};
 pub use self::cursor::Cursor;
 use super::Diff;
 use crate::{
-    log_info,
     text::{Point, PrintCfg, Text},
     ui::Area,
 };
@@ -160,7 +159,6 @@ impl Cursors {
         while let Some(ahead) = self.buf.get(i)
             && cursor.range().end > ahead.range().start
         {
-            log_info!("{self:#?}, {cursor:#?}");
             cursor.merge_ahead(self.buf.remove(i));
             if self.main > i {
                 self.main -= 1;

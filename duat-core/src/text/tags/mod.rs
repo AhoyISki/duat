@@ -129,9 +129,10 @@ impl Tags {
             .get_skip_at(at)
             .unwrap_or((self.buf.len(), self.len_bytes(), 0));
 
-        if iter_range_rev(&self.buf, ..n)
-            .map_while(|ts| ts.as_tag())
-            .any(|t| t == tag)
+        if b == at
+            && iter_range_rev(&self.buf, ..n)
+                .map_while(|ts| ts.as_tag())
+                .any(|t| t == tag)
         {
             return None;
         }
