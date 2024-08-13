@@ -113,14 +113,14 @@ impl KeyMap {
                     }
                 });
             }
-            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
+            key!(Left, Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
             key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
             key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
-            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
+            key!(Down, Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
 
             key!(Left) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|m| m.move_ver(1)),
-            key!(Up) => helper.move_each(|m| m.move_ver(-1)),
+            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
+            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
             key!(Right) => helper.move_each(|m| m.move_hor(1)),
 
             key!(Esc) => {
@@ -232,8 +232,8 @@ impl KeyMap {
             key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
 
             key!(Left) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|m| m.move_ver(1)),
-            key!(Up) => helper.move_each(|m| m.move_ver(-1)),
+            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
+            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
             key!(Right) => helper.move_each(|m| m.move_hor(1)),
             key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
             key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
@@ -648,11 +648,10 @@ fn select_and_move_each_wrapped<U: Ui>(
         if m.anchor().is_none() {
             m.set_anchor();
         }
-        match direction {
-            Side::Top => m.move_ver_wrapped(-(amount as isize)),
-            Side::Bottom => m.move_ver_wrapped(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
+        if let Side::Top = direction {
+            m.move_ver_wrapped(-(amount as isize))
+        } else {
+            m.move_ver_wrapped(amount as isize)
         }
     });
 }
@@ -701,7 +700,7 @@ fn word_point_and_cat(
 ) -> (Point, CharCat) {
     let cat0 = CharCat::of(c0, w_chars, mf);
     let cat1 = CharCat::of(c1, w_chars, mf);
-    (if cat0 == cat1 { p0 } else { p1 }, cat1)
+    (if cat0 == cat1 && c0 != '\n' { p0 } else { p1 }, cat1)
 }
 
 enum CharCat<'a> {
