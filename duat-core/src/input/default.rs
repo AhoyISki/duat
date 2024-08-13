@@ -134,7 +134,7 @@ where
 
             // Control
             key!(Code::Char('p'), Mod::CONTROL) => {
-                let _ = context.commands.run("switch-to CommandLine");
+                let _ = context.commands.run("switch-to CommandLine<Ui>");
             }
 
             _ => {}

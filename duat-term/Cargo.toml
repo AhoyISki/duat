@@ -14,6 +14,6 @@ edition = "2021"
 duat-core = { path = "../duat-core/", version = ">=0.1.3" }
 
 unicode-width = ">=0.1.10"
-crossterm = ">=0.26.0"
+crossterm = { git = "https://github.com/AhoyISki/crossterm.git", version = ">=0.26.0" }
 smallvec = ">=1.10.0"
 cassowary = ">=0.3.0"

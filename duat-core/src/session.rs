@@ -306,32 +306,34 @@ where
         let current_window = self.current_window.load(Ordering::Relaxed);
         let windows = self.windows.read();
 
-        loop {
-            let active_window = &windows[current_window];
+        std::thread::scope(|s| {
+            loop {
+                let active_window = &windows[current_window];
 
-            if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
-                match event {
-                    Event::Key(key) => {
-                        active_window.send_key(key, self.context);
-                    }
-                    Event::Resize | Event::FormChange => {
-                        for node in active_window.nodes() {
-                            node.update_and_print();
+                if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
+                    match event {
+                        Event::Key(key) => {
+                            active_window.send_key(key, self.context);
                         }
-                        continue;
+                        Event::Resize | Event::FormChange => {
+                            for node in active_window.nodes() {
+                                s.spawn(|| node.update_and_print());
+                            }
+                            continue;
+                        }
+                        Event::ReloadConfig => break BreakTo::ReloadConfig,
+                        Event::Quit => break BreakTo::QuitDuat,
+                        Event::OpenFiles => break BreakTo::OpenFiles,
                     }
-                    Event::ReloadConfig => break BreakTo::ReloadConfig,
-                    Event::Quit => break BreakTo::QuitDuat,
-                    Event::OpenFiles => break BreakTo::OpenFiles,
                 }
-            }
 
-            for node in active_window.nodes() {
-                if node.needs_update() {
-                    node.update_and_print();
+                for node in active_window.nodes() {
+                    if node.needs_update() {
+                        s.spawn(|| node.update_and_print());
+                    }
                 }
             }
-        }
+        })
     }
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
