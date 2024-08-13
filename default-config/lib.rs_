@@ -1,7 +1,8 @@
+setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitely.
 use duat_kak::{KeyMap, Mode, OnModeChange};
-run! {
+fn setup() {
     // The print module manages the printing of files.
     print::wrap_on_width();
 

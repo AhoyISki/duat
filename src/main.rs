@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use duat::{pre_startup, prelude::*, run_duat};
+use duat::{pre_setup, prelude::*, run_duat};
 use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
@@ -71,7 +71,7 @@ fn main() {
             } else {
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    pre_startup();
+                    pre_setup();
                     let ret = run_duat(prev_files, tx, rx, statics);
                     atomic_wait::wake_all(&BREAK);
                     ret

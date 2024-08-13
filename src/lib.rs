@@ -117,7 +117,7 @@ use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
 pub use duat_core::thread;
-pub use setup::{pre_startup, run_duat};
+pub use setup::{pre_setup, run_duat};
 
 /// Utilities for addition and execution of commands
 pub mod commands;
@@ -218,7 +218,7 @@ pub mod hooks {
 
 // Native widgets to Duat
 pub mod widgets {
-    pub use duat_core::widgets::File;
+    pub use duat_core::{ui::Constraint, widgets::File};
 
     use crate::Ui;
 
@@ -254,35 +254,32 @@ pub mod prelude {
         commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
-        input, print, run,
+        input, print, setup_duat,
         state::*,
         widgets::*,
         Ui,
     };
 }
 
-/// Macro responsible for running Duat
+/// Pre and post setup for Duat
 ///
-/// This macro will create a function `run`, which Duat will search
-/// for in the generated object file, this is the function that will
-/// kickstart Duat, and may be reloaded at will as the configuration
-/// crate is altered.
-pub macro run($($tree:tt)*) {
+/// This macro *MUST* be used in order for duat to run,
+/// it will generate the function that actually runs Duat.
+pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
-    use crate::prelude::duat_core::{ui, data::RwData, widgets::File};
+
+    use crate::prelude::duat_core::{data::RwData, ui, widgets::File};
 
     #[no_mangle]
     fn run(
         prev_files: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<ui::Event>,
         rx: mpsc::Receiver<ui::Event>,
-        statics: <Ui as ui::Ui>::StaticFns
+        statics: <Ui as ui::Ui>::StaticFns,
     ) -> Vec<(RwData<File>, bool)> {
-		pre_startup();
+        pre_setup();
 
-        {
-            $($tree)*
-        };
+        $setup();
 
         run_duat(prev_files, tx, rx, statics)
     }

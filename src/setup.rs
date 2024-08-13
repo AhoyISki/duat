@@ -39,7 +39,7 @@ pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
 
 #[doc(hidden)]
-pub fn pre_startup() {
+pub fn pre_setup() {
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
         builder.push::<VertRule>();
         builder.push::<LineNumbers>();
