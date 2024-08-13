@@ -51,8 +51,12 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Insert`.
-    fn match_insert<U: Ui>(&mut self, mut helper: EditHelper<File, U>, key: Event) {
-        match key {
+    fn match_insert<U: Ui>(&mut self, mut helper: EditHelper<File, U>, event: Event) {
+        if let key!(Left | Down | Up | Right) = event {
+            helper.move_each(|m| m.unset_anchor())
+        }
+
+        match event {
             key!(Char(char)) => {
                 helper.edit_on_each_cursor(|editor| editor.insert(char));
                 helper.move_each(|m| m.move_hor(1));
@@ -114,10 +118,10 @@ impl KeyMap {
             key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
             key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
 
-            key!(Left) => move_each_wrapped(helper, Side::Left, 1),
-            key!(Right) => move_each_wrapped(helper, Side::Right, 1),
-            key!(Up) => move_each_wrapped(helper, Side::Top, 1),
-            key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
+            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
+            key!(Down) => helper.move_each(|m| m.move_ver(1)),
+            key!(Up) => helper.move_each(|m| m.move_ver(-1)),
+            key!(Right) => helper.move_each(|m| m.move_hor(1)),
 
             key!(Esc) => {
                 helper.new_moment();
@@ -135,12 +139,55 @@ impl KeyMap {
         event: Event,
         context: Context<U>,
     ) {
+        if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = event {
+            helper.move_each(|m| m.unset_anchor())
+        }
+
         match event {
             ////////// hjkl and arrow selection keys.
-            key!(Char('h')) => move_each(helper, Side::Left, 1),
-            key!(Char('j')) => move_each(helper, Side::Bottom, 1),
-            key!(Char('k')) => move_each(helper, Side::Top, 1),
-            key!(Char('l')) => move_each(helper, Side::Right, 1),
+            key!(Char('h')) => helper.move_each(|m| m.move_hor(-1)),
+            key!(Char('j')) => match self.sel_type {
+                SelType::EndOfNl => helper.move_each(|m| {
+                    m.move_ver(1);
+                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                        m.move_to(point);
+                    }
+                }),
+                SelType::UntilNL => helper.move_each(|m| {
+                    m.move_ver(1);
+                    let pre_nl = match m.char() {
+                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                    };
+                    if let Some((p, _)) = pre_nl {
+                        m.move_to(p);
+                    }
+                }),
+                SelType::Normal => helper.move_each(|m| m.move_ver(1)),
+                _ => unreachable!(),
+            },
+            key!(Char('k')) => match self.sel_type {
+                SelType::EndOfNl => helper.move_each(|m| {
+                    m.move_ver(-1);
+                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                        m.move_to(point);
+                    }
+                }),
+                SelType::UntilNL => helper.move_each(|m| {
+                    m.move_ver(-1);
+                    let pre_nl = match m.char() {
+                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                    };
+                    if let Some((p, _)) = pre_nl {
+                        m.move_to(p);
+                    }
+                }),
+                SelType::Normal => helper.move_each(|m| m.move_ver(-1)),
+                _ => unreachable!(),
+            },
+            key!(Char('l')) => helper.move_each(|m| m.move_hor(1)),
+
             key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
             key!(Char('J'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
@@ -149,7 +196,16 @@ impl KeyMap {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => todo!(),
+                SelType::UntilNL => helper.move_each(|m| {
+                    m.move_ver(1);
+                    let pre_nl = match m.char() {
+                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                    };
+                    if let Some((p, _)) = pre_nl {
+                        m.move_to(p);
+                    }
+                }),
                 SelType::Normal => select_and_move_each(helper, Side::Bottom, 1),
                 _ => unreachable!(),
             },
@@ -160,17 +216,25 @@ impl KeyMap {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => todo!(),
+                SelType::UntilNL => helper.move_each(|m| {
+                    m.move_ver(-1);
+                    let pre_nl = match m.char() {
+                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                    };
+                    if let Some((p, _)) = pre_nl {
+                        m.move_to(p);
+                    }
+                }),
                 SelType::Normal => select_and_move_each(helper, Side::Top, 1),
                 _ => unreachable!(),
             },
-
             key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
 
-            key!(Left) => move_each_wrapped(helper, Side::Left, 1),
-            key!(Down) => move_each_wrapped(helper, Side::Bottom, 1),
-            key!(Up) => move_each_wrapped(helper, Side::Top, 1),
-            key!(Right) => move_each_wrapped(helper, Side::Right, 1),
+            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
+            key!(Down) => helper.move_each(|m| m.move_ver(1)),
+            key!(Up) => helper.move_each(|m| m.move_ver(-1)),
+            key!(Right) => helper.move_each(|m| m.move_hor(1)),
             key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
             key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
             key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
@@ -414,11 +478,13 @@ impl KeyMap {
             key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
             key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
             key!(Char('l')) => helper.move_each(|m| {
-                if let Some((point, _)) = m.find_ends('\n') {
-                    m.move_to(point);
-                    m.move_hor(-1);
-                } else if let Some(last) = m.last_point() {
-                    m.move_to(last);
+                self.sel_type = SelType::UntilNL;
+                let pre_nl = match m.char() {
+                    '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                    _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                };
+                if let Some((p, _)) = pre_nl {
+                    m.move_to(p);
                 }
             }),
             key!(Char('i')) => helper.move_each(|m| {
@@ -492,7 +558,8 @@ where
             Mode::Insert => self.match_insert(helper, event),
             Mode::Normal => {
                 let (code, mf) = (&event.code, &event.modifiers);
-                if ![Char('J'), Char('K'), Down, Up].contains(code) || !mf.contains(Mod::SHIFT) {
+                let end_of_line = [Char('j'), Char('J'), Char('k'), Char('K'), Down, Up];
+                if !end_of_line.contains(code) || (*mf != Mod::SHIFT && *mf != Mod::NONE) {
                     self.sel_type = SelType::Normal;
                 }
                 self.match_normal(helper, event, context);
@@ -531,7 +598,9 @@ where
                     _ => {}
                 }
                 self.mode = Mode::Normal;
-                self.sel_type = SelType::Normal;
+                if !matches!(self.sel_type, SelType::UntilNL) {
+                    self.sel_type = SelType::Normal;
+                }
                 hooks::trigger::<OnModeChange>((Mode::OneKey(one_key), Mode::Normal));
             }
             Mode::Other(_) => {
@@ -556,18 +625,6 @@ where
     }
 }
 
-fn move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each(|m| {
-        m.unset_anchor();
-        match direction {
-            Side::Top => m.move_ver(-(amount as isize)),
-            Side::Bottom => m.move_ver(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
-        }
-    });
-}
-
 fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
     helper.move_each(|m| {
         if m.anchor().is_none() {
@@ -576,18 +633,6 @@ fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side,
         match direction {
             Side::Top => m.move_ver(-(amount as isize)),
             Side::Bottom => m.move_ver(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
-        }
-    });
-}
-
-fn move_each_wrapped<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
-    helper.move_each(|m| {
-        m.unset_anchor();
-        match direction {
-            Side::Top => m.move_ver_wrapped(-(amount as isize)),
-            Side::Bottom => m.move_ver_wrapped(amount as isize),
             Side::Left => m.move_hor(-(amount as isize)),
             Side::Right => m.move_hor(amount as isize),
         }
