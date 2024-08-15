@@ -11,8 +11,12 @@ use crate::{
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
     input::InputMethod,
+    log_info,
     text::{err, ok, text, PrintCfg, Text},
-    ui::{build_file, Area, Event, Node, PushSpecs, Sender, Ui, Window, WindowBuilder},
+    ui::{
+        build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
+        WindowBuilder,
+    },
     widgets::{ActiveWidget, File, FileCfg, Widget},
 };
 
@@ -24,6 +28,7 @@ where
     ui: U,
     file_cfg: FileCfg<U>,
     context: Context<U>,
+    layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
 impl<U> SessionCfg<U>
@@ -37,12 +42,12 @@ where
             ui,
             file_cfg: FileCfg::new(),
             context,
+            layout: Box::new(|| Box::new(MasterOnLeft)),
         }
     }
 
     pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
         self.ui.open();
-        self.ui.start(Sender::new(tx.clone()), self.context);
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -53,7 +58,7 @@ where
             self.file_cfg.clone().build()
         };
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
+        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
         self.context.commands.add_windows(vec![window]);
 
         let mut session = Session {
@@ -85,8 +90,6 @@ where
         prev_files: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
-        self.ui.start(Sender::new(tx.clone()), self.context);
-
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev_files {
             let mut file = file.write();
@@ -100,7 +103,7 @@ where
 
         let (widget, checker) = file_cfg.build();
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker);
+        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
         self.context.commands.add_windows(vec![window]);
 
         let mut session = Session {
@@ -160,15 +163,16 @@ where
     U: Ui + 'static,
 {
     pub fn open_file(&mut self, path: PathBuf) {
-        let (area, _) = self.windows.mutate(|windows| {
+        let pushed = self.windows.mutate(|windows| {
             let current_window = self.current_window.load(Ordering::Relaxed);
-
             let (file, checker) = self.file_cfg.clone().open_path(path).build();
-
-            windows[current_window].push_file(file, checker, PushSpecs::below())
+            windows[current_window].push_file(file, checker)
         });
 
-        build_file(&self.windows, area, self.context);
+        match pushed {
+            Ok((area, _)) => build_file(&self.windows, area, self.context),
+            Err(err) => self.context.notify(err.into()),
+        }
     }
 
     pub fn push_widget<F>(
@@ -235,6 +239,17 @@ where
             }
         });
 
+        self.ui.flush_layout();
+        self.ui.start(Sender::new(self.tx.clone()), self.context);
+
+        log_info!(
+            "{:#?}",
+            self.windows.read()[0]
+                .widgets()
+                .map(|(_, a)| a.height())
+                .collect::<Vec<_>>()
+        );
+
         // The main loop.
         loop {
             let current_window = self.current_window.load(Ordering::Relaxed);
@@ -266,7 +281,7 @@ where
                 BreakTo::ReloadConfig => {
                     break self.reload_config();
                 }
-                _ => {}
+                BreakTo::OpenFiles => {}
             }
         }
     }
@@ -337,22 +352,26 @@ where
     }
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
-        let area = self.windows.mutate(|windows| {
+        let pushed = self.windows.mutate(|windows| {
             let current_window = self.current_window.load(Ordering::Relaxed);
 
             let (widget, checker) = file_cfg.build();
 
-            let (area, _) =
-                windows[current_window].push_file(widget.clone(), checker, PushSpecs::below());
+            let pushed = windows[current_window].push_file(widget.clone(), checker);
 
-            if is_active {
-                self.set_active_file(widget, &area);
+            if let Ok((area, _)) = &pushed
+                && is_active
+            {
+                self.set_active_file(widget, area);
             }
 
-            area
+            pushed
         });
 
-        build_file(&self.windows, area, self.context);
+        match pushed {
+            Ok((area, _)) => build_file(&self.windows, area, self.context),
+            Err(err) => self.context.notify(err.into()),
+        }
     }
 
     fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {

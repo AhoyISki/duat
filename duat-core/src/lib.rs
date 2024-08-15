@@ -57,15 +57,28 @@ pub enum Error<E> {
     /// # Context related errors:
 
     /// The [`Ui`] still hasn't created the first file
+    ///
+    /// [`Ui`]: ui::Ui
     NoFileYet,
     /// Since the [`Ui`] has no file, widgets can't relate to it
+    ///
+    /// [`Ui`]: ui::Ui
     NoFileForRelated,
     /// The [`Ui`] still hasn't created the first widget (a file)
+    ///
+    /// [`Ui`]: ui::Ui
     NoWidgetYet,
     /// The checked widget is not of the type given
     WidgetIsNot,
     /// The checked input is not of the type given
     InputIsNot(PhantomData<E>),
+
+    /// # Layout related errors:
+
+    /// The [`Layout`] does not allow for anothe file to open
+    ///
+    /// [`Layout`]: ui::Layout
+    LayoutDisallowsFile,
 }
 
 impl<E> DuatError for Error<E> {
@@ -97,6 +110,9 @@ impl<E> DuatError for Error<E> {
             Error::InputIsNot(..) => err!(
                 "This file's input is not " [*a] { type_name::<E>() } [] ". " early
             ),
+            Error::LayoutDisallowsFile => err!(
+                "The " [*a] "Layout" [] " disallows the addition of more files."
+            ),
         }
     }
 }
@@ -104,16 +120,17 @@ impl<E> DuatError for Error<E> {
 impl<E> std::fmt::Debug for Error<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug = f.debug_tuple(match self {
-            Error::AliasNotSingleWord(_) => "Error::AliasNotSingleWord",
-            Error::CallerAlreadyExists(_) => "Error::CallerAlreadyExists",
-            Error::CallerNotFound(_) => "Error::CallerNotFound",
-            Error::CommandFailed(_) => "Error::CommandFailed",
-            Error::Empty => "Error::Empty ",
-            Error::NoFileYet => "Error::NoFileYet ",
-            Error::NoFileForRelated => "Error::NoFileForRelated ",
-            Error::NoWidgetYet => "Error::NoWidgetYet ",
-            Error::WidgetIsNot => "Error::WidgetIsNot ",
-            Error::InputIsNot(_) => "Error::InputIsNot",
+            Error::AliasNotSingleWord(_) => "AliasNotSingleWord",
+            Error::CallerAlreadyExists(_) => "CallerAlreadyExists",
+            Error::CallerNotFound(_) => "CallerNotFound",
+            Error::CommandFailed(_) => "CommandFailed",
+            Error::Empty => "Empty ",
+            Error::NoFileYet => "NoFileYet ",
+            Error::NoFileForRelated => "NoFileForRelated ",
+            Error::NoWidgetYet => "NoWidgetYet ",
+            Error::WidgetIsNot => "WidgetIsNot ",
+            Error::InputIsNot(_) => "InputIsNot",
+            Error::LayoutDisallowsFile => "LayoutDisallowsFile",
         });
 
         match self {
@@ -126,7 +143,8 @@ impl<E> std::fmt::Debug for Error<E> {
             | Error::NoFileForRelated
             | Error::NoWidgetYet
             | Error::WidgetIsNot
-            | Error::InputIsNot(_) => &mut debug,
+            | Error::InputIsNot(_)
+            | Error::LayoutDisallowsFile => &mut debug,
         }
         .finish()
     }

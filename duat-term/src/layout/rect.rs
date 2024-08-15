@@ -5,25 +5,28 @@ use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
 };
-use duat_core::ui::{
-    Axis::{self, *},
-    Constraint,
+use duat_core::{
+    data::RwData,
+    ui::{
+        Axis::{self, *},
+        Constraint,
+    },
 };
 
-use super::{Constraints, Edge, VarPoint};
+use super::{Constraints, Edge};
 use crate::{
-    area::Coord,
-    print::{Printer, Sender},
-    Area, AreaId, Coords, Equality, Frame,
+    area::{Coord, PrintInfo},
+    print::{Printer, Sender, VarPoint, VarValue},
+    Area, AreaId, Equality, Frame,
 };
 
 #[derive(Debug)]
 enum Kind {
-    End(Option<Sender>),
+    End(Sender, RwData<PrintInfo>),
     Middle {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
-        grouped: bool,
+        clustered: bool,
     },
 }
 
@@ -32,28 +35,28 @@ impl Kind {
         Self::Middle {
             children: Vec::new(),
             axis,
-            grouped,
+            clustered: grouped,
         }
     }
 
-    fn is_grouped(&self) -> bool {
+    fn is_clustered(&self) -> bool {
         match self {
-            Kind::End(_) => false,
-            Kind::Middle { grouped, .. } => *grouped,
+            Kind::End(..) => false,
+            Kind::Middle { clustered, .. } => *clustered,
         }
     }
 
     fn axis(&self) -> Option<Axis> {
         match self {
             Kind::Middle { axis, .. } => Some(*axis),
-            Kind::End(_) => None,
+            Kind::End(..) => None,
         }
     }
 
     fn children(&self) -> Option<&[(Rect, Constraints)]> {
         match self {
             Kind::Middle { children, .. } => Some(children),
-            Kind::End(_) => None,
+            Kind::End(..) => None,
         }
     }
 }
@@ -75,81 +78,154 @@ impl Kind {
 #[derive(Debug)]
 #[allow(clippy::type_complexity)]
 pub struct Rect {
-    id: AreaId,
     /// The index that this [`Rect`] is tied to.
+    id: AreaId,
     tl: VarPoint,
     br: VarPoint,
-    edge_equalities: Vec<Equality>,
+    eqs: Vec<Equality>,
     kind: Kind,
 }
 
 impl Rect {
     /// Returns a new instance of [`Rect`], already adding its
     /// [`Variable`]s to the list.
-    pub fn new(printer: &mut Printer) -> Self {
-        Rect {
-            id: AreaId::new(),
-            tl: VarPoint::new(printer),
-            br: VarPoint::new(printer),
-            edge_equalities: Vec::new(),
-            kind: Kind::End(None),
+    pub fn new_main(p: &mut Printer, fr: Frame) -> Self {
+        let mut rect = Rect::new_raw(p);
+        let (ver, hor) = fr.surround_edges();
+        rect.eqs.extend([
+            rect.tl.x() | EQ(REQUIRED) | ver,
+            rect.tl.y() | EQ(REQUIRED) | hor,
+            rect.br.x() | EQ(REQUIRED) | (p.max().x() - ver),
+            rect.br.y() | EQ(REQUIRED) | (p.max().y() - hor),
+        ]);
+        p.add_equalities(&rect.eqs);
+
+        rect
+    }
+
+    pub fn insert(i: usize, parent: AreaId, p: &mut Printer, fr: Frame, rects: &mut Rects) {
+        let parent = rects.get_mut(parent).unwrap();
+
+        let mut rect = Rect::new_raw(p);
+
+        rect.set_base_eqs(i, parent, p, fr);
+
+        let Kind::Middle { children, .. } = &mut parent.kind else {
+            unreachable!();
+        };
+
+        children.insert(i, (rect, Constraints::default()));
+
+        if i > 0 {
+            let (mut prev, cons) = children.remove(i - 1);
+            prev.set_base_eqs(i - 1, parent, p, fr);
+
+            let Kind::Middle { children, .. } = &mut parent.kind else {
+                unreachable!();
+            };
+
+            children.insert(i - 1, (prev, cons));
         }
+    }
+
+    pub fn set_base_eqs(&mut self, i: usize, parent: &mut Rect, p: &mut Printer, fr: Frame) {
+        let axis = parent.kind.axis().unwrap();
+
+        self.clear_eqs(p);
+
+        if i == 0 {
+            self.eqs
+                .push(self.start(axis) | EQ(REQUIRED) | parent.start(axis));
+        }
+
+        self.eqs.extend([
+            self.start(axis.perp()) | EQ(REQUIRED) | parent.start(axis.perp()),
+            self.end(axis.perp()) | EQ(REQUIRED) | parent.end(axis.perp()),
+        ]);
+
+        let Kind::Middle { children, clustered, .. } = &parent.kind else {
+            unreachable!();
+        };
+
+        if let Some((next, _)) = children.get(i) {
+            if fr.border_edge_on(axis) == 1.0 && !*clustered {
+                let frame = p.var_value();
+                self.eqs.extend([
+                    (self.end(axis) + &frame) | EQ(REQUIRED) | next.start(axis),
+                    // Makes the frame have len = 0 when either of its
+                    // side widgets have len == 0.
+                    &frame | GE(REQUIRED) | 0.0,
+                    &frame | EQ(STRONG) | -self.len(axis),
+                    &frame | EQ(STRONG) | -next.len(axis),
+                    &frame | EQ(WEAK) | 1.0,
+                ]);
+            } else {
+                self.eqs
+                    .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
+            }
+        } else {
+            self.eqs
+                .push(self.end(axis) | EQ(REQUIRED) | parent.end(axis));
+        }
+
+        p.add_equalities(&self.eqs);
     }
 
     /// Returns a new [`Rect`], which is supposed to replace an
     /// existing [`Rect`], as its new parent.
-    pub fn new_parent_of(
-        rect: &mut Rect,
-        axis: Axis,
-        printer: &mut Printer,
-        do_group: bool,
-    ) -> Self {
+    pub fn new_parent_of(rect: &mut Rect, axis: Axis, p: &mut Printer, cluster: bool) -> Self {
         let parent = Rect {
             id: AreaId::new(),
             tl: rect.tl.clone(),
             br: rect.br.clone(),
-            edge_equalities: rect.edge_equalities.clone(),
-            kind: Kind::middle(axis, do_group),
+            eqs: rect.eqs.clone(),
+            kind: Kind::middle(axis, cluster),
         };
 
-        rect.edge_equalities.clear();
-        rect.tl = VarPoint::new(printer);
-        rect.br = VarPoint::new(printer);
+        rect.eqs.clear();
+        rect.tl = VarPoint::new(p);
+        rect.br = VarPoint::new(p);
 
         parent
     }
 
-    pub fn set_sender(&mut self, new: Sender) {
-        let Kind::End(sender) = &mut self.kind else {
-            unreachable!();
-        };
+    fn new_raw(p: &mut Printer) -> Self {
+        let tl = p.var_point();
+        let br = p.var_point();
+        let sender = p.sender(tl.clone(), br.clone());
 
-        *sender = Some(new);
+        Rect {
+            id: AreaId::new(),
+            tl,
+            br,
+            eqs: Vec::new(),
+            kind: Kind::End(sender, RwData::default()),
+        }
     }
 
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
-    pub fn clear_equalities(&mut self, printer: &mut Printer) {
-        for eq in self.edge_equalities.drain(..) {
-            printer.remove_equality(&eq).unwrap();
+    pub fn clear_eqs(&mut self, printer: &mut Printer) {
+        for eq in self.eqs.drain(..) {
+            printer.remove_equality(eq);
         }
     }
 
     /// A [`Variable`], representing the "start" of [`self`], given an
     /// [`Axis`]. It will be the left or upper side of a [`Rect`].
-    pub fn start(&self, axis: Axis) -> Variable {
+    pub fn start(&self, axis: Axis) -> &VarValue {
         match axis {
-            Horizontal => self.tl.x.var,
-            Vertical => self.tl.y.var,
+            Horizontal => self.tl.x(),
+            Vertical => self.tl.y(),
         }
     }
 
     /// A [`Variable`], representing the "start" of [`self`], given an
     /// [`Axis`]. It will be the right or lower side of a [`Rect`].
-    pub fn end(&self, axis: Axis) -> Variable {
+    pub fn end(&self, axis: Axis) -> &VarValue {
         match axis {
-            Horizontal => self.br.x.var,
-            Vertical => self.br.y.var,
+            Horizontal => self.br.x(),
+            Vertical => self.br.y(),
         }
     }
 
@@ -157,8 +233,8 @@ impl Rect {
     /// given [`Axis`].
     pub fn len(&self, axis: Axis) -> Expression {
         match axis {
-            Horizontal => self.br.x.var - self.tl.x.var,
-            Vertical => self.br.y.var - self.tl.y.var,
+            Horizontal => self.br.x() - self.tl.x(),
+            Vertical => self.br.y() - self.tl.y(),
         }
     }
 
@@ -166,28 +242,24 @@ impl Rect {
     /// [`Axis`].
     pub fn len_value(&self, axis: Axis) -> usize {
         match axis {
-            Horizontal => {
-                self.br.x.value.load(Ordering::Relaxed) - self.tl.x.value.load(Ordering::Relaxed)
-            }
-            Vertical => {
-                self.br.y.value.load(Ordering::Relaxed) - self.tl.y.value.load(Ordering::Relaxed)
-            }
+            Horizontal => self.br.x().value() - self.tl.x().value(),
+            Vertical => self.br.y().value() - self.tl.y().value(),
         }
     }
 
     /// The top left corner of [`self`].
     pub fn tl(&self) -> Coord {
         Coord {
-            x: self.tl.x.value.load(Ordering::Acquire),
-            y: self.tl.y.value.load(Ordering::Acquire),
+            x: self.tl.x().value(),
+            y: self.tl.y().value(),
         }
     }
 
     /// The bottom right corner of [`self`].
     pub fn br(&self) -> Coord {
         Coord {
-            x: self.br.x.value.load(Ordering::Acquire),
-            y: self.br.y.value.load(Ordering::Acquire),
+            x: self.br.x().value(),
+            y: self.br.y().value(),
         }
     }
 
@@ -196,16 +268,11 @@ impl Rect {
         matches!(self.kind, Kind::Middle { .. })
     }
 
-    /// The index that identifies [`self`].
-    pub fn index(&self) -> AreaId {
-        self.id
-    }
-
     pub fn has_changed(&self) -> bool {
-        let br_x_changed = self.br.x.has_changed.swap(false, Ordering::Release);
-        let br_y_changed = self.br.y.has_changed.swap(false, Ordering::Release);
-        let tl_x_changed = self.tl.x.has_changed.swap(false, Ordering::Release);
-        let tl_y_changed = self.tl.y.has_changed.swap(false, Ordering::Release);
+        let br_x_changed = self.br.x().has_changed();
+        let br_y_changed = self.br.y().has_changed();
+        let tl_x_changed = self.tl.x().has_changed();
+        let tl_y_changed = self.tl.y().has_changed();
 
         br_x_changed || br_y_changed || tl_x_changed || tl_y_changed
     }
@@ -214,30 +281,37 @@ impl Rect {
         self.id
     }
 
-    pub fn is_grouped(&self) -> bool {
+    pub fn is_clustered(&self) -> bool {
         match &self.kind {
-            Kind::Middle { grouped, .. } => *grouped,
-            Kind::End(_) => false,
+            Kind::Middle { clustered: grouped, .. } => *grouped,
+            Kind::End(..) => false,
         }
     }
 
     pub fn aligns_with(&self, other: Axis) -> bool {
         match &self.kind {
             Kind::Middle { axis, .. } => *axis == other,
-            Kind::End(_) => false,
+            Kind::End(..) => false,
         }
     }
 
     pub fn children_len(&self) -> usize {
         match &self.kind {
             Kind::Middle { children, .. } => children.len(),
-            Kind::End(_) => 0,
+            Kind::End(..) => 0,
         }
     }
 
     pub fn sender(&self) -> Option<&Sender> {
         match &self.kind {
-            Kind::End(sender) => sender.as_ref(),
+            Kind::End(sender, _) => Some(sender),
+            Kind::Middle { .. } => None,
+        }
+    }
+
+    pub fn print_info(&self) -> Option<&RwData<PrintInfo>> {
+        match &self.kind {
+            Kind::End(_, info) => Some(info),
             Kind::Middle { .. } => None,
         }
     }
@@ -253,7 +327,7 @@ impl Rect {
         max: &VarPoint,
     ) -> (f64, f64) {
         let axis = parent.kind.axis().unwrap();
-        self.edge_equalities.extend([
+        self.eqs.extend([
             self.tl.x.var | GE(REQUIRED) | 0.0,
             self.tl.y.var | GE(REQUIRED) | 0.0,
             self.br.x.var | GE(REQUIRED) | self.tl.x.var,
@@ -274,7 +348,7 @@ impl Rect {
         };
 
         // Setting the equalities of the sides parallel to the axis.
-        self.edge_equalities.extend([
+        self.eqs.extend([
             self.start(axis.perp()) | EQ(REQUIRED) | (parent.start(axis.perp()) + para_left),
             (self.end(axis.perp()) + para_right) | EQ(REQUIRED) | parent.end(axis.perp()),
         ]);
@@ -287,7 +361,7 @@ impl Rect {
     /// [`Frame`].
     fn set_main_edges(&mut self, fr: Frame, printer: &mut Printer, edges: &mut Vec<Edge>) {
         let (hor_edge, ver_edge) = if self.is_frameable(None) {
-            fr.main_edges()
+            fr.surround_edges()
         } else {
             (0.0, 0.0)
         };
@@ -302,21 +376,21 @@ impl Rect {
             edges.push(Edge::new(self.br.clone(), self.tl.clone(), Horizontal, fr));
         }
 
-        self.edge_equalities = vec![
+        self.eqs = vec![
             self.tl.x.var | EQ(REQUIRED) | hor_edge,
             self.tl.y.var | EQ(REQUIRED) | ver_edge,
             self.br.x.var | EQ(REQUIRED) | (printer.max().x.var - hor_edge),
             self.br.y.var | EQ(REQUIRED) | (printer.max().y.var - ver_edge),
         ];
 
-        printer.add_equalities(&self.edge_equalities).unwrap();
+        printer.add_equalities(&self.eqs);
     }
 
     /// Wheter or not [`self`] can be framed.
     fn is_frameable(&self, parent: Option<&Rect>) -> bool {
-        if parent.is_some_and(|parent| parent.kind.is_grouped()) {
+        if parent.is_some_and(|parent| parent.kind.is_clustered()) {
             false
-        } else if let Kind::Middle { grouped, .. } = &self.kind {
+        } else if let Kind::Middle { clustered: grouped, .. } = &self.kind {
             *grouped
         } else {
             true
@@ -364,65 +438,11 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(printer: &mut Printer) -> Self {
+    pub fn new(printer: &mut Printer, fr: Frame) -> Self {
         Self {
-            main: Rect::new(printer),
+            main: Rect::new_main(printer, fr),
             floating: Vec::new(),
         }
-    }
-
-    /// Fetches the parent of the [`RwData<Rect>`] with the given
-    /// index, including its positional index and the [`Axis`] of
-    /// its children. Fetches the [`RwData<Rect>`] of the given
-    /// index, if there is one.
-    pub fn get(&self, id: AreaId) -> Option<&Rect> {
-        fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
-            if rect.id == id {
-                Some(rect)
-            } else if let Kind::Middle { children, .. } = &rect.kind {
-                children.iter().find_map(|(child, _)| fetch(child, id))
-            } else {
-                None
-            }
-        }
-
-        std::iter::once(&self.main)
-            .chain(&self.floating)
-            .find_map(|rect| fetch(rect, id))
-    }
-
-    /// Gets the parent of the `id`'s [`Rect`]
-    ///
-    /// Also returns the child's "position", given an [`Axis`],
-    /// going top to bottom or left to right.
-    pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
-        std::iter::once(&self.main)
-            .chain(&self.floating)
-            .find_map(|rect| fetch_parent(rect, id))
-    }
-
-    /// Gets the perpendicular ancestor of the `id`'s [`Rect`]
-    ///
-    /// E.g. if the parent has an [`Axis::Horizontal`], then it will
-    /// find the ancestor with an [`Axis::Vertical`].
-    /// It also returns the index of the node that eventually contains
-    /// the `id`'s [`Rect`]
-    pub fn get_perp_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
-        let (mut n, mut parent) = self.get_parent(id)?;
-        let axis = parent.kind.axis().unwrap();
-        let mut parent_axis = axis;
-
-        while parent_axis == axis {
-            (n, parent) = self.get_parent(parent.id)?;
-            parent_axis = parent.kind.axis().unwrap();
-        }
-
-        Some((n, parent))
-    }
-
-    /// Gets the siblings of the `id`'s [`Rect`]
-    pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
-        self.get_parent(id).and_then(|(_, p)| p.kind.children())
     }
 
     /// Gets a mut reference to the parent of the `id`'s [`Rect`]
@@ -516,12 +536,12 @@ impl Rects {
         let prev_cons = {
             let (prev_eq, prev_cons) = conss.on_mut(axis);
             if let Some(eq) = prev_eq.replace(eq.clone()) {
-                printer.remove_equality(&eq).unwrap()
+                printer.remove_equality(&eq)
             }
             prev_cons.replace(cons)
         };
 
-        printer.add_equality(eq).unwrap();
+        printer.add_equality(eq);
 
         prev_cons
     }
@@ -538,10 +558,10 @@ impl Rects {
                 };
                 let conss = std::mem::take(&mut children[pos].1);
                 if let Some(equality) = conss.ver_eq {
-                    vars.remove_equality(&equality).unwrap();
+                    vars.remove_equality(&equality);
                 }
                 if let Some(equality) = conss.hor_eq {
-                    vars.remove_equality(&equality).unwrap();
+                    vars.remove_equality(&equality);
                 }
 
                 (conss.ver_cons, conss.hor_cons)
@@ -558,7 +578,7 @@ impl Rects {
     ) {
         if self.main.id == id {
             let rect = self.get_mut(id).unwrap();
-            rect.clear_equalities(printer);
+            rect.clear_eqs(printer);
             rect.set_main_edges(fr, printer, edges);
         } else {
             let (pos, parent) = self.get_parent_mut(id).unwrap();
@@ -576,7 +596,7 @@ impl Rects {
         let child_is_main = self.main.id == self.get(id).unwrap().id;
         let (pos, parent) = self.get_parent_mut(id).unwrap();
         if child_is_main {
-            parent.clear_equalities(printer);
+            parent.clear_eqs(printer);
             parent.set_main_edges(fr, printer, edges);
         } else {
             prepare_child(parent, pos, printer, fr, edges)
@@ -608,26 +628,71 @@ impl Rects {
         }
     }
 
-    pub fn set_senders(&mut self, printer: &mut Printer) {
-        fn set_sender(rect: &mut Rect, printer: &mut Printer) {
-            let coords = Coords::new(rect.tl(), rect.br());
-            match &mut rect.kind {
-                Kind::End(sender) => {
-                    *sender = if coords.width() == 0 || coords.height() == 0 {
-                        None
-                    } else {
-                        Some(printer.sender(coords))
-                    };
-                }
-                Kind::Middle { children, .. } => {
-                    for (child, _) in children {
-                        set_sender(child, printer);
-                    }
-                }
+    /// Fetches the parent of the [`RwData<Rect>`] with the given
+    /// index, including its positional index and the [`Axis`] of
+    /// its children. Fetches the [`RwData<Rect>`] of the given
+    /// index, if there is one.
+    pub fn get(&self, id: AreaId) -> Option<&Rect> {
+        fn fetch(rect: &Rect, id: AreaId) -> Option<&Rect> {
+            if rect.id == id {
+                Some(rect)
+            } else if let Kind::Middle { children, .. } = &rect.kind {
+                children.iter().find_map(|(child, _)| fetch(child, id))
+            } else {
+                None
             }
         }
 
-        set_sender(&mut self.main, printer);
+        std::iter::once(&self.main)
+            .chain(&self.floating)
+            .find_map(|rect| fetch(rect, id))
+    }
+
+    /// Gets the parent of the `id`'s [`Rect`]
+    ///
+    /// Also returns the child's "position", given an [`Axis`],
+    /// going top to bottom or left to right.
+    pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
+        std::iter::once(&self.main)
+            .chain(&self.floating)
+            .find_map(|rect| fetch_parent(rect, id))
+    }
+
+    /// Gets the perpendicular ancestor of the `id`'s [`Rect`]
+    ///
+    /// E.g. if the parent has an [`Axis::Horizontal`], then it will
+    /// find the ancestor with an [`Axis::Vertical`].
+    /// It also returns the index of the node that eventually contains
+    /// the `id`'s [`Rect`]
+    pub fn get_perp_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
+        let (mut n, mut parent) = self.get_parent(id)?;
+        let axis = parent.kind.axis().unwrap();
+        let mut parent_axis = axis;
+
+        while parent_axis == axis {
+            (n, parent) = self.get_parent(parent.id)?;
+            parent_axis = parent.kind.axis().unwrap();
+        }
+
+        Some((n, parent))
+    }
+
+    pub fn get_adj_on(&self, id: AreaId, axis: Axis) -> Option<&Rect> {
+        let (mut i, mut parent) = self.get_parent(id)?;
+        loop {
+            if parent.kind.axis().unwrap() == axis
+                && let Some((adj, _)) = parent.kind.children().unwrap().get(i + 1)
+            {
+                break Some(adj);
+            } else {
+                (i, parent) = self.get_parent(parent.id)?;
+            }
+        }
+    }
+
+    /// Gets the siblings of the `id`'s [`Rect`]
+    pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
+        self.get_parent(id).and_then(|(_, p)| p.kind.children())
     }
 
     pub fn get_constraint_on(&self, id: AreaId, axis: Axis) -> Option<Constraint> {
@@ -679,21 +744,21 @@ fn prepare_child(
     edges: &mut Vec<Edge>,
 ) {
     let axis = parent.kind.axis().unwrap();
-    let grouped = parent.kind.is_grouped();
+    let grouped = parent.kind.is_clustered();
 
-    let temp = Kind::middle(axis, parent.kind.is_grouped());
+    let temp = Kind::middle(axis, parent.kind.is_clustered());
     let Kind::Middle { mut children, .. } = std::mem::replace(&mut parent.kind, temp) else {
         unreachable!();
     };
 
     let target = &mut children[n].0;
 
-    target.clear_equalities(printer);
+    target.clear_eqs(printer);
     let (start, end) = target.set_equalities(parent, fr, edges, printer.max());
 
     if n == 0 {
         let constraint = target.start(axis) | EQ(REQUIRED) | (parent.start(axis) + start);
-        target.edge_equalities.push(constraint);
+        target.eqs.push(constraint);
     }
 
     // Previous children carry the `Constraint`s for the `start` of their
@@ -705,9 +770,9 @@ fn prepare_child(
     };
 
     let target = &mut children[n].0;
-    target.edge_equalities.push(constraint);
+    target.eqs.push(constraint);
 
-    printer.add_equalities(&target.edge_equalities).unwrap();
+    printer.add_equalities(&target.eqs);
 
     if let Kind::Middle { children, .. } = &mut target.kind {
         let len = children.len();
@@ -716,11 +781,7 @@ fn prepare_child(
         }
     }
 
-    parent.kind = Kind::Middle {
-        children,
-        axis,
-        grouped,
-    };
+    parent.kind = Kind::Middle { children, axis, clustered: grouped };
 }
 
 /// Sets the ratio [`Equality`]s for the child of the given
@@ -756,7 +817,7 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
 
         let eq = prev.len(axis) | EQ(WEAK) | (ratio * new_len.clone());
         *conss.on_mut(axis).0 = Some(eq.clone());
-        printer.add_equality(eq).unwrap();
+        printer.add_equality(eq);
     }
 
     if let Some((next, _)) = iter.nth(1) {
@@ -767,6 +828,6 @@ pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
         };
 
         let equality = new_len | EQ(WEAK) | (ratio * next.len(axis));
-        printer.add_equality(equality.clone()).unwrap();
+        printer.add_equality(equality.clone());
     }
 }

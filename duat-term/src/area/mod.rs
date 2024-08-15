@@ -2,7 +2,6 @@ mod iter;
 mod line;
 
 use std::{
-    cell::RefCell,
     fmt::Alignment,
     io::Write,
     sync::{atomic::Ordering, LazyLock},
@@ -17,7 +16,7 @@ use duat_core::{
     data::RwData,
     palette::{self, FormId, Painter},
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
+    ui::{self, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -80,7 +79,6 @@ impl Coords {
 #[derive(Clone)]
 pub struct Area {
     pub layout: RwData<Layout>,
-    print_info: RefCell<PrintInfo>,
     pub id: AreaId,
 }
 
@@ -92,101 +90,7 @@ impl PartialEq for Area {
 
 impl Area {
     pub fn new(index: AreaId, layout: RwData<Layout>) -> Self {
-        Self {
-            layout,
-            print_info: RefCell::new(PrintInfo::default()),
-            id: index,
-        }
-    }
-
-    /// Scrolls down until the gap between the main cursor and the
-    /// bottom of the widget is equal to `config.scrolloff.y_gap`.
-    fn scroll_ver_around(&self, point: Point, text: &Text, cfg: IterCfg) {
-        let mut info = self.print_info.borrow_mut();
-        let points = text.ghost_max_points_at(point.byte());
-        let after = text.points_after(points).unwrap_or(text.len_points());
-
-        let cap = cfg.wrap_width(self.width());
-        let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
-
-        let target = match info.last_main > point {
-            true => cfg.scrolloff().y,
-            false => self.height().saturating_sub(cfg.scrolloff().y + 1),
-        };
-        let first = iter.nth(target).unwrap_or_default();
-
-        if (info.last_main > point && first <= info.points)
-            || (info.last_main < point && first >= info.points)
-        {
-            info.points = first;
-        }
-    }
-
-    /// Scrolls the file horizontally, usually when no wrapping is
-    /// being used.
-    fn scroll_hor_around(&self, point: Point, text: &Text, cfg: IterCfg) {
-        let mut info = self.print_info.borrow_mut();
-
-        let width = self.width();
-        let cap = cfg.wrap_width(width);
-
-        let (max_shift, start, end) = {
-            let points = text.ghost_max_points_at(point.byte());
-            let after = text.points_after(points).unwrap_or(text.len_points());
-
-            let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg);
-
-            let (points, start, end, wrap) = iter
-                .find_map(|(Caret { x, len, wrap }, item)| {
-                    let points = item.points();
-                    item.part.as_char().and(Some((points, x, x + len, wrap)))
-                })
-                .unwrap_or(((Point::default(), None), 0, 0, true));
-
-            let (line_len, align) = {
-                let mut align = Alignment::Left;
-                let (indent, points) = if wrap {
-                    (start, points)
-                } else {
-                    iter.find_map(|(caret, item)| caret.wrap.then_some((caret.x, item.points())))
-                        .unwrap()
-                };
-
-                let len = print_iter_indented(text.iter_at(points), cap, cfg, indent)
-                    .inspect(|(_, Item { part, .. })| match part {
-                        Part::AlignLeft => align = Alignment::Left,
-                        Part::AlignCenter => align = Alignment::Center,
-                        Part::AlignRight => align = Alignment::Right,
-                        _ => {}
-                    })
-                    .take_while(|(caret, item)| !caret.wrap || item.points() == points)
-                    .last()
-                    .map(|(Caret { x, len, .. }, _)| x + len)
-                    .unwrap_or(0);
-
-                (len, align)
-            };
-
-            let diff = match align {
-                Alignment::Left => 0,
-                Alignment::Right => cap - line_len,
-                Alignment::Center => (cap - line_len) / 2,
-            };
-
-            (line_len + diff, start + diff, end + diff)
-        };
-
-        info.x_shift = info
-            .x_shift
-            .min(start.saturating_sub(cfg.scrolloff().x))
-            .max(if cfg.forced_scrollof() {
-                (end + cfg.scrolloff().x).saturating_sub(width)
-            } else {
-                (end + cfg.scrolloff().x)
-                    .min(max_shift)
-                    .saturating_sub(width)
-            });
+        Self { layout, id: index }
     }
 
     fn print<'a>(
@@ -203,9 +107,14 @@ impl Area {
         }
 
         let layout = self.layout.read();
-        let info = self.print_info.borrow();
-
-        let Some(sender) = layout.rects.get(self.id).and_then(|rect| rect.sender()) else {
+        let Some((sender, info)) = layout.rects.get(self.id).and_then(|rect| {
+            let sender = rect.sender();
+            let info = rect.print_info();
+            sender.zip(info).map(|(sender, info)| {
+                let info = info.read();
+                (sender, *info)
+            })
+        }) else {
             return;
         };
 
@@ -332,14 +241,32 @@ impl ui::Area for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
-        self.scroll_ver_around(point, text, IterCfg::new(cfg).outsource_lfs());
-        self.scroll_hor_around(point, text, IterCfg::new(cfg).outsource_lfs());
+        let (info, w, h) = {
+            let layout = self.layout.read();
+            let rect = layout.get(self.id).unwrap();
+            let info = rect.print_info().unwrap();
+            let info = info.read();
+            let width = rect.br().x - rect.tl().x;
+            let height = rect.br().y - rect.tl().y;
+            (*info, width, height)
+        };
 
-        self.print_info.borrow_mut().last_main = point;
+        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
+        let info = scroll_hor_around(info, w, point, text, IterCfg::new(cfg).outsource_lfs());
+
+        let layout = self.layout.read();
+        let rect = layout.get(self.id).unwrap();
+        let mut old_info = rect.print_info().unwrap().write();
+        *old_info = info;
+        old_info.last_main = point;
     }
 
     fn top_left(&self) -> (Point, Option<Point>) {
-        self.print_info.borrow().points
+        let layout = self.layout.read();
+        let rect = layout.get(self.id).unwrap();
+        let info = rect.print_info().unwrap();
+        let info = info.read();
+        info.points
     }
 
     fn set_as_active(&self) {
@@ -424,17 +351,36 @@ impl ui::Area for Area {
         self.layout.read().get(self.id).unwrap().has_changed()
     }
 
-    fn is_senior_of(&self, other: &Self) -> bool {
+    fn is_master_of(&self, other: &Self) -> bool {
         self.layout.inspect(|layout| {
-            let mut parent_index = other.id;
-            while let Some((_, parent)) = layout.get_parent(parent_index) {
-                parent_index = parent.index();
-                if parent.index() == self.id {
+            let mut parent_id = other.id;
+            while let Some((_, parent)) = layout.get_parent(parent_id) {
+                parent_id = parent.id();
+                if parent.id() == self.id {
                     return true;
                 }
             }
 
-            parent_index == self.id
+            parent_id == self.id
+        })
+    }
+
+    fn get_cluster_master(&self) -> Option<Self> {
+        let clone = self.layout.clone();
+        self.layout.inspect(|layout| {
+            let (_, mut parent) = layout
+                .get_parent(self.id)
+                .filter(|(_, p)| p.is_clustered())?;
+
+            loop {
+                if let Some((_, gp)) = layout.get_parent(parent.id())
+                    && gp.is_clustered()
+                {
+                    parent = gp
+                } else {
+                    break Some(Area::new(parent.id(), clone));
+                }
+            }
         })
     }
 
@@ -443,11 +389,6 @@ impl ui::Area for Area {
         let layout = &mut *layout;
 
         let (child, parent) = layout.bisect(self.id, specs, is_glued);
-
-        layout.printer.mutate(|printer| {
-            printer.update(false);
-            layout.rects.set_senders(printer);
-        });
 
         print_edges(layout.edges());
 
@@ -471,7 +412,13 @@ impl ui::Area for Area {
         text: &'a Text,
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        let info = self.print_info.borrow();
+        let info = {
+            let layout = self.layout.read();
+            let rect = layout.get(self.id).unwrap();
+            let info = rect.print_info().unwrap();
+            let info = info.read();
+            *info
+        };
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_at(line_start);
 
@@ -584,4 +531,105 @@ fn print_edges(edges: &[Edge]) {
             Print(line::crossing(right, up, left, down, true))
         )
     }
+}
+
+/// Scrolls down until the gap between the main cursor and the
+/// bottom of the widget is equal to `config.scrolloff.y_gap`.
+fn scroll_ver_around(
+    mut info: PrintInfo,
+    width: usize,
+    height: usize,
+    point: Point,
+    text: &Text,
+    cfg: IterCfg,
+) -> PrintInfo {
+    let points = text.ghost_max_points_at(point.byte());
+    let after = text.points_after(points).unwrap_or(text.len_points());
+
+    let cap = cfg.wrap_width(width);
+    let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
+        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
+
+    let target = match info.last_main > point {
+        true => cfg.scrolloff().y,
+        false => height.saturating_sub(cfg.scrolloff().y + 1),
+    };
+    let first = iter.nth(target).unwrap_or_default();
+
+    if (info.last_main > point && first <= info.points)
+        || (info.last_main < point && first >= info.points)
+    {
+        info.points = first;
+    }
+    info
+}
+
+/// Scrolls the file horizontally, usually when no wrapping is
+/// being used.
+fn scroll_hor_around(
+    mut info: PrintInfo,
+    width: usize,
+    point: Point,
+    text: &Text,
+    cfg: IterCfg,
+) -> PrintInfo {
+    let cap = cfg.wrap_width(width);
+
+    let (max_shift, start, end) = {
+        let points = text.ghost_max_points_at(point.byte());
+        let after = text.points_after(points).unwrap_or(text.len_points());
+
+        let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg);
+
+        let (points, start, end, wrap) = iter
+            .find_map(|(Caret { x, len, wrap }, item)| {
+                let points = item.points();
+                item.part.as_char().and(Some((points, x, x + len, wrap)))
+            })
+            .unwrap_or(((Point::default(), None), 0, 0, true));
+
+        let (line_len, align) = {
+            let mut align = Alignment::Left;
+            let (indent, points) = if wrap {
+                (start, points)
+            } else {
+                iter.find_map(|(caret, item)| caret.wrap.then_some((caret.x, item.points())))
+                    .unwrap()
+            };
+
+            let len = print_iter_indented(text.iter_at(points), cap, cfg, indent)
+                .inspect(|(_, Item { part, .. })| match part {
+                    Part::AlignLeft => align = Alignment::Left,
+                    Part::AlignCenter => align = Alignment::Center,
+                    Part::AlignRight => align = Alignment::Right,
+                    _ => {}
+                })
+                .take_while(|(caret, item)| !caret.wrap || item.points() == points)
+                .last()
+                .map(|(Caret { x, len, .. }, _)| x + len)
+                .unwrap_or(0);
+
+            (len, align)
+        };
+
+        let diff = match align {
+            Alignment::Left => 0,
+            Alignment::Right => cap - line_len,
+            Alignment::Center => (cap - line_len) / 2,
+        };
+
+        (line_len + diff, start + diff, end + diff)
+    };
+
+    info.x_shift = info
+        .x_shift
+        .min(start.saturating_sub(cfg.scrolloff().x))
+        .max(if cfg.forced_scrollof() {
+            (end + cfg.scrolloff().x).saturating_sub(width)
+        } else {
+            (end + cfg.scrolloff().x)
+                .min(max_shift)
+                .saturating_sub(width)
+        });
+    info
 }

@@ -1,4 +1,5 @@
 mod builder;
+mod layout;
 
 use std::{
     fmt::Debug,
@@ -9,8 +10,12 @@ use std::{
 };
 
 use crossterm::event::KeyEvent;
+use layout::iter_files_for_layout;
 
-pub use self::builder::{FileBuilder, WindowBuilder};
+pub use self::{
+    builder::{FileBuilder, WindowBuilder},
+    layout::{FileId, Layout, MasterOnLeft},
+};
 use crate::{
     data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
@@ -296,11 +301,18 @@ pub trait Area: Send + Sync + Sized {
     /// box, but it may be something else.
     fn has_changed(&self) -> bool;
 
-    /// Wether or not [`self`] has seniority over `other`
+    /// Wether or not [`self`] is the "master" of `other`
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.
-    fn is_senior_of(&self, other: &Self) -> bool;
+    fn is_master_of(&self, other: &Self) -> bool;
+
+    /// Returns the clustered master of [`self`], if there is one
+    ///
+    /// If [`self`] belongs to a clustered group, return the most
+    /// senior member of said cluster, which must hold all other
+    /// members of the cluster.
+    fn get_cluster_master(&self) -> Option<Self>;
 
     /// Returns a printing iterator
     ///
@@ -541,7 +553,7 @@ pub trait Ui: Sized + 'static {
     ///
     /// This is different from [`Ui::open`], as this is going to run
     /// on reloads as well.
-    fn start(&mut self, sender: Sender, globals: Context<Self>);
+    fn start(&mut self, sender: Sender, context: Context<Self>);
 
     /// Ends the Ui
     ///
@@ -552,7 +564,18 @@ pub trait Ui: Sized + 'static {
     /// Functions to trigger when the program ends
     fn close(&mut self);
 
-    fn finish_printing(&self);
+    /// Stop printing updates to the window
+    fn stop_printing(&mut self);
+
+    /// Resume printing updates to the window
+    fn resume_printing(&mut self);
+
+    /// Flush the layout
+    ///
+    /// When this function is called, it means that Duat has finished
+    /// adding or removing widgets, so the ui should calculate the
+    /// layout.
+    fn flush_layout(&mut self);
 }
 
 /// A container for a master [`Area`] in Parsec
@@ -561,8 +584,9 @@ where
     U: Ui,
 {
     nodes: Vec<Node<U>>,
-    files_region: U::Area,
+    files_area: U::Area,
     master_area: U::Area,
+    layout: Box<dyn Layout<U>>,
 }
 
 impl<U> Window<U>
@@ -574,6 +598,7 @@ where
         ui: &mut U,
         widget: Widget<U>,
         checker: impl Fn() -> bool + 'static,
+        layout: Box<dyn Layout<U>>,
     ) -> (Self, U::Area) {
         let area = ui.new_root();
         widget.update(&area);
@@ -587,8 +612,9 @@ where
 
         let window = Self {
             nodes: vec![main_node],
-            files_region: area.clone(),
+            files_area: area.clone(),
             master_area: area.clone(),
+            layout,
         };
 
         (window, area)
@@ -613,9 +639,9 @@ where
         };
 
         if *area == self.master_area
-            && let Some(new_master_node) = parent.clone()
+            && let Some(new_master_area) = parent.clone()
         {
-            self.master_area = new_master_node;
+            self.master_area = new_master_area;
         }
 
         self.nodes.push(node);
@@ -632,16 +658,22 @@ where
         &mut self,
         widget: Widget<U>,
         checker: impl Fn() -> bool + 'static,
-        specs: PushSpecs,
-    ) -> (U::Area, Option<U::Area>) {
-        let area = self.files_region.clone();
+    ) -> crate::Result<(U::Area, Option<U::Area>), ()> {
+        let (id, specs) = widget
+            .inspect_as::<File, crate::Result<(FileId<U>, PushSpecs), ()>>(|file| {
+                self.layout
+                    .new_file(file, iter_files_for_layout(&self.nodes))
+            })
+            .unwrap()?;
 
-        let (child, parent) = self.push(widget, &area, checker, specs, false);
-        if let Some(parent) = &parent {
-            self.files_region = parent.clone();
+        let (child, parent) = self.push(widget, &id.0, checker, specs, false);
+        if let Some(parent) = &parent
+            && id.0 == self.files_area
+        {
+            self.files_area = parent.clone();
         }
 
-        (child, parent)
+        Ok((child, parent))
     }
 
     /// Pushes a [`Widget<U>`] to the master node of the current
@@ -694,10 +726,6 @@ where
 
     pub fn len_widgets(&self) -> usize {
         self.nodes.len()
-    }
-
-    pub(crate) fn files_region(&self) -> &U::Area {
-        &self.files_region
     }
 }
 

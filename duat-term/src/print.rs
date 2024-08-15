@@ -8,16 +8,16 @@ use std::{
     },
 };
 
-use cassowary::{strength::STRONG, AddConstraintError, RemoveConstraintError, Solver, Variable};
+use cassowary::{strength::STRONG, AddConstraintError, Solver, Variable};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
     execute,
     style::{ResetColor, SetStyle},
     terminal,
 };
-use duat_core::palette::DEFAULT_FORM_ID;
+use duat_core::{log_info, palette::DEFAULT_FORM_ID, ui::Axis};
 
-use crate::{layout::VarPoint, Coords, Equality};
+use crate::{area::Coord, Coords, Equality};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -186,31 +186,37 @@ impl Write for Lines {
 
 struct Receiver {
     lines: Arc<Mutex<Option<Lines>>>,
-    coords: Coords,
+    tl: VarPoint,
+    br: VarPoint,
 }
 
 impl Receiver {
     fn take(&self) -> Option<Lines> {
         self.lines.lock().unwrap().take()
     }
+
+    fn coords(&self) -> Coords {
+        Coords::new(self.tl.coord(), self.br.coord())
+    }
 }
 
 #[derive(Debug)]
 pub struct Sender {
     lines: Arc<Mutex<Option<Lines>>>,
-    coords: Coords,
+    tl: VarPoint,
+    br: VarPoint,
 }
 
 impl Sender {
     pub fn lines(&self, shift: usize, cap: usize) -> Lines {
-        let area = self.coords.width() * self.coords.height();
-        let mut cutoffs = Vec::with_capacity(self.coords.height());
+        let area = self.coords().width() * self.coords().height();
+        let mut cutoffs = Vec::with_capacity(self.coords().height());
         cutoffs.push(0);
 
         Lines {
             bytes: Vec::with_capacity(area * 2),
             cutoffs,
-            coords: self.coords,
+            coords: self.coords(),
             real_cursor: None,
 
             line: Vec::new(),
@@ -227,16 +233,19 @@ impl Sender {
     }
 
     pub fn coords(&self) -> Coords {
-        self.coords
+        Coords::new(self.tl.coord(), self.br.coord())
     }
 }
 
 pub struct Printer {
+    eqs_to_add: Vec<Equality>,
+    eqs_to_remove: Vec<Equality>,
     solver: Solver,
     map: HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
 
     recvs: Vec<Receiver>,
     is_offline: bool,
+    is_disabled: bool,
     max: VarPoint,
 }
 
@@ -260,13 +269,35 @@ impl Printer {
         };
 
         Self {
+            eqs_to_add: Vec::new(),
+            eqs_to_remove: Vec::new(),
             solver,
             map,
 
             recvs: Vec::new(),
             is_offline: false,
+            is_disabled: false,
             max,
         }
+    }
+
+    pub fn var_value(&mut self) -> VarValue {
+        let v = VarValue::new();
+        self.map
+            .insert(v.var, (v.value.clone(), v.has_changed.clone()));
+
+        v
+    }
+
+    pub fn var_point(&mut self) -> VarPoint {
+        let y = VarValue::new();
+        let x = VarValue::new();
+        self.map
+            .insert(x.var, (x.value.clone(), x.has_changed.clone()));
+        self.map
+            .insert(y.var, (y.value.clone(), y.has_changed.clone()));
+
+        VarPoint { y, x }
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,
@@ -285,10 +316,9 @@ impl Printer {
 
         let mut any_has_changed = false;
         for (var, new) in self.solver.fetch_changes() {
-            let (value, has_changed) = &self.map[var];
-
+            let (val, has_changed) = &self.map[var];
             let new = new.round() as usize;
-            let old = value.swap(new, Ordering::Release);
+            let old = val.swap(new, Ordering::Release);
             any_has_changed |= old != new;
             has_changed.store(old != new, Ordering::Release);
         }
@@ -296,23 +326,25 @@ impl Printer {
         any_has_changed
     }
 
-    pub fn sender(&mut self, coords: Coords) -> Sender {
-        let receiver = Receiver {
+    pub fn sender(&mut self, tl: VarPoint, br: VarPoint) -> Sender {
+        let recv = Receiver {
             lines: Arc::new(Mutex::new(None)),
-            coords,
+            tl: tl.clone(),
+            br: br.clone(),
         };
 
         let sender = Sender {
-            lines: receiver.lines.clone(),
-            coords,
+            lines: recv.lines.clone(),
+            tl: tl.clone(),
+            br: br.clone(),
         };
 
         match self
             .recvs
-            .binary_search_by(|other| other.coords.cmp(&coords))
+            .binary_search_by(|other| other.coords().cmp(&recv.coords()))
         {
             Ok(_) => unreachable!("One receiver per area."),
-            Err(pos) => self.recvs.insert(pos, receiver),
+            Err(pos) => self.recvs.insert(pos, recv),
         }
 
         sender
@@ -378,23 +410,40 @@ impl Printer {
         &mut self.map
     }
 
-    pub fn add_equality(&mut self, eq: Equality) -> Result<(), AddConstraintError> {
-        self.solver.add_constraint(eq)
+    pub fn add_equality(&mut self, eq: Equality) {
+        self.eqs_to_add.push(eq);
     }
 
-    pub fn add_equalities<'a>(
-        &mut self,
-        eqs: impl IntoIterator<Item = &'a Equality>,
-    ) -> Result<(), AddConstraintError> {
-        self.solver.add_constraints(eqs)
+    pub fn add_equalities<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
+        self.eqs_to_add.extend(eqs.into_iter().cloned())
     }
 
-    pub fn remove_equality(&mut self, eq: &Equality) -> Result<(), RemoveConstraintError> {
-        self.solver.remove_constraint(eq)
+    pub fn remove_equality(&mut self, eq: Equality) {
+        if self.eqs_to_add.extract_if(|e| *e == eq).count() == 0 {
+            self.eqs_to_remove.push(eq);
+        }
+    }
+
+    pub fn disable(&mut self) {
+        self.is_disabled = true;
+    }
+
+    pub fn enable(&mut self) {
+        self.is_disabled = false;
     }
 
     pub fn max(&self) -> &VarPoint {
         &self.max
+    }
+
+    pub fn flush_equalities(&mut self) -> Result<(), AddConstraintError> {
+        for eq in self.eqs_to_remove.drain(..) {
+            self.solver.remove_constraint(&eq).unwrap();
+        }
+        self.solver.add_constraints(&self.eqs_to_add)?;
+        self.update(false);
+        self.eqs_to_add.clear();
+        Ok(())
     }
 }
 
@@ -406,3 +455,275 @@ impl Default for Printer {
 
 unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
+
+/// A [`Variable`], attached to its value, which is automatically kept
+/// up to date.
+#[derive(Clone)]
+pub struct VarValue {
+    var: Variable,
+    value: Arc<AtomicUsize>,
+    has_changed: Arc<AtomicBool>,
+}
+
+impl VarValue {
+    pub fn var(&self) -> Variable {
+        self.var
+    }
+
+    pub fn value(&self) -> usize {
+        self.value.load(Ordering::Acquire)
+    }
+
+    /// Returns a new instance of [`VarValue`]
+    fn new() -> Self {
+        Self {
+            var: Variable::new(),
+            value: Arc::new(AtomicUsize::new(0)),
+            has_changed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn has_changed(&self) -> bool {
+        self.has_changed.swap(false, Ordering::Release)
+    }
+}
+
+impl PartialEq<VarValue> for VarValue {
+    fn eq(&self, other: &VarValue) -> bool {
+        self.var == other.var
+    }
+}
+
+impl PartialOrd<VarValue> for VarValue {
+    fn partial_cmp(&self, other: &VarValue) -> Option<std::cmp::Ordering> {
+        Some(
+            self.value
+                .load(Ordering::Acquire)
+                .cmp(&other.value.load(Ordering::Acquire)),
+        )
+    }
+}
+
+impl std::ops::BitOr<cassowary::WeightedRelation> for &VarValue {
+    type Output = cassowary::PartialConstraint;
+
+    fn bitor(self, rhs: cassowary::WeightedRelation) -> cassowary::PartialConstraint {
+        self.var | rhs
+    }
+}
+
+impl std::ops::BitOr<&VarValue> for cassowary::PartialConstraint {
+    type Output = cassowary::Constraint;
+
+    fn bitor(self, rhs: &VarValue) -> cassowary::Constraint {
+        self | rhs.var
+    }
+}
+
+impl std::ops::Add<f64> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: f64) -> cassowary::Expression {
+        self.var + rhs
+    }
+}
+
+impl std::ops::Add<&VarValue> for f64 {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: &VarValue) -> cassowary::Expression {
+        self + rhs.var
+    }
+}
+
+impl std::ops::Add<&VarValue> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: &VarValue) -> cassowary::Expression {
+        self.var + rhs.var
+    }
+}
+
+impl std::ops::Add<cassowary::Term> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: cassowary::Term) -> cassowary::Expression {
+        self.var + rhs
+    }
+}
+
+impl std::ops::Add<&VarValue> for cassowary::Term {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: &VarValue) -> cassowary::Expression {
+        self + rhs.var
+    }
+}
+
+impl std::ops::Add<cassowary::Expression> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: cassowary::Expression) -> cassowary::Expression {
+        self.var + rhs
+    }
+}
+
+impl std::ops::Add<&VarValue> for cassowary::Expression {
+    type Output = cassowary::Expression;
+
+    fn add(self, rhs: &VarValue) -> cassowary::Expression {
+        self + rhs.var
+    }
+}
+
+impl std::ops::Neg for &VarValue {
+    type Output = cassowary::Term;
+
+    fn neg(self) -> cassowary::Term {
+        -self.var
+    }
+}
+
+impl std::ops::Sub<f64> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: f64) -> cassowary::Expression {
+        self.var - rhs
+    }
+}
+
+impl std::ops::Sub<&VarValue> for f64 {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
+        self + rhs.var
+    }
+}
+
+impl std::ops::Sub<&VarValue> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
+        self.var - rhs.var
+    }
+}
+
+impl std::ops::Sub<cassowary::Term> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: cassowary::Term) -> cassowary::Expression {
+        self.var - rhs
+    }
+}
+
+impl std::ops::Sub<&VarValue> for cassowary::Term {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
+        self - rhs.var
+    }
+}
+
+impl std::ops::Sub<cassowary::Expression> for &VarValue {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: cassowary::Expression) -> cassowary::Expression {
+        self.var - rhs
+    }
+}
+
+impl std::ops::Sub<&VarValue> for cassowary::Expression {
+    type Output = cassowary::Expression;
+
+    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
+        self - rhs.var
+    }
+}
+
+impl std::ops::Mul<f64> for &VarValue {
+    type Output = cassowary::Term;
+
+    fn mul(self, rhs: f64) -> cassowary::Term {
+        self.var * rhs
+    }
+}
+
+impl std::ops::Mul<VarValue> for f64 {
+    type Output = cassowary::Term;
+
+    fn mul(self, rhs: VarValue) -> cassowary::Term {
+        self * rhs.var
+    }
+}
+
+impl std::ops::Div<f64> for VarValue {
+    type Output = cassowary::Term;
+
+    fn div(self, rhs: f64) -> cassowary::Term {
+        self.var / rhs
+    }
+}
+
+/// A point on the screen, which can be calculated by [`cassowary`]
+/// and interpreted by `duat_term`.
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct VarPoint {
+    y: VarValue,
+    x: VarValue,
+}
+
+impl VarPoint {
+    /// Returns a new instance of [`VarPoint`]
+    pub fn new_from_hash_map(
+        map: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
+    ) -> Self {
+        let vp = VarPoint { x: VarValue::new(), y: VarValue::new() };
+
+        map.insert(vp.x.var, (vp.x.value.clone(), vp.x.has_changed.clone()));
+        map.insert(vp.y.var, (vp.y.value.clone(), vp.y.has_changed.clone()));
+
+        vp
+    }
+
+    pub fn coord(&self) -> Coord {
+        let x = self.x.value.load(Ordering::Relaxed);
+        let y = self.y.value.load(Ordering::Relaxed);
+
+        Coord::new(x, y)
+    }
+
+    pub fn x_var(&self) -> Variable {
+        self.x.var
+    }
+
+    pub fn y_var(&self) -> Variable {
+        self.y.var
+    }
+
+    pub fn y(&self) -> &VarValue {
+        &self.y
+    }
+
+    pub fn x(&self) -> &VarValue {
+        &self.x
+    }
+
+    pub fn on_axis(&self, axis: Axis) -> &VarValue {
+        match axis {
+            Axis::Horizontal => &self.x,
+            Axis::Vertical => &self.y,
+        }
+    }
+}
+
+impl std::fmt::Debug for VarPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "{:?}: {}, {:?}: {}",
+            self.x.var,
+            self.x.value.load(Ordering::Relaxed),
+            self.y.var,
+            self.y.value.load(Ordering::Relaxed)
+        ))
+    }
+}

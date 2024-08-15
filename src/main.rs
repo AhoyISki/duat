@@ -126,6 +126,9 @@ fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
         cargo.args(["--release"]);
     }
 
+    #[cfg(feature = "deadlocks")]
+    cargo.args(["--features", "deadlocks"]);
+
     cargo.output()
 }
 

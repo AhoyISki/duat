@@ -1,13 +1,5 @@
 mod frame;
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
-    },
-};
-
-use cassowary::{strength::WEAK, Variable, WeightedRelation::*};
+use cassowary::{strength::WEAK, WeightedRelation::*};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
@@ -15,122 +7,9 @@ use duat_core::{
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{set_ratios, Rect, Rects};
-use crate::{area::Coord, print::Printer, AreaId, Equality};
+use crate::{print::Printer, AreaId, Equality};
 
 mod rect;
-
-/// A [`Variable`], attached to its value, which is automatically kept
-/// up to date.
-#[derive(Clone)]
-struct VarValue {
-    var: Variable,
-    value: Arc<AtomicUsize>,
-    has_changed: Arc<AtomicBool>,
-}
-
-impl VarValue {
-    /// Returns a new instance of [`VarValue`]
-    pub fn new() -> Self {
-        Self {
-            var: Variable::new(),
-            value: Arc::new(AtomicUsize::new(0)),
-            has_changed: Arc::new(AtomicBool::new(false)),
-        }
-    }
-}
-
-impl PartialEq<VarValue> for VarValue {
-    fn eq(&self, other: &VarValue) -> bool {
-        self.var == other.var
-    }
-}
-
-impl PartialOrd<VarValue> for VarValue {
-    fn partial_cmp(&self, other: &VarValue) -> Option<std::cmp::Ordering> {
-        Some(
-            self.value
-                .load(Ordering::Acquire)
-                .cmp(&other.value.load(Ordering::Acquire)),
-        )
-    }
-}
-
-/// A point on the screen, which can be calculated by [`cassowary`]
-/// and interpreted by `duat_term`.
-#[derive(Clone, PartialEq, PartialOrd)]
-pub struct VarPoint {
-    x: VarValue,
-    y: VarValue,
-}
-
-impl VarPoint {
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new(printer: &mut Printer) -> Self {
-        let element = VarPoint {
-            x: VarValue::new(),
-            y: VarValue::new(),
-        };
-
-        printer.vars_mut().insert(
-            element.x.var,
-            (element.x.value.clone(), element.x.has_changed.clone()),
-        );
-        printer.vars_mut().insert(
-            element.y.var,
-            (element.y.value.clone(), element.y.has_changed.clone()),
-        );
-
-        element
-    }
-
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new_from_hash_map(
-        map: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
-    ) -> Self {
-        let element = VarPoint {
-            x: VarValue::new(),
-            y: VarValue::new(),
-        };
-
-        map.insert(
-            element.x.var,
-            (element.x.value.clone(), element.x.has_changed.clone()),
-        );
-        map.insert(
-            element.y.var,
-            (element.y.value.clone(), element.y.has_changed.clone()),
-        );
-
-        element
-    }
-
-    pub fn coord(&self) -> Coord {
-        let x = self.x.value.load(Ordering::Relaxed);
-        let y = self.y.value.load(Ordering::Relaxed);
-
-        Coord::new(x, y)
-    }
-
-    pub fn x_var(&self) -> Variable {
-        self.x.var
-    }
-
-    pub fn y_var(&self) -> Variable {
-        self.y.var
-    }
-}
-
-impl std::fmt::Debug for VarPoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{:?}: {}, {:?}: {}",
-            self.x.var,
-            self.x.value.load(Ordering::Relaxed),
-            self.y.var,
-            self.y.value.load(Ordering::Relaxed)
-        ))
-    }
-}
 
 /// A list of [`Constraint`] for [`Rect`]s to follow.
 ///
@@ -182,7 +61,7 @@ impl Constraints {
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
 /// including all of the [`Variable`]s and
-/// [`Constraint`][Equality]s that define said [`Rect`]s.
+/// [`Constraint`](Equality)s that define said [`Rect`]s.
 /// All external interactions seeking to change these values do so
 /// through the [`Layout`].
 ///
@@ -194,7 +73,7 @@ impl Constraints {
 pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
-    frame: Frame,
+    fr: Frame,
     edges: Vec<Edge>,
     pub printer: RwData<Printer>,
 }
@@ -202,43 +81,28 @@ pub struct Layout {
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(frame: Frame, printer: RwData<Printer>) -> Self {
-        let rects = Rects::new(&mut printer.write());
+    pub fn new(fr: Frame, printer: RwData<Printer>) -> Self {
+        printer.write().flush_equalities().unwrap();
+        let rects = Rects::new(&mut printer.write(), fr);
         let main_id = rects.main.id();
 
         let mut layout = Layout {
             rects,
             active_id: main_id,
-            frame,
+            fr,
             edges: Vec::new(),
             printer,
         };
 
-        let (mut printer, edges) = (layout.printer.write(), &mut layout.edges);
-
-        layout
-            .rects
-            .set_edges(main_id, Frame::Empty, &mut printer, edges);
-
-        printer.update(false);
-
-        layout.rects.main.clear_equalities(&mut printer);
-        layout
-            .rects
-            .set_edges(main_id, layout.frame, &mut printer, edges);
-
-        printer.update(false);
-
-        layout.rects.set_senders(&mut printer);
-        drop(printer);
+        layout.printer.mutate(|p| {
+            layout.rects.set_edges(main_id, fr, p, &mut layout.edges);
+        });
 
         layout
     }
 
     pub fn resize(&mut self) {
-        let mut printer = self.printer.write();
-        printer.update(true);
-        self.rects.set_senders(&mut printer);
+        self.printer.write().update(true);
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -267,22 +131,22 @@ impl Layout {
         &mut self,
         id: AreaId,
         specs: PushSpecs,
-        do_group: bool,
+        cluster: bool,
     ) -> (AreaId, Option<AreaId>) {
         let mut printer = self.printer.write();
         let (printer, edges) = (&mut printer, &mut self.edges);
         let axis = specs.axis();
 
         let (can_be_sibling, can_be_child) = {
-            let parent_is_grouped = self
+            let parent_is_cluster = self
                 .rects
                 .get_parent(id)
-                .map(|(_, parent)| parent.is_grouped())
-                .unwrap_or(do_group);
+                .map(|(_, parent)| parent.is_clustered())
+                .unwrap_or(cluster);
 
-            let child_is_grouped = self.rects.get(id).is_some_and(Rect::is_grouped);
+            let child_is_cluster = self.rects.get(id).is_some_and(Rect::is_clustered);
 
-            (parent_is_grouped == do_group, child_is_grouped == do_group)
+            (parent_is_cluster == cluster, child_is_cluster == cluster)
         };
 
         // Check if the target's parent has the same `Axis`.
@@ -312,7 +176,7 @@ impl Layout {
         } else {
             let (new_parent_id, child) = {
                 let rect = self.rects.get_mut(id).unwrap();
-                let parent = Rect::new_parent_of(rect, axis, printer, do_group);
+                let parent = Rect::new_parent_of(rect, axis, printer, cluster);
 
                 (parent.id(), std::mem::replace(rect, parent))
             };
@@ -335,9 +199,9 @@ impl Layout {
             }
 
             // If the child is grouped, the frame doesn't need to be redone.
-            if !do_group {
+            if !cluster {
                 self.rects
-                    .set_new_child_edges(child_id, self.frame, printer, edges)
+                    .set_new_child_edges(child_id, self.fr, printer, edges)
             }
 
             let rect = self.rects.get_mut(new_parent_id).unwrap();
@@ -348,7 +212,7 @@ impl Layout {
         printer.update(false);
 
         let (temp_eq, new_id) = {
-            let new = Rect::new(printer);
+            let new = Rect::new_main(printer);
             let new_id = new.id();
 
             self.rects.insert_child(pos, parent_id, new);
@@ -391,7 +255,7 @@ impl Layout {
                     new.len(axis) | EQ(WEAK * 2.0) | (res_len as f64 / res_count as f64)
                 };
 
-                printer.add_equality(temp_eq.clone()).unwrap();
+                printer.add_equality(temp_eq.clone());
 
                 (Some(temp_eq), new_id)
             } else {
@@ -407,13 +271,12 @@ impl Layout {
         }
 
         if let Some(temp_eq) = temp_eq {
-            printer.remove_equality(&temp_eq).unwrap();
+            printer.remove_equality(&temp_eq);
         }
 
         printer.update(false);
 
-        self.rects
-            .set_edges_around(new_id, self.frame, printer, edges);
+        self.rects.set_edges_around(new_id, self.fr, printer, edges);
 
         printer.update(false);
 

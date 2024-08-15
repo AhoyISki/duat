@@ -1,10 +1,6 @@
-use std::sync::atomic::Ordering;
-
 use duat_core::ui::Axis;
 
-use crate::area::Coord;
-
-use super::VarPoint;
+use crate::{area::Coord, print::VarPoint};
 
 /// What type of line should be used to [`Frame`] a given [`Rect`].
 #[derive(Default, Clone, Copy, Debug)]
@@ -33,12 +29,7 @@ pub struct Edge {
 impl Edge {
     /// Returns a new instance of [`Edge`].
     pub(super) fn new(center: VarPoint, target: VarPoint, axis: Axis, frame: Frame) -> Self {
-        Self {
-            center,
-            target,
-            axis,
-            frame,
-        }
+        Self { center, target, axis, frame }
     }
 
     /// The [`Coords`] that will be used to draw the line.
@@ -50,18 +41,12 @@ impl Edge {
         };
 
         let target = match self.axis {
-            Axis::Horizontal => Coord::new(
-                self.target.x.value.load(Ordering::Acquire),
-                self.center.y.value.load(Ordering::Acquire),
-            ),
-            Axis::Vertical => Coord::new(
-                self.center.x.value.load(Ordering::Acquire),
-                self.target.y.value.load(Ordering::Acquire),
-            ),
+            Axis::Horizontal => Coord::new(self.target.x().value(), self.center.y().value()),
+            Axis::Vertical => Coord::new(self.center.x().value(), self.target.y().value()),
         };
         let center = Coord::new(
-            self.center.x.value.load(Ordering::Acquire) - x_shift,
-            self.center.y.value.load(Ordering::Acquire) - y_shift,
+            self.center.x().value() - x_shift,
+            self.center.y().value() - y_shift,
         );
         if self.center < self.target {
             EdgeCoords::new(center, target, self.axis, self.frame.line())
@@ -90,7 +75,7 @@ impl EdgeCoords {
         Self { tl, br, axis, line }
     }
 
-	#[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity)]
     pub fn crossing(
         &self,
         other: EdgeCoords,
@@ -145,10 +130,7 @@ impl EdgeCoords {
             };
 
             if up.is_some() || down.is_some() {
-                let coord = Coord {
-                    x: other.tl.x,
-                    y: self.tl.y,
-                };
+                let coord = Coord { x: other.tl.x, y: self.tl.y };
 
                 Some((coord, right, up, left, down))
             } else {
@@ -166,27 +148,34 @@ impl EdgeCoords {
 ///
 /// - [`Empty`][Frame::Empty]: Do not frame at all.
 /// - [`Surround`]: Frame on all sides.
-/// - [`Border`]: Frame only when the [`Edge`] in question would separate two
-///   [`Rect`]s (i.e. don't surround the application.
-/// - [`Vertical`][Frame::Vertical]: Like [`Surround`], but only applies
-///   vertical lines.
-/// - [`VerBorder`][Frame::VerBorder]: Like [`Border`], but only applies
-///   vertical lines.
-/// - [`Horizontal`][Frame::Horizontal]: Like [`Surround`], but only applies
-///   horizontal lines.
-/// - [`HorBorder`][Frame::HorBorder]: Like [`Border`], but only applies
-///   horizontal lines.
+/// - [`Border`]: Frame only when the [`Edge`] in question would
+///   separate two [`Rect`]s (i.e. don't surround the application.
+/// - [`Vertical`][Frame::Vertical]: Like [`Surround`], but only
+///   applies vertical lines.
+/// - [`VerBorder`][Frame::VerBorder]: Like [`Border`], but only
+///   applies vertical lines.
+/// - [`Horizontal`][Frame::Horizontal]: Like [`Surround`], but only
+///   applies horizontal lines.
+/// - [`HorBorder`][Frame::HorBorder]: Like [`Border`], but only
+///   applies horizontal lines.
 ///
 /// [`Surround`]: Frame::Surround
 /// [`Border`]: Frame::Border
 #[derive(Clone, Copy, Debug)]
 pub enum Frame {
+    /// No frame
     Empty,
+    /// Frame the window's edges and borders between widgets
     Surround(Brush),
+    /// Frame borders between widgets
     Border(Brush),
+    /// Frame vertical window edges and borders between widgets
     Vertical(Brush),
+    /// Frame vertical borders between widgets
     VerBorder(Brush),
+    /// Frame horizontal window edges and borders between widgets
     Horizontal(Brush),
+    /// Frame horizontal borders between widgets
     HorBorder(Brush),
 }
 
@@ -199,26 +188,43 @@ impl Default for Frame {
 impl Frame {
     /// Assuming that the [`Rect`] in question is the main [`Rect`],
     /// determine which sides are supposed to be framed.
-    pub fn main_edges(&self) -> (f64, f64) {
+    pub fn surround_edges(&self) -> (f64, f64) {
         match self {
-            Frame::Surround(_) => (1.0, 1.0),
-            Frame::Vertical(_) => (1.0, 0.0),
-            Frame::Horizontal(_) => (0.0, 1.0),
+            Self::Surround(_) => (1.0, 1.0),
+            Self::Vertical(_) => (1.0, 0.0),
+            Self::Horizontal(_) => (0.0, 1.0),
             _ => (0.0, 0.0),
         }
     }
 
+    pub fn border_edges(&self) -> (f64, f64) {
+        match self {
+            Self::Surround(_) | Self::Border(_) => (1.0, 1.0),
+            Self::Vertical(_) | Self::VerBorder(_) => (1.0, 0.0),
+            Self::Horizontal(_) | Self::HorBorder(_) => (0.0, 1.0),
+            Self::Empty => (0.0, 0.0),
+        }
+    }
+
+    pub fn border_edge_on(&self, axis: Axis) -> f64 {
+        let (hor_fr, ver_fr) = self.border_edges();
+        match axis {
+            Axis::Horizontal => hor_fr,
+            Axis::Vertical => ver_fr,
+        }
+    }
+
     /// The [`Line`] of [`self`], which is [`None`] in the
-    /// [`Frame::Empty`] case.
+    /// [`Self::Empty`] case.
     pub fn line(&self) -> Option<Brush> {
         match self {
-            Frame::Empty => None,
-            Frame::Surround(line)
-            | Frame::Border(line)
-            | Frame::Vertical(line)
-            | Frame::VerBorder(line)
-            | Frame::Horizontal(line)
-            | Frame::HorBorder(line) => Some(*line),
+            Self::Empty => None,
+            Self::Surround(line)
+            | Self::Border(line)
+            | Self::Vertical(line)
+            | Self::VerBorder(line)
+            | Self::Horizontal(line)
+            | Self::HorBorder(line) => Some(*line),
         }
     }
 
@@ -226,26 +232,26 @@ impl Frame {
     /// allowable [`Coord`], determines which sides are supposed to be
     /// framed.
     pub(super) fn edges(&self, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64, f64, f64) {
-        let right = br.x.value.load(Ordering::Acquire) == max.x;
-        let up = tl.y.value.load(Ordering::Acquire) == 0;
-        let left = tl.x.value.load(Ordering::Acquire) == 0;
-        let down = br.y.value.load(Ordering::Acquire) == max.y;
+        let right = br.x().value() == max.x;
+        let up = tl.y().value() == 0;
+        let left = tl.x().value() == 0;
+        let down = br.y().value() == max.y;
 
         let (up, left) = match self {
-            Frame::Surround(_) => (up as usize as f64, left as usize as f64),
-            Frame::Vertical(_) => (0.0, left as usize as f64),
-            Frame::Horizontal(_) => (up as usize as f64, 0.0),
+            Self::Surround(_) => (up as usize as f64, left as usize as f64),
+            Self::Vertical(_) => (0.0, left as usize as f64),
+            Self::Horizontal(_) => (up as usize as f64, 0.0),
             _ => (0.0, 0.0),
         };
 
         let (down, right) = match self {
-            Frame::Surround(_) => (1.0, 1.0),
-            Frame::Vertical(_) => (0.0, 1.0),
-            Frame::Horizontal(_) => (1.0, 0.0),
-            Frame::Border(_) => (!down as usize as f64, !right as usize as f64),
-            Frame::VerBorder(_) => (0.0, !right as usize as f64),
-            Frame::HorBorder(_) => (!down as usize as f64, 0.0),
-            Frame::Empty => (0.0, 0.0),
+            Self::Surround(_) => (1.0, 1.0),
+            Self::Vertical(_) => (0.0, 1.0),
+            Self::Horizontal(_) => (1.0, 0.0),
+            Self::Border(_) => (!down as usize as f64, !right as usize as f64),
+            Self::VerBorder(_) => (0.0, !right as usize as f64),
+            Self::HorBorder(_) => (!down as usize as f64, 0.0),
+            Self::Empty => (0.0, 0.0),
         };
 
         (right, up, left, down)

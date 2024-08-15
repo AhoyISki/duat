@@ -1,4 +1,4 @@
-#![feature(iter_collect_into, let_chains, control_flow_enum, if_let_guard)]
+#![feature(iter_collect_into, let_chains, control_flow_enum, if_let_guard, extract_if)]
 
 use std::{
     fmt::Debug,
@@ -36,7 +36,7 @@ static RESIZED: AtomicBool = AtomicBool::new(false);
 pub struct Ui {
     windows: Vec<Area>,
     printer: RwData<Printer>,
-    frame: Frame,
+    fr: Frame,
 }
 
 impl ui::Ui for Ui {
@@ -58,14 +58,16 @@ impl ui::Ui for Ui {
             )
             .unwrap();
             terminal::disable_raw_mode().unwrap();
-            println!("{trace}");
+            if let std::backtrace::BacktraceStatus::Captured = trace.status() {
+                println!("{trace}");
+            }
             println!("{info}")
         }));
 
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
-            frame: Frame::default(),
+            fr: Frame::default(),
         }
     }
 
@@ -102,10 +104,11 @@ impl ui::Ui for Ui {
     }
 
     fn new_root(&mut self) -> Self::Area {
-        let layout = Layout::new(self.frame, self.printer.clone());
-        let root = Area::new(layout.main_index(), RwData::new(layout));
+        self.printer.write().flush_equalities().unwrap();
 
-        let area = Area::new(root.layout.read().main_index(), root.layout.clone());
+        let layout = Layout::new(self.fr, self.printer.clone());
+        let root = Area::new(layout.main_index(), RwData::new(layout));
+        let area = root.clone();
 
         self.windows.push(root);
 
@@ -136,7 +139,17 @@ impl ui::Ui for Ui {
         terminal::disable_raw_mode().unwrap();
     }
 
-    fn finish_printing(&self) {}
+    fn stop_printing(&mut self) {
+        self.printer.write().disable()
+    }
+
+    fn resume_printing(&mut self) {
+        self.printer.write().enable()
+    }
+
+    fn flush_layout(&mut self) {
+        self.printer.write().flush_equalities().unwrap();
+    }
 }
 
 #[derive(Clone, Copy)]

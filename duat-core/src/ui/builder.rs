@@ -54,12 +54,12 @@ where
     pub fn new(
         windows: &'a RwData<Vec<Window<U>>>,
         mod_area: U::Area,
-        index: usize,
+        window_i: usize,
         context: Context<U>,
     ) -> Self {
         Self {
             windows,
-            window_i: index,
+            window_i,
             mod_area: RefCell::new(mod_area),
             context,
         }
@@ -126,8 +126,8 @@ where
             ));
 
             if let Some(parent) = &parent {
-                if parent.is_senior_of(&window.files_region) {
-                    window.files_region = parent.clone();
+                if parent.is_master_of(&window.files_area) {
+                    window.files_area = parent.clone();
                 }
             }
 
@@ -205,8 +205,8 @@ where
             ));
 
             if let Some(parent) = &parent {
-                if parent.is_senior_of(&window.files_region) {
-                    window.files_region = parent.clone();
+                if parent.is_master_of(&window.files_area) {
+                    window.files_area = parent.clone();
                 }
             }
 
@@ -307,7 +307,7 @@ where
 {
     /// Creates a new [`FileBuilder<U>`].
     pub fn new(windows: &'a RwData<Vec<Window<U>>>, window_i: usize, context: Context<U>) -> Self {
-        let mod_area = windows.read()[window_i].files_region().clone();
+        let mod_area = windows.read()[window_i].files_area.clone();
         Self {
             windows,
             window_i,

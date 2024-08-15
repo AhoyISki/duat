@@ -28,12 +28,12 @@ atomic-wait = "1.1.0"
 dirs-next = "2.0.0"
 libloading = "0.8.1"
 notify = "6.1.1"
-venial = "0.6.0"
 
 [features]
 default = ["term-ui"]
 term-ui = ["dep:duat-term"]
 wack = ["duat-core/wack"]
+deadlocks = ["duat-core/deadlocks"]
 
 [[bin]]
 name = "duat"
