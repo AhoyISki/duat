@@ -221,6 +221,13 @@ impl PushSpecs {
     pub fn hor_constraint(&self) -> Option<Constraint> {
         self.hor_cons
     }
+
+    pub fn constraint_on(&self, axis: Axis) -> Option<Constraint> {
+        match axis {
+            Axis::Horizontal => self.hor_cons,
+            Axis::Vertical => self.ver_cons
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -430,7 +437,7 @@ pub trait Area: Send + Sync + Sized {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(&self, specs: PushSpecs, cluster: bool) -> (Self, Option<Self>);
+    fn bisect(&self, specs: PushSpecs, cluster: bool, on_files: bool) -> (Self, Option<Self>);
 }
 
 /// Elements related to the [`Widget<U>`]s
@@ -629,7 +636,8 @@ where
         specs: PushSpecs,
         cluster: bool,
     ) -> (U::Area, Option<U::Area>) {
-        let (child, parent) = area.bisect(specs, cluster);
+        let on_files = self.files_area.is_master_of(area);
+        let (child, parent) = area.bisect(specs, cluster, on_files);
 
         let node = Node {
             widget,

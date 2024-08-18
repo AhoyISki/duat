@@ -302,17 +302,18 @@ impl ui::Area for Area {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
         let mut printer = layout.printer.write();
-        let prev_cons = layout
-            .rects
-            .set_ver_constraint(self.id, cons, &mut printer, STRONG * 2.0);
+        // let prev_cons = layout
+        //     .rects
+        //     .set_ver_constraint(self.id, cons, &mut printer, STRONG * 2.0);
 
-        if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
-            drop(printer);
-            layout.resize();
-            print_edges(layout.edges());
-        }
+        // if prev_cons.map_or(true, |cmp| cmp != cons) &&
+        // printer.update(false) {     drop(printer);
+        //     layout.resize();
+        //     print_edges(layout.edges());
+        // }
 
-        Ok(())
+        // Ok(())
+        todo!();
     }
 
     fn constrain_hor(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
@@ -326,17 +327,18 @@ impl ui::Area for Area {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
         let mut printer = layout.printer.write();
-        let prev_cons = layout
-            .rects
-            .set_hor_constraint(self.id, cons, &mut printer, STRONG * 2.0);
+        // let prev_cons = layout
+        //     .rects
+        //     .set_hor_constraint(self.id, cons, &mut printer, STRONG * 2.0);
 
-        if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
-            drop(printer);
-            layout.resize();
-            print_edges(layout.edges());
-        }
+        // if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
+        //     drop(printer);
+        //     layout.resize();
+        //     print_edges(layout.edges());
+        // }
 
-        Ok(())
+        // Ok(())
+        todo!();
     }
 
     fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {
@@ -384,11 +386,11 @@ impl ui::Area for Area {
         })
     }
 
-    fn bisect(&self, specs: PushSpecs, is_glued: bool) -> (Area, Option<Area>) {
+    fn bisect(&self, specs: PushSpecs, cluster: bool, on_files: bool) -> (Area, Option<Area>) {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
 
-        let (child, parent) = layout.bisect(self.id, specs, is_glued);
+        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files);
 
         print_edges(layout.edges());
 

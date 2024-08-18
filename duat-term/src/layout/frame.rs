@@ -188,7 +188,7 @@ impl Default for Frame {
 impl Frame {
     /// Assuming that the [`Rect`] in question is the main [`Rect`],
     /// determine which sides are supposed to be framed.
-    pub fn surround_edges(&self) -> (f64, f64) {
+    pub fn files_edges(&self) -> (f64, f64) {
         match self {
             Self::Surround(_) => (1.0, 1.0),
             Self::Vertical(_) => (1.0, 0.0),
@@ -208,6 +208,14 @@ impl Frame {
 
     pub fn border_edge_on(&self, axis: Axis) -> f64 {
         let (hor_fr, ver_fr) = self.border_edges();
+        match axis {
+            Axis::Horizontal => hor_fr,
+            Axis::Vertical => ver_fr,
+        }
+    }
+
+    pub fn files_egde_on(&self, axis: Axis) -> f64 {
+        let (hor_fr, ver_fr) = self.files_edges();
         match axis {
             Axis::Horizontal => hor_fr,
             Axis::Vertical => ver_fr,

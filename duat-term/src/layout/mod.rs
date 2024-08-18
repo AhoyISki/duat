@@ -1,5 +1,8 @@
 mod frame;
-use cassowary::{strength::WEAK, WeightedRelation::*};
+use cassowary::{
+    strength::{STRONG, WEAK},
+    WeightedRelation::*,
+};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
@@ -15,12 +18,12 @@ mod rect;
 ///
 /// These [`Constraint`]s are specifically not related to a [`Rect`]s
 /// location, in relation to other [`Rect`]s. They instead deal with
-/// two things, affecting a [`Rect`]s lenght in its parent's [`Axis`]:
+/// two things, affecting a [`Rect`]s length in its parent's [`Axis`]:
 ///
 /// - `defined`: A [`Constraint`], provided by the user, which details
-///   specific requests for the lenght of a [`Rect`].
+///   specific requests for the length of a [`Rect`].
 /// - `ratio`: A [`Constraint`] which details the ratio between the
-///   lenght of this [`Rect`] and the lenght of the [`Rect`] that
+///   length of this [`Rect`] and the length of the [`Rect`] that
 ///   follows it, if there is any.
 ///
 /// Both of these constraints are optional, and are meant to be
@@ -36,7 +39,33 @@ pub struct Constraints {
 }
 
 impl Constraints {
-    /// Wether or not [`self`] has flexibility in terms of its lenght.
+    /// Returns a new instance of [`Constraints`]
+    ///
+    /// Will also add all equalities needed to make this constraint
+    /// work.
+    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+        let cons = [ps.ver_constraint(), ps.hor_constraint()];
+        let [ver_eq, hor_eq] = get_equalities(cons, new, parent, rects);
+        p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
+
+        Self {
+            ver_eq,
+            hor_eq,
+            ver_cons: ps.ver_constraint(),
+            hor_cons: ps.hor_constraint(),
+        }
+    }
+
+    /// Reuses [`self`] in order to constrain a new child
+    fn repurpose(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+        let cons = [self.ver_cons, self.hor_cons];
+        let [ver_eq, hor_eq] = get_equalities(cons, new, parent, rects);
+        p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
+
+        Self { ver_eq, hor_eq, ..self }
+    }
+
+    /// Wether or not [`self`] has flexibility in terms of its length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
         let con = self.on(axis);
         matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
@@ -86,19 +115,13 @@ impl Layout {
         let rects = Rects::new(&mut printer.write(), fr);
         let main_id = rects.main.id();
 
-        let mut layout = Layout {
+        Layout {
             rects,
             active_id: main_id,
             fr,
             edges: Vec::new(),
             printer,
-        };
-
-        layout.printer.mutate(|p| {
-            layout.rects.set_edges(main_id, fr, p, &mut layout.edges);
-        });
-
-        layout
+        }
     }
 
     pub fn resize(&mut self) {
@@ -130,12 +153,13 @@ impl Layout {
     pub fn bisect(
         &mut self,
         id: AreaId,
-        specs: PushSpecs,
+        ps: PushSpecs,
         cluster: bool,
+        on_files: bool,
     ) -> (AreaId, Option<AreaId>) {
         let mut printer = self.printer.write();
         let (printer, edges) = (&mut printer, &mut self.edges);
-        let axis = specs.axis();
+        let axis = ps.axis();
 
         let (can_be_sibling, can_be_child) = {
             let parent_is_cluster = self
@@ -150,136 +174,34 @@ impl Layout {
         };
 
         // Check if the target's parent has the same `Axis`.
-        let (parent, pos, new_parent_id) = if can_be_sibling
-            && let Some((pos, parent)) = self.rects.get_parent_mut(id)
+        let (target, new_parent_id) = if can_be_sibling
+            && let Some((_, parent)) = self.rects.get_parent_mut(id)
             && parent.aligns_with(axis)
         {
-            let pos = match specs.comes_earlier() {
-                true => pos,
-                false => pos + 1,
-            };
-
-            (parent, pos, None)
+            (id, None)
         // Check if the target has the same `Axis`.
         } else if can_be_child
             && let Some(parent) = self.rects.get_mut(id)
             && parent.aligns_with(axis)
         {
-            let index = match specs.comes_earlier() {
-                true => 0,
-                false => parent.children_len(),
+            let children = parent.children().unwrap();
+            let target = match ps.comes_earlier() {
+                true => children.first().unwrap().0.id(),
+                false => children.last().unwrap().0.id(),
             };
 
-            (parent, index, None)
+            (target, None)
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
         } else {
-            let (new_parent_id, child) = {
-                let rect = self.rects.get_mut(id).unwrap();
-                let parent = Rect::new_parent_of(rect, axis, printer, cluster);
-
-                (parent.id(), std::mem::replace(rect, parent))
-            };
-            let child_id = child.id();
-
-            let pos = match specs.comes_earlier() {
-                true => 0,
-                false => 1,
-            };
-
-            let (ver, hor) = self.rects.take_constraints(new_parent_id, printer);
-
-            self.rects.insert_child(0, new_parent_id, child);
-
-            if let Some(cons) = ver {
-                self.rects.set_ver_constraint(child_id, cons, printer, WEAK);
-            }
-            if let Some(cons) = hor {
-                self.rects.set_hor_constraint(child_id, cons, printer, WEAK);
-            }
-
-            // If the child is grouped, the frame doesn't need to be redone.
-            if !cluster {
-                self.rects
-                    .set_new_child_edges(child_id, self.fr, printer, edges)
-            }
-
-            let rect = self.rects.get_mut(new_parent_id).unwrap();
-            (rect, pos, Some(new_parent_id))
-        };
-
-        let parent_id = parent.id();
-        printer.update(false);
-
-        let (temp_eq, new_id) = {
-            let new = Rect::new_main(printer);
-            let new_id = new.id();
-
-            self.rects.insert_child(pos, parent_id, new);
-
-            if let Some(cons) = specs.ver_constraint() {
-                self.rects.set_ver_constraint(new_id, cons, printer, WEAK);
-            }
-
-            if let Some(cons) = specs.hor_constraint() {
-                self.rects.set_hor_constraint(new_id, cons, printer, WEAK);
-            }
-
-            // We initially set the frame to `Frame::Empty`, since that will make
-            // the `Rect`s take their "full space". What this means is that, when
-            // we calculate the real frame, using `self.frame`, we know for a fact
-            // which `Rect`s reach the edge of the screen. Unfortunately, this
-            // does mean that we have to run `prepare_child()` twice for each
-            // affected area.
             self.rects
-                .set_edges_around(new_id, Frame::Empty, printer, edges);
+                .new_parent_of(id, axis, printer, cluster, on_files);
+            let (_, parent) = self.rects.get_parent(id).unwrap();
 
-            // Add a constraint so that the new child `Rect` has a len equal to
-            // `resizable_len / resizable_children`, a self imposed rule.
-            // This will be useful later, when adding new ratio constraints to the
-            // new child.
-            let constraint = specs.ver_constraint();
-            if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = constraint {
-                let children = self.rects.get_siblings(new_id).unwrap();
-                let axis = specs.axis();
-
-                let (res_count, res_len) = children
-                    .iter()
-                    .filter(|(_, length)| length.is_resizable_on(axis))
-                    .fold((0, 0), |(count, len), (child, _)| {
-                        (count + 1, len + child.len_value(axis))
-                    });
-
-                let temp_eq = {
-                    let (new, _) = &children[pos];
-                    new.len(axis) | EQ(WEAK * 2.0) | (res_len as f64 / res_count as f64)
-                };
-
-                printer.add_equality(temp_eq.clone());
-
-                (Some(temp_eq), new_id)
-            } else {
-                (None, new_id)
-            }
+            (id, Some(parent.id()))
         };
 
-        printer.update(false);
-
-        let parent = self.rects.get_mut(parent_id).unwrap();
-        if let Some(Constraint::Min(_) | Constraint::Max(_)) | None = specs.ver_constraint() {
-            set_ratios(parent, pos, printer);
-        }
-
-        if let Some(temp_eq) = temp_eq {
-            printer.remove_equality(&temp_eq);
-        }
-
-        printer.update(false);
-
-        self.rects.set_edges_around(new_id, self.fr, printer, edges);
-
-        printer.update(false);
-
+        let new_id = self.rects.push(ps, target, printer, on_files);
         (new_id, new_parent_id)
     }
 
@@ -305,4 +227,24 @@ impl Layout {
     pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
         self.rects.get_parent(id)
     }
+}
+
+fn get_equalities(
+    cons: [Option<Constraint>; 2],
+    new: &Rect,
+    parent: AreaId,
+    rects: &Rects,
+) -> [Option<Equality>; 2] {
+    let cons = [(cons[0], Axis::Vertical), (cons[1], Axis::Horizontal)];
+    cons.map(|(cons, axis)| {
+        cons.map(|c| match c {
+            Constraint::Ratio(num, den) => {
+                let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
+                new.len(axis) * den as f64 | EQ(STRONG * 2.0) | ancestor.len(axis) * num as f64
+            }
+            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 2.0) | len,
+            Constraint::Min(min) => new.len(axis) | GE(STRONG * 2.0) | min,
+            Constraint::Max(max) => new.len(axis) | LE(STRONG * 2.0) | max,
+        })
+    })
 }

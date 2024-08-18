@@ -1,4 +1,11 @@
-#![feature(iter_collect_into, let_chains, control_flow_enum, if_let_guard, extract_if)]
+#![feature(
+    iter_collect_into,
+    let_chains,
+    control_flow_enum,
+    if_let_guard,
+    extract_if,
+    is_none_or
+)]
 
 use std::{
     fmt::Debug,
@@ -164,10 +171,7 @@ impl Default for StaticFns {
             crossterm::event::poll(Duration::from_millis(10))
         }
 
-        Self {
-            poll,
-            read: crossterm::event::read,
-        }
+        Self { poll, read: crossterm::event::read }
     }
 }
 
