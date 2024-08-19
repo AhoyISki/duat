@@ -9,7 +9,7 @@ use duat_core::{
 };
 
 pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
-use self::rect::{set_ratios, Rect, Rects};
+use self::rect::{Rect, Rects};
 use crate::{print::Printer, AreaId, Equality};
 
 mod rect;
@@ -45,7 +45,7 @@ impl Constraints {
     /// work.
     fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
         let cons = [ps.ver_constraint(), ps.hor_constraint()];
-        let [ver_eq, hor_eq] = get_equalities(cons, new, parent, rects);
+        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self {
@@ -59,7 +59,7 @@ impl Constraints {
     /// Reuses [`self`] in order to constrain a new child
     fn repurpose(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
         let cons = [self.ver_cons, self.hor_cons];
-        let [ver_eq, hor_eq] = get_equalities(cons, new, parent, rects);
+        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self { ver_eq, hor_eq, ..self }
@@ -75,13 +75,6 @@ impl Constraints {
         match axis {
             Axis::Vertical => self.ver_cons,
             Axis::Horizontal => self.hor_cons,
-        }
-    }
-
-    fn on_mut(&mut self, axis: Axis) -> (&mut Option<Equality>, &mut Option<Constraint>) {
-        match axis {
-            Axis::Vertical => (&mut self.ver_eq, &mut self.ver_cons),
-            Axis::Horizontal => (&mut self.hor_eq, &mut self.hor_cons),
         }
     }
 }
@@ -227,7 +220,7 @@ impl Layout {
     }
 }
 
-fn get_equalities(
+fn get_eqs(
     cons: [Option<Constraint>; 2],
     new: &Rect,
     parent: AreaId,
@@ -238,7 +231,7 @@ fn get_equalities(
         cons.map(|c| match c {
             Constraint::Ratio(num, den) => {
                 let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                new.len(axis) * den as f64 | EQ(STRONG * 2.0) | ancestor.len(axis) * num as f64
+                (new.len(axis) * den as f64) | EQ(STRONG * 2.0) | (ancestor.len(axis) * num as f64)
             }
             Constraint::Length(len) => new.len(axis) | EQ(STRONG * 2.0) | len,
             Constraint::Min(min) => new.len(axis) | GE(STRONG * 2.0) | min,

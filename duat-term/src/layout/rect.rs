@@ -1,10 +1,11 @@
 use cassowary::{
-    strength::{REQUIRED, STRONG, WEAK},
-    Expression, Variable,
-    WeightedRelation::{EQ, GE, LE},
+    strength::{REQUIRED, WEAK},
+    Expression,
+    WeightedRelation::{EQ, GE},
 };
 use duat_core::{
     data::RwData,
+    log_info,
     ui::{
         Axis::{self, *},
         Constraint, PushSpecs,
@@ -18,15 +19,6 @@ use crate::{
     Area, AreaId, Equality, Frame,
 };
 
-struct Children {
-    list: Vec<(Rect, Constraints)>,
-    axis: Axis,
-    clustered: bool,
-    resizable_size: Variable,
-    resizable_len: Variable,
-}
-
-#[derive(Debug)]
 enum Kind {
     End(Sender, RwData<PrintInfo>),
     Middle {
@@ -81,7 +73,6 @@ impl Kind {
 /// along with it.
 ///
 /// [`Constraint`]: Equality
-#[derive(Debug)]
 #[allow(clippy::type_complexity)]
 pub struct Rect {
     /// The index that this [`Rect`] is tied to.
@@ -107,7 +98,19 @@ impl Rect {
         }
     }
 
-    pub fn set_base_eqs(&mut self, i: usize, parent: &Rect, p: &mut Printer, fr: Frame) {
+    /// Sets the bare minimum equalities for a [`Rect`]
+    ///
+    /// This only includes equalities necessary so that `self` won't
+    /// overlap with any other end [`Rect`]s. This means that
+    /// [`Constraint`] and ratio equalities are not added in.
+    pub fn set_base_eqs(
+        &mut self,
+        i: usize,
+        parent: &Rect,
+        p: &mut Printer,
+        fr: Frame,
+        is_resizable: bool,
+    ) {
         let axis = parent.kind.axis().unwrap();
 
         self.clear_eqs(p);
@@ -133,7 +136,7 @@ impl Rect {
             unreachable!();
         };
 
-        if let Some((next, _)) = children.get(i) {
+        if let Some((next, cons)) = children.get(i) {
             let edge = match self.on_files == next.on_files {
                 true => fr.border_edge_on(axis),
                 false => fr.files_egde_on(axis),
@@ -153,6 +156,11 @@ impl Rect {
             } else {
                 self.eqs
                     .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
+            }
+
+            // If possible, try to make both Rects have the same length.
+            if is_resizable && next.is_resizable_on(axis, cons) {
+                self.eqs.push(self.len(axis) | EQ(WEAK) | next.len(axis));
             }
         } else {
             self.eqs
@@ -222,11 +230,6 @@ impl Rect {
         }
     }
 
-    /// Wether or not [`self`] has children.
-    pub fn is_parent(&self) -> bool {
-        matches!(self.kind, Kind::Middle { .. })
-    }
-
     pub fn has_changed(&self) -> bool {
         let br_x_changed = self.br.x().has_changed();
         let br_y_changed = self.br.y().has_changed();
@@ -268,6 +271,22 @@ impl Rect {
         }
     }
 
+    pub fn is_resizable_on(&self, axis: Axis, cons: &Constraints) -> bool {
+        if let Kind::Middle { children, axis: child_axis, .. } = &self.kind
+            && !children.is_empty()
+        {
+            let mut children = children.iter();
+            let ret = if *child_axis == axis {
+                children.any(|(child, cons)| child.is_resizable_on(axis, cons))
+            } else {
+                children.all(|(child, cons)| child.is_resizable_on(axis, cons))
+            };
+            ret
+        } else {
+            cons.is_resizable_on(axis)
+        }
+    }
+
     pub(crate) fn children(&self) -> Option<&[(Rect, Constraints)]> {
         match &self.kind {
             Kind::End(..) => None,
@@ -298,7 +317,7 @@ pub struct Rects {
 impl Rects {
     pub fn new(p: &mut Printer, fr: Frame) -> Self {
         let (tl, br) = (p.var_point(), p.var_point());
-        let kind = Kind::End(p.sender(&tl, &br), RwData::default());
+        let kind = Kind::end(p.sender(&tl, &br));
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
@@ -316,36 +335,35 @@ impl Rects {
 
         let mut rect = {
             let (tl, br) = (p.var_point(), p.var_point());
-            let kind = Kind::End(p.sender(&tl, &br), RwData::default());
+            let kind = Kind::end(p.sender(&tl, &br));
             Rect::new(tl, br, on_files, kind)
         };
         let new_id = rect.id();
 
-        let (i, parent, cons) = {
+        let (i, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id).unwrap();
             let cons = Constraints::new(ps, &rect, parent.id(), self, p);
             let parent = self.get_mut(parent.id()).unwrap();
+            let axis = parent.kind.axis().unwrap();
 
             match ps.comes_earlier() {
-                true => (i, parent, cons),
-                false => (i + 1, parent, cons),
+                true => (i, parent, cons, axis),
+                false => (i + 1, parent, cons, axis),
             }
         };
 
-        rect.set_base_eqs(i, parent, p, fr);
+        rect.set_base_eqs(i, parent, p, fr, cons.is_resizable_on(axis));
+
         parent.kind.mut_children().unwrap().insert(i, (rect, cons));
 
-        if i > 0 {
-            let (mut prev, cons) = parent.kind.mut_children().unwrap().remove(i - 1);
-            prev.set_base_eqs(i - 1, parent, p, fr);
-            let entry = (prev, cons);
-            parent.kind.mut_children().unwrap().insert(i - 1, entry);
-        } else {
-            let (mut next, cons) = parent.kind.mut_children().unwrap().remove(i + 1);
-            next.set_base_eqs(i + 1, parent, p, fr);
-            let entry = (next, cons);
-            parent.kind.mut_children().unwrap().insert(i + 1, entry);
-        }
+        let (i, (mut rect_to_fix, cons)) = match i == 0 {
+            true => (1, parent.kind.mut_children().unwrap().remove(1)),
+            false => (i - 1, parent.kind.mut_children().unwrap().remove(i - 1)),
+        };
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+        let entry = (rect_to_fix, cons);
+        parent.kind.mut_children().unwrap().insert(i, entry);
 
         new_id
     }
@@ -360,13 +378,31 @@ impl Rects {
     ) {
         let fr = self.fr;
 
-        let (child, parent_id) = {
+        let (mut child, cons, parent_id) = {
             let (tl, br) = (p.var_point(), p.var_point());
             let kind = Kind::middle(axis, cluster);
             let mut parent = Rect::new(tl, br, on_files, kind);
+            let parent_id = parent.id();
 
-            if let Some((i, orig)) = self.get_parent(id) {
-                parent.set_base_eqs(i, orig, p, self.fr);
+            let (target, cons) = if let Some((i, orig)) = self.get_parent_mut(id) {
+                let axis = orig.kind.axis().unwrap();
+                let (target, cons) = orig.kind.mut_children().unwrap().remove(i);
+
+                let is_resizable = target.is_resizable_on(axis, &cons);
+                parent.set_base_eqs(i, orig, p, fr, is_resizable);
+
+                let entry = (parent, Constraints::default());
+                orig.kind.mut_children().unwrap().insert(i, entry);
+
+                if i > 0 {
+                    let (mut rect, cons) = orig.kind.mut_children().unwrap().remove(i - 1);
+                    let is_resizable = rect.is_resizable_on(axis, &cons);
+                    rect.set_base_eqs(i - 1, orig, p, fr, is_resizable);
+                    let entry = (rect, cons);
+                    orig.kind.mut_children().unwrap().insert(i - 1, entry);
+                }
+
+                (target, Some(cons))
             } else {
                 parent.eqs.extend([
                     parent.tl.x() | EQ(REQUIRED) | 0.0,
@@ -375,23 +411,21 @@ impl Rects {
                     parent.br.y() | EQ(REQUIRED) | p.max().y(),
                 ]);
                 p.add_equalities(&parent.eqs);
+                (std::mem::replace(&mut self.main, parent), None)
             };
 
-            let target = self.get_mut(id).unwrap();
-            let id = parent.id();
-
-            target.set_base_eqs(0, &parent, p, fr);
-
-            (std::mem::replace(target, parent), id)
+            (target, cons, parent_id)
         };
 
-        let cons = self
-            .get_parent_mut(parent_id)
-            .map(|(i, parent)| std::mem::take(&mut parent.kind.mut_children().unwrap()[i].1))
+        let cons = cons
             .map(|cons| cons.repurpose(&child, parent_id, self, p))
             .unwrap_or_default();
 
         let parent = self.get_mut(parent_id).unwrap();
+
+        let is_resizable = child.is_resizable_on(axis, &cons);
+        child.set_base_eqs(0, parent, p, fr, is_resizable);
+
         parent.kind.mut_children().unwrap().push((child, cons));
     }
 
@@ -508,50 +542,30 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
     }
 }
 
-/// Sets the ratio [`Equality`]s for the child of the given
-/// index. This does include setting the [`Equality`] for
-/// the previous child, if there is one.
-pub fn set_ratios(parent: &mut Rect, pos: usize, printer: &mut Printer) {
-    let axis = parent.kind.axis().unwrap();
-    let Kind::Middle { children, .. } = &mut parent.kind else {
-        unreachable!();
-    };
-
-    let (new, _) = &children[pos];
-    let new_len = new.len(axis);
-    let new_len_value = new.len_value(axis);
-
-    let prev = children.iter().take(pos);
-    let resizable_pos = prev
-        .filter(|(_, conss)| conss.is_resizable_on(axis))
-        .count();
-
-    let mut iter = children
-        .iter_mut()
-        .filter(|(_, conss)| conss.is_resizable_on(axis));
-
-    if resizable_pos > 0 {
-        let (prev, conss) = iter.nth(resizable_pos - 1).unwrap();
-
-        let ratio = if new_len_value == 0 {
-            1.0
-        } else {
-            prev.len_value(axis) as f64 / new_len_value as f64
-        };
-
-        let eq = prev.len(axis) | EQ(WEAK) | (ratio * new_len.clone());
-        *conss.on_mut(axis).0 = Some(eq.clone());
-        printer.add_equality(eq);
+impl std::fmt::Debug for Rect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Rect")
+            .field("tl", &self.tl)
+            .field("br", &self.br)
+            .field("kind", &self.kind)
+            .field("on_files", &self.on_files)
+            .finish_non_exhaustive()
     }
+}
 
-    if let Some((next, _)) = iter.nth(1) {
-        let ratio = if next.len_value(axis) == 0 {
-            1.0
-        } else {
-            new_len_value as f64 / next.len_value(axis) as f64
-        };
-
-        let equality = new_len | EQ(WEAK) | (ratio * next.len(axis));
-        printer.add_equality(equality.clone());
+impl std::fmt::Debug for Kind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Kind::End(..) => f.debug_tuple("End").finish(),
+            Kind::Middle { children, axis, clustered } => f
+                .debug_struct("Middle")
+                .field(
+                    "children",
+                    &children.iter().map(|(child, _)| child).collect::<Vec<_>>(),
+                )
+                .field("axis", axis)
+                .field("clustered", clustered)
+                .finish(),
+        }
     }
 }

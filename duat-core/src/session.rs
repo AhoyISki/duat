@@ -222,7 +222,7 @@ where
                     std::fs::OpenOptions::new()
                         .append(true)
                         .create(true)
-                        .open("log.txt")
+                        .open("deadlocks")
                         .unwrap(),
                 );
 
