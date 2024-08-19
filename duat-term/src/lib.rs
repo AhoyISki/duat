@@ -74,7 +74,7 @@ impl ui::Ui for Ui {
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
-            fr: Frame::default(),
+            fr: Frame::Surround(Brush::Double),
         }
     }
 

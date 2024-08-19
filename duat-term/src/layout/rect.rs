@@ -1,7 +1,7 @@
 use cassowary::{
     strength::{REQUIRED, STRONG, WEAK},
     Expression, Variable,
-    WeightedRelation::{EQ, GE},
+    WeightedRelation::{EQ, GE, LE},
 };
 use duat_core::{
     data::RwData,
@@ -146,8 +146,8 @@ impl Rect {
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
                     &frame | GE(REQUIRED) | 0.0,
-                    &frame | EQ(STRONG) | -self.len(axis),
-                    &frame | EQ(STRONG) | -next.len(axis),
+                    self.len(axis) | GE(REQUIRED) | &frame,
+                    next.len(axis) | GE(REQUIRED) | &frame,
                     &frame | EQ(WEAK) | 1.0,
                 ]);
             } else {
