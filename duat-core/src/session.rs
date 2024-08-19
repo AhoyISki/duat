@@ -11,7 +11,6 @@ use crate::{
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
     input::InputMethod,
-    log_info,
     text::{err, ok, text, PrintCfg, Text},
     ui::{
         build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
@@ -241,14 +240,6 @@ where
 
         self.ui.flush_layout();
         self.ui.start(Sender::new(self.tx.clone()), self.context);
-
-        log_info!(
-            "{:#?}",
-            self.windows.read()[0]
-                .widgets()
-                .map(|(_, a)| a.height())
-                .collect::<Vec<_>>()
-        );
 
         // The main loop.
         loop {

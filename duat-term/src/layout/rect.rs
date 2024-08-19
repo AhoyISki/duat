@@ -37,12 +37,12 @@ enum Kind {
 }
 
 impl Kind {
-    fn middle(axis: Axis, grouped: bool) -> Self {
-        Self::Middle {
-            children: Vec::new(),
-            axis,
-            clustered: grouped,
-        }
+    fn end(sender: Sender) -> Self {
+        Self::End(sender, RwData::default())
+    }
+
+    fn middle(axis: Axis, clustered: bool) -> Self {
+        Self::Middle { children: Vec::new(), axis, clustered }
     }
 
     fn axis(&self) -> Option<Axis> {
@@ -94,51 +94,15 @@ pub struct Rect {
 }
 
 impl Rect {
-    /// Returns a new instance of [`Rect`], already adding its
-    /// [`Variable`]s to the list.
-    pub fn new_main(p: &mut Printer) -> Self {
-        let tl = p.var_point();
-        let br = p.var_point();
-        let sender = p.sender(tl.clone(), br.clone());
-
-        let eqs = vec![
-            tl.x() | EQ(REQUIRED) | 0.0,
-            tl.y() | EQ(REQUIRED) | 0.0,
-            br.x() | EQ(REQUIRED) | p.max().x(),
-            br.y() | EQ(REQUIRED) | p.max().y(),
-        ];
-        p.add_equalities(&eqs);
-
-        Rect {
-            id: AreaId::new(),
-            tl,
-            br,
-            eqs,
-            kind: Kind::End(sender, RwData::default()),
-            on_files: true,
-        }
-    }
-
     /// Returns a new [`Rect`], which is supposed to replace an
     /// existing [`Rect`], as its new parent.
-    fn new_raw(p: &mut Printer, on_files: bool) -> Self {
-        let tl = p.var_point();
-        let br = p.var_point();
-        let sender = p.sender(tl.clone(), br.clone());
-
-        let eqs = vec![
-            tl.x() | GE(REQUIRED) | 0.0,
-            tl.y() | GE(REQUIRED) | 0.0,
-            br.x() | GE(REQUIRED) | tl.x(),
-            br.x() | GE(REQUIRED) | tl.y(),
-        ];
-
+    fn new(tl: VarPoint, br: VarPoint, on_files: bool, kind: Kind) -> Self {
         Rect {
             id: AreaId::new(),
             tl,
             br,
-            eqs,
-            kind: Kind::End(sender, RwData::default()),
+            eqs: Vec::new(),
+            kind,
             on_files,
         }
     }
@@ -147,6 +111,13 @@ impl Rect {
         let axis = parent.kind.axis().unwrap();
 
         self.clear_eqs(p);
+
+        self.eqs.extend([
+            self.tl.x() | GE(REQUIRED) | 0.0,
+            self.tl.y() | GE(REQUIRED) | 0.0,
+            self.br.x() | GE(REQUIRED) | self.tl.x(),
+            self.br.x() | GE(REQUIRED) | self.tl.y(),
+        ]);
 
         if i == 0 {
             self.eqs
@@ -325,18 +296,31 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(printer: &mut Printer, fr: Frame) -> Self {
-        Self {
-            main: Rect::new_main(printer),
-            floating: Vec::new(),
-            fr,
-        }
+    pub fn new(p: &mut Printer, fr: Frame) -> Self {
+        let (tl, br) = (p.var_point(), p.var_point());
+        let kind = Kind::End(p.sender(&tl, &br), RwData::default());
+        let mut main = Rect::new(tl, br, true, kind);
+        main.eqs.extend([
+            main.tl.x() | EQ(REQUIRED) | 0.0,
+            main.tl.y() | EQ(REQUIRED) | 0.0,
+            main.br.x() | EQ(REQUIRED) | p.max().x(),
+            main.br.y() | EQ(REQUIRED) | p.max().y(),
+        ]);
+        p.add_equalities(&main.eqs);
+
+        Self { main, floating: Vec::new(), fr }
     }
 
     pub fn push(&mut self, ps: PushSpecs, id: AreaId, p: &mut Printer, on_files: bool) -> AreaId {
         let fr = self.fr;
-        let mut rect = Rect::new_raw(p, on_files);
+
+        let mut rect = {
+            let (tl, br) = (p.var_point(), p.var_point());
+            let kind = Kind::End(p.sender(&tl, &br), RwData::default());
+            Rect::new(tl, br, on_files, kind)
+        };
         let new_id = rect.id();
+
         let (i, parent, cons) = {
             let (i, parent) = self.get_parent(id).unwrap();
             let cons = Constraints::new(ps, &rect, parent.id(), self, p);
@@ -356,6 +340,11 @@ impl Rects {
             prev.set_base_eqs(i - 1, parent, p, fr);
             let entry = (prev, cons);
             parent.kind.mut_children().unwrap().insert(i - 1, entry);
+        } else {
+            let (mut next, cons) = parent.kind.mut_children().unwrap().remove(i + 1);
+            next.set_base_eqs(i + 1, parent, p, fr);
+            let entry = (next, cons);
+            parent.kind.mut_children().unwrap().insert(i + 1, entry);
         }
 
         new_id
@@ -369,17 +358,29 @@ impl Rects {
         cluster: bool,
         on_files: bool,
     ) {
+        let fr = self.fr;
+
         let (child, parent_id) = {
-            let target = self.get_mut(id).unwrap();
-            let parent = Rect {
-                id: AreaId::new(),
-                tl: std::mem::replace(&mut target.tl, p.var_point()),
-                br: std::mem::replace(&mut target.br, p.var_point()),
-                eqs: std::mem::take(&mut target.eqs),
-                kind: Kind::middle(axis, cluster),
-                on_files,
+            let (tl, br) = (p.var_point(), p.var_point());
+            let kind = Kind::middle(axis, cluster);
+            let mut parent = Rect::new(tl, br, on_files, kind);
+
+            if let Some((i, orig)) = self.get_parent(id) {
+                parent.set_base_eqs(i, orig, p, self.fr);
+            } else {
+                parent.eqs.extend([
+                    parent.tl.x() | EQ(REQUIRED) | 0.0,
+                    parent.tl.y() | EQ(REQUIRED) | 0.0,
+                    parent.br.x() | EQ(REQUIRED) | p.max().x(),
+                    parent.br.y() | EQ(REQUIRED) | p.max().y(),
+                ]);
+                p.add_equalities(&parent.eqs);
             };
+
+            let target = self.get_mut(id).unwrap();
             let id = parent.id();
+
+            target.set_base_eqs(0, &parent, p, fr);
 
             (std::mem::replace(target, parent), id)
         };

@@ -102,7 +102,6 @@ impl Constraints {
 pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
-    fr: Frame,
     edges: Vec<Edge>,
     pub printer: RwData<Printer>,
 }
@@ -118,7 +117,6 @@ impl Layout {
         Layout {
             rects,
             active_id: main_id,
-            fr,
             edges: Vec::new(),
             printer,
         }

@@ -184,6 +184,7 @@ impl Write for Lines {
     }
 }
 
+#[derive(Debug)]
 struct Receiver {
     lines: Arc<Mutex<Option<Lines>>>,
     tl: VarPoint,
@@ -312,8 +313,6 @@ impl Printer {
             let _ = self.solver.suggest_value(max.y_var(), height);
         }
 
-        self.recvs.clear();
-
         let mut any_has_changed = false;
         for (var, new) in self.solver.fetch_changes() {
             let (val, has_changed) = &self.map[var];
@@ -326,7 +325,7 @@ impl Printer {
         any_has_changed
     }
 
-    pub fn sender(&mut self, tl: VarPoint, br: VarPoint) -> Sender {
+    pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {
         let recv = Receiver {
             lines: Arc::new(Mutex::new(None)),
             tl: tl.clone(),
@@ -339,15 +338,17 @@ impl Printer {
             br: br.clone(),
         };
 
-        match self
+        let (Ok(i) | Err(i)) = self
             .recvs
-            .binary_search_by(|other| other.coords().cmp(&recv.coords()))
-        {
-            Ok(_) => unreachable!("One receiver per area."),
-            Err(pos) => self.recvs.insert(pos, recv),
-        }
+            .binary_search_by(|other| other.coords().cmp(&recv.coords()));
+        self.recvs.insert(i, recv);
 
         sender
+    }
+
+    pub fn remove_sender(&mut self, sender: Sender) {
+        self.recvs
+            .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
     }
 
     pub fn shutdown(&mut self) {

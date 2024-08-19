@@ -331,8 +331,8 @@ impl ui::Area for Area {
         //     .rects
         //     .set_hor_constraint(self.id, cons, &mut printer, STRONG * 2.0);
 
-        // if prev_cons.map_or(true, |cmp| cmp != cons) && printer.update(false) {
-        //     drop(printer);
+        // if prev_cons.map_or(true, |cmp| cmp != cons) &&
+        // printer.update(false) {     drop(printer);
         //     layout.resize();
         //     print_edges(layout.edges());
         // }
