@@ -1,15 +1,13 @@
 use cassowary::{
     strength::{REQUIRED, WEAK},
     Expression,
-    WeightedRelation::{EQ, GE},
+    WeightedRelation::{EQ, GE, LE},
 };
 use duat_core::{
-    data::RwData,
-    log_info,
-    ui::{
+    data::RwData, ui::{
         Axis::{self, *},
         Constraint, PushSpecs,
-    },
+    }
 };
 
 use super::Constraints;
@@ -119,7 +117,7 @@ impl Rect {
             self.tl.x() | GE(REQUIRED) | 0.0,
             self.tl.y() | GE(REQUIRED) | 0.0,
             self.br.x() | GE(REQUIRED) | self.tl.x(),
-            self.br.x() | GE(REQUIRED) | self.tl.y(),
+            self.br.y() | GE(REQUIRED) | self.tl.y(),
         ]);
 
         if i == 0 {
@@ -149,6 +147,7 @@ impl Rect {
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
                     &frame | GE(REQUIRED) | 0.0,
+                    &frame | LE(REQUIRED) | 1.0,
                     self.len(axis) | GE(REQUIRED) | &frame,
                     next.len(axis) | GE(REQUIRED) | &frame,
                     &frame | EQ(WEAK) | 1.0,
@@ -160,7 +159,7 @@ impl Rect {
 
             // If possible, try to make both Rects have the same length.
             if is_resizable && next.is_resizable_on(axis, cons) {
-                self.eqs.push(self.len(axis) | EQ(WEAK) | next.len(axis));
+                self.eqs.push(self.len(axis) | EQ(WEAK * 2.0) | next.len(axis));
             }
         } else {
             self.eqs
@@ -549,6 +548,7 @@ impl std::fmt::Debug for Rect {
             .field("br", &self.br)
             .field("kind", &self.kind)
             .field("on_files", &self.on_files)
+            .field("eqs", &self.eqs)
             .finish_non_exhaustive()
     }
 }
