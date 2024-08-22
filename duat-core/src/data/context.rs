@@ -203,11 +203,15 @@ where
         f: impl FnOnce(&RwData<W>, &U::Area) -> R,
     ) -> Option<R> {
         let data = self.0.raw_read();
-        let (.., rel) = data.as_ref().unwrap();
+        let (file, area, _, rel) = data.as_ref().unwrap();
         let rel = rel.read();
 
-        rel.iter()
-            .find_map(|(widget, area, _)| widget.try_downcast().zip(Some(area)))
+        file.try_downcast()
+            .map(|f| (f, area))
+            .or_else(|| {
+                rel.iter()
+                    .find_map(|(widget, area, _)| widget.try_downcast().zip(Some(area)))
+            })
             .map(|(widget, area)| f(&widget, area))
     }
 
