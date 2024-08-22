@@ -73,10 +73,7 @@ where
     U: Ui,
 {
     pub fn with_prompt(self, prompt: impl ToString) -> Self {
-        Self {
-            prompt: prompt.to_string(),
-            ..self
-        }
+        Self { prompt: prompt.to_string(), ..self }
     }
 
     pub fn above(self) -> Self {

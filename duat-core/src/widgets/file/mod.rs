@@ -114,10 +114,7 @@ where
     }
 
     pub(crate) fn open_path(self, path: PathBuf) -> Self {
-        Self {
-            text_op: TextOp::OpenPath(path),
-            ..self
-        }
+        Self { text_op: TextOp::OpenPath(path), ..self }
     }
 
     pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {

@@ -51,17 +51,9 @@ where
 
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
-        let mut width = 1.0;
-        let mut num_exp = 10;
         // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _, _| file.len_lines());
-
-        while len > num_exp {
-            num_exp *= 10;
-            width += 1.0;
-        }
-
-        width
+        let len = self.reader.inspect(|file, _, _| file.len_lines()) + 1;
+        len.ilog10() as f64
     }
 
     /// Updates the [`TextBuilder`]'s [`Text`] with the
@@ -174,24 +166,15 @@ impl LineNumbersCfg {
     }
 
     pub fn absolute(self) -> Self {
-        Self {
-            numbers: Numbers::Absolute,
-            ..self
-        }
+        Self { numbers: Numbers::Absolute, ..self }
     }
 
     pub fn relative(self) -> Self {
-        Self {
-            numbers: Numbers::Relative,
-            ..self
-        }
+        Self { numbers: Numbers::Relative, ..self }
     }
 
     pub fn rel_abs(self) -> Self {
-        Self {
-            numbers: Numbers::RelAbs,
-            ..self
-        }
+        Self { numbers: Numbers::RelAbs, ..self }
     }
 
     pub fn align_left(self) -> Self {
@@ -219,45 +202,27 @@ impl LineNumbersCfg {
     }
 
     pub fn align_main_left(self) -> Self {
-        Self {
-            main_align: Alignment::Left,
-            ..self
-        }
+        Self { main_align: Alignment::Left, ..self }
     }
 
     pub fn align_main_center(self) -> Self {
-        Self {
-            main_align: Alignment::Center,
-            ..self
-        }
+        Self { main_align: Alignment::Center, ..self }
     }
 
     pub fn align_main_right(self) -> Self {
-        Self {
-            main_align: Alignment::Right,
-            ..self
-        }
+        Self { main_align: Alignment::Right, ..self }
     }
 
     pub fn show_wraps(self) -> Self {
-        Self {
-            show_wraps: true,
-            ..self
-        }
+        Self { show_wraps: true, ..self }
     }
 
     pub fn hide_wraps(self) -> Self {
-        Self {
-            show_wraps: false,
-            ..self
-        }
+        Self { show_wraps: false, ..self }
     }
 
     pub fn on_the_right(self) -> Self {
-        Self {
-            specs: self.specs.to_right(),
-            ..self
-        }
+        Self { specs: self.specs.to_right(), ..self }
     }
 }
 

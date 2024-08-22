@@ -61,11 +61,7 @@ impl Change {
             String::from_utf8_unchecked(bytes)
         };
 
-        Change {
-            start,
-            added_text,
-            taken_text,
-        }
+        Change { start, added_text, taken_text }
     }
 
     /// In this function, it is assumed that [`self`] happened _after_
@@ -314,9 +310,7 @@ impl History {
             unsafe {
                 self.moments.set_len(self.current_moment);
             }
-            self.moments.push(Moment {
-                changes: Vec::new(),
-            });
+            self.moments.push(Moment { changes: Vec::new() });
             self.current_moment += 1;
         }
     }

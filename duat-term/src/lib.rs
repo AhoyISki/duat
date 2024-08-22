@@ -4,7 +4,9 @@
     control_flow_enum,
     if_let_guard,
     extract_if,
-    is_none_or
+    is_none_or,
+    decl_macro,
+    map_many_mut
 )]
 
 use std::{
@@ -48,7 +50,7 @@ pub struct Ui {
 
 impl ui::Ui for Ui {
     type Area = Area;
-    type ConstraintChangeErr = ConstraintChangeErr;
+    type ConstraintChangeErr = ConstraintErr;
     type StaticFns = StaticFns;
 
     fn new(statics: Self::StaticFns) -> Self {
@@ -74,7 +76,7 @@ impl ui::Ui for Ui {
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
-            fr: Frame::Surround(Brush::Double),
+            fr: Frame::default()
         }
     }
 
@@ -175,38 +177,38 @@ impl Default for StaticFns {
     }
 }
 
-pub enum ConstraintChangeErr {
+pub enum ConstraintErr {
     NoParent,
     Impossible,
 }
 
-impl std::fmt::Display for ConstraintChangeErr {
+impl std::fmt::Display for ConstraintErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         <Self as std::fmt::Debug>::fmt(self, f)
     }
 }
 
-impl std::fmt::Debug for ConstraintChangeErr {
+impl std::fmt::Debug for ConstraintErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // NOTE: Might not be true in the future.
-            ConstraintChangeErr::NoParent => {
+            ConstraintErr::NoParent => {
                 write!(f, "No parents, so its constraint can't be changed.")
             }
-            ConstraintChangeErr::Impossible => {
+            ConstraintErr::Impossible => {
                 write!(f, "The constraint change is impossible.")
             }
         }
     }
 }
 
-impl DuatError for ConstraintChangeErr {
+impl DuatError for ConstraintErr {
     fn into_text(self) -> duat_core::text::Text {
         match self {
-            ConstraintChangeErr::NoParent => {
+            ConstraintErr::NoParent => {
                 err!("Since it is the master node, its constraints " [*a] "cannot" [] "change")
             }
-            ConstraintChangeErr::Impossible => {
+            ConstraintErr::Impossible => {
                 err!("The requested constraint change is impossible")
             }
         }
@@ -221,7 +223,7 @@ pub enum Anchor {
     BottomRight,
 }
 
-impl std::error::Error for ConstraintChangeErr {}
+impl std::error::Error for ConstraintErr {}
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct AreaId(usize);

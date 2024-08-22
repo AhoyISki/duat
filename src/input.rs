@@ -1,5 +1,5 @@
-use duat_core::widgets::File;
 pub use duat_core::input::InputMethod;
+use duat_core::widgets::File;
 
 use crate::{setup::CFG_FN, Ui};
 

@@ -150,24 +150,15 @@ impl PrintCfg {
     }
 
     pub fn with_no_wrapping(self) -> Self {
-        Self {
-            wrap_method: WrapMethod::NoWrap,
-            ..self
-        }
+        Self { wrap_method: WrapMethod::NoWrap, ..self }
     }
 
     pub fn width_wrapped(self) -> Self {
-        Self {
-            wrap_method: WrapMethod::Width,
-            ..self
-        }
+        Self { wrap_method: WrapMethod::Width, ..self }
     }
 
     pub fn word_wrapped(self) -> Self {
-        Self {
-            wrap_method: WrapMethod::Word,
-            ..self
-        }
+        Self { wrap_method: WrapMethod::Word, ..self }
     }
 
     pub fn wrapped_on_cap(self, cap: usize) -> Self {
@@ -178,17 +169,11 @@ impl PrintCfg {
     }
 
     pub fn indenting_wrap(self) -> Self {
-        Self {
-            indent_wrap: true,
-            ..self
-        }
+        Self { indent_wrap: true, ..self }
     }
 
     pub fn with_tabs_size(self, tab_size: usize) -> Self {
-        Self {
-            tab_stops: TabStops(tab_size),
-            ..self
-        }
+        Self { tab_stops: TabStops(tab_size), ..self }
     }
 
     pub fn with_new_line_as(self, char: char) -> Self {
@@ -206,28 +191,19 @@ impl PrintCfg {
     }
 
     pub fn with_scrolloff(self, x: usize, y: usize) -> Self {
-        Self {
-            scrolloff: ScrollOff { x, y },
-            ..self
-        }
+        Self { scrolloff: ScrollOff { x, y }, ..self }
     }
 
     pub fn with_x_scrolloff(self, x_gap: usize) -> Self {
         Self {
-            scrolloff: ScrollOff {
-                y: self.scrolloff.y,
-                x: x_gap,
-            },
+            scrolloff: ScrollOff { y: self.scrolloff.y, x: x_gap },
             ..self
         }
     }
 
     pub fn with_y_scrolloff(self, y_gap: usize) -> Self {
         Self {
-            scrolloff: ScrollOff {
-                x: self.scrolloff.x,
-                y: y_gap,
-            },
+            scrolloff: ScrollOff { x: self.scrolloff.x, y: y_gap },
             ..self
         }
     }
@@ -238,17 +214,11 @@ impl PrintCfg {
     }
 
     pub fn with_ending_space(self) -> Self {
-        Self {
-            ending_space: true,
-            ..self
-        }
+        Self { ending_space: true, ..self }
     }
 
     pub fn with_forced_scrolloff(self) -> Self {
-        Self {
-            force_scrolloff: true,
-            ..self
-        }
+        Self { force_scrolloff: true, ..self }
     }
 
     /// The default used in files and other such inputs
@@ -293,10 +263,7 @@ impl<'a> IterCfg<'a> {
     }
 
     pub fn outsource_lfs(self) -> Self {
-        Self {
-            iter_lfs: false,
-            ..self
-        }
+        Self { iter_lfs: false, ..self }
     }
 
     pub fn dont_wrap(self) -> Self {
@@ -318,10 +285,7 @@ impl<'a> IterCfg<'a> {
     }
 
     pub fn no_indent_wrap(self) -> Self {
-        Self {
-            no_indent_wrap: true,
-            ..self
-        }
+        Self { no_indent_wrap: true, ..self }
     }
 
     #[inline]

@@ -419,12 +419,7 @@ where
         U: 'static,
     {
         if self.data_is::<U>() {
-            let Self {
-                data,
-                cur_state,
-                read_state,
-                ..
-            } = self.clone();
+            let Self { data, cur_state, read_state, .. } = self.clone();
             let raw_data_pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(raw_data_pointer.cast::<RwLock<U>>()) };
             Some(RoData {

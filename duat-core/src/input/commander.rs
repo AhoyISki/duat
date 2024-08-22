@@ -15,9 +15,7 @@ pub struct Commander {
 
 impl Commander {
     pub fn new() -> Self {
-        Self {
-            cursors: Cursors::new_exclusive(),
-        }
+        Self { cursors: Cursors::new_exclusive() }
     }
 }
 

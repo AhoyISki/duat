@@ -89,11 +89,7 @@ where
     }
 
     pub fn new_with(text_fn: TextFn<U>, checker: Box<dyn Fn() -> bool>, specs: PushSpecs) -> Self {
-        Self {
-            text_fn,
-            checker,
-            specs,
-        }
+        Self { text_fn, checker, specs }
     }
 
     pub fn above(self) -> Self {

@@ -36,10 +36,7 @@ fn main() {
         let toml = crate_dir.join("Cargo.toml");
 
         let mut watcher = notify::recommended_watcher(|res| match res {
-            Ok(Event {
-                kind: EventKind::Modify(_),
-                ..
-            }) => {
+            Ok(Event { kind: EventKind::Modify(_), .. }) => {
                 FILES_CHANGED.store(true, Ordering::Relaxed);
                 atomic_wait::wake_one(&BREAK);
             }

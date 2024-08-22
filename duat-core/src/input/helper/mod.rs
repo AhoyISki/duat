@@ -29,11 +29,7 @@ where
     U: Ui,
 {
     pub fn new(widget: &'a RwData<W>, area: &'a U::Area, cursors: &'a mut Cursors) -> Self {
-        EditHelper {
-            widget,
-            cursors,
-            area,
-        }
+        EditHelper { widget, cursors, area }
     }
 
     /// Edits on every cursor selection in the list.
@@ -239,12 +235,7 @@ where
         area: &'c U::Area,
         edit_accum: &'d mut Diff,
     ) -> Self {
-        Self {
-            cursor,
-            widget,
-            area,
-            edit_accum,
-        }
+        Self { cursor, widget, area, edit_accum }
     }
 
     /// Replaces the entire selection of the [`Cursor`] with new
@@ -327,12 +318,7 @@ where
 {
     /// Returns a new instance of `Mover`.
     pub fn new(cursor: &'a mut Cursor, text: &'a Text, area: &'a A, cfg: &'a PrintCfg) -> Self {
-        Self {
-            cursor,
-            text,
-            area,
-            cfg,
-        }
+        Self { cursor, text, area, cfg }
     }
 
     ////////// Public movement functions

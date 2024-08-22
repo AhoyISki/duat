@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fmt::Alignment,
     io::{stdout, Write},
     sync::{
@@ -19,9 +18,339 @@ use duat_core::{palette::DEFAULT_FORM_ID, ui::Axis};
 
 use crate::{area::Coord, Coords, Equality};
 
-macro_rules! queue {
-    ($writer:expr $(, $command:expr)* $(,)?) => {
-        unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
+pub struct Printer {
+    eqs_to_add: Vec<Equality>,
+    eqs_to_remove: Vec<Equality>,
+    solver: Solver,
+    map: Vec<(Variable, SavedVar)>,
+
+    recvs: Vec<Receiver>,
+    is_offline: bool,
+    is_disabled: bool,
+    max: VarPoint,
+}
+
+impl Printer {
+    pub fn new() -> Self {
+        let (map, solver, max) = {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            let (width, height) = (width as f64, height as f64);
+
+            let mut map = Vec::new();
+            let mut solver = Solver::new();
+            let max = VarPoint::new_from_map(&mut map);
+            let strong = STRONG * 5.0;
+            solver.add_edit_variable(max.x_var(), strong).unwrap();
+            solver.suggest_value(max.x_var(), width).unwrap();
+
+            solver.add_edit_variable(max.y_var(), strong).unwrap();
+            solver.suggest_value(max.y_var(), height).unwrap();
+
+            (map, solver, max)
+        };
+
+        Self {
+            eqs_to_add: Vec::new(),
+            eqs_to_remove: Vec::new(),
+            solver,
+            map,
+
+            recvs: Vec::new(),
+            is_offline: false,
+            is_disabled: false,
+            max,
+        }
+    }
+
+    pub fn frame(&mut self, lhs: &VarValue, rhs: &VarValue) -> VarValue {
+        let frame = VarValue::new();
+        let i = self.map.binary_search_by_key(&lhs.var, key).unwrap();
+        let saved = self.map.get_mut(i).unwrap();
+        saved.1 = SavedVar::frame(lhs, rhs, &frame);
+
+        frame
+    }
+
+    pub fn set_copy(&mut self, vv: &VarValue, copy: &VarValue) {
+        let copy = {
+            let i = self.map.binary_search_by_key(&copy.var, key).unwrap();
+            match self.map.get(i).unwrap() {
+                (_, SavedVar::Val { .. } | SavedVar::Frame { .. }) => copy.value.clone(),
+                (_, SavedVar::Copy { copy, .. }) => copy.clone(),
+            }
+        };
+
+        let i = self.map.binary_search_by_key(&vv.var, key).unwrap();
+        self.map.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy);
+    }
+
+    pub fn var_point(&mut self) -> VarPoint {
+        let x = VarValue::new();
+        let y = VarValue::new();
+        self.map.push((x.var, SavedVar::val(&x)));
+        self.map.push((y.var, SavedVar::val(&y)));
+
+        VarPoint { y, x }
+    }
+
+    /// Updates the value of all [`VarPoint`]s that have changed,
+    /// returning true if any of them have.
+    pub fn update(&mut self, change_max: bool) -> bool {
+        if change_max {
+            let (width, height) = crossterm::terminal::size().unwrap();
+            let (width, height) = (width as f64, height as f64);
+
+            let max = &self.max;
+            self.solver.suggest_value(max.x_var(), width).unwrap();
+            self.solver.suggest_value(max.y_var(), height).unwrap();
+        }
+
+        let mut any_has_changed = false;
+        let (framed, mut frames, copies) = {
+            let mut framed = Vec::new();
+            let mut frames = Vec::new();
+            let mut copies: Vec<(&Arc<AtomicUsize>, _, _)> = Vec::new();
+
+            for (var, new) in self.solver.fetch_changes() {
+                let i = self.map.binary_search_by_key(var, key).ok();
+                match i.and_then(|i| self.map.get(i)) {
+                    Some((_, SavedVar::Val { value, has_changed })) => {
+                        let new = new.round() as usize;
+                        let old = value.swap(new, Ordering::Release);
+                        any_has_changed |= old != new;
+                        has_changed.store(old != new, Ordering::Release);
+                    }
+                    Some((_, SavedVar::Frame { frame, rhs, value, has_changed })) => {
+                        framed.push((frame, rhs, value, has_changed));
+                    }
+                    Some((_, SavedVar::Copy { copy, value, has_changed })) => {
+                        copies.push((copy, value, has_changed))
+                    }
+                    // In this case, the variable is a frame.
+                    None => frames.push((var, new)),
+                }
+            }
+
+            (framed, frames, copies)
+        };
+
+        for (frame, rhs, value, has_changed) in framed {
+            if let Some((_, new)) = frames.extract_if(|(var, _)| **var == frame.var).next() {
+                let new = new.round() as usize;
+                let old = frame.value.swap(new, Ordering::Release);
+                any_has_changed |= old != new;
+                has_changed.store(old != new, Ordering::Release);
+            }
+
+            let new = rhs.load(Ordering::Acquire) - frame.value();
+            let old = value.swap(new, Ordering::Release);
+            any_has_changed |= old != new;
+            has_changed.fetch_or(old != new, Ordering::Acquire);
+        }
+
+        for (copy, value, has_changed) in copies {
+            let new = copy.load(Ordering::Acquire);
+            let old = value.swap(new, Ordering::Release);
+            any_has_changed = old != new;
+            has_changed.store(old != new, Ordering::Release);
+        }
+
+        any_has_changed
+    }
+
+    pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {
+        let recv = Receiver {
+            lines: Arc::new(Mutex::new(None)),
+            tl: tl.clone(),
+            br: br.clone(),
+        };
+
+        let sender = Sender {
+            lines: recv.lines.clone(),
+            tl: tl.clone(),
+            br: br.clone(),
+        };
+
+        let (Ok(i) | Err(i)) = self
+            .recvs
+            .binary_search_by(|other| other.coords().cmp(&recv.coords()));
+        self.recvs.insert(i, recv);
+
+        sender
+    }
+
+    pub fn remove_sender(&mut self, sender: Sender) {
+        self.recvs
+            .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
+    }
+
+    pub fn shutdown(&mut self) {
+        self.is_offline = true;
+    }
+
+    pub fn is_offline(&self) -> bool {
+        self.is_offline
+    }
+
+    pub fn print(&self) {
+        static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
+        let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
+
+        if list.is_empty() {
+            return;
+        }
+
+        let mut stdout = stdout().lock();
+        execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
+        queue!(stdout, cursor::Hide, MoveTo(0, 0));
+
+        for y in 0..self.max.coord().y {
+            let mut x = 0;
+
+            let iter = list.iter().flat_map(|lines| lines.on(y));
+
+            for (bytes, start, end) in iter {
+                if x != start {
+                    queue!(stdout, MoveToColumn(start as u16));
+                }
+
+                stdout.write_all(bytes).unwrap();
+
+                x = end;
+            }
+
+            queue!(stdout, MoveToNextLine(1));
+        }
+
+        let cursor_was_real = if let Some(was_real) = list
+            .iter()
+            .filter_map(|lines| lines.real_cursor)
+            .reduce(|prev, was_real| prev || was_real)
+        {
+            CURSOR_IS_REAL.store(was_real, Ordering::Relaxed);
+            was_real
+        } else {
+            CURSOR_IS_REAL.load(Ordering::Relaxed)
+        };
+
+        if cursor_was_real {
+            queue!(stdout, cursor::RestorePosition, cursor::Show);
+        }
+
+        execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
+    }
+
+    pub fn add_equality(&mut self, eq: Equality) {
+        self.eqs_to_add.push(eq);
+    }
+
+    pub fn add_equalities<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
+        self.eqs_to_add.extend(eqs.into_iter().cloned())
+    }
+
+    pub fn remove_equality(&mut self, eq: Equality) {
+        // If there is no SavedVar, then the first term is a frame.
+        let var = eq.expr().terms[0].variable;
+        if let Ok(i) = self.map.binary_search_by_key(&var, key)
+            && let Some((_, saved)) = self.map.get_mut(i)
+        {
+            match saved {
+                SavedVar::Val { .. } => {}
+                SavedVar::Frame { value, has_changed, .. }
+                | SavedVar::Copy { value, has_changed, .. } => {
+                    let (value, has_changed) = (value.clone(), has_changed.clone());
+                    *saved = SavedVar::Val { value, has_changed };
+                }
+            }
+        }
+        if self.eqs_to_add.extract_if(|e| *e == eq).count() == 0 {
+            self.eqs_to_remove.push(eq);
+        }
+    }
+
+    pub fn disable(&mut self) {
+        self.is_disabled = true;
+    }
+
+    pub fn enable(&mut self) {
+        self.is_disabled = false;
+    }
+
+    pub fn max(&self) -> &VarPoint {
+        &self.max
+    }
+
+    pub fn flush_equalities(&mut self) -> Result<(), AddConstraintError> {
+        for eq in self.eqs_to_remove.drain(..) {
+            self.solver.remove_constraint(&eq).unwrap();
+        }
+        self.solver.add_constraints(&self.eqs_to_add)?;
+        self.update(false);
+        self.eqs_to_add.clear();
+        Ok(())
+    }
+}
+
+impl Default for Printer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+unsafe impl Send for Printer {}
+unsafe impl Sync for Printer {}
+
+#[derive(Debug)]
+struct Receiver {
+    lines: Arc<Mutex<Option<Lines>>>,
+    tl: VarPoint,
+    br: VarPoint,
+}
+
+impl Receiver {
+    fn take(&self) -> Option<Lines> {
+        self.lines.lock().unwrap().take()
+    }
+
+    fn coords(&self) -> Coords {
+        Coords::new(self.tl.coord(), self.br.coord())
+    }
+}
+
+#[derive(Debug)]
+pub struct Sender {
+    lines: Arc<Mutex<Option<Lines>>>,
+    tl: VarPoint,
+    br: VarPoint,
+}
+
+impl Sender {
+    pub fn lines(&self, shift: usize, cap: usize) -> Lines {
+        let area = self.coords().width() * self.coords().height();
+        let mut cutoffs = Vec::with_capacity(self.coords().height());
+        cutoffs.push(0);
+
+        Lines {
+            bytes: Vec::with_capacity(area * 2),
+            cutoffs,
+            coords: self.coords(),
+            real_cursor: None,
+
+            line: Vec::new(),
+            len: 0,
+            positions: Vec::new(),
+            align: Alignment::Left,
+            shift,
+            cap,
+        }
+    }
+
+    pub fn send(&self, lines: Lines) {
+        *self.lines.lock().unwrap() = Some(lines);
+    }
+
+    pub fn coords(&self) -> Coords {
+        Coords::new(self.tl.coord(), self.br.coord())
     }
 }
 
@@ -184,278 +513,111 @@ impl Write for Lines {
     }
 }
 
-#[derive(Debug)]
-struct Receiver {
-    lines: Arc<Mutex<Option<Lines>>>,
-    tl: VarPoint,
-    br: VarPoint,
+pub enum SavedVar {
+    Val {
+        value: Arc<AtomicUsize>,
+        has_changed: Arc<AtomicBool>,
+    },
+    Frame {
+        frame: VarValue,
+        rhs: Arc<AtomicUsize>,
+        value: Arc<AtomicUsize>,
+        has_changed: Arc<AtomicBool>,
+    },
+    Copy {
+        copy: Arc<AtomicUsize>,
+        value: Arc<AtomicUsize>,
+        has_changed: Arc<AtomicBool>,
+    },
 }
 
-impl Receiver {
-    fn take(&self) -> Option<Lines> {
-        self.lines.lock().unwrap().take()
-    }
-
-    fn coords(&self) -> Coords {
-        Coords::new(self.tl.coord(), self.br.coord())
-    }
-}
-
-#[derive(Debug)]
-pub struct Sender {
-    lines: Arc<Mutex<Option<Lines>>>,
-    tl: VarPoint,
-    br: VarPoint,
-}
-
-impl Sender {
-    pub fn lines(&self, shift: usize, cap: usize) -> Lines {
-        let area = self.coords().width() * self.coords().height();
-        let mut cutoffs = Vec::with_capacity(self.coords().height());
-        cutoffs.push(0);
-
-        Lines {
-            bytes: Vec::with_capacity(area * 2),
-            cutoffs,
-            coords: self.coords(),
-            real_cursor: None,
-
-            line: Vec::new(),
-            len: 0,
-            positions: Vec::new(),
-            align: Alignment::Left,
-            shift,
-            cap,
+impl SavedVar {
+    fn val(vv: &VarValue) -> Self {
+        Self::Val {
+            value: vv.value.clone(),
+            has_changed: vv.has_changed.clone(),
         }
     }
 
-    pub fn send(&self, lines: Lines) {
-        *self.lines.lock().unwrap() = Some(lines);
+    fn frame(lhs: &VarValue, rhs: &VarValue, frame: &VarValue) -> Self {
+        Self::Frame {
+            frame: frame.clone(),
+            rhs: rhs.value.clone(),
+            value: lhs.value.clone(),
+            has_changed: lhs.has_changed.clone(),
+        }
     }
 
-    pub fn coords(&self) -> Coords {
-        Coords::new(self.tl.coord(), self.br.coord())
+    fn copy(vv: &VarValue, copy: Arc<AtomicUsize>) -> Self {
+        Self::Copy {
+            copy,
+            value: vv.value.clone(),
+            has_changed: vv.has_changed.clone(),
+        }
     }
 }
 
-pub struct Printer {
-    eqs_to_add: Vec<Equality>,
-    eqs_to_remove: Vec<Equality>,
-    solver: Solver,
-    map: HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
-
-    recvs: Vec<Receiver>,
-    is_offline: bool,
-    is_disabled: bool,
-    max: VarPoint,
+/// A point on the screen, which can be calculated by [`cassowary`]
+/// and interpreted by `duat_term`.
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct VarPoint {
+    y: VarValue,
+    x: VarValue,
 }
 
-impl Printer {
-    pub fn new() -> Self {
-        let (map, solver, max) = {
-            let (width, height) = crossterm::terminal::size().unwrap();
-            let (width, height) = (width as f64, height as f64);
+impl VarPoint {
+    /// Returns a new instance of [`VarPoint`]
+    pub fn new_from_map(vars: &mut Vec<(Variable, SavedVar)>) -> Self {
+        let vp = VarPoint { x: VarValue::new(), y: VarValue::new() };
 
-            let mut map = HashMap::new();
-            let mut solver = Solver::new();
-            let max = VarPoint::new_from_hash_map(&mut map);
-            let strong = STRONG * 5.0;
-            solver.add_edit_variable(max.x_var(), strong).unwrap();
-            solver.suggest_value(max.x_var(), width).unwrap();
+        vars.push((vp.x.var, SavedVar::val(&vp.x)));
+        vars.push((vp.y.var, SavedVar::val(&vp.y)));
 
-            solver.add_edit_variable(max.y_var(), strong).unwrap();
-            solver.suggest_value(max.y_var(), height).unwrap();
+        vp
+    }
 
-            (map, solver, max)
-        };
+    pub fn coord(&self) -> Coord {
+        let x = self.x.value.load(Ordering::Relaxed);
+        let y = self.y.value.load(Ordering::Relaxed);
 
-        Self {
-            eqs_to_add: Vec::new(),
-            eqs_to_remove: Vec::new(),
-            solver,
-            map,
+        Coord::new(x, y)
+    }
 
-            recvs: Vec::new(),
-            is_offline: false,
-            is_disabled: false,
-            max,
+    pub fn x_var(&self) -> Variable {
+        self.x.var
+    }
+
+    pub fn y_var(&self) -> Variable {
+        self.y.var
+    }
+
+    pub fn y(&self) -> &VarValue {
+        &self.y
+    }
+
+    pub fn x(&self) -> &VarValue {
+        &self.x
+    }
+
+    pub fn on_axis(&self, axis: Axis) -> &VarValue {
+        match axis {
+            Axis::Horizontal => &self.x,
+            Axis::Vertical => &self.y,
         }
-    }
-
-    pub fn var_value(&mut self) -> VarValue {
-        let v = VarValue::new();
-        self.map
-            .insert(v.var, (v.value.clone(), v.has_changed.clone()));
-
-        v
-    }
-
-    pub fn var_point(&mut self) -> VarPoint {
-        let y = VarValue::new();
-        let x = VarValue::new();
-        self.map
-            .insert(x.var, (x.value.clone(), x.has_changed.clone()));
-        self.map
-            .insert(y.var, (y.value.clone(), y.has_changed.clone()));
-
-        VarPoint { y, x }
-    }
-
-    /// Updates the value of all [`VarPoint`]s that have changed,
-    /// returning true if any of them have.
-    pub fn update(&mut self, change_max: bool) -> bool {
-        if change_max {
-            let (width, height) = crossterm::terminal::size().unwrap();
-            let (width, height) = (width as f64, height as f64);
-
-            let max = &self.max;
-            let _ = self.solver.suggest_value(max.x_var(), width);
-            let _ = self.solver.suggest_value(max.y_var(), height);
-        }
-
-        let mut any_has_changed = false;
-        for (var, new) in self.solver.fetch_changes() {
-            let (val, has_changed) = &self.map[var];
-            let new = new.round() as usize;
-            let old = val.swap(new, Ordering::Release);
-            any_has_changed |= old != new;
-            has_changed.store(old != new, Ordering::Release);
-        }
-
-        any_has_changed
-    }
-
-    pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {
-        let recv = Receiver {
-            lines: Arc::new(Mutex::new(None)),
-            tl: tl.clone(),
-            br: br.clone(),
-        };
-
-        let sender = Sender {
-            lines: recv.lines.clone(),
-            tl: tl.clone(),
-            br: br.clone(),
-        };
-
-        let (Ok(i) | Err(i)) = self
-            .recvs
-            .binary_search_by(|other| other.coords().cmp(&recv.coords()));
-        self.recvs.insert(i, recv);
-
-        sender
-    }
-
-    pub fn remove_sender(&mut self, sender: Sender) {
-        self.recvs
-            .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
-    }
-
-    pub fn shutdown(&mut self) {
-        self.is_offline = true;
-    }
-
-    pub fn is_offline(&self) -> bool {
-        self.is_offline
-    }
-
-    pub fn print(&self) {
-        static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
-
-        if list.is_empty() {
-            return;
-        }
-
-        let mut stdout = stdout().lock();
-        execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
-        queue!(stdout, cursor::Hide, MoveTo(0, 0));
-
-        for y in 0..self.max.coord().y {
-            let mut x = 0;
-
-            let iter = list.iter().flat_map(|lines| lines.on(y));
-
-            for (bytes, start, end) in iter {
-                if x != start {
-                    queue!(stdout, MoveToColumn(start as u16));
-                }
-
-                stdout.write_all(bytes).unwrap();
-
-                x = end;
-            }
-
-            queue!(stdout, MoveToNextLine(1));
-        }
-
-        let cursor_was_real = if let Some(was_real) = list
-            .iter()
-            .filter_map(|lines| lines.real_cursor)
-            .reduce(|prev, was_real| prev || was_real)
-        {
-            CURSOR_IS_REAL.store(was_real, Ordering::Relaxed);
-            was_real
-        } else {
-            CURSOR_IS_REAL.load(Ordering::Relaxed)
-        };
-
-        if cursor_was_real {
-            queue!(stdout, cursor::RestorePosition, cursor::Show);
-        }
-
-        execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
-    }
-
-    pub fn vars_mut(&mut self) -> &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)> {
-        &mut self.map
-    }
-
-    pub fn add_equality(&mut self, eq: Equality) {
-        self.eqs_to_add.push(eq);
-    }
-
-    pub fn add_equalities<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
-        self.eqs_to_add.extend(eqs.into_iter().cloned())
-    }
-
-    pub fn remove_equality(&mut self, eq: Equality) {
-        if self.eqs_to_add.extract_if(|e| *e == eq).count() == 0 {
-            self.eqs_to_remove.push(eq);
-        }
-    }
-
-    pub fn disable(&mut self) {
-        self.is_disabled = true;
-    }
-
-    pub fn enable(&mut self) {
-        self.is_disabled = false;
-    }
-
-    pub fn max(&self) -> &VarPoint {
-        &self.max
-    }
-
-    pub fn flush_equalities(&mut self) -> Result<(), AddConstraintError> {
-        for eq in self.eqs_to_remove.drain(..) {
-            self.solver.remove_constraint(&eq).unwrap();
-        }
-        self.solver.add_constraints(&self.eqs_to_add)?;
-        self.update(false);
-        self.eqs_to_add.clear();
-        Ok(())
     }
 }
 
-impl Default for Printer {
-    fn default() -> Self {
-        Self::new()
+impl std::fmt::Debug for VarPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "{:?}: {}, {:?}: {}",
+            self.x.var,
+            self.x.value.load(Ordering::Relaxed),
+            self.y.var,
+            self.y.value.load(Ordering::Relaxed)
+        ))
     }
 }
-
-unsafe impl Send for Printer {}
-unsafe impl Sync for Printer {}
 
 /// A [`Variable`], attached to its value, which is automatically kept
 /// up to date.
@@ -665,66 +827,10 @@ impl std::ops::Div<f64> for VarValue {
     }
 }
 
-/// A point on the screen, which can be calculated by [`cassowary`]
-/// and interpreted by `duat_term`.
-#[derive(Clone, PartialEq, PartialOrd)]
-pub struct VarPoint {
-    y: VarValue,
-    x: VarValue,
+macro queue($writer:expr $(, $command:expr)* $(,)?) {
+    unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
 }
 
-impl VarPoint {
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new_from_hash_map(
-        map: &mut HashMap<Variable, (Arc<AtomicUsize>, Arc<AtomicBool>)>,
-    ) -> Self {
-        let vp = VarPoint { x: VarValue::new(), y: VarValue::new() };
-
-        map.insert(vp.x.var, (vp.x.value.clone(), vp.x.has_changed.clone()));
-        map.insert(vp.y.var, (vp.y.value.clone(), vp.y.has_changed.clone()));
-
-        vp
-    }
-
-    pub fn coord(&self) -> Coord {
-        let x = self.x.value.load(Ordering::Relaxed);
-        let y = self.y.value.load(Ordering::Relaxed);
-
-        Coord::new(x, y)
-    }
-
-    pub fn x_var(&self) -> Variable {
-        self.x.var
-    }
-
-    pub fn y_var(&self) -> Variable {
-        self.y.var
-    }
-
-    pub fn y(&self) -> &VarValue {
-        &self.y
-    }
-
-    pub fn x(&self) -> &VarValue {
-        &self.x
-    }
-
-    pub fn on_axis(&self, axis: Axis) -> &VarValue {
-        match axis {
-            Axis::Horizontal => &self.x,
-            Axis::Vertical => &self.y,
-        }
-    }
-}
-
-impl std::fmt::Debug for VarPoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{:?}: {}, {:?}: {}",
-            self.x.var,
-            self.x.value.load(Ordering::Relaxed),
-            self.y.var,
-            self.y.value.load(Ordering::Relaxed)
-        ))
-    }
+fn key(entry: &(Variable, SavedVar)) -> Variable {
+    entry.0
 }

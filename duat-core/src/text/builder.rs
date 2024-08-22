@@ -121,7 +121,7 @@ where
     Text(Text),
     Tag(Tag),
     ToString(D),
-    OptToString(Option<D>)
+    OptToString(Option<D>),
 }
 
 impl From<AlignCenter> for BuilderPart<String> {

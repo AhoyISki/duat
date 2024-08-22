@@ -497,10 +497,7 @@ mod cursor {
 
     impl Clone for Cursor {
         fn clone(&self) -> Self {
-            Cursor {
-                assoc_index: None,
-                ..*self
-            }
+            Cursor { assoc_index: None, ..*self }
         }
     }
 
@@ -535,12 +532,7 @@ mod cursor {
             let cfg = IterCfg::new(cfg);
             let dwcol = vcol(point, text, area, cfg);
             let vcol = vcol(point, text, area, cfg.dont_wrap());
-            Self {
-                point,
-                vcol,
-                dcol: vcol,
-                dwcol,
-            }
+            Self { point, vcol, dcol: vcol, dwcol }
         }
 
         fn byte(&self) -> usize {

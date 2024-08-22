@@ -97,10 +97,7 @@ impl<'a> Iter<'a> {
     }
 
     pub fn no_conceals(self) -> Self {
-        Self {
-            _conceals: Conceal::None,
-            ..self
-        }
+        Self { _conceals: Conceal::None, ..self }
     }
 
     pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
@@ -111,10 +108,7 @@ impl<'a> Iter<'a> {
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self {
-            print_ghosts: false,
-            ..self
-        }
+        Self { print_ghosts: false, ..self }
     }
 
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
@@ -278,17 +272,11 @@ impl<'a> RevIter<'a> {
     }
 
     pub fn no_conceals(self) -> Self {
-        Self {
-            _conceals: Conceal::None,
-            ..self
-        }
+        Self { _conceals: Conceal::None, ..self }
     }
 
     pub fn no_ghosts(self) -> Self {
-        Self {
-            print_ghosts: false,
-            ..self
-        }
+        Self { print_ghosts: false, ..self }
     }
 
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {

@@ -418,10 +418,7 @@ where
     /// [`has_changed`]: ReadableData::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
         let guard = self.data.write();
-        ReadWriteGuard {
-            guard,
-            cur_state: &self.cur_state,
-        }
+        ReadWriteGuard { guard, cur_state: &self.cur_state }
     }
 
     /// Non Blocking mutable reference to the information.
@@ -469,10 +466,9 @@ where
     ///
     /// [`has_changed`]: ReadableData::has_changed
     pub fn try_write(&self) -> Option<ReadWriteGuard<'_, T>> {
-        self.data.try_write().map(|guard| ReadWriteGuard {
-            guard,
-            cur_state: &self.cur_state,
-        })
+        self.data
+            .try_write()
+            .map(|guard| ReadWriteGuard { guard, cur_state: &self.cur_state })
     }
 
     /// Blocking mutation of the inner data.
@@ -658,12 +654,7 @@ where
         U: 'static,
     {
         if self.data_is::<U>() {
-            let Self {
-                data,
-                cur_state,
-                read_state,
-                ..
-            } = self.clone();
+            let Self { data, cur_state, read_state, .. } = self.clone();
             let pointer = Arc::into_raw(data);
             let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
             Some(RwData {

@@ -7,7 +7,6 @@ use std::{
     sync::{atomic::Ordering, LazyLock},
 };
 
-use cassowary::strength::STRONG;
 use crossterm::{
     cursor,
     style::{Print, ResetColor, SetStyle},
@@ -22,7 +21,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
     layout::{Brush, Edge, EdgeCoords, Layout},
-    AreaId, ConstraintChangeErr, RESIZED,
+    AreaId, ConstraintErr, RESIZED,
 };
 
 macro_rules! queue {
@@ -224,7 +223,7 @@ impl Area {
 }
 
 impl ui::Area for Area {
-    type ConstraintChangeErr = ConstraintChangeErr;
+    type ConstraintChangeErr = ConstraintErr;
 
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
@@ -291,54 +290,66 @@ impl ui::Area for Area {
         self.print(text, cfg, painter, f)
     }
 
-    fn constrain_ver(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
-        let axis = Axis::Vertical;
-        if let Some(cmp) = self.layout.read().rects.get_constraint_on(self.id, axis)
-            && cmp == cons
+    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
+        let mut layout = self.layout.write();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or(ConstraintErr::NoParent)?
+            .clone();
+
+        if let Some(ver) = cons.on(Axis::Vertical)
+            && ver == con
         {
             return Ok(());
         };
 
-        let mut layout = self.layout.write();
-        let layout = &mut *layout;
-        let mut printer = layout.printer.write();
-        // let prev_cons = layout
-        //     .rects
-        //     .set_ver_constraint(self.id, cons, &mut printer, STRONG * 2.0);
+        let cons = {
+            let mut p = layout.printer.write();
+            let cons = cons.replace(con, Axis::Vertical, &mut p);
 
-        // if prev_cons.map_or(true, |cmp| cmp != cons) &&
-        // printer.update(false) {     drop(printer);
-        //     layout.resize();
-        //     print_edges(layout.edges());
-        // }
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
 
-        // Ok(())
-        todo!();
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
+            p.flush_equalities().unwrap();
+            cons
+        };
+
+        *layout.rects.get_constraints_mut(self.id).unwrap() = cons;
+
+        Ok(())
     }
 
-    fn constrain_hor(&self, cons: Constraint) -> Result<(), ConstraintChangeErr> {
-        let axis = Axis::Horizontal;
-        if let Some(cmp) = self.layout.read().rects.get_constraint_on(self.id, axis)
-            && cmp == cons
+    fn constrain_hor(&self, con: Constraint) -> Result<(), ConstraintErr> {
+        let mut layout = self.layout.write();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or(ConstraintErr::NoParent)?
+            .clone();
+
+        if let Some(hor) = cons.on(Axis::Horizontal)
+            && hor == con
         {
             return Ok(());
         };
 
-        let mut layout = self.layout.write();
-        let layout = &mut *layout;
-        let mut printer = layout.printer.write();
-        // let prev_cons = layout
-        //     .rects
-        //     .set_hor_constraint(self.id, cons, &mut printer, STRONG * 2.0);
+        let cons = {
+            let mut p = layout.printer.write();
+            let cons = cons.replace(con, Axis::Horizontal, &mut p);
 
-        // if prev_cons.map_or(true, |cmp| cmp != cons) &&
-        // printer.update(false) {     drop(printer);
-        //     layout.resize();
-        //     print_edges(layout.edges());
-        // }
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
 
-        // Ok(())
-        todo!();
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
+            p.flush_equalities().unwrap();
+            cons
+        };
+
+        *layout.rects.get_constraints_mut(self.id).unwrap() = cons;
+
+        Ok(())
     }
 
     fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {

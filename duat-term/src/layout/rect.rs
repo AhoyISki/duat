@@ -1,13 +1,14 @@
 use cassowary::{
-    strength::{REQUIRED, WEAK},
+    strength::{REQUIRED, STRONG, WEAK},
     Expression,
     WeightedRelation::{EQ, GE, LE},
 };
 use duat_core::{
-    data::RwData, ui::{
+    data::RwData,
+    ui::{
         Axis::{self, *},
-        Constraint, PushSpecs,
-    }
+        PushSpecs,
+    },
 };
 
 use super::Constraints;
@@ -49,7 +50,7 @@ impl Kind {
         }
     }
 
-    fn mut_children(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
+    fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
         match self {
             Kind::End(..) => None,
             Kind::Middle { children, .. } => Some(children),
@@ -121,10 +122,13 @@ impl Rect {
         ]);
 
         if i == 0 {
+            p.set_copy(self.start(axis), parent.start(axis));
             self.eqs
                 .push(self.start(axis) | EQ(REQUIRED) | parent.start(axis));
         }
 
+        p.set_copy(self.start(axis.perp()), parent.start(axis.perp()));
+        p.set_copy(self.end(axis.perp()), parent.end(axis.perp()));
         self.eqs.extend([
             self.start(axis.perp()) | EQ(REQUIRED) | parent.start(axis.perp()),
             self.end(axis.perp()) | EQ(REQUIRED) | parent.end(axis.perp()),
@@ -134,15 +138,26 @@ impl Rect {
             unreachable!();
         };
 
-        if let Some((next, cons)) = children.get(i) {
+        // If possible, try to make both Rects have the same length.
+        // This may not necessarily be the next child.
+        if is_resizable
+            && let Some((res, _)) = children[i..]
+                .iter()
+                .find(|(child, cons)| child.is_resizable_on(axis, cons))
+        {
+            self.eqs.push(self.len(axis) | EQ(WEAK) | res.len(axis));
+        }
+
+        if let Some((next, _)) = children.get(i) {
             let edge = match self.on_files == next.on_files {
                 true => fr.border_edge_on(axis),
                 false => fr.files_egde_on(axis),
             };
 
             if edge == 1.0 && !*clustered {
-                let frame = p.var_value();
+                let frame = p.frame(self.end(axis), next.start(axis));
                 self.eqs.extend([
+                    &frame | EQ(STRONG * 5.0) | 1.0,
                     (self.end(axis) + &frame) | EQ(REQUIRED) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
@@ -150,20 +165,30 @@ impl Rect {
                     &frame | LE(REQUIRED) | 1.0,
                     self.len(axis) | GE(REQUIRED) | &frame,
                     next.len(axis) | GE(REQUIRED) | &frame,
-                    &frame | EQ(WEAK) | 1.0,
                 ]);
             } else {
                 self.eqs
                     .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
             }
-
-            // If possible, try to make both Rects have the same length.
-            if is_resizable && next.is_resizable_on(axis, cons) {
-                self.eqs.push(self.len(axis) | EQ(WEAK * 2.0) | next.len(axis));
-            }
         } else {
+            p.set_copy(self.end(axis), parent.end(axis));
             self.eqs
                 .push(self.end(axis) | EQ(REQUIRED) | parent.end(axis));
+        }
+
+        if let Kind::Middle { children, axis, .. } = &mut self.kind {
+            let axis = *axis;
+
+            for i in 0..children.len() {
+                // We have to do this, since set_base_eqs assumes that the child in
+                // question wasn't in yet.
+                let (mut child, cons) = self.kind.children_mut().unwrap().remove(i);
+
+                let is_resizable = child.is_resizable_on(axis, &cons);
+                child.set_base_eqs(i, self, p, fr, is_resizable);
+
+                self.kind.children_mut().unwrap().insert(i, (child, cons));
+            }
         }
 
         p.add_equalities(&self.eqs);
@@ -275,12 +300,11 @@ impl Rect {
             && !children.is_empty()
         {
             let mut children = children.iter();
-            let ret = if *child_axis == axis {
+            if *child_axis == axis {
                 children.any(|(child, cons)| child.is_resizable_on(axis, cons))
             } else {
                 children.all(|(child, cons)| child.is_resizable_on(axis, cons))
-            };
-            ret
+            }
         } else {
             cons.is_resizable_on(axis)
         }
@@ -353,16 +377,16 @@ impl Rects {
 
         rect.set_base_eqs(i, parent, p, fr, cons.is_resizable_on(axis));
 
-        parent.kind.mut_children().unwrap().insert(i, (rect, cons));
+        parent.kind.children_mut().unwrap().insert(i, (rect, cons));
 
         let (i, (mut rect_to_fix, cons)) = match i == 0 {
-            true => (1, parent.kind.mut_children().unwrap().remove(1)),
-            false => (i - 1, parent.kind.mut_children().unwrap().remove(i - 1)),
+            true => (1, parent.kind.children_mut().unwrap().remove(1)),
+            false => (i - 1, parent.kind.children_mut().unwrap().remove(i - 1)),
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
         rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
         let entry = (rect_to_fix, cons);
-        parent.kind.mut_children().unwrap().insert(i, entry);
+        parent.kind.children_mut().unwrap().insert(i, entry);
 
         new_id
     }
@@ -385,20 +409,20 @@ impl Rects {
 
             let (target, cons) = if let Some((i, orig)) = self.get_parent_mut(id) {
                 let axis = orig.kind.axis().unwrap();
-                let (target, cons) = orig.kind.mut_children().unwrap().remove(i);
+                let (target, cons) = orig.kind.children_mut().unwrap().remove(i);
 
                 let is_resizable = target.is_resizable_on(axis, &cons);
                 parent.set_base_eqs(i, orig, p, fr, is_resizable);
 
                 let entry = (parent, Constraints::default());
-                orig.kind.mut_children().unwrap().insert(i, entry);
+                orig.kind.children_mut().unwrap().insert(i, entry);
 
                 if i > 0 {
-                    let (mut rect, cons) = orig.kind.mut_children().unwrap().remove(i - 1);
+                    let (mut rect, cons) = orig.kind.children_mut().unwrap().remove(i - 1);
                     let is_resizable = rect.is_resizable_on(axis, &cons);
                     rect.set_base_eqs(i - 1, orig, p, fr, is_resizable);
                     let entry = (rect, cons);
-                    orig.kind.mut_children().unwrap().insert(i - 1, entry);
+                    orig.kind.children_mut().unwrap().insert(i - 1, entry);
                 }
 
                 (target, Some(cons))
@@ -417,7 +441,7 @@ impl Rects {
         };
 
         let cons = cons
-            .map(|cons| cons.repurpose(&child, parent_id, self, p))
+            .map(|cons| cons.apply(&child, parent_id, self, p))
             .unwrap_or_default();
 
         let parent = self.get_mut(parent_id).unwrap();
@@ -425,7 +449,7 @@ impl Rects {
         let is_resizable = child.is_resizable_on(axis, &cons);
         child.set_base_eqs(0, parent, p, fr, is_resizable);
 
-        parent.kind.mut_children().unwrap().push((child, cons));
+        parent.kind.children_mut().unwrap().push((child, cons));
     }
 
     /// Gets a mut reference to the parent of the `id`'s [`Rect`]
@@ -450,7 +474,7 @@ impl Rects {
         let parent = self.get_mut(id).unwrap();
 
         let entry = (child, Constraints::default());
-        parent.kind.mut_children().unwrap().insert(pos, entry);
+        parent.kind.children_mut().unwrap().insert(pos, entry);
     }
 
     /// Fetches the parent of the [`RwData<Rect>`] with the given
@@ -506,9 +530,9 @@ impl Rects {
         self.get_parent(id).and_then(|(_, p)| p.kind.children())
     }
 
-    pub fn get_constraint_on(&self, id: AreaId, axis: Axis) -> Option<Constraint> {
-        self.get_parent(id)
-            .and_then(|(pos, parent)| parent.kind.children().unwrap()[pos].1.on(axis))
+    pub fn get_constraints_mut(&mut self, id: AreaId) -> Option<&mut Constraints> {
+        self.get_parent_mut(id)
+            .map(|(pos, parent)| &mut parent.kind.children_mut().unwrap()[pos].1)
     }
 }
 

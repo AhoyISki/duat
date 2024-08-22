@@ -1,8 +1,5 @@
 mod frame;
-use cassowary::{
-    strength::{STRONG, WEAK},
-    WeightedRelation::*,
-};
+use cassowary::{strength::STRONG, WeightedRelation::*};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
@@ -34,8 +31,8 @@ mod rect;
 pub struct Constraints {
     ver_eq: Option<Equality>,
     hor_eq: Option<Equality>,
-    ver_cons: Option<Constraint>,
-    hor_cons: Option<Constraint>,
+    ver_con: Option<Constraint>,
+    hor_con: Option<Constraint>,
 }
 
 impl Constraints {
@@ -51,31 +48,45 @@ impl Constraints {
         Self {
             ver_eq,
             hor_eq,
-            ver_cons: ps.ver_constraint(),
-            hor_cons: ps.hor_constraint(),
+            ver_con: ps.ver_constraint(),
+            hor_con: ps.hor_constraint(),
         }
     }
 
+    pub fn replace(mut self, con: Constraint, axis: Axis, p: &mut Printer) -> Self {
+        for eq in [self.ver_eq.take(), self.hor_eq.take()]
+            .into_iter()
+            .flatten()
+        {
+            p.remove_equality(eq);
+        }
+        match axis {
+            Axis::Vertical => self.ver_con.replace(con),
+            Axis::Horizontal => self.hor_con.replace(con),
+        };
+        self
+    }
+
     /// Reuses [`self`] in order to constrain a new child
-    fn repurpose(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
-        let cons = [self.ver_cons, self.hor_cons];
+    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+        let cons = [self.ver_con, self.hor_con];
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self { ver_eq, hor_eq, ..self }
     }
 
+    pub fn on(&self, axis: Axis) -> Option<Constraint> {
+        match axis {
+            Axis::Vertical => self.ver_con,
+            Axis::Horizontal => self.hor_con,
+        }
+    }
+
     /// Wether or not [`self`] has flexibility in terms of its length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
         let con = self.on(axis);
         matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
-    }
-
-    fn on(&self, axis: Axis) -> Option<Constraint> {
-        match axis {
-            Axis::Vertical => self.ver_cons,
-            Axis::Horizontal => self.hor_cons,
-        }
     }
 }
 

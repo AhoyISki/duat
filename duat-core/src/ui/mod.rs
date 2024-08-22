@@ -28,7 +28,7 @@ use crate::{
 /// A direction, where a [`Widget<U>`] will be placed in relation to
 /// another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Side {
+pub enum Side {
     Above,
     Right,
     Below,
@@ -74,8 +74,8 @@ pub enum Constraint {
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
-    ver_cons: Option<Constraint>,
-    hor_cons: Option<Constraint>,
+    ver_con: Option<Constraint>,
+    hor_con: Option<Constraint>,
 }
 
 impl PushSpecs {
@@ -83,8 +83,8 @@ impl PushSpecs {
     pub fn left() -> Self {
         Self {
             side: Side::Left,
-            ver_cons: None,
-            hor_cons: None,
+            ver_con: None,
+            hor_con: None,
         }
     }
 
@@ -92,8 +92,8 @@ impl PushSpecs {
     pub fn right() -> Self {
         Self {
             side: Side::Right,
-            ver_cons: None,
-            hor_cons: None,
+            ver_con: None,
+            hor_con: None,
         }
     }
 
@@ -101,8 +101,8 @@ impl PushSpecs {
     pub fn above() -> Self {
         Self {
             side: Side::Above,
-            ver_cons: None,
-            hor_cons: None,
+            ver_con: None,
+            hor_con: None,
         }
     }
 
@@ -110,95 +110,83 @@ impl PushSpecs {
     pub fn below() -> Self {
         Self {
             side: Side::Below,
-            ver_cons: None,
-            hor_cons: None,
+            ver_con: None,
+            hor_con: None,
         }
     }
 
     /// Returns a new instance of [`PushSpecs`]
     pub fn to_left(self) -> Self {
-        Self {
-            side: Side::Left,
-            ..self
-        }
+        Self { side: Side::Left, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
     pub fn to_right(self) -> Self {
-        Self {
-            side: Side::Right,
-            ..self
-        }
+        Self { side: Side::Right, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
     pub fn to_above(self) -> Self {
-        Self {
-            side: Side::Above,
-            ..self
-        }
+        Self { side: Side::Above, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
     pub fn to_below(self) -> Self {
-        Self {
-            side: Side::Below,
-            ..self
-        }
+        Self { side: Side::Below, ..self }
     }
 
     pub fn with_ver_length(self, len: f64) -> Self {
         Self {
-            ver_cons: Some(Constraint::Length(len)),
+            ver_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
     pub fn with_ver_minimum(self, min: f64) -> Self {
         Self {
-            ver_cons: Some(Constraint::Min(min)),
+            ver_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
     pub fn with_ver_maximum(self, max: f64) -> Self {
         Self {
-            ver_cons: Some(Constraint::Max(max)),
+            ver_con: Some(Constraint::Max(max)),
             ..self
         }
     }
 
     pub fn with_ver_ratio(self, den: u16, div: u16) -> Self {
         Self {
-            ver_cons: Some(Constraint::Ratio(den, div)),
+            ver_con: Some(Constraint::Ratio(den, div)),
             ..self
         }
     }
 
     pub fn with_hor_length(self, len: f64) -> Self {
         Self {
-            hor_cons: Some(Constraint::Length(len)),
+            hor_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
     pub fn with_hor_minimum(self, min: f64) -> Self {
         Self {
-            hor_cons: Some(Constraint::Min(min)),
+            hor_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
     pub fn with_hor_maximum(self, max: f64) -> Self {
         Self {
-            hor_cons: Some(Constraint::Max(max)),
+            hor_con: Some(Constraint::Max(max)),
             ..self
         }
     }
 
     pub fn with_hor_ratio(self, den: u16, div: u16) -> Self {
         Self {
-            hor_cons: Some(Constraint::Ratio(den, div)),
+            hor_con: Some(Constraint::Ratio(den, div)),
             ..self
         }
     }
@@ -215,18 +203,26 @@ impl PushSpecs {
     }
 
     pub fn ver_constraint(&self) -> Option<Constraint> {
-        self.ver_cons
+        self.ver_con
     }
 
     pub fn hor_constraint(&self) -> Option<Constraint> {
-        self.hor_cons
+        self.hor_con
     }
 
     pub fn constraint_on(&self, axis: Axis) -> Option<Constraint> {
         match axis {
-            Axis::Horizontal => self.hor_cons,
-            Axis::Vertical => self.ver_cons
+            Axis::Horizontal => self.hor_con,
+            Axis::Vertical => self.ver_con,
         }
+    }
+
+    pub fn is_resizable_on(&self, axis: Axis) -> bool {
+        let con = match axis {
+            Axis::Horizontal => self.hor_con,
+            Axis::Vertical => self.ver_con,
+        };
+        matches!(con, Some(Constraint::Min(..) | Constraint::Max(..)) | None)
     }
 }
 
