@@ -7,7 +7,7 @@ use duat_core::{
     data::RwData,
     ui::{
         Axis::{self, *},
-        PushSpecs,
+        Constraint, PushSpecs,
     },
 };
 
@@ -141,6 +141,7 @@ impl Rect {
         // If possible, try to make both Rects have the same length.
         // This may not necessarily be the next child.
         if is_resizable
+            && !clustered
             && let Some((res, _)) = children[i..]
                 .iter()
                 .find(|(child, cons)| child.is_resizable_on(axis, cons))
@@ -157,7 +158,7 @@ impl Rect {
             if edge == 1.0 && !*clustered {
                 let frame = p.frame(self.end(axis), next.start(axis));
                 self.eqs.extend([
-                    &frame | EQ(STRONG * 5.0) | 1.0,
+                    &frame | EQ(STRONG * 2.0) | 1.0,
                     (self.end(axis) + &frame) | EQ(REQUIRED) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
@@ -475,6 +476,21 @@ impl Rects {
 
         let entry = (child, Constraints::default());
         parent.kind.children_mut().unwrap().insert(pos, entry);
+    }
+
+    pub fn replace_constraint(&mut self, id: AreaId, con: Constraint, axis: Axis, p: &mut Printer) {
+        let fr = self.fr;
+        let (i, parent) = self.get_parent_mut(id).unwrap();
+        let p_axis = parent.kind.axis().unwrap();
+
+        let (mut target, cons) = parent.kind.children_mut().unwrap().remove(i);
+        let cons = cons.replace(con, axis, p);
+
+        let is_resizable = target.is_resizable_on(p_axis, &cons);
+        target.set_base_eqs(i, parent, p, fr, is_resizable);
+
+        let entry = (target, cons);
+        parent.kind.children_mut().unwrap().insert(i, entry);
     }
 
     /// Fetches the parent of the [`RwData<Rect>`] with the given

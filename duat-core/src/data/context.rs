@@ -207,7 +207,7 @@ where
         let rel = rel.read();
 
         file.try_downcast()
-            .map(|f| (f, area))
+            .map(|w| (w, area))
             .or_else(|| {
                 rel.iter()
                     .find_map(|(widget, area, _)| widget.try_downcast().zip(Some(area)))

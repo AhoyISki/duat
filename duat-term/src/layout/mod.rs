@@ -242,11 +242,11 @@ fn get_eqs(
         cons.map(|c| match c {
             Constraint::Ratio(num, den) => {
                 let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                (new.len(axis) * den as f64) | EQ(STRONG * 2.0) | (ancestor.len(axis) * num as f64)
+                (new.len(axis) * den as f64) | EQ(STRONG * 3.0) | (ancestor.len(axis) * num as f64)
             }
-            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 2.0) | len,
-            Constraint::Min(min) => new.len(axis) | GE(STRONG * 2.0) | min,
-            Constraint::Max(max) => new.len(axis) | LE(STRONG * 2.0) | max,
+            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 3.0) | len,
+            Constraint::Min(min) => new.len(axis) | GE(STRONG * 3.0) | min,
+            Constraint::Max(max) => new.len(axis) | LE(STRONG * 3.0) | max,
         })
     })
 }
