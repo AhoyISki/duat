@@ -2,11 +2,10 @@ mod builder;
 mod layout;
 
 use std::{
-    fmt::Debug,
-    sync::{
+    fmt::Debug, path::PathBuf, sync::{
         atomic::{AtomicBool, Ordering},
         mpsc,
-    },
+    }
 };
 
 use crossterm::event::KeyEvent;
@@ -502,7 +501,7 @@ pub enum Event {
     Resize,
     FormChange,
     ReloadConfig,
-    OpenFiles,
+    OpenFile(PathBuf),
     Quit,
 }
 

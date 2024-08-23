@@ -272,7 +272,7 @@ where
                 BreakTo::ReloadConfig => {
                     break self.reload_config();
                 }
-                BreakTo::OpenFiles => {}
+                BreakTo::OpenFile(file) => self.open_file(file),
             }
         }
     }
@@ -329,7 +329,7 @@ where
                         }
                         Event::ReloadConfig => break BreakTo::ReloadConfig,
                         Event::Quit => break BreakTo::QuitDuat,
-                        Event::OpenFiles => break BreakTo::OpenFiles,
+                        Event::OpenFile(file) => break BreakTo::OpenFile(file),
                     }
                 }
 
@@ -386,7 +386,7 @@ where
 
 enum BreakTo {
     ReloadConfig,
-    OpenFiles,
+    OpenFile(PathBuf),
     QuitDuat,
 }
 
@@ -486,7 +486,7 @@ where
                             .unwrap_or(false)
                     })
                 else {
-                    tx.send(Event::OpenFiles).unwrap();
+                    tx.send(Event::OpenFile(path)).unwrap();
                     return ok!("Created " [*a] file [] ".");
                 };
 
