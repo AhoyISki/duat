@@ -91,13 +91,8 @@ impl EdgeCoords {
             {
                 let coord = Coord::new(self.br.x, self.br.y + 1);
                 return Some((coord, [None, self.line, None, other.line]));
-            // All perpendicular crossings will be iterated, so if two
-            // perpendicular `Coords`, `a` and `b` cross, `self` will
-            // be horizontal in one of the iterations, while `other`
-            // will be vertical, that's when the rest of the logic on
-            // this function is used.
             } else {
-                return None;
+                return other.crossing(*self);
             }
         }
 
