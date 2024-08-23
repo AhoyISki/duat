@@ -1,7 +1,13 @@
 use std::sync::{atomic::AtomicBool, mpsc, LazyLock, RwLock};
 
 use duat_core::{
-    commands::Commands, data::{CommandLineModes, Context, CurFile, CurWidget, RwData}, input::Cursors, session::SessionCfg, text::{PrintCfg, Text}, ui::{Event, Ui as TraitUi}, widgets::{File, RunCommands, ShowNotifications}
+    commands::Commands,
+    data::{CommandLineModes, Context, CurFile, CurWidget, RwData},
+    input::Cursors,
+    session::SessionCfg,
+    text::{PrintCfg, Text},
+    ui::{Event, Ui as TraitUi},
+    widgets::{File, RunCommands, ShowNotifications},
 };
 use duat_term::VertRule;
 
@@ -73,7 +79,12 @@ pub fn run_duat(
         cfg_fn(&mut cfg)
     }
 
-    cfg.set_print_cfg(PRINT_CFG.write().unwrap().take().unwrap_or_default());
+    let print_cfg = match PRINT_CFG.write().unwrap().take() {
+        Some(cfg) => cfg,
+        None => PrintCfg::default_for_input(),
+    };
+
+    cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
         cfg.session_from_args(tx)
