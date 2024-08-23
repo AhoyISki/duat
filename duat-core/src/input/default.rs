@@ -1,6 +1,6 @@
 use super::{
     key::{key, Code, Event, Mod},
-    Cursors, EditHelper,
+    Cursors, EditHelper, InputForFiles,
 };
 use crate::{
     data::{Context, RwData},
@@ -141,6 +141,13 @@ where
 
     fn cursors(&self) -> Option<&Cursors> {
         Some(&self.cursors)
+    }
+}
+
+impl<U> InputForFiles<U> for KeyMap where U: Ui {
+    fn set_cursors(&mut self, cursors: Cursors) {
+        self.cursors = cursors;
+        self.cursors.set_exclusive();
     }
 }
 

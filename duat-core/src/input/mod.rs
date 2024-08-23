@@ -26,7 +26,7 @@ pub use self::{
 use crate::{
     data::{Context, RwData},
     ui::Ui,
-    widgets::ActiveWidget,
+    widgets::{ActiveWidget, File},
 };
 
 pub trait InputMethod<U>: Send + Sync + 'static
@@ -61,4 +61,11 @@ where
         Self: Sized,
     {
     }
+}
+
+pub trait InputForFiles<U>: Sized + InputMethod<U, Widget = File>
+where
+    U: Ui,
+{
+    fn set_cursors(&mut self, cursors: Cursors);
 }

@@ -31,6 +31,20 @@ impl Cursors {
         }
     }
 
+    pub fn set_exclusive(&mut self) {
+        self.inclusive_ranges = false;
+        for cursor in self.buf.iter_mut() {
+            cursor.set_inclusivity(false);
+        }
+    }
+
+    pub fn set_inclusive(&mut self) {
+        self.inclusive_ranges = true;
+        for cursor in self.buf.iter_mut() {
+            cursor.set_inclusivity(true);
+        }
+    }
+
     pub fn insert_from_parts(
         &mut self,
         point: Point,
@@ -232,6 +246,15 @@ mod cursor {
     }
 
     impl Cursor {
+        pub fn new_at_0(inclusive: bool) -> Self {
+            Self {
+                is_inclusive: inclusive,
+                caret: VPoint::default(),
+                anchor: None,
+                assoc_index: None,
+            }
+        }
+
         /// Returns a new instance of [`Cursor`].
         pub(super) fn new(
             point: Point,
@@ -246,15 +269,6 @@ mod cursor {
                 anchor: None,
                 assoc_index: None,
                 is_inclusive: inclusive,
-            }
-        }
-
-        pub fn new_at_0(inclusive: bool) -> Self {
-            Self {
-                is_inclusive: inclusive,
-                caret: VPoint::default(),
-                anchor: None,
-                assoc_index: None,
             }
         }
 
@@ -392,6 +406,10 @@ mod cursor {
             if let Some(anchor) = self.anchor.as_mut() {
                 std::mem::swap(&mut self.caret, anchor)
             }
+        }
+
+        pub(super) fn set_inclusivity(&mut self, inclusive: bool) {
+            self.is_inclusive = inclusive;
         }
 
         /// Returns the cursor's position on the screen.

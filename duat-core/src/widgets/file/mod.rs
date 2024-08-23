@@ -25,7 +25,7 @@ use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     data::{Context, RwData},
     history::History,
-    input::{Cursors, InputMethod, KeyMap},
+    input::{Cursors, InputForFiles, KeyMap},
     palette,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
@@ -39,7 +39,8 @@ where
     U: Ui,
 {
     text_op: TextOp,
-    builder: Arc<dyn Fn(File) -> Widget<U> + Send + Sync + 'static>,
+    cursors: Cursors,
+    builder: Arc<dyn Fn(File, Cursors) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
 }
@@ -51,7 +52,12 @@ where
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            builder: Arc::new(|file| Widget::active(file, RwData::new(KeyMap::new()))),
+            cursors: Cursors::new_exclusive(),
+            builder: Arc::new(|file, cursors| {
+                let mut input = KeyMap::new();
+                InputForFiles::<U>::set_cursors(&mut input, cursors);
+                Widget::active(file, RwData::new(input))
+            }),
             cfg: PrintCfg::default_for_input(),
             // Kinda arbitrary.
             specs: PushSpecs::above(),
@@ -110,16 +116,17 @@ where
             _readers: Vec::new(),
         };
 
-        ((self.builder)(file), Box::new(|| false))
+        ((self.builder)(file, self.cursors), Box::new(|| false))
     }
 
     pub(crate) fn open_path(self, path: PathBuf) -> Self {
         Self { text_op: TextOp::OpenPath(path), ..self }
     }
 
-    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
+    pub(crate) fn take_from_prev(self, prev: &mut File, cursors: Cursors) -> Self {
         let text = std::mem::take(&mut prev.text);
         Self {
+            cursors,
             text_op: TextOp::TakeText(text, prev.path.clone()),
             ..self
         }
@@ -129,8 +136,12 @@ where
         self.cfg = cfg;
     }
 
-    pub(crate) fn set_input(&mut self, input: impl InputMethod<U, Widget = File> + Clone) {
-        self.builder = Arc::new(move |file| Widget::active(file, RwData::new(input.clone())));
+    pub(crate) fn set_input(&mut self, input: impl InputForFiles<U> + Clone) {
+        self.builder = Arc::new(move |file, cursors| {
+            let mut input = input.clone();
+            input.set_cursors(cursors);
+            Widget::active(file, RwData::new(input))
+        });
     }
 
     pub(crate) fn mut_print_cfg(&mut self) -> &mut PrintCfg {
@@ -167,6 +178,7 @@ where
     fn clone(&self) -> Self {
         Self {
             text_op: TextOp::NewBuffer,
+            cursors: self.cursors.clone(),
             builder: self.builder.clone(),
             cfg: self.cfg.clone(),
             specs: self.specs,

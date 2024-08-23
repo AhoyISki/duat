@@ -91,11 +91,6 @@ impl Builder {
             _ => {}
         }
     }
-
-    pub fn clear(&mut self) {
-        self.text.clear();
-        self.last_form = None;
-    }
 }
 
 impl Default for Builder {

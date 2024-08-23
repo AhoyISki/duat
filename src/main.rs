@@ -10,7 +10,7 @@ use std::{
 };
 
 use duat::{pre_setup, prelude::*, run_duat};
-use duat_core::{data::RwData, ui, widgets::File};
+use duat_core::{data::RwData, input::Cursors, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
@@ -134,10 +134,10 @@ fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
 }
 
 type RunFn = fn(
-    Vec<(RwData<File>, bool)>,
+    Vec<(RwData<File>, Cursors, bool)>,
     Sender<ui::Event>,
     Receiver<ui::Event>,
     Statics,
-) -> Vec<(RwData<File>, bool)>;
+) -> Vec<(RwData<File>, Cursors, bool)>;
 
 type Statics = <duat::Ui as ui::Ui>::StaticFns;

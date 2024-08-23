@@ -1,10 +1,10 @@
+use duat_core::input::InputForFiles;
 pub use duat_core::input::InputMethod;
-use duat_core::widgets::File;
 
 use crate::{setup::CFG_FN, Ui};
 
 #[inline(never)]
-pub fn set(input: impl InputMethod<Ui, Widget = File> + Clone) {
+pub fn set(input: impl InputForFiles<Ui> + Clone) {
     let mut cfg_fn = CFG_FN.write().unwrap();
     let prev = cfg_fn.take();
 

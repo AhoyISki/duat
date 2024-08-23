@@ -7,7 +7,7 @@ use duat_core::{
     hooks::{self, Hookable},
     input::{
         key::{key, Code::*, Event, Mod},
-        Cursors, EditHelper, InputMethod,
+        Cursors, EditHelper, InputForFiles, InputMethod,
     },
     palette::{self, Form},
     text::{err, text, CharSet, Point, Text, WordChars},
@@ -622,6 +622,16 @@ where
         let prev = self.mode;
         self.mode = Mode::Normal;
         hooks::trigger::<OnModeChange>((prev, Mode::Normal));
+    }
+}
+
+impl<U> InputForFiles<U> for KeyMap
+where
+    U: Ui,
+{
+    fn set_cursors(&mut self, mut cursors: Cursors) {
+        cursors.set_inclusive();
+        self.cursors = Some(cursors);
     }
 }
 

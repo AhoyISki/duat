@@ -73,36 +73,16 @@ impl Text {
         Builder::new()
     }
 
-    /// Merges `String`s with the body of text, given a range to
-    /// replace.
-    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
-        let edit = edit.as_ref();
+    pub fn insert_tag(&mut self, at: usize, tag: Tag, marker: Marker) {
+        self.tags.insert(at, tag, marker);
+    }
 
-        let old_start = {
-            let p = self.point_at(old.start);
-            (p.byte(), p.char(), p.line())
-        };
+    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
+        self.tags.remove_at(b, markers)
+    }
 
-        let new_len = {
-            let lines = edit.bytes().filter(|b| *b == b'\n').count();
-            (edit.len(), edit.chars().count(), lines)
-        };
-
-        let old_len = unsafe {
-            let str = String::from_utf8_unchecked(
-                self.buf
-                    .splice(old.clone(), edit.as_bytes().iter().cloned())
-                    .collect(),
-            );
-
-            let lines = str.bytes().filter(|b| *b == b'\n').count();
-            (str.len(), str.chars().count(), lines)
-        };
-
-        self.records.transform(old_start, old_len, new_len);
-
-        let new_end = old.start + edit.len();
-        self.tags.transform(old, new_end);
+    pub fn clear_tags(&mut self) {
+        self.tags = Box::new(Tags::with_len(self.buf.len()));
     }
 
     pub(crate) fn insert_str(&mut self, at: usize, str: &str) {
@@ -117,20 +97,6 @@ impl Text {
         let start = change.start.saturating_add_signed(bytes);
         let end = change.added_end().saturating_add_signed(bytes);
         self.replace_range(start..end, &change.taken_text);
-    }
-
-    fn clear(&mut self) {
-        self.buf = Box::new(GapBuffer::new());
-        self.tags.clear();
-        self.records.clear();
-    }
-
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, marker: Marker) {
-        self.tags.insert(at, tag, marker);
-    }
-
-    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
-        self.tags.remove_at(b, markers)
     }
 
     /// Removes the tags for all the cursors, used before they are
@@ -191,6 +157,38 @@ impl Text {
     pub(crate) fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
         let (s0, s1) = self.buf.as_slices();
         Ok(writer.write(s0)? + writer.write(s1)?)
+    }
+
+    /// Merges `String`s with the body of text, given a range to
+    /// replace.
+    fn replace_range(&mut self, old: Range<usize>, edit: impl AsRef<str>) {
+        let edit = edit.as_ref();
+
+        let old_start = {
+            let p = self.point_at(old.start);
+            (p.byte(), p.char(), p.line())
+        };
+
+        let new_len = {
+            let lines = edit.bytes().filter(|b| *b == b'\n').count();
+            (edit.len(), edit.chars().count(), lines)
+        };
+
+        let old_len = unsafe {
+            let str = String::from_utf8_unchecked(
+                self.buf
+                    .splice(old.clone(), edit.as_bytes().iter().cloned())
+                    .collect(),
+            );
+
+            let lines = str.bytes().filter(|b| *b == b'\n').count();
+            (str.len(), str.chars().count(), lines)
+        };
+
+        self.records.transform(old_start, old_len, new_len);
+
+        let new_end = old.start + edit.len();
+        self.tags.transform(old, new_end);
     }
 
     pub fn slices(&self) -> (&'_ str, &'_ str) {

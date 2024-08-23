@@ -268,15 +268,20 @@ pub mod prelude {
 pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
 
-    use crate::prelude::duat_core::{data::RwData, ui, widgets::File};
+    use crate::prelude::duat_core::{
+        data::RwData,
+        ui,
+        widgets::File,
+        input::Cursors
+    };
 
     #[no_mangle]
     fn run(
-        prev_files: Vec<(RwData<File>, bool)>,
+        prev_files: Vec<(RwData<File>, Cursors, bool)>,
         tx: mpsc::Sender<ui::Event>,
         rx: mpsc::Receiver<ui::Event>,
         statics: <Ui as ui::Ui>::StaticFns,
-    ) -> Vec<(RwData<File>, bool)> {
+    ) -> Vec<(RwData<File>, Cursors, bool)> {
         pre_setup();
 
         $setup();

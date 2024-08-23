@@ -10,7 +10,7 @@ use std::{
 use crate::{
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
-    input::InputMethod,
+    input::{Cursors, InputForFiles},
     text::{err, ok, text, PrintCfg, Text},
     ui::{
         build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
@@ -86,13 +86,13 @@ where
 
     pub fn session_from_prev(
         mut self,
-        prev_files: Vec<(RwData<File>, bool)>,
+        prev_files: Vec<(RwData<File>, Cursors, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
-        for (file, is_active) in prev_files {
+        for (file, cursors, is_active) in prev_files {
             let mut file = file.write();
-            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file);
+            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file, cursors);
             inherited_cfgs.push((file_cfg, is_active))
         }
 
@@ -132,7 +132,7 @@ where
         session
     }
 
-    pub fn set_input(&mut self, input: impl InputMethod<U, Widget = File> + Clone) {
+    pub fn set_input(&mut self, input: impl InputForFiles<U> + Clone) {
         self.file_cfg.set_input(input);
     }
 
@@ -210,7 +210,7 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, Cursors, bool)> {
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
         crate::thread::spawn(|| {
@@ -277,7 +277,7 @@ where
         }
     }
 
-    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
+    fn reload_config(mut self) -> Vec<(RwData<File>, Cursors, bool)> {
         self.ui.end();
         self.context.end_duat();
         while crate::thread::still_running() {
@@ -288,20 +288,11 @@ where
             .iter()
             .flat_map(Window::widgets)
             .filter_map(|(widget, area)| {
-                widget
-                    .downcast::<File>()
-                    .inspect(|file| {
-                        // Remove the cursors, so that on the next
-                        // reload, there aren't a bunch of leftover
-                        // Tags.
-                        if let Some(input) = widget.input()
-                            && let Some(cursors) = input.read().cursors()
-                        {
-                            ActiveWidget::<U>::text_mut(&mut *file.write())
-                                .remove_cursor_tags(cursors);
-                        }
-                    })
-                    .zip(Some(area.is_active()))
+                widget.downcast::<File>().map(|file| {
+                    ActiveWidget::<U>::text_mut(&mut *file.write()).clear_tags();
+                    let cursors = widget.input().unwrap().read().cursors().cloned();
+                    (file, cursors.unwrap(), area.is_active())
+                })
             })
             .collect()
     }
