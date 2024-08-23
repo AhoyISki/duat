@@ -99,9 +99,8 @@ impl Rect {
 
     /// Sets the bare minimum equalities for a [`Rect`]
     ///
-    /// This only includes equalities necessary so that `self` won't
-    /// overlap with any other end [`Rect`]s. This means that
-    /// [`Constraint`] and ratio equalities are not added in.
+    /// This includes equalities to ensure no overlap, and a ratio
+    /// equality to give two resizable areas the same len.
     pub fn set_base_eqs(
         &mut self,
         i: usize,
@@ -156,9 +155,9 @@ impl Rect {
             };
 
             if edge == 1.0 && !*clustered {
-                let frame = p.frame(self.end(axis), next.start(axis));
+                let frame = p.edge(&self.br, &next.tl, axis, fr);
                 self.eqs.extend([
-                    &frame | EQ(STRONG * 2.0) | 1.0,
+                    &frame | EQ(STRONG) | 1.0,
                     (self.end(axis) + &frame) | EQ(REQUIRED) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.

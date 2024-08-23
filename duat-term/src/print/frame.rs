@@ -1,3 +1,8 @@
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use duat_core::ui::Axis;
 
 use crate::{area::Coord, print::VarPoint};
@@ -20,45 +25,47 @@ pub enum Brush {
 /// to date.
 #[derive(Debug)]
 pub struct Edge {
-    center: VarPoint,
-    target: VarPoint,
+    pub width: Arc<AtomicUsize>,
+    lhs: VarPoint,
+    rhs: VarPoint,
     axis: Axis,
-    pub frame: Frame,
+    fr: Frame,
 }
 
 impl Edge {
     /// Returns a new instance of [`Edge`].
-    pub(super) fn new(center: VarPoint, target: VarPoint, axis: Axis, frame: Frame) -> Self {
-        Self { center, target, axis, frame }
-    }
-
-    /// The [`Coords`] that will be used to draw the line.
-    pub fn line_coords(&self) -> EdgeCoords {
-        let shift = self.center < self.target;
-        let (x_shift, y_shift) = match self.axis {
-            Axis::Horizontal => (!shift as usize, shift as usize),
-            Axis::Vertical => (shift as usize, !shift as usize),
-        };
-
-        let target = match self.axis {
-            Axis::Horizontal => Coord::new(self.target.x().value(), self.center.y().value()),
-            Axis::Vertical => Coord::new(self.center.x().value(), self.target.y().value()),
-        };
-        let center = Coord::new(
-            self.center.x().value() - x_shift,
-            self.center.y().value() - y_shift,
-        );
-        if self.center < self.target {
-            EdgeCoords::new(center, target, self.axis, self.frame.line())
-        } else {
-            EdgeCoords::new(target, center, self.axis, self.frame.line())
+    pub fn new(
+        width: &Arc<AtomicUsize>,
+        lhs: &VarPoint,
+        rhs: &VarPoint,
+        axis: Axis,
+        fr: Frame,
+    ) -> Self {
+        Self {
+            width: width.clone(),
+            lhs: lhs.clone(),
+            rhs: rhs.clone(),
+            axis,
+            fr,
         }
     }
 
-    /// Checks if the [`VarPoint`]s of a given [`Rect`] match with the
-    /// ones of [`self`].
-    pub(super) fn matches_vars(&self, tl: &VarPoint, br: &VarPoint) -> bool {
-        self.center == *tl && self.target == *br || self.center == *br && self.target == *tl
+    /// The [`Coords`] that will be used to draw the line.
+    pub fn edge_coords(&self) -> Option<EdgeCoords> {
+        if self.width.load(Ordering::Acquire) == 0 {
+            return None;
+        }
+
+        let start = match self.axis {
+            Axis::Horizontal => Coord::new(self.rhs.x().value(), self.lhs.y().value()),
+            Axis::Vertical => Coord::new(self.lhs.x().value(), self.rhs.y().value()),
+        };
+        let end = match self.axis {
+            Axis::Horizontal => Coord::new(self.lhs.x().value(), self.rhs.y().value()),
+            Axis::Vertical => Coord::new(self.rhs.x().value(), self.lhs.y().value()),
+        };
+
+        Some(EdgeCoords::new(start, end, self.axis, self.fr.brush()))
     }
 }
 
@@ -76,23 +83,14 @@ impl EdgeCoords {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn crossing(
-        &self,
-        other: EdgeCoords,
-    ) -> Option<(
-        Coord,
-        Option<Brush>,
-        Option<Brush>,
-        Option<Brush>,
-        Option<Brush>,
-    )> {
+    pub fn crossing(&self, other: EdgeCoords) -> Option<(Coord, [Option<Brush>; 4])> {
         if let Axis::Vertical = self.axis {
             if let Axis::Vertical = other.axis
                 && self.br.x == other.tl.x
                 && self.br.y + 2 == other.tl.y
             {
                 let coord = Coord::new(self.br.x, self.br.y + 1);
-                return Some((coord, None, self.line, None, other.line));
+                return Some((coord, [None, self.line, None, other.line]));
             // All perpendicular crossings will be iterated, so if two
             // perpendicular `Coords`, `a` and `b` cross, `self` will
             // be horizontal in one of the iterations, while `other`
@@ -106,7 +104,7 @@ impl EdgeCoords {
         if let Axis::Horizontal = other.axis {
             if self.br.y == other.br.y && self.br.x + 2 == other.tl.x {
                 let coord = Coord::new(self.br.x + 1, self.br.y);
-                Some((coord, other.line, None, self.line, None))
+                Some((coord, [other.line, None, self.line, None]))
             } else {
                 None
             }
@@ -132,7 +130,7 @@ impl EdgeCoords {
             if up.is_some() || down.is_some() {
                 let coord = Coord { x: other.tl.x, y: self.tl.y };
 
-                Some((coord, right, up, left, down))
+                Some((coord, [right, up, left, down]))
             } else {
                 None
             }
@@ -224,44 +222,15 @@ impl Frame {
 
     /// The [`Line`] of [`self`], which is [`None`] in the
     /// [`Self::Empty`] case.
-    pub fn line(&self) -> Option<Brush> {
+    pub fn brush(&self) -> Option<Brush> {
         match self {
             Self::Empty => None,
-            Self::Surround(line)
-            | Self::Border(line)
-            | Self::Vertical(line)
-            | Self::VerBorder(line)
-            | Self::Horizontal(line)
-            | Self::HorBorder(line) => Some(*line),
+            Self::Surround(brush)
+            | Self::Border(brush)
+            | Self::Vertical(brush)
+            | Self::VerBorder(brush)
+            | Self::Horizontal(brush)
+            | Self::HorBorder(brush) => Some(*brush),
         }
-    }
-
-    /// Given a [`Rect`]'s position and size, and the maximum
-    /// allowable [`Coord`], determines which sides are supposed to be
-    /// framed.
-    pub(super) fn edges(&self, br: &VarPoint, tl: &VarPoint, max: Coord) -> (f64, f64, f64, f64) {
-        let right = br.x().value() == max.x;
-        let up = tl.y().value() == 0;
-        let left = tl.x().value() == 0;
-        let down = br.y().value() == max.y;
-
-        let (up, left) = match self {
-            Self::Surround(_) => (up as usize as f64, left as usize as f64),
-            Self::Vertical(_) => (0.0, left as usize as f64),
-            Self::Horizontal(_) => (up as usize as f64, 0.0),
-            _ => (0.0, 0.0),
-        };
-
-        let (down, right) = match self {
-            Self::Surround(_) => (1.0, 1.0),
-            Self::Vertical(_) => (0.0, 1.0),
-            Self::Horizontal(_) => (1.0, 0.0),
-            Self::Border(_) => (!down as usize as f64, !right as usize as f64),
-            Self::VerBorder(_) => (0.0, !right as usize as f64),
-            Self::HorBorder(_) => (!down as usize as f64, 0.0),
-            Self::Empty => (0.0, 0.0),
-        };
-
-        (right, up, left, down)
     }
 }

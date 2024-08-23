@@ -1,13 +1,11 @@
-mod frame;
 use cassowary::{strength::STRONG, WeightedRelation::*};
 use duat_core::{
     data::RwData,
     ui::{Axis, Constraint, PushSpecs},
 };
 
-pub use self::frame::{Brush, Edge, EdgeCoords, Frame};
 use self::rect::{Rect, Rects};
-use crate::{print::Printer, AreaId, Equality};
+use crate::{print::Printer, AreaId, Equality, Frame};
 
 mod rect;
 
@@ -106,7 +104,6 @@ impl Constraints {
 pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
-    edges: Vec<Edge>,
     pub printer: RwData<Printer>,
 }
 
@@ -118,16 +115,7 @@ impl Layout {
         let rects = Rects::new(&mut printer.write(), fr);
         let main_id = rects.main.id();
 
-        Layout {
-            rects,
-            active_id: main_id,
-            edges: Vec::new(),
-            printer,
-        }
-    }
-
-    pub fn resize(&mut self) {
-        self.printer.write().update(true);
+        Layout { rects, active_id: main_id, printer }
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -159,8 +147,7 @@ impl Layout {
         cluster: bool,
         on_files: bool,
     ) -> (AreaId, Option<AreaId>) {
-        let mut printer = self.printer.write();
-        let (printer, edges) = (&mut printer, &mut self.edges);
+        let mut p = self.printer.write();
         let axis = ps.axis();
 
         let (can_be_sibling, can_be_child) = {
@@ -197,13 +184,13 @@ impl Layout {
         // and the new area.
         } else {
             self.rects
-                .new_parent_of(id, axis, printer, cluster, on_files);
+                .new_parent_of(id, axis, &mut p, cluster, on_files);
             let (_, parent) = self.rects.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
         };
 
-        let new_id = self.rects.push(ps, target, printer, on_files);
+        let new_id = self.rects.push(ps, target, &mut p, on_files);
         (new_id, new_parent_id)
     }
 
@@ -215,11 +202,6 @@ impl Layout {
     /// The current value for the height of [`self`].
     pub fn height(&self) -> usize {
         self.rects.main.len_value(Axis::Vertical)
-    }
-
-    /// The [`Edge`]s that are supposed to be printed to the screen.
-    pub fn edges(&self) -> &[Edge] {
-        self.edges.as_ref()
     }
 
     pub fn get(&self, id: AreaId) -> Option<&Rect> {
@@ -242,11 +224,11 @@ fn get_eqs(
         cons.map(|c| match c {
             Constraint::Ratio(num, den) => {
                 let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                (new.len(axis) * den as f64) | EQ(STRONG * 3.0) | (ancestor.len(axis) * num as f64)
+                (new.len(axis) * den as f64) | EQ(STRONG * 2.0) | (ancestor.len(axis) * num as f64)
             }
-            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 3.0) | len,
-            Constraint::Min(min) => new.len(axis) | GE(STRONG * 3.0) | min,
-            Constraint::Max(max) => new.len(axis) | LE(STRONG * 3.0) | max,
+            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 2.0) | len,
+            Constraint::Min(min) => new.len(axis) | GE(STRONG * 2.0) | min,
+            Constraint::Max(max) => new.len(axis) | LE(STRONG * 2.0) | max,
         })
     })
 }

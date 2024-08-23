@@ -1,28 +1,20 @@
 mod iter;
-mod line;
 
-use std::{
-    fmt::Alignment,
-    io::Write,
-    sync::{atomic::Ordering, LazyLock},
-};
+use std::{fmt::Alignment, io::Write};
 
 use crossterm::{
     cursor,
-    style::{Print, ResetColor, SetStyle},
+    style::{ResetColor, SetStyle},
 };
 use duat_core::{
     data::RwData,
-    palette::{self, FormId, Painter},
+    palette::Painter,
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
-use crate::{
-    layout::{Brush, Edge, EdgeCoords, Layout},
-    AreaId, ConstraintErr, RESIZED,
-};
+use crate::{layout::Layout, AreaId, ConstraintErr};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -99,12 +91,6 @@ impl Area {
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        if RESIZED.fetch_and(false, Ordering::Acquire) {
-            let mut layout = self.layout.write();
-            layout.resize();
-            print_edges(layout.edges());
-        }
-
         let layout = self.layout.read();
         let Some((sender, info)) = layout.rects.get(self.id).and_then(|rect| {
             let sender = rect.sender();
@@ -403,8 +389,6 @@ impl ui::Area for Area {
 
         let (child, parent) = layout.bisect(self.id, specs, cluster, on_files);
 
-        print_edges(layout.edges());
-
         (
             Area::new(child, self.layout.clone()),
             parent.map(|parent| Area::new(parent, self.layout.clone())),
@@ -462,88 +446,6 @@ pub struct PrintInfo {
     x_shift: usize,
     /// The last position of the main cursor.
     last_main: Point,
-}
-
-fn print_edges(edges: &[Edge]) {
-    static FRAME_FORM: LazyLock<FormId> =
-        LazyLock::new(|| palette::set_weak_ref("Frame", "Default"));
-    let frame_form = palette::form_from_id(*FRAME_FORM);
-
-    let mut stdout = std::io::stdout().lock();
-
-    let edges = edges
-        .iter()
-        .map(|edge| edge.line_coords())
-        .collect::<Vec<EdgeCoords>>();
-
-    let mut crossings = Vec::<(
-        Coord,
-        Option<Brush>,
-        Option<Brush>,
-        Option<Brush>,
-        Option<Brush>,
-    )>::new();
-
-    for (index, &coords) in edges.iter().enumerate() {
-        if let Axis::Horizontal = coords.axis {
-            let char = match coords.line {
-                Some(line) => line::horizontal(line, line),
-                None => unreachable!(),
-            };
-            let line = char.to_string().repeat(coords.br.x - coords.tl.x + 1);
-            queue!(
-                stdout,
-                cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
-                ResetColor,
-                SetStyle(frame_form.style),
-                Print(line)
-            )
-        } else {
-            let char = match coords.line {
-                Some(line) => line::vertical(line, line),
-                None => unreachable!(),
-            };
-
-            for y in (coords.tl.y)..=coords.br.y {
-                queue!(
-                    stdout,
-                    cursor::MoveTo(coords.tl.x as u16, y as u16),
-                    ResetColor,
-                    SetStyle(frame_form.style),
-                    Print(char)
-                )
-            }
-        }
-
-        for (other_index, &other_coords) in edges.iter().enumerate() {
-            if index == other_index {
-                continue;
-            }
-
-            if let Some(crossing) = coords.crossing(other_coords) {
-                let prev_crossing = crossings
-                    .iter_mut()
-                    .find(|(coord, ..)| *coord == crossing.0);
-                if let Some((_, right, up, left, down)) = prev_crossing {
-                    *right = right.or(crossing.1);
-                    *up = up.or(crossing.2);
-                    *left = left.or(crossing.3);
-                    *down = down.or(crossing.4);
-                } else {
-                    crossings.push(crossing);
-                }
-            }
-        }
-    }
-
-    for (coord, right, up, left, down) in crossings {
-        queue!(
-            stdout,
-            cursor::MoveTo(coord.x as u16, coord.y as u16),
-            SetStyle(frame_form.style),
-            Print(line::crossing(right, up, left, down, true))
-        )
-    }
 }
 
 /// Scrolls down until the gap between the main cursor and the

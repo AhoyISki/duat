@@ -3,7 +3,7 @@ use std::{
     io::{stdout, Write},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
     },
 };
 
@@ -11,18 +11,32 @@ use cassowary::{strength::STRONG, AddConstraintError, Solver, Variable};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
     execute,
-    style::{ResetColor, SetStyle},
+    style::{Print, ResetColor, SetStyle},
     terminal,
 };
-use duat_core::{palette::DEFAULT_FORM_ID, ui::Axis};
+use duat_core::{
+    palette::{self, FormId, DEFAULT_FORM_ID},
+    ui::Axis,
+};
 
+use self::frame::Edge;
 use crate::{area::Coord, Coords, Equality};
+
+mod frame;
+mod line;
+mod var;
+
+pub use self::{
+    frame::{Brush, Frame},
+    var::{VarPoint, VarValue},
+};
 
 pub struct Printer {
     eqs_to_add: Vec<Equality>,
     eqs_to_remove: Vec<Equality>,
     solver: Solver,
-    map: Vec<(Variable, SavedVar)>,
+    vars: Vec<(Variable, SavedVar)>,
+    edges: Vec<Edge>,
 
     recvs: Vec<Receiver>,
     is_offline: bool,
@@ -32,28 +46,29 @@ pub struct Printer {
 
 impl Printer {
     pub fn new() -> Self {
-        let (map, solver, max) = {
+        let (vars, solver, max) = {
             let (width, height) = crossterm::terminal::size().unwrap();
             let (width, height) = (width as f64, height as f64);
 
-            let mut map = Vec::new();
+            let mut vars = Vec::new();
             let mut solver = Solver::new();
-            let max = VarPoint::new_from_map(&mut map);
-            let strong = STRONG * 5.0;
+            let max = VarPoint::new_from_map(&mut vars);
+            let strong = STRONG * 3.0;
             solver.add_edit_variable(max.x_var(), strong).unwrap();
             solver.suggest_value(max.x_var(), width).unwrap();
 
             solver.add_edit_variable(max.y_var(), strong).unwrap();
             solver.suggest_value(max.y_var(), height).unwrap();
 
-            (map, solver, max)
+            (vars, solver, max)
         };
 
         Self {
             eqs_to_add: Vec::new(),
             eqs_to_remove: Vec::new(),
             solver,
-            map,
+            vars,
+            edges: Vec::new(),
 
             recvs: Vec::new(),
             is_offline: false,
@@ -62,35 +77,39 @@ impl Printer {
         }
     }
 
-    pub fn frame(&mut self, lhs: &VarValue, rhs: &VarValue) -> VarValue {
-        let frame = VarValue::new();
-        let i = self.map.binary_search_by_key(&lhs.var, key).unwrap();
-        let saved = self.map.get_mut(i).unwrap();
-        saved.1 = SavedVar::frame(lhs, rhs, &frame);
+    pub fn edge(&mut self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
+        let width = VarValue::new();
+        let var = &lhs.on_axis(axis).var;
+        let i = self.vars.binary_search_by_key(var, key).unwrap();
+        let saved = self.vars.get_mut(i).unwrap();
+        saved.1 = SavedVar::frame(lhs.on_axis(axis), rhs.on_axis(axis), &width);
 
-        frame
+        let edge = Edge::new(&width.value, lhs, rhs, axis.perp(), fr);
+        self.edges.push(edge);
+
+        width
     }
 
     pub fn set_copy(&mut self, vv: &VarValue, copy: &VarValue) {
         let copy = {
-            let i = self.map.binary_search_by_key(&copy.var, key).unwrap();
-            match self.map.get(i).unwrap() {
-                (_, SavedVar::Val { .. } | SavedVar::Frame { .. }) => copy.value.clone(),
+            let i = self.vars.binary_search_by_key(&copy.var, key).unwrap();
+            match self.vars.get(i).unwrap() {
+                (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => copy.value.clone(),
                 (_, SavedVar::Copy { copy, .. }) => copy.clone(),
             }
         };
 
-        let i = self.map.binary_search_by_key(&vv.var, key).unwrap();
-        self.map.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy);
+        let i = self.vars.binary_search_by_key(&vv.var, key).unwrap();
+        self.vars.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy);
     }
 
     pub fn var_point(&mut self) -> VarPoint {
         let x = VarValue::new();
         let y = VarValue::new();
-        self.map.push((x.var, SavedVar::val(&x)));
-        self.map.push((y.var, SavedVar::val(&y)));
+        self.vars.push((x.var, SavedVar::val(&x)));
+        self.vars.push((y.var, SavedVar::val(&y)));
 
-        VarPoint { y, x }
+        VarPoint::new(x, y)
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,
@@ -112,15 +131,15 @@ impl Printer {
             let mut copies: Vec<(&Arc<AtomicUsize>, _, _)> = Vec::new();
 
             for (var, new) in self.solver.fetch_changes() {
-                let i = self.map.binary_search_by_key(var, key).ok();
-                match i.and_then(|i| self.map.get(i)) {
+                let i = self.vars.binary_search_by_key(var, key).ok();
+                match i.and_then(|i| self.vars.get(i)) {
                     Some((_, SavedVar::Val { value, has_changed })) => {
                         let new = new.round() as usize;
                         let old = value.swap(new, Ordering::Release);
                         any_has_changed |= old != new;
                         has_changed.store(old != new, Ordering::Release);
                     }
-                    Some((_, SavedVar::Frame { frame, rhs, value, has_changed })) => {
+                    Some((_, SavedVar::Edge { width: frame, rhs, value, has_changed })) => {
                         framed.push((frame, rhs, value, has_changed));
                     }
                     Some((_, SavedVar::Copy { copy, value, has_changed })) => {
@@ -154,6 +173,8 @@ impl Printer {
             any_has_changed = old != new;
             has_changed.store(old != new, Ordering::Release);
         }
+
+        print_edges(&self.edges);
 
         any_has_changed
     }
@@ -251,13 +272,18 @@ impl Printer {
     pub fn remove_equality(&mut self, eq: Equality) {
         // If there is no SavedVar, then the first term is a frame.
         let var = eq.expr().terms[0].variable;
-        if let Ok(i) = self.map.binary_search_by_key(&var, key)
-            && let Some((_, saved)) = self.map.get_mut(i)
+        if let Ok(i) = self.vars.binary_search_by_key(&var, key)
+            && let Some((_, saved)) = self.vars.get_mut(i)
         {
             match saved {
                 SavedVar::Val { .. } => {}
-                SavedVar::Frame { value, has_changed, .. }
-                | SavedVar::Copy { value, has_changed, .. } => {
+                SavedVar::Edge { value, has_changed, width, .. } => {
+                    self.edges.retain(|e| !Arc::ptr_eq(&e.width, &width.value));
+
+                    let (value, has_changed) = (value.clone(), has_changed.clone());
+                    *saved = SavedVar::Val { value, has_changed };
+                }
+                SavedVar::Copy { value, has_changed, .. } => {
                     let (value, has_changed) = (value.clone(), has_changed.clone());
                     *saved = SavedVar::Val { value, has_changed };
                 }
@@ -518,8 +544,8 @@ pub enum SavedVar {
         value: Arc<AtomicUsize>,
         has_changed: Arc<AtomicBool>,
     },
-    Frame {
-        frame: VarValue,
+    Edge {
+        width: VarValue,
         rhs: Arc<AtomicUsize>,
         value: Arc<AtomicUsize>,
         has_changed: Arc<AtomicBool>,
@@ -540,8 +566,8 @@ impl SavedVar {
     }
 
     fn frame(lhs: &VarValue, rhs: &VarValue, frame: &VarValue) -> Self {
-        Self::Frame {
-            frame: frame.clone(),
+        Self::Edge {
+            width: frame.clone(),
             rhs: rhs.value.clone(),
             value: lhs.value.clone(),
             has_changed: lhs.has_changed.clone(),
@@ -557,273 +583,70 @@ impl SavedVar {
     }
 }
 
-/// A point on the screen, which can be calculated by [`cassowary`]
-/// and interpreted by `duat_term`.
-#[derive(Clone, PartialEq, PartialOrd)]
-pub struct VarPoint {
-    y: VarValue,
-    x: VarValue,
-}
+fn print_edges(edges: &[Edge]) {
+    static FRAME_FORM: LazyLock<FormId> =
+        LazyLock::new(|| palette::set_weak_ref("Frame", "Default"));
+    let frame_form = palette::form_from_id(*FRAME_FORM);
 
-impl VarPoint {
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new_from_map(vars: &mut Vec<(Variable, SavedVar)>) -> Self {
-        let vp = VarPoint { x: VarValue::new(), y: VarValue::new() };
+    let mut stdout = std::io::stdout().lock();
 
-        vars.push((vp.x.var, SavedVar::val(&vp.x)));
-        vars.push((vp.y.var, SavedVar::val(&vp.y)));
+    let edges: Vec<_> = edges.iter().filter_map(|edge| edge.edge_coords()).collect();
 
-        vp
-    }
+    let mut crossings = Vec::<(Coord, [Option<Brush>; 4])>::new();
 
-    pub fn coord(&self) -> Coord {
-        let x = self.x.value.load(Ordering::Relaxed);
-        let y = self.y.value.load(Ordering::Relaxed);
+    for (i, &coords) in edges.iter().enumerate() {
+        if let Axis::Horizontal = coords.axis {
+            let char = match coords.line {
+                Some(line) => line::horizontal(line, line),
+                None => unreachable!(),
+            };
+            let line = char.to_string().repeat(coords.br.x - coords.tl.x + 1);
+            queue!(
+                stdout,
+                cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
+                ResetColor,
+                SetStyle(frame_form.style),
+                Print(line)
+            )
+        } else {
+            let char = match coords.line {
+                Some(line) => line::vertical(line, line),
+                None => unreachable!(),
+            };
 
-        Coord::new(x, y)
-    }
-
-    pub fn x_var(&self) -> Variable {
-        self.x.var
-    }
-
-    pub fn y_var(&self) -> Variable {
-        self.y.var
-    }
-
-    pub fn y(&self) -> &VarValue {
-        &self.y
-    }
-
-    pub fn x(&self) -> &VarValue {
-        &self.x
-    }
-
-    pub fn on_axis(&self, axis: Axis) -> &VarValue {
-        match axis {
-            Axis::Horizontal => &self.x,
-            Axis::Vertical => &self.y,
+            for y in (coords.tl.y)..=coords.br.y {
+                queue!(
+                    stdout,
+                    cursor::MoveTo(coords.tl.x as u16, y as u16),
+                    ResetColor,
+                    SetStyle(frame_form.style),
+                    Print(char)
+                )
+            }
         }
-    }
-}
 
-impl std::fmt::Debug for VarPoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{:?}: {}, {:?}: {}",
-            self.x.var,
-            self.x.value.load(Ordering::Relaxed),
-            self.y.var,
-            self.y.value.load(Ordering::Relaxed)
-        ))
-    }
-}
-
-/// A [`Variable`], attached to its value, which is automatically kept
-/// up to date.
-#[derive(Clone)]
-pub struct VarValue {
-    var: Variable,
-    value: Arc<AtomicUsize>,
-    has_changed: Arc<AtomicBool>,
-}
-
-impl VarValue {
-    pub fn var(&self) -> Variable {
-        self.var
-    }
-
-    pub fn value(&self) -> usize {
-        self.value.load(Ordering::Acquire)
-    }
-
-    /// Returns a new instance of [`VarValue`]
-    fn new() -> Self {
-        Self {
-            var: Variable::new(),
-            value: Arc::new(AtomicUsize::new(0)),
-            has_changed: Arc::new(AtomicBool::new(false)),
+        for &other_coords in edges[(i + 1)..].iter() {
+            if let Some((coord, sides)) = coords.crossing(other_coords) {
+                let prev_crossing = crossings.iter_mut().find(|(c, ..)| *c == coord);
+                if let Some((_, [right, up, left, down])) = prev_crossing {
+                    *right = right.or(sides[0]);
+                    *up = up.or(sides[1]);
+                    *left = left.or(sides[2]);
+                    *down = down.or(sides[3]);
+                } else {
+                    crossings.push((coord, sides));
+                }
+            }
         }
     }
 
-    pub fn has_changed(&self) -> bool {
-        self.has_changed.swap(false, Ordering::Release)
-    }
-}
-
-impl PartialEq<VarValue> for VarValue {
-    fn eq(&self, other: &VarValue) -> bool {
-        self.var == other.var
-    }
-}
-
-impl PartialOrd<VarValue> for VarValue {
-    fn partial_cmp(&self, other: &VarValue) -> Option<std::cmp::Ordering> {
-        Some(
-            self.value
-                .load(Ordering::Acquire)
-                .cmp(&other.value.load(Ordering::Acquire)),
+    for (coord, [right, up, left, down]) in crossings {
+        queue!(
+            stdout,
+            cursor::MoveTo(coord.x as u16, coord.y as u16),
+            SetStyle(frame_form.style),
+            Print(line::crossing(right, up, left, down, true))
         )
-    }
-}
-
-impl std::ops::BitOr<cassowary::WeightedRelation> for &VarValue {
-    type Output = cassowary::PartialConstraint;
-
-    fn bitor(self, rhs: cassowary::WeightedRelation) -> cassowary::PartialConstraint {
-        self.var | rhs
-    }
-}
-
-impl std::ops::BitOr<&VarValue> for cassowary::PartialConstraint {
-    type Output = cassowary::Constraint;
-
-    fn bitor(self, rhs: &VarValue) -> cassowary::Constraint {
-        self | rhs.var
-    }
-}
-
-impl std::ops::Add<f64> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: f64) -> cassowary::Expression {
-        self.var + rhs
-    }
-}
-
-impl std::ops::Add<&VarValue> for f64 {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: &VarValue) -> cassowary::Expression {
-        self + rhs.var
-    }
-}
-
-impl std::ops::Add<&VarValue> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: &VarValue) -> cassowary::Expression {
-        self.var + rhs.var
-    }
-}
-
-impl std::ops::Add<cassowary::Term> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: cassowary::Term) -> cassowary::Expression {
-        self.var + rhs
-    }
-}
-
-impl std::ops::Add<&VarValue> for cassowary::Term {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: &VarValue) -> cassowary::Expression {
-        self + rhs.var
-    }
-}
-
-impl std::ops::Add<cassowary::Expression> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: cassowary::Expression) -> cassowary::Expression {
-        self.var + rhs
-    }
-}
-
-impl std::ops::Add<&VarValue> for cassowary::Expression {
-    type Output = cassowary::Expression;
-
-    fn add(self, rhs: &VarValue) -> cassowary::Expression {
-        self + rhs.var
-    }
-}
-
-impl std::ops::Neg for &VarValue {
-    type Output = cassowary::Term;
-
-    fn neg(self) -> cassowary::Term {
-        -self.var
-    }
-}
-
-impl std::ops::Sub<f64> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: f64) -> cassowary::Expression {
-        self.var - rhs
-    }
-}
-
-impl std::ops::Sub<&VarValue> for f64 {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
-        self + rhs.var
-    }
-}
-
-impl std::ops::Sub<&VarValue> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
-        self.var - rhs.var
-    }
-}
-
-impl std::ops::Sub<cassowary::Term> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: cassowary::Term) -> cassowary::Expression {
-        self.var - rhs
-    }
-}
-
-impl std::ops::Sub<&VarValue> for cassowary::Term {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
-        self - rhs.var
-    }
-}
-
-impl std::ops::Sub<cassowary::Expression> for &VarValue {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: cassowary::Expression) -> cassowary::Expression {
-        self.var - rhs
-    }
-}
-
-impl std::ops::Sub<&VarValue> for cassowary::Expression {
-    type Output = cassowary::Expression;
-
-    fn sub(self, rhs: &VarValue) -> cassowary::Expression {
-        self - rhs.var
-    }
-}
-
-impl std::ops::Mul<f64> for &VarValue {
-    type Output = cassowary::Term;
-
-    fn mul(self, rhs: f64) -> cassowary::Term {
-        self.var * rhs
-    }
-}
-
-impl std::ops::Mul<VarValue> for f64 {
-    type Output = cassowary::Term;
-
-    fn mul(self, rhs: VarValue) -> cassowary::Term {
-        self * rhs.var
-    }
-}
-
-impl std::ops::Div<f64> for VarValue {
-    type Output = cassowary::Term;
-
-    fn div(self, rhs: f64) -> cassowary::Term {
-        self.var / rhs
     }
 }
 

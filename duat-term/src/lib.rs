@@ -12,10 +12,7 @@
 use std::{
     fmt::Debug,
     io,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        OnceLock,
-    },
+    sync::{atomic::Ordering, OnceLock},
     time::Duration,
 };
 
@@ -29,10 +26,12 @@ use duat_core::{
     text::err,
     ui, DuatError,
 };
-use layout::Layout;
-pub use layout::{Brush, Frame};
-use print::Printer;
-pub use rules::{VertRule, VertRuleCfg};
+
+use self::{layout::Layout, print::Printer};
+pub use self::{
+    print::{Brush, Frame},
+    rules::{VertRule, VertRuleCfg},
+};
 
 mod area;
 mod layout;
@@ -40,7 +39,6 @@ mod print;
 mod rules;
 
 static FUNCTIONS: OnceLock<StaticFns> = OnceLock::new();
-static RESIZED: AtomicBool = AtomicBool::new(false);
 
 pub struct Ui {
     windows: Vec<Area>,
@@ -76,7 +74,7 @@ impl ui::Ui for Ui {
         Ui {
             windows: Vec::new(),
             printer: RwData::new(Printer::new()),
-            fr: Frame::default()
+            fr: Frame::default(),
         }
     }
 
@@ -89,7 +87,7 @@ impl ui::Ui for Ui {
                     let res = match (functions.read)().unwrap() {
                         event::Event::Key(key) => sender.send_key(key),
                         event::Event::Resize(..) => {
-                            RESIZED.store(true, Ordering::Release);
+                            printer.write().update(true);
                             sender.send_resize()
                         }
                         event::Event::FocusGained
