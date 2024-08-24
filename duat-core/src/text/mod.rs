@@ -539,13 +539,16 @@ impl PartialEq for Text {
 
 mod point {
     use super::Item;
-    /// A position in a [`Text`].
-    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct Point {
-        b: usize,
-        c: usize,
-        l: usize,
-    }
+
+    crate::cache::cacheable!(
+        /// A position in [`Text`].
+        #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub struct Point {
+            b: usize,
+            c: usize,
+            l: usize,
+        }
+    );
 
     impl Point {
         /// Returns a new [`Point`], at the first byte.

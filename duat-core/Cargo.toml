@@ -24,6 +24,8 @@ crossterm = { git = "https://github.com/AhoyISki/crossterm.git", version = ">=0.
 parking_lot = "0.12.1"
 gapbuf = "0.1.4"
 nested_intervals = "0.6.0"
+dirs-next = "2.0.0"
+base64 = "0.22.1"
 
 [features]
 # NOTE: Features meant for testing only by myself.

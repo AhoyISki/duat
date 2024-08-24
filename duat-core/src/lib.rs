@@ -9,7 +9,8 @@
     step_trait,
     type_alias_impl_trait,
     result_flattening,
-    is_none_or
+    is_none_or,
+    if_let_guard
 )]
 #![doc = include_str!("../README.md")]
 
@@ -23,6 +24,7 @@ use std::{
 use parking_lot::RwLock;
 use text::{err, hint, Text};
 
+pub mod cache;
 pub mod commands;
 pub mod data;
 pub mod history;
@@ -79,6 +81,38 @@ pub enum Error<E> {
     ///
     /// [`Layout`]: ui::Layout
     LayoutDisallowsFile,
+
+    /// # Cache related errors:
+
+    /// The [cache] was not found in the string
+    ///
+    /// [cache]: cache::CacheAble
+    CacheNotFound,
+
+    /// The [cache] was not parsed properly
+    ///
+    /// [cache]: cache::CacheAble
+    CacheNotParsed,
+}
+
+impl<E> Error<E> {
+    pub fn into_other_type<T>(self) -> Error<T> {
+        match self {
+            Self::AliasNotSingleWord(caller) => Error::AliasNotSingleWord(caller),
+            Self::CallerAlreadyExists(caller) => Error::CallerAlreadyExists(caller),
+            Self::CallerNotFound(caller) => Error::CallerNotFound(caller),
+            Self::CommandFailed(failure) => Error::CommandFailed(failure),
+            Self::Empty => Error::Empty,
+            Self::NoFileYet => Error::NoFileYet,
+            Self::NoFileForRelated => Error::NoFileForRelated,
+            Self::NoWidgetYet => Error::NoWidgetYet,
+            Self::WidgetIsNot => Error::WidgetIsNot,
+            Self::InputIsNot(_) => Error::InputIsNot(PhantomData),
+            Self::LayoutDisallowsFile => Error::LayoutDisallowsFile,
+            Self::CacheNotFound => Error::CacheNotFound,
+            Self::CacheNotParsed => Error::CacheNotParsed,
+        }
+    }
 }
 
 impl<E> DuatError for Error<E> {
@@ -90,28 +124,34 @@ impl<E> DuatError for Error<E> {
         );
 
         match self {
-            Error::AliasNotSingleWord(caller) => err!(
+            Self::AliasNotSingleWord(caller) => err!(
                 "The caller " [*a] caller [] " is not a single word."
             ),
-            Error::CallerAlreadyExists(caller) => err!(
+            Self::CallerAlreadyExists(caller) => err!(
                 "The caller " [*a] caller [] " already exists."
             ),
-            Error::CallerNotFound(caller) => err!("The caller " [*a] caller [] " was not found."),
-            Error::CommandFailed(failure) => failure,
-            Error::Empty => err!("The command is empty."),
-            Error::NoFileYet => err!("There is no file yet. " early),
-            Error::NoFileForRelated => err!(
+            Self::CallerNotFound(caller) => err!("The caller " [*a] caller [] " was not found."),
+            Self::CommandFailed(failure) => failure,
+            Self::Empty => err!("The command is empty."),
+            Self::NoFileYet => err!("There is no file yet. " early),
+            Self::NoFileForRelated => err!(
                 "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
             ),
-            Error::NoWidgetYet => err!("There can be no widget yet. " early),
-            Error::WidgetIsNot => err!(
+            Self::NoWidgetYet => err!("There can be no widget yet. " early),
+            Self::WidgetIsNot => err!(
                 "The widget is not " [*a] { type_name::<E>() } [] ". " early
             ),
-            Error::InputIsNot(..) => err!(
+            Self::InputIsNot(..) => err!(
                 "This file's input is not " [*a] { type_name::<E>() } [] ". " early
             ),
-            Error::LayoutDisallowsFile => err!(
+            Self::LayoutDisallowsFile => err!(
                 "The " [*a] "Layout" [] " disallows the addition of more files."
+            ),
+            Self::CacheNotFound => err!(
+                "The cache for " [*a] { type_name::<E>() } [] " was incomplete."
+            ),
+            Self::CacheNotParsed => err!(
+                "The cache for " [*a] { type_name::<E>() } [] " could not be parsed."
             ),
         }
     }
@@ -120,31 +160,35 @@ impl<E> DuatError for Error<E> {
 impl<E> std::fmt::Debug for Error<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug = f.debug_tuple(match self {
-            Error::AliasNotSingleWord(_) => "AliasNotSingleWord",
-            Error::CallerAlreadyExists(_) => "CallerAlreadyExists",
-            Error::CallerNotFound(_) => "CallerNotFound",
-            Error::CommandFailed(_) => "CommandFailed",
-            Error::Empty => "Empty ",
-            Error::NoFileYet => "NoFileYet ",
-            Error::NoFileForRelated => "NoFileForRelated ",
-            Error::NoWidgetYet => "NoWidgetYet ",
-            Error::WidgetIsNot => "WidgetIsNot ",
-            Error::InputIsNot(_) => "InputIsNot",
-            Error::LayoutDisallowsFile => "LayoutDisallowsFile",
+            Self::AliasNotSingleWord(_) => "AliasNotSingleWord",
+            Self::CallerAlreadyExists(_) => "CallerAlreadyExists",
+            Self::CallerNotFound(_) => "CallerNotFound",
+            Self::CommandFailed(_) => "CommandFailed",
+            Self::Empty => "Empty ",
+            Self::NoFileYet => "NoFileYet ",
+            Self::NoFileForRelated => "NoFileForRelated ",
+            Self::NoWidgetYet => "NoWidgetYet ",
+            Self::WidgetIsNot => "WidgetIsNot ",
+            Self::InputIsNot(_) => "InputIsNot",
+            Self::LayoutDisallowsFile => "LayoutDisallowsFile",
+            Self::CacheNotFound => "CacheNotFound",
+            Self::CacheNotParsed => "CacheNotParsed",
         });
 
         match self {
-            Error::AliasNotSingleWord(str)
-            | Error::CallerAlreadyExists(str)
-            | Error::CallerNotFound(str) => debug.field(&str),
-            Error::CommandFailed(text) => debug.field(&text),
-            Error::Empty
-            | Error::NoFileYet
-            | Error::NoFileForRelated
-            | Error::NoWidgetYet
-            | Error::WidgetIsNot
-            | Error::InputIsNot(_)
-            | Error::LayoutDisallowsFile => &mut debug,
+            Self::AliasNotSingleWord(str)
+            | Self::CallerAlreadyExists(str)
+            | Self::CallerNotFound(str) => debug.field(&str),
+            Self::CommandFailed(text) => debug.field(&text),
+            Self::Empty
+            | Self::NoFileYet
+            | Self::NoFileForRelated
+            | Self::NoWidgetYet
+            | Self::WidgetIsNot
+            | Self::InputIsNot(_)
+            | Self::LayoutDisallowsFile
+            | Self::CacheNotFound
+            | Self::CacheNotParsed => &mut debug,
         }
         .finish()
     }

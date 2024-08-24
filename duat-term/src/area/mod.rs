@@ -209,7 +209,17 @@ impl Area {
 }
 
 impl ui::Area for Area {
+    type Cache = PrintInfo;
     type ConstraintChangeErr = ConstraintErr;
+
+    fn statics(&self) -> Option<Self::Cache> {
+        self.layout
+            .read()
+            .get(self.id)
+            .unwrap()
+            .print_info()
+            .map(|info| *info.read())
+    }
 
     fn width(&self) -> usize {
         self.layout.inspect(|layout| {
@@ -383,11 +393,17 @@ impl ui::Area for Area {
         })
     }
 
-    fn bisect(&self, specs: PushSpecs, cluster: bool, on_files: bool) -> (Area, Option<Area>) {
+    fn bisect(
+        &self,
+        specs: PushSpecs,
+        cluster: bool,
+        on_files: bool,
+        cache: PrintInfo,
+    ) -> (Area, Option<Area>) {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
 
-        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files);
+        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
 
         (
             Area::new(child, self.layout.clone()),
@@ -436,17 +452,19 @@ unsafe impl Sync for Area {}
 
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.
-/// Information about how to print the file on the `Label`.
-#[derive(Default, Debug, Clone, Copy)]
-pub struct PrintInfo {
-    /// The index of the first [`char`] that should be printed on the
-    /// screen.
-    points: (Point, Option<Point>),
-    /// How shifted the text is to the left.
-    x_shift: usize,
-    /// The last position of the main cursor.
-    last_main: Point,
-}
+duat_core::cache::cacheable!(
+    /// Information about how to print the file on the `Label`.
+    #[derive(Default, Debug, Clone, Copy)]
+    pub struct PrintInfo {
+        /// The index of the first [`char`] that should be printed on
+        /// the screen.
+        points: (Point, Option<Point>),
+        /// How shifted the text is to the left.
+        x_shift: usize,
+        /// The last position of the main cursor.
+        last_main: Point,
+    }
+);
 
 /// Scrolls down until the gap between the main cursor and the
 /// bottom of the widget is equal to `config.scrolloff.y_gap`.

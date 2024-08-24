@@ -2,10 +2,12 @@ mod builder;
 mod layout;
 
 use std::{
-    fmt::Debug, path::PathBuf, sync::{
+    fmt::Debug,
+    path::PathBuf,
+    sync::{
         atomic::{AtomicBool, Ordering},
         mpsc,
-    }
+    },
 };
 
 use crossterm::event::KeyEvent;
@@ -16,6 +18,7 @@ pub use self::{
     layout::{FileId, Layout, MasterOnLeft},
 };
 use crate::{
+    cache,
     data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
     palette::Painter,
@@ -24,219 +27,53 @@ use crate::{
     DuatError,
 };
 
-/// A direction, where a [`Widget<U>`] will be placed in relation to
-/// another.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Above,
-    Right,
-    Below,
-    Left,
-}
+/// All the methods that a working gui/tui will need to implement, in
+/// order to use Parsec.
+pub trait Ui: Sized + 'static {
+    /// This is the underlying type that will be handled dynamically
+    type StaticFns: Default + Clone + Copy + Send + Sync;
+    type Area: Area + Clone + PartialEq;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Constraint {
-    Ratio(u16, u16),
-    Length(f64),
-    Min(f64),
-    Max(f64),
-}
+    fn new(statics: Self::StaticFns) -> Self;
 
-/// Information on how a [`Widget<U>`] should be pushed onto another
-///
-/// The side member determines what direction to push into, in
-/// relation to the original widget.
-///
-/// The [`Constraint`] can be one of five types:
-///
-/// - [`Min(min)`][Constraint::Min] represents the minimum length, in
-///   the side's [`Axis`], that this new widget needs.
-/// - [`Max(max)`][Constraint::Max] represents the minimum length, in
-///   the side's [`Axis`], that this new widget needs.
-/// - [`Length(len)`][Constraint::Length] represents a length, in the
-///   side's [`Axis`], that cannot be altered by any means.
-/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio
-///   between the length of the child and the length of the parent.
-/// - [`Percent(per)`][Constraint::Percent] represents the percent of
-///   the parent that the child must take. Must go from 0 to 100
-///   percent.
-///
-/// So if, for example, if a widget is pushed with
-/// [`PushSpecs::left(Constraint::Min(3.0)`][Self::left()]
-///
-/// into another widget, then it will be placed on the left side of
-/// that widget, and will have a minimum `width` of `3`.
-///
-/// If it were pushed with either [`PushSpecs::above()`] or
-/// [`PushSpecs::below()`], it would instead have a minimum `height`
-/// of `3`.
-#[derive(Debug, Clone, Copy)]
-pub struct PushSpecs {
-    side: Side,
-    ver_con: Option<Constraint>,
-    hor_con: Option<Constraint>,
-}
+    /// Initiates and returns a new "master" [`Area`]
+    ///
+    /// This [`Area`] must not have any parents, and must be placed on
+    /// a new window, that is, a plain region with nothing in it.
+    ///
+    /// [`Area`]: Ui::Area
+    fn new_root(&mut self, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
-impl PushSpecs {
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn left() -> Self {
-        Self {
-            side: Side::Left,
-            ver_con: None,
-            hor_con: None,
-        }
-    }
+    /// Functions to trigger when the program begins
+    fn open(&mut self);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn right() -> Self {
-        Self {
-            side: Side::Right,
-            ver_con: None,
-            hor_con: None,
-        }
-    }
+    /// Starts the Ui
+    ///
+    /// This is different from [`Ui::open`], as this is going to run
+    /// on reloads as well.
+    fn start(&mut self, sender: Sender, context: Context<Self>);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn above() -> Self {
-        Self {
-            side: Side::Above,
-            ver_con: None,
-            hor_con: None,
-        }
-    }
+    /// Ends the Ui
+    ///
+    /// This is different from [`Ui::close`], as this is going to run
+    /// on reloads as well.
+    fn end(&mut self);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn below() -> Self {
-        Self {
-            side: Side::Below,
-            ver_con: None,
-            hor_con: None,
-        }
-    }
+    /// Functions to trigger when the program ends
+    fn close(&mut self);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn to_left(self) -> Self {
-        Self { side: Side::Left, ..self }
-    }
+    /// Stop printing updates to the window
+    fn stop_printing(&mut self);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn to_right(self) -> Self {
-        Self { side: Side::Right, ..self }
-    }
+    /// Resume printing updates to the window
+    fn resume_printing(&mut self);
 
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn to_above(self) -> Self {
-        Self { side: Side::Above, ..self }
-    }
-
-    /// Returns a new instance of [`PushSpecs`]
-    pub fn to_below(self) -> Self {
-        Self { side: Side::Below, ..self }
-    }
-
-    pub fn with_ver_length(self, len: f64) -> Self {
-        Self {
-            ver_con: Some(Constraint::Length(len)),
-            ..self
-        }
-    }
-
-    pub fn with_ver_minimum(self, min: f64) -> Self {
-        Self {
-            ver_con: Some(Constraint::Min(min)),
-            ..self
-        }
-    }
-
-    pub fn with_ver_maximum(self, max: f64) -> Self {
-        Self {
-            ver_con: Some(Constraint::Max(max)),
-            ..self
-        }
-    }
-
-    pub fn with_ver_ratio(self, den: u16, div: u16) -> Self {
-        Self {
-            ver_con: Some(Constraint::Ratio(den, div)),
-            ..self
-        }
-    }
-
-    pub fn with_hor_length(self, len: f64) -> Self {
-        Self {
-            hor_con: Some(Constraint::Length(len)),
-            ..self
-        }
-    }
-
-    pub fn with_hor_minimum(self, min: f64) -> Self {
-        Self {
-            hor_con: Some(Constraint::Min(min)),
-            ..self
-        }
-    }
-
-    pub fn with_hor_maximum(self, max: f64) -> Self {
-        Self {
-            hor_con: Some(Constraint::Max(max)),
-            ..self
-        }
-    }
-
-    pub fn with_hor_ratio(self, den: u16, div: u16) -> Self {
-        Self {
-            hor_con: Some(Constraint::Ratio(den, div)),
-            ..self
-        }
-    }
-
-    pub fn axis(&self) -> Axis {
-        match self.side {
-            Side::Above | Side::Below => Axis::Vertical,
-            Side::Right | Side::Left => Axis::Horizontal,
-        }
-    }
-
-    pub fn comes_earlier(&self) -> bool {
-        matches!(self.side, Side::Left | Side::Above)
-    }
-
-    pub fn ver_constraint(&self) -> Option<Constraint> {
-        self.ver_con
-    }
-
-    pub fn hor_constraint(&self) -> Option<Constraint> {
-        self.hor_con
-    }
-
-    pub fn constraint_on(&self, axis: Axis) -> Option<Constraint> {
-        match axis {
-            Axis::Horizontal => self.hor_con,
-            Axis::Vertical => self.ver_con,
-        }
-    }
-
-    pub fn is_resizable_on(&self, axis: Axis) -> bool {
-        let con = match axis {
-            Axis::Horizontal => self.hor_con,
-            Axis::Vertical => self.ver_con,
-        };
-        matches!(con, Some(Constraint::Min(..) | Constraint::Max(..)) | None)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Caret {
-    pub x: usize,
-    pub len: usize,
-    pub wrap: bool,
-}
-
-impl Caret {
-    #[inline(always)]
-    pub fn new(x: usize, len: usize, wrap: bool) -> Self {
-        Self { x, len, wrap }
-    }
+    /// Flush the layout
+    ///
+    /// When this function is called, it means that Duat has finished
+    /// adding or removing widgets, so the ui should calculate the
+    /// layout.
+    fn flush_layout(&mut self);
 }
 
 /// An [`Area`] that supports printing [`Text`]
@@ -245,6 +82,10 @@ impl Caret {
 /// screen where text may be printed.
 pub trait Area: Send + Sync + Sized {
     type ConstraintChangeErr: std::error::Error + DuatError;
+    type Cache: Default + crate::cache::CacheAble;
+
+    /// Returns the statics from `self`
+    fn statics(&self) -> Option<Self::Cache>;
 
     /// Gets the width of the area
     fn width(&self) -> usize;
@@ -432,152 +273,13 @@ pub trait Area: Send + Sync + Sized {
     /// ```
     ///
     /// And so [`Window::bisect()`] should return `(3, None)`.
-    fn bisect(&self, specs: PushSpecs, cluster: bool, on_files: bool) -> (Self, Option<Self>);
-}
-
-/// Elements related to the [`Widget<U>`]s
-pub struct Node<U>
-where
-    U: Ui,
-{
-    widget: Widget<U>,
-    checker: Box<dyn Fn() -> bool>,
-    area: U::Area,
-    busy_updating: AtomicBool,
-}
-
-unsafe impl<U: Ui> Send for Node<U> {}
-unsafe impl<U: Ui> Sync for Node<U> {}
-
-impl<U> Node<U>
-where
-    U: Ui,
-{
-    pub fn needs_update(&self) -> bool {
-        if !self.busy_updating.load(Ordering::Acquire) {
-            (self.checker)() || self.area.has_changed()
-        } else {
-            false
-        }
-    }
-
-    pub fn update_and_print(&self) {
-        self.busy_updating.store(true, Ordering::Release);
-
-        self.widget.update_and_print(&self.area);
-
-        self.busy_updating.store(false, Ordering::Release);
-    }
-}
-
-/// A dimension on screen, can either be horizontal or vertical
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Axis {
-    Horizontal,
-    Vertical,
-}
-
-impl Axis {
-    pub fn perp(&self) -> Self {
-        match self {
-            Axis::Horizontal => Axis::Vertical,
-            Axis::Vertical => Axis::Horizontal,
-        }
-    }
-}
-
-impl From<PushSpecs> for Axis {
-    fn from(value: PushSpecs) -> Self {
-        if let Side::Above | Side::Below = value.side {
-            Axis::Vertical
-        } else {
-            Axis::Horizontal
-        }
-    }
-}
-
-pub enum Event {
-    Key(KeyEvent),
-    Resize,
-    FormChange,
-    ReloadConfig,
-    OpenFile(PathBuf),
-    Quit,
-}
-
-pub struct Sender(mpsc::Sender<Event>);
-
-impl Sender {
-    pub fn new(sender: mpsc::Sender<Event>) -> Self {
-        Self(sender)
-    }
-
-    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::Key(key))
-    }
-
-    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::Resize)
-    }
-
-    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::ReloadConfig)
-    }
-
-    pub(crate) fn _send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::FormChange)
-    }
-}
-
-/// All the methods that a working gui/tui will need to implement, in
-/// order to use Parsec.
-pub trait Ui: Sized + 'static {
-    /// This is the underlying type that will be handled dynamically
-    type StaticFns: Default + Clone + Copy + Send + Sync;
-    // May be removed later.
-    type ConstraintChangeErr: Debug;
-    type Area: Area<ConstraintChangeErr = Self::ConstraintChangeErr> + Clone + PartialEq;
-
-    fn new(statics: Self::StaticFns) -> Self;
-
-    /// Initiates and returns a new "master" [`Area`]
-    ///
-    /// This [`Area`] must not have any parents, and must be placed on
-    /// a new window, that is, a plain region with nothing in it.
-    ///
-    /// [`Area`]: Ui::Area
-    fn new_root(&mut self) -> Self::Area;
-
-    /// Functions to trigger when the program begins
-    fn open(&mut self);
-
-    /// Starts the Ui
-    ///
-    /// This is different from [`Ui::open`], as this is going to run
-    /// on reloads as well.
-    fn start(&mut self, sender: Sender, context: Context<Self>);
-
-    /// Ends the Ui
-    ///
-    /// This is different from [`Ui::close`], as this is going to run
-    /// on reloads as well.
-    fn end(&mut self);
-
-    /// Functions to trigger when the program ends
-    fn close(&mut self);
-
-    /// Stop printing updates to the window
-    fn stop_printing(&mut self);
-
-    /// Resume printing updates to the window
-    fn resume_printing(&mut self);
-
-    /// Flush the layout
-    ///
-    /// When this function is called, it means that Duat has finished
-    /// adding or removing widgets, so the ui should calculate the
-    /// layout.
-    fn flush_layout(&mut self);
+    fn bisect(
+        &self,
+        specs: PushSpecs,
+        cluster: bool,
+        on_files: bool,
+        cache: Self::Cache,
+    ) -> (Self, Option<Self>);
 }
 
 /// A container for a master [`Area`] in Parsec
@@ -602,7 +304,18 @@ where
         checker: impl Fn() -> bool + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, U::Area) {
-        let area = ui.new_root();
+        let statics = if let Some(path) = widget
+            .inspect_as::<File, Option<String>>(|file| file.path_set())
+            .flatten()
+            && let Some(statics) = cache::get_ui_cache::<U>(PathBuf::from(path))
+        {
+            statics
+        } else {
+            <U::Area as Area>::Cache::default()
+        };
+
+        let area = ui.new_root(statics);
+
         widget.update(&area);
 
         let main_node = Node {
@@ -631,8 +344,21 @@ where
         specs: PushSpecs,
         cluster: bool,
     ) -> (U::Area, Option<U::Area>) {
+        let statics = if let Some(path) = widget
+            .inspect_as::<File, Option<String>>(|file| file.path_set())
+            .flatten()
+            && let Some(statics) = cache::get_ui_cache::<U>(PathBuf::from(path))
+        {
+            statics
+        } else {
+            if widget.data_is::<File>() {
+                panic!();
+            }
+            <U::Area as Area>::Cache::default()
+        };
+
         let on_files = self.files_area.is_master_of(area);
-        let (child, parent) = area.bisect(specs, cluster, on_files);
+        let (child, parent) = area.bisect(specs, cluster, on_files, statics);
 
         let node = Node {
             widget,
@@ -729,6 +455,100 @@ where
 
     pub fn len_widgets(&self) -> usize {
         self.nodes.len()
+    }
+}
+
+/// Elements related to the [`Widget<U>`]s
+pub struct Node<U>
+where
+    U: Ui,
+{
+    widget: Widget<U>,
+    checker: Box<dyn Fn() -> bool>,
+    area: U::Area,
+    busy_updating: AtomicBool,
+}
+
+unsafe impl<U: Ui> Send for Node<U> {}
+unsafe impl<U: Ui> Sync for Node<U> {}
+
+impl<U> Node<U>
+where
+    U: Ui,
+{
+    pub fn needs_update(&self) -> bool {
+        if !self.busy_updating.load(Ordering::Acquire) {
+            (self.checker)() || self.area.has_changed()
+        } else {
+            false
+        }
+    }
+
+    pub fn update_and_print(&self) {
+        self.busy_updating.store(true, Ordering::Release);
+
+        self.widget.update_and_print(&self.area);
+
+        self.busy_updating.store(false, Ordering::Release);
+    }
+}
+
+/// A dimension on screen, can either be horizontal or vertical
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+impl Axis {
+    pub fn perp(&self) -> Self {
+        match self {
+            Axis::Horizontal => Axis::Vertical,
+            Axis::Vertical => Axis::Horizontal,
+        }
+    }
+}
+
+impl From<PushSpecs> for Axis {
+    fn from(value: PushSpecs) -> Self {
+        if let Side::Above | Side::Below = value.side {
+            Axis::Vertical
+        } else {
+            Axis::Horizontal
+        }
+    }
+}
+
+pub enum Event {
+    Key(KeyEvent),
+    Resize,
+    FormChange,
+    ReloadConfig,
+    OpenFile(PathBuf),
+    Quit,
+}
+
+pub struct Sender(mpsc::Sender<Event>);
+
+impl Sender {
+    pub fn new(sender: mpsc::Sender<Event>) -> Self {
+        Self(sender)
+    }
+
+    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::Key(key))
+    }
+
+    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::Resize)
+    }
+
+    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::ReloadConfig)
+    }
+
+    pub(crate) fn _send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
+        self.0.send(Event::FormChange)
     }
 }
 
@@ -840,4 +660,219 @@ pub(crate) fn build_file<U>(
     if let Some(parts) = old_file {
         globals.cur_file().unwrap().swap(parts);
     };
+}
+
+/// Information on how a [`Widget<U>`] should be pushed onto another
+///
+/// The side member determines what direction to push into, in
+/// relation to the original widget.
+///
+/// The [`Constraint`] can be one of five types:
+///
+/// - [`Min(min)`][Constraint::Min] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Max(max)`][Constraint::Max] represents the minimum length, in
+///   the side's [`Axis`], that this new widget needs.
+/// - [`Length(len)`][Constraint::Length] represents a length, in the
+///   side's [`Axis`], that cannot be altered by any means.
+/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio
+///   between the length of the child and the length of the parent.
+/// - [`Percent(per)`][Constraint::Percent] represents the percent of
+///   the parent that the child must take. Must go from 0 to 100
+///   percent.
+///
+/// So if, for example, if a widget is pushed with
+/// [`PushSpecs::left(Constraint::Min(3.0)`][Self::left()]
+///
+/// into another widget, then it will be placed on the left side of
+/// that widget, and will have a minimum `width` of `3`.
+///
+/// If it were pushed with either [`PushSpecs::above()`] or
+/// [`PushSpecs::below()`], it would instead have a minimum `height`
+/// of `3`.
+#[derive(Debug, Clone, Copy)]
+pub struct PushSpecs {
+    side: Side,
+    ver_con: Option<Constraint>,
+    hor_con: Option<Constraint>,
+}
+
+impl PushSpecs {
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn left() -> Self {
+        Self {
+            side: Side::Left,
+            ver_con: None,
+            hor_con: None,
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn right() -> Self {
+        Self {
+            side: Side::Right,
+            ver_con: None,
+            hor_con: None,
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn above() -> Self {
+        Self {
+            side: Side::Above,
+            ver_con: None,
+            hor_con: None,
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn below() -> Self {
+        Self {
+            side: Side::Below,
+            ver_con: None,
+            hor_con: None,
+        }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn to_left(self) -> Self {
+        Self { side: Side::Left, ..self }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn to_right(self) -> Self {
+        Self { side: Side::Right, ..self }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn to_above(self) -> Self {
+        Self { side: Side::Above, ..self }
+    }
+
+    /// Returns a new instance of [`PushSpecs`]
+    pub fn to_below(self) -> Self {
+        Self { side: Side::Below, ..self }
+    }
+
+    pub fn with_ver_length(self, len: f64) -> Self {
+        Self {
+            ver_con: Some(Constraint::Length(len)),
+            ..self
+        }
+    }
+
+    pub fn with_ver_minimum(self, min: f64) -> Self {
+        Self {
+            ver_con: Some(Constraint::Min(min)),
+            ..self
+        }
+    }
+
+    pub fn with_ver_maximum(self, max: f64) -> Self {
+        Self {
+            ver_con: Some(Constraint::Max(max)),
+            ..self
+        }
+    }
+
+    pub fn with_ver_ratio(self, den: u16, div: u16) -> Self {
+        Self {
+            ver_con: Some(Constraint::Ratio(den, div)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_length(self, len: f64) -> Self {
+        Self {
+            hor_con: Some(Constraint::Length(len)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_minimum(self, min: f64) -> Self {
+        Self {
+            hor_con: Some(Constraint::Min(min)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_maximum(self, max: f64) -> Self {
+        Self {
+            hor_con: Some(Constraint::Max(max)),
+            ..self
+        }
+    }
+
+    pub fn with_hor_ratio(self, den: u16, div: u16) -> Self {
+        Self {
+            hor_con: Some(Constraint::Ratio(den, div)),
+            ..self
+        }
+    }
+
+    pub fn axis(&self) -> Axis {
+        match self.side {
+            Side::Above | Side::Below => Axis::Vertical,
+            Side::Right | Side::Left => Axis::Horizontal,
+        }
+    }
+
+    pub fn comes_earlier(&self) -> bool {
+        matches!(self.side, Side::Left | Side::Above)
+    }
+
+    pub fn ver_constraint(&self) -> Option<Constraint> {
+        self.ver_con
+    }
+
+    pub fn hor_constraint(&self) -> Option<Constraint> {
+        self.hor_con
+    }
+
+    pub fn constraint_on(&self, axis: Axis) -> Option<Constraint> {
+        match axis {
+            Axis::Horizontal => self.hor_con,
+            Axis::Vertical => self.ver_con,
+        }
+    }
+
+    pub fn is_resizable_on(&self, axis: Axis) -> bool {
+        let con = match axis {
+            Axis::Horizontal => self.hor_con,
+            Axis::Vertical => self.ver_con,
+        };
+        matches!(con, Some(Constraint::Min(..) | Constraint::Max(..)) | None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Constraint {
+    Ratio(u16, u16),
+    Length(f64),
+    Min(f64),
+    Max(f64),
+}
+
+/// A direction, where a [`Widget<U>`] will be placed in relation to
+/// another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Above,
+    Right,
+    Below,
+    Left,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Caret {
+    pub x: usize,
+    pub len: usize,
+    pub wrap: bool,
+}
+
+impl Caret {
+    #[inline(always)]
+    pub fn new(x: usize, len: usize, wrap: bool) -> Self {
+        Self { x, len, wrap }
+    }
 }

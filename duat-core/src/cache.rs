@@ -6,6 +6,8 @@ use std::{
     str::from_utf8_unchecked,
 };
 
+use base64::Engine;
+
 use crate::{
     duat_name,
     ui::{Area, Ui},
@@ -24,10 +26,12 @@ where
     let mut src = dirs_next::cache_dir()?;
     src.push("duat");
 
-    let mut hash = DefaultHasher::new();
-    path.hash(&mut hash);
+    let encoded: String = {
+        let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
+        base64.chars().step_by(3).collect()
+    };
 
-    src.push(format!("{hash:?}-{file_name}"));
+    src.push(format!("{encoded}-{file_name}"));
     src.push(duat_name::<U>());
 
     let contents = std::fs::read_to_string(src).ok()?;
@@ -50,10 +54,12 @@ where
     };
     src.push("duat");
 
-    let mut hash = DefaultHasher::new();
-    path.hash(&mut hash);
+    let encoded: String = {
+        let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
+        base64.chars().step_by(3).collect()
+    };
 
-    src.push(format!("{hash:?}-{file_name}"));
+    src.push(format!("{encoded}-{file_name}"));
 
     if !src.exists() {
         std::fs::create_dir_all(src.clone()).unwrap();

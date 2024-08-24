@@ -28,8 +28,8 @@ enum Kind {
 }
 
 impl Kind {
-    fn end(sender: Sender) -> Self {
-        Self::End(sender, RwData::default())
+    fn end(sender: Sender, info: PrintInfo) -> Self {
+        Self::End(sender, RwData::new(info))
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {
@@ -338,9 +338,9 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(p: &mut Printer, fr: Frame) -> Self {
+    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo) -> Self {
         let (tl, br) = (p.var_point(), p.var_point());
-        let kind = Kind::end(p.sender(&tl, &br));
+        let kind = Kind::end(p.sender(&tl, &br), info);
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
@@ -353,12 +353,19 @@ impl Rects {
         Self { main, floating: Vec::new(), fr }
     }
 
-    pub fn push(&mut self, ps: PushSpecs, id: AreaId, p: &mut Printer, on_files: bool) -> AreaId {
+    pub fn push(
+        &mut self,
+        ps: PushSpecs,
+        id: AreaId,
+        p: &mut Printer,
+        on_files: bool,
+        info: PrintInfo,
+    ) -> AreaId {
         let fr = self.fr;
 
         let mut rect = {
             let (tl, br) = (p.var_point(), p.var_point());
-            let kind = Kind::end(p.sender(&tl, &br));
+            let kind = Kind::end(p.sender(&tl, &br), info);
             Rect::new(tl, br, on_files, kind)
         };
         let new_id = rect.id();

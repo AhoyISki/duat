@@ -48,7 +48,6 @@ pub struct Ui {
 
 impl ui::Ui for Ui {
     type Area = Area;
-    type ConstraintChangeErr = ConstraintErr;
     type StaticFns = StaticFns;
 
     fn new(statics: Self::StaticFns) -> Self {
@@ -110,10 +109,10 @@ impl ui::Ui for Ui {
         });
     }
 
-    fn new_root(&mut self) -> Self::Area {
+    fn new_root(&mut self, cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
         self.printer.write().flush_equalities().unwrap();
 
-        let layout = Layout::new(self.fr, self.printer.clone());
+        let layout = Layout::new(self.fr, self.printer.clone(), cache);
         let root = Area::new(layout.main_index(), RwData::new(layout));
         let area = root.clone();
 

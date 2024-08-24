@@ -144,7 +144,10 @@ where
     }
 }
 
-impl<U> InputForFiles<U> for KeyMap where U: Ui {
+impl<U> InputForFiles<U> for KeyMap
+where
+    U: Ui,
+{
     fn set_cursors(&mut self, cursors: Cursors) {
         self.cursors = cursors;
         self.cursors.set_exclusive();

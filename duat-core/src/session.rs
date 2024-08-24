@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+    cache::store_ui_cache,
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
     input::{Cursors, InputForFiles},
@@ -266,13 +267,29 @@ where
                 BreakTo::QuitDuat => {
                     self.ui.close();
                     self.context.end_duat();
+                    self.save_cache();
 
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
+                    self.save_cache();
+
                     break self.reload_config();
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
+            }
+        }
+    }
+
+    fn save_cache(&self) {
+        let windows = self.windows.read();
+        for (widget, area) in windows.iter().flat_map(Window::widgets) {
+            if let Some(path) = widget
+                .inspect_as::<File, Option<String>>(|file| file.path_set())
+                .flatten()
+                && let Some(statics) = area.statics()
+            {
+                store_ui_cache::<U>(PathBuf::from(path), statics)
             }
         }
     }
