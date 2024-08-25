@@ -8,10 +8,10 @@ use std::{
 };
 
 use crate::{
-    cache::store_ui_cache,
+    cache::{delete_cache, store_cache},
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
-    input::{Cursors, InputForFiles},
+    input::InputForFiles,
     text::{err, ok, text, PrintCfg, Text},
     ui::{
         build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
@@ -87,13 +87,13 @@ where
 
     pub fn session_from_prev(
         mut self,
-        prev_files: Vec<(RwData<File>, Cursors, bool)>,
+        prev_files: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
-        for (file, cursors, is_active) in prev_files {
+        for (file, is_active) in prev_files {
             let mut file = file.write();
-            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file, cursors);
+            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file);
             inherited_cfgs.push((file_cfg, is_active))
         }
 
@@ -211,7 +211,7 @@ where
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, Cursors, bool)> {
+    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
         crate::thread::spawn(|| {
@@ -267,12 +267,12 @@ where
                 BreakTo::QuitDuat => {
                     self.ui.close();
                     self.context.end_duat();
-                    self.save_cache();
+                    self.save_cache(true);
 
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
-                    self.save_cache();
+                    self.save_cache(false);
 
                     break self.reload_config();
                 }
@@ -281,20 +281,30 @@ where
         }
     }
 
-    fn save_cache(&self) {
+    fn save_cache(&self, is_quitting_duat: bool) {
         let windows = self.windows.read();
         for (widget, area) in windows.iter().flat_map(Window::widgets) {
-            if let Some(path) = widget
-                .inspect_as::<File, Option<String>>(|file| file.path_set())
-                .flatten()
-                && let Some(statics) = area.statics()
-            {
-                store_ui_cache::<U>(PathBuf::from(path), statics)
-            }
+            widget.inspect_as::<File, ()>(|file| {
+                if is_quitting_duat && !file.exists() {
+                    delete_cache(file.path());
+                    return;
+                }
+                if let Some(cache) = area.cache() {
+                    store_cache(file.path(), cache);
+                }
+
+                let input = widget.input().unwrap().read();
+
+                let mut cursors = input.cursors().unwrap().clone();
+                if is_quitting_duat {
+                    cursors.remove_extras();
+                }
+                store_cache(file.path(), cursors);
+            });
         }
     }
 
-    fn reload_config(mut self) -> Vec<(RwData<File>, Cursors, bool)> {
+    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
         self.ui.end();
         self.context.end_duat();
         while crate::thread::still_running() {
@@ -307,8 +317,7 @@ where
             .filter_map(|(widget, area)| {
                 widget.downcast::<File>().map(|file| {
                     ActiveWidget::<U>::text_mut(&mut *file.write()).clear_tags();
-                    let cursors = widget.input().unwrap().read().cursors().cloned();
-                    (file, cursors.unwrap(), area.is_active())
+                    (file, area.is_active())
                 })
             })
             .collect()
@@ -431,7 +440,7 @@ where
 
             if paths.is_empty() {
                 file.inspect(|file, _, _| {
-                    if let Some(name) = file.name_set() {
+                    if let Some(name) = file.set_name() {
                         let bytes = file.write()?;
                         ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
                     } else {
@@ -489,7 +498,7 @@ where
                     .find(|(_, (widget, ..))| {
                         widget
                             .inspect_as::<File, bool>(|file| {
-                                file.name_set().is_some_and(|cmp| cmp == name)
+                                file.set_name().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
                     })
@@ -530,7 +539,7 @@ where
                     .find(|(_, (widget, ..))| {
                         widget
                             .inspect_as::<File, bool>(|file| {
-                                file.name_set().is_some_and(|cmp| cmp == name)
+                                file.set_name().is_some_and(|cmp| cmp == name)
                             })
                             .unwrap_or(false)
                     })

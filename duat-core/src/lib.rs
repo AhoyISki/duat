@@ -232,6 +232,31 @@ where
     }
 }
 
+/// Returns the source crate of a given type
+///
+/// This is primarily used on the [`cache`] module.
+pub fn src_crate<T>() -> &'static str
+where
+    T: ?Sized + 'static,
+{
+    static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
+        LazyLock::new(|| RwLock::new(HashMap::new()));
+    let mut crates = CRATES.write();
+    let type_id = TypeId::of::<T>();
+
+    if let Some(src_crate) = crates.get(&type_id) {
+        src_crate
+    } else {
+        let src_crate = std::any::type_name::<T>()
+            .split([' ', ':'])
+            .find(|w| *w != "dyn")
+            .unwrap();
+
+        crates.insert(type_id, src_crate);
+        crates.get(&type_id).unwrap()
+    }
+}
+
 pub mod thread {
     use std::{
         sync::atomic::{AtomicUsize, Ordering},

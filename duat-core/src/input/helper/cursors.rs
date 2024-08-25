@@ -7,12 +7,14 @@ use crate::{
     ui::Area,
 };
 
-#[derive(Clone, Debug)]
-pub struct Cursors {
-    buf: GapBuffer<Cursor>,
-    main: usize,
-    inclusive_ranges: bool,
-}
+crate::cache::cacheable!(
+    #[derive(Clone, Debug)]
+    pub struct Cursors {
+        buf: GapBuffer<Cursor>,
+        main: usize,
+        inclusive_ranges: bool,
+    }
+);
 
 impl Cursors {
     pub fn new_exclusive() -> Self {
@@ -218,6 +220,16 @@ impl Cursors {
     }
 }
 
+impl Default for Cursors {
+    fn default() -> Self {
+        Self {
+            buf: gap_buffer![Cursor::new_at_0(false)],
+            main: 0,
+            inclusive_ranges: false,
+        }
+    }
+}
+
 mod cursor {
     use std::ops::Range;
 
@@ -226,24 +238,26 @@ mod cursor {
         ui::{Area, Caret},
     };
 
-    /// A cursor in the text file. This is an editing cursor, not a
-    /// printing cursor.
-    #[derive(Debug)]
-    pub struct Cursor {
-        /// Current position of the cursor in the file.
-        caret: VPoint,
+    crate::cache::cacheable!(
+        /// A cursor in the text file. This is an editing cursor, not
+        /// a printing cursor.
+        #[derive(Debug)]
+        pub struct Cursor {
+            /// Current position of the cursor in the file.
+            caret: VPoint,
 
-        /// An anchor for a selection.
-        anchor: Option<VPoint>,
+            /// An anchor for a selection.
+            anchor: Option<VPoint>,
 
-        /// Wether or not the selection of this cursor is inclusive or
-        /// not.
-        is_inclusive: bool,
+            /// Wether or not the selection of this cursor is
+            /// inclusive or not.
+            is_inclusive: bool,
 
-        /// The index to a `Change` in the current `Moment`, used for
-        /// greater efficiency.
-        pub(crate) assoc_index: Option<usize>,
-    }
+            /// The index to a `Change` in the current `Moment`, used
+            /// for greater efficiency.
+            pub(crate) assoc_index: Option<usize>,
+        }
+    );
 
     impl Cursor {
         pub fn new_at_0(inclusive: bool) -> Self {
@@ -519,13 +533,15 @@ mod cursor {
         }
     }
 
-    #[derive(Default, Debug, Clone, Copy, Eq)]
-    struct VPoint {
-        point: Point,
-        vcol: usize,
-        dcol: usize,
-        dwcol: usize,
-    }
+    crate::cache::cacheable!(
+        #[derive(Default, Debug, Clone, Copy, Eq)]
+        struct VPoint {
+            point: Point,
+            vcol: usize,
+            dcol: usize,
+            dwcol: usize,
+        }
+    );
 
     impl PartialOrd for VPoint {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

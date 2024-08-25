@@ -23,6 +23,7 @@ use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
+    cache::get_cache,
     data::{Context, RwData},
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
@@ -39,7 +40,6 @@ where
     U: Ui,
 {
     text_op: TextOp,
-    cursors: Cursors,
     builder: Arc<dyn Fn(File, Cursors) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
     specs: PushSpecs,
@@ -52,7 +52,6 @@ where
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            cursors: Cursors::new_exclusive(),
             builder: Arc::new(|file, cursors| {
                 let mut input = KeyMap::new();
                 InputForFiles::<U>::set_cursors(&mut input, cursors);
@@ -70,12 +69,12 @@ where
             TextOp::TakeText(text, path) => (text, path),
             // TODO: Add an option for automatic path creation.
             TextOp::OpenPath(path) => match path.canonicalize() {
-                Ok(path) => (Text::from_file(&path), Path::Set(path)),
+                Ok(path) => (Text::from_file(&path), Path::SetExists(path)),
                 Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
                     if path.parent().is_some_and(std::path::Path::exists) {
                         let parent = path.with_file_name("").canonicalize().unwrap();
                         let path = parent.with_file_name(path.file_name().unwrap());
-                        (Text::new(), Path::Set(path))
+                        (Text::new(), Path::SetAbsent(path))
                     } else {
                         (Text::new(), Path::new_unset())
                     }
@@ -116,17 +115,17 @@ where
             _readers: Vec::new(),
         };
 
-        ((self.builder)(file, self.cursors), Box::new(|| false))
+        let cursors = get_cache::<Cursors>(file.path()).unwrap_or_default();
+        ((self.builder)(file, cursors), Box::new(|| false))
     }
 
     pub(crate) fn open_path(self, path: PathBuf) -> Self {
         Self { text_op: TextOp::OpenPath(path), ..self }
     }
 
-    pub(crate) fn take_from_prev(self, prev: &mut File, cursors: Cursors) -> Self {
+    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
         let text = std::mem::take(&mut prev.text);
         Self {
-            cursors,
             text_op: TextOp::TakeText(text, prev.path.clone()),
             ..self
         }
@@ -178,7 +177,6 @@ where
     fn clone(&self) -> Self {
         Self {
             text_op: TextOp::NewBuffer,
-            cursors: self.cursors.clone(),
             builder: self.builder.clone(),
             cfg: self.cfg.clone(),
             specs: self.specs,
@@ -198,7 +196,7 @@ pub struct File {
 
 impl File {
     pub fn write(&self) -> Result<usize, String> {
-        if let Path::Set(path) = &self.path {
+        if let Path::SetExists(path) = &self.path {
             self.text
                 .write_to(std::io::BufWriter::new(
                     fs::File::create(path).map_err(|err| err.to_string())?,
@@ -252,22 +250,36 @@ impl File {
         )
     }
 
+    pub fn exists(&self) -> bool {
+        self.set_path()
+            .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
+    }
+
     /// The full path of the file.
     ///
     /// If there is no set path, returns `"*scratch file*#{id}"`.
     pub fn path(&self) -> String {
         match &self.path {
-            Path::Set(path) => path.to_string_lossy().to_string(),
-            Path::UnSet(id) => format!("*scratch file*#{id}"),
+            Path::SetExists(path) | Path::SetAbsent(path) => path.to_string_lossy().to_string(),
+            Path::UnSet(id) => {
+                let path = std::env::current_dir()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+
+                format!("{path}/*scratch file*#{id}")
+            }
         }
     }
 
     /// The full path of the file.
     ///
     /// Returns [`None`] if the path has not been set yet.
-    pub fn path_set(&self) -> Option<String> {
+    pub fn set_path(&self) -> Option<String> {
         match &self.path {
-            Path::Set(path) => Some(path.to_string_lossy().to_string()),
+            Path::SetExists(path) | Path::SetAbsent(path) => {
+                Some(path.to_string_lossy().to_string())
+            }
             Path::UnSet(_) => None,
         }
     }
@@ -277,7 +289,9 @@ impl File {
     /// If there is no set path, returns `"*scratch file #{id}*"`.
     pub fn name(&self) -> String {
         match &self.path {
-            Path::Set(path) => path.file_name().unwrap().to_string_lossy().to_string(),
+            Path::SetExists(path) | Path::SetAbsent(path) => {
+                path.file_name().unwrap().to_string_lossy().to_string()
+            }
             Path::UnSet(id) => format!("*scratch file #{id}*"),
         }
     }
@@ -285,9 +299,11 @@ impl File {
     /// The file's name.
     ///
     /// Returns [`None`] if the path has not been set yet.
-    pub fn name_set(&self) -> Option<String> {
+    pub fn set_name(&self) -> Option<String> {
         match &self.path {
-            Path::Set(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            Path::SetExists(path) | Path::SetAbsent(path) => {
+                Some(path.file_name().unwrap().to_string_lossy().to_string())
+            }
             Path::UnSet(_) => None,
         }
     }
@@ -419,7 +435,8 @@ unsafe impl Sync for File {}
 
 #[derive(Clone)]
 enum Path {
-    Set(PathBuf),
+    SetExists(PathBuf),
+    SetAbsent(PathBuf),
     UnSet(usize),
 }
 

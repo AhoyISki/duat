@@ -212,7 +212,7 @@ impl ui::Area for Area {
     type Cache = PrintInfo;
     type ConstraintChangeErr = ConstraintErr;
 
-    fn statics(&self) -> Option<Self::Cache> {
+    fn cache(&self) -> Option<Self::Cache> {
         self.layout
             .read()
             .get(self.id)

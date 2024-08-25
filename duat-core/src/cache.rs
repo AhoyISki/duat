@@ -1,50 +1,42 @@
-use std::{
-    any::TypeId,
-    hash::{DefaultHasher, Hash},
-    io::Write,
-    path::PathBuf,
-    str::from_utf8_unchecked,
-};
+use std::{any::TypeId, io::Write, path::PathBuf, str::from_utf8_unchecked};
 
 use base64::Engine;
 
-use crate::{
-    duat_name,
-    ui::{Area, Ui},
-    Error,
-};
+use crate::{duat_name, src_crate, Error};
 
-pub(super) fn get_ui_cache<U>(path: PathBuf) -> Option<<U::Area as Area>::Cache>
+pub(super) fn get_cache<C>(path: impl Into<PathBuf>) -> Option<C>
 where
-    U: Ui,
+    C: CacheAble,
 {
-    if TypeId::of::<<U::Area as Area>::Cache>() == TypeId::of::<()>() {
+    let path: PathBuf = path.into();
+    if TypeId::of::<C>() == TypeId::of::<()>() {
         return None;
     }
 
     let file_name = path.file_name()?.to_str()?;
     let mut src = dirs_next::cache_dir()?;
-    src.push("duat");
 
     let encoded: String = {
         let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-        base64.chars().step_by(3).collect()
+        base64.chars().step_by(5).collect()
     };
 
-    src.push(format!("{encoded}-{file_name}"));
-    src.push(duat_name::<U>());
+    src.push("duat");
+    src.push(format!("{encoded}:{file_name}"));
+    src.push(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     let contents = std::fs::read_to_string(src).ok()?;
-    let (cache, _) = <U::Area as Area>::Cache::from_cache(contents.as_str()).ok()?;
+    let (cache, _) = C::from_cache(contents.as_str()).ok()?;
 
     Some(cache)
 }
 
-pub(super) fn store_ui_cache<U>(path: PathBuf, cache: <U::Area as Area>::Cache)
+pub(super) fn store_cache<C>(path: impl Into<PathBuf>, cache: C)
 where
-    U: Ui,
+    C: CacheAble,
 {
-    if TypeId::of::<<U::Area as Area>::Cache>() == TypeId::of::<()>() {
+    let path: PathBuf = path.into();
+    if TypeId::of::<C>() == TypeId::of::<()>() {
         return;
     }
 
@@ -52,20 +44,20 @@ where
     let Some(mut src) = dirs_next::cache_dir() else {
         return;
     };
-    src.push("duat");
 
     let encoded: String = {
         let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-        base64.chars().step_by(3).collect()
+        base64.chars().step_by(5).collect()
     };
 
-    src.push(format!("{encoded}-{file_name}"));
+    src.push("duat");
+    src.push(format!("{encoded}:{file_name}"));
 
     if !src.exists() {
         std::fs::create_dir_all(src.clone()).unwrap();
     }
 
-    src.push(duat_name::<U>());
+    src.push(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     let mut contents = std::fs::OpenOptions::new()
         .create(true)
@@ -75,6 +67,26 @@ where
         .unwrap();
 
     contents.write_all(cache.as_cache().as_bytes()).unwrap();
+}
+
+pub fn delete_cache(path: impl Into<PathBuf>) {
+    let path: PathBuf = path.into();
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let Some(mut src) = dirs_next::cache_dir() else {
+        return;
+    };
+
+    let encoded: String = {
+        let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
+        base64.chars().step_by(5).collect()
+    };
+
+    src.push("duat");
+    src.push(format!("{encoded}:{file_name}"));
+
+    if src.exists() {
+        std::fs::remove_dir_all(src).unwrap();
+    }
 }
 
 impl<C> CacheAble for Option<C>
@@ -195,6 +207,38 @@ impl CacheAble for String {
     }
 }
 
+impl<C> CacheAble for gapbuf::GapBuffer<C>
+where
+    C: CacheAble,
+{
+    fn as_cache(&self) -> String {
+        format!("{} {}", self.len(), {
+            self.iter()
+                .map(|value| value.as_cache())
+                .collect::<String>()
+        })
+    }
+
+    fn from_cache(mut cache: &str) -> crate::Result<(Self, &str), Self> {
+        match cache.split_whitespace().next() {
+            Some(num) if let Ok(len) = num.parse::<usize>() => {
+                let mut buf = gapbuf::GapBuffer::with_capacity(len);
+                cache = unsafe { from_utf8_unchecked(&cache.as_bytes()[(num.len() + 1)..]) };
+
+                for _ in 0..len {
+                    let (value, c) = C::from_cache(cache).map_err(Error::into_other_type)?;
+                    cache = c;
+                    buf.push_back(value);
+                }
+
+                Ok((buf, cache))
+            }
+            Some(_) => Err(Error::CacheNotParsed),
+            None => Err(Error::CacheNotFound),
+        }
+    }
+}
+
 primitive_impl_cacheable!(u8);
 primitive_impl_cacheable!(u16);
 primitive_impl_cacheable!(u32);
@@ -244,7 +288,7 @@ tuple_impl_cacheable!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I);
 ///
 /// DO NOT IMPLEMENT THIS TRAIT DIRECTLY, instead, use the
 /// [`cacheable!`] macro to declare structs that may be cacheable.
-pub trait CacheAble: Sized {
+pub trait CacheAble: Sized + 'static {
     fn as_cache(&self) -> String;
 
     fn from_cache(cache: &str) -> crate::Result<(Self, &str), Self>;

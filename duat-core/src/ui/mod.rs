@@ -2,6 +2,7 @@ mod builder;
 mod layout;
 
 use std::{
+    any::type_name,
     fmt::Debug,
     path::PathBuf,
     sync::{
@@ -18,7 +19,7 @@ pub use self::{
     layout::{FileId, Layout, MasterOnLeft},
 };
 use crate::{
-    cache,
+    cache::get_cache,
     data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
     palette::Painter,
@@ -85,7 +86,7 @@ pub trait Area: Send + Sync + Sized {
     type Cache: Default + crate::cache::CacheAble;
 
     /// Returns the statics from `self`
-    fn statics(&self) -> Option<Self::Cache>;
+    fn cache(&self) -> Option<Self::Cache>;
 
     /// Gets the width of the area
     fn width(&self) -> usize;
@@ -304,17 +305,19 @@ where
         checker: impl Fn() -> bool + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, U::Area) {
-        let statics = if let Some(path) = widget
-            .inspect_as::<File, Option<String>>(|file| file.path_set())
+        type C<U> = <<U as Ui>::Area as Area>::Cache;
+
+        let cache = if let Some(path) = widget
+            .inspect_as::<File, Option<String>>(|file| file.set_path())
             .flatten()
-            && let Some(statics) = cache::get_ui_cache::<U>(PathBuf::from(path))
+            && let Some(cache) = get_cache::<C<U>>(path)
         {
-            statics
+            cache
         } else {
             <U::Area as Area>::Cache::default()
         };
 
-        let area = ui.new_root(statics);
+        let area = ui.new_root(cache);
 
         widget.update(&area);
 
@@ -344,12 +347,13 @@ where
         specs: PushSpecs,
         cluster: bool,
     ) -> (U::Area, Option<U::Area>) {
-        let statics = if let Some(path) = widget
-            .inspect_as::<File, Option<String>>(|file| file.path_set())
+        type C<U> = <<U as Ui>::Area as Area>::Cache;
+        let cache = if let Some(path) = widget
+            .inspect_as::<File, Option<String>>(|file| file.set_path())
             .flatten()
-            && let Some(statics) = cache::get_ui_cache::<U>(PathBuf::from(path))
+            && let Some(cache) = get_cache::<C<U>>(path)
         {
-            statics
+            cache
         } else {
             if widget.data_is::<File>() {
                 panic!();
@@ -358,7 +362,7 @@ where
         };
 
         let on_files = self.files_area.is_master_of(area);
-        let (child, parent) = area.bisect(specs, cluster, on_files, statics);
+        let (child, parent) = area.bisect(specs, cluster, on_files, cache);
 
         let node = Node {
             widget,

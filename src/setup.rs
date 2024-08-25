@@ -3,7 +3,6 @@ use std::sync::{atomic::AtomicBool, mpsc, LazyLock, RwLock};
 use duat_core::{
     commands::Commands,
     data::{CommandLineModes, Context, CurFile, CurWidget, RwData},
-    input::Cursors,
     session::SessionCfg,
     text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi},
@@ -60,11 +59,11 @@ pub fn pre_setup() {
 
 #[doc(hidden)]
 pub fn run_duat(
-    prev: Vec<(RwData<File>, Cursors, bool)>,
+    prev: Vec<(RwData<File>, bool)>,
     tx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
     statics: <Ui as TraitUi>::StaticFns,
-) -> Vec<(RwData<File>, Cursors, bool)> {
+) -> Vec<(RwData<File>, bool)> {
     let mut ui = Ui::new(statics);
 
     if hooks::group_exists("CmdLineNotifications") {
