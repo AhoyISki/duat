@@ -19,7 +19,7 @@ pub use self::{
     layout::{FileId, Layout, MasterOnLeft},
 };
 use crate::{
-    cache::get_cache,
+    cache::load_cache,
     data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
     palette::Painter,
@@ -305,12 +305,8 @@ where
         checker: impl Fn() -> bool + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, U::Area) {
-        type C<U> = <<U as Ui>::Area as Area>::Cache;
-
-        let cache = if let Some(path) = widget
-            .inspect_as::<File, Option<String>>(|file| file.set_path())
-            .flatten()
-            && let Some(cache) = get_cache::<C<U>>(path)
+        let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
+            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
         {
             cache
         } else {
@@ -347,11 +343,8 @@ where
         specs: PushSpecs,
         cluster: bool,
     ) -> (U::Area, Option<U::Area>) {
-        type C<U> = <<U as Ui>::Area as Area>::Cache;
-        let cache = if let Some(path) = widget
-            .inspect_as::<File, Option<String>>(|file| file.set_path())
-            .flatten()
-            && let Some(cache) = get_cache::<C<U>>(path)
+        let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
+            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
         {
             cache
         } else {

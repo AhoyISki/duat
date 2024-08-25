@@ -23,7 +23,7 @@ use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
-    cache::get_cache,
+    cache::load_cache,
     data::{Context, RwData},
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
@@ -115,7 +115,7 @@ where
             _readers: Vec::new(),
         };
 
-        let cursors = get_cache::<Cursors>(file.path()).unwrap_or_default();
+        let cursors = load_cache::<Cursors>(file.path()).unwrap_or_default();
         ((self.builder)(file, cursors), Box::new(|| false))
     }
 
