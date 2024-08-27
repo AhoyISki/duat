@@ -1,7 +1,4 @@
-use super::{
-    key::{key, Code, Event, Mod},
-    Cursors, EditHelper, InputForFiles,
-};
+use super::{key, Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod};
 use crate::{
     data::{Context, RwData},
     ui::Ui,
@@ -33,7 +30,7 @@ where
 
     fn send_key(
         &mut self,
-        key: Event,
+        key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
         context: Context<U>,
@@ -41,7 +38,7 @@ where
         let mut editor = EditHelper::<File, U>::new(widget, area, &mut self.cursors);
         match key {
             // Characters
-            key!(Code::Char(ch)) => {
+            key!(KeyCode::Char(ch)) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
@@ -49,7 +46,7 @@ where
                     mover.move_hor(1);
                 });
             }
-            key!(Code::Char(ch), Mod::SHIFT) => {
+            key!(KeyCode::Char(ch), KeyMod::SHIFT) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert(ch);
                 });
@@ -57,7 +54,7 @@ where
                     mover.move_hor(1);
                 });
             }
-            key!(Code::Enter) => {
+            key!(KeyCode::Enter) => {
                 editor.edit_on_each_cursor(|editor| {
                     editor.insert('\n');
                 });
@@ -67,7 +64,7 @@ where
             }
 
             // Text Removal
-            key!(Code::Backspace) => {
+            key!(KeyCode::Backspace) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each(|mover| {
                     let caret = mover.caret();
@@ -89,7 +86,7 @@ where
                     }
                 });
             }
-            key!(Code::Delete) => {
+            key!(KeyCode::Delete) => {
                 let mut anchors = Vec::with_capacity(editor.len_cursors());
                 editor.move_each(|mover| {
                     let caret = mover.caret();
@@ -113,25 +110,25 @@ where
             }
 
             // Movement
-            key!(Code::Left, Mod::SHIFT) => {
+            key!(KeyCode::Left, KeyMod::SHIFT) => {
                 move_each_and_select(editor, Side::Left, 1);
             }
-            key!(Code::Right, Mod::SHIFT) => {
+            key!(KeyCode::Right, KeyMod::SHIFT) => {
                 move_each_and_select(editor, Side::Right, 1);
             }
-            key!(Code::Up, Mod::SHIFT) => {
+            key!(KeyCode::Up, KeyMod::SHIFT) => {
                 move_each_and_select(editor, Side::Top, 1);
             }
-            key!(Code::Down, Mod::SHIFT) => {
+            key!(KeyCode::Down, KeyMod::SHIFT) => {
                 move_each_and_select(editor, Side::Bottom, 1);
             }
-            key!(Code::Left) => move_each(editor, Side::Left, 1),
-            key!(Code::Right) => move_each(editor, Side::Right, 1),
-            key!(Code::Up) => move_each(editor, Side::Top, 1),
-            key!(Code::Down) => move_each(editor, Side::Bottom, 1),
+            key!(KeyCode::Left) => move_each(editor, Side::Left, 1),
+            key!(KeyCode::Right) => move_each(editor, Side::Right, 1),
+            key!(KeyCode::Up) => move_each(editor, Side::Top, 1),
+            key!(KeyCode::Down) => move_each(editor, Side::Bottom, 1),
 
             // Control
-            key!(Code::Char('p'), Mod::CONTROL) => {
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => {
                 let _ = context.commands.run("switch-to CommandLine<Ui>");
             }
 
