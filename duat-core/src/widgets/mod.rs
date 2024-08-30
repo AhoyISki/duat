@@ -97,19 +97,77 @@ where
     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
 
-/// A widget that can receive input and show [`Cursor`]s.
+/// A widget that can receive input and show [`Cursor`]s
+///
+/// The creation of a [`ActiveWidget`] is _relatively_ simple. First,
+/// you must create the struct:
+///
+/// ```rust
+/// struct Menu {
+///     selected_entry: usize,
+///     active_etry: Option<usize>,
+/// }
+/// ```
+/// In this widget, I will create a menu that can be selected by an
+/// [`InputMethod`]. Do note that this widget will create the [`Text`]
+/// to be displayed whenever [`print`] is called, so I'm not storing a
+/// [`Text`] field.
+///
+/// Let's say that said menu has five entries, and one of them can be
+/// active at a time:
+///
+/// ```rust
+/// # struct Menu {
+/// #     selected_entry: usize,
+/// #     active_etry: Option<usize>,
+/// # }
+/// impl Menu {
+///     pub fn shift_selection(&mut self, shift: i32) {
+///         let selected = self.selected_entry as i32 + shift;
+///         if selected < 0 {
+///             self.selected_entry = 4;
+///         } else if selected > 4 {
+///             self.selected_entry = 0;
+///         } else {
+///             self.selected_entry = selected as usize;
+///         }
+///     }
+///
+///     pub fn toggle(&mut self) {
+///         self.active_entry = match self.active_entry {
+///             Some(entry) if entry == self.selected_entry => None,
+///             Some(_) | None => Some(self.selected_entry),
+///         }
+///     }
+/// }
+/// ```
+///
+/// By making these methods `pub`, I can allow an end user to create
+/// their own [`InputMethod`] for this widget.
+///
+/// Now it is time to implement [`PassiveWidget`]
+///
+/// [`Cursor`]: crate::input::Cursor
+/// [`print`]: PassiveWidget::print
 pub trait ActiveWidget<U>: PassiveWidget<U>
 where
     U: Ui,
 {
-    /// A mutable reference to the [`Text`] printed by this cursor.
-    fn text_mut(&mut self) -> &mut Text;
-
     /// Actions to do whenever this [`ActionableWidget`] is focused.
     fn on_focus(&mut self, _area: &U::Area) {}
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
     fn on_unfocus(&mut self, _area: &U::Area) {}
+}
+
+/// An [`ActiveWidget`] that can also send [`&mut Text`]
+///
+/// [`&mut Text`]: Text
+pub trait EditableWidget<U>: ActiveWidget<U>
+where
+    U: Ui,
+{
+    fn text_mut(&mut self) -> &mut Text;
 }
 
 #[allow(private_interfaces)]
@@ -196,15 +254,10 @@ where
     fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, globals: Context<U>) {
         let mut input = self.input.write();
 
-        if let Some(cursors) = input.cursors() {
-            self.widget.write().text_mut().remove_cursor_tags(cursors);
-        }
-
         input.send_key(key, &self.widget, area, globals);
 
         if let Some(cursors) = input.cursors() {
             let mut widget = self.widget.write();
-            widget.text_mut().add_cursor_tags(cursors);
 
             area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
 
@@ -277,7 +330,7 @@ where
         if let Some(file) = dyn_active.try_downcast::<File>()
             && let Some(cursors) = input.read().cursors()
         {
-            ActiveWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
+            EditableWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
         }
 
         let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod<U>>>;

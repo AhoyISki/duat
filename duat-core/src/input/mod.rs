@@ -1,5 +1,8 @@
+/// An [`InputMethod`] for the [`CommandLine`]
 mod commander;
+/// The default [`InputMethod`], inspired by VSCode
 mod default;
+/// A helper struct, used in aiding "cursored" [`InputMethod`]s
 mod helper;
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
@@ -33,7 +36,11 @@ use crate::{
 /// can be modified by input. If you have an `InputMethod` that has
 /// cursors, you should use the [`EditHelper`] struct in order to aide
 /// in the modification of the widget's [`Text`].
-/// 
+///
+/// If your widget/input method combo is not based on cursors. You get
+/// more freedom to modify things as you wish, but you should refrain
+/// from using [`Cursor`]s in order to prevent bugs.
+///
 /// [default]: default::KeyMap
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune

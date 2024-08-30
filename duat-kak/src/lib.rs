@@ -19,7 +19,7 @@ const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
 #[derive(Clone)]
 pub struct KeyMap {
-    cursors: Option<Cursors>,
+    cursors: Cursors,
     mode: Mode,
     sel_type: SelType,
 }
@@ -28,7 +28,7 @@ impl KeyMap {
     pub fn new() -> Self {
         palette::set_weak_form("Mode", Form::new().green());
         KeyMap {
-            cursors: Some(Cursors::new_inclusive()),
+            cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,
             sel_type: SelType::Normal,
         }
@@ -51,7 +51,7 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Insert`.
-    fn match_insert(&mut self, mut helper: EditHelper<File, impl Area>, event: Event) {
+    fn match_insert(&mut self, helper: &mut EditHelper<File, impl Area>, event: Event) {
         if let key!(Left | Down | Up | Right) = event {
             helper.move_each(|m| m.unset_anchor())
         }
@@ -135,7 +135,7 @@ impl KeyMap {
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U: Ui>(
         &mut self,
-        mut helper: EditHelper<File, U::Area>,
+        helper: &mut EditHelper<File, U::Area>,
         event: Event,
         context: Context<U>,
     ) {
@@ -461,7 +461,7 @@ impl KeyMap {
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U: Ui>(
         &mut self,
-        mut helper: EditHelper<File, U::Area>,
+        helper: &mut EditHelper<File, U::Area>,
         event: Event,
         context: Context<U>,
     ) {
@@ -562,22 +562,22 @@ where
         area: &U::Area,
         context: Context<U>,
     ) {
-        let mut cursors = self.cursors.take().unwrap();
+        let mut cursors = std::mem::take(&mut self.cursors);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
 
         match self.mode {
-            Mode::Insert => self.match_insert(helper, event),
+            Mode::Insert => self.match_insert(&mut helper, event),
             Mode::Normal => {
                 let (code, mf) = (&event.code, &event.modifiers);
                 let end_of_line = [Char('j'), Char('J'), Char('k'), Char('K'), Down, Up];
                 if !end_of_line.contains(code) || (*mf != Mod::SHIFT && *mf != Mod::NONE) {
                     self.sel_type = SelType::Normal;
                 }
-                self.match_normal(helper, event, context);
+                self.match_normal(&mut helper, event, context);
             }
             Mode::OneKey(one_key) => {
                 match one_key {
-                    "go to" => self.match_goto(helper, event, context),
+                    "go to" => self.match_goto(&mut helper, event, context),
                     "find" | "until" if let key!(Char(char), Mod::SHIFT | Mod::NONE) = event => {
                         use SelType::*;
                         helper.move_each(|m| {
@@ -619,11 +619,12 @@ where
             }
         }
 
-        self.cursors = Some(cursors);
+		drop(helper);
+        self.cursors = cursors;
     }
 
     fn cursors(&self) -> Option<&Cursors> {
-        self.cursors.as_ref()
+        Some(&self.cursors)
     }
 
     fn on_focus(&mut self, _area: &U::Area)

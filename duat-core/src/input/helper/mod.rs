@@ -13,7 +13,7 @@ use crate::{
     history::Change,
     text::{Pattern, Point, PrintCfg, Text, WordChars},
     ui::Area,
-    widgets::{ActiveWidget, File, PassiveWidget},
+    widgets::{EditableWidget, File, PassiveWidget},
 };
 
 /// The [`Cursor`] and [`Cursors`] structs
@@ -21,7 +21,7 @@ mod cursors;
 
 /// A struct used by [`InputMethod`]s to edit [`Text`]
 ///
-/// You will want to use this struct when editing [`ActiveWidget`]s
+/// You will want to use this struct when editing [`EditableWidget`]s
 /// with [`Cursors`]. For example, let's say you want to create an
 /// input method for the [`File`] widget:
 ///
@@ -162,7 +162,7 @@ mod cursors;
 /// [moving]: Mover
 pub struct EditHelper<'a, W, A>
 where
-    W: ActiveWidget<A::Ui> + 'static,
+    W: EditableWidget<A::Ui> + 'static,
     A: Area,
 {
     widget: &'a RwData<W>,
@@ -172,11 +172,12 @@ where
 
 impl<'a, W, A> EditHelper<'a, W, A>
 where
-    W: ActiveWidget<A::Ui> + 'static,
+    W: EditableWidget<A::Ui> + 'static,
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
+        widget.write().text_mut().remove_cursor_tags(cursors);
         EditHelper { widget, cursors, area }
     }
 
@@ -422,6 +423,16 @@ where
     }
 }
 
+impl<'a, W, A> Drop for EditHelper<'a, W, A>
+where
+    W: EditableWidget<A::Ui> + 'static,
+    A: Area,
+{
+    fn drop(&mut self) {
+        self.widget.write().text_mut().add_cursor_tags(self.cursors);
+    }
+}
+
 /// A cursor that can edit [`Text`], but can't alter selections
 ///
 /// This struct will be used only inside functions passed to the
@@ -456,7 +467,7 @@ where
 pub struct Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: ActiveWidget<A::Ui>,
+    W: EditableWidget<A::Ui>,
 {
     cursor: &'a mut Cursor,
     widget: &'b mut W,
@@ -467,7 +478,7 @@ where
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: ActiveWidget<A::Ui>,
+    W: EditableWidget<A::Ui>,
 {
     /// Returns a new instance of [`Editor`]
     fn new(

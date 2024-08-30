@@ -22,6 +22,7 @@ use std::{
     },
 };
 
+use super::EditableWidget;
 use crate::{
     data::{Context, RoData, RwData},
     hooks,
@@ -212,10 +213,6 @@ impl<U> ActiveWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
-    }
-
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) } '\n');
         self.mode.read().read().on_focus(&mut self.text);
@@ -223,6 +220,15 @@ where
 
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
         self.mode.read().read().on_unfocus(&mut self.text);
+    }
+}
+
+impl<U> EditableWidget<U> for CommandLine<U>
+where
+    U: Ui,
+{
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 }
 

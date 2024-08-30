@@ -22,6 +22,7 @@
 use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
+use super::EditableWidget;
 use crate::{
     cache::load_cache,
     data::{Context, RwData},
@@ -421,7 +422,9 @@ where
     }
 }
 
-impl<U> ActiveWidget<U> for File
+impl<U> ActiveWidget<U> for File where U: Ui {}
+
+impl<U> EditableWidget<U> for File
 where
     U: Ui,
 {
