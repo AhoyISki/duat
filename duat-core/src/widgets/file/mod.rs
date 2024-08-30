@@ -24,7 +24,7 @@ use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     cache::load_cache,
-    data::{Context},
+    data::Context,
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
     palette,

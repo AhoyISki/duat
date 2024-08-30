@@ -24,7 +24,7 @@ pub use self::{
     builder::{err, hint, ok, text, AlignCenter, AlignLeft, AlignRight, Builder, Ghost},
     cfg::*,
     iter::{Item, Iter, RevIter},
-    point::{Point, utf8_char_width},
+    point::{utf8_char_width, Point},
     search::{CharSet, Pattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,
@@ -526,11 +526,6 @@ impl From<std::io::Error> for Text {
     }
 }
 
-impl_from_to_string!(
-    u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 usize isize f32 f64
-    char &str String Box<str> Rc<str> Arc<str>
-);
-
 impl PartialEq for Text {
     fn eq(&self, other: &Self) -> bool {
         self.buf == other.buf && self.tags == other.tags
@@ -744,8 +739,28 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
     (start, end)
 }
 
-macro impl_from_to_string($($t:ty)+) {
-    $(
+impl_from_to_string!(u8);
+impl_from_to_string!(i8);
+impl_from_to_string!(u16);
+impl_from_to_string!(i16);
+impl_from_to_string!(u32);
+impl_from_to_string!(i32);
+impl_from_to_string!(u64);
+impl_from_to_string!(i64);
+impl_from_to_string!(u128);
+impl_from_to_string!(i128);
+impl_from_to_string!(usize);
+impl_from_to_string!(isize);
+impl_from_to_string!(f32);
+impl_from_to_string!(f64);
+impl_from_to_string!(char);
+impl_from_to_string!(&str);
+impl_from_to_string!(String);
+impl_from_to_string!(Box<str>);
+impl_from_to_string!(Rc<str>);
+impl_from_to_string!(Arc<str>);
+
+macro impl_from_to_string($t:ty) {
     impl From<$t> for Text {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
@@ -764,5 +779,4 @@ macro impl_from_to_string($($t:ty)+) {
             }
         }
     }
-    )+
 }

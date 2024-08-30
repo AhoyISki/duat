@@ -101,10 +101,10 @@ where
     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
 
-/// A widget that can receive input and show [`Cursor`]s
+/// A widget that can be modified by input
 ///
-/// The creation of a [`ActiveWidget`] is _relatively_ simple. First,
-/// you must create the struct:
+/// Here is how you can create an [`ActiveWidget`]. First, create the
+/// struct that will become said widget:
 ///
 /// ```rust
 /// # use duat_core::text::Text;
@@ -115,97 +115,212 @@ where
 ///     active_etry: Option<usize>,
 /// }
 /// ```
-/// In this widget, I will create a menu that can be selected by an
-/// [`InputMethod`].
+/// In this widget, I will create a menu whose entries can be selected
+/// by an [`InputMethod`].
 ///
 /// Let's say that said menu has five entries, and one of them can be
 /// active at a time:
 ///
 /// ```rust
-/// # use duat_core::text::Text;
+/// # #![feature(let_chains)]
+/// # use duat_core::text::{Text, text, AlignCenter};
 /// # struct Menu {
 /// #     text: Text,
 /// #     selected_entry: usize,
-/// #     active_etry: Option<usize>,
+/// #     active_entry: Option<usize>,
 /// # }
 /// impl Menu {
 ///     pub fn shift_selection(&mut self, shift: i32) {
 ///         let selected = self.selected_entry as i32 + shift;
-///         if selected < 0 {
-///             self.selected_entry = 4;
+///         self.selected_entry = if selected < 0 {
+///             4
 ///         } else if selected > 4 {
-///             self.selected_entry = 0;
+///             0
 ///         } else {
-///             self.selected_entry = selected as usize;
-///         }
+///             selected as usize
+///         };
 ///     }
 ///
 ///     pub fn toggle(&mut self) {
 ///         self.active_entry = match self.active_entry {
 ///             Some(entry) if entry == self.selected_entry => None,
 ///             Some(_) | None => Some(self.selected_entry),
+///         };
+///     }
+///
+///     fn build_text(&mut self) {
+///         let mut builder = Text::builder();
+///         text!(builder, AlignCenter);
+///
+///         for i in 0..5 {
+///             if let Some(active) = self.active_entry
+///                 && active == i
+///             {
+///                 if self.selected_entry == i {
+///                     text!(builder, [MenuSelActive])
+///                 } else {
+///                     text!(builder, [MenuActive])
+///                 }
+///             } else if self.selected_entry == i {
+///                 text!(builder, [MenuSelected]);
+///             } else {
+///                 text!(builder, [MenuInactive]);
+///             }
+///
+///             text!(builder, "Entry " i);
 ///         }
+///
+///         self.text = builder.finish();
 ///     }
 /// }
 /// ```
 ///
-/// By making these methods `pub`, I can allow an end user to create
-/// their own [`InputMethod`] for this widget.
+/// By making `shift_selection` and `toggle` `pub`, I can allow an end
+/// user to create their own [`InputMethod`] for this widget.
 ///
 /// Let's say that I have created an [`InputMethod`] `MenuInput` for
-/// the `Menu`. Now i'll implement [`PassiveWidget`]:
+/// the `Menu`. This input method is actually the one that is
+/// documented on the documentation entry for [`InputMethod`], you can
+/// check it out next, to see how that was handled.
+///
+/// Now i'll implement [`PassiveWidget`]:
 ///
 /// ```rust
-/// use duat_core::{
-///     input::InputMethod,
-///     text::Text,
-///     ui::{PushSpecs, Ui},
-///     widgets::{PassiveWidget, Widget},
-/// };
-/// #[derive(Default)]
-/// struct Menu {
-///     text: Text,
-///     selected_entry: usize,
-///     active_etry: Option<usize>,
-/// }
-/// #[derive(Default)]
-/// struct MenuInput;
-/// impl<U: Ui> InputMethod for MenuInput {
-///     type Widget = Menu;
-///
-///     fn send_key(
-///         &mut self,
-///         key: KeyEvent,
-///         widget: &RwData<Self::Widget>,
-///         area: &U::Area,
-///         context: Context<U>,
-///     ) {
-///         todo!();
-///     }
-/// }
-/// impl<U: Ui> PassiveWidget for Menu {
+/// # use duat_core::{
+/// #     data::{Context, RwData},
+/// #     input::{InputMethod, KeyEvent},
+/// #     palette::{self, Form},
+/// #     text::{text, Text},
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{ActiveWidget, PassiveWidget, Widget},
+/// # };
+/// # #[derive(Default)]
+/// # struct Menu {
+/// #     text: Text,
+/// #     selected_entry: usize,
+/// #     active_entry: Option<usize>,
+/// # }
+/// # impl Menu {
+/// #     fn build_text(&mut self) {
+/// #         todo!();
+/// #     }
+/// # }
+/// # #[derive(Default)]
+/// # struct MenuInput;
+/// # impl<U: Ui> InputMethod<U> for MenuInput {
+/// #     type Widget = Menu;
+/// #     fn send_key(
+/// #         &mut self,
+/// #         key: KeyEvent,
+/// #         widget: &RwData<Self::Widget>,
+/// #         area: &U::Area,
+/// #         context: Context<U>,
+/// #     ) {
+/// #         todo!();
+/// #     }
+/// # }
+/// impl<U: Ui> PassiveWidget<U> for Menu {
 ///     fn build(
 ///         context: Context<U>,
 ///         on_file: bool,
-///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
-///     where
-///         Self: Sized,
-///     {
+///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let checker = || false;
-///         let widget = Self::default();
+///
+///         let mut widget = Menu::default();
+///         widget.build_text();
+///
 ///         let input = MenuInput::default();
 ///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
+///
 ///         (Widget::active(widget, input), checker, specs)
 ///     }
 ///
 ///     fn text(&self) -> &Text {
 ///         &self.text
 ///     }
+///
+///     fn once(_context: Context<U>) {
+///         palette::set_weak_ref("MenuInactive", "Inactive");
+///         palette::set_weak_ref("MenuSelected", "Inactive");
+///         palette::set_weak_form("MenuActive", Form::new().blue());
+///         palette::set_weak_form("MenuSelActive", Form::new().blue());
+///     }
+/// }
+/// # impl<U: Ui> ActiveWidget<U> for Menu {
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         &mut self.text
+/// #     }
+/// # }
+/// ```
+///
+/// We can use `let checker = || false` here, since [`ActiveWidget`]s
+/// get automatically updated whenever they are focused and a key is
+/// sent.
+///
+/// Now, all that is needed is an implementation of [`ActiveWidget`]:
+///
+/// ```rust
+/// # use duat_core::{
+/// #     data::{Context, RwData},
+/// #     input::{InputMethod, KeyEvent},
+/// #     palette::{self, Form},
+/// #     text::{text, Text},
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{ActiveWidget, PassiveWidget, Widget},
+/// # };
+/// # #[derive(Default)]
+/// # struct Menu {
+/// #     text: Text,
+/// #     selected_entry: usize,
+/// #     active_entry: Option<usize>,
+/// # }
+/// # impl<U: Ui> PassiveWidget<U> for Menu {
+/// #     fn build(
+/// #         context: Context<U>,
+/// #         on_file: bool,
+/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #       (Widget::passive(Menu::default()), || false, PushSpecs::left())
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         &self.text
+/// #     }
+/// #     fn once(_context: Context<U>) {}
+/// # }
+/// impl<U: Ui> ActiveWidget<U> for Menu {
+///     fn text_mut(&mut self) -> &mut Text {
+///         &mut self.text
+///     }
+///
+///     fn on_focus(&mut self, _area: &U::Area) {
+///         palette::set_weak_ref("MenuInactive", "Default");
+///         palette::set_weak_form("MenuSelected", Form::new().on_grey());
+///         palette::set_weak_form(
+///             "MenuSelActive",
+///             Form::new().blue().on_grey(),
+///         );
+///     }
+///
+///     fn on_unfocus(&mut self, _area: &U::Area) {
+///         palette::set_weak_ref("MenuInactive", "Inactive");
+///         palette::set_weak_ref("MenuSelected", "Inactive");
+///         palette::set_weak_form("MenuSelActive", Form::new().blue());
+///     }
 /// }
 /// ```
 ///
+/// Notice that [`ActiveWidget`]s have [`on_focus`] and [`on_unfocus`]
+/// methods, so you can make something happen whenever your widget
+/// becomes focused or unfocused. These methods also provide you with
+/// the [`Area`], so you can do things like [resizing] it.
+///
+/// In this case, I chose to replace the [`Form`]s with "inactive" variants, to visually show when the widget is not active.
+///
 /// [`Cursor`]: crate::input::Cursor
 /// [`print`]: PassiveWidget::print
+/// [`on_focus`]: ActiveWidget::on_focus
+/// [`on_unfocus`]: ActiveWidget::on_unfocus
+/// [resizing]: Area::constrain_ver
+/// [`Form`]: crate::palette::Form
 pub trait ActiveWidget<U>: PassiveWidget<U>
 where
     U: Ui,

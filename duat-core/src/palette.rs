@@ -143,6 +143,7 @@ pub const MAIN_CURSOR_FORM_ID: FormId = FormId(8);
 pub const EXTRA_CURSOR_FORM_ID: FormId = FormId(9);
 pub const MAIN_SEL_FORM_ID: FormId = FormId(10);
 pub const EXTRA_SEL_FORM_ID: FormId = FormId(11);
+pub const INACTIVE_ID: FormId = FormId(12);
 
 #[derive(Debug, Clone, Copy)]
 enum Kind {
@@ -196,6 +197,7 @@ impl FormPalette {
                     ("ExtraCursor", Kind::Ref(MAIN_CURSOR_FORM_ID)),
                     ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
                     ("ExtraSelection", Kind::Ref(MAIN_SEL_FORM_ID)),
+                    ("Inactive", Kind::Form(Form::new().grey())),
                 ];
 
                 RwData::new(InnerPalette {
