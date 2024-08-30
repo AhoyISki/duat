@@ -6,12 +6,12 @@ use duat_core::{
     data::{Context, RwData},
     hooks::{self, Hookable},
     input::{
-        key::{key, Code::*, Event, Mod},
-        Cursors, EditHelper, InputForFiles, InputMethod,
+        key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
+        KeyMod as Mod,
     },
     palette::{self, Form},
     text::{err, text, CharSet, Point, Text, WordChars},
-    ui::Ui,
+    ui::{Area, Ui},
     widgets::File,
 };
 
@@ -51,26 +51,26 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Insert`.
-    fn match_insert<U: Ui>(&mut self, mut helper: EditHelper<File, U>, event: Event) {
+    fn match_insert(&mut self, mut helper: EditHelper<File, impl Area>, event: Event) {
         if let key!(Left | Down | Up | Right) = event {
             helper.move_each(|m| m.unset_anchor())
         }
 
         match event {
             key!(Char(char)) => {
-                helper.edit_on_each_cursor(|editor| editor.insert(char));
+                helper.edit_on_each(|editor| editor.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
-                helper.edit_on_each_cursor(|editor| editor.insert(char));
+                helper.edit_on_each(|editor| editor.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Enter) => {
-                helper.edit_on_each_cursor(|editor| editor.insert('\n'));
+                helper.edit_on_each(|editor| editor.insert('\n'));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.len_cursors());
+                let mut anchors = Vec::with_capacity(helper.cursors_len());
                 helper.move_each(|m| {
                     anchors.push({
                         let c = m.caret();
@@ -82,7 +82,7 @@ impl KeyMap {
                     m.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.edit_on_each(|editor| editor.replace(""));
                 helper.move_each(|m| {
                     if let Some(Some(diff)) = anchors.next() {
                         m.set_anchor();
@@ -92,7 +92,7 @@ impl KeyMap {
                 });
             }
             key!(Delete) => {
-                let mut anchors = Vec::with_capacity(helper.len_cursors());
+                let mut anchors = Vec::with_capacity(helper.cursors_len());
                 helper.move_each(|m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -100,7 +100,7 @@ impl KeyMap {
                     m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each_cursor(|editor| {
+                helper.edit_on_each(|editor| {
                     editor.replace("");
                 });
                 helper.move_each(|m| {
@@ -135,7 +135,7 @@ impl KeyMap {
     /// Commands that are available in `Mode::Normal`.
     fn match_normal<U: Ui>(
         &mut self,
-        mut helper: EditHelper<File, U>,
+        mut helper: EditHelper<File, U::Area>,
         event: Event,
         context: Context<U>,
     ) {
@@ -149,7 +149,8 @@ impl KeyMap {
             key!(Char('j')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -169,7 +170,8 @@ impl KeyMap {
             key!(Char('k')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -192,7 +194,8 @@ impl KeyMap {
             key!(Char('J'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -212,7 +215,8 @@ impl KeyMap {
             key!(Char('K'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    if let Some(point) = m.find_ends('\n').unzip().0.or(m.last_point()) {
+                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -359,12 +363,19 @@ impl KeyMap {
                 self.sel_type = SelType::EndOfNl;
                 helper.move_each(|m| {
                     m.set_caret_on_start();
-                    let p0 = m.find_ends_rev('\n').unzip().1.unwrap_or_default();
+
+                    let p0 = {
+                        let points = m.search_rev('\n').next().unzip().0;
+                        points.unzip().0.unwrap_or_default()
+                    };
                     m.set_caret_on_end();
-                    let p1 = m.find_ends('\n').unzip().0.or(m.last_point()).unwrap();
                     m.move_to(p0);
-                    m.set_anchor();
-                    m.move_to(p1);
+
+                    let (p1, _) = m.search('\n').next().unzip().0.unzip();
+                    if let Some(p1) = p1.or(m.last_point()) {
+                        m.set_anchor();
+                        m.move_to(p1);
+                    }
                 })
             }
             key!(Char(char), mf)
@@ -406,13 +417,13 @@ impl KeyMap {
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('c')) => {
-                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.edit_on_each(|editor| editor.replace(""));
                 helper.move_each(|m| m.unset_anchor());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('d')) => {
-                helper.edit_on_each_cursor(|editor| editor.replace(""));
+                helper.edit_on_each(|editor| editor.replace(""));
                 helper.move_each(|m| m.unset_anchor());
             }
 
@@ -450,7 +461,7 @@ impl KeyMap {
     /// Commands that are available in `Mode::GoTo`.
     fn match_goto<U: Ui>(
         &mut self,
-        mut helper: EditHelper<File, U>,
+        mut helper: EditHelper<File, U::Area>,
         event: Event,
         context: Context<U>,
     ) {
@@ -472,8 +483,8 @@ impl KeyMap {
 
         match event {
             key!(Char('h')) => helper.move_each(|m| {
-                let (_, point) = m.find_ends_rev('\n').unwrap_or_default();
-                m.move_to(point);
+                let (_, p1) = m.search('\n').next().unzip().0.unzip();
+                m.move_to(p1.unwrap_or_default());
             }),
             key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
             key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
@@ -499,8 +510,8 @@ impl KeyMap {
 
                 if let Some(point) = first_char {
                     m.move_to(point);
-                } else if let Some((point, _)) = m.find_ends(CharCat::Space.not().or('\n')) {
-                    m.move_to(point);
+                } else if let Some(((p0, _), _)) = m.search(CharCat::Space.not().or('\n')).next() {
+                    m.move_to(p0);
                 }
             }),
 
@@ -635,7 +646,7 @@ where
     }
 }
 
-fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side, amount: usize) {
+fn select_and_move_each(mut helper: EditHelper<File, impl Area>, direction: Side, amount: usize) {
     helper.move_each(|m| {
         if m.anchor().is_none() {
             m.set_anchor()
@@ -649,8 +660,8 @@ fn select_and_move_each<U: Ui>(mut helper: EditHelper<File, U>, direction: Side,
     });
 }
 
-fn select_and_move_each_wrapped<U: Ui>(
-    mut helper: EditHelper<File, U>,
+fn select_and_move_each_wrapped(
+    mut helper: EditHelper<File, impl Area>,
     direction: Side,
     amount: usize,
 ) {

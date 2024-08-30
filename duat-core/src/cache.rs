@@ -11,7 +11,7 @@
 //!
 //! Plugins are able to store a cache for (almost) any type, by
 //! wrapping the type declaration in the[`cacheable!`] macro. This
-//! macro will implement the [`CacheAble`] trait, allowing a type to
+//! macro will implement the [`Cacheable`] trait, allowing a type to
 //! automatically be cached by Duat:
 //!
 //! ```rust
@@ -43,7 +43,7 @@ use crate::{duat_name, src_crate, Error};
 /// returns [`None`]
 pub(super) fn load_cache<C>(path: impl Into<PathBuf>) -> Option<C>
 where
-    C: CacheAble,
+    C: Cacheable,
 {
     let path: PathBuf = path.into();
     if TypeId::of::<C>() == TypeId::of::<()>() {
@@ -75,7 +75,7 @@ where
 /// The cache will then later be loaded by [`load_cache`].
 pub(super) fn store_cache<C>(path: impl Into<PathBuf>, cache: C)
 where
-    C: CacheAble,
+    C: Cacheable,
 {
     let path: PathBuf = path.into();
     if TypeId::of::<C>() == TypeId::of::<()>() {
@@ -135,9 +135,9 @@ pub(super) fn delete_cache(path: impl Into<PathBuf>) {
     }
 }
 
-impl<C> CacheAble for Option<C>
+impl<C> Cacheable for Option<C>
 where
-    C: CacheAble,
+    C: Cacheable,
 {
     fn as_cache(&self) -> String {
         match self {
@@ -164,10 +164,10 @@ where
     }
 }
 
-impl<C, E> CacheAble for Result<C, E>
+impl<C, E> Cacheable for Result<C, E>
 where
-    C: CacheAble,
-    E: CacheAble,
+    C: Cacheable,
+    E: Cacheable,
 {
     fn as_cache(&self) -> String {
         match self {
@@ -198,9 +198,9 @@ where
     }
 }
 
-impl<C> CacheAble for Vec<C>
+impl<C> Cacheable for Vec<C>
 where
-    C: CacheAble,
+    C: Cacheable,
 {
     fn as_cache(&self) -> String {
         format!("{} {}", self.len(), {
@@ -230,7 +230,7 @@ where
     }
 }
 
-impl CacheAble for String {
+impl Cacheable for String {
     fn as_cache(&self) -> String {
         format!("{} {self} ", self.len())
     }
@@ -253,9 +253,9 @@ impl CacheAble for String {
     }
 }
 
-impl<C> CacheAble for gapbuf::GapBuffer<C>
+impl<C> Cacheable for gapbuf::GapBuffer<C>
 where
-    C: CacheAble,
+    C: Cacheable,
 {
     fn as_cache(&self) -> String {
         format!("{} {}", self.len(), {
@@ -295,7 +295,7 @@ where
 ///
 /// DO NOT IMPLEMENT THIS TRAIT DIRECTLY, instead, use the
 /// [`cacheable!`] macro to declare structs that may be cacheable.
-pub trait CacheAble: Sized + 'static {
+pub trait Cacheable: Sized + 'static {
     /// Returns a cached version of the `struct`, for storage by Duat
     ///
     /// For most structs, this means returning something like `"123
@@ -303,7 +303,7 @@ pub trait CacheAble: Sized + 'static {
     /// perfectly translatable by [`from_cache`] into the implementor
     /// type.
     ///
-    /// [`from_cache`]: CacheAble::from_cache
+    /// [`from_cache`]: Cacheable::from_cache
     fn as_cache(&self) -> String;
 
     /// Recreates the `struct` from a cached [`String`]
@@ -312,37 +312,47 @@ pub trait CacheAble: Sized + 'static {
     /// file where the cache was stored in has been tampered by an
     /// external sources.
     ///
-    /// [`as_cache`]: CacheAble::as_cache
+    /// [`as_cache`]: Cacheable::as_cache
     fn from_cache(cache: &str) -> crate::Result<(Self, &str), Self>;
 }
 
 /// Macro to declare cacheable struct or enum, for use in Duat's cache
 ///
-/// To make a struct cacheable by duat, simply wrap the struct
+/// To make a struct/enum cacheable by duat, simply wrap its
 /// declaration around the macro:
 ///
 /// ```rust
 /// # use duat_core::cache::cacheable;
 /// cacheable!(
+///     #[derive(Default)]
 ///     struct Foo {
 ///         nums: Vec<usize>,
 ///         opt: Option<bool>,
 ///         atomic: AtomicUsize,
 ///     }
 /// )
+///
+/// cacheable!(
+///     #[derive(Clone, Debug)]
+///     enum Bar {
+///         Baz,
+///         Qux(usize, usize),
+///         Quxx { field1: bool, field2: String }
+///     }
+/// )
 /// ```
 ///
-/// In order to be cacheable, all fields in the struct must be one of
-/// the following types:
+/// In order to be cacheable, all fields in the struct/enum must be
+/// one of the following types:
 ///
 /// - Any primitive ([`u32`], [`bool`], [`f64`], etc);
 /// - Any atomic ([`AtomicUsize`], [`AtomicI32`], etc);
-/// - Any tuple of [`CacheAble`] types (up to 8 elements);
+/// - Any tuple of [`Cacheable`] types (up to 8 elements);
 /// - Wrapper types from [`std`] ([`Box`], [`Arc`], [`Mutex`], etc);
-/// - [`Option`]s of types that are [`CacheAble`];
-/// - [`Vec`]s of types that are [`CacheAble`];
-/// - [`Result`]s where the `ok` and `err` variant are [`CacheAble`];
-/// - [`GapBuffer`]s of types that are [`CacheAble`];
+/// - [`Option`]s of types that are [`Cacheable`];
+/// - [`Vec`]s of types that are [`Cacheable`];
+/// - [`Result`]s where the `ok` and `err` variant are [`Cacheable`];
+/// - [`GapBuffer`]s of types that are [`Cacheable`];
 /// - Other types declared with [`cacheable!`];
 ///
 /// [`AtomicUsize`]: std::sync::atomic::AtomicUsize
@@ -367,11 +377,11 @@ pub macro cacheable {
             )*
         }
 
-        impl CacheAble for $struct {
+        impl Cacheable for $struct {
             fn as_cache(&self) -> String {
                 let mut cache = String::new();
                 $(
-                    cache += <$tf as CacheAble>::as_cache(&self.$field).as_str();
+                    cache += <$tf as Cacheable>::as_cache(&self.$field).as_str();
                 )*
 
                 cache
@@ -379,7 +389,7 @@ pub macro cacheable {
 
             fn from_cache(mut cache: &str) -> $crate::Result<(Self, &str), Self> {
                 $(
-                    let ($field, c) = <$tf as CacheAble>::from_cache(cache)
+                    let ($field, c) = <$tf as Cacheable>::from_cache(cache)
                         .map_err(Error::into_other_type)?;
                     cache = c;
                 )*
@@ -423,7 +433,7 @@ pub macro cacheable {
             )*
         );
 
-        impl CacheAble for $struct {
+        impl Cacheable for $struct {
             fn as_cache(&self) -> String {
                 let mut cache = String::new();
                 cacheable!(@cache_from_tup self, cache, [0, 1, 2, 3, 4, 5, 6, 7, 8], [$($tf),*])
@@ -583,7 +593,7 @@ pub macro cacheable {
         $(#[$enum_meta:meta])*
         $v:vis enum $enum:ident { $($variants:tt)* }
     ) => {
-        impl CacheAble for $enum {
+        impl Cacheable for $enum {
             fn as_cache(&self) -> String {
                 cacheable!(@cache_from_variant self, $($variants)*)
             }
@@ -660,9 +670,9 @@ wrapper_impl_cacheable!(
     Result::unwrap
 );
 
-/// [`CacheAble`] implentation for primitive types
+/// [`Cacheable`] implentation for primitive types
 macro primitive_impl_cacheable($t:ty) {
-    impl CacheAble for $t {
+    impl Cacheable for $t {
         fn as_cache(&self) -> String {
             self.to_string() + " "
         }
@@ -681,9 +691,9 @@ macro primitive_impl_cacheable($t:ty) {
     }
 }
 
-/// [`CacheAble`] implementation for atomics
+/// [`Cacheable`] implementation for atomics
 macro atomic_impl_cacheable($t:ty) {
-    impl CacheAble for $t {
+    impl Cacheable for $t {
         fn as_cache(&self) -> String {
             let value = self.load(std::sync::atomic::Ordering::Relaxed);
             value.to_string() + " "
@@ -703,11 +713,11 @@ macro atomic_impl_cacheable($t:ty) {
     }
 }
 
-/// [`CacheAble`] implementation for tuples
+/// [`Cacheable`] implementation for tuples
 macro tuple_impl_cacheable($($field:ident: $tf:ident),*) {
-    impl<$($tf),*> CacheAble for ($($tf),*)
+    impl<$($tf),*> Cacheable for ($($tf),*)
     where
-        $($tf: CacheAble),*
+        $($tf: Cacheable),*
     {
         #[allow(unused_mut)]
         fn as_cache(&self) -> String {
@@ -733,11 +743,11 @@ macro tuple_impl_cacheable($($field:ident: $tf:ident),*) {
     }
 }
 
-/// [`CacheAble`] implementation for wrapper types
+/// [`Cacheable`] implementation for wrapper types
 macro wrapper_impl_cacheable($c:ident, $t:ty, $deref:expr $(, $unwrap:expr)?) {
-    impl<$c> CacheAble for $t
+    impl<$c> Cacheable for $t
     where
-        $c: CacheAble,
+        $c: Cacheable,
     {
         fn as_cache(&'_ self) -> String {
             let value = $deref(self);

@@ -9,6 +9,7 @@ pub use global::*;
 use parking_lot::RwLock;
 
 use crate::{
+    input::KeyEvent,
     data::RwData,
     ui::{FileBuilder, Ui, WindowBuilder},
     widgets::ActiveWidget,
@@ -185,6 +186,12 @@ where
     U: Ui,
 {
     type Args<'args> = &'args RwData<W>;
+}
+
+pub struct KeyWasSent;
+
+impl Hookable for KeyWasSent {
+    type Args<'args> = KeyEvent;
 }
 
 type Hook<H> = (

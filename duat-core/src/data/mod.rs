@@ -22,7 +22,7 @@
 pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub use self::{
-    context::*,
+    context::{CommandLineModes, Context, CurFile, CurWidget, FileReader},
     ro::RoData,
     rw::{ReadWriteGuard, RwData},
 };

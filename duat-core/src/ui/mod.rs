@@ -2,7 +2,6 @@ mod builder;
 mod layout;
 
 use std::{
-    any::type_name,
     fmt::Debug,
     path::PathBuf,
     sync::{
@@ -33,7 +32,7 @@ use crate::{
 pub trait Ui: Sized + 'static {
     /// This is the underlying type that will be handled dynamically
     type StaticFns: Default + Clone + Copy + Send + Sync;
-    type Area: Area + Clone + PartialEq;
+    type Area: Area<Ui = Self> + Clone + PartialEq;
 
     fn new(statics: Self::StaticFns) -> Self;
 
@@ -82,8 +81,10 @@ pub trait Ui: Sized + 'static {
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
 pub trait Area: Send + Sync + Sized {
+    // This exists solely for automatic type recognition.
+    type Ui: Ui<Area = Self>;
     type ConstraintChangeErr: std::error::Error + DuatError;
-    type Cache: Default + crate::cache::CacheAble;
+    type Cache: Default + crate::cache::Cacheable;
 
     /// Returns the statics from `self`
     fn cache(&self) -> Option<Self::Cache>;

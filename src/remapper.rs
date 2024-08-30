@@ -1,9 +1,6 @@
 use duat_core::{
     data::{Context, RwData},
-    input::{
-        key::{Code::*, Event},
-        InputMethod,
-    },
+    input::{InputMethod, KeyCode::*, KeyEvent as Event},
 };
 
 use super::Ui;

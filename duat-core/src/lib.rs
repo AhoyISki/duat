@@ -10,7 +10,11 @@
     type_alias_impl_trait,
     result_flattening,
     is_none_or,
-    if_let_guard
+    if_let_guard,
+    const_for,
+    const_mut_refs,
+    const_trait_impl,
+    const_char_from_u32_unchecked,
 )]
 #![doc = include_str!("../README.md")]
 
@@ -22,7 +26,13 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use text::{err, hint, Text};
+
+use self::{
+    cache::Cacheable,
+    data::Context,
+    text::{err, hint, Text},
+    ui::Ui,
+};
 
 pub mod cache;
 pub mod commands;
@@ -35,6 +45,76 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+
+pub trait Plugin<U>
+where
+    U: Ui,
+{
+    /// A [`Cacheable`] struct for your plugin
+    ///
+    /// If you want data to be stored between executions, you can
+    /// store it in this struct, and it will be returned to the
+    /// plugin when Duat is executed in the future. If you don't
+    /// need this feature, you can set `type Cache = ();`
+    type Cache: Cacheable + Default;
+
+    /// Returns a new instance from an old [cache]
+    ///
+    /// If this is the first time the plugin was loaded, it will
+    /// receive [`Cache::default()`] as the argument.
+    ///
+    /// Through this function, you also get access to the [`Context`]
+    /// of Duat, letting you do things like run [commands], get
+    /// references to the active [`File`]/[`Widget`], send
+    /// notifications, etc. You also have access to `duat_core`
+    /// modules such as [`palette`] and [`hooks`], letting you change
+    /// [forms] and add or trigger [hooks].
+    ///
+    /// ```rust
+    /// # use duat_core::{Plugin, hooks};
+    /// struct AutoSaver {
+    /// #     type Cache = ()
+    /// }
+    /// ```
+    ///
+    /// [cache]: Cacheable
+    /// [`Cache::default()`]: Default::default
+    /// [forms]: palette::Form
+    fn new(cache: Self::Cache, context: Context<U>) -> Self
+    where
+        Self: Sized;
+}
+
+pub mod thread {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        thread::JoinHandle,
+    };
+
+    static HANDLES: AtomicUsize = AtomicUsize::new(0);
+
+    /// Spawns a new thread, returning a [`JoinHandle`] for it.
+    ///
+    /// Use this function instead of [`std::thread::spawn`].
+    ///
+    /// The threads from this function work in the same way that
+    /// threads from [`std::thread::spawn`] work, but it has
+    /// synchronicity with Duat, and makes sure that the
+    /// application won't exit or reload the configuration before
+    /// all spawned threads have stopped.
+    pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
+        HANDLES.fetch_add(1, Ordering::Relaxed);
+        std::thread::spawn(|| {
+            let ret = f();
+            HANDLES.fetch_sub(1, Ordering::Relaxed);
+            ret
+        })
+    }
+
+    pub(crate) fn still_running() -> bool {
+        HANDLES.load(Ordering::Relaxed) > 0
+    }
+}
 
 pub trait DuatError {
     fn into_text(self) -> Text;
@@ -86,12 +166,12 @@ pub enum Error<E> {
 
     /// The [cache] was not found in the string
     ///
-    /// [cache]: cache::CacheAble
+    /// [cache]: cache::Cacheable
     CacheNotFound,
 
     /// The [cache] was not parsed properly
     ///
-    /// [cache]: cache::CacheAble
+    /// [cache]: cache::Cacheable
     CacheNotParsed,
 }
 
@@ -254,37 +334,6 @@ where
 
         crates.insert(type_id, src_crate);
         crates.get(&type_id).unwrap()
-    }
-}
-
-pub mod thread {
-    use std::{
-        sync::atomic::{AtomicUsize, Ordering},
-        thread::JoinHandle,
-    };
-
-    static HANDLES: AtomicUsize = AtomicUsize::new(0);
-
-    /// Spawns a new thread, returning a [`JoinHandle`] for it.
-    ///
-    /// Use this function instead of [`std::thread::spawn`].
-    ///
-    /// The threads from this function workin the same way that
-    /// threads from [`std::thread::spawn`] work, but it has
-    /// synchronicity with Duat, and makes sure that the
-    /// application won't exit or reload the configuration before
-    /// all spawned threads have stopped.
-    pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
-        HANDLES.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(|| {
-            let ret = f();
-            HANDLES.fetch_sub(1, Ordering::Relaxed);
-            ret
-        })
-    }
-
-    pub(crate) fn still_running() -> bool {
-        HANDLES.load(Ordering::Relaxed) > 0
     }
 }
 

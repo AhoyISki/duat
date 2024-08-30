@@ -1,7 +1,7 @@
-//! Command handling through [`Commands`]
+//! Interaction with Duat through [`Command`]s
 //!
-//! This module defines the [`Commands`] struct, which contains
-//! all of the same facilities that makes Duat's [`commands`]
+//! This module defines the [`Commands`](Commands) struct, which
+//! contains all of the same facilities that makes Duat's [`commands`]
 //! module work.
 //!
 //! This struct should be used in plugins, since those should not
@@ -9,12 +9,25 @@
 //! it is going to be used through the [`Context`] struct, which
 //! will in turn be provided by Duat, with a defined [`Ui`].
 //!
+//! Here's an example of a command being used by a plugin:
+//!
+//! ```rust
+//! use duat_core::{Plugin, ui::Ui};
+//! struct MyPlugin
+//!
+//! impl<U: Ui> Plugin for MyPlugin {
+//! # type Cache = ();
+//! # new
+//! }
+//! ```
+//!
 //! The rules for command creation and execution are the same as
 //! the
 //!
 //! [duat]: https://docs.rs/duat/latest/duat/index.html
 //! [`commands`]: https://docs.rs/duat/latest/duat/prelude/commands/index.html
-//! [`Context`]: crate::Context
+//! [`Context`]: crate::data::Context
+
 use std::{
     collections::HashMap,
     fmt::Display,

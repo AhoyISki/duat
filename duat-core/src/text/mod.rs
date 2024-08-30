@@ -24,7 +24,7 @@ pub use self::{
     builder::{err, hint, ok, text, AlignCenter, AlignLeft, AlignRight, Builder, Ghost},
     cfg::*,
     iter::{Item, Iter, RevIter},
-    point::Point,
+    point::{Point, utf8_char_width},
     search::{CharSet, Pattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,

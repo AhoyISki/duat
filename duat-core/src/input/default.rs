@@ -1,7 +1,7 @@
 use super::{key, Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod};
 use crate::{
     data::{Context, RwData},
-    ui::Ui,
+    ui::{Ui, Area},
     widgets::File,
 };
 
@@ -35,27 +35,19 @@ where
         area: &U::Area,
         context: Context<U>,
     ) {
-        let mut editor = EditHelper::<File, U>::new(widget, area, &mut self.cursors);
+        let mut editor = EditHelper::new(widget, area, &mut self.cursors);
         match key {
             // Characters
-            key!(KeyCode::Char(ch)) => {
-                editor.edit_on_each_cursor(|editor| {
-                    editor.insert(ch);
-                });
-                editor.move_each(|mover| {
-                    mover.move_hor(1);
-                });
-            }
-            key!(KeyCode::Char(ch), KeyMod::SHIFT) => {
-                editor.edit_on_each_cursor(|editor| {
-                    editor.insert(ch);
+            key!(KeyCode::Char(char), KeyMod::SHIFT | KeyMod::NONE) => {
+                editor.edit_on_each(|editor| {
+                    editor.insert(char);
                 });
                 editor.move_each(|mover| {
                     mover.move_hor(1);
                 });
             }
             key!(KeyCode::Enter) => {
-                editor.edit_on_each_cursor(|editor| {
+                editor.edit_on_each(|editor| {
                     editor.insert('\n');
                 });
                 editor.move_each(|mover| {
@@ -65,7 +57,7 @@ where
 
             // Text Removal
             key!(KeyCode::Backspace) => {
-                let mut anchors = Vec::with_capacity(editor.len_cursors());
+                let mut anchors = Vec::with_capacity(editor.cursors_len());
                 editor.move_each(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -73,7 +65,7 @@ where
                     mover.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                editor.edit_on_each_cursor(|editor| {
+                editor.edit_on_each(|editor| {
                     editor.replace("");
                 });
                 editor.move_each(|mover| {
@@ -87,7 +79,7 @@ where
                 });
             }
             key!(KeyCode::Delete) => {
-                let mut anchors = Vec::with_capacity(editor.len_cursors());
+                let mut anchors = Vec::with_capacity(editor.cursors_len());
                 editor.move_each(|mover| {
                     let caret = mover.caret();
                     anchors.push(mover.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -95,7 +87,7 @@ where
                     mover.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                editor.edit_on_each_cursor(|editor| {
+                editor.edit_on_each(|editor| {
                     editor.replace("");
                 });
                 editor.move_each(|mover| {
@@ -151,7 +143,7 @@ where
     }
 }
 
-fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
+fn move_each(mut editor: EditHelper<File, impl Area>, direction: Side, amount: usize) {
     editor.move_each(|mover| {
         mover.unset_anchor();
         match direction {
@@ -163,7 +155,7 @@ fn move_each<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: us
     });
 }
 
-fn move_each_and_select<U: Ui>(mut editor: EditHelper<File, U>, direction: Side, amount: usize) {
+fn move_each_and_select(mut editor: EditHelper<File, impl Area>, direction: Side, amount: usize) {
     editor.move_each(|mover| {
         if mover.anchor().is_none() {
             mover.set_anchor();

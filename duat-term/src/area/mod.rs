@@ -209,6 +209,7 @@ impl Area {
 }
 
 impl ui::Area for Area {
+    type Ui = crate::Ui;
     type Cache = PrintInfo;
     type ConstraintChangeErr = ConstraintErr;
 
