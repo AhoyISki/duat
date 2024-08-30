@@ -22,10 +22,9 @@
 use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use self::read::{Reader, RevSearcher, Searcher};
-use super::EditableWidget;
 use crate::{
     cache::load_cache,
-    data::{Context, RwData},
+    data::{Context},
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
     palette,
@@ -56,7 +55,7 @@ where
             builder: Arc::new(|file, cursors| {
                 let mut input = KeyMap::new();
                 InputForFiles::<U>::set_cursors(&mut input, cursors);
-                Widget::active(file, RwData::new(input))
+                Widget::active(file, input)
             }),
             cfg: PrintCfg::default_for_input(),
             // Kinda arbitrary.
@@ -140,7 +139,7 @@ where
         self.builder = Arc::new(move |file, cursors| {
             let mut input = input.clone();
             input.set_cursors(cursors);
-            Widget::active(file, RwData::new(input))
+            Widget::active(file, input)
         });
     }
 
@@ -422,9 +421,7 @@ where
     }
 }
 
-impl<U> ActiveWidget<U> for File where U: Ui {}
-
-impl<U> EditableWidget<U> for File
+impl<U> ActiveWidget<U> for File
 where
     U: Ui,
 {

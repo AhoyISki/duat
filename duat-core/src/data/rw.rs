@@ -742,10 +742,6 @@ where
     pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
         self.data.write()
     }
-
-    pub(crate) fn inner_arc(&self) -> &Arc<RwLock<T>> {
-        &self.data
-    }
 }
 
 impl<T> std::fmt::Debug for RwData<T>

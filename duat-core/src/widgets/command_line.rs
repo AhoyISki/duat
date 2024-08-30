@@ -22,7 +22,6 @@ use std::{
     },
 };
 
-use super::EditableWidget;
 use crate::{
     data::{Context, RoData, RwData},
     hooks,
@@ -53,7 +52,7 @@ where
         CommandLineCfg {
             input: Commander::new(),
             prompt: String::from(":"),
-            specs: PushSpecs::below().with_ver_length(1.0),
+            specs: PushSpecs::below().with_ver_len(1.0),
             ghost: PhantomData,
         }
     }
@@ -79,7 +78,7 @@ where
 
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().with_ver_length(1.0),
+            specs: PushSpecs::above().with_ver_len(1.0),
             ..self
         }
     }
@@ -128,7 +127,7 @@ where
             let mode = RoData::from(&cmd_line.mode);
             move || mode.read().read().has_changed()
         };
-        let widget = Widget::active(cmd_line, RwData::new(self.input));
+        let widget = Widget::active(cmd_line, self.input);
         (widget, checker, self.specs)
     }
 }
@@ -213,6 +212,10 @@ impl<U> ActiveWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
+    }
+
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) } '\n');
         self.mode.read().read().on_focus(&mut self.text);
@@ -220,15 +223,6 @@ where
 
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
         self.mode.read().read().on_unfocus(&mut self.text);
-    }
-}
-
-impl<U> EditableWidget<U> for CommandLine<U>
-where
-    U: Ui,
-{
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
     }
 }
 

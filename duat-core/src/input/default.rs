@@ -1,7 +1,7 @@
 use super::{key, Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod};
 use crate::{
     data::{Context, RwData},
-    ui::{Ui, Area},
+    ui::{Area, Ui},
     widgets::File,
 };
 

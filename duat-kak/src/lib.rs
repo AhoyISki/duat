@@ -619,7 +619,7 @@ where
             }
         }
 
-		drop(helper);
+        drop(helper);
         self.cursors = cursors;
     }
 
@@ -643,11 +643,11 @@ where
 {
     fn set_cursors(&mut self, mut cursors: Cursors) {
         cursors.set_inclusive();
-        self.cursors = Some(cursors);
+        self.cursors = cursors;
     }
 }
 
-fn select_and_move_each(mut helper: EditHelper<File, impl Area>, direction: Side, amount: usize) {
+fn select_and_move_each(helper: &mut EditHelper<File, impl Area>, direction: Side, amount: usize) {
     helper.move_each(|m| {
         if m.anchor().is_none() {
             m.set_anchor()
@@ -662,7 +662,7 @@ fn select_and_move_each(mut helper: EditHelper<File, impl Area>, direction: Side
 }
 
 fn select_and_move_each_wrapped(
-    mut helper: EditHelper<File, impl Area>,
+    helper: &mut EditHelper<File, impl Area>,
     direction: Side,
     amount: usize,
 ) {

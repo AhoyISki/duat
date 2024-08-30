@@ -13,7 +13,7 @@ use crate::{
     history::Change,
     text::{Pattern, Point, PrintCfg, Text, WordChars},
     ui::Area,
-    widgets::{EditableWidget, File, PassiveWidget},
+    widgets::{ActiveWidget, File, PassiveWidget},
 };
 
 /// The [`Cursor`] and [`Cursors`] structs
@@ -21,7 +21,7 @@ mod cursors;
 
 /// A struct used by [`InputMethod`]s to edit [`Text`]
 ///
-/// You will want to use this struct when editing [`EditableWidget`]s
+/// You will want to use this struct when editing [`ActiveWidget`]s
 /// with [`Cursors`]. For example, let's say you want to create an
 /// input method for the [`File`] widget:
 ///
@@ -44,9 +44,7 @@ mod cursors;
 /// #       widget: &RwData<Self::Widget>,
 /// #       area: &U::Area,
 /// #       context: Context<U>,
-/// #   ) where
-/// #       Self: Sized
-/// #   {
+/// #   ) {
 /// #       todo!();
 /// #   }
 /// # }
@@ -162,7 +160,7 @@ mod cursors;
 /// [moving]: Mover
 pub struct EditHelper<'a, W, A>
 where
-    W: EditableWidget<A::Ui> + 'static,
+    W: ActiveWidget<A::Ui> + 'static,
     A: Area,
 {
     widget: &'a RwData<W>,
@@ -172,7 +170,7 @@ where
 
 impl<'a, W, A> EditHelper<'a, W, A>
 where
-    W: EditableWidget<A::Ui> + 'static,
+    W: ActiveWidget<A::Ui> + 'static,
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
@@ -425,7 +423,7 @@ where
 
 impl<'a, W, A> Drop for EditHelper<'a, W, A>
 where
-    W: EditableWidget<A::Ui> + 'static,
+    W: ActiveWidget<A::Ui> + 'static,
     A: Area,
 {
     fn drop(&mut self) {
@@ -467,7 +465,7 @@ where
 pub struct Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: EditableWidget<A::Ui>,
+    W: ActiveWidget<A::Ui>,
 {
     cursor: &'a mut Cursor,
     widget: &'b mut W,
@@ -478,7 +476,7 @@ where
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: EditableWidget<A::Ui>,
+    W: ActiveWidget<A::Ui>,
 {
     /// Returns a new instance of [`Editor`]
     fn new(

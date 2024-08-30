@@ -17,7 +17,7 @@ use crate::{
         build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
         WindowBuilder,
     },
-    widgets::{EditableWidget, File, FileCfg, Widget},
+    widgets::{ActiveWidget, File, FileCfg, Widget},
 };
 
 #[doc(hidden)]
@@ -316,7 +316,7 @@ where
             .flat_map(Window::widgets)
             .filter_map(|(widget, area)| {
                 widget.downcast::<File>().map(|file| {
-                    EditableWidget::<U>::text_mut(&mut *file.write()).clear_tags();
+                    ActiveWidget::<U>::text_mut(&mut *file.write()).clear_tags();
                     (file, area.is_active())
                 })
             })

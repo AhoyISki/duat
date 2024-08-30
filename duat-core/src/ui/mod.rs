@@ -752,21 +752,21 @@ impl PushSpecs {
         Self { side: Side::Below, ..self }
     }
 
-    pub fn with_ver_length(self, len: f64) -> Self {
+    pub fn with_ver_len(self, len: f64) -> Self {
         Self {
             ver_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
-    pub fn with_ver_minimum(self, min: f64) -> Self {
+    pub fn with_ver_min(self, min: f64) -> Self {
         Self {
             ver_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
-    pub fn with_ver_maximum(self, max: f64) -> Self {
+    pub fn with_ver_max(self, max: f64) -> Self {
         Self {
             ver_con: Some(Constraint::Max(max)),
             ..self
@@ -780,21 +780,21 @@ impl PushSpecs {
         }
     }
 
-    pub fn with_hor_length(self, len: f64) -> Self {
+    pub fn with_hor_len(self, len: f64) -> Self {
         Self {
             hor_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
-    pub fn with_hor_minimum(self, min: f64) -> Self {
+    pub fn with_hor_min(self, min: f64) -> Self {
         Self {
             hor_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
-    pub fn with_hor_maximum(self, max: f64) -> Self {
+    pub fn with_hor_max(self, max: f64) -> Self {
         Self {
             hor_con: Some(Constraint::Max(max)),
             ..self

@@ -94,7 +94,7 @@ where
 
     pub fn above(self) -> Self {
         Self {
-            specs: PushSpecs::above().with_ver_length(1.0),
+            specs: PushSpecs::above().with_ver_len(1.0),
             ..self
         }
     }
@@ -305,7 +305,7 @@ pub macro status {
         StatusLineCfg::new_with(
             Box::new(text_fn),
             Box::new(checker),
-            PushSpecs::below().with_ver_length(1.0)
+            PushSpecs::below().with_ver_len(1.0)
         )
     }}
 }

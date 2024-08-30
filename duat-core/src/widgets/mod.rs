@@ -34,9 +34,13 @@ use crate::{
     ui::{Area, PushSpecs, Ui},
 };
 
+/// A text prompt that can be used for many functions
 mod command_line;
+/// An opened [`File`](std::fs::File), in the form of a widget
 mod file;
+/// Line numbers to accompany a [`File`](crate::widgets::File)
 mod line_numbers;
+/// A widget showing information about the state of Duat
 mod status_line;
 
 pub use self::{
@@ -52,7 +56,7 @@ where
     U: Ui,
 {
     fn build(
-        globals: Context<U>,
+        context: Context<U>,
         on_file: bool,
     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
     where
@@ -79,7 +83,7 @@ where
         area.print(self.text(), self.print_cfg(), palette::painter())
     }
 
-    fn once(globals: Context<U>)
+    fn once(context: Context<U>)
     where
         Self: Sized;
 }
@@ -103,21 +107,24 @@ where
 /// you must create the struct:
 ///
 /// ```rust
+/// # use duat_core::text::Text;
+/// #[derive(Default)]
 /// struct Menu {
+///     text: Text,
 ///     selected_entry: usize,
 ///     active_etry: Option<usize>,
 /// }
 /// ```
 /// In this widget, I will create a menu that can be selected by an
-/// [`InputMethod`]. Do note that this widget will create the [`Text`]
-/// to be displayed whenever [`print`] is called, so I'm not storing a
-/// [`Text`] field.
+/// [`InputMethod`].
 ///
 /// Let's say that said menu has five entries, and one of them can be
 /// active at a time:
 ///
 /// ```rust
+/// # use duat_core::text::Text;
 /// # struct Menu {
+/// #     text: Text,
 /// #     selected_entry: usize,
 /// #     active_etry: Option<usize>,
 /// # }
@@ -145,7 +152,57 @@ where
 /// By making these methods `pub`, I can allow an end user to create
 /// their own [`InputMethod`] for this widget.
 ///
-/// Now it is time to implement [`PassiveWidget`]
+/// Let's say that I have created an [`InputMethod`] `MenuInput` for
+/// the `Menu`. Now i'll implement [`PassiveWidget`]:
+///
+/// ```rust
+/// use duat_core::{
+///     input::InputMethod,
+///     text::Text,
+///     ui::{PushSpecs, Ui},
+///     widgets::{PassiveWidget, Widget},
+/// };
+/// #[derive(Default)]
+/// struct Menu {
+///     text: Text,
+///     selected_entry: usize,
+///     active_etry: Option<usize>,
+/// }
+/// #[derive(Default)]
+/// struct MenuInput;
+/// impl<U: Ui> InputMethod for MenuInput {
+///     type Widget = Menu;
+///
+///     fn send_key(
+///         &mut self,
+///         key: KeyEvent,
+///         widget: &RwData<Self::Widget>,
+///         area: &U::Area,
+///         context: Context<U>,
+///     ) {
+///         todo!();
+///     }
+/// }
+/// impl<U: Ui> PassiveWidget for Menu {
+///     fn build(
+///         context: Context<U>,
+///         on_file: bool,
+///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
+///     where
+///         Self: Sized,
+///     {
+///         let checker = || false;
+///         let widget = Self::default();
+///         let input = MenuInput::default();
+///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
+///         (Widget::active(widget, input), checker, specs)
+///     }
+///
+///     fn text(&self) -> &Text {
+///         &self.text
+///     }
+/// }
+/// ```
 ///
 /// [`Cursor`]: crate::input::Cursor
 /// [`print`]: PassiveWidget::print
@@ -153,21 +210,16 @@ pub trait ActiveWidget<U>: PassiveWidget<U>
 where
     U: Ui,
 {
+    /// Returns the [`&mut Text`] that is printed
+    ///
+    /// [`&mut Text`]: Text
+    fn text_mut(&mut self) -> &mut Text;
+
     /// Actions to do whenever this [`ActionableWidget`] is focused.
     fn on_focus(&mut self, _area: &U::Area) {}
 
     /// Actions to do whenever this [`ActionableWidget`] is unfocused.
     fn on_unfocus(&mut self, _area: &U::Area) {}
-}
-
-/// An [`ActiveWidget`] that can also send [`&mut Text`]
-///
-/// [`&mut Text`]: Text
-pub trait EditableWidget<U>: ActiveWidget<U>
-where
-    U: Ui,
-{
-    fn text_mut(&mut self) -> &mut Text;
 }
 
 #[allow(private_interfaces)]
@@ -196,7 +248,7 @@ where
 
     fn input(&self) -> &RwData<dyn InputMethod<U>>;
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Context<U>);
+    fn send_key(&self, key: KeyEvent, area: &U::Area, context: Context<U>);
 
     fn on_focus(&self, area: &U::Area);
 
@@ -251,10 +303,10 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, globals: Context<U>) {
+    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, context: Context<U>) {
         let mut input = self.input.write();
 
-        input.send_key(key, &self.widget, area, globals);
+        input.send_key(key, &self.widget, area, context);
 
         if let Some(cursors) = input.cursors() {
             let mut widget = self.widget.write();
@@ -318,7 +370,7 @@ where
         )
     }
 
-    pub fn active<W, I>(widget: W, input: RwData<I>) -> Self
+    pub fn active<W, I>(widget: W, input: I) -> Self
     where
         W: ActiveWidget<U>,
         I: InputMethod<U, Widget = W>,
@@ -327,20 +379,22 @@ where
             RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
         let dyn_passive = dyn_active.clone().to_passive();
 
+        let dyn_input: RwData<dyn InputMethod<U>> =
+            RwData::new_unsized::<I>(Arc::new(RwLock::new(input)));
+        let input = dyn_input.try_downcast::<I>().unwrap();
+
         if let Some(file) = dyn_active.try_downcast::<File>()
             && let Some(cursors) = input.read().cursors()
         {
-            EditableWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
+            ActiveWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
         }
-
-        let input_data = input.inner_arc().clone() as Arc<RwLock<dyn InputMethod<U>>>;
 
         let inner = InnerActiveWidget {
             widget: dyn_active.clone().try_downcast::<W>().unwrap(),
             dyn_active,
             dyn_passive,
             input,
-            dyn_input: RwData::new_unsized::<I>(input_data),
+            dyn_input,
             related: if TypeId::of::<W>() == TypeId::of::<File>() {
                 Some(RwData::new(Vec::new()))
             } else {
@@ -455,10 +509,10 @@ where
         }
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, globals: Context<U>) {
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, context: Context<U>) {
         match self {
             Widget::Passive(..) => unreachable!("Sending keys to passive widgets is impossible"),
-            Widget::Active(holder) => holder.send_key(key, area, globals),
+            Widget::Active(holder) => holder.send_key(key, area, context),
         }
     }
 
