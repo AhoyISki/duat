@@ -26,7 +26,7 @@ use crate::{
     data::{Context, RoData, RwData},
     hooks,
     input::{Commander, InputMethod},
-    palette::{self, Form},
+    forms::{self, Form},
     text::{err, text, Ghost, PrintCfg, Text},
     ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
@@ -180,7 +180,7 @@ where
     }
 
     fn once(context: Context<U>) {
-        palette::set_weak_form("Prompt", Form::new().cyan());
+        forms::set_weak_form("Prompt", Form::new().cyan());
 
         context
             .commands

@@ -9,7 +9,7 @@ use duat_core::{
         key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
         KeyMod as Mod,
     },
-    palette::{self, Form},
+    forms::{self, Form},
     text::{err, text, CharSet, Point, Text, WordChars},
     ui::{Area, Ui},
     widgets::File,
@@ -26,7 +26,7 @@ pub struct KeyMap {
 
 impl KeyMap {
     pub fn new() -> Self {
-        palette::set_weak_form("Mode", Form::new().green());
+        forms::set_weak_form("Mode", Form::new().green());
         KeyMap {
             cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,

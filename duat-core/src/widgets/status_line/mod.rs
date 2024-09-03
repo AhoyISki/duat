@@ -17,7 +17,7 @@
 //! #     session::Session
 //! # };
 //! #
-//! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, palette: FormPalette)
+//! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, forms: FormPalette)
 //! # where
 //! #     U: Ui
 //! # {
@@ -26,7 +26,7 @@
 //!     mod_node.push(StatusLine::default_fn(), specs);
 //! };
 //!
-//! let mut session = Session::new(ui, print_cfg, palette, constructor_hook);
+//! let mut session = Session::new(ui, print_cfg, forms, constructor_hook);
 //! let specs = PushSpecs::below(Constraint::Length(1.0));
 //! session.push(StatusLine::default_global_fn(), specs);
 //! # }
@@ -60,7 +60,7 @@ use common::{main_col, main_line, selections_fmt};
 pub use self::state::State;
 use crate::{
     data::{Context, FileReader},
-    palette::{self, Form},
+    forms::{self, Form},
     text::{text, AlignRight, Builder, PrintCfg, Tag, Text},
     ui::{PushSpecs, Ui},
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
@@ -168,13 +168,13 @@ where
 /// # };
 /// # fn test_fn<U>(
 /// #     file_fn: impl Fn() -> RoData<File<U>>,
-/// #     palette_fn: impl Fn() -> FormPalette
+/// #     forms_fn: impl Fn() -> FormPalette
 /// # ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs)
 /// # where
 /// #     U: Ui
 /// # {
 /// let file: RoData<File<U>> = file_fn();
-/// let palette: FormPalette = palette_fn();
+/// let forms: FormPalette = forms_fn();
 ///
 /// let parts = status_parts![
 ///     "file name: [File]",
@@ -225,10 +225,10 @@ where
     }
 
     fn once(_context: Context<U>) {
-        palette::set_weak_form("File", Form::new().yellow().italic());
-        palette::set_weak_form("Selections", Form::new().dark_blue());
-        palette::set_weak_form("Coord", Form::new().dark_red());
-        palette::set_weak_form("Separator", Form::new().cyan());
+        forms::set_weak_form("File", Form::new().yellow().italic());
+        forms::set_weak_form("Selections", Form::new().dark_blue());
+        forms::set_weak_form("Coord", Form::new().dark_red());
+        forms::set_weak_form("Separator", Form::new().cyan());
     }
 
     fn print_cfg(&self) -> &PrintCfg {
@@ -242,7 +242,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
     (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
-        let form_id = palette::id_from_name("Default");
+        let form_id = forms::id_from_name("Default");
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
@@ -254,7 +254,7 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = palette::id_from_name(stringify!($form));
+        let id = forms::id_from_name(stringify!($form));
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);

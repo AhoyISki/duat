@@ -21,7 +21,7 @@ use crate::{
     cache::load_cache,
     data::{Context, RoData, RwData},
     hooks::{self, OnFileOpen},
-    palette::Painter,
+    forms::Painter,
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
     DuatError,

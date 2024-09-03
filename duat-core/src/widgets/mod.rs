@@ -65,7 +65,7 @@ use crate::{
     duat_name,
     hooks::{self, FocusedOn, KeySent, KeySentTo, UnfocusedFrom},
     input::InputMethod,
-    palette,
+    forms,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -137,7 +137,7 @@ mod status_line;
 /// - A [`Widget`], which is an intermediary type, and can either be
 ///   [passive] or [active].
 /// - A `checker` function, which returns `true` whenever the widget
-///   is supposed to be updated. It will be done a bit later.
+///   is supposed to be updated.
 /// - [`PushSpecs`], which tell Duat where to place the widget in
 ///   relation to the widget to which it was pushed.
 ///
@@ -245,7 +245,7 @@ mod status_line;
 ///         let Some(start) = START_TIME.get() else {
 ///             return;
 ///         };
-///         let duration = Instant::now().duration_since(*start);
+///         let duration = start.elapsed();
 ///         let mins = duration.as_secs() / 60;
 ///         let secs = duration.as_secs() % 60;
 ///         self.0 = text!([UpTime] mins "m " secs "s");
@@ -269,6 +269,20 @@ pub trait PassiveWidget<U>: Send + Sync + 'static
 where
     U: Ui,
 {
+    /// Builds the widget
+    ///
+    /// Will be called to create the widget. It returns three objects:
+    ///
+    /// - A [`Widget`], which is an intermediary type, and can either
+    ///   be [passive] or [active].
+    /// - A `checker` function, which returns `true` whenever the
+    ///   widget is supposed to be updated.
+    /// - [`PushSpecs`], which tell Duat where to place the widget in
+    ///   relation to the widget to which it was pushed.
+    ///
+    ///
+    /// [passive]: Widget::passive
+    /// [active]: Widget::active
     fn build(
         context: Context<U>,
         on_file: bool,
@@ -284,18 +298,32 @@ where
     /// [`Session`]: crate::session::Session
     fn update(&mut self, _area: &U::Area) {}
 
-    /// The text that this widget prints out.
+    /// The text that this widget prints out
     fn text(&self) -> &Text;
 
+    /// The configuration for how to print [`Text`]
+    ///
+    /// The default configuration, used when `print_cfg` is not
+    /// implemented,can be found at [`PrintCfg::default`].
     fn print_cfg(&self) -> &PrintCfg {
         static CFG: LazyLock<PrintCfg> = LazyLock::new(PrintCfg::default);
         &CFG
     }
 
+    /// Prints the widget
+    ///
+    /// Very rarely shouuld you actually implement this method, one
+    /// example of where this is actually implemented is in
+    /// [`File::print`], where [`Area::print_with`] is called in order
+    /// to simultaneously update the list of lines numbers, for
+    /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
-        area.print(self.text(), self.print_cfg(), palette::painter())
+        area.print(self.text(), self.print_cfg(), forms::painter())
     }
 
+    /// Actions taken when this widget opens for the first time
+    ///
+    /// Examples of things that should go in here are [`palette`] functions, 
     fn once(context: Context<U>)
     where
         Self: Sized;

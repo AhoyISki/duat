@@ -27,7 +27,7 @@ use crate::{
     data::Context,
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
-    palette,
+    forms,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
@@ -87,13 +87,13 @@ where
         let text = {
             let mut text = text;
             use crate::{
-                palette::{self, Form},
+                forms::{self, Form},
                 text::{Marker, Tag},
             };
 
             let marker = Marker::new();
-            let form1 = palette::set_form("form1lmao", Form::new().red());
-            let form2 = palette::set_form("form2lmao", Form::new().undercurled().underline_blue());
+            let form1 = forms::set_form("form1lmao", Form::new().red());
+            let form2 = forms::set_form("form2lmao", Form::new().undercurled().underline_blue());
             for i in (500..text.len_bytes()).step_by(500) {
                 text.insert_tag(i - 490, Tag::PushForm(form1), marker);
                 text.insert_tag(i - 380, Tag::PopForm(form1), marker);
@@ -402,7 +402,7 @@ where
         area.print_with(
             &self.text,
             &self.cfg,
-            palette::painter(),
+            forms::painter(),
             move |caret, item| {
                 has_wrapped |= caret.wrap;
                 if has_wrapped && item.part.is_char() {

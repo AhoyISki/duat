@@ -1,6 +1,6 @@
 use duat_core::{
     data::{Context, FileReader},
-    palette::{self, Form},
+    forms::{self, Form},
     text::{text, Text},
     ui::{Area as UiArea, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
@@ -62,9 +62,9 @@ impl PassiveWidget<Ui> for VertRule {
     }
 
     fn once(_globals: Context<Ui>) {
-        palette::set_weak_form("VertRule", Form::new().dark_grey());
-        palette::set_weak_ref("UpperVertRule", "VertRule");
-        palette::set_weak_ref("LowerVertRule", "VertRule");
+        forms::set_weak_form("VertRule", Form::new().dark_grey());
+        forms::set_weak_ref("UpperVertRule", "VertRule");
+        forms::set_weak_ref("LowerVertRule", "VertRule");
     }
 }
 

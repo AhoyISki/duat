@@ -62,9 +62,10 @@ where
         }
     }
 
-	/// Returns `true` if Duat must quit/reload
-	///
-	/// You should use this function in order to check if loops inside of threads should break.
+    /// Returns `true` if Duat must quit/reload
+    ///
+    /// You should use this function in order to check if loops inside
+    /// of threads should break.
     pub fn has_ended(&self) -> bool {
         self.has_ended.load(Ordering::Relaxed)
     }

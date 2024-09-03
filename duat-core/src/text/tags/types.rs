@@ -7,7 +7,7 @@ use super::{
     Marker,
 };
 use crate::{
-    palette::FormId,
+    forms::FormId,
     text::{Point, Text},
 };
 

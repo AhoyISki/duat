@@ -8,7 +8,7 @@ use crossterm::{
 };
 use duat_core::{
     data::RwData,
-    palette::Painter,
+    forms::Painter,
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, PushSpecs},
 };

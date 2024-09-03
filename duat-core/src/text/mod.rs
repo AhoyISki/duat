@@ -707,7 +707,7 @@ mod point {
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
-    use crate::palette::{EXTRA_SEL_FORM_ID, MAIN_SEL_FORM_ID};
+    use crate::forms::{EXTRA_SEL_FORM_ID, MAIN_SEL_FORM_ID};
 
     if is_main {
         (

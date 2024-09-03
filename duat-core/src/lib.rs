@@ -45,7 +45,7 @@ pub mod hooks;
 /// Input handling utilities, like [`InputMethod`] and [`EditHelper`]
 pub mod input;
 /// [`Form`]s and other [`Text`](crate::text::Text) styling utilities
-pub mod palette;
+pub mod forms;
 /// The [`Session`] for Duat. Might make it hidden
 pub mod session;
 /// [`Text`] and supporting utilities, like [`Tag`]s and iterators

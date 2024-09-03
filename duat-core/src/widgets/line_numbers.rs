@@ -24,7 +24,7 @@ use std::fmt::Alignment;
 
 use crate::{
     data::{Context, FileReader},
-    palette::{self, Form},
+    forms::{self, Form},
     text::{text, Builder, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{PassiveWidget, Widget, WidgetCfg},
@@ -118,10 +118,10 @@ where
     }
 
     fn once(_context: Context<U>) {
-        palette::set_weak_form("LineNum", Form::new().grey());
-        palette::set_weak_form("MainLineNum", Form::new().yellow());
-        palette::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
-        palette::set_weak_ref("WrappedMainLineNum", "WrappedLineNum");
+        forms::set_weak_form("LineNum", Form::new().grey());
+        forms::set_weak_form("MainLineNum", Form::new().yellow());
+        forms::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
+        forms::set_weak_ref("WrappedMainLineNum", "WrappedLineNum");
     }
 }
 

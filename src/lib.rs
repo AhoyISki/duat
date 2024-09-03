@@ -136,7 +136,7 @@ mod setup;
 
 /// Functions to alter the cursors of Duat
 pub mod cursor {
-    pub use duat_core::palette::{
+    pub use duat_core::forms::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,
         unset_main_cursor as unset_main,
@@ -147,7 +147,7 @@ pub mod cursor {
 ///
 /// [`Form`]: duat_core::palette::Form
 pub mod forms {
-    pub use duat_core::palette::{
+    pub use duat_core::forms::{
         form_from_id as from_id, id_from_name as to_id, set_form as set, set_ref, CursorShape, Form,
     };
 }
