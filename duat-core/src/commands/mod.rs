@@ -12,12 +12,15 @@
 //! Here's an example of a command being used by a plugin:
 //!
 //! ```rust
-//! use duat_core::{Plugin, ui::Ui};
-//! struct MyPlugin
+//! use duat_core::{data::Context, ui::Ui, Plugin};
+//! struct MyPlugin;
 //!
 //! impl<U: Ui> Plugin for MyPlugin {
-//! # type Cache = ();
-//! # new
+//!     type Cache = ();
+//!
+//!     fn new(cache: Self::Cache, context: Context<U>) -> Self {
+//!         asdf
+//!     }
 //! }
 //! ```
 //!
@@ -736,6 +739,7 @@ impl InnerCommands {
 
 type Result<T> = crate::Result<T, ()>;
 
+/// Gets a widget, given its duat name.
 fn get_from_name<'a, U: Ui>(
     windows: &'a [Window<U>],
     type_name: &'static str,

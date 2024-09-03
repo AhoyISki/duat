@@ -35,7 +35,7 @@
 //! These 4 widgets are supposed to be universal, not needing a
 //! specific [`Ui`] implementation to work. In contrast, you can
 //! create widgets for specific [`Ui`]s. As an example, the
-//! [`duat-term`] crate, which is a terminal ui implementation for
+//! [`duat-term`] crate, which is a terminal [`Ui`] implementation for
 //! Duat, defines the [`VertRule`] widget, which is a separator that
 //! only makes sense in the context of a terminal.
 //!
@@ -79,7 +79,192 @@ mod line_numbers;
 /// A widget showing information about the state of Duat
 mod status_line;
 
-/// An area where text will be printed to the screen
+/// An area where [`Text`] will be printed to the screen
+///
+/// Most widgets are supposed to be passive widgets, that simply show
+/// information about the current state of Duat.
+///
+/// In order to show that information, widgets make use of [`Text`],
+/// which can show stylized text, buttons, and all sorts of other
+/// stuff.
+///
+/// For a demonstration on how to create a widget, I will create a
+/// widget that shows the uptime, in seconds, for Duat.
+///
+/// ```rust
+/// # use duat_core::text::Text;
+/// struct UpTime(Text);
+/// ```
+///
+/// In order to be a proper widget, it must have a [`Text`] to
+/// display. Next, i must implement [`PassiveWidget`]:
+///
+/// ```rust
+/// # use std::{
+/// #     sync::OnceLock,
+/// #     time::{Duration, Instant},
+/// # };
+/// # use duat_core::{
+/// #     data::Context,
+/// #     hooks, periodic_checker,
+/// #     text::Text,
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{PassiveWidget, Widget},
+/// # };
+/// # struct UpTime(Text);
+/// impl<U: Ui> PassiveWidget<U> for UpTime {
+///     fn build(
+///         context: Context<U>,
+///         on_file: bool,
+///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+///         let widget = UpTime(Text::new());
+///         let checker = periodic_checker(context, Duration::new(1, 0));
+///         let specs = PushSpecs::below().with_ver_len(1.0);
+///
+///         (Widget::passive(widget), checker, specs)
+///     }
+///     // ...
+/// #   fn text(&self) -> &Text {
+/// #       &self.0
+/// #   }
+/// #   fn once(context: Context<U>) {}
+/// }
+/// ```
+///
+/// The [`build`] method is what will be called whenever this widget
+/// is created. It returns three objects:
+///
+/// - A [`Widget`], which is an intermediary type, and can either be
+///   [passive] or [active].
+/// - A `checker` function, which returns `true` whenever the widget
+///   is supposed to be updated. It will be done a bit later.
+/// - [`PushSpecs`], which tell Duat where to place the widget in
+///   relation to the widget to which it was pushed.
+///
+/// In this case, [`periodic_checker`] returns a function that returns
+/// `true` every `duration` that passes.
+///
+/// Now, there are some other methods from [`PassiveWidget`] that need
+/// to be implemented for this to work. First of all, there needs to
+/// be a starting [`Instant`] to compare with the current moment in
+/// time.
+///
+/// This [`Instant`] should be set whenever the [`Ui`] is initiated.
+/// You can do this via the [`OnUiStart`] hook:
+///
+/// ```rust
+/// # use std::{sync::OnceLock, time::Instant};
+/// # use duat_core::{
+/// #     hooks::{self, OnUiStart},
+/// #     ui::Ui,
+/// # };
+/// # fn test<U: Ui>() {
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+/// hooks::add::<OnUiStart<U>>(|_| {
+///     START_TIME.set(Instant::now()).unwrap();
+/// });
+/// # }
+/// ```
+///
+/// I could put this code inside the [`build`] method, however, by
+/// doing so, it will be called every time this widget is added to the
+/// ui.
+///
+/// Instead, I'll put it in [`PassiveWidget::once`]. This function is
+/// only triggered once, no matter how many times the widget is added
+/// to the ui:
+///
+/// ```rust
+/// # use std::{sync::OnceLock, time::Instant};
+/// # use duat_core::{
+/// #     data::Context,
+/// #     hooks::{self, OnUiStart},
+/// #     palette::{set_weak_form, Form},
+/// #     text::Text,
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{PassiveWidget, Widget},
+/// # };
+/// # struct UpTime(Text);
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// impl<U: Ui> PassiveWidget<U> for UpTime {
+/// #   fn build(
+/// #       context: Context<U>,
+/// #       on_file: bool,
+/// #   ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #       let widget = Widget::passive(UpTime(Text::new()));
+/// #       (widget, || false, PushSpecs::below())
+/// #   }
+/// #   fn text(&self) -> &Text {
+/// #       &self.0
+/// #   }
+///     // ...
+///     fn once(context: Context<U>) {
+///         set_weak_form("UpTime", Form::new().cyan());
+///
+///         hooks::add::<OnUiStart<U>>(|_| {
+///             START_TIME.set(Instant::now()).unwrap();
+///         });
+///     }
+/// }
+/// ```
+///
+/// I also added the `"UpTime"` [`Form`], which will be used by the
+/// widget when it is updated. When adding forms, you should use the
+/// [`palette::set_weak_*`] functions, in order to not interfere with
+/// the configuration crate.
+///
+/// Next, I need to implement the [`update`] method, which will simply
+/// format the [`Text`] into a readable format:
+///
+/// ```rust
+/// # use std::{sync::OnceLock, time::Instant};
+/// # use duat_core::{
+/// #     data::{Context, RwData},
+/// #     hooks,
+/// #     text::{text, Text},
+/// #     ui::{PushSpecs, Ui},
+/// #     widgets::{PassiveWidget, Widget},
+/// # };
+/// # struct UpTime(Text);
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// impl<U: Ui> PassiveWidget<U> for UpTime {
+/// #   fn build(
+/// #       context: Context<U>,
+/// #       on_file: bool,
+/// #   ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #       let widget = Widget::passive(UpTime(Text::new()));
+/// #       (widget, || false, PushSpecs::below())
+/// #   }
+/// #   fn text(&self) -> &Text {
+/// #       &self.0
+/// #   }
+///     // ...
+///     fn update(&mut self, _area: &U::Area) {
+///         let Some(start) = START_TIME.get() else {
+///             return;
+///         };
+///         let duration = Instant::now().duration_since(*start);
+///         let mins = duration.as_secs() / 60;
+///         let secs = duration.as_secs() % 60;
+///         self.0 = text!([UpTime] mins "m " secs "s");
+///     }
+///     // ...
+/// #   fn once(context: Context<U>) {}
+/// }
+/// ```
+///
+/// [`build`]: PassiveWidget::build
+/// [passive]: Widget::passive
+/// [active]: Widget::active
+/// [`periodic_checker`]: crate::periodic_checker
+/// [`Instant`]: std::time::Instant
+/// [`OnUiStart`]: crate::hooks::OnUiStart
+/// [`update`]: PassiveWidget::update
+/// [`Form`]: crate::palette::Form
+/// [`palette::set_weak_*`]: crate::palette::set_weak_form
+/// [`text!`]: crate::text::text
 pub trait PassiveWidget<U>: Send + Sync + 'static
 where
     U: Ui,
@@ -456,7 +641,7 @@ where
     fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, context: Context<U>) {
         let mut input = self.input.write();
 
-		hooks::trigger::<KeySent<U>>((key, &self.dyn_active));
+        hooks::trigger::<KeySent<U>>((key, &self.dyn_active));
         hooks::trigger::<KeySentTo<W, U>>((key, &self.widget));
 
         input.send_key(key, &self.widget, area, context);

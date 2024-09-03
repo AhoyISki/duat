@@ -154,10 +154,9 @@ pub mod forms {
 
 /// Hook utilites
 pub mod hooks {
-    use duat_core::hooks::Hookable;
     pub use duat_core::hooks::{add, add_grouped, group_exists, remove_group};
 
-    /// Triggers hooks when Duat's [`Ui`] is created
+    /// Triggers when Duat's [`Ui`] is created
     ///
     /// # Args
     /// - The [`Ui`] itself
@@ -169,11 +168,7 @@ pub mod hooks {
     /// created, the only thing that can be affected is the [`Ui`].
     ///
     /// [commands]: crate::commands
-    pub struct OnUiStart;
-
-    impl Hookable for OnUiStart {
-        type Args<'args> = &'args mut Ui;
-    }
+    pub type OnUiStart = duat_core::hooks::OnUiStart<Ui>;
 
     use crate::Ui;
     /// Triggers whenever a [`File`] is created
@@ -225,7 +220,7 @@ pub mod plugin {
         Ui,
     };
 
-	/// Loads the [`Plugin`]
+    /// Loads the [`Plugin`]
     pub fn load<P>()
     where
         P: Plugin<Ui>,
@@ -238,7 +233,7 @@ pub mod plugin {
         });
     }
 
-	/// Loads the [`Plugin`], then mutates it
+    /// Loads the [`Plugin`], then mutates it
     pub fn load_then<P>(f: impl FnOnce(&mut P) + Send + Sync + 'static)
     where
         P: Plugin<Ui>,

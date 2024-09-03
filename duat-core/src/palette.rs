@@ -7,9 +7,9 @@ pub use global::*;
 use crate::data::{RwData, RwLockReadGuard};
 
 mod global {
-    use super::{CursorShape, Form, FormId, FormPalette, Painter};
+    use super::{CursorShape, Form, FormId, Painter, Palette};
 
-    static PALETTE: FormPalette = FormPalette::new();
+    static PALETTE: Palette = Palette::new();
 
     /// Sets the `Form` with a given name to a new one.
     pub fn set_form(name: impl AsRef<str>, form: Form) -> FormId {
@@ -172,12 +172,12 @@ impl InnerPalette {
 }
 
 /// The list of forms to be used when rendering.
-struct FormPalette {
+struct Palette {
     inner: LazyLock<RwData<InnerPalette>>,
     weak_refs: LazyLock<RwData<Vec<(&'static str, u16)>>>,
 }
 
-impl FormPalette {
+impl Palette {
     /// Returns a new instance of [`FormPalette`]
     const fn new() -> Self {
         Self {
@@ -429,7 +429,7 @@ impl FormPalette {
     }
 }
 
-impl Default for FormPalette {
+impl Default for Palette {
     fn default() -> Self {
         Self::new()
     }

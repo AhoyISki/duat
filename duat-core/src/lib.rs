@@ -1,3 +1,4 @@
+#![doc = include_str!("README.md")]
 #![feature(
     extract_if,
     iter_intersperse,
@@ -11,13 +12,15 @@
     const_mut_refs,
     const_char_from_u32_unchecked
 )]
-#![doc = include_str!("README.md")]
 
 use std::{
     any::{type_name, TypeId},
     collections::HashMap,
     marker::PhantomData,
-    sync::{LazyLock, Mutex, Once},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, LazyLock, Mutex, Once,
+    },
 };
 
 use parking_lot::RwLock;
@@ -29,16 +32,27 @@ use self::{
     ui::Ui,
 };
 
+/// A cache for Duat
 pub mod cache;
+/// Commands for Duat
 pub mod commands;
+/// Data holders, like [`RwData`], and the [`Context`] for Duat
 pub mod data;
+/// A [`History`] for [`File`](crate::widgets::File)s in Duat
 pub mod history;
+/// Hooks for Duat
 pub mod hooks;
+/// Input handling utilities, like [`InputMethod`] and [`EditHelper`]
 pub mod input;
+/// [`Form`]s and other [`Text`](crate::text::Text) styling utilities
 pub mod palette;
+/// The [`Session`] for Duat. Might make it hidden
 pub mod session;
+/// [`Text`] and supporting utilities, like [`Tag`]s and iterators
 pub mod text;
+/// The [`Ui`] for Duat, and utilities for building it
 pub mod ui;
+/// Traits for widgets, alongside some builtin ones
 pub mod widgets;
 
 /// A plugin for Duat
@@ -107,12 +121,37 @@ where
         Self: Sized;
 }
 
+/// A checker that returns `true` every `duration`
+///
+/// This is primarily used within [`PassiveWidget::build`], where a
+/// `checker` must be returned in order to update the widget.
+///
+/// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
+pub fn periodic_checker<U>(context: Context<U>, duration: std::time::Duration) -> impl Fn() -> bool
+where
+    U: Ui,
+{
+    let check = Arc::new(AtomicBool::new(false));
+    crate::thread::spawn({
+        let check = check.clone();
+        move || {
+            while !context.has_ended() {
+                std::thread::sleep(duration);
+                check.store(true, Ordering::Release);
+            }
+        }
+    });
+
+    move || check.fetch_and(false, Ordering::Acquire)
+}
+
 pub mod thread {
     use std::{
         sync::atomic::{AtomicUsize, Ordering},
         thread::JoinHandle,
     };
 
+    /// Duat's [`JoinHandle`]s
     static HANDLES: AtomicUsize = AtomicUsize::new(0);
 
     /// Spawns a new thread, returning a [`JoinHandle`] for it.
@@ -125,8 +164,6 @@ pub mod thread {
     /// application won't exit or reload the configuration before
     /// all spawned threads have stopped.
     pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
-        crate::input::keys!(C-"abc""cum");
-
         HANDLES.fetch_add(1, Ordering::Relaxed);
         std::thread::spawn(|| {
             let ret = f();
@@ -135,11 +172,13 @@ pub mod thread {
         })
     }
 
+    /// Returns true if there are any threads still running
     pub(crate) fn still_running() -> bool {
         HANDLES.load(Ordering::Relaxed) > 0
     }
 }
 
+/// An error that can be displayed as [`Text`] in Duat
 pub trait DuatError {
     fn into_text(self) -> Text;
 }
@@ -199,8 +238,10 @@ pub enum Error<E> {
     CacheNotParsed,
 }
 
-impl<E> Error<E> {
-    pub fn into_other_type<T>(self) -> Error<T> {
+impl<E1> Error<E1> {
+    /// Converts [`Error<E1>`] to [`Error<E2>`]
+    #[doc(hidden)]
+    pub fn into_other_type<E2>(self) -> Error<E2> {
         match self {
             Self::AliasNotSingleWord(caller) => Error::AliasNotSingleWord(caller),
             Self::CallerAlreadyExists(caller) => Error::CallerAlreadyExists(caller),
@@ -362,11 +403,15 @@ where
 }
 
 // Debugging objects.
+#[doc(hidden)]
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+#[doc(hidden)]
 pub static HOOK: Once = Once::new();
+#[doc(hidden)]
 pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
-/// Internal macro used to log information.
+/// Internal macro used to log information
+#[doc(hidden)]
 pub macro log_info($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
     	compile_error!("You are not supposed to use log_info on release profiles!");
