@@ -142,10 +142,6 @@ where
             Widget::active(file, input)
         });
     }
-
-    pub(crate) fn mut_print_cfg(&mut self) -> &mut PrintCfg {
-        &mut self.cfg
-    }
 }
 
 impl<U> WidgetCfg<U> for FileCfg<U>

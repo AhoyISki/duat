@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    cache::{delete_cache, store_cache},
+    cache::{delete_cache, load_cache, store_cache},
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
     input::InputForFiles,
@@ -18,6 +18,7 @@ use crate::{
         WindowBuilder,
     },
     widgets::{ActiveWidget, File, FileCfg, Widget},
+    Plugin,
 };
 
 #[doc(hidden)]
@@ -29,6 +30,7 @@ where
     file_cfg: FileCfg<U>,
     context: Context<U>,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
+    plugins: Vec<Box<dyn Plugin<U>>>,
 }
 
 impl<U> SessionCfg<U>
@@ -43,6 +45,7 @@ where
             file_cfg: FileCfg::new(),
             context,
             layout: Box::new(|| Box::new(MasterOnLeft)),
+            plugins: Vec::new(),
         }
     }
 
@@ -133,16 +136,34 @@ where
         session
     }
 
+    #[doc(hidden)]
     pub fn set_input(&mut self, input: impl InputForFiles<U> + Clone) {
         self.file_cfg.set_input(input);
     }
 
+    #[doc(hidden)]
     pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
         self.file_cfg.set_print_cfg(cfg);
     }
 
-    pub fn mut_print_cfg(&mut self) -> &mut PrintCfg {
-        self.file_cfg.mut_print_cfg()
+    #[doc(hidden)]
+    pub fn load_plugin<P>(&mut self, context: Context<U>)
+    where
+        P: Plugin<U>,
+    {
+        let cache = load_cache::<P::Cache>("").unwrap_or_default();
+        let plugin = P::new(cache, context);
+        self.plugins.push(Box::new(plugin));
+    }
+
+    pub fn load_plugin_then<P>(&mut self, context: Context<U>, f: impl FnOnce(&mut P))
+    where
+        P: Plugin<U>,
+    {
+        let cache = load_cache::<P::Cache>("").unwrap_or_default();
+        let mut plugin = P::new(cache, context);
+        f(&mut plugin);
+        self.plugins.push(Box::new(plugin));
     }
 }
 

@@ -134,21 +134,21 @@ mod remapper;
 /// Internal handling of [`Context`]
 mod setup;
 
-/// Functions to alter the [`Form`]s of Duat
-///
-/// [`Form`]: duat_core::palette::Form
-pub mod forms {
-    pub use duat_core::palette::{
-        form_from_id as from_id, id_from_name as to_id, set_form as set, set_ref, CursorShape, Form,
-    };
-}
-
 /// Functions to alter the cursors of Duat
 pub mod cursor {
     pub use duat_core::palette::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,
         unset_main_cursor as unset_main,
+    };
+}
+
+/// Functions to alter the [`Form`]s of Duat
+///
+/// [`Form`]: duat_core::palette::Form
+pub mod forms {
+    pub use duat_core::palette::{
+        form_from_id as from_id, id_from_name as to_id, set_form as set, set_ref, CursorShape, Form,
     };
 }
 
@@ -216,7 +216,43 @@ pub mod hooks {
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
 
-// Native widgets to Duat
+/// Functions to load [`Plugin`]s
+pub mod plugin {
+    use duat_core::Plugin;
+
+    use crate::{
+        setup::{CONTEXT, PLUGIN_FN},
+        Ui,
+    };
+
+	/// Loads the [`Plugin`]
+    pub fn load<P>()
+    where
+        P: Plugin<Ui>,
+    {
+        let mut old = PLUGIN_FN.write().unwrap();
+        let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
+        *old = Box::new(|cfg| {
+            old_f(cfg);
+            cfg.load_plugin::<P>(CONTEXT);
+        });
+    }
+
+	/// Loads the [`Plugin`], then mutates it
+    pub fn load_then<P>(f: impl FnOnce(&mut P) + Send + Sync + 'static)
+    where
+        P: Plugin<Ui>,
+    {
+        let mut old = PLUGIN_FN.write().unwrap();
+        let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
+        *old = Box::new(|cfg| {
+            old_f(cfg);
+            cfg.load_plugin_then::<P>(CONTEXT, f);
+        });
+    }
+}
+
+/// Native widgets to Duat
 pub mod widgets {
     pub use duat_core::{ui::Constraint, widgets::File};
 
@@ -234,7 +270,7 @@ pub mod widgets {
     pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
 }
 
-// Native widgets to Duat
+/// Common [`StatusLine`](crate::widgets::StatusLine) fields
 pub mod state {
     pub use duat_core::widgets::common::*;
 }

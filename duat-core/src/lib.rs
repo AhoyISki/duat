@@ -1,22 +1,17 @@
 #![feature(
     extract_if,
     iter_intersperse,
-    iter_order_by,
     trait_upcasting,
     let_chains,
-    control_flow_enum,
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    result_flattening,
     is_none_or,
     if_let_guard,
-    const_for,
     const_mut_refs,
-    const_trait_impl,
-    const_char_from_u32_unchecked,
+    const_char_from_u32_unchecked
 )]
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("README.md")]
 
 use std::{
     any::{type_name, TypeId},
@@ -46,7 +41,14 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-pub trait Plugin<U>
+/// A plugin for Duat
+///
+/// A plugin is something that can be invoked in the configuration
+/// crate for Duat:
+///
+/// ```rust
+/// ```
+pub trait Plugin<U>: 'static
 where
     U: Ui,
 {
@@ -56,7 +58,9 @@ where
     /// store it in this struct, and it will be returned to the
     /// plugin when Duat is executed in the future. If you don't
     /// need this feature, you can set `type Cache = ();`
-    type Cache: Cacheable + Default;
+    type Cache: Cacheable + Default
+    where
+        Self: Sized;
 
     /// Returns a new instance from an old [cache]
     ///
@@ -103,6 +107,8 @@ pub mod thread {
     /// application won't exit or reload the configuration before
     /// all spawned threads have stopped.
     pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
+        crate::input::keys!(C-"abc""cum");
+
         HANDLES.fetch_add(1, Ordering::Relaxed);
         std::thread::spawn(|| {
             let ret = f();

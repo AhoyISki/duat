@@ -1,22 +1,52 @@
 //! APIs for the construction of widgets, and a few common ones.
 //!
-//! This module describes two types of widget, [`NormalWidget`]s and
-//! [`ActionableWidget`]s. [`NormalWidget`]s simply show information,
-//! and cannot receive input or be focused. [`ActionableWidget`] is a
-//! superset of [`NormalWidget`], capable of receiving input,
-//! focusing, unfocusing, and showing cursors.
+//! This module declares two traits for widgets, [`PassiveWidget`]s
+//! and [`ActiveWidget`]s. [`PassiveWidget`]s simply show information,
+//! and cannot receive input or be focused. [`ActiveWidget`]s can be
+//! modified by an external [`InputMethod`], thus they react to user
+//! input whenever they are in focus.
+//!
+//! These widgets will be used in one of three contexts:
+//!
+//! - Being pushed to a file via the hook [`OnFileOpen`];
+//! - Being pushed to the outer edges via [`OnWindowOpen`];
+//! - Being pushed to popup widgets via [`OnPopupOpen`];
+//!
+//! These widgets can be pushed to all 4 sides of other widgets,
+//! through the use of [`PushSpecs`]. When pushing widgets, you can
+//! also include [`Constraint`] in order to get a specific size on the
+//! screen for the widget.
+//!
+//! ```rust
+//! # use crate::ui::{Constraint, PushSpecs};
+//! let specs = PushSpecs::left()
+//!     .constrain_hor(Constraint::Min(10.0))
+//!     .constrain_ver(Constraint::Len(2.0));
+//! ```
+//!
+//! When pushing a widget with these `specs` to another widget, Duat
+//! will put it on the left, and _try_ to give it a minimum width of
+//! `10.0`, and a height of `2.0`.
 //!
 //! The module also provides 4 native widgets, [`StatusLine`] and
-//! [`LineNumbers`], which are [`NormalWidget`]s, and
-//! [`FileWidget`] and [`CommandLine`] which are
-//! [`ActionableWidget`]s.
+//! [`LineNumbers`], which are [`PassiveWidget`]s, and
+//! [`File`] and [`CommandLine`] which are [`ActiveWidget`]s.
 //!
-//! These widgets are supposed to be universal, not needing a specific
-//! [`Ui`] implementation to work. As an example, the
-//! [`duat-term`](https://docs.rs/duat-term) crate, which is a ui
-//! implementation for Duat, defines "rule" widgets, which are
-//! separators that only really make sense in the context of a
-//! terminal.
+//! These 4 widgets are supposed to be universal, not needing a
+//! specific [`Ui`] implementation to work. In contrast, you can
+//! create widgets for specific [`Ui`]s. As an example, the
+//! [`duat-term`] crate, which is a terminal ui implementation for
+//! Duat, defines the [`VertRule`] widget, which is a separator that
+//! only makes sense in the context of a terminal.
+//!
+//! This module also describes a [`WidgetCfg`], which is an optional
+//! struct for widgets that details how they can be customized.
+//!
+//! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
+//! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
+//! [`OnFileOpen`]: crate::hooks::OnFileOpen
+//! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
+//! [`Constraint`]: crate::ui::Constraint
 use std::{
     any::TypeId,
     sync::{Arc, LazyLock},
@@ -24,6 +54,12 @@ use std::{
 
 use crossterm::event::KeyEvent;
 
+pub use self::{
+    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands, ShowNotifications},
+    file::{File, FileCfg},
+    line_numbers::{LineNumbers, LineNumbersCfg},
+    status_line::{common, status, State, StatusLine, StatusLineCfg},
+};
 use crate::{
     data::{Context, Data, RwData, RwLock},
     duat_name,
@@ -43,14 +79,7 @@ mod line_numbers;
 /// A widget showing information about the state of Duat
 mod status_line;
 
-pub use self::{
-    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands, ShowNotifications},
-    file::{File, FileCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{common, status, State, StatusLine, StatusLineCfg},
-};
-
-/// An area where text will be printed to the screen.
+/// An area where text will be printed to the screen
 pub trait PassiveWidget<U>: Send + Sync + 'static
 where
     U: Ui,
@@ -62,8 +91,7 @@ where
     where
         Self: Sized;
 
-    /// Updates the widget, allowing the modification of its
-    /// [`Area`][Ui::Area].
+    /// Updates the widget, allowing the modification of its [`Area`]
     ///
     /// This function will be called when Duat determines that the
     /// [`WidgetNode`]
@@ -88,7 +116,10 @@ where
         Self: Sized;
 }
 
-#[allow(refining_impl_trait)]
+/// A configuration struct for a [passive] or an [active] widget
+///
+/// [passive]: PassiveWidget
+/// [active]: ActiveWidget
 pub trait WidgetCfg<U>: Sized
 where
     U: Ui,
@@ -313,7 +344,11 @@ where
 /// becomes focused or unfocused. These methods also provide you with
 /// the [`Area`], so you can do things like [resizing] it.
 ///
-/// In this case, I chose to replace the [`Form`]s with "inactive" variants, to visually show when the widget is not active.
+/// In this case, I chose to replace the [`Form`]s with "inactive"
+/// variants, to visually show when the widget is not active.
+///
+/// Do also note that [`on_focus`] and [`on_unfocus`] are optional
+/// methods.
 ///
 /// [`Cursor`]: crate::input::Cursor
 /// [`print`]: PassiveWidget::print

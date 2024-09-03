@@ -25,7 +25,7 @@ static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 static CMD_MODES: CommandLineModes<Ui> = CommandLineModes::new();
 pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET, &NOTIFICATIONS);
 
-static CONTEXT: Context<Ui> = Context::new(
+pub static CONTEXT: Context<Ui> = Context::new(
     &COMMANDS,
     &NOTIFICATIONS,
     &CUR_FILE,
@@ -37,6 +37,8 @@ static CONTEXT: Context<Ui> = Context::new(
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
+pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
+    LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
 pub fn pre_setup() {
@@ -92,3 +94,5 @@ pub fn run_duat(
     };
     session.start(rx)
 }
+
+type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
