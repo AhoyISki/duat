@@ -75,9 +75,27 @@ where
     /// [forms] and add or trigger [hooks].
     ///
     /// ```rust
-    /// # use duat_core::{Plugin, hooks};
-    /// struct AutoSaver {
-    /// #     type Cache = ()
+    /// # use duat_core::{
+    /// #     data::Context,
+    /// #     hooks::{self, *},
+    /// #     input::{key, KeyCode},
+    /// #     ui::Ui,
+    /// #     widgets::File,
+    /// #     Plugin,
+    /// # };
+    /// struct AutoSaver;
+    /// impl<U: Ui> Plugin<U> for AutoSaver {
+    ///     type Cache = ();
+    ///
+    ///     fn new(cache: Self::Cache, context: Context<U>) -> Self {
+    ///         hooks::add::<KeySentTo<File, U>>(|&(key, _)| {
+    ///             // Assuming that we are leaving an insert mode
+    ///             if let key!(KeyCode::Esc) = key {
+    ///                 context.commands.run("write").unwrap();
+    ///             }
+    ///         });
+    ///         AutoSaver
+    ///     }
     /// }
     /// ```
     ///

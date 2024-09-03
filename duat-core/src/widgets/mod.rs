@@ -63,7 +63,7 @@ pub use self::{
 use crate::{
     data::{Context, Data, RwData, RwLock},
     duat_name,
-    hooks::{self, FocusedOn, UnfocusedFrom},
+    hooks::{self, FocusedOn, KeySent, KeySentTo, UnfocusedFrom},
     input::InputMethod,
     palette,
     text::{PrintCfg, Text},
@@ -455,6 +455,9 @@ where
 
     fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, context: Context<U>) {
         let mut input = self.input.write();
+
+		hooks::trigger::<KeySent<U>>((key, &self.dyn_active));
+        hooks::trigger::<KeySentTo<W, U>>((key, &self.widget));
 
         input.send_key(key, &self.widget, area, context);
 

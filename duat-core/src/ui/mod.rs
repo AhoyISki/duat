@@ -442,12 +442,12 @@ where
             })
     }
 
-    pub fn send_key(&self, key: KeyEvent, globals: Context<U>) {
+    pub fn send_key(&self, key: KeyEvent, context: Context<U>) {
         if let Some(node) = self
             .nodes()
-            .find(|node| globals.cur_widget().unwrap().widget_ptr_eq(&node.widget))
+            .find(|node| context.cur_widget().unwrap().widget_ptr_eq(&node.widget))
         {
-            node.widget.send_key(key, &node.area, globals);
+            node.widget.send_key(key, &node.area, context);
         }
     }
 
@@ -627,7 +627,7 @@ where
 pub(crate) fn build_file<U>(
     windows: &RwData<Vec<Window<U>>>,
     mod_area: U::Area,
-    globals: Context<U>,
+    context: Context<U>,
 ) where
     U: Ui,
 {
@@ -641,7 +641,7 @@ pub(crate) fn build_file<U>(
             .unwrap();
 
         let old_file = node.widget.downcast::<File>().map(|file| {
-            globals.cur_file().unwrap().swap((
+            context.cur_file().unwrap().swap((
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
@@ -652,11 +652,11 @@ pub(crate) fn build_file<U>(
         (window_i, old_file)
     };
 
-    let mut builder = FileBuilder::new(windows, mod_area, window_i, globals);
+    let mut builder = FileBuilder::new(windows, mod_area, window_i, context);
     hooks::trigger::<OnFileOpen<U>>(&mut builder);
 
     if let Some(parts) = old_file {
-        globals.cur_file().unwrap().swap(parts);
+        context.cur_file().unwrap().swap(parts);
     };
 }
 

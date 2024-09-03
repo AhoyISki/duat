@@ -9,8 +9,8 @@ pub use global::*;
 use parking_lot::RwLock;
 
 use crate::{
-    input::KeyEvent,
     data::RwData,
+    input::KeyEvent,
     ui::{FileBuilder, Ui, WindowBuilder},
     widgets::ActiveWidget,
 };
@@ -22,10 +22,26 @@ mod global {
 
     static HOOKS: Hooks = Hooks::new();
 
+    /// Adds a [hook]
+    ///
+    /// This hook is ungrouped, that is, it cannot be removed. If you
+    /// want a hook that is removable, see [`hooks::add_grouped`].
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add_grouped`]: add_grouped
     pub fn add<H: Hookable>(f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static) {
         HOOKS.add::<H>("", f)
     }
 
+    /// Adds a grouped [hook]
+    ///
+    /// A grouped hook is one that, along with others on the same
+    /// group, can be removed by [`hooks::remove_group`]. If you do
+    /// not need/want this feature, take a look at [`hooks::add`]
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::remove_group`]: remove_group
+    /// [`hooks::add`]: add
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
         f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static,
@@ -33,10 +49,26 @@ mod global {
         HOOKS.add::<H>(group, f)
     }
 
+    /// Removes a [hook] group
+    ///
+    /// By removing the group, this function will remove all hooks
+    /// added via [`hooks::add_grouped`] with the same group.
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add_grouped`]: add_grouped
     pub fn remove_group(group: &'static str) {
         HOOKS.remove(group)
     }
 
+    /// Triggers a hooks for a [`Hookable`] struct
+    ///
+    /// When you trigger a hook, all hooks added via [`hooks::add`] or
+    /// [`hooks::add_grouped`] for said [`Hookable`] struct will
+    /// be called.
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add`]: add
+    /// [`hooks::add_grouped`]: add_grouped
     pub fn trigger<H: Hookable>(args: H::Args<'_>) {
         HOOKS.trigger::<H>(args)
     }
@@ -188,10 +220,28 @@ where
     type Args<'args> = &'args RwData<W>;
 }
 
-pub struct KeyWasSent;
+pub struct KeySent<U>(PhantomData<U>)
+where
+    U: Ui;
 
-impl Hookable for KeyWasSent {
-    type Args<'args> = KeyEvent;
+impl<U> Hookable for KeySent<U>
+where
+    U: Ui,
+{
+    type Args<'args> = (KeyEvent, &'args RwData<dyn ActiveWidget<U>>);
+}
+
+pub struct KeySentTo<W, U>(PhantomData<(&'static W, U)>)
+where
+    W: ActiveWidget<U> + ?Sized,
+    U: Ui;
+
+impl<W, U> Hookable for KeySentTo<W, U>
+where
+    W: ActiveWidget<U> + ?Sized,
+    U: Ui,
+{
+    type Args<'args> = (KeyEvent, &'args RwData<W>);
 }
 
 type Hook<H> = (
