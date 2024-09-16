@@ -12,11 +12,11 @@ mod global {
     static PALETTE: Palette = Palette::new();
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set_form(name: impl AsRef<str>, form: Form) -> FormId {
+    pub fn set(name: impl AsRef<str>, form: Form) -> FormId {
         PALETTE.set_form(name, form)
     }
 
-    pub fn set_weak_form(name: impl AsRef<str>, form: Form) -> FormId {
+    pub fn set_weak(name: impl AsRef<str>, form: Form) -> FormId {
         PALETTE.set_weak_form(name, form)
     }
 
@@ -34,12 +34,12 @@ mod global {
     ///
     /// If a [`Form`] with the given name was not added prior, it will
     /// be added with the same form as the "Default" form.
-    pub fn id_from_name(name: impl AsRef<str>) -> FormId {
+    pub fn to_id(name: impl AsRef<str>) -> FormId {
         PALETTE.id_from_name(name)
     }
 
     /// Returns a form, given an index.
-    pub fn form_from_id(id: FormId) -> Form {
+    pub fn from_id(id: FormId) -> Form {
         PALETTE.form_from_id(id)
     }
 

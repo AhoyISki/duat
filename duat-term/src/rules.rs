@@ -62,7 +62,7 @@ impl PassiveWidget<Ui> for VertRule {
     }
 
     fn once(_globals: Context<Ui>) {
-        forms::set_weak_form("VertRule", Form::new().dark_grey());
+        forms::set_weak("VertRule", Form::new().dark_grey());
         forms::set_weak_ref("UpperVertRule", "VertRule");
         forms::set_weak_ref("LowerVertRule", "VertRule");
     }

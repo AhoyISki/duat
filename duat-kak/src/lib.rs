@@ -26,7 +26,7 @@ pub struct KeyMap {
 
 impl KeyMap {
     pub fn new() -> Self {
-        forms::set_weak_form("Mode", Form::new().green());
+        forms::set_weak("Mode", Form::new().green());
         KeyMap {
             cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,

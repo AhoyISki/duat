@@ -26,6 +26,8 @@ gapbuf = "0.1.4"
 nested_intervals = "0.6.0"
 dirs-next = "2.0.0"
 base64 = "0.22.1"
+serde = { version = "1.0.210", features = ["derive"] }
+bincode = "1.3.3"
 
 [features]
 # NOTE: Features meant for testing only by myself.

@@ -118,9 +118,9 @@ where
     }
 
     fn once(_context: Context<U>) {
-        forms::set_weak_form("LineNum", Form::new().grey());
-        forms::set_weak_form("MainLineNum", Form::new().yellow());
-        forms::set_weak_form("WrappedLineNum", Form::new().cyan().italic());
+        forms::set_weak("LineNum", Form::new().grey());
+        forms::set_weak("MainLineNum", Form::new().yellow());
+        forms::set_weak("WrappedLineNum", Form::new().cyan().italic());
         forms::set_weak_ref("WrappedMainLineNum", "WrappedLineNum");
     }
 }

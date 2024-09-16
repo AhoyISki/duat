@@ -195,20 +195,20 @@ pub macro text {
     // Forms
     (@push $builder:expr, []) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("Default")
+            crate::forms::to_id("Default")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
     (@push $builder:expr, [*a]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("Accent")
+            crate::forms::to_id("Accent")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
 
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name(stringify!($form))
+            crate::forms::to_id(stringify!($form))
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
@@ -240,20 +240,20 @@ pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("DefaultOk")
+            crate::forms::to_id("DefaultOk")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
     (@push $builder:expr, [*a]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("AccentOk")
+            crate::forms::to_id("AccentOk")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
 
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name(stringify!($form))
+            crate::forms::to_id(stringify!($form))
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
@@ -285,20 +285,20 @@ pub macro err {
     // Forms
     (@push $builder:expr, []) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("DefaultErr")
+            crate::forms::to_id("DefaultErr")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
     (@push $builder:expr, [*a]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("AccentErr")
+            crate::forms::to_id("AccentErr")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
 
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name(stringify!($form))
+            crate::forms::to_id(stringify!($form))
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
@@ -330,20 +330,20 @@ pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("DefaultHint")
+            crate::forms::to_id("DefaultHint")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
     (@push $builder:expr, [*a]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name("AccentHint")
+            crate::forms::to_id("AccentHint")
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },
 
     (@push $builder:expr, [$form:ident]) => {
         static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::id_from_name(stringify!($form))
+            crate::forms::to_id(stringify!($form))
         });
         $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
     },

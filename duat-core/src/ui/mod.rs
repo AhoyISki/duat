@@ -12,6 +12,7 @@ use std::{
 
 use crossterm::event::KeyEvent;
 use layout::iter_files_for_layout;
+use serde::{Deserialize, Serialize};
 
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
@@ -20,8 +21,8 @@ pub use self::{
 use crate::{
     cache::load_cache,
     data::{Context, RoData, RwData},
-    hooks::{self, OnFileOpen},
     forms::Painter,
+    hooks::{self, OnFileOpen},
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
     DuatError,
@@ -84,7 +85,7 @@ pub trait Area: Send + Sync + Sized {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
     type ConstraintChangeErr: std::error::Error + DuatError;
-    type Cache: Default + crate::cache::Cacheable;
+    type Cache: Default + Serialize + Deserialize<'static> + 'static;
 
     /// Returns the statics from `self`
     fn cache(&self) -> Option<Self::Cache>;
@@ -306,7 +307,7 @@ where
         checker: impl Fn() -> bool + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, U::Area) {
-        let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
+        let cache = if let Some(path) = widget.inspect_as(|file: &File| file.path())
             && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
         {
             cache

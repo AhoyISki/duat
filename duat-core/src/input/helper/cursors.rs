@@ -1,4 +1,5 @@
 use gapbuf::{gap_buffer, GapBuffer};
+use serde::{de::Visitor, ser::SerializeSeq, Deserialize, Serialize};
 
 pub use self::cursor::Cursor;
 use super::Diff;
@@ -7,19 +8,17 @@ use crate::{
     ui::Area,
 };
 
-crate::cache::cacheable!(
-    #[derive(Clone, Debug)]
-    pub struct Cursors {
-        buf: GapBuffer<Cursor>,
-        main: usize,
-        inclusive_ranges: bool,
-    }
-);
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cursors {
+    buf: CursorGapBuffer,
+    main: usize,
+    inclusive_ranges: bool,
+}
 
 impl Cursors {
     pub fn new_exclusive() -> Self {
         Self {
-            buf: gap_buffer![Cursor::new_at_0(false)],
+            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(false)]),
             main: 0,
             inclusive_ranges: false,
         }
@@ -27,7 +26,7 @@ impl Cursors {
 
     pub fn new_inclusive() -> Self {
         Self {
-            buf: gap_buffer![Cursor::new_at_0(true)],
+            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(true)]),
             main: 0,
             inclusive_ranges: true,
         }
@@ -92,7 +91,7 @@ impl Cursors {
 
     pub fn remove_extras(&mut self) {
         let cursor = self.buf[self.main].clone();
-        self.buf = gap_buffer![cursor];
+        self.buf = CursorGapBuffer(gap_buffer![cursor]);
         self.main = 0;
     }
 
@@ -129,7 +128,7 @@ impl Cursors {
     }
 
     pub fn reset(&mut self) {
-        self.buf = gap_buffer![Cursor::new_at_0(self.inclusive_ranges)]
+        self.buf = CursorGapBuffer(gap_buffer![Cursor::new_at_0(self.inclusive_ranges)])
     }
 
     pub(crate) fn clear(&mut self) {
@@ -223,7 +222,7 @@ impl Cursors {
 impl Default for Cursors {
     fn default() -> Self {
         Self {
-            buf: gap_buffer![Cursor::new_at_0(false)],
+            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(false)]),
             main: 0,
             inclusive_ranges: false,
         }
@@ -233,31 +232,31 @@ impl Default for Cursors {
 mod cursor {
     use std::ops::Range;
 
+    use serde::{Deserialize, Serialize};
+
     use crate::{
         text::{IterCfg, Point, PrintCfg, Text},
         ui::{Area, Caret},
     };
 
-    crate::cache::cacheable!(
-        /// A cursor in the text file. This is an editing cursor, not
-        /// a printing cursor.
-        #[derive(Debug)]
-        pub struct Cursor {
-            /// Current position of the cursor in the file.
-            caret: VPoint,
+    /// A cursor in the text file. This is an editing cursor, not
+    /// a printing cursor.
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct Cursor {
+        /// Current position of the cursor in the file.
+        caret: VPoint,
 
-            /// An anchor for a selection.
-            anchor: Option<VPoint>,
+        /// An anchor for a selection.
+        anchor: Option<VPoint>,
 
-            /// Wether or not the selection of this cursor is
-            /// inclusive or not.
-            is_inclusive: bool,
+        /// Wether or not the selection of this cursor is
+        /// inclusive or not.
+        is_inclusive: bool,
 
-            /// The index to a `Change` in the current `Moment`, used
-            /// for greater efficiency.
-            pub(crate) assoc_index: Option<usize>,
-        }
-    );
+        /// The index to a `Change` in the current `Moment`, used
+        /// for greater efficiency.
+        pub(crate) assoc_index: Option<usize>,
+    }
 
     impl Cursor {
         pub fn new_at_0(inclusive: bool) -> Self {
@@ -533,15 +532,13 @@ mod cursor {
         }
     }
 
-    crate::cache::cacheable!(
-        #[derive(Default, Debug, Clone, Copy, Eq)]
-        struct VPoint {
-            point: Point,
-            vcol: usize,
-            dcol: usize,
-            dwcol: usize,
-        }
-    );
+    #[derive(Default, Debug, Clone, Copy, Eq, Serialize, Deserialize)]
+    pub struct VPoint {
+        point: Point,
+        vcol: usize,
+        dcol: usize,
+        dwcol: usize,
+    }
 
     impl PartialOrd for VPoint {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -627,4 +624,77 @@ where
     }
 
     Err(left)
+}
+
+#[derive(Clone)]
+struct CursorGapBuffer(GapBuffer<Cursor>);
+
+impl std::ops::Deref for CursorGapBuffer {
+    type Target = GapBuffer<Cursor>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for CursorGapBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl std::fmt::Debug for CursorGapBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl Serialize for CursorGapBuffer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut ser_gapbuf = serializer.serialize_seq(Some(self.0.len()))?;
+
+        for cursor in self.0.iter() {
+            ser_gapbuf.serialize_element(cursor)?;
+        }
+        ser_gapbuf.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for CursorGapBuffer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct GapBufferVisitor;
+
+        impl<'v> Visitor<'v> for GapBufferVisitor {
+            type Value = CursorGapBuffer;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "This visitor expected a sequence of Cursors")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'v>,
+            {
+                let mut buf = if let Some(len) = seq.size_hint() {
+                    GapBuffer::with_capacity(len)
+                } else {
+                    GapBuffer::new()
+                };
+
+                while let Some(cursor) = seq.next_element()? {
+                    buf.push_back(cursor);
+                }
+
+                Ok(CursorGapBuffer(buf))
+            }
+        }
+
+        deserializer.deserialize_seq(GapBufferVisitor)
+    }
 }

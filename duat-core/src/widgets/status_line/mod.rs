@@ -225,10 +225,10 @@ where
     }
 
     fn once(_context: Context<U>) {
-        forms::set_weak_form("File", Form::new().yellow().italic());
-        forms::set_weak_form("Selections", Form::new().dark_blue());
-        forms::set_weak_form("Coord", Form::new().dark_red());
-        forms::set_weak_form("Separator", Form::new().cyan());
+        forms::set_weak("File", Form::new().yellow().italic());
+        forms::set_weak("Selections", Form::new().dark_blue());
+        forms::set_weak("Coord", Form::new().dark_red());
+        forms::set_weak("Separator", Form::new().cyan());
     }
 
     fn print_cfg(&self) -> &PrintCfg {
@@ -242,7 +242,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
     (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
-        let form_id = forms::id_from_name("Default");
+        let form_id = forms::to_id("Default");
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
@@ -254,7 +254,7 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = forms::id_from_name(stringify!($form));
+        let id = forms::to_id(stringify!($form));
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);

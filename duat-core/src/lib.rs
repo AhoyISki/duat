@@ -10,7 +10,9 @@
     is_none_or,
     if_let_guard,
     const_mut_refs,
-    const_char_from_u32_unchecked
+    const_char_from_u32_unchecked,
+    macro_metavar_expr,
+    macro_metavar_expr_concat
 )]
 
 use std::{
@@ -24,9 +26,9 @@ use std::{
 };
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 
 use self::{
-    cache::Cacheable,
     data::Context,
     text::{err, hint, Text},
     ui::Ui,
@@ -38,14 +40,14 @@ pub mod cache;
 pub mod commands;
 /// Data holders, like [`RwData`], and the [`Context`] for Duat
 pub mod data;
+/// [`Form`]s and other [`Text`](crate::text::Text) styling utilities
+pub mod forms;
 /// A [`History`] for [`File`](crate::widgets::File)s in Duat
 pub mod history;
 /// Hooks for Duat
 pub mod hooks;
 /// Input handling utilities, like [`InputMethod`] and [`EditHelper`]
 pub mod input;
-/// [`Form`]s and other [`Text`](crate::text::Text) styling utilities
-pub mod forms;
 /// The [`Session`] for Duat. Might make it hidden
 pub mod session;
 /// [`Text`] and supporting utilities, like [`Tag`]s and iterators
@@ -72,7 +74,7 @@ where
     /// store it in this struct, and it will be returned to the
     /// plugin when Duat is executed in the future. If you don't
     /// need this feature, you can set `type Cache = ();`
-    type Cache: Cacheable + Default
+    type Cache: Default + Serialize + Deserialize<'static> + 'static
     where
         Self: Sized;
 

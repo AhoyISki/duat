@@ -533,17 +533,19 @@ impl PartialEq for Text {
 }
 
 mod point {
+    use serde::{Deserialize, Serialize};
+
     use super::Item;
 
-    crate::cache::cacheable!(
-        /// A position in [`Text`].
-        #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-        pub struct Point {
-            b: usize,
-            c: usize,
-            l: usize,
-        }
-    );
+    /// A position in [`Text`].
+    #[derive(
+        Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+    )]
+    pub struct Point {
+        b: usize,
+        c: usize,
+        l: usize,
+    }
 
     impl Point {
         /// Returns a new [`Point`], at the first byte.

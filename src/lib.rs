@@ -148,7 +148,7 @@ pub mod cursor {
 /// [`Form`]: duat_core::palette::Form
 pub mod forms {
     pub use duat_core::forms::{
-        form_from_id as from_id, id_from_name as to_id, set_form as set, set_ref, CursorShape, Form,
+        from_id, to_id, set, set_ref, CursorShape, Form,
     };
 }
 

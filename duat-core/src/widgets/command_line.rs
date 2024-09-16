@@ -180,7 +180,7 @@ where
     }
 
     fn once(context: Context<U>) {
-        forms::set_weak_form("Prompt", Form::new().cyan());
+        forms::set_weak("Prompt", Form::new().cyan());
 
         context
             .commands

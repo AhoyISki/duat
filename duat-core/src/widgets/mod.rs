@@ -62,10 +62,9 @@ pub use self::{
 };
 use crate::{
     data::{Context, Data, RwData, RwLock},
-    duat_name,
+    duat_name, forms,
     hooks::{self, FocusedOn, KeySent, KeySentTo, UnfocusedFrom},
     input::InputMethod,
-    forms,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -179,7 +178,7 @@ mod status_line;
 /// # use duat_core::{
 /// #     data::Context,
 /// #     hooks::{self, OnUiStart},
-/// #     palette::{set_weak_form, Form},
+/// #     palette::{set_weak, Form},
 /// #     text::Text,
 /// #     ui::{PushSpecs, Ui},
 /// #     widgets::{PassiveWidget, Widget},
@@ -200,7 +199,7 @@ mod status_line;
 /// #   }
 ///     // ...
 ///     fn once(context: Context<U>) {
-///         set_weak_form("UpTime", Form::new().cyan());
+///         set_weak("UpTime", Form::new().cyan());
 ///
 ///         hooks::add::<OnUiStart<U>>(|_| {
 ///             START_TIME.set(Instant::now()).unwrap();
@@ -211,7 +210,7 @@ mod status_line;
 ///
 /// I also added the `"UpTime"` [`Form`], which will be used by the
 /// widget when it is updated. When adding forms, you should use the
-/// [`palette::set_weak_*`] functions, in order to not interfere with
+/// [`palette::set_weak*`] functions, in order to not interfere with
 /// the configuration crate.
 ///
 /// Next, I need to implement the [`update`] method, which will simply
@@ -263,7 +262,7 @@ mod status_line;
 /// [`OnUiStart`]: crate::hooks::OnUiStart
 /// [`update`]: PassiveWidget::update
 /// [`Form`]: crate::palette::Form
-/// [`palette::set_weak_*`]: crate::palette::set_weak_form
+/// [`palette::set_weak*`]: crate::palette::set_weak
 /// [`text!`]: crate::text::text
 pub trait PassiveWidget<U>: Send + Sync + 'static
 where
@@ -323,7 +322,10 @@ where
 
     /// Actions taken when this widget opens for the first time
     ///
-    /// Examples of things that should go in here are [`palette`] functions, 
+    /// Examples of things that should go in here are [`forms`]
+    /// functions, [hooks], [commands] you want executed only once
+    ///
+    /// [commands]: crate::commands
     fn once(context: Context<U>)
     where
         Self: Sized;
@@ -486,8 +488,8 @@ where
 ///     fn once(_context: Context<U>) {
 ///         palette::set_weak_ref("MenuInactive", "Inactive");
 ///         palette::set_weak_ref("MenuSelected", "Inactive");
-///         palette::set_weak_form("MenuActive", Form::new().blue());
-///         palette::set_weak_form("MenuSelActive", Form::new().blue());
+///         palette::set_weak("MenuActive", Form::new().blue());
+///         palette::set_weak("MenuSelActive", Form::new().blue());
 ///     }
 /// }
 /// # impl<U: Ui> ActiveWidget<U> for Menu {
@@ -537,17 +539,14 @@ where
 ///
 ///     fn on_focus(&mut self, _area: &U::Area) {
 ///         palette::set_weak_ref("MenuInactive", "Default");
-///         palette::set_weak_form("MenuSelected", Form::new().on_grey());
-///         palette::set_weak_form(
-///             "MenuSelActive",
-///             Form::new().blue().on_grey(),
-///         );
+///         palette::set_weak("MenuSelected", Form::new().on_grey());
+///         palette::set_weak("MenuSelActive",Form::new().blue().on_grey());
 ///     }
 ///
 ///     fn on_unfocus(&mut self, _area: &U::Area) {
 ///         palette::set_weak_ref("MenuInactive", "Inactive");
 ///         palette::set_weak_ref("MenuSelected", "Inactive");
-///         palette::set_weak_form("MenuSelActive", Form::new().blue());
+///         palette::set_weak("MenuSelActive", Form::new().blue());
 ///     }
 /// }
 /// ```

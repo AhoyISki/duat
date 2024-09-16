@@ -449,7 +449,7 @@ impl Write for Lines {
 
     fn flush(&mut self) -> std::io::Result<()> {
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let default_form = duat_core::forms::form_from_id(DEFAULT_FORM_ID);
+        let default_form = duat_core::forms::from_id(DEFAULT_FORM_ID);
 
         let align_start = match self.align {
             Alignment::Left => 0,
@@ -586,7 +586,7 @@ impl SavedVar {
 fn print_edges(edges: &[Edge]) {
     static FRAME_FORM: LazyLock<FormId> =
         LazyLock::new(|| forms::set_weak_ref("Frame", "Default"));
-    let frame_form = forms::form_from_id(*FRAME_FORM);
+    let frame_form = forms::from_id(*FRAME_FORM);
 
     let mut stdout = std::io::stdout().lock();
 
