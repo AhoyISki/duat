@@ -26,7 +26,7 @@ pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::{utf8_char_width, Point},
-    search::Searcher,
+    search::{Searcher, RegexPattern},
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };

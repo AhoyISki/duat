@@ -88,7 +88,7 @@ impl Area {
     fn print<'a>(
         &self,
         text: &Text,
-        cfg: &PrintCfg,
+        cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
@@ -106,7 +106,7 @@ impl Area {
 
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.points);
-            (text.iter_at(line_start), IterCfg::new(cfg).outsource_lfs())
+            (text.iter_at(line_start), IterCfg::new(&cfg).outsource_lfs())
         };
 
         let cap = cfg.wrap_width(sender.coords().width());
@@ -237,7 +237,7 @@ impl ui::Area for Area {
         })
     }
 
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg) {
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
         let (info, w, h) = {
             let layout = self.layout.read();
             let rect = layout.get(self.id).unwrap();
@@ -248,8 +248,8 @@ impl ui::Area for Area {
             (*info, width, height)
         };
 
-        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
-        let info = scroll_hor_around(info, w, point, text, IterCfg::new(cfg).outsource_lfs());
+        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(&cfg).outsource_lfs());
+        let info = scroll_hor_around(info, w, point, text, IterCfg::new(&cfg).outsource_lfs());
 
         let layout = self.layout.read();
         let rect = layout.get(self.id).unwrap();
@@ -274,14 +274,14 @@ impl ui::Area for Area {
         self.layout.read().active_id == self.id
     }
 
-    fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter) {
+    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
     }
 
     fn print_with<'a>(
         &self,
         text: &Text,
-        cfg: &PrintCfg,
+        cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
@@ -485,8 +485,8 @@ fn scroll_ver_around(
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
     let target = match info.last_main > point {
-        true => cfg.scrolloff().y,
-        false => height.saturating_sub(cfg.scrolloff().y + 1),
+        true => cfg.scrolloff().y(),
+        false => height.saturating_sub(cfg.scrolloff().y() + 1),
     };
     let first = iter.nth(target).unwrap_or_default();
 
@@ -557,11 +557,11 @@ fn scroll_hor_around(
 
     info.x_shift = info
         .x_shift
-        .min(start.saturating_sub(cfg.scrolloff().x))
+        .min(start.saturating_sub(cfg.scrolloff().x()))
         .max(if cfg.forced_scrollof() {
-            (end + cfg.scrolloff().x).saturating_sub(width)
+            (end + cfg.scrolloff().x()).saturating_sub(width)
         } else {
-            (end + cfg.scrolloff().x)
+            (end + cfg.scrolloff().x())
                 .min(max_shift)
                 .saturating_sub(width)
         });

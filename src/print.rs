@@ -1,6 +1,5 @@
-use std::ops::RangeInclusive;
-
-use duat_core::text::PrintCfg;
+#[allow(unused_imports)]
+use duat_core::text::{word_chars as w_chars, PrintCfg, WordChars};
 
 use crate::setup::PRINT_CFG;
 
@@ -38,7 +37,7 @@ pub fn wrap_on_words() {
 }
 
 #[inline(never)]
-pub fn wrap_on_cap(cap: usize) {
+pub fn wrap_on_cap(cap: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -60,7 +59,7 @@ pub fn indent_on_wrap() {
 }
 
 #[inline(never)]
-pub fn tab_size(tab_size: usize) {
+pub fn tab_size(tab_size: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -93,7 +92,7 @@ pub fn trailing_new_line(char: char) {
 }
 
 #[inline(never)]
-pub fn scrolloff(x: usize, y: usize) {
+pub fn scrolloff(x: u8, y: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -103,13 +102,18 @@ pub fn scrolloff(x: usize, y: usize) {
     })
 }
 
+pub macro word_chars($($w_chars:tt)+) {
+    word_chars(w_chars!($($w_chars:tt)+))
+}
+
+#[allow(dead_code)]
 #[inline(never)]
-pub fn word_chars(word_chars: impl Iterator<Item = RangeInclusive<char>>) {
+pub(crate) fn word_chars(word_chars: WordChars) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_word_chars(word_chars),
-        None => PrintCfg::default_for_input().with_word_chars(word_chars),
+        Some(prev) => prev.with_words_as(word_chars),
+        None => PrintCfg::default_for_input().with_words_as(word_chars),
     })
 }

@@ -11,16 +11,15 @@ use regex_automata::{
 };
 use regex_syntax::hir::{Hir, HirKind};
 
-use super::Text;
-use crate::text::Point;
+use super::{Point, Text};
 
 impl Text {
-    pub fn search_from<'a>(
-        &'a mut self,
-        pat: &'a str,
+    pub fn search_from(
+        &mut self,
+        pat: impl RegexPattern,
         at: Point,
         end: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
+    ) -> Result<impl Iterator<Item = (Point, Point)> + '_, Box<BuildError>> {
         let dfas = dfas_from_pat(pat)?;
 
         let (gap, haystack) = match end {
@@ -60,12 +59,12 @@ impl Text {
     }
 
     /// Returns an iterator over the reverse matches of the regex
-    pub fn search_from_rev<'a>(
-        &'a mut self,
-        pat: &'a str,
+    pub fn search_from_rev(
+        &mut self,
+        pat: impl RegexPattern,
         at: Point,
         start: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
+    ) -> Result<impl Iterator<Item = (Point, Point)> + '_, Box<BuildError>> {
         let dfas = dfas_from_pat(pat)?;
 
         let (gap, haystack) = match start {
@@ -293,7 +292,7 @@ pub struct SavedMatches {
 }
 
 impl SavedMatches {
-    pub fn new(pat: String) -> Result<Self, BuildError> {
+    pub fn new(pat: String) -> Result<Self, Box<BuildError>> {
         let _ = dfas_from_pat(&pat)?;
         let hir = regex_syntax::Parser::new().parse(&pat).unwrap();
         Ok(Self {
@@ -423,11 +422,14 @@ fn is_prefix_of(prefix: &Hir, to_check: &Hir) -> bool {
     }
 }
 
-fn dfas_from_pat(pat: &str) -> Result<&'static DFAs, BuildError> {
+fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<BuildError>> {
     static DFA_LIST: LazyLock<RwLock<HashMap<&'static str, &'static DFAs>>> =
         LazyLock::new(RwLock::default);
 
     let mut list = DFA_LIST.write();
+
+    let mut bytes = [0; 4];
+    let pat = pat.as_str(&mut bytes);
 
     if let Some(dfas) = list.get(pat) {
         Ok(*dfas)
@@ -444,5 +446,33 @@ fn dfas_from_pat(pat: &str) -> Result<&'static DFAs, BuildError> {
         });
         let _ = list.insert(pat.to_string().leak(), Box::leak(dfas));
         Ok(*list.get(pat).unwrap())
+    }
+}
+
+pub trait RegexPattern {
+    fn as_str<'b>(&'b self, bytes: &'b mut [u8; 4]) -> &'b str;
+}
+
+impl<'a> RegexPattern for &'a str {
+    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
+        self
+    }
+}
+
+impl RegexPattern for String {
+    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
+        self
+    }
+}
+
+impl<'a> RegexPattern for &'a String {
+    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
+        self
+    }
+}
+
+impl RegexPattern for char {
+    fn as_str<'b>(&'b self, bytes: &'b mut [u8; 4]) -> &'b str {
+        self.encode_utf8(bytes) as &str
     }
 }

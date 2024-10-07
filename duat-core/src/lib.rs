@@ -12,8 +12,7 @@
     if_let_guard,
     const_mut_refs,
     const_char_from_u32_unchecked,
-    macro_metavar_expr,
-    macro_metavar_expr_concat
+    const_refs_to_static
 )]
 
 use std::{

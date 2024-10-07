@@ -1,4 +1,6 @@
-use std::ops::RangeInclusive;
+use std::{ops::RangeInclusive, sync::LazyLock};
+
+use regex_automata::meta::Regex;
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Clone, Copy, Debug)]
@@ -91,32 +93,32 @@ impl ScrollOff {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct WordChars(&'static [RangeInclusive<char>]);
+pub struct WordChars(&'static LazyLock<(Regex, &'static [RangeInclusive<char>])>);
 
 impl WordChars {
-    /// Returns a new instance of [`WordChars`]
-    pub const fn new(ranges: &'static [RangeInclusive<char>]) -> Self {
-        let word_chars = WordChars(ranges);
-
-        assert!(
-            !word_chars.contains(' ') && !word_chars.contains('\t') && !word_chars.contains('\n'),
-            "WordChars cannot contain ' ', '\\n' or '\\t'."
-        );
-
-        word_chars
+    pub const fn default() -> Self {
+        static REGEX: LazyLock<(Regex, &'static [RangeInclusive<char>])> = LazyLock::new(|| {
+            (Regex::new("[A-Za-z0-9_]").unwrap(), &[
+                'A'..='Z',
+                'a'..='z',
+                '0'..='9',
+                '_'..='_',
+            ])
+        });
+        WordChars(&REGEX)
     }
 
     /// Checks if a `char` is a word char
     #[inline]
-    pub const fn contains(&self, char: char) -> bool {
-        let mut i = 0;
-        while i < self.0.len() {
-            if *self.0[i].start() <= char && char <= *self.0[i].end() {
-                return true;
-            }
-            i += 1;
-        }
-        false
+    pub fn contains(&self, char: char) -> bool {
+        let mut bytes = [0; 4];
+        let str = char.encode_utf8(&mut bytes);
+
+        self.0.0.is_match(str as &str)
+    }
+
+    pub fn ranges(&self) -> &'static [RangeInclusive<char>] {
+        self.0.1
     }
 }
 
@@ -150,7 +152,7 @@ impl PrintCfg {
             tab_stops: TabStops(4),
             new_line: NewLine::Hidden,
             scrolloff: ScrollOff { x: 3, y: 3 },
-            word_chars: WordChars::new(&['A'..='Z', 'a'..='z', '0'..='9', '_'..='_']),
+            word_chars: WordChars::default(),
             ending_space: false,
             force_scrolloff: false,
         }
@@ -215,11 +217,8 @@ impl PrintCfg {
         }
     }
 
-    pub const fn with_word_chars(self, word_chars: &'static [RangeInclusive<char>]) -> Self {
-        Self {
-            word_chars: WordChars::new(word_chars),
-            ..self
-        }
+    pub const fn with_words_as(self, word_chars: WordChars) -> Self {
+        Self { word_chars, ..self }
     }
 
     pub const fn with_ending_space(self) -> Self {
@@ -240,10 +239,16 @@ impl PrintCfg {
             tab_stops: TabStops(4),
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff { x: 3, y: 3 },
-            word_chars: WordChars::new(&['a'..='z', 'A'..='Z', '0'..='9', '_'..='_']),
+            word_chars: WordChars::default(),
             ending_space: true,
             force_scrolloff: false,
         }
+    }
+}
+
+impl Default for PrintCfg {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -350,5 +355,37 @@ impl<'a> IterCfg<'a> {
             WrapMethod::Capped(cap) => cap as usize,
             WrapMethod::NoWrap => usize::MAX,
         }
+    }
+}
+
+pub macro word_chars {
+    (@range $ranges:expr, ) => {{
+        static REGEX: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(concat!($ranges , "]")).unwrap());
+        WordChars(&REGEX)
+    }},
+    (@range $ranges:expr, $start:literal - $end:literal $($rest:tt)*) => {{
+        const {
+            assert!($start <= $end, concat!("\"", $start, "-", $end, "\" is not a valid range."));
+            assert!(
+                !($start <= ' ' && ' ' <= $end),
+                concat!("\"", $start, "-", $end, "\" contains ' '.")
+            );
+            assert!(
+                !($start <= '\n' && '\n' <= $end),
+                concat!("\"", $start, "-", $end, "\" contains '\\n'.")
+            );
+            assert!(
+                !($start <= '\t' && '\t' <= $end),
+                concat!("\"", $start, "-", $end, "\" contains '\\t '.")
+            );
+        }
+        word_chars!(@range concat!($ranges, $start, "-", $end), $($rest)*)
+    }},
+    (@range $ranges:expr, $($rest:tt)*) => {
+        compile_error!("The syntax must be a sequence of \"{char}-{char}\"s")
+    },
+    ($($ranges:tt)+) => {
+        word_chars!(@range "[", $($ranges)+)
     }
 }

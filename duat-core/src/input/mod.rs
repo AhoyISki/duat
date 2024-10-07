@@ -10,7 +10,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 pub use self::{
     commander::Commander,
     default::KeyMap,
-    helper::{Cursor, Cursors, EditHelper},
+    helper::{Cursor, Cursors, EditHelper, Editor, Mover},
 };
 use crate::{
     data::{Context, RwData},
@@ -358,62 +358,12 @@ pub const fn len_chars(s: &str) -> usize {
 /// Maps each [`char`] in an `&str` to a [`KeyEvent`]
 #[allow(dead_code)]
 #[doc(hidden)]
-pub fn key_events<const LEN: usize>(string: &str, modif: KeyMod) -> [KeyEvent; LEN] {
-    let mut chars = [KeyEvent::new(KeyCode::Esc, KeyMod::NONE); LEN];
+pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN] {
+    let mut events = [KeyEvent::new(KeyCode::Esc, KeyMod::NONE); LEN];
 
-    let bytes = string.as_bytes();
-    let mut i = 0;
-    let mut char_i = 0;
-
-    while i < bytes.len() {
-        let x = unsafe { *bytes.get_unchecked(i) };
-        i += 1;
-        if x < 128 {
-            let ch = unsafe { char::from_u32_unchecked(x as u32) };
-            chars[char_i] = KeyEvent::new(KeyCode::Char(ch), modif);
-            char_i += 1;
-            continue;
-        }
-
-        let init = utf8_first_byte(x, 2);
-        let y = unsafe { *bytes.get_unchecked(i) };
-        i += 1;
-        let mut ch = utf8_acc_cont_byte(init, y);
-
-        if x >= 0xe0 {
-            let z = unsafe { *bytes.get_unchecked(i) };
-            i += 1;
-            let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
-            ch = init << 12 | y_z;
-
-            if x >= 0xf0 {
-                let w = unsafe { *bytes.get_unchecked(i) };
-                i += 1;
-                ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
-            }
-        }
-
-        let ch = unsafe { char::from_u32_unchecked(ch) };
-        chars[char_i] = KeyEvent::new(KeyCode::Char(ch), modif);
-        char_i += 1;
+    for (event, char) in events.iter_mut().zip(str.chars()) {
+        *event = KeyEvent::new(KeyCode::Char(char), modif)
     }
 
-    chars
+    events
 }
-
-/// Returns the initial codepoint accumulator for the first byte.
-/// The first byte is special, only want bottom 5 bits for width 2, 4
-/// bits for width 3, and 3 bits for width 4.
-#[inline]
-const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
-    (byte & (0x7f >> width)) as u32
-}
-
-/// Returns the value of `ch` updated with continuation byte `byte`.
-#[inline]
-const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
-    (ch << 6) | (byte & CONT_MASK) as u32
-}
-
-/// The lowest 6 bits are taken from contiuation bytes.
-const CONT_MASK: u8 = 63;

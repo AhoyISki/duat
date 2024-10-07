@@ -7,13 +7,11 @@
 //! [`InputMethod`]: super::InputMethod
 use std::{any::TypeId, ops::Range};
 
-use regex_automata::hybrid::BuildError;
-
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    text::{Point, PrintCfg, SavedMatches, Searcher, Text, WordChars},
+    text::{Point, PrintCfg, RegexPattern, SavedMatches, Searcher, Text, WordChars},
     ui::Area,
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -657,7 +655,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, &self.cfg);
+        self.cursor.move_to(point, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a `line` and a `column`
@@ -706,11 +704,15 @@ where
 
     ////////// Lookup functions
 
-    /// Searches the [`Text`] for a [`Pattern`]
+    /// Searches the [`Text`] for a regex
     ///
     /// The search will begin on the `caret`, and returns the bounding
     /// [`Point`]s, alongside the [match]. If an `end` is provided,
     /// the search will stop at the given [`Point`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
@@ -728,18 +730,24 @@ where
     ///
     /// [match]: Pattern::Match
     pub fn search(
-        &'a mut self,
-        pat: &'a str,
+        &mut self,
+        pat: impl RegexPattern,
         end: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
-        self.text.search_from(pat, self.cursor.caret(), end)
+    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+        self.text
+            .search_from(pat, self.cursor.caret(), end)
+            .unwrap()
     }
 
-    /// Searches the [`Text`] for a [`Pattern`], in reverse
+    /// Searches the [`Text`] for a regex, in reverse
     ///
     /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the [match]. If an `end` is provided,
+    /// [`Point`]s, alongside the [match]. If a `start` is provided,
     /// the search will stop at the given [`Point`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
@@ -761,11 +769,13 @@ where
     ///
     /// [match]: Pattern::Match
     pub fn search_rev(
-        &'a mut self,
-        pat: &'a str,
-        end: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
-        self.text.search_from_rev(pat, self.cursor.caret(), end)
+        &mut self,
+        pat: impl RegexPattern,
+        start: Option<Point>,
+    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+        self.text
+            .search_from_rev(pat, self.cursor.caret(), start)
+            .unwrap()
     }
 
     /// Returns the [`char`] in the `caret`

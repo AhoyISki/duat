@@ -401,7 +401,7 @@ where
 
         area.print_with(
             &self.text,
-            &self.cfg,
+            self.cfg,
             forms::painter(),
             move |caret, item| {
                 has_wrapped |= caret.wrap;

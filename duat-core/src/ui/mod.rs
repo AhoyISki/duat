@@ -121,7 +121,7 @@ pub trait Area: Send + Sync + Sized {
     fn print_with<'a>(
         &self,
         text: &Text,
-        cfg: &PrintCfg,
+        cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     );

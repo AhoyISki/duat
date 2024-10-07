@@ -287,6 +287,9 @@ mod cursor {
 
         /// Moves to specific, pre calculated [`Point`].
         pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+            if point == self.caret() {
+                return;
+            }
             let Some(last) = text.last_point() else {
                 self.anchor = None;
                 self.caret = VPoint::default();

@@ -1,16 +1,16 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{iter::Peekable, sync::LazyLock};
+use std::{collections::HashMap, iter::Peekable, ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
-    data::{Context, RwData},
+    data::{Context, RwData, RwLock},
     forms::{self, Form},
     hooks::{self, Hookable},
     input::{
         key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
-        KeyMod as Mod,
+        KeyMod as Mod, Mover,
     },
-    text::{err, text, CharSet, Point, Text, WordChars},
+    text::{err, text, Point, Text},
     ui::{Area, Ui},
     widgets::File,
 };
@@ -51,7 +51,7 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Insert`.
-    fn match_insert(&mut self, helper: &mut EditHelper<File, impl Area>, event: Event) {
+    fn match_insert<S>(&mut self, helper: &mut EditHelper<File, impl Area, S>, event: Event) {
         if let key!(Left | Down | Up | Right) = event {
             helper.move_each(|m| m.unset_anchor())
         }
@@ -133,9 +133,9 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Normal`.
-    fn match_normal<U: Ui>(
+    fn match_normal<U: Ui, S>(
         &mut self,
-        helper: &mut EditHelper<File, U::Area>,
+        helper: &mut EditHelper<File, U::Area, S>,
         event: Event,
         context: Context<U>,
     ) {
@@ -149,8 +149,8 @@ impl KeyMap {
             key!(Char('j')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
-                    if let Some(point) = p.or(m.last_point()) {
+                    let (p0, _) = m.search("\n", None).next().unzip();
+                    if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -170,8 +170,8 @@ impl KeyMap {
             key!(Char('k')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
-                    if let Some(point) = p.or(m.last_point()) {
+                    let (p0, _) = m.search("\n", None).next().unzip();
+                    if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -194,8 +194,8 @@ impl KeyMap {
             key!(Char('J'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
-                    if let Some(point) = p.or(m.last_point()) {
+                    let (p0, _) = m.search("\n", None).next().unzip();
+                    if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -215,8 +215,8 @@ impl KeyMap {
             key!(Char('K'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
-                    if let Some(point) = p.or(m.last_point()) {
+                    let (p0, _) = m.search("\n", None).next().unzip();
+                    if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
@@ -246,60 +246,56 @@ impl KeyMap {
 
             ////////// Word and WORD selection keys.
             key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
-                let mut chars = peekable_no_nl_windows(m.iter());
+                let init = peekable_no_nl_windows(m.iter()).next();
 
-                if let Some(((p0, c0), (p1, c1))) = chars.next() {
-                    let (p0, cat) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
-                    let (p1, ..) = {
-                        let mut chars = chars.map(|(_, second)| second).peekable();
-                        let (p1, c1, ..) = end_of_cat(&mut chars, cat, (p1, c1));
-                        end_of_cat(&mut chars, [' ', '\t'], (p1, c1))
-                    };
+                if let Some(((p0, c0), (p1, c1))) = init {
+                    if m.w_chars().contains(c0) == m.w_chars().contains(c1) {
+                        m.move_to(p0);
+                    } else {
+                        m.move_to(p1);
+                    }
 
-                    m.move_to(p0);
-                    m.set_anchor();
-                    m.move_to(p1);
+                    let (_, p1) = m.search(word_and_space(m, mf), None).next().unzip();
+                    if let Some(p1) = p1 {
+                        m.set_anchor();
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    }
                 };
             }),
             key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
-                let mut chars = peekable_no_nl_windows(m.iter());
+                let init = peekable_no_nl_windows(m.iter()).next();
 
-                if let Some(&((p0, c0), (p1, c1))) = chars.peek() {
-                    let (p0, _) = word_point_and_cat(c0, c1, p0, p1, m.w_chars(), mf);
-                    let p1 = {
-                        let mut chars = chars.map(|(_, second)| second).peekable();
-                        let (p1, c1, miss) = end_of_cat(&mut chars, [' ', '\t'], (p1, c1));
-                        miss.map(|char| {
-                            end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p1, c1)).0
-                        })
-                        .unwrap_or(p1)
-                    };
+                if let Some(((p0, c0), (p1, c1))) = init {
+                    if m.w_chars().contains(c0) == m.w_chars().contains(c1) {
+                        m.move_to(p0);
+                    } else {
+                        m.move_to(p1);
+                    }
 
-                    m.move_to(p0);
-                    m.set_anchor();
-                    m.move_to(p1);
+                    let (_, p1) = m.search(space_and_word(m, mf), None).next().unzip();
+                    if let Some(p1) = p1 {
+                        m.set_anchor();
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    }
                 };
             }),
             key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
-                let mut chars = {
+                let init = {
                     let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
-                    peekable_no_nl_windows(iter)
+                    peekable_no_nl_windows(iter).next()
                 };
 
-                if let Some(&((p1, c1), (p0, c0))) = chars.peek() {
-                    let (p1, _) = word_point_and_cat(c1, c0, p1, p0, m.w_chars(), mf);
-                    let p0 = {
-                        let mut chars = chars.map(|(_, first)| first).peekable();
-                        let (p0, c0, miss) = end_of_cat(&mut chars, [' ', '\t'], (p0, c0));
-                        miss.map(|char| {
-                            end_of_cat(&mut chars, CharCat::of(char, m.w_chars(), mf), (p0, c0)).0
-                        })
-                        .unwrap_or(p0)
-                    };
-
-                    m.move_to(p1);
-                    m.set_anchor();
-                    m.move_to(p0);
+                if let Some(((_, c1), (_, c0))) = init {
+                    let points = m.search_rev(word_and_space(m, mf), None).next();
+                    if let Some((p0, _)) = points {
+                        if m.w_chars().contains(c0) != m.w_chars().contains(c1) {
+                            m.move_hor(-1);
+                        }
+                        m.set_anchor();
+                        m.move_to(p0);
+                    }
                 };
             }),
 
@@ -307,55 +303,33 @@ impl KeyMap {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
-                let mut chars = m.iter().skip(1).skip_while(|(_, char)| *char == '\n');
 
-                if let Some((p, char)) = chars.next() {
-                    let cat = CharCat::of(char, m.w_chars(), mf);
-                    let (p, ..) = {
-                        let mut chars = chars.peekable();
-                        let (p, char, _) = end_of_cat(&mut chars, cat, (p, char));
-                        end_of_cat(&mut chars, [' ', '\t'], (p, char))
-                    };
-
-                    m.move_to(p);
-                };
+                let points = m.search(word_and_space(m, mf), None).next();
+                if let Some((_, p1)) = points {
+                    m.move_to(p1);
+                    m.move_hor(-1);
+                }
             }),
             key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
-                let mut chars = m
-                    .iter()
-                    .skip(1)
-                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
 
-                if let Some((point, char)) = chars.next() {
-                    let cat = CharCat::of(char, m.w_chars(), mf);
-                    let (point, ..) = {
-                        let mut chars = chars.peekable();
-                        end_of_cat(&mut chars, cat, (point, char))
-                    };
-
-                    m.move_to(point);
-                };
+                let points = m.search(space_and_word(m, mf), None).next();
+                if let Some((_, p1)) = points {
+                    m.move_to(p1);
+                    m.move_hor(-1);
+                }
             }),
             key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
-                let mut chars = m
-                    .iter_rev()
-                    .skip_while(|(_, char)| [' ', '\t', '\n'].matches(*char));
 
-                if let Some((point, char)) = chars.next() {
-                    let cat = CharCat::of(char, m.w_chars(), mf);
-                    let (point, ..) = {
-                        let mut chars = chars.peekable();
-                        end_of_cat(&mut chars, cat, (point, char))
-                    };
-
-                    m.move_to(point);
-                };
+                let points = m.search_rev(word_and_space(m, mf), None).next();
+                if let Some((p0, _)) = points {
+                    m.move_to(p0);
+                }
             }),
 
             ////////// Other selection keys.
@@ -364,14 +338,11 @@ impl KeyMap {
                 helper.move_each(|m| {
                     m.set_caret_on_start();
 
-                    let p0 = {
-                        let points = m.search_rev('\n', None).next().unzip().0;
-                        points.unzip().0.unwrap_or_default()
-                    };
+                    let (p0, _) = m.search_rev("\n", None).next().unwrap_or_default();
                     m.set_caret_on_end();
                     m.move_to(p0);
 
-                    let (p1, _) = m.search('\n', None).next().unzip().0.unzip();
+                    let (p1, _) = m.search("\n", None).next().unzip();
                     if let Some(p1) = p1.or(m.last_point()) {
                         m.set_anchor();
                         m.move_to(p1);
@@ -459,9 +430,9 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::GoTo`.
-    fn match_goto<U: Ui>(
+    fn match_goto<U: Ui, S>(
         &mut self,
-        helper: &mut EditHelper<File, U::Area>,
+        helper: &mut EditHelper<File, U::Area, S>,
         event: Event,
         context: Context<U>,
     ) {
@@ -483,7 +454,7 @@ impl KeyMap {
 
         match event {
             key!(Char('h')) => helper.move_each(|m| {
-                let (_, p1) = m.search('\n', None).next().unzip().0.unzip();
+                let (_, p1) = m.search_rev("\n", None).next().unzip();
                 m.move_to(p1.unwrap_or_default());
             }),
             key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
@@ -499,21 +470,14 @@ impl KeyMap {
                 }
             }),
             key!(Char('i')) => helper.move_each(|m| {
-                let mut first_char = None;
-                m.iter_rev()
-                    .inspect(|(p, char)| {
-                        if CharCat::Space.not().matches(*char) {
-                            first_char = Some(*p)
-                        }
-                    })
-                    .find(|(_, char)| *char == '\n');
+                let (_, p1) = m.search_rev("(^|\n)[ \t]*", None).next().unzip();
+                if let Some(p1) = p1 {
+                    m.move_to(p1);
 
-                if let Some(point) = first_char {
-                    m.move_to(point);
-                } else if let Some(((p0, _), _)) =
-                    m.search(CharCat::Space.not().or('\n'), None).next()
-                {
-                    m.move_to(p0);
+                    let points = m.search("[^ \t]", None).next();
+                    if let Some((p0, _)) = points {
+                        m.move_to(p0)
+                    }
                 }
             }),
 
@@ -586,22 +550,22 @@ where
                             let cur = m.caret();
                             let (points, back) = match self.sel_type {
                                 Reverse | ExtendRev => {
-                                    (m.search_rev(char, None).find(|(p, _)| p.0 != cur), 1)
+                                    (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
                                 }
                                 Normal | Extend => {
-                                    (m.search(char, None).find(|(p, _)| p.0 != cur), -1)
+                                    (m.search(char, None).find(|(p, _)| *p != cur), -1)
                                 }
                                 _ => unreachable!(),
                             };
 
-                            if let Some(((point, _), _)) = points
-                                && point != m.caret()
+                            if let Some((p0, _)) = points
+                                && p0 != m.caret()
                             {
                                 let is_extension = !matches!(self.sel_type, Extend | ExtendRev);
                                 if is_extension || m.anchor().is_none() {
                                     m.set_anchor();
                                 }
-                                m.move_to(point);
+                                m.move_to(p0);
                                 if one_key == "until" {
                                     m.move_hor(back);
                                 }
@@ -651,7 +615,11 @@ where
     }
 }
 
-fn select_and_move_each(helper: &mut EditHelper<File, impl Area>, direction: Side, amount: usize) {
+fn select_and_move_each<S>(
+    helper: &mut EditHelper<File, impl Area, S>,
+    direction: Side,
+    amount: usize,
+) {
     helper.move_each(|m| {
         if m.anchor().is_none() {
             m.set_anchor()
@@ -665,8 +633,8 @@ fn select_and_move_each(helper: &mut EditHelper<File, impl Area>, direction: Sid
     });
 }
 
-fn select_and_move_each_wrapped(
-    helper: &mut EditHelper<File, impl Area>,
+fn select_and_move_each_wrapped<S>(
+    helper: &mut EditHelper<File, impl Area, S>,
     direction: Side,
     amount: usize,
 ) {
@@ -682,94 +650,12 @@ fn select_and_move_each_wrapped(
     });
 }
 
-fn end_of_cat(
-    chars: &mut Peekable<impl Iterator<Item = (Point, char)>>,
-    char_set: impl CharSet,
-    mut last: (Point, char),
-) -> (Point, char, Option<char>) {
-    let mut mismatch = None;
-    let mut entry = chars.peek();
-    while let Some(&(p, char)) = entry.take()
-        && char != '\n'
-    {
-        if char_set.matches(char) {
-            chars.next();
-            entry = chars.peek();
-            last = (p, char);
-        } else {
-            mismatch = Some(char)
-        }
-    }
-    (last.0, last.1, mismatch)
-}
-
 fn peekable_no_nl_windows<'a>(
     iter: impl Iterator<Item = (Point, char)> + 'a,
 ) -> Peekable<impl Iterator<Item = ((Point, char), (Point, char))> + 'a> {
     iter.map_windows(|[first, second]| (*first, *second))
-        .skip_while(|(_, (_, c1))| *c1 == '\n')
+        .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
         .peekable()
-}
-
-/// Returns an appropriate [`Point`] and [`CharCat`] for a "word" like
-/// command
-///
-/// If the categories of the two characters differ, the first point
-/// must be shifted forwards once.
-fn word_point_and_cat(
-    c0: char,
-    c1: char,
-    p0: Point,
-    p1: Point,
-    w_chars: &WordChars,
-    mf: Mod,
-) -> (Point, CharCat) {
-    let cat0 = CharCat::of(c0, w_chars, mf);
-    let cat1 = CharCat::of(c1, w_chars, mf);
-    (if cat0 == cat1 && c0 != '\n' { p0 } else { p1 }, cat1)
-}
-
-enum CharCat<'a> {
-    Word(&'a WordChars),
-    Space,
-    Other(&'a WordChars),
-    NotSpace,
-}
-
-impl<'a> CharCat<'a> {
-    fn of(char: char, w_chars: &'a WordChars, mf: Mod) -> Self {
-        if [' ', '\t', '\n'].matches(char) {
-            Self::Space
-        } else if mf.contains(Mod::ALT) {
-            Self::NotSpace
-        } else if w_chars.matches(char) {
-            Self::Word(w_chars)
-        } else {
-            Self::Other(w_chars)
-        }
-    }
-}
-
-impl CharSet for CharCat<'_> {
-    fn matches(&self, char: char) -> bool {
-        match self {
-            CharCat::Word(w_chars) => w_chars.matches(char),
-            CharCat::Space => [' ', '\t', '\n'].matches(char),
-            CharCat::Other(w_chars) => w_chars.or([' ', '\t', '\n']).not().matches(char),
-            CharCat::NotSpace => [' ', '\t', '\n'].not().matches(char),
-        }
-    }
-}
-
-impl<'a> PartialEq for CharCat<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (CharCat::Word(_), CharCat::Word(_))
-                | (CharCat::Space, CharCat::Space)
-                | (CharCat::Other(_), CharCat::Other(_))
-        )
-    }
 }
 
 enum Side {
@@ -828,3 +714,49 @@ pub struct OnModeChange {}
 impl Hookable for OnModeChange {
     type Args<'args> = (Mode, Mode);
 }
+
+fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+    static UNWS: RegexStrs = LazyLock::new(RwLock::default);
+
+    let mut unws = UNWS.write();
+    if let Some((r0, r1)) = unws.get(m.w_chars().ranges()) {
+        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    } else {
+        let cat = w_char_cat(m.w_chars().ranges());
+        let r0 = format!("([{cat}]*|[^{cat} \t\n]*)[ \t]*").leak();
+        let r1 = "[^ \t\n]*[ \t]*";
+        unws.insert(m.w_chars().ranges(), (r0, r1));
+        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    }
+}
+
+fn space_and_word<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+    static EOWS: RegexStrs = LazyLock::new(RwLock::default);
+
+    let mut eows = EOWS.write();
+    if let Some((r0, r1)) = eows.get(m.w_chars().ranges()) {
+        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    } else {
+        let cat = w_char_cat(m.w_chars().ranges());
+        let r0 = format!("[ \t]*([{cat}]*|[^{cat} \t\n]*)").leak();
+        let r1 = "[ \t]*[^ \t]*";
+        eows.insert(m.w_chars().ranges(), (r0, r1));
+        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    }
+}
+
+fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
+    ranges
+        .iter()
+        .map(|r| {
+            if r.start() == r.end() {
+                format!("{}", r.start())
+            } else {
+                format!("{}-{}", r.start(), r.end())
+            }
+        })
+        .collect()
+}
+
+type RegexStrs =
+    LazyLock<RwLock<HashMap<&'static [RangeInclusive<char>], (&'static str, &'static str)>>>;
