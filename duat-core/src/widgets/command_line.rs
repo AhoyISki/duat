@@ -16,10 +16,7 @@
 //! by running the `set-prompt` [`Command`].
 use std::{
     marker::PhantomData,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        LazyLock,
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use crate::{
@@ -173,8 +170,8 @@ where
         &self.text
     }
 
-    fn print_cfg(&self) -> &crate::text::PrintCfg {
-        &CFG
+    fn print_cfg(&self) -> crate::text::PrintCfg {
+        PrintCfg::default_for_input().with_forced_scrolloff()
     }
 
     fn once(context: Context<U>) {
@@ -212,10 +209,6 @@ where
 {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg) {
-        (&mut self.text, &CFG)
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
@@ -329,6 +322,3 @@ where
         }
     }
 }
-
-static CFG: LazyLock<PrintCfg> =
-    LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());

@@ -47,10 +47,7 @@
 //! [`OnFileOpen`]: crate::hooks::OnFileOpen
 //! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{
-    any::TypeId,
-    sync::{Arc, LazyLock},
-};
+use std::{any::TypeId, sync::Arc};
 
 use crossterm::event::KeyEvent;
 
@@ -306,9 +303,8 @@ where
     ///
     /// The default configuration, used when `print_cfg` is not
     /// implemented,can be found at [`PrintCfg::default`].
-    fn print_cfg(&self) -> &PrintCfg {
-        static CFG: LazyLock<PrintCfg> = LazyLock::new(PrintCfg::default);
-        &CFG
+    fn print_cfg(&self) -> PrintCfg {
+        PrintCfg::new()
     }
 
     /// Prints the widget
@@ -578,12 +574,6 @@ where
     ///
     /// [`&mut Text`]: Text
     fn text_mut(&mut self) -> &mut Text;
-
-    /// A combination of [`text_mut`] and [`print_cfg`]
-    ///
-    /// [`text_mut`]: ActiveWidget::text_mut
-    /// [`print_cfg`]: PassiveWidget::print_cfg
-    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg);
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
     fn on_focus(&mut self, _area: &U::Area) {}

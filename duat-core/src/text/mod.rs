@@ -23,10 +23,10 @@ pub(crate) use self::search::SavedMatches;
 use self::tags::{Markers, RawTag, Tags};
 pub use self::{
     builder::{err, hint, ok, text, AlignCenter, AlignLeft, AlignRight, Builder, Ghost},
-    search::Searcher,
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::{utf8_char_width, Point},
+    search::Searcher,
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -615,33 +615,11 @@ mod point {
             }
         }
 
-        pub(super) fn fwd_byte(&self, b: u8) -> Self {
-            Self {
-                b: self.b + 1,
-                c: self.c + utf8_char_width(b),
-                l: self.l + (b == b'\n') as usize,
-            }
-        }
-
         pub(super) fn rev(self, char: char) -> Self {
             Self {
                 b: self.b - char.len_utf8(),
                 c: self.c - 1,
                 l: self.l - (char == '\n') as usize,
-            }
-        }
-
-        pub(super) fn rev_byte(&self, b: u8) -> Self {
-            Self {
-                b: self.b - 1,
-                // Theoretically, this is incongruent with fwd_byte,
-                // since it will say that the bytes 1-3 of a char
-                // belong to the next one.
-                // However, this doesn't really matter, since I am
-                // not allowing the user to search for [u8]s, only
-                // through valid utf8.
-                c: self.c - utf8_char_width(b),
-                l: self.l - (b == b'\n') as usize,
             }
         }
 

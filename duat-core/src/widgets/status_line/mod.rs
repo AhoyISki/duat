@@ -53,8 +53,6 @@
 pub mod common;
 mod state;
 
-use std::sync::LazyLock;
-
 use common::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
@@ -231,9 +229,8 @@ where
         forms::set_weak("Separator", Form::new().cyan());
     }
 
-    fn print_cfg(&self) -> &PrintCfg {
-        static CFG: LazyLock<PrintCfg> = LazyLock::new(|| PrintCfg::new().width_wrapped());
-        &CFG
+    fn print_cfg(&self) -> PrintCfg {
+        PrintCfg::new().width_wrapped()
     }
 }
 

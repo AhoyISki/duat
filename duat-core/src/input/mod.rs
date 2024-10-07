@@ -14,7 +14,7 @@ pub use self::{
 };
 use crate::{
     data::{Context, RwData},
-    text::{SavedMatches},
+    text::SavedMatches,
     ui::Ui,
     widgets::{ActiveWidget, File},
 };

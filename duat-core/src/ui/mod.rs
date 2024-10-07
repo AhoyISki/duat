@@ -98,7 +98,7 @@ pub trait Area: Send + Sync + Sized {
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`][crate::text::ScrollOff] range.
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: &PrintCfg);
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
 
     // Returns the [`Point`]s that would printed first.
     fn top_left(&self) -> (Point, Option<Point>);
@@ -116,7 +116,7 @@ pub trait Area: Send + Sync + Sized {
     fn is_active(&self) -> bool;
 
     /// Prints the [`Text`][crate::text::Text] via an [`Iterator`]
-    fn print(&self, text: &Text, cfg: &PrintCfg, painter: Painter);
+    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
 
     fn print_with<'a>(
         &self,

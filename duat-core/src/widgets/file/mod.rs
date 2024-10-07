@@ -174,7 +174,7 @@ where
         Self {
             text_op: TextOp::NewBuffer,
             builder: self.builder.clone(),
-            cfg: self.cfg.clone(),
+            cfg: self.cfg,
             specs: self.specs,
         }
     }
@@ -381,8 +381,8 @@ where
         &self.text
     }
 
-    fn print_cfg(&self) -> &PrintCfg {
-        &self.cfg
+    fn print_cfg(&self) -> PrintCfg {
+        self.cfg
     }
 
     fn once(_context: crate::data::Context<U>) {}
@@ -423,10 +423,6 @@ where
 {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg) {
-        (&mut self.text, &self.cfg)
     }
 }
 

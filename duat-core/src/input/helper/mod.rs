@@ -168,6 +168,7 @@ where
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
     area: &'a A,
+    cfg: PrintCfg,
     searcher: S,
 }
 
@@ -178,8 +179,13 @@ where
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
-        widget.write().text_mut().remove_cursor_tags(cursors);
-        EditHelper { widget, cursors, area, searcher: () }
+        let cfg = {
+            let mut widget = widget.write();
+            widget.text_mut().remove_cursor_tags(cursors);
+            widget.print_cfg()
+        };
+
+        EditHelper { widget, cursors, area, cfg, searcher: () }
     }
 }
 
@@ -212,13 +218,13 @@ where
             &mut cursor,
             &mut widget,
             self.area,
+            &self.cfg,
             &mut diff,
         ));
 
-        let cfg = widget.print_cfg();
-
         self.cursors.insert_removed(was_main, cursor);
-        self.cursors.shift(n, diff, widget.text(), self.area, cfg);
+        self.cursors
+            .shift(n, diff, widget.text(), self.area, &self.cfg);
 
         widget.update(self.area);
     }
@@ -242,13 +248,13 @@ where
         let mut diff = Diff::default();
 
         for (mut cursor, was_main) in removed_cursors.into_iter() {
-            let cfg = widget.print_cfg();
-            diff.shift_cursor(&mut cursor, widget.text(), self.area, cfg);
+            diff.shift_cursor(&mut cursor, widget.text(), self.area, &self.cfg);
 
             f(&mut Editor::new(
                 &mut cursor,
                 &mut widget,
                 self.area,
+                &self.cfg,
                 &mut diff,
             ));
 
@@ -278,13 +284,12 @@ where
             panic!("Cursor index {n} out of bounds.");
         };
         let mut widget = self.widget.write();
-        let (text, cfg) = widget.text_mut_and_print_cfg();
 
         mov(&mut Mover::new(
             &mut cursor,
-            text,
+            widget.text_mut(),
             self.area,
-            cfg,
+            &self.cfg,
             &mut self.searcher,
         ));
 
@@ -311,14 +316,13 @@ where
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
-        let (text, cfg) = widget.text_mut_and_print_cfg();
 
         for (mut cursor, was_main) in removed_cursors.into_iter() {
             mov(&mut Mover::new(
                 &mut cursor,
-                text,
+                widget.text_mut(),
                 self.area,
-                cfg,
+                &self.cfg,
                 &mut self.searcher,
             ));
 
@@ -456,8 +460,14 @@ where
         cursors: &'a mut Cursors,
         saved_matches: &'a mut SavedMatches,
     ) -> Self {
+        let cfg = {
+            let mut widget = widget.write();
+            widget.text_mut().remove_cursor_tags(cursors);
+            widget.print_cfg()
+        };
+
         let searcher = saved_matches.searcher();
-        EditHelper { widget, cursors, area, searcher }
+        EditHelper { widget, cursors, area, cfg, searcher }
     }
 }
 
@@ -500,7 +510,8 @@ where
     cursor: &'a mut Cursor,
     widget: &'b mut W,
     area: &'c A,
-    edit_accum: &'d mut Diff,
+    cfg: &'a PrintCfg,
+    diff: &'d mut Diff,
 }
 
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
@@ -513,9 +524,10 @@ where
         cursor: &'a mut Cursor,
         widget: &'b mut W,
         area: &'c A,
-        edit_accum: &'d mut Diff,
+        cfg: &'a PrintCfg,
+        diff: &'d mut Diff,
     ) -> Self {
-        Self { cursor, widget, area, edit_accum }
+        Self { cursor, widget, area, cfg, diff }
     }
 
     /// Replaces the entire selection with new text
@@ -537,7 +549,6 @@ where
         self.edit(change);
 
         let text = self.widget.text();
-        let cfg = self.widget.print_cfg();
         let end_p = text.point_at(end);
 
         if let Some(anchor) = self.cursor.anchor()
@@ -545,11 +556,11 @@ where
             && edit_len > 0
         {
             self.cursor.swap_ends();
-            self.cursor.move_to(end_p, text, self.area, cfg);
+            self.cursor.move_to(end_p, text, self.area, self.cfg);
             self.cursor.swap_ends();
         } else {
             self.cursor.unset_anchor();
-            self.cursor.move_to(end_p, text, self.area, cfg);
+            self.cursor.move_to(end_p, text, self.area, self.cfg);
         }
     }
 
@@ -572,9 +583,8 @@ where
             && anchor >= self.cursor.caret()
         {
             let text = self.widget.text();
-            let cfg = self.widget.print_cfg();
             self.cursor.swap_ends();
-            self.cursor.move_hor(diff, text, self.area, cfg);
+            self.cursor.move_hor(diff, text, self.area, self.cfg);
             self.cursor.swap_ends();
         }
     }
@@ -582,7 +592,7 @@ where
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change) {
         self.widget.text_mut().apply_change(&change);
-        self.edit_accum.bytes += change.added_end() as isize - change.taken_end() as isize;
+        self.diff.bytes += change.added_end() as isize - change.taken_end() as isize;
 
         if TypeId::of::<W>() == TypeId::of::<File>() {
             let file = unsafe { std::mem::transmute_copy::<&mut W, &mut File>(&self.widget) };
@@ -591,7 +601,7 @@ where
                 .history_mut()
                 .add_change(change, self.cursor.assoc_index);
             self.cursor.assoc_index = Some(insertion_index);
-            self.edit_accum.changes += change_diff;
+            self.diff.changes += change_diff;
         }
     }
 }
@@ -647,7 +657,7 @@ where
     ///   position allowed.
     /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, self.cfg);
+        self.cursor.move_to(point, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor to a `line` and a `column`
