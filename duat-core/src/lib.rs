@@ -1,6 +1,7 @@
 #![doc = include_str!("README.md")]
 #![feature(
     extract_if,
+    iter_advance_by,
     iter_intersperse,
     trait_upcasting,
     let_chains,
@@ -352,8 +353,7 @@ pub fn duat_name<T>() -> &'static str
 where
     T: ?Sized + 'static,
 {
-    static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
-        LazyLock::new(|| RwLock::new(HashMap::new()));
+    static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> = LazyLock::new(RwLock::default);
     let mut names = NAMES.write();
     let type_id = TypeId::of::<T>();
 

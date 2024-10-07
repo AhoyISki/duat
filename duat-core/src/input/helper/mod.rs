@@ -7,11 +7,13 @@
 //! [`InputMethod`]: super::InputMethod
 use std::{any::TypeId, ops::Range};
 
+use regex_automata::hybrid::BuildError;
+
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    text::{Pattern, Point, PrintCfg, Text, WordChars},
+    text::{Point, PrintCfg, SavedMatches, Searcher, Text, WordChars},
     ui::Area,
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -158,7 +160,7 @@ mod cursors;
 /// [commands]: crate::commands
 /// [editing]: Editor
 /// [moving]: Mover
-pub struct EditHelper<'a, W, A>
+pub struct EditHelper<'a, W, A, S>
 where
     W: ActiveWidget<A::Ui> + 'static,
     A: Area,
@@ -166,9 +168,10 @@ where
     widget: &'a RwData<W>,
     cursors: &'a mut Cursors,
     area: &'a A,
+    searcher: S,
 }
 
-impl<'a, W, A> EditHelper<'a, W, A>
+impl<'a, W, A> EditHelper<'a, W, A, ()>
 where
     W: ActiveWidget<A::Ui> + 'static,
     A: Area,
@@ -176,9 +179,15 @@ where
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
         widget.write().text_mut().remove_cursor_tags(cursors);
-        EditHelper { widget, cursors, area }
+        EditHelper { widget, cursors, area, searcher: () }
     }
+}
 
+impl<'a, W, A, S> EditHelper<'a, W, A, S>
+where
+    W: ActiveWidget<A::Ui> + 'static,
+    A: Area,
+{
     /// Edits on the `nth` [`Cursor`]'s selection
     ///
     /// Since the editing function takes [`Editor`] as an argument,
@@ -264,17 +273,19 @@ where
     /// [`edit_on_nth`]: Self::edit_on_nth
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<A>), n: usize) {
+    pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<A, S>), n: usize) {
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
         let mut widget = self.widget.write();
+        let (text, cfg) = widget.text_mut_and_print_cfg();
 
         mov(&mut Mover::new(
             &mut cursor,
-            widget.text(),
+            text,
             self.area,
-            widget.print_cfg(),
+            cfg,
+            &mut self.searcher,
         ));
 
         self.cursors.insert_removed(was_main, cursor);
@@ -296,17 +307,19 @@ where
     /// [`edit_on_each`]: Self::edit_on_each
     /// [`move_nth`]: Self::move_nth
     /// [`move_main`]: Self::move_main
-    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A>) -> _T) {
+    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T) {
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.write();
+        let (text, cfg) = widget.text_mut_and_print_cfg();
 
         for (mut cursor, was_main) in removed_cursors.into_iter() {
             mov(&mut Mover::new(
                 &mut cursor,
-                widget.text(),
+                text,
                 self.area,
-                widget.print_cfg(),
+                cfg,
+                &mut self.searcher,
             ));
 
             self.cursors.insert_removed(was_main, cursor);
@@ -346,7 +359,7 @@ where
     /// [`edit_on_main`]: Self::edit_on_main
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_main(&mut self, mov: impl FnMut(&mut Mover<A>)) {
+    pub fn move_main(&mut self, mov: impl FnMut(&mut Mover<A, S>)) {
         self.move_nth(mov, self.cursors.main_index());
     }
 
@@ -386,7 +399,7 @@ where
     }
 }
 
-impl<'a, A> EditHelper<'a, File, A>
+impl<'a, A, S> EditHelper<'a, File, A, S>
 where
     A: Area,
 {
@@ -421,13 +434,30 @@ where
     }
 }
 
-impl<'a, W, A> Drop for EditHelper<'a, W, A>
+impl<'a, W, A, S> Drop for EditHelper<'a, W, A, S>
 where
     W: ActiveWidget<A::Ui> + 'static,
     A: Area,
 {
     fn drop(&mut self) {
         self.widget.write().text_mut().add_cursor_tags(self.cursors);
+    }
+}
+
+impl<'a, W, A> EditHelper<'a, W, A, Searcher<'a>>
+where
+    W: ActiveWidget<A::Ui> + 'static,
+    A: Area,
+{
+    /// Returns a new instance of [`EditHelper`]
+    pub fn new_inc(
+        widget: &'a RwData<W>,
+        area: &'a A,
+        cursors: &'a mut Cursors,
+        saved_matches: &'a mut SavedMatches,
+    ) -> Self {
+        let searcher = saved_matches.searcher();
+        EditHelper { widget, cursors, area, searcher }
     }
 }
 
@@ -567,23 +597,30 @@ where
 }
 
 /// A cursor that can alter the selection, but can't edit
-pub struct Mover<'a, A>
+pub struct Mover<'a, A, S>
 where
     A: Area,
 {
     cursor: &'a mut Cursor,
-    text: &'a Text,
+    text: &'a mut Text,
     area: &'a A,
     cfg: &'a PrintCfg,
+    inc_matches: &'a mut S,
 }
 
-impl<'a, A> Mover<'a, A>
+impl<'a, A, S> Mover<'a, A, S>
 where
     A: Area,
 {
     /// Returns a new instance of `Mover`
-    pub fn new(cursor: &'a mut Cursor, text: &'a Text, area: &'a A, cfg: &'a PrintCfg) -> Self {
-        Self { cursor, text, area, cfg }
+    fn new(
+        cursor: &'a mut Cursor,
+        text: &'a mut Text,
+        area: &'a A,
+        cfg: &'a PrintCfg,
+        inc_matches: &'a mut S,
+    ) -> Self {
+        Self { cursor, text, area, cfg, inc_matches }
     }
 
     ////////// Public movement functions
@@ -662,13 +699,14 @@ where
     /// Searches the [`Text`] for a [`Pattern`]
     ///
     /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the [match].
+    /// [`Point`]s, alongside the [match]. If an `end` is provided,
+    /// the search will stop at the given [`Point`].
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
     /// fn search_nth_paren(helper: &mut EditHelper<File, impl Area>, n: usize) {
     ///     helper.move_each(|m| {
-    ///         let mut searcher = m.search('(');
+    ///         let mut searcher = m.search('(', None);
     ///         if let Some(((start, end), _)) = searcher.nth(n) {
     ///             m.move_to(start);
     ///             m.set_anchor();
@@ -679,17 +717,19 @@ where
     /// ```
     ///
     /// [match]: Pattern::Match
-    pub fn search<P>(&self, pat: P) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
-    where
-        P: Pattern<'a> + 'a,
-    {
-        self.text.search_from(self.cursor.caret(), pat)
+    pub fn search(
+        &'a mut self,
+        pat: &'a str,
+        end: Option<Point>,
+    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
+        self.text.search_from(pat, self.cursor.caret(), end)
     }
 
     /// Searches the [`Text`] for a [`Pattern`], in reverse
     ///
     /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the [match].
+    /// [`Point`]s, alongside the [match]. If an `end` is provided,
+    /// the search will stop at the given [`Point`].
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
@@ -699,7 +739,7 @@ where
     ///     s: &str,
     /// ) {
     ///     helper.move_each(|m| {
-    ///         let mut searcher = m.search_rev(s);
+    ///         let mut searcher = m.search_rev(s, None);
     ///         if let Some(((start, end), _)) = searcher.nth(n) {
     ///             m.move_to(start);
     ///             m.set_anchor();
@@ -710,11 +750,12 @@ where
     /// ```
     ///
     /// [match]: Pattern::Match
-    pub fn search_rev<P>(&self, pat: P) -> impl Iterator<Item = ((Point, Point), P::Match)> + 'a
-    where
-        P: Pattern<'a> + 'a,
-    {
-        self.text.search_from_rev(self.cursor.caret(), pat)
+    pub fn search_rev(
+        &'a mut self,
+        pat: &'a str,
+        end: Option<Point>,
+    ) -> Result<impl Iterator<Item = (Point, Point)> + 'a, BuildError> {
+        self.text.search_from_rev(pat, self.cursor.caret(), end)
     }
 
     /// Returns the [`char`] in the `caret`
@@ -802,6 +843,39 @@ where
         } else {
             self.caret().byte()..anchor.byte()
         }
+    }
+}
+
+impl<'a, A> Mover<'a, A, Searcher<'a>>
+where
+    A: Area,
+{
+    /// Search incrementally from an [`IncSearch`] request
+    ///
+    /// This method will search for pattern matching the requested
+    /// [`IncPattern`], and it can take advantage of previous
+    /// searches, reducing the cost of searching very large files.
+    ///
+    /// [`IncSearch`]: crate::widgets::IncSearch
+    pub fn search_inc(
+        &'a mut self,
+        end: Option<Point>,
+    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+        self.inc_matches
+            .search_from(self.text, self.cursor.caret(), end)
+    }
+
+    /// Search incrementally from an [`IncSearch`] request in reverse
+    ///
+    /// This method will searech for ranges matching the requested
+    /// [`IncPattern`], and it can take advantage of previous
+    /// searches, reducing the cost of searching very large files.
+    pub fn search_inc_rev(
+        &'a mut self,
+        end: Option<Point>,
+    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+        self.inc_matches
+            .search_from_rev(self.text, self.cursor.caret(), end)
     }
 }
 

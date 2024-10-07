@@ -55,7 +55,9 @@ use std::{
 use crossterm::event::KeyEvent;
 
 pub use self::{
-    command_line::{CommandLine, CommandLineCfg, CommandLineMode, RunCommands, ShowNotifications},
+    command_line::{
+        CommandLine, CommandLineCfg, CommandLineMode, IncSearch, RunCommands, ShowNotifications,
+    },
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{common, status, State, StatusLine, StatusLineCfg},
@@ -576,6 +578,12 @@ where
     ///
     /// [`&mut Text`]: Text
     fn text_mut(&mut self) -> &mut Text;
+
+    /// A combination of [`text_mut`] and [`print_cfg`]
+    ///
+    /// [`text_mut`]: ActiveWidget::text_mut
+    /// [`print_cfg`]: PassiveWidget::print_cfg
+    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg);
 
     /// Actions to do whenever this [`ActionableWidget`] is focused.
     fn on_focus(&mut self, _area: &U::Area) {}

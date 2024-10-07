@@ -143,7 +143,7 @@ where
     }
 }
 
-fn move_each(mut editor: EditHelper<File, impl Area>, direction: Side, amount: usize) {
+fn move_each<I>(mut editor: EditHelper<File, impl Area, I>, direction: Side, amount: usize) {
     editor.move_each(|mover| {
         mover.unset_anchor();
         match direction {
@@ -155,7 +155,11 @@ fn move_each(mut editor: EditHelper<File, impl Area>, direction: Side, amount: u
     });
 }
 
-fn move_each_and_select(mut editor: EditHelper<File, impl Area>, direction: Side, amount: usize) {
+fn move_each_and_select<I>(
+    mut editor: EditHelper<File, impl Area, I>,
+    direction: Side,
+    amount: usize,
+) {
     editor.move_each(|mover| {
         if mover.anchor().is_none() {
             mover.set_anchor();

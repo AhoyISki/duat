@@ -55,7 +55,7 @@ impl Item {
     }
 }
 
-/// An [`Iterator`] over the [`TextBit`]s of the [`Text`].
+/// An [`Iterator`] over the [`Part`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.

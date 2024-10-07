@@ -24,10 +24,10 @@ use std::{
 
 use crate::{
     data::{Context, RoData, RwData},
+    forms::{self, Form},
     hooks,
     input::{Commander, InputMethod},
-    forms::{self, Form},
-    text::{err, text, Ghost, PrintCfg, Text},
+    text::{err, text, Ghost, PrintCfg, SavedMatches, Text},
     ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
@@ -174,8 +174,6 @@ where
     }
 
     fn print_cfg(&self) -> &crate::text::PrintCfg {
-        static CFG: LazyLock<PrintCfg> =
-            LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());
         &CFG
     }
 
@@ -214,6 +212,10 @@ where
 {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg) {
+        (&mut self.text, &CFG)
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
@@ -307,3 +309,26 @@ where
         }
     }
 }
+
+pub struct IncSearch {
+    current: RwData<SavedMatches>,
+    list: RwData<Vec<SavedMatches>>,
+}
+
+impl<U> CommandLineMode<U> for IncSearch
+where
+    U: Ui,
+{
+    fn update(&self, text: &mut Text) {
+        let mut list = self.list.write();
+        if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
+        } else if let Ok(mut saved) = SavedMatches::new(text.to_string()) {
+            if let Some(prev) = list.iter().find(|s| s.is_prefix_of(&saved)) {
+                saved.take_matches_from(prev);
+            }
+        }
+    }
+}
+
+static CFG: LazyLock<PrintCfg> =
+    LazyLock::new(|| PrintCfg::default_for_input().with_forced_scrolloff());

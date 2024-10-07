@@ -78,7 +78,7 @@ impl<'a> RevSearcher<'a> {
     }
 }
 
-trait Pattern {
+trait Pattern: PartialEq + Eq {
     fn length(&self) -> usize;
 
     fn matches(&self, part: Part, index: usize) -> bool;

@@ -25,9 +25,9 @@ use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     cache::load_cache,
     data::Context,
+    forms,
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
-    forms,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
@@ -423,6 +423,10 @@ where
 {
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn text_mut_and_print_cfg(&mut self) -> (&mut Text, &PrintCfg) {
+        (&mut self.text, &self.cfg)
     }
 }
 

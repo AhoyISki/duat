@@ -4,12 +4,12 @@ use std::{iter::Peekable, sync::LazyLock};
 
 use duat_core::{
     data::{Context, RwData},
+    forms::{self, Form},
     hooks::{self, Hookable},
     input::{
         key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
         KeyMod as Mod,
     },
-    forms::{self, Form},
     text::{err, text, CharSet, Point, Text, WordChars},
     ui::{Area, Ui},
     widgets::File,
@@ -149,7 +149,7 @@ impl KeyMap {
             key!(Char('j')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
                     if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -170,7 +170,7 @@ impl KeyMap {
             key!(Char('k')) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
                     if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -194,7 +194,7 @@ impl KeyMap {
             key!(Char('J'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
-                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
                     if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -215,7 +215,7 @@ impl KeyMap {
             key!(Char('K'), Mod::SHIFT) => match self.sel_type {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
-                    let (p, _) = m.search('\n').next().unzip().0.unzip();
+                    let (p, _) = m.search('\n', None).next().unzip().0.unzip();
                     if let Some(point) = p.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -365,13 +365,13 @@ impl KeyMap {
                     m.set_caret_on_start();
 
                     let p0 = {
-                        let points = m.search_rev('\n').next().unzip().0;
+                        let points = m.search_rev('\n', None).next().unzip().0;
                         points.unzip().0.unwrap_or_default()
                     };
                     m.set_caret_on_end();
                     m.move_to(p0);
 
-                    let (p1, _) = m.search('\n').next().unzip().0.unzip();
+                    let (p1, _) = m.search('\n', None).next().unzip().0.unzip();
                     if let Some(p1) = p1.or(m.last_point()) {
                         m.set_anchor();
                         m.move_to(p1);
@@ -483,7 +483,7 @@ impl KeyMap {
 
         match event {
             key!(Char('h')) => helper.move_each(|m| {
-                let (_, p1) = m.search('\n').next().unzip().0.unzip();
+                let (_, p1) = m.search('\n', None).next().unzip().0.unzip();
                 m.move_to(p1.unwrap_or_default());
             }),
             key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
@@ -510,7 +510,9 @@ impl KeyMap {
 
                 if let Some(point) = first_char {
                     m.move_to(point);
-                } else if let Some(((p0, _), _)) = m.search(CharCat::Space.not().or('\n')).next() {
+                } else if let Some(((p0, _), _)) =
+                    m.search(CharCat::Space.not().or('\n'), None).next()
+                {
                     m.move_to(p0);
                 }
             }),
@@ -584,9 +586,11 @@ where
                             let cur = m.caret();
                             let (points, back) = match self.sel_type {
                                 Reverse | ExtendRev => {
-                                    (m.search_rev(char).find(|(p, _)| p.0 != cur), 1)
+                                    (m.search_rev(char, None).find(|(p, _)| p.0 != cur), 1)
                                 }
-                                Normal | Extend => (m.search(char).find(|(p, _)| p.0 != cur), -1),
+                                Normal | Extend => {
+                                    (m.search(char, None).find(|(p, _)| p.0 != cur), -1)
+                                }
                                 _ => unreachable!(),
                             };
 

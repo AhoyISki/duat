@@ -19,13 +19,14 @@ use gapbuf::GapBuffer;
 use point::TwoPoints;
 use records::Records;
 
+pub(crate) use self::search::SavedMatches;
 use self::tags::{Markers, RawTag, Tags};
 pub use self::{
     builder::{err, hint, ok, text, AlignCenter, AlignLeft, AlignRight, Builder, Ghost},
+    search::Searcher,
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::{utf8_char_width, Point},
-    search::{CharSet, Pattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -36,10 +37,10 @@ use crate::{history::Change, input::Cursors, DuatError};
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
+    records: Box<Records<(usize, usize, usize)>>,
     /// This [`Marker`] is used for the addition and removal of cursor
     /// [`Tag`]s.
     marker: Marker,
-    pub records: Records<(usize, usize, usize)>,
 }
 
 impl Text {
@@ -48,7 +49,7 @@ impl Text {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
             marker: Marker::base(),
-            records: Records::new(),
+            records: Box::new(Records::new()),
         }
     }
 
@@ -61,11 +62,11 @@ impl Text {
             buf,
             tags,
             marker: Marker::base(),
-            records: Records::with_max((
+            records: Box::new(Records::with_max((
                 file.len(),
                 file.chars().count(),
                 file.bytes().filter(|b| *b == b'\n').count(),
-            )),
+            ))),
         }
     }
 
@@ -439,7 +440,47 @@ impl Text {
         self.strs_in_range(p1.byte()..p2.byte())
     }
 
-    fn strs_in_range(&self, range: impl RangeBounds<usize> + std::fmt::Debug) -> [&str; 2] {
+    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
+    ///
+    /// The return value is the value of the gap, if the second `&str`
+    /// is the contiguous one.
+    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) -> Option<usize> {
+        let (start, end) = get_ends(range, self.len_bytes());
+        let gap = self.buf.gap();
+
+        if end <= gap {
+            None
+        } else if start >= gap {
+            Some(gap)
+        } else if gap.abs_diff(start) < gap.abs_diff(end) {
+            self.buf.set_gap(start);
+            Some(self.buf.gap())
+        } else {
+            self.buf.set_gap(end);
+            None
+        }
+    }
+
+    /// Assumes that the `range` given is continuous in `self`
+    ///
+    /// You *MUST* CALL [`make_contiguous_in`] before using this
+    /// function. The sole purpose of this function is not to keep the
+    /// [`Text`] mutably borrowed.
+    ///
+    /// [`make_contiguous_in`]: Self::make_contiguous_in
+    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<usize>) -> &str {
+        let (start, end) = get_ends(range, self.len_bytes());
+        let (s0, s1) = self.slices();
+        unsafe {
+            if end == self.buf.gap() {
+                s0.get_unchecked(start..end)
+            } else {
+                s1.get_unchecked(0..(end - start))
+            }
+        }
+    }
+
+    fn strs_in_range(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len_bytes());
 
@@ -551,6 +592,15 @@ mod point {
         /// Returns a new [`Point`], at the first byte.
         pub fn new() -> Self {
             Self::default()
+        }
+
+        pub fn max_of(str: impl AsRef<str>) -> Self {
+            let str = str.as_ref();
+            Self {
+                b: str.len(),
+                c: str.chars().count(),
+                l: str.lines().count(),
+            }
         }
 
         pub(super) fn from_coords(b: usize, c: usize, l: usize) -> Self {
@@ -733,8 +783,8 @@ pub fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize,
         std::ops::Bound::Unbounded => 0,
     };
     let end = match range.end_bound() {
-        std::ops::Bound::Included(end) => *end + 1,
-        std::ops::Bound::Excluded(end) => *end,
+        std::ops::Bound::Included(end) => (*end + 1).min(max),
+        std::ops::Bound::Excluded(end) => (*end).min(max),
         std::ops::Bound::Unbounded => max,
     };
 
@@ -762,6 +812,7 @@ impl_from_to_string!(Box<str>);
 impl_from_to_string!(Rc<str>);
 impl_from_to_string!(Arc<str>);
 
+/// Implements [`From<type>`] for [`Text`]
 macro impl_from_to_string($t:ty) {
     impl From<$t> for Text {
         fn from(value: $t) -> Self {
@@ -773,11 +824,11 @@ macro impl_from_to_string($t:ty) {
                 buf,
                 tags,
                 marker: Marker::new(),
-                records: Records::with_max((
+                records: Box::new(Records::with_max((
                     value.len(),
                     value.chars().count(),
                     value.lines().count(),
-                )),
+                ))),
             }
         }
     }

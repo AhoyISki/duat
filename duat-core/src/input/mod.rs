@@ -14,6 +14,7 @@ pub use self::{
 };
 use crate::{
     data::{Context, RwData},
+    text::{SavedMatches},
     ui::Ui,
     widgets::{ActiveWidget, File},
 };
@@ -64,6 +65,30 @@ where
 
     fn cursors(&self) -> Option<&Cursors> {
         None
+    }
+
+    /// Handles incremental search from [`IncSearch`]
+    ///
+    /// This should work similarly to [`send_key`], i.e., treat this
+    /// like if a key was sent to the [`InputMethod`]. When
+    /// implementing this, you should use [`EditHelper::new_inc`]
+    /// instead of [`new`], which, when using [`Mover`]s (by
+    /// [`move_main`], [`move_each`], etc), allow the use of the
+    /// [`search_inc`] methods, making use of the requested
+    /// incremental search.
+    ///
+    /// [`IncSearch`]: crate::widgets::IncSearch
+    /// [`send_key`]: InputMethod::send_key
+    /// [`new`]: EditHelper::new
+    /// [`Mover`]: helper::Mover
+    /// [`move_main`]: EditHelper::move_main
+    /// [`move_each`]: EditHelper::move_each
+    /// [`search_inc`]: helper::Mover::search_inc
+    fn handle_inc_search(&mut self, _inc_matches: &mut SavedMatches) {
+        unimplemented!(
+            "This InputMethod does not handle incremental search, but a request was sent, so it \
+             should do so."
+        );
     }
 
     fn on_focus(&mut self, _area: &U::Area)
